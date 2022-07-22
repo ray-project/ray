@@ -11,6 +11,7 @@ config = (
     .environment(env="CartPole-v0")
     .framework("torch")
     .rollouts(num_rollout_workers=4)
+    .exploration(explore=False)
 )
 algo = config.build()
 random = algo.save_checkpoint(checkpoint_dir)
@@ -44,6 +45,6 @@ def generate_data(
     algo.evaluate()
     algo.stop()
 
-generate_data(config, output_path=checkpoint_dir + "data/random")
+generate_data(config, random, output_path=checkpoint_dir + "data/random")
 generate_data(config, mixed, output_path=checkpoint_dir + "data/mixed")
 generate_data(config, optimal, output_path=checkpoint_dir + "data/optimal")

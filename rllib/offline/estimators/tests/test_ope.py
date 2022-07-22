@@ -69,9 +69,8 @@ class TestOPE(unittest.TestCase):
 
         # Read n_episodes of data, assuming that one line is one episode
         reader = JsonReader(eval_data)
-        cls.batch = reader.next()
-        for _ in range(n_episodes - 1):
-            cls.batch = concat_samples([cls.batch, reader.next()])
+        batches = [reader.next() for _ in range(n_episodes)]
+        cls.batch = concat_samples(batches)
         cls.n_episodes = len(cls.batch.split_by_episode())
         print("Episodes:", cls.n_episodes, "Steps:", cls.batch.count)
 
