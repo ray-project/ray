@@ -44,6 +44,7 @@ folder (e.g., /tmp/ray/session_[id]/*).
 import glob
 import json
 import logging
+import threading
 import os
 import re
 import sys
@@ -167,6 +168,9 @@ class UsageStatsEnabledness(Enum):
 
 
 _recorded_library_usages = set()
+_recorded_library_usages_lock = threading.Lock()
+_recorded_extra_usage_tags = dict()
+_recorded_extra_usage_tags_lock = threading.Lock()
 
 
 # NOTE: Do not change the write / read protocol. That will cause
@@ -237,15 +241,56 @@ def _put_library_usage(library_usage: str):
             logger.debug(f"Failed to write a library usage to the home folder, {e}")
 
 
+class TagKey(Enum):
+    _TEST1 = auto()
+    _TEST2 = auto()
+
+
+def record_extra_usage_tag(key: TagKey, value: str):
+    """Record extra kv usage tag.
+
+    If the key already exists, the value will be overwritten.
+
+    To record an extra tag, first add the key to the TagKey enum and
+    then call this function.
+    It will make a synchronous call to the internal kv store if the tag is updated.
+    """
+    key = key.name.lower()
+    with _recorded_extra_usage_tags_lock:
+        if _recorded_extra_usage_tags.get(key) == value:
+            return
+        _recorded_extra_usage_tags[key] = value
+
+    if not _internal_kv_initialized():
+        # This happens if the record is before ray.init
+        return
+
+    _put_extra_usage_tag(key, value)
+
+
+def _put_extra_usage_tag(key: str, value: str):
+    assert _internal_kv_initialized()
+    try:
+        _internal_kv_put(
+            f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}",
+            value,
+            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to put extra usage tag, {e}")
+
+
 def record_library_usage(library_usage: str):
     """Record library usage (e.g. which library is used)"""
-    if library_usage in _recorded_library_usages:
-        return
     if "-" in library_usage:
         # - is not permitted since it should be used as a separator
         # of the lib usage file name. See LibUsageRecorder.
         raise ValueError("The library name contains a char - which is not permitted.")
-    _recorded_library_usages.add(library_usage)
+
+    with _recorded_library_usages_lock:
+        if library_usage in _recorded_library_usages:
+            return
+        _recorded_library_usages.add(library_usage)
 
     if not _internal_kv_initialized():
         # This happens if the library is imported before ray.init
@@ -272,7 +317,14 @@ def _put_pre_init_library_usages():
         _put_library_usage(library_usage)
 
 
+def _put_pre_init_extra_usage_tags():
+    assert _internal_kv_initialized()
+    for k, v in _recorded_extra_usage_tags.items():
+        _put_extra_usage_tag(k, v)
+
+
 ray._private.worker._post_init_hooks.append(_put_pre_init_library_usages)
+ray._private.worker._post_init_hooks.append(_put_pre_init_extra_usage_tags)
 
 
 def _usage_stats_report_url():
@@ -525,29 +577,42 @@ def get_library_usages_to_report(gcs_client) -> List[str]:
         return []
 
 
-def _parse_extra_usage_tags() -> Dict[str, str]:
-    """Parse the extra usage tags given by the environment variable.
+def get_extra_usage_tags_to_report(gcs_client) -> Dict[str, str]:
+    """Get the extra usage tags from env var and gcs kv store.
 
     The env var should be given this way; key=value;key=value.
     If parsing is failed, it will return the empty data.
 
     Returns:
-        Dictionary of key value pair parsed.
+        Extra usage tags as kv pairs.
     """
-    extra_tags = os.getenv("RAY_USAGE_STATS_EXTRA_TAGS", None)
-    if not extra_tags:
-        return None
+    extra_usage_tags = dict()
+
+    extra_usage_tags_env_var = os.getenv("RAY_USAGE_STATS_EXTRA_TAGS", None)
+    if extra_usage_tags_env_var:
+        try:
+            kvs = extra_usage_tags_env_var.strip(";").split(";")
+            for kv in kvs:
+                k, v = kv.split("=")
+                extra_usage_tags[k] = v
+        except Exception as e:
+            logger.info(f"Failed to parse extra usage tags env var. Error: {e}")
 
     try:
-        result = {}
-        kvs = extra_tags.strip(";").split(";")
-        for kv in kvs:
-            k, v = kv.split("=")
-            result[k] = v
-        return result
+        keys = gcs_client.internal_kv_keys(
+            usage_constant.EXTRA_USAGE_TAG_PREFIX.encode(),
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
+        )
+        for key in keys:
+            value = gcs_client.internal_kv_get(
+                key, namespace=usage_constant.USAGE_STATS_NAMESPACE.encode()
+            )
+            key = key.decode("utf-8")
+            key = key[len(usage_constant.EXTRA_USAGE_TAG_PREFIX) :]
+            extra_usage_tags[key] = value.decode("utf-8")
     except Exception as e:
-        logger.debug(f"Failed to parse extra usage tags. Error: {e}")
-        return None
+        logger.info(f"Failed to get extra usage tags from kv store {e}")
+    return extra_usage_tags
 
 
 def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
@@ -749,7 +814,7 @@ def generate_report_data(
         total_success=total_success,
         total_failed=total_failed,
         seq_number=seq_number,
-        extra_usage_tags=_parse_extra_usage_tags(),
+        extra_usage_tags=get_extra_usage_tags_to_report(gcs_client),
         total_num_nodes=get_total_num_nodes_to_report(gcs_client),
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
     )
