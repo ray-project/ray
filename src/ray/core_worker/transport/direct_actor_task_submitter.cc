@@ -436,10 +436,13 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
       };
 
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
+  auto now = absl::GetCurrentTimeNanos();
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, actor_id](const Status &status, const rpc::PushTaskReply &reply) {
+      [this, task_id, actor_id, now](const Status &status, const rpc::PushTaskReply &reply) {
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
+          RAY_LOG(INFO) << "DBG:::: " << status.ToString()
+                        << ". Cost: " << static_cast<double>(absl::GetCurrentTimeNanos() - now) / 1000.0;
           absl::MutexLock lock(&mu_);
           auto it = client_queues_.find(actor_id);
           RAY_CHECK(it != client_queues_.end());
@@ -447,7 +450,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           auto callback_it = queue.inflight_task_callbacks.find(task_id);
           if (callback_it == queue.inflight_task_callbacks.end()) {
             RAY_LOG(DEBUG) << "The task " << task_id
-                           << " has already been marked as failed. Ingore the reply.";
+                           << " has already been marked as failed. Ingore the reply: " << status.ToString();
             return;
           }
           reply_callback = std::move(callback_it->second);

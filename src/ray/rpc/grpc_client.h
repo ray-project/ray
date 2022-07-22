@@ -91,16 +91,20 @@ class GrpcClient {
       : client_call_manager_(call_manager), use_tls_(use_tls) {
     channel_ = std::move(channel);
     stub_ = GrpcService::NewStub(channel_);
+    client_call_manager_.channel_.push_back(channel_);
   }
 
   GrpcClient(const std::string &address,
              const int port,
              ClientCallManager &call_manager,
-             bool use_tls = false)
+             bool use_tls = false,
+             std::optional<grpc::ChannelArguments> arguments = std::nullopt)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    std::shared_ptr<grpc::Channel> channel = BuildChannel(address, port);
+    std::shared_ptr<grpc::Channel> channel = BuildChannel(address, port, std::move(arguments));
     channel_ = BuildChannel(address, port);
     stub_ = GrpcService::NewStub(channel_);
+    RAY_LOG(INFO) << address << ":" << port << "\t" << channel_.get();
+    client_call_manager_.channel_.push_back(channel_);
   }
 
   GrpcClient(const std::string &address,
@@ -119,7 +123,9 @@ class GrpcClient {
     argument.SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
     channel_ = BuildChannel(address, port, argument);
+    RAY_LOG(INFO) << address << ":" << port << "\t" << channel_.get();
     stub_ = GrpcService::NewStub(channel_);
+    client_call_manager_.channel_.push_back(channel_);
   }
 
   /// Create a new `ClientCall` and send request.
@@ -150,6 +156,7 @@ class GrpcClient {
         callback,
         std::move(call_name),
         method_timeout_ms);
+
     RAY_CHECK(call != nullptr);
   }
 

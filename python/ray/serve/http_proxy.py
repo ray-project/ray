@@ -55,8 +55,11 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
+    debug_obj_ref = None
+    start_time = time.time()
     while retries < MAX_REPLICA_FAILURE_RETRIES:
-        assignment_task = loop.create_task(handle.remote(request))
+        debug_obj_ref = handle.remote(request)
+        assignment_task = loop.create_task(debug_obj_ref)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task], return_when=FIRST_COMPLETED
         )
@@ -101,13 +104,19 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     else:
         error_message = "Task failed with " f"{MAX_REPLICA_FAILURE_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
+        latency_ms = (time.time() - start_time) * 1000.0
+        logger.info(f"500 - latency: {latency_ms} obj_ref: {debug_obj_ref}")
         return "500"
 
     if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
+        latency_ms = (time.time() - start_time) * 1000.0
+        logger.info(f"??? - latency: {latency_ms} obj_ref: {debug_obj_ref} {result.status_code}")
         return str(result.status_code)
     else:
         await Response(result).send(scope, receive, send)
+        latency_ms = (time.time() - start_time) * 1000.0
+        logger.info(f"200 - latency: {latency_ms} obj_ref: {debug_obj_ref}")
         return "200"
 
 

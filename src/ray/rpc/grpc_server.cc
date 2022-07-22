@@ -31,13 +31,15 @@ GrpcServer::GrpcServer(std::string name,
                        const uint32_t port,
                        bool listen_to_localhost_only,
                        int num_threads,
-                       int64_t keepalive_time_ms)
+                       int64_t keepalive_time_ms,
+                       int64_t keepalive_timeout_ms)
     : name_(std::move(name)),
       port_(port),
       listen_to_localhost_only_(listen_to_localhost_only),
       is_closed_(true),
       num_threads_(num_threads),
-      keepalive_time_ms_(keepalive_time_ms) {
+      keepalive_time_ms_(keepalive_time_ms),
+      keepalive_timeout_ms_(keepalive_timeout_ms) {
   cqs_.resize(num_threads_);
 }
 
@@ -56,7 +58,7 @@ void GrpcServer::Run() {
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS, keepalive_time_ms_);
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
-                             RayConfig::instance().grpc_keepalive_timeout_ms());
+                             keepalive_timeout_ms_);
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
   if (RayConfig::instance().USE_TLS()) {

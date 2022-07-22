@@ -178,7 +178,7 @@ class ReplicaSet:
         )
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
-            logger.debug(
+            logger.error(
                 "Failed to assign a replica for " f"query {query.metadata.request_id}"
             )
             # Maybe there exists a free replica, we just need to refresh our

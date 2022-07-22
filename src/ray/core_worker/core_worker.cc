@@ -20,6 +20,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <grpcpp/ext/channelz_service_plugin.h>
+
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
@@ -83,13 +85,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_),
-      client_call_manager_(new rpc::ClientCallManager(io_service_)),
+      client_call_manager_(new rpc::ClientCallManager(io_service_, 1, -1, "CoreWorkerClient:")),
       periodical_runner_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_) {
+  ::grpc::channelz::experimental::InitChannelzService();
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -175,7 +178,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   core_worker_server_ =
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options_.worker_type),
                                         assigned_port,
-                                        options_.node_ip_address == "127.0.0.1");
+                                        options_.node_ip_address == "127.0.0.1",
+                                        1,
+                                        100000,
+                                        5000);
   core_worker_server_->RegisterService(grpc_service_);
   core_worker_server_->Run();
 

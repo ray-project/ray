@@ -58,10 +58,19 @@ class CoreWorkerClientPool {
   /// construtor aids migration but is ultimately a thing that should be
   /// deprecated and brought internal to the pool, so this is our bridge.
   ClientFactoryFn defaultClientFactory(rpc::ClientCallManager &ccm) const {
-    return [&](const rpc::Address &addr) {
-      return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(addr, ccm));
+    return [&ccm](const rpc::Address &addr) {
+      grpc::ChannelArguments channel_arguments;
+      // channel_arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
+      // channel_arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 5000);
+      // channel_arguments.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+      // channel_arguments.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 2);
+
+      // RAY_LOG(INFO) << GRPC_ARG_KEEPALIVE_TIME_MS << "\t" << 10000;
+      // RAY_LOG(INFO) << GRPC_ARG_KEEPALIVE_TIMEOUT_MS << "\t" << 5000;
+
+      return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(addr, ccm, channel_arguments));
     };
-  };
+  }
 
   /// This factory function does the connection to CoreWorkerClient, and is
   /// provided by the constructor (either the default implementation, above, or a

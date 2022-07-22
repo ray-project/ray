@@ -31,6 +31,8 @@ struct EventStats {
   // Execution stats.
   int64_t cum_execution_time = 0;
   int64_t running_count = 0;
+
+  int64_t max_execution_time = 0;
 };
 
 /// Count and queueing statistics over all events.

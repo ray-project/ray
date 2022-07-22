@@ -131,6 +131,7 @@ class ClientCallImpl : public ClientCall {
   /// the server and/or tweak certain RPC behaviors.
   grpc::ClientContext context_;
 
+
   friend class ClientCallManager;
 };
 
@@ -186,11 +187,13 @@ class ClientCallManager {
   /// posted.
   explicit ClientCallManager(instrumented_io_context &main_service,
                              int num_threads = 1,
-                             int64_t call_timeout_ms = -1)
+                             int64_t call_timeout_ms = -1,
+                             std::string name = ":")
       : main_service_(main_service),
         num_threads_(num_threads),
         shutdown_(false),
         call_timeout_ms_(call_timeout_ms) {
+    name_ = name;
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
@@ -261,6 +264,8 @@ class ClientCallManager {
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }
 
+  std::string name_;
+  std::vector<std::shared_ptr<grpc::Channel>> channel_;
  private:
   /// This function runs in a background thread. It keeps polling events from the
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
@@ -305,6 +310,11 @@ class ClientCallManager {
         } else {
           delete tag;
         }
+      } else {
+        RAY_LOG(INFO) << "--- DUMP ---\t" << name_;
+        for(auto c : channel_) {
+          RAY_LOG(INFO) << "DBG: STATUS: " << c.get() << "\t" << c->GetState(false) << "\t" << name_;
+        }
       }
     }
   }
@@ -329,6 +339,7 @@ class ClientCallManager {
 
   // Timeout in ms for calls created.
   int64_t call_timeout_ms_;
+
 };
 
 }  // namespace rpc
