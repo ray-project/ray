@@ -16,6 +16,7 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.deployment_graph_build import build
 from ray.serve.http_adapters import json_to_ndarray
 from ray.train.predictor import DataBatchType, Predictor
+from ray.data.extensions import TensorArray
 
 
 class TestBatchingFunctionFunctions:
@@ -72,6 +73,25 @@ class TestBatchingFunctionFunctions:
         assert len(unpacked_list) == len(list_of_dfs)
         for i, j in zip(unpacked_list, list_of_dfs):
             assert i.equals(j)
+
+    def test_dataframe_with_tensorarray(self):
+        batched_df = pd.DataFrame(
+            {
+                "a": TensorArray([1, 2, 3, 4]),
+                "b": TensorArray([5, 6, 7, 8]),
+            }
+        )
+        split_df = pd.DataFrame(
+            {
+                "a": [1, 2, 3, 4],
+                "b": [5, 6, 7, 8],
+            }
+        )
+
+        unpacked_list = BatchingManager.split_dataframe(batched_df, 1)
+        assert len(unpacked_list) == 1
+        assert unpacked_list[0]["a"].equals(split_df["a"])
+        assert unpacked_list[0]["b"].equals(split_df["b"])
 
 
 class AdderPredictor(Predictor):
