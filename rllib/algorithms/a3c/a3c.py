@@ -172,9 +172,6 @@ class A3C(Algorithm):
             raise ValueError("`entropy_coeff` must be >= 0.0!")
         if config["num_workers"] <= 0 and config["sample_async"]:
             raise ValueError("`num_workers` for A3C must be >= 1!")
-        import ipdb
-
-        ipdb.set_trace()
         if "_fake_gpus" in config:
             assert not config["_fake_gpus"], "A3C/A2C do not support fake_gpus"
 
