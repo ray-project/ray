@@ -180,6 +180,9 @@ def test_multi_modal_real_model(use_gpu):
             self.linear2 = torch.nn.Linear(1, 1)
 
         def forward(self, input_dict: dict):
+            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
+            input_dict["A"] = input_dict["A"].unsqueeze(1)
+            input_dict["B"] = input_dict["B"].unsqueeze(1)
             out1 = self.linear1(input_dict["A"])
             out2 = self.linear2(input_dict["B"])
             return out1 + out2

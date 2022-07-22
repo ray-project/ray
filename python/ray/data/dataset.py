@@ -119,6 +119,9 @@ TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
 
+TorchTensorBatchType = Union["torch.Tensor", Dict[str, "torch.Tensor"]]
+TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
+
 
 @PublicAPI
 class Dataset(Generic[T]):
@@ -2377,19 +2380,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                When there are no more rows to be added to the buffer, the number of
-                rows in the buffer *will* decrease below this value while yielding
-                the remaining batches, and the final batch may have less than
-                ``batch_size`` rows. Increasing this will improve the randomness of
-                the shuffle but will increase CPU memory utilization and the latency
-                to the first batch. The CPU memory utilization ceiling is the max of
-                the prefetch buffer size (controlled by ``prefetch_blocks``) and
-                this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -2412,6 +2407,142 @@ class Dataset(Generic[T]):
         )
 
         stats.iter_total_s.add(time.perf_counter() - time_start)
+
+    def iter_torch_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = None,
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[TorchTensorBatchType]:
+        """Return a local batched iterator of Torch Tensors over the dataset.
+
+        This iterator will yield single-tensor batches if the underlying dataset
+        consists of a single column; otherwise, it will yield a dictionary of
+        column-tensors. If looking for more flexibility in the tensor conversion (e.g.
+        casting dtypes) or the batch format, try use `.iter_batches` directly, which is
+        a lower-level API.
+
+        Examples:
+            >>> import ray
+            >>> for batch in ray.data.range( # doctest: +SKIP
+            ...     12,
+            ... ).iter_torch_batches(batch_size=4):
+            ...     print(batch.shape) # doctest: +SKIP
+            torch.Size([4, 1])
+            torch.Size([4, 1])
+            torch.Size([4, 1])
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+            batch_size: Record batch size, or None to let the system pick.
+            dtypes: The Torch dtype(s) for the created tensor(s); if None, the dtype
+                will be inferred from the tensor data.
+            device: The device on which the tensor should be placed; if None, the Torch
+                tensor will be constructed on the CPU.
+            drop_last: Whether to drop the last batch if it's incomplete.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
+
+        Returns:
+            An iterator over Torch Tensor batches.
+        """
+        from ray.air._internal.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
+
+        for batch in self.iter_batches(
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            batch_format="numpy",
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        ):
+            yield convert_ndarray_batch_to_torch_tensor_batch(
+                batch,
+                dtypes=dtypes,
+                device=device,
+            )
+
+    def iter_tf_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = None,
+        dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[TensorFlowTensorBatchType]:
+        """Return a local batched iterator of TensorFlow Tensors over the dataset.
+
+        This iterator will yield single-tensor batches of the underlying dataset
+        consists of a single column; otherwise, it will yield a dictionary of
+        column-tensors. If looking for more flexibility in the tensor conversion (e.g.
+        casting dtypes) or the batch format, try using `.to_tf`, which has a
+        declarative API for tensor casting and batch formatting, or use `.iter_batches`
+        directly, which is a lower-level API.
+
+        Examples:
+            >>> import ray
+            >>> for batch in ray.data.range( # doctest: +SKIP
+            ...     12,
+            ... ).iter_torch_batches(batch_size=4):
+            ...     print(batch.shape) # doctest: +SKIP
+            (4, 1)
+            (4, 1)
+            (4, 1)
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+            batch_size: Record batch size, or None to let the system pick.
+            dtypes: The TensorFlow dtype(s) for the created tensor(s); if None, the
+                dtype will be inferred from the tensor data.
+            drop_last: Whether to drop the last batch if it's incomplete.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
+
+        Returns:
+            An iterator over TensorFlow Tensor batches.
+        """
+        from ray.air._internal.tensorflow_utils import (
+            convert_ndarray_batch_to_tf_tensor_batch,
+        )
+
+        for batch in self.iter_batches(
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            batch_format="numpy",
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        ):
+            yield convert_ndarray_batch_to_tf_tensor_batch(batch, dtypes=dtypes)
 
     def to_torch(
         self,
@@ -2500,15 +2631,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                Increasing this will improve the randomness of the shuffle but will
-                increase CPU memory utilization and the latency to the first batch. The
-                CPU memory utilization ceiling is the max of the prefetch buffer size
-                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
             unsqueeze_label_tensor: If set to True, the label tensor
                 will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
@@ -2681,15 +2808,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                Increasing this will improve the randomness of the shuffle but will
-                increase CPU memory utilization and the latency to the first batch. The
-                CPU memory utilization ceiling is the max of the prefetch buffer size
-                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:

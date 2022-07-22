@@ -26,7 +26,9 @@ class DummyPreprocessor(Preprocessor):
 def build_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
-            tf.keras.layers.InputLayer(input_shape=(1,)),
+            tf.keras.layers.InputLayer(input_shape=()),
+            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
+            tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(1),
         ]
     )
