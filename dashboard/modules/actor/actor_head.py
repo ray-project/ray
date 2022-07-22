@@ -30,7 +30,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
-MAX_ACTORS_TO_CACHE = int(os.environ.get("DASHBOARD_MAX_ACTORS_TO_CACHE", 5000))
+MAX_ACTORS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_ACTORS_TO_CACHE", 1000))
 ACTOR_CLEANUP_FREQUENCY = 10  # seconds
 
 
