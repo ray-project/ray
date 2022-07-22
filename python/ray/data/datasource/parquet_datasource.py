@@ -313,7 +313,7 @@ class _ParquetDatasourceReader(Reader):
         else:
             ratio = _sample_piece(file_samples[0], 0)
 
-        logger.info(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
+        logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
         return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
 
@@ -436,5 +436,5 @@ def _sample_piece(
     # num_rows into memory, o.w. it will read more rows by default in batch manner.
     in_memory_size = row_group.head(num_rows, batch_size=num_rows).nbytes / num_rows
     ratio = in_memory_size / parquet_size
-    logger.info(f"Estimated Parquet encoding ratio is {ratio} for piece {piece}.")
+    logger.debug(f"Estimated Parquet encoding ratio is {ratio} for piece {piece}.")
     return in_memory_size / parquet_size
