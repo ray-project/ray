@@ -4468,6 +4468,32 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         ).take()
 
 
+def test_split_is_not_disruptive(ray_start_regular):
+    ds = (
+        ray.data.range(100, parallelism=10).map_batches(lambda x: x).experimental_lazy()
+    )
+
+    def verify_integrity(splits):
+        for dss in splits:
+            for batch in dss.iter_batches():
+                pass
+        for batch in ds.iter_batches():
+            pass
+
+    # No block splitting invovled: split 10 even blocks into 2 groups.
+    verify_integrity(ds.split(2, equal=True))
+    # Block splitting invovled: split 10 even blocks into 3 groups.
+    verify_integrity(ds.split(3, equal=True))
+
+    # Same as above but having tranforms post converting to lazy.
+    verify_integrity(ds.map_batches(lambda x: x).split(2, equal=True))
+    verify_integrity(ds.map_batches(lambda x: x).split(3, equal=True))
+
+    # Same as above but having in-place tranforms post converting to lazy.
+    verify_integrity(ds.randomize_block_order().split(2, equal=True))
+    verify_integrity(ds.randomize_block_order().split(3, equal=True))
+
+
 def test_datasource(ray_start_regular):
     source = ray.data.datasource.RandomIntRowDatasource()
     assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10

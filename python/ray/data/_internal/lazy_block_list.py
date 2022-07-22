@@ -40,6 +40,8 @@ class LazyBlockList(BlockList):
         cached_metadata: Optional[List[BlockPartitionMetadata]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         stats_uuid: str = None,
+        *,
+        owned_by_consumer: bool,
     ):
         """Create a LazyBlockList on the provided read tasks.
 
@@ -90,6 +92,9 @@ class LazyBlockList(BlockList):
             tasks,
             self._cached_metadata,
         )
+        # Whether the block list is owned by consuming APIs, and if so it can be
+        # eagerly deleted after read by the consumer.
+        self._owned_by_consumer = owned_by_consumer
 
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
@@ -121,6 +126,7 @@ class LazyBlockList(BlockList):
             block_partition_meta_refs=self._block_partition_meta_refs.copy(),
             cached_metadata=self._cached_metadata,
             ray_remote_args=self._remote_args.copy(),
+            owned_by_consumer=self._owned_by_consumer,
             stats_uuid=self._stats_uuid,
         )
 
@@ -159,6 +165,7 @@ class LazyBlockList(BlockList):
                     b.tolist(),
                     m.tolist(),
                     c.tolist(),
+                    owned_by_consumer=self._owned_by_consumer,
                 )
             )
         return output
@@ -187,6 +194,7 @@ class LazyBlockList(BlockList):
                         cur_blocks,
                         cur_blocks_meta,
                         cur_cached_meta,
+                        owned_by_consumer=self._owned_by_consumer,
                     ),
                 )
                 cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta = [], [], [], []
@@ -198,7 +206,13 @@ class LazyBlockList(BlockList):
             cur_size += size
         if cur_blocks:
             output.append(
-                LazyBlockList(cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta)
+                LazyBlockList(
+                    cur_tasks,
+                    cur_blocks,
+                    cur_blocks_meta,
+                    cur_cached_meta,
+                    owned_by_consumer=self._owned_by_consumer,
+                )
             )
         return output
 
@@ -209,12 +223,14 @@ class LazyBlockList(BlockList):
             self._block_partition_refs[:part_idx],
             self._block_partition_meta_refs[:part_idx],
             self._cached_metadata[:part_idx],
+            owned_by_consumer=self._owned_by_consumer,
         )
         right = LazyBlockList(
             self._tasks[part_idx:],
             self._block_partition_refs[part_idx:],
             self._block_partition_meta_refs[part_idx:],
             self._cached_metadata[part_idx:],
+            owned_by_consumer=self._owned_by_consumer,
         )
         return left, right
 
@@ -281,7 +297,7 @@ class LazyBlockList(BlockList):
     def compute_to_blocklist(self) -> BlockList:
         """Launch all tasks and return a concrete BlockList."""
         blocks, metadata = self._get_blocks_with_metadata()
-        return BlockList(blocks, metadata)
+        return BlockList(blocks, metadata, owned_by_consumer=self._owned_by_consumer)
 
     def compute_first_block(self):
         """Kick off computation for the first block in the list.
@@ -432,6 +448,7 @@ class LazyBlockList(BlockList):
             block_partition_meta_refs=block_partition_meta_refs,
             cached_metadata=cached_metadata,
             ray_remote_args=self._remote_args.copy(),
+            owned_by_consumer=self._owned_by_consumer,
             stats_uuid=self._stats_uuid,
         )
 

@@ -147,6 +147,10 @@ class Dataset(Generic[T]):
         >>> # Save dataset back to external storage system.
         >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
 
+    Datasets has two kinds of operations: tranformation, which takes in Datasets and
+    outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption, which
+    produces values (not Dataset) as output (e.g. :py:meth:`.iter_batches()`).
+
     Datasets supports parallel processing at scale: transformations such as
     :py:meth:`.map_batches()`, aggregations such as
     :py:meth:`.min()`/:py:meth:`.max()`/:py:meth:`.mean()`, grouping via
@@ -1058,6 +1062,7 @@ class Dataset(Generic[T]):
 
         block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
+        owned_by_consumer = blocks._owned_by_consumer
 
         if locality_hints is None:
             ds = equalize(
@@ -1065,9 +1070,12 @@ class Dataset(Generic[T]):
                     Dataset(
                         ExecutionPlan(
                             BlockList(
-                                list(blocks), [metadata_mapping[b] for b in blocks]
+                                list(blocks),
+                                [metadata_mapping[b] for b in blocks],
+                                owned_by_consumer=owned_by_consumer,
                             ),
                             stats,
+                            run_by_consumer=owned_by_consumer,
                         ),
                         self._epoch,
                         self._lazy,
@@ -1178,8 +1186,10 @@ class Dataset(Generic[T]):
                         BlockList(
                             allocation_per_actor[actor],
                             [metadata_mapping[b] for b in allocation_per_actor[actor]],
+                            owned_by_consumer=owned_by_consumer,
                         ),
                         stats,
+                        run_by_consumer=owned_by_consumer,
                     ),
                     self._epoch,
                     self._lazy,
@@ -1223,7 +1233,8 @@ class Dataset(Generic[T]):
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        blocks_with_metadata = self._plan.execute().get_blocks_with_metadata()
+        block_list = self._plan.execute()
+        blocks_with_metadata = block_list.get_blocks_with_metadata()
         blocks, metadata = _split_at_indices(blocks_with_metadata, indices)
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
@@ -1234,8 +1245,11 @@ class Dataset(Generic[T]):
             splits.append(
                 Dataset(
                     ExecutionPlan(
-                        BlockList(bs, ms),
+                        BlockList(
+                            bs, ms, owned_by_consumer=block_list._owned_by_consumer
+                        ),
                         stats,
+                        run_by_consumer=block_list._owned_by_consumer,
                     ),
                     self._epoch,
                     self._lazy,
@@ -1329,6 +1343,7 @@ class Dataset(Generic[T]):
 
         start_time = time.perf_counter()
 
+        owned_by_consumer = self._plan.execute()._owned_by_consumer
         datasets = [self] + list(other)
         bls = []
         has_nonlazy = False
@@ -1347,7 +1362,7 @@ class Dataset(Generic[T]):
                     bs, ms = bl._blocks, bl._metadata
                 blocks.extend(bs)
                 metadata.extend(ms)
-            blocklist = BlockList(blocks, metadata)
+            blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1357,7 +1372,10 @@ class Dataset(Generic[T]):
                 block_partition_refs.extend(bl._block_partition_refs)
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             blocklist = LazyBlockList(
-                tasks, block_partition_refs, block_partition_meta_refs
+                tasks,
+                block_partition_refs,
+                block_partition_meta_refs,
+                owned_by_consumer=owned_by_consumer,
             )
 
         epochs = [ds._get_epoch() for ds in datasets]
@@ -1378,7 +1396,7 @@ class Dataset(Generic[T]):
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(blocklist, dataset_stats),
+            ExecutionPlan(blocklist, dataset_stats, run_by_consumer=owned_by_consumer),
             max_epoch,
             self._lazy,
         )
@@ -3037,7 +3055,9 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
+                        ExecutionPlan(
+                            blocks, outer_stats, dataset_uuid=uuid, run_by_consumer=True
+                        ),
                         epoch,
                         lazy=False,
                     )
@@ -3151,7 +3171,9 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True
+                        ExecutionPlan(blocks, outer_stats, run_by_consumer=True),
+                        self._epoch,
+                        lazy=True,
                     )
                     return ds
 
@@ -3400,7 +3422,8 @@ class Dataset(Generic[T]):
         self, index: int, return_right_half: bool
     ) -> ("Dataset[T]", "Dataset[T]"):
         start_time = time.perf_counter()
-        blocks_with_metadata = self._plan.execute().get_blocks_with_metadata()
+        block_list = self._plan.execute()
+        blocks_with_metadata = block_list.get_blocks_with_metadata()
         left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
             blocks_with_metadata,
             index,
@@ -3424,8 +3447,13 @@ class Dataset(Generic[T]):
         left_dataset_stats.time_total_s = split_duration
         left = Dataset(
             ExecutionPlan(
-                BlockList(left_blocks, left_metadata),
+                BlockList(
+                    left_blocks,
+                    left_metadata,
+                    owned_by_consumer=block_list._owned_by_consumer,
+                ),
                 left_dataset_stats,
+                run_by_consumer=block_list._owned_by_consumer,
             ),
             self._epoch,
             self._lazy,
@@ -3448,8 +3476,13 @@ class Dataset(Generic[T]):
             right_dataset_stats.time_total_s = split_duration
             right = Dataset(
                 ExecutionPlan(
-                    BlockList(right_blocks, right_metadata),
+                    BlockList(
+                        right_blocks,
+                        right_metadata,
+                        owned_by_consumer=block_list._owned_by_consumer,
+                    ),
                     right_dataset_stats,
+                    run_by_consumer=block_list._owned_by_consumer,
                 ),
                 self._epoch,
                 self._lazy,
@@ -3459,10 +3492,21 @@ class Dataset(Generic[T]):
         return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
-        left, right = self._plan.execute().divide(block_idx)
-        l_ds = Dataset(ExecutionPlan(left, self._plan.stats()), self._epoch, self._lazy)
+        block_list = self._plan.execute()
+        left, right = block_list.divide(block_idx)
+        l_ds = Dataset(
+            ExecutionPlan(
+                left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+            ),
+            self._epoch,
+            self._lazy,
+        )
         r_ds = Dataset(
-            ExecutionPlan(right, self._plan.stats()), self._epoch, self._lazy
+            ExecutionPlan(
+                right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+            ),
+            self._epoch,
+            self._lazy,
         )
         return l_ds, r_ds
 

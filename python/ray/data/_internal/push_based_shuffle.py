@@ -380,6 +380,7 @@ class PushBasedShufflePlan(ShuffleOp):
         # during map-merge stage, by limiting how many partitions can be
         # processed concurrently.
         input_blocks_list = input_blocks.get_blocks()
+        owned_by_consumer = input_blocks._owned_by_consumer
         # Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks
         # during the map-merge stage.
@@ -515,7 +516,14 @@ class PushBasedShufflePlan(ShuffleOp):
             "reduce": reduce_stage_metadata,
         }
 
-        return BlockList(list(new_blocks), list(reduce_stage_metadata)), stats
+        return (
+            BlockList(
+                list(new_blocks),
+                list(reduce_stage_metadata),
+                owned_by_consumer=owned_by_consumer,
+            ),
+            stats,
+        )
 
     @staticmethod
     def _map_partition(
