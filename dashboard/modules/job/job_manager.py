@@ -296,7 +296,7 @@ class JobManager:
     goes down.
     """
 
-    JOB_ACTOR_NAME = (
+    JOB_ACTOR_NAME_TEMPLATE = (
         f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
     )
     # Time that we will sleep while tailing logs if no new log line is
@@ -324,7 +324,7 @@ class JobManager:
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
-            return ray.get_actor(self.JOB_ACTOR_NAME.format(job_id=job_id))
+            return ray.get_actor(self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id))
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
@@ -489,7 +489,7 @@ class JobManager:
         try:
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
-                name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+                name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
                 num_cpus=0,
                 # Currently we assume JobManager is created by dashboard server
                 # running on headnode, same for job supervisor actors scheduled
