@@ -4,13 +4,13 @@ import RemoveIcon from "@material-ui/icons/Remove";
 import { sortBy } from "lodash";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
 import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
-import rowStyles from "../../common/RowStyles";
 
 type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   /**
