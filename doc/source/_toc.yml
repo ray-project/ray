@@ -279,7 +279,7 @@ parts:
         - file: cluster_under_construction/ray-clusters-on-kubernetes/getting-started
         - file: cluster_under_construction/ray-clusters-on-kubernetes/user-guides
         - file: cluster_under_construction/ray-clusters-on-kubernetes/examples
-        - file: cluster_under_construction/ray-clusters-on-kubernetes/reference
+        - file: cluster_under_construction/ray-clusters-on-kubernetes/references
       - file: cluster_under_construction/ray-clusters-on-vms/index
         title: Ray Clusters on VMs
         sections:
