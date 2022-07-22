@@ -78,9 +78,6 @@ class TargetNetworkMixin:
             self._target_model_vars = self.target_model.variables()
         return self._target_model_vars
 
-    def variables(self):
-        return self.model_vars + self.target_model_vars
-
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.

@@ -1,8 +1,6 @@
 import json
 import os
-import socket
 import time
-from contextlib import closing
 
 import click
 import numpy as np
@@ -99,6 +97,7 @@ def train_tf_ray_air(
     # This function is kicked off by the main() function and runs a full training
     # run using Ray AIR.
     from ray.train.tensorflow import TensorflowTrainer
+    from ray.air.config import ScalingConfig
 
     def train_loop(config):
         train_func(use_ray=True, config=config)
@@ -107,12 +106,12 @@ def train_tf_ray_air(
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config=config,
-        scaling_config={
-            "trainer_resources": {"CPU": 0},
-            "num_workers": num_workers,
-            "resources_per_worker": {"CPU": cpus_per_worker},
-            "use_gpu": use_gpu,
-        },
+        scaling_config=ScalingConfig(
+            trainer_resources={"CPU": 0},
+            num_workers=num_workers,
+            resources_per_worker={"CPU": cpus_per_worker},
+            use_gpu=use_gpu,
+        ),
     )
     result = trainer.fit()
     time_taken = time.monotonic() - start_time
@@ -151,12 +150,11 @@ def train_tf_vanilla(
 ) -> Tuple[float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_tf_vanilla_worker() on the worker nodes.
-    import ray
     from benchmark_util import (
         upload_file_to_all_nodes,
         create_actors_with_resources,
         run_commands_on_actors,
-        run_fn_on_actors,
+        get_ip_port_actors,
     )
 
     path = os.path.abspath(__file__)
@@ -172,15 +170,7 @@ def train_tf_vanilla(
         },
     )
 
-    def get_ip_port():
-        ip = ray.util.get_node_ip_address()
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-            s.bind(("localhost", 0))
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            port = s.getsockname()[1]
-        return ip, port
-
-    ips_ports = run_fn_on_actors(actors=actors, fn=get_ip_port)
+    ips_ports = get_ip_port_actors(actors=actors)
     ip_port_list = [f"{ip}:{port}" for ip, port in ips_ports]
     ip_port_str = ",".join(ip_port_list)
 
@@ -197,6 +187,8 @@ def train_tf_vanilla(
             str(rank),
             "--worker-ip-ports",
             ip_port_str,
+            "--batch-size",
+            str(config["batch_size"]),
         ]
         + (["--use-gpu"] if use_gpu else [])
         for rank in range(num_workers)
@@ -226,18 +218,22 @@ def cli():
 @click.option("--num-workers", type=int, default=4)
 @click.option("--cpus-per-worker", type=int, default=8)
 @click.option("--use-gpu", is_flag=True, default=False)
+@click.option("--batch-size", type=int, default=64)
 def run(
     num_runs: int = 1,
     num_epochs: int = 4,
     num_workers: int = 4,
     cpus_per_worker: int = 8,
     use_gpu: bool = False,
+    batch_size: int = 64,
+    smoke_test: bool = False,
 ):
     import ray
     from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
 
     config = CONFIG.copy()
     config["epochs"] = num_epochs
+    config["batch_size"] = batch_size
 
     ray.init("auto")
     print("Preparing Tensorflow benchmark: Downloading MNIST")
@@ -251,6 +247,8 @@ def run(
     times_vanilla = []
     losses_vanilla = []
     for run in range(1, num_runs + 1):
+        time.sleep(2)
+
         print(f"[Run {run}/{num_runs}] Running Tensorflow Ray benchmark")
 
         time_ray, loss_ray = train_tf_ray_air(
@@ -265,16 +263,27 @@ def run(
             f"{time_ray:.2f} seconds. Observed loss = {loss_ray:.4f}"
         )
 
-        time.sleep(5)
+        time.sleep(2)
 
         print(f"[Run {run}/{num_runs}] Running Tensorflow vanilla benchmark")
 
-        time_vanilla, loss_vanilla = train_tf_vanilla(
-            num_workers=num_workers,
-            cpus_per_worker=cpus_per_worker,
-            use_gpu=use_gpu,
-            config=config,
-        )
+        # Todo: Vanilla runs are sometimes failing. We just retry here, but we should
+        # get to the bottom of it.
+        time_vanilla = loss_vanilla = 0.0
+        for i in range(3):
+            try:
+                time_vanilla, loss_vanilla = train_tf_vanilla(
+                    num_workers=num_workers,
+                    cpus_per_worker=cpus_per_worker,
+                    use_gpu=use_gpu,
+                    config=config,
+                )
+            except Exception as e:
+                if i > +2:
+                    raise RuntimeError("Vanilla TF run failed 3 times") from e
+                print("Vanilla TF run failed:", e)
+                continue
+            break
 
         print(
             f"[Run {run}/{num_runs}] Finished vanilla training ({num_epochs} epochs) "
@@ -342,16 +351,19 @@ def run(
 @click.option("--num-workers", type=int, default=4)
 @click.option("--rank", type=int, default=0)
 @click.option("--worker-ip-ports", type=str, default="")
+@click.option("--batch-size", type=int, default=64)
 @click.option("--use-gpu", is_flag=True, default=False)
 def worker(
     num_epochs: int = 4,
     num_workers: int = 4,
     rank: int = 0,
     worker_ip_ports: str = "",
+    batch_size: int = 64,
     use_gpu: bool = False,
 ):
     config = CONFIG.copy()
     config["epochs"] = num_epochs
+    config["batch_size"] = batch_size
 
     # Parse worker ip ports
     worker_ip_port_list = worker_ip_ports.split(",")
