@@ -6,14 +6,14 @@ class WorkflowError(Exception):
     """Workflow error base class."""
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class WorkflowExecutionError(WorkflowError):
     def __init__(self, workflow_id: str):
         self.message = f"Workflow[id={workflow_id}] failed during execution."
         super().__init__(self.message)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class WorkflowCancellationError(WorkflowError):
     def __init__(self, workflow_id: str):
         self.message = f"Workflow[id={workflow_id}] is cancelled during execution."
@@ -37,14 +37,14 @@ class WorkflowNotResumableError(WorkflowError):
         super().__init__(self.message)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class WorkflowNotFoundError(WorkflowError):
     def __init__(self, workflow_id: str):
         self.message = f"Workflow[id={workflow_id}] was referenced but doesn't exist."
         super().__init__(self.message)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class WorkflowRunningError(WorkflowError):
     def __init__(self, operation: str, workflow_id: str):
         self.message = (
