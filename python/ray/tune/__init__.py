@@ -40,6 +40,7 @@ from ray.tune.search import create_searcher
 from ray.tune.schedulers import create_scheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import with_parameters, with_resources
+from ray.tune.result_grid import ResultGrid
 from ray.tune.tuner import Tuner
 from ray.tune.tune_config import TuneConfig
 
@@ -84,6 +85,7 @@ __all__ = [
     "is_session_enabled",
     "checkpoint_dir",
     "SyncConfig",
+    "ResultGrid",
     "create_searcher",
     "create_scheduler",
     "PlacementGroupFactory",
