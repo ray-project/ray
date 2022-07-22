@@ -2365,8 +2365,8 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows.
-                Defaults to 256.
+                The final batch may include fewer than ``batch_size`` rows if
+                ``drop_last`` is ``False``. Defaults to 256.
             batch_format: The format in which to return each batch.
                 Specify "native" to use the native block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
@@ -2441,8 +2441,8 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows.
-                Defaults to 256.
+                The final batch may include fewer than ``batch_size`` rows if
+                ``drop_last`` is ``False``. Defaults to 256.
             dtypes: The Torch dtype(s) for the created tensor(s); if None, the dtype
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
@@ -2515,8 +2515,8 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows.
-                Defaults to 256.
+                The final batch may include fewer than ``batch_size`` rows if
+                ``drop_last`` is ``False``. Defaults to 256.
             dtypes: The TensorFlow dtype(s) for the created tensor(s); if None, the
                 dtype will be inferred from the tensor data.
             drop_last: Whether to drop the last batch if it's incomplete.
