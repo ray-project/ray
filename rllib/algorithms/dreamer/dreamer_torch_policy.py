@@ -234,7 +234,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
             action = 2.0 * eps - 1.0
             state_batches = model.get_initial_state()
             state_batches = [
-                s[None, :].expand(bsize, -1).to(device=obs.device) 
+                s[None, :].expand(bsize, -1).to(device=obs.device)
                 for s in state_batches
             ]
         else:
@@ -243,7 +243,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
                 # Very hacky, but works on all envs
                 state_batches = model.get_initial_state().to(device=obs.device)
                 state_batches = [
-                    s[None, :].expand(bsize, -1).to(device=obs.device) 
+                    s[None, :].expand(bsize, -1).to(device=obs.device)
                     for s in state_batches
                 ]
             action, logp, state_batches = model.policy(obs, state_batches, explore)
