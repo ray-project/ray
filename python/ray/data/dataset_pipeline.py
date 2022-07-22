@@ -164,16 +164,11 @@ class DatasetPipeline(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global :py:meth:`Dataset.random_shuffle()` operation; this shuffle
-                will be less random but will be faster and less resource-intensive.
-                This buffer size must be greater than or equal to ``batch_size``, and
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
-                shuffling. Increasing this will improve the randomness of the shuffle
-                but will increase CPU memory utilization and the latency to the first
-                batch. The CPU memory utilization ceiling is the max of the prefetch
-                buffer size (controlled by ``prefetch_blocks``) and this shuffle
-                buffer size.
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -940,6 +935,50 @@ class DatasetPipeline(Generic[T]):
         """Call :py:meth:`Dataset.show <ray.data.Dataset.show>` over the stream of
         output batches from the pipeline"""
         return Dataset.show(self, limit)
+
+    def iter_tf_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = None,
+        batch_format: str = "native",
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[Union["tf.Tensor", Dict[str, "tf.Tensor"]]]:
+        """Call
+        :py:meth:`Dataset.iter_tf_batches <ray.data.Dataset.iter_tf_batches>`
+        over the stream of output batches from the pipeline."""
+        return Dataset.iter_tf_batches(
+            self,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
+
+    def iter_torch_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = None,
+        batch_format: str = "native",
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[Union["torch.Tensor", Dict[str, "torch.Tensor"]]]:
+        """Call
+        :py:meth:`Dataset.iter_torch_batches <ray.data.Dataset.iter_torch_batches>`
+        over the stream of output batches from the pipeline."""
+        return Dataset.iter_torch_batches(
+            self,
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        )
 
     def to_tf(
         self,
