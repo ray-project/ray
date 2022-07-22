@@ -603,6 +603,50 @@ Failing to do so would cause error messages like ``Error message (1): fatal erro
 For AWS set up, this involves adding an IamInstanceProfile configuration for worker nodes.
 Please :ref:`see here for more tips <aws-cluster-s3>`.
 
+How can I use the awscli or gsutil command line commands for syncing?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Some users reported to run into problems with the default pyarrow-based syncing.
+In this case, a custom syncer that invokes the respective command line tools
+for transferring files between nodes and cloud storage can be implemented.
+
+Here is an example for a syncer that uses string templates that will be run
+as a command:
+
+.. literalinclude:: doc_code/faq.py
+    :dedent:
+    :language: python
+    :start-after: __custom_command_syncer_start__
+    :end-before: __custom_command_syncer_end__
+
+For different cloud services, these are example templates you can use with this syncer:
+
+AWS S3
+''''''
+
+.. code-block::
+
+    sync_up_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
+    sync_down_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
+    delete_template="aws s3 rm {target} --recursive --only-show-errors"
+
+Google cloud storage
+''''''''''''''''''''
+
+.. code-block::
+
+    sync_up_template="gsutil rsync -r {source} {target}"
+    sync_down_template="down": "gsutil rsync -r {source} {target}"
+    delete_template="delete": "gsutil rm -r {target}"
+
+HDFS
+''''
+
+.. code-block::
+
+    sync_up_template="hdfs dfs -put -f {source} {target}"
+    sync_down_template="down": "hdfs dfs -get -f {source} {target}"
+    delete_template="delete": "hdfs dfs -rm -r {target}"
+
 
 .. _tune-docker:
 
