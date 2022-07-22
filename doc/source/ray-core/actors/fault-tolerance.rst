@@ -99,13 +99,13 @@ You can experiment with this behavior by running the following code.
         print(counter)  # Prints the sequence 1-10 5 times.
 
     # After the actor has been restarted 5 times, all subsequent methods will
-    # raise a `RayActorError`.
-    for _ in range(10):
+    # raise a `RayActorError` if the actor dies again.
+    for _ in range(11):
         try:
             counter = ray.get(actor.increment_and_possibly_fail.remote())
             print(counter)  # Unreachable.
         except ray.exceptions.RayActorError:
-            print('FAILURE')  # Prints 10 times.
+            print('FAILURE')  # Prints 1 time.
 
 For at-least-once actors, the system will still guarantee execution ordering
 according to the initial submission order. For example, any tasks submitted
