@@ -56,16 +56,19 @@ class _AgentCollector:
 
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
+    #TODO: @kourosh add different types of padding. e.g. zeros vs. same
     def __init__(self, view_reqs, policy):
         self.policy = policy
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
         # or internal state inputs.
-        self.shift_before = -min(
-            (int(vr.shift.split(":")[0]) if isinstance(vr.shift, str) else vr.shift)
-            - (1 if vr.data_col == SampleBatch.OBS or k == SampleBatch.OBS else 0)
+
+        view_req_shifts = [
+            min(vr.shift_arr) - int((vr.data_col or k) == SampleBatch.OBS)
             for k, vr in view_reqs.items()
-        )
+        ]
+        self.shift_before = -min(view_req_shifts)
+
 
         # The actual data buffers. Keys are column names, values are lists
         # that contain the sub-components (e.g. for complex obs spaces) with
@@ -233,63 +236,51 @@ class _AgentCollector:
                     _to_float_np_array(d) for d in self.buffers[data_col]
                 ]
 
-            # Range of indices on time-axis, e.g. "-50:-1". Together with
-            # the `batch_repeat_value`, this determines the data produced.
-            # Example:
-            #  batch_repeat_value=10, shift_from=-3, shift_to=-1
-            #  buffer=[-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-            #  resulting data=[[-3, -2, -1], [7, 8, 9]]
-            #  Range of 3 consecutive items repeats every 10 timesteps.
+            assert (
+                view_req.shift_arr is not None
+            ), "View requirement shift_arr cannot be None."
+            data_2 = []
+            for d in np_data[data_col]:
+                shifted_data = []
 
-            if view_req.shift_arr is not None:
-                # testing that it should always come here. what would happen?
-                data_2 = []
-                for d in np_data[data_col]:
-                    shifted_data = []
-                    # TODO: @kourosh I don't think this obs_shift is actually needed.
-                    # Keep it here for now for consistency with the old behavior.
-
-                    # if view_req.batch_repeat_value > 1:
-                    count = int(
-                        math.ceil(
-                            (len(d) - self.shift_before) / view_req.batch_repeat_value
-                        )
+                count = int(
+                    math.ceil(
+                        (len(d) - self.shift_before) / view_req.batch_repeat_value
                     )
-                    for i in range(count):
-                        inds = (
-                            self.shift_before
-                            + obs_shift
-                            + view_req.shift_arr
-                            + (i * view_req.batch_repeat_value)
-                        )
+                )
+                for i in range(count):
+                    inds = (
+                        self.shift_before
+                        + obs_shift
+                        + view_req.shift_arr
+                        + (i * view_req.batch_repeat_value)
+                    )
 
-                        # mask = inds > len(d) - 1
-
-                        # handle the case where the inds are out of bounds
-                        element_at_t = []
-                        for index in inds:
-                            if index < len(d):
-                                element_at_t.append(d[index])
-                            else:
-                                element_at_t.append(
-                                    np.zeros(
-                                        shape=view_req.space.shape,
-                                        dtype=view_req.space.dtype,
-                                    )
+                    # handle the case where the inds are out of bounds from the end
+                    element_at_t = []
+                    for index in inds:
+                        if index < len(d):
+                            element_at_t.append(d[index])
+                        else:
+                            element_at_t.append(
+                                np.zeros(
+                                    shape=view_req.space.shape,
+                                    dtype=view_req.space.dtype,
                                 )
-                        element_at_t = np.stack(element_at_t)
+                            )
+                    element_at_t = np.stack(element_at_t)
 
-                        if element_at_t.shape[0] == 1:
-                            # squeeze to remove the T dimension if it is 1.
-                            element_at_t = element_at_t.squeeze(0)
-                        shifted_data.append(element_at_t)
+                    if element_at_t.shape[0] == 1:
+                        # squeeze to remove the T dimension if it is 1.
+                        element_at_t = element_at_t.squeeze(0)
+                    shifted_data.append(element_at_t)
 
-                    # in some multi-agent cases shifted_data may be an empty list.
-                    if shifted_data:
-                        shifted_data_np = np.stack(shifted_data, 0)
-                    else:
-                        shifted_data_np = np.array(shifted_data)
-                    data_2.append(shifted_data_np)
+                # in some multi-agent cases shifted_data may be an empty list.
+                if shifted_data:
+                    shifted_data_np = np.stack(shifted_data, 0)
+                else:
+                    shifted_data_np = np.array(shifted_data)
+                data_2.append(shifted_data_np)
 
             if view_req.shift_from is not None:
                 # Batch repeat value > 1: Only repeat the shift_from/to range
@@ -414,7 +405,11 @@ class _AgentCollector:
                         for d in np_data[data_col]
                     ]
 
-            check(data, data_2)
+            # try:
+            #     check(data, data_2)
+            # except Exception as e:
+            #     breakpoint()
+            data = data_2
 
             if len(data) > 0:
                 if data_col not in self.buffer_structs:
@@ -442,7 +437,10 @@ class _AgentCollector:
         # This trajectory is continuing -> Copy data at the end (in the size of
         # self.shift_before) to the beginning of buffers and erase everything
         # else.
-        if not self.buffers[SampleBatch.DONES][0][-1]:
+        if (
+            SampleBatch.DONES in self.buffers
+            and not self.buffers[SampleBatch.DONES][0][-1]
+        ):
             # Copy data to beginning of buffer and cut lists.
             if self.shift_before > 0:
                 for k, data in self.buffers.items():
