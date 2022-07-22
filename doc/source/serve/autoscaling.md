@@ -22,7 +22,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 **target_num_ongoing_requests_per_replica[default_value=1]**: The config is to maintain how many ongoing requests are expected to run concurrently per replica at most. If the number is lower, the scale up will be done more aggressively.
 :::{note}
 - It is always recommended to load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_num_ongoing_requests_per_replica` number to maintain high performance.
-- Internally, the autoscaler will compare RUNNING + PENNING tasks of each replicas and `target_num_ongoing_requests_per_replica` to decide scale up/down.
+- Internally, the autoscaler will compare the number of `RUNNING` and `PENDING` tasks of each replicas and `target_num_ongoing_requests_per_replica` to decide scale up/down.
 - `target_num_ongoing_requests_per_replica` is only a target value used for autoscaling (not a hard limit), the real ongoing requests number can be higher than the config.
 :::
 

@@ -27,7 +27,7 @@ There are three kinds of actors that are created to make up a Serve instance:
 - HTTP Proxy: There is one HTTP proxy actor on the head node (the location and number of proxies is configurable via the `location` field of `http_options`: {ref}`core-apis`). This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
   server that accepts incoming requests, forwards them to replicas, and
   responds once they are completed.
-- Worker Replica: Worker replicas are actors that actually execute the code in response to a
+- Worker Replicas: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
   replica processes individual requests from the HTTP proxy (these may be batched
   by the replica using `@serve.batch`, see the [batching](serve-batching) docs).
@@ -89,9 +89,8 @@ When the controller dies, the client will still be able to send queries, but aut
 
 ## Ray Serve API Server
 
-Ray Serve provides a CLI TODO: link for managing your Ray Serve instance, as well as a REST API TODO:link (which the CLI calls under the hood.)
-
-The Ray Serve API server that responds to these REST requests is a module that is automatically loaded by the Ray API Server (also known as the Ray Dashboard). TODO: link, which runs on the head node.
+Ray Serve provides a [CLI](serve-cli) for managing your Ray Serve instance, as well as a [REST API](serve-rest-api).
+The Ray Serve API server that responds to these REST requests is a module that is automatically loaded when Ray starts, and runs on the head node.
 
 ## FAQ
 
@@ -106,7 +105,8 @@ of replicas via the `num_replicas` option of your deployment.
 
 ### How do ServeHandles work?
 
-{mod}`ServeHandles <ray.serve.handle.RayServeHandle>` wrap a handle to the router actor on the same node. When a
+{mod}`ServeHandles <ray.serve.handle.RayServeHandle>` wrap a handle to a "router" on the
+same node which routes requests to replicas for a deployment. When a
 request is sent from one replica to another via the handle, the
 requests go through the same data path as incoming HTTP requests. This enables
 the same deployment selection and batching procedures to happen. ServeHandles are
@@ -116,4 +116,4 @@ often used to implement [model composition](serve-model-composition).
 
 Serve utilizes Ray’s [shared memory object store](plasma-store) and in process memory
 store. Small request objects are directly sent between actors via network
-call. Larger request objects (100KiB+) are written to the object store and the replica can read them via zero-copy read (TODO: doesn't this only apply to numpy arrays?).
+call. Larger request objects (100KiB+) are written to the object store and the replica can read them via zero-copy read.
