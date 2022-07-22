@@ -3,6 +3,7 @@ import os
 import time
 
 import ray
+from ray.air.config import ScalingConfig
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
@@ -18,7 +19,7 @@ if __name__ == "__main__":
     trainer = HorovodTrainer(
         horovod_torch_train_func,
         train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
-        scaling_config=dict(
+        scaling_config=ScalingConfig(
             num_workers=num_workers,
             trainer_resources={"CPU": 0},
         ),
@@ -32,5 +33,7 @@ if __name__ == "__main__":
     assert loss[-1] < loss[0]
 
     delta = time.time() - start_time
-    with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
+    with open(
+        os.environ.get("TEST_OUTPUT_JSON", "/tmp/train_horovod_multi_node.json"), "w"
+    ) as f:
         f.write(json.dumps({"train_time": delta, "success": True}))
