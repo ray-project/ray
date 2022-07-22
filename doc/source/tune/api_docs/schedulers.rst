@@ -12,6 +12,7 @@ Trainable and is maximized or minimized according to ``mode``.
 
 .. code-block:: python
 
+    from ray import tune
     tuner = tune.Tuner( ... , tune_config=tune.TuneConfig(scheduler=Scheduler(metric="accuracy", mode="max")))
     results = tuner.fit()
 
@@ -22,10 +23,11 @@ ASHA (tune.schedulers.ASHAScheduler)
 ------------------------------------
 
 The `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used by
-setting the ``scheduler`` parameter of ``Tuner``, e.g.
+setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by ``Tuner``, e.g.
 
 .. code-block:: python
 
+    from ray import tune
     asha_scheduler = ASHAScheduler(
         time_attr='training_iteration',
         metric='episode_reward_mean',
@@ -111,7 +113,7 @@ Population Based Training (tune.schedulers.PopulationBasedTraining)
 -------------------------------------------------------------------
 
 Tune includes a distributed implementation of `Population Based Training (PBT) <https://www.deepmind.com/blog/population-based-training-of-neural-networks>`__.
-This can be enabled by setting the ``scheduler`` parameter of ``Tuner``, e.g.
+This can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by ``Tuner``, e.g.
 
 .. code-block:: python
 
@@ -188,7 +190,7 @@ The Tune implementation of PB2 requires GPy and sklearn to be installed:
     pip install GPy sklearn
 
 
-PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig``, e.g.:
+PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig`` which is taken in by ``Tuner``, e.g.:
 
 .. code-block:: python
 

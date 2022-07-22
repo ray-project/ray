@@ -85,7 +85,7 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
     ray exec tune-default.yaml 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
 
 
-Note that you can customize the directory of results by specifying: ``air.RunConfig(local_dir=..)``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
+Note that you can customize the directory of results by specifying: ``air.RunConfig(local_dir=..)``, taken in by ``Tuner``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
 
 
 Running a distributed experiment
@@ -95,7 +95,7 @@ Running a distributed (multi-node) experiment requires Ray to be started already
 
 Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
 
-To execute a distributed experiment, call ``ray.init(address=XXX)`` before ``Tune.fit``, where ``XXX`` is the Ray address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
+To execute a distributed experiment, call ``ray.init(address=XXX)`` before ``Tuner.fit()``, where ``XXX`` is the Ray address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
 
 One common approach to modifying an existing Tune experiment to go distributed is to set an ``argparse`` variable so that toggling between distributed and single-node is seamless.
 
@@ -138,7 +138,7 @@ reduce synchronization overhead. For this, you just have to specify an ``upload_
 
 .. code-block:: python
 
-    from ray import tune
+    from ray import air, tune
 
     tuner = tune.Tuner(
         trainable,
@@ -240,7 +240,7 @@ To summarize, here are the commands to run:
 
 You should see Tune eventually continue the trials on a different worker node. See the :ref:`Fault Tolerance <tune-fault-tol>` section for more details.
 
-You can also specify ``sync_config=tune.SyncConfig(upload_dir=...)`` to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
+You can also specify ``sync_config=tune.SyncConfig(upload_dir=...)``, as part of ``air.RunConfig``, which is taken in by ``Tuner``, to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
 
 .. _tune-fault-tol:
 
@@ -258,7 +258,7 @@ If the trial/actor is placed on a different node, Tune will automatically push t
 Recovering From Failures
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune automatically persists the progress of your entire experiment (a ``Tuner.fit`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. Note that this only works if trial checkpoints are detected, whether it be by manual or periodic checkpointing.
+Tune automatically persists the progress of your entire experiment (a ``Tuner.fit()`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. Note that this only works if trial checkpoints are detected, whether it be by manual or periodic checkpointing.
 
 **Settings:**
 

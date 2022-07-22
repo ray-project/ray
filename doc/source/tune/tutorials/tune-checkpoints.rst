@@ -37,8 +37,7 @@ For this case, we only need to tell Ray Tune not to do any syncing at all (as sy
 
 .. code-block:: python
 
-    from ray import tune
-    from ray.air.config import RunConfig
+    from ray import air, tune
 
     tuner = tune.Tuner(
         trainable,

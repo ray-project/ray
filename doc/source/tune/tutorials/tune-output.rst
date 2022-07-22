@@ -139,7 +139,7 @@ However, if you would like to collect the stream outputs in files for later
 analysis or troubleshooting, Tune offers an utility parameter, ``log_to_file``,
 for this.
 
-By passing ``log_to_file=True`` to ``air.RunConfig``, stdout and stderr will be logged
+By passing ``log_to_file=True`` to ``air.RunConfig``, which is taken in by ``Tuner``, stdout and stderr will be logged
 to ``trial_logdir/stdout`` and ``trial_logdir/stderr``, respectively:
 
 .. code-block:: python

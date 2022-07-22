@@ -3,7 +3,7 @@
 A Guide To Parallelism and Resources
 ------------------------------------
 
-Parallelism is determined by ``resources_per_trial`` (defaulting to 1 CPU, 0 GPU per trial)
+Parallelism is determined by per trial resources (defaulting to 1 CPU, 0 GPU per trial)
 and the resources available to Tune (``ray.cluster_resources()``).
 
 By default, Tune automatically runs N concurrent trials, where N is the number of CPUs (cores) on your machine.
@@ -14,7 +14,7 @@ By default, Tune automatically runs N concurrent trials, where N is the number o
     tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=10))
     results = tuner.fit()
 
-You can override this parallelism with ``resources_per_trial``. Here you can
+You can override this per trial resources with ``tune.with_resources``. Here you can
 specify your resource requests using either a dictionary or a
 :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
 object. In any case, Ray Tune will try to start a placement group for each trial.
@@ -34,7 +34,7 @@ object. In any case, Ray Tune will try to start a placement group for each trial
     results = tuner.fit()
 
 
-Tune will allocate the specified GPU and CPU from ``resources_per_trial`` to each individual trial.
+Tune will allocate the specified GPU and CPU as specified by ``tune.with_resources`` to each individual trial.
 Even if the trial cannot be scheduled right now, Ray Tune will still try to start
 the respective placement group. If not enough resources are available, this will trigger
 :ref:`autoscaling behavior<cluster-index>` if you're using the Ray cluster launcher.
@@ -121,7 +121,7 @@ In this case, ``ray.tune.search.ConcurrencyLimiter`` to limit the amount of conc
 
 .. note::
 
-    It is also possible to directly use ``tune.TuneConfig(max_concurrent_trials=4, ...)``, which automatically wraps
+    It is also possible to directly use ``tune.TuneConfig(max_concurrent_trials=4, ...)``, which is taken in by ``Tuner``. This automatically wraps
     the underlying search algorithm in a ``ConcurrencyLimiter`` for you.
 
 To understand concurrency limiting in depth, please see :ref:`limiter` for more details.

@@ -163,7 +163,7 @@ with a good starting point for your hyperparameter optimization.
 
 For instance, to use Tune with simple Bayesian optimization through the ``bayesian-optimization`` package
 (make sure to first run ``pip install bayesian-optimization``), we can define an ``algo`` using ``BayesOptSearch``.
-Simply pass in a ``search_alg`` argument to ``Tuner``:
+Simply pass in a ``search_alg`` argument to ``tune.TuneConfig``, which is taken in by ``Tuner``:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -280,7 +280,7 @@ configurations to evaluate.
 Here's a quick example of using the so-called ``HyperBand`` scheduler to tune an experiment.
 All schedulers take in a ``metric``, which is the value reported by your trainable.
 The ``metric`` is then maximized or minimized according to the ``mode`` you provide.
-To use a scheduler, just pass in a ``scheduler`` argument to ``Tuner``:
+To use a scheduler, just pass in a ``scheduler`` argument to ``tune.TuneConfig``, which is taken in by ``Tuner``:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -343,7 +343,7 @@ Learn more about trial schedulers in :ref:`the scheduler API documentation<sched
 Analyses
 --------
 
-``Tuner`` returns an :ref:`ResultGrid <tune-analysis-docs>` object which has methods you can use for
+``Tuner.fit()`` returns an :ref:`ResultGrid <tune-analysis-docs>` object which has methods you can use for
 analyzing your training.
 The following example shows you how to access various metrics from an ``ResultGrid`` object, like the best available
 trial, or the best hyperparameter configuration for that trial:

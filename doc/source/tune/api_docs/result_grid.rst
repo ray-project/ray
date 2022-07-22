@@ -4,9 +4,11 @@ ResultGrid (tune.ResultGrid)
 ========================================
 
 You can use the ``ResultGrid`` object for interacting with tune results.
-It is returned automatically when calling ``Tuner.fit``.
+It is returned by ``Tuner.fit()``.
 
 .. code-block:: python
+
+    from ray import air, tune
 
     tuner = tune.Tuner(
         trainable,

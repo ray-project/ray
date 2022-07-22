@@ -161,7 +161,7 @@ In this case, you want to use the `Ray Lightning Library's <https://github.com/r
 
 With this integration, you can run multiple PyTorch Lightning training runs in parallel,
 each with a different hyperparameter configuration, and each training run also parallelized.
-All you have to do is move your training code to a function, pass the function to ``Tuner``, and make sure to add the appropriate callback (Either ``TuneReportCallback`` or ``TuneReportCheckpointCallback``) to your PyTorch Lightning Trainer.
+All you have to do is move your training code to a function, pass the function to ``Tuner()``, and make sure to add the appropriate callback (Either ``TuneReportCallback`` or ``TuneReportCheckpointCallback``) to your PyTorch Lightning Trainer.
 
 .. warning:: Make sure to use the callbacks from the Ray Lightning library and not the one from the Tune library, i.e. use ``ray_lightning.tune.TuneReportCallback`` and not ``ray.tune.integrations.pytorch_lightning.TuneReportCallback``.
 

@@ -234,6 +234,7 @@ If you want a checkpoint to be created at the end of a trial, you can additional
             checkpoint_config=air.CheckpointConfig(checkpoint_freq=10, checkpoint_at_end=True),
             failure_config=air.FailureConfig(max_failures=5))
     )
+    results = tuner.fit()
 
 
 Use ``validate_save_restore`` to catch ``save_checkpoint``/``load_checkpoint`` errors before execution.
@@ -254,7 +255,7 @@ Advanced: Reusing Actors
 .. note:: This feature is only for the Trainable Class API.
 
 Your Trainable can often take a long time to start.
-To avoid this, you can do ``air.RunConfig(reuse_actors=True)`` to reuse the same Trainable Python process and
+To avoid this, you can do ``air.RunConfig(reuse_actors=True)`` (which is taken in by ``Tuner``) to reuse the same Trainable Python process and
 object for multiple hyperparameters.
 
 This requires you to implement ``Trainable.reset_config``, which provides a new set of hyperparameters.
