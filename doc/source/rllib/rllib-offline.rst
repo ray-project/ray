@@ -53,9 +53,9 @@ Then, we can tell DQN to train using these previously generated experiences with
 Off-Policy Estimation (OPE)
 ---------------------------
 
-In practice, when we use offline data for training, it is usually not straightforward to evaluate the trained policies using a simulator similar to how it is done in online RL. For example, in recommeder systems it is often the case that rolling out the policy in real-world can jeopardize your business use-case if the trained policy is not performant enough (e.g. by causing churn on your customers). For these situations we can use `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods which help avoid the risk of evaluating your policy in real-world. RLlib provides some basic APIs for off-policy evaluation with an option to use a simulator instead (if it is available).
+In practice, when training on offline data, it is usually not straightforward to evaluate the trained policies using a simulator as in online RL. For example, in recommeder systems, rolling out a policy trained on offline data in a real-world environment can jeopardize your business if the policy is suboptimal. For these situations we can use `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods which avoid the risk of evaluating a possibly sub-optimal policy in a real-world environment.
 
-With RLlib evaluation framework you can: 
+With RLlib's evaluation framework you can: 
 
 - Evaluate policies on a simulated environement, if available, using ``evaluation_config["input"] = "sampler"``. You can then monitor your policy's performance on tensorboard as it is getting trained (by using ``tensorboard --logdir=~/ray_results``). 
 
