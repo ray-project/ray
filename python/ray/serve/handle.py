@@ -307,7 +307,9 @@ class RayServeLazySyncHandle:
 
     def remote(self, *args, **kwargs):
         if not self.handle:
-            handle = serve.get_deployment(self.deployment_name).get_handle()
+            handle = serve._private.api.get_deployment(
+                self.deployment_name
+            )._get_handle()
             self.handle = handle.options(method_name=self.handle_options.method_name)
         # TODO (jiaodong): Polish async handles later for serve pipeline
         return self.handle.remote(*args, **kwargs)

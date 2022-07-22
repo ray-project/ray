@@ -52,6 +52,8 @@ from ray.serve.utils import (
     install_serve_encoders_to_fastapi,
 )
 
+from ray.serve._private import api as _private_api
+
 logger = logging.getLogger(__file__)
 
 
@@ -483,26 +485,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
-    try:
-        (
-            deployment_info,
-            route_prefix,
-        ) = get_global_client().get_deployment_info(name)
-    except KeyError:
-        raise KeyError(
-            f"Deployment {name} was not found. Did you call Deployment.deploy()?"
-        )
-    return Deployment(
-        deployment_info.replica_config.deployment_def,
-        name,
-        deployment_info.deployment_config,
-        version=deployment_info.version,
-        init_args=deployment_info.replica_config.init_args,
-        init_kwargs=deployment_info.replica_config.init_kwargs,
-        route_prefix=route_prefix,
-        ray_actor_options=deployment_info.replica_config.ray_actor_options,
-        _internal=True,
-    )
+    return _private_api.get_deployment(name)
 
 
 @deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
@@ -512,23 +495,8 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments()
 
-    deployments = {}
-    for name, (deployment_info, route_prefix) in infos.items():
-        deployments[name] = Deployment(
-            deployment_info.replica_config.deployment_def,
-            name,
-            deployment_info.deployment_config,
-            version=deployment_info.version,
-            init_args=deployment_info.replica_config.init_args,
-            init_kwargs=deployment_info.replica_config.init_kwargs,
-            route_prefix=route_prefix,
-            ray_actor_options=deployment_info.replica_config.ray_actor_options,
-            _internal=True,
-        )
-
-    return deployments
+    return _private_api.list_deployments()
 
 
 @PublicAPI(stability="alpha")
@@ -611,7 +579,7 @@ def run(
     )
 
     if ingress is not None:
-        return ingress.get_handle()
+        return ingress._get_handle()
 
 
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
