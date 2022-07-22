@@ -334,18 +334,6 @@ def test_get_named_step_duplicate(workflow_start_regular):
     assert workflow.get_output("duplicate", name="f_1") == 20
 
 
-def test_no_init_run(shutdown_only):
-    @ray.remote
-    def f():
-        pass
-
-    workflow.run(f.bind())
-
-
-def test_no_init_api(shutdown_only):
-    workflow.list_all()
-
-
 if __name__ == "__main__":
     import sys
 
