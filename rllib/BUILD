@@ -1569,6 +1569,13 @@ py_test(
 )
 
 py_test(
+    name = "evaluation/tests/test_env_runner_v2",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_env_runner_v2.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_episode_v2",
     tags = ["team:rllib", "evaluation"],
     size = "small",
