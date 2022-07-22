@@ -14,14 +14,20 @@ TensorDtype = TypeVar("TensorDtype")
 
 class DLPredictor(Predictor):
     @abc.abstractmethod
-    def _array_to_tensor(
-        self, numpy_array: np.ndarray, dtype: TensorDtype
-    ) -> TensorType:
-        """Converts a single numpy array to the tensor type for the DL framework.
+    def _arrays_to_tensors(
+        self,
+        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
+        dtype: Union[TensorDtype, Dict[str, TensorDtype]],
+    ) -> Union[TensorType, Dict[str, TensorType]]:
+        """Converts a NumPy ndarray batch to the tensor type for the DL framework.
 
         Args:
             numpy_array: The numpy array to convert to a tensor.
             dtype: The tensor dtype to use when creating the DL tensor.
+            ndarray: A (dict of) NumPy ndarray(s) that we wish to convert to a (dict of)
+                tensor(s).
+            dtype: A (dict of) tensor dtype(s) to use when creating the DL tensor; if
+                None, the dtype will be inferred from the NumPy ndarray data.
 
         Returns:
             A deep learning framework specific tensor.
@@ -59,21 +65,7 @@ class DLPredictor(Predictor):
         self, data: pd.DataFrame, dtype: Union[TensorDtype, Dict[str, TensorDtype]]
     ) -> pd.DataFrame:
         tensors = convert_pandas_to_batch_type(data, DataType.NUMPY)
-
-        # Single numpy array.
-        if isinstance(tensors, np.ndarray):
-            column_name = data.columns[0]
-            if isinstance(dtype, dict):
-                dtype = dtype[column_name]
-            model_input = self._array_to_tensor(tensors, dtype)
-
-        else:
-            model_input = {
-                k: self._array_to_tensor(
-                    v, dtype=dtype[k] if isinstance(dtype, dict) else dtype
-                )
-                for k, v in tensors.items()
-            }
+        model_input = self._arrays_to_tensors(tensors, dtype)
 
         output = self._model_predict(model_input)
 

@@ -7,6 +7,7 @@ import torch
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
+from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.util.annotations import PublicAPI
@@ -86,20 +87,16 @@ class TorchPredictor(DLPredictor):
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
-    def _array_to_tensor(
-        self, numpy_array: np.ndarray, dtype: torch.dtype
-    ) -> torch.Tensor:
-        torch_tensor = torch.from_numpy(numpy_array).to(dtype)
-        if self.use_gpu:
-            torch_tensor = torch_tensor.to(device="cuda")
-
-        # Off-the-shelf torch Modules expect the input size to have at least 2
-        # dimensions (batch_size, feature_size). If the tensor for the column
-        # is flattened, then we unqueeze it to add an extra dimension.
-        if len(torch_tensor.size()) == 1:
-            torch_tensor = torch_tensor.unsqueeze(dim=1)
-
-        return torch_tensor
+    def _arrays_to_tensors(
+        self,
+        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
+        dtypes: Union[torch.dtype, Dict[str, torch.dtype]],
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        return convert_ndarray_batch_to_torch_tensor_batch(
+            numpy_arrays,
+            dtypes=dtypes,
+            device="cuda" if self.use_gpu else None,
+        )
 
     def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
         return tensor.cpu().detach().numpy()
