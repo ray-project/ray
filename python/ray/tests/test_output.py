@@ -408,6 +408,8 @@ ray.init()
     """
     output = run_string_as_driver(script)
     lines = output.strip("\n").split("\n")
+    for line in lines:
+        print(line)
     assert len(lines) == 1
     line = lines[0]
     print(line)
@@ -425,9 +427,9 @@ ray.init()
     """
     output = run_string_as_driver(script)
     lines = output.strip("\n").split("\n")
-    assert len(lines) == 2
     for line in lines:
         print(line)
+    assert len(lines) == 2
     assert "Connecting to existing Ray cluster at address:" in lines[0]
     assert "Connected to Ray cluster." in lines[1]
     if os.environ.get("RAY_MINIMAL") == "1":
