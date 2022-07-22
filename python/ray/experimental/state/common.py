@@ -5,17 +5,17 @@ from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 from ray.core.generated.common_pb2 import TaskType
+from ray.dashboard.modules.job.common import JobInfo
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
-    TypePlacementGroupStatus,
-    TypeTaskStatus,
     TypeNodeStatus,
-    TypeWorkerType,
-    TypeWorkerExitType,
-    TypeTaskType,
+    TypePlacementGroupStatus,
     TypeReferenceType,
+    TypeTaskStatus,
+    TypeTaskType,
+    TypeWorkerExitType,
+    TypeWorkerType,
 )
-from ray.dashboard.modules.job.common import JobInfo
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,8 @@ STATE_OBS_ALPHA_FEEDBACK_MSG = [
     "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
     "State Observability APIs is currently in Alpha-Preview. ",
     "If you have any feedback, you could do so at either way as below:",
-    "  1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
-    "  2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
+    "    1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
+    "    2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
     "https://tinyurl.com/2pm26m4a",
     "==========================================================",
 ]

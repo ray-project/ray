@@ -48,7 +48,6 @@ from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
-    _alpha_doc,
     get as state_cli_get,
     list as state_cli_list,
     get_api_server_url,
@@ -2051,7 +2050,6 @@ def local_dump(
         "this option will be ignored."
     ),
 )
-@_alpha_doc()
 def ray_logs(
     glob_filter,
     node_ip: str,
@@ -2084,10 +2082,10 @@ def ray_logs(
         ray logs raylet.out -tail 500 —-node-id A
         ```
 
-        Follow the log file every 10 seconds with an actor id ABC.
+        Follow the log file with an actor id ABC.
 
         ```
-        ray logs --actor-id ABC -follow 10
+        ray logs --actor-id ABC --follow
         ```
 
         Get the actor log from pid 123, ip ABC.

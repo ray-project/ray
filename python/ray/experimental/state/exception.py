@@ -13,7 +13,7 @@ class DataSourceUnavailable(Exception):
 
 class RayStateApiException(Exception):
     def __init__(self, err_msg, *args):
-        err_msg += "\n".join(STATE_OBS_ALPHA_FEEDBACK_MSG)
+        err_msg += STATE_OBS_ALPHA_FEEDBACK_MSG
         super().__init__(err_msg, *args)
 
 

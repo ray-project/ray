@@ -1,17 +1,22 @@
-from typing import Literal
+import sys
 
-from ray.dashboard.memory_utils import ReferenceType
+from ray.core.generated.common_pb2 import (
+    TaskStatus,
+    TaskType,
+    WorkerExitType,
+    WorkerType,
+)
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
-    PlacementGroupTableData,
     GcsNodeInfo,
+    PlacementGroupTableData,
 )
-from ray.core.generated.common_pb2 import (
-    TaskType,
-    WorkerType,
-    WorkerExitType,
-    TaskStatus,
-)
+from ray.dashboard.memory_utils import ReferenceType
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 
 ACTOR_STATUS = [

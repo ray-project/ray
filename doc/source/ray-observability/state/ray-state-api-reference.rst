@@ -1,12 +1,9 @@
-Ray State APIs Reference
-========================
-
-Ray state APIs allow users to access the current state of the system.
-
-APIs are pre-alpha and under active development. APIs are subject to change and
-not stable across versions.
+Ray State API
+=============
 
 .. _state-api-ref:
+
+.. tip:: APIs are pre-alpha and under active development. APIs are subject to change and not stable across versions.
 
 State CLI
 ---------
@@ -168,4 +165,3 @@ State APIs Exceptions
 
 .. autoclass:: ray.experimental.state.exception.RayStateApiException
     :members:
-

@@ -21,7 +21,6 @@ from ray.experimental.state.api import (
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
-    STATE_OBS_ALPHA_FEEDBACK_MSG,
     GetApiOptions,
     ListApiOptions,
     PredicateType,
@@ -30,16 +29,6 @@ from ray.experimental.state.common import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _alpha_doc():
-    def decorator(func):
-        func.__doc__ = "{doc}\n{alpha_feedback}".format(
-            doc=func.__doc__, alpha_feedback="\n\n".join(STATE_OBS_ALPHA_FEEDBACK_MSG)
-        )
-        return func
-
-    return decorator
 
 
 @unique
@@ -339,7 +328,6 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
-@_alpha_doc()
 def get(
     resource: str,
     id: str,
@@ -348,12 +336,26 @@ def get(
 ):
     """Get a state of a given resource by ID.
 
-    NOTE: We currently DO NOT support get by id for jobs and runtime-envs
+    We currently DO NOT support get by id for jobs and runtime-envs
 
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray get tasks <task-id>` is
     :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+
+    Usage:
+
+        Get an actor with actor id <actor-id>
+
+        ```
+        ray get actors <actor-id>
+        ```
+
+        Get a placement group information with <placement-group-id>
+
+        ```
+        ray get placement-groups <placement-group-id>
+        ```
 
     The API queries one or more components from the cluster to obtain the data.
     The returned state snanpshot could be stale, and it is not guaranteed to return
@@ -438,7 +440,6 @@ def get(
 )
 @timeout_option
 @address_option
-@_alpha_doc()
 def list(
     resource: str,
     format: str,
@@ -457,6 +458,39 @@ def list(
     For example, the output schema of `ray list tasks` is
     :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
 
+    Usage:
+
+        List all actor information from the cluster.
+
+        ```
+        ray list actors
+        ```
+
+        List 50 actors from the cluster. The sorting order cannot be controlled.
+
+        ```
+        ray list actors --limit 50
+        ```
+
+        List 10 actors with state PENDING.
+
+        ```
+        ray list actors --limit 10 --filter "state=PENDING"
+        ```
+
+        List actors with yaml format.
+
+        ```
+        ray list actors --format yaml
+        ```
+
+        List actors with details. When --detail is specifed, it might query
+        more data sources to obtain data in details.
+
+        ```
+        ray list actors --detail
+        ```
+
     The API queries one or more components from the cluster to obtain the data.
     The returned state snanpshot could be stale, and it is not guaranteed to return
     the live data.
@@ -465,7 +499,7 @@ def list(
 
     - When the API queries more than 1 component, if some of them fail,
       the API will return the partial result (with a suppressable warning).
-    - When the API returns too many entries (10K), the API
+    - When the API returns too many entries, the API
       will truncate the output. Currently, truncated data cannot be
       selected by users.
 
@@ -508,7 +542,6 @@ def list(
 
 @click.group("summary")
 @click.pass_context
-@_alpha_doc()
 def summary_state_cli_group(ctx):
     """Return the summarized information of a given resource."""
     ctx.ensure_object(dict)

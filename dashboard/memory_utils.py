@@ -48,7 +48,6 @@ class GroupByType(Enum):
 
 
 class ReferenceType(Enum):
-    # We don't use enum because enum is not json serializable.
     ACTOR_HANDLE = "ACTOR_HANDLE"
     PINNED_IN_MEMORY = "PINNED_IN_MEMORY"
     LOCAL_REFERENCE = "LOCAL_REFERENCE"
