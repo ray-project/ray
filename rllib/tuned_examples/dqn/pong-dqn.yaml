@@ -24,3 +24,6 @@ pong-deterministic-dqn:
           grayscale: True
           zero_mean: False
           dim: 42
+        # we should set compress_observations to True because few machines
+        # would be able to contain the replay buffers in memory otherwise
+        compress_observations: True
