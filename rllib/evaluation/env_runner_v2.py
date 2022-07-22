@@ -470,6 +470,8 @@ class EnvRunnerV2:
                 # all_agents_obs is an Exception here.
                 # Drop this episode and skip to next.
                 self.end_episode(env_id, env_obs)
+                # Tell the sampler we have got a faulty episode.
+                outputs.extend(RolloutMetrics(episode_faulty=True))
                 continue
 
             episode: EpisodeV2 = self._active_episodes[env_id]
@@ -727,9 +729,17 @@ class EnvRunnerV2:
             # Basically carry RNN and other buffered state to the
             # next episode from the same env.
         else:
-            resetted_obs: Dict[
-                EnvID, Dict[AgentID, EnvObsType]
-            ] = self._base_env.try_reset(env_id)
+            # TODO(jungong) : This will allow a single faulty env to
+            # take out the entire RolloutWorker indefinitely. Revisit.
+            while True:
+                resetted_obs: Dict[
+                    EnvID, Dict[AgentID, EnvObsType]
+                ] = self._base_env.try_reset(env_id)
+                if resetted_obs is None or not isinstance(resetted_obs, Exception):
+                    break
+                else:
+                    # Report a faulty episode.
+                    outputs.append(RolloutMetrics(episode_faulty=True))
             # Reset connector state if this is a hard reset.
             for p in self._worker.policy_map.cache.values():
                 p.agent_connectors.reset(env_id)

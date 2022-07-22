@@ -27,10 +27,11 @@ RolloutMetrics = DeveloperAPI(
             "perf_stats",
             "hist_data",
             "media",
+            "episode_faulty",
         ],
     )
 )
-RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {})
+RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False)
 
 
 def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
@@ -161,8 +162,12 @@ def summarize_episodes(
     perf_stats = collections.defaultdict(list)
     hist_stats = collections.defaultdict(list)
     episode_media = collections.defaultdict(list)
+    num_faulty_episodes = 0
 
     for episode in episodes:
+        if episode.episode_faulty:
+            num_faulty_episodes += 1
+            continue
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
         for k, v in episode.custom_metrics.items():
@@ -234,4 +239,5 @@ def summarize_episodes(
         custom_metrics=dict(custom_metrics),
         hist_stats=dict(hist_stats),
         sampler_perf=dict(perf_stats),
+        num_faulty_episodes=num_faulty_episodes,
     )

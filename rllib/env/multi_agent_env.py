@@ -434,7 +434,8 @@ def make_multi_agent(
     class MultiEnv(MultiAgentEnv):
         def __init__(self, config=None):
             MultiAgentEnv.__init__(self)
-            config = config or {}
+            if config is None:
+                config = {}
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
                 self.agents = [gym.make(env_name_or_creator) for _ in range(num)]

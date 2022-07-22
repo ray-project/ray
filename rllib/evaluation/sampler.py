@@ -872,6 +872,9 @@ def _process_observations(
                             episode.media,
                         )
                     )
+            else:
+                # Add metrics about a faulty episode.
+                outputs.append(RolloutMetrics(episode_faulty=True))
             # Check whether we have to create a fake-last observation
             # for some agents (the environment is not required to do so if
             # dones[__all__]=True).
@@ -1071,6 +1074,8 @@ def _process_observations(
                 }
             else:
                 del active_episodes[env_id]
+                # TODO(jungong) : This will allow a single faulty env to
+                # take out the entire RolloutWorker indefinitely. Revisit.
                 while True:
                     resetted_obs: Optional[
                         Dict[EnvID, Dict[AgentID, EnvObsType]]
@@ -1079,6 +1084,9 @@ def _process_observations(
                         resetted_obs[env_id], Exception
                     ):
                         break
+                    else:
+                        # Failed to reset, add metrics about a faulty episode.
+                        outputs.append(RolloutMetrics(episode_faulty=True))
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
                 if horizon != float("inf"):
