@@ -19,6 +19,10 @@ from ray.train.xgboost import XGBoostTrainer
 
 trainer = XGBoostTrainer(
     label_column="target",
+    params={
+        "objective": "binary:logistic",
+        "eval_metric": ["logloss", "error"],
+    },
     datasets={"train": get_dataset()},
 )
 
