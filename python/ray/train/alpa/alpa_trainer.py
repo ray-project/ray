@@ -260,7 +260,9 @@ class AlpaTrainer(BaseTrainer):
                 ic(updated_scaling_config_dict)
                 
                 assert updated_scaling_config_dict['num_workers'] <= len(self.host_ips), \
-                    "The number of workers must not exceed the number of hosts"
+                    "The number of workers must not exceed the number of hosts" \
+                    "Either decrease the number of workers or check whether connected to" \
+                    "the ray cluster via `ray.init('auto')`"
                 # "num_workers" in updated_scaling_config_dict
                 # ic(ScalingConfigWithIPs(**updated_scaling_config_dict))
                 if isinstance(updated_scaling_config_dict, dict):
