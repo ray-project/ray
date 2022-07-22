@@ -6,6 +6,7 @@ import ray.cloudpickle as pickle
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
+from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -37,6 +38,7 @@ class TunerInternal:
     Args:
         restore_path: The path from where the Tuner can be restored. If provided, None
             of the rest args are needed.
+        resume_config: Resume config to configure which trials to continue.
         trainable: The trainable to be tuned.
         param_space: Search space of the tuning job.
             One thing to note is that both preprocessor and dataset can be tuned here.
@@ -50,6 +52,7 @@ class TunerInternal:
     def __init__(
         self,
         restore_path: str = None,
+        resume_config: Optional[_ResumeConfig] = None,
         trainable: Optional[
             Union[
                 str,
@@ -77,11 +80,14 @@ class TunerInternal:
             self._is_restored = True
             self._trainable = trainable
             self._experiment_checkpoint_dir = restore_path
+            self._resume_config = resume_config
             return
 
         # Start from fresh
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
+
+        self._resume_config = None
 
         # If no run config was passed to Tuner directly, use the one from the Trainer,
         # if available
@@ -217,6 +223,7 @@ class TunerInternal:
                 checkpoint_at_end = True
 
         return dict(
+            local_dir=self._run_config.local_dir,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
@@ -261,11 +268,25 @@ class TunerInternal:
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
+        resume = "AUTO"
+
+        if self._resume_config:
+            if not self._resume_config.resume_unfinished:
+                if self._resume_config.resume_errored:
+                    resume += "+ERRORED_ONLY"
+                elif self._resume_config.restart_errored:
+                    resume += "+RESTART_ERRORED_ONLY"
+            else:
+                if self._resume_config.resume_errored:
+                    resume += "+ERRORED"
+                elif self._resume_config.restart_errored:
+                    resume += "+RESTART_ERRORED"
+
         args = {
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
-                resume=True,
+                resume=resume,
             ),
             **self._tuner_kwargs,
         }
