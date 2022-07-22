@@ -2600,7 +2600,7 @@
 # RLlib tests
 ########################
 
-- name: rllib_learning_tests_a_to_e
+- name: rllib_learning_tests_a2c
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2614,17 +2614,17 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 12gpus_192cpus.yaml
+    cluster_compute: 2gpus_32cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=a-e
+    script: python learning_tests/run.py --yaml-sub-dir=a2c
     type: sdk_command
     file_manager: job
 
   alert: default
 
-- name: rllib_learning_tests_f_to_z
+- name: rllib_learning_tests_a3c
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2638,15 +2638,306 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 8gpus_96cpus.yaml
+    cluster_compute: 2gpus_32cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=f-z
+    script: python learning_tests/run.py --yaml-sub-dir=a3c
     type: sdk_command
     file_manager: job
 
   alert: default
+
+- name: rllib_learning_tests_apex
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=apex
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_appo
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=appo
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_bc
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=bc
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_cql
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=cql
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_ddpg
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ddpg
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_dqn
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=dqn
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_es
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=es
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_impala
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=impala
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_marwil
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=marwil
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: rllib_learning_tests_sac
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=sac
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_slateq
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=slateq
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+
+- name: rllib_learning_tests_td3
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=td3
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 
 - name: rllib_multi_gpu_learning_tests
   group: RLlib tests
