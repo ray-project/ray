@@ -292,7 +292,7 @@ class LogMonitor:
                         raise e
 
                 f.seek(file_info.file_position)
-                file_info.filesize_when_last_opened = file_size
+                file_info.size_when_last_opened = file_size
                 file_info.file_handle = f
                 self.open_file_infos.append(file_info)
             else:
