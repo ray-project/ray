@@ -626,8 +626,8 @@ AWS S3
 .. code-block::
 
     sync_up_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
-    sync_down_template="down": "aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
-    delete_template="delete": "aws s3 rm {target} --recursive --only-show-errors"
+    sync_down_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
+    delete_template="aws s3 rm {target} --recursive --only-show-errors"
 
 Google cloud storage
 ''''''''''''''''''''
