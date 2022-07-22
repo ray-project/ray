@@ -259,7 +259,7 @@ def _get_num_rows(block: Block) -> int:
 
 
 def _split_at_index(
-    blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
+    block_list: BlockList,
     index: int,
     return_right_half: bool,
 ) -> Tuple[
@@ -277,5 +277,5 @@ def _split_at_index(
     Returns:
         The block split futures and their metadata for left and right of the index.
     """
-    blocks_splits, metadata_splits = _split_at_indices(blocks_with_metadata, [index])
+    blocks_splits, metadata_splits = _split_at_indices(block_list, [index])
     return blocks_splits[0], metadata_splits[0], blocks_splits[1], metadata_splits[1]

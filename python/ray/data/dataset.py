@@ -3422,9 +3422,8 @@ class Dataset(Generic[T]):
     ) -> ("Dataset[T]", "Dataset[T]"):
         start_time = time.perf_counter()
         block_list = self._plan.execute()
-        blocks_with_metadata = block_list.get_blocks_with_metadata()
         left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
-            blocks_with_metadata,
+            block_list,
             index,
             return_right_half,
         )
