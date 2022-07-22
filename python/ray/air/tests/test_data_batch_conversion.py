@@ -29,7 +29,7 @@ def test_numpy_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)
 
-    assert np.array_equal(
+    np.testing.assert_array_equal(
         convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY), input_data
     )
 
@@ -40,18 +40,18 @@ def test_numpy_multi_dim_pandas():
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)
 
-    assert np.array_equal(
+    np.testing.assert_array_equal(
         convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY), input_data
     )
 
 
 def test_numpy_object_pandas():
     input_data = np.array([[1, 2, 3], [1]], dtype=object)
-    expected_output = pd.DataFrame({TENSOR_COLUMN_NAME: TensorArray(input_data)})
+    expected_output = pd.DataFrame({TENSOR_COLUMN_NAME: input_data})
     actual_output = convert_batch_type_to_pandas(input_data)
     assert expected_output.equals(actual_output)
 
-    assert np.array_equal(
+    np.testing.assert_array_equal(
         convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY), input_data
     )
 
@@ -69,7 +69,7 @@ def test_dict_pandas():
     assert expected_output.equals(actual_output)
 
     output_array = convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY)
-    assert np.array_equal(output_array, input_data["x"])
+    np.testing.assert_array_equal(output_array, input_data["x"])
 
 
 def test_dict_multi_dim_to_pandas():
@@ -80,7 +80,7 @@ def test_dict_multi_dim_to_pandas():
     assert expected_output.equals(actual_output)
 
     output_array = convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY)
-    assert np.array_equal(output_array, input_data["x"])
+    np.testing.assert_array_equal(output_array, input_data["x"])
 
 
 def test_dict_pandas_multi_column():
@@ -91,7 +91,7 @@ def test_dict_pandas_multi_column():
 
     output_dict = convert_pandas_to_batch_type(actual_output, type=DataType.NUMPY)
     for k, v in output_dict.items():
-        assert np.array_equal(v, array_dict[k])
+        np.testing.assert_array_equal(v, array_dict[k])
 
 
 def test_arrow_pandas():
