@@ -1,3 +1,4 @@
+from typing import Dict
 import logging
 
 import ray._private.worker
@@ -16,7 +17,7 @@ class RuntimeContext(object):
         assert worker is not None
         self.worker = worker
 
-    def get(self):
+    def get(self) -> Dict[str, Any]:
         """Get a dictionary of the current context.
 
         Returns:
@@ -159,6 +160,18 @@ class RuntimeContext(object):
                 capture the parent placement group.
         """
         return self.worker.should_capture_child_tasks_in_placement_group
+
+    @property
+    def assigned_resources(self):
+        """Get the assigned resources to this worker.
+
+        Returns:
+            A dictionary mapping the name of a resource to a list of pairs, where
+            each pair consists of the ID of a resource and the fraction of that
+            resource reserved for this worker.
+        """
+        self.worker.check_connected()
+        return self.worker.core_worker.resource_ids()
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
