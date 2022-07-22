@@ -40,6 +40,8 @@ from ray.tune.search import create_searcher
 from ray.tune.schedulers import create_scheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import with_parameters, with_resources
+from ray.tune.tuner import Tuner
+from ray.tune.tune_config import TuneConfig
 
 from ray._private.usage import usage_lib
 
@@ -85,4 +87,6 @@ __all__ = [
     "create_searcher",
     "create_scheduler",
     "PlacementGroupFactory",
+    "Tuner",
+    "TuneConfig",
 ]
