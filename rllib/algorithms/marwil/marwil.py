@@ -1,4 +1,4 @@
-from typing import Optional, Type, Dict
+from typing import Optional, Type
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
