@@ -30,15 +30,17 @@ class SimpleImputer(Preprocessor):
         >>> import pandas as pd
         >>> import ray
         >>> from ray.data.preprocessors import SimpleImputer
-
         >>> df = pd.DataFrame({"X": [0, None, 3, 3], "Y": [None, "b", "c", "c"]})
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
-        >>> ds.to_pandas()  # doctest: +SKIP
-            X     Y
+        >>> ds.to_pandas()
+             X     Y
         0  0.0  None
         1  NaN     b
         2  3.0     c
         3  3.0     c
+
+        The `"mean"` strategy imputes missing values with the mean of non-missing
+        values. This strategy doesn't work with categorical data.
 
         >>> preprocessor = SimpleImputer(columns=["X"], strategy="mean")  # doctest: +SKIP
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
@@ -48,6 +50,9 @@ class SimpleImputer(Preprocessor):
         2  3.0     c
         3  3.0     c
 
+        The `"most_frequent"` strategy imputes missing values with the most frequent
+        value in each column.
+
         >>> preprocessor = SimpleImputer(columns=["X", "Y"], strategy="most_frequent")  # doctest: +SKIP
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
              X  Y
@@ -55,6 +60,9 @@ class SimpleImputer(Preprocessor):
         1  3.0  b
         2  3.0  c
         3  3.0  c
+
+        The `"constant"` strategy imputes missing values with the value specified by 
+        `fill_value`. 
 
         >>> preprocessor = SimpleImputer(
         ...     columns=["Y"],
