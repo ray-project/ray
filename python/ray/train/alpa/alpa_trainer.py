@@ -191,7 +191,9 @@ class AlpaTrainer(BaseTrainer):
         )
 
     def training_loop(self) -> None:
-        # 
+        # needs to add this to the head node
+        # otherwise RuntimeError: Backend 'gpu' failed to initialize: FAILED_PRECONDITION: No visible GPU devices.
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
         self._train_loop(self._train_loop_config)
         
     def as_trainable(self) -> Type[Trainable]:
