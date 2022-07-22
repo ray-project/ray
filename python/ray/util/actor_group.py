@@ -52,7 +52,7 @@ class ActorGroupMethod:
 
 @Deprecated(
     message="For stateless/task processing, use ray.util.multiprocessing, "
-    "see details in https://docs.ray.io/en/latest/ray-more-libs/multiprocessing.html."
+    "see details in https://docs.ray.io/en/latest/ray-more-libs/multiprocessing.html. "
     "For stateful/actor processing such as batch prediction, use "
     "Datasets.map_batches(compute=ActorPoolStrategy, ...), see details in "
     "https://docs.ray.io/en/latest/data/package-ref.html#ray.data.Dataset.map_batches."
