@@ -112,6 +112,7 @@ class AlpaTrainer(BaseTrainer):
         if not ray.is_initialized():
             ray.init()
 
+        update_jax_platform("cpu")
         # connect to the ray cluster
         if not alpa.api.is_initialized:
             alpa.init("ray")
@@ -190,7 +191,7 @@ class AlpaTrainer(BaseTrainer):
         )
 
     def training_loop(self) -> None:
-        update_jax_platform("cpu")
+        # 
         self._train_loop(self._train_loop_config)
         
     def as_trainable(self) -> Type[Trainable]:
