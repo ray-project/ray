@@ -343,7 +343,11 @@ class _AgentCollector:
                             element_at_t = element_at_t.squeeze(0)
                         shifted_data.append(element_at_t)
 
-                    shifted_data_np = np.stack(shifted_data, 0)
+                    # in some multi-agent cases shifted_data may be an empty list.
+                    if shifted_data:
+                        shifted_data_np = np.stack(shifted_data, 0)
+                    else:
+                        shifted_data_np = np.array(shifted_data)
                     data_2.append(shifted_data_np)
 
             if view_req.shift_from is not None:
@@ -469,8 +473,6 @@ class _AgentCollector:
                         for d in np_data[data_col]
                     ]
 
-            # if view_col == 'state_in_0':
-            #     breakpoint()
             check(data, data_2)
 
             if len(data) > 0:

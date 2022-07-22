@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 import unittest
+import pytest
 
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
@@ -158,6 +159,7 @@ class TestAgentConnector(unittest.TestCase):
         self.assertTrue("prev_actions" in processed[0].data.for_action)
 
 
+@pytest.mark.skip(reason="activate when view_requirement is fully implemented.")
 class TestViewRequirementConnector(unittest.TestCase):
     def test_vr_connector_respects_training_or_inference_vr_flags(self):
         """Tests that the connector respects the flags within view_requirements (i.e.
