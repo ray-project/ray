@@ -118,10 +118,6 @@ class AlpaTrainer(BaseTrainer):
 
         cluster = alpa.get_global_cluster()
         
-        ic("Distributed Training with Alpa using "
-            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
-        )
-        
         logger.info(
              "Distributed Training with Alpa using "
             f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
@@ -136,14 +132,10 @@ class AlpaTrainer(BaseTrainer):
         if 'GPU' in self.resources_per_worker: 
             num_gpus = self.resources_per_worker['GPU']
         
-        ic(num_workers, num_gpus)
-        ic(scaling_config, self.resources_per_worker)
-
         # head node info
         from ray._private.worker import _global_node as ray_global_node
         self.head_info = ray_global_node.address_info
         self.head_ip = self.head_info["node_ip_address"]
-        ic(self.head_ip)
         
         # Gather host ids
         self.host_info = []
@@ -161,8 +153,6 @@ class AlpaTrainer(BaseTrainer):
             number = host_info["Resources"]["GPU"]
             assert number.is_integer()
             self.host_num_devices.append(int(number))
-        
-        ic(self.host_num_devices, self.host_info, self.host_ips)        
 
         # number of workers filter
         # the number of workers can not exceeed the number of devices
@@ -176,10 +166,6 @@ class AlpaTrainer(BaseTrainer):
         num_devices_per_host = min(self.host_num_devices)
         num_devices_per_host = min(num_gpus, num_devices_per_host)
 
-        ic(num_devices_per_host, self.host_num_devices, node_info, node_ids)
-        
-        ic(node_info)
-        
         self.vp_mesh = VirtualPhysicalMesh(host_ids=node_ids,
                             host_info=node_info,
                             head_ip=self.head_ip,
@@ -191,20 +177,7 @@ class AlpaTrainer(BaseTrainer):
         cluster.host_info = node_info 
         cluster.host_num_devices = [num_devices_per_host for i in range(num_workers)]
         alpa.device_mesh.set_global_cluster(cluster)
-        
-        # ic(node_info)
-        # print('\noutside: starting\n')
-        # self.p_mesh = DistributedPhysicalDeviceMesh(
-        #             host_ids=node_ids,
-        #             host_info=node_info,
-        #             head_ip=self.head_ip,
-        #             num_devices_per_host=num_devices_per_host,
-        #             parent=None)
-        # print('\noutside: neding\n')
-        
-        
-        # alpa.device_mesh.set_global_physical_mesh(self.p_mesh)
-        
+
         self._train_loop = train_loop_per_worker
         self._train_loop_config = train_loop_config
         
@@ -288,7 +261,7 @@ class AlpaTrainer(BaseTrainer):
                     updated_scaling_config = ScalingConfigWithIPs(**updated_scaling_config_dict)
                 # validated_scaling_config = trainer_cls._validate_scaling_config(
                 #     updated_scaling_config
-                # )
+                # ) 
                 ic(updated_scaling_config)
                 ic(updated_scaling_config.as_placement_group_factory())
                 return updated_scaling_config.as_placement_group_factory()
