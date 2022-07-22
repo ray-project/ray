@@ -43,8 +43,9 @@ public class LongPollClientTest {
 
     try {
       // Init controller.
-      String controllerName = CommonUtil.formatActorName(
-          Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
@@ -54,20 +55,20 @@ public class LongPollClientTest {
       String endpointName1 = "normalTest1";
       String endpointName2 = "normalTest2";
       Map<String, EndpointInfo> endpoints = new HashMap<>();
-      endpoints.put(endpointName1,
-          EndpointInfo.newBuilder().setEndpointName(endpointName1).build());
-      endpoints.put(endpointName2,
-          EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
+      endpoints.put(
+          endpointName1, EndpointInfo.newBuilder().setEndpointName(endpointName1).build());
+      endpoints.put(
+          endpointName2, EndpointInfo.newBuilder().setEndpointName(endpointName2).build());
 
       // Construct a listener map.
       KeyType keyType = new KeyType(LongPollNamespace.ROUTE_TABLE, null);
       String[] testData = new String[] {"test"};
       Map<KeyType, KeyListener> keyListeners = new HashMap<>();
-      keyListeners.put(keyType,
-          (object)
-              -> testData[0] = ((Map<String, EndpointInfo>) object)
-                                   .get(endpointName1)
-                                   .getEndpointName());
+      keyListeners.put(
+          keyType,
+          (object) ->
+              testData[0] =
+                  ((Map<String, EndpointInfo>) object).get(endpointName1).getEndpointName());
 
       // Register.
       LongPollClient longPollClient = new LongPollClient(controllerHandle, keyListeners);
@@ -83,20 +84,16 @@ public class LongPollClientTest {
       LongPollResult longPollResult = new LongPollResult();
       longPollResult.setUpdatedObjects(ImmutableMap.of(keyType, updatedObject));
       ObjectRef<Boolean> mockLongPollResult =
-          controllerHandle.task(DummyServeController::setLongPollResult, longPollResult)
-              .remote();
+          controllerHandle.task(DummyServeController::setLongPollResult, longPollResult).remote();
       Assert.assertEquals(mockLongPollResult.get().booleanValue(), true);
 
       // Poll.
       LongPollClientFactory.pollNext();
 
       // Validation.
+      Assert.assertEquals(LongPollClientFactory.SNAPSHOT_IDS.get(keyType).intValue(), snapshotId);
       Assert.assertEquals(
-          LongPollClientFactory.SNAPSHOT_IDS.get(keyType).intValue(), snapshotId);
-      Assert.assertEquals(
-          ((Map<String, EndpointInfo>) LongPollClientFactory.OBJECT_SNAPSHOTS.get(
-               keyType))
-              .size(),
+          ((Map<String, EndpointInfo>) LongPollClientFactory.OBJECT_SNAPSHOTS.get(keyType)).size(),
           2);
       Assert.assertEquals(testData[0], endpointName1);
 

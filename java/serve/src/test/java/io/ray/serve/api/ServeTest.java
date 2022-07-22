@@ -46,8 +46,9 @@ public class ServeTest extends BaseTest {
       }
       Assert.assertNull(client);
 
-      String controllerName = CommonUtil.formatActorName(
-          Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       ActorHandle<DummyServeController> actorHandle =
           Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
       Serve.setInternalReplicaContext(null, null, controllerName, null, null);

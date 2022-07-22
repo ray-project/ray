@@ -26,7 +26,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,16 +40,14 @@ public class Serve {
   /**
    * Initialize a serve instance.
    *
-   * <p>By default, the instance will be scoped to the lifetime of the returned Client
-   * object (or when the script exits). If detached is set to True, the instance will
-   * instead persist until Serve.shutdown() is called. This is only relevant if connecting
-   * to a long-running Ray cluster.
+   * <p>By default, the instance will be scoped to the lifetime of the returned Client object (or
+   * when the script exits). If detached is set to True, the instance will instead persist until
+   * Serve.shutdown() is called. This is only relevant if connecting to a long-running Ray cluster.
    *
-   * @param detached Whether not the instance should be detached from this script. If set,
-   *     the instance will live on the Ray cluster until it is explicitly stopped with
-   *     Serve.shutdown().
-   * @param dedicatedCpu Whether to reserve a CPU core for the internal Serve controller
-   *     actor. Defaults to False.
+   * @param detached Whether not the instance should be detached from this script. If set, the
+   *     instance will live on the Ray cluster until it is explicitly stopped with Serve.shutdown().
+   * @param dedicatedCpu Whether to reserve a CPU core for the internal Serve controller actor.
+   *     Defaults to False.
    * @param config Configuration options for Serve.
    * @return
    */
@@ -64,29 +61,30 @@ public class Serve {
 
     try {
       ServeControllerClient client = getGlobalClient(true);
-      LOGGER.info(
-          "Connecting to existing Serve app in namespace {}", Constants.SERVE_NAMESPACE);
+      LOGGER.info("Connecting to existing Serve app in namespace {}", Constants.SERVE_NAMESPACE);
       return client;
     } catch (RayServeException | IllegalStateException e) {
-      LOGGER.info(
-          "There is no instance running on this Ray cluster. A new one will be started.");
+      LOGGER.info("There is no instance running on this Ray cluster. A new one will be started.");
     }
 
-    String controllerName = detached
-        ? Constants.SERVE_CONTROLLER_NAME
-        : CommonUtil.formatActorName(
-            Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+    String controllerName =
+        detached
+            ? Constants.SERVE_CONTROLLER_NAME
+            : CommonUtil.formatActorName(
+                Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
 
-    int httpPort = Optional.ofNullable(config)
-                       .map(m -> m.get(RayServeConfig.PROXY_HTTP_PORT))
-                       .map(Integer::parseInt)
-                       .orElse(8000);
+    int httpPort =
+        Optional.ofNullable(config)
+            .map(m -> m.get(RayServeConfig.PROXY_HTTP_PORT))
+            .map(Integer::parseInt)
+            .orElse(8000);
     PyActorHandle controllerAvatar =
-        Ray.actor(PyActorClass.of("ray.serve.controller", "ServeControllerAvatar"),
-               controllerName,
-               detached,
-               dedicatedCpu,
-               httpPort)
+        Ray.actor(
+                PyActorClass.of("ray.serve.controller", "ServeControllerAvatar"),
+                controllerName,
+                detached,
+                dedicatedCpu,
+                httpPort)
             .setName(controllerName + "_AVATAR")
             .setLifetime(detached ? ActorLifetime.DETACHED : ActorLifetime.NON_DETACHED)
             .setMaxRestarts(-1)
@@ -98,15 +96,17 @@ public class Serve {
     PyActorHandle controller =
         (PyActorHandle) Ray.getActor(controllerName, Constants.SERVE_NAMESPACE).get();
 
-    ActorNameList actorNameList = ServeProtoUtil.bytesToProto(
-        (byte[]) controller.task(PyActorMethod.of("get_http_proxy_names")).remote().get(),
-        ActorNameList::parseFrom);
+    ActorNameList actorNameList =
+        ServeProtoUtil.bytesToProto(
+            (byte[]) controller.task(PyActorMethod.of("get_http_proxy_names")).remote().get(),
+            ActorNameList::parseFrom);
     if (actorNameList != null && !CollectionUtil.isEmpty(actorNameList.getNamesList())) {
       try {
         for (String name : actorNameList.getNamesList()) {
           PyActorHandle proxyActorHandle =
               (PyActorHandle) Ray.getActor(name, Constants.SERVE_NAMESPACE).get();
-          proxyActorHandle.task(PyActorMethod.of("ready"))
+          proxyActorHandle
+              .task(PyActorMethod.of("ready"))
               .remote()
               .get(Constants.PROXY_TIMEOUT_S * 1000);
         }
@@ -118,10 +118,10 @@ public class Serve {
       }
     }
 
-    ServeControllerClient client =
-        new ServeControllerClient(controller, controllerName, detached);
+    ServeControllerClient client = new ServeControllerClient(controller, controllerName, detached);
     setGlobalClient(client);
-    LOGGER.info("Started{}Serve instance in namespace {}",
+    LOGGER.info(
+        "Started{}Serve instance in namespace {}",
         detached ? " detached " : " ",
         Constants.SERVE_NAMESPACE);
     return client;
@@ -164,13 +164,14 @@ public class Serve {
    * @param servableObject the servable object of the specified replica.
    * @param config
    */
-  public static void setInternalReplicaContext(String deploymentName,
+  public static void setInternalReplicaContext(
+      String deploymentName,
       String replicaTag,
       String controllerName,
       Object servableObject,
       Map<String, String> config) {
-    INTERNAL_REPLICA_CONTEXT = new ReplicaContext(
-        deploymentName, replicaTag, controllerName, servableObject, config);
+    INTERNAL_REPLICA_CONTEXT =
+        new ReplicaContext(deploymentName, replicaTag, controllerName, servableObject, config);
   }
 
   public static void setInternalReplicaContext(ReplicaContext replicaContext) {
@@ -180,8 +181,8 @@ public class Serve {
   /**
    * If called from a deployment, returns the deployment and replica tag.
    *
-   * <p>A replica tag uniquely identifies a single replica for a Ray Serve deployment at
-   * runtime. Replica tags are of the form `<deployment_name>#<random letters>`.
+   * <p>A replica tag uniquely identifies a single replica for a Ray Serve deployment at runtime.
+   * Replica tags are of the form `<deployment_name>#<random letters>`.
    *
    * @return the replica context if it exists, or throw RayServeException.
    */
@@ -196,8 +197,8 @@ public class Serve {
   /**
    * Gets the global client, which stores the controller's handle.
    *
-   * @param healthCheckController If True, run a health check on the cached controller if
-   *     it exists. If the check fails, try reconnecting to the controller.
+   * @param healthCheckController If True, run a health check on the cached controller if it exists.
+   *     If the check fails, try reconnecting to the controller.
    * @return
    */
   public static ServeControllerClient getGlobalClient(boolean healthCheckController) {
@@ -233,11 +234,11 @@ public class Serve {
   /**
    * Connect to an existing Serve instance on this Ray cluster.
    *
-   * <p>If calling from the driver program, the Serve instance on this Ray cluster must
-   * first have been initialized using `Serve.start`.
+   * <p>If calling from the driver program, the Serve instance on this Ray cluster must first have
+   * been initialized using `Serve.start`.
    *
-   * <p>If called from within a replica, this will connect to the same Serve instance that
-   * the replica is running in.
+   * <p>If called from within a replica, this will connect to the same Serve instance that the
+   * replica is running in.
    *
    * @return
    */
@@ -248,18 +249,19 @@ public class Serve {
       Ray.init();
     }
 
-    String controllerName = INTERNAL_REPLICA_CONTEXT != null
-        ? INTERNAL_REPLICA_CONTEXT.getInternalControllerName()
-        : Constants.SERVE_CONTROLLER_NAME;
+    String controllerName =
+        INTERNAL_REPLICA_CONTEXT != null
+            ? INTERNAL_REPLICA_CONTEXT.getInternalControllerName()
+            : Constants.SERVE_CONTROLLER_NAME;
 
-    Optional<BaseActorHandle> optional =
-        Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
-    Preconditions.checkState(optional.isPresent(),
-        LogUtil.format("There is no instance running on this Ray cluster. "
-            + "Please call `serve.start(detached=True) to start one."));
+    Optional<BaseActorHandle> optional = Ray.getActor(controllerName, Constants.SERVE_NAMESPACE);
+    Preconditions.checkState(
+        optional.isPresent(),
+        LogUtil.format(
+            "There is no instance running on this Ray cluster. "
+                + "Please call `serve.start(detached=True) to start one."));
 
-    ServeControllerClient client =
-        new ServeControllerClient(optional.get(), controllerName, true);
+    ServeControllerClient client = new ServeControllerClient(optional.get(), controllerName, true);
 
     setGlobalClient(client);
     return client;
@@ -268,8 +270,8 @@ public class Serve {
   /**
    * Dynamically fetch a handle to a Deployment object.
    *
-   * <p>This can be used to update and redeploy a deployment without access to the
-   * original definition.
+   * <p>This can be used to update and redeploy a deployment without access to the original
+   * definition.
    *
    * @param name name of the deployment. This must have already been deployed.
    * @return Deployment
@@ -277,8 +279,8 @@ public class Serve {
   public static Deployment getDeployment(String name) {
     DeploymentRoute deploymentRoute = getGlobalClient().getDeploymentInfo(name);
     if (deploymentRoute == null) {
-      throw new RayServeException(LogUtil.format(
-          "Deployment {} was not found. Did you call Deployment.deploy?", name));
+      throw new RayServeException(
+          LogUtil.format("Deployment {} was not found. Did you call Deployment.deploy?", name));
     }
 
     // TODO use DeploymentCreator
@@ -307,7 +309,8 @@ public class Serve {
     }
     Map<String, Deployment> deployments = new HashMap<>(infos.size());
     for (Map.Entry<String, DeploymentRoute> entry : infos.entrySet()) {
-      deployments.put(entry.getKey(),
+      deployments.put(
+          entry.getKey(),
           new Deployment(
               entry.getValue().getDeploymentInfo().getReplicaConfig().getDeploymentDef(),
               entry.getKey(),
@@ -316,10 +319,7 @@ public class Serve {
               null,
               entry.getValue().getDeploymentInfo().getReplicaConfig().getInitArgs(),
               entry.getValue().getRoute(),
-              entry.getValue()
-                  .getDeploymentInfo()
-                  .getReplicaConfig()
-                  .getRayActorOptions()));
+              entry.getValue().getDeploymentInfo().getReplicaConfig().getRayActorOptions()));
     }
     return deployments;
   }

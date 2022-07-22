@@ -24,8 +24,9 @@ public class ClientTest {
 
     try {
       String prefix = "ClientTest";
-      String controllerName = CommonUtil.formatActorName(
-          Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String endpointName = prefix + "_endpoint";
       Map<String, String> config = new HashMap<>();
       config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
@@ -39,8 +40,7 @@ public class ClientTest {
 
       // Mock endpoints.
       Map<String, EndpointInfo> endpoints = new HashMap<>();
-      endpoints.put(
-          endpointName, EndpointInfo.newBuilder().setEndpointName(endpointName).build());
+      endpoints.put(endpointName, EndpointInfo.newBuilder().setEndpointName(endpointName).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpoints).remote();
 
       // Client.

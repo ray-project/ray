@@ -36,8 +36,9 @@ public class ProxyActorTest extends BaseTest {
 
     try {
       String prefix = "ProxyActorTest";
-      String controllerName = CommonUtil.formatActorName(
-          Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
+      String controllerName =
+          CommonUtil.formatActorName(
+              Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String deploymentName = prefix;
       String replicaTag = prefix;
       String endpointName = prefix;
@@ -50,11 +51,9 @@ public class ProxyActorTest extends BaseTest {
       ActorHandle<DummyServeController> controller =
           Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
-      endpointInfos.put(endpointName,
-          EndpointInfo.newBuilder()
-              .setEndpointName(endpointName)
-              .setRoute(route)
-              .build());
+      endpointInfos.put(
+          endpointName,
+          EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
       controller.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
       // Replica
@@ -67,12 +66,10 @@ public class ProxyActorTest extends BaseTest {
               .setDeploymentDef(DummyReplica.class.getName())
               .setConfig(config);
 
-      ActorHandle<RayServeWrappedReplica> replica = Ray.actor(RayServeWrappedReplica::new,
-                                                           deploymentWrapper,
-                                                           replicaTag,
-                                                           controllerName)
-                                                        .setName(replicaTag)
-                                                        .remote();
+      ActorHandle<RayServeWrappedReplica> replica =
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
+              .setName(replicaTag)
+              .remote();
       Assert.assertTrue(replica.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ProxyActor
@@ -80,7 +77,8 @@ public class ProxyActorTest extends BaseTest {
       Assert.assertTrue(proxyActor.ready());
 
       proxyActor.getProxyRouter().updateRoutes(endpointInfos);
-      proxyActor.getProxyRouter()
+      proxyActor
+          .getProxyRouter()
           .getHandles()
           .get(endpointName)
           .getRouter()
@@ -89,15 +87,18 @@ public class ProxyActorTest extends BaseTest {
 
       // Send request.
       HttpClient httpClient = HttpClientBuilder.create().build();
-      HttpPost httpPost = new HttpPost("http://localhost:"
-          + ((HttpProxy) proxyActor.getProxies().get(HttpProxy.PROXY_NAME)).getPort()
-          + route);
+      HttpPost httpPost =
+          new HttpPost(
+              "http://localhost:"
+                  + ((HttpProxy) proxyActor.getProxies().get(HttpProxy.PROXY_NAME)).getPort()
+                  + route);
       try (CloseableHttpResponse httpResponse =
-               (CloseableHttpResponse) httpClient.execute(httpPost)) {
+          (CloseableHttpResponse) httpClient.execute(httpPost)) {
         int status = httpResponse.getCode();
         Assert.assertEquals(status, HttpURLConnection.HTTP_OK);
-        Object result = MessagePackSerializer.decode(
-            EntityUtils.toByteArray(httpResponse.getEntity()), Object.class);
+        Object result =
+            MessagePackSerializer.decode(
+                EntityUtils.toByteArray(httpResponse.getEntity()), Object.class);
 
         Assert.assertNotNull(result);
         Assert.assertEquals("1", result.toString());
