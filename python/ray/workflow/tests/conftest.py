@@ -18,33 +18,30 @@ def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     init_kwargs["storage"] = storage_url
-    ray.shutdown()
-    if use_ray_client:
-        # Kill the Ray cluster.
-        subprocess.check_call(["ray", "stop"])
+
     # Sometimes pytest does not cleanup all global variables.
     # we have to manually reset the workflow storage. This
     # should not be an issue for normal use cases, because global variables
     # are freed after the driver exits.
+    ray.shutdown()
+    subprocess.check_call(["ray", "stop", "--force"])
+    init_kwargs["ray_client_server_port"] = 10001
+    cluster = Cluster()
+    namespace = init_kwargs.pop("namespace")
+    cluster.add_node(**init_kwargs)
+
     if use_ray_client == "ray_client":
-        subprocess.check_call(["ray", "stop", "--force"])
-        init_kwargs["ray_client_server_port"] = 10001
-        cluster = Cluster()
-        namespace = init_kwargs.pop("namespace")
-        cluster.add_node(**init_kwargs)
         address_info = ray.init(
             address=f"ray://{cluster.address.split(':')[0]}:10001", namespace=namespace
         )
     else:
-        address_info = ray.init(**init_kwargs)
+        address_info = ray.init(address=cluster.address, namespace=namespace)
+
     utils.clear_marks()
-    ray.workflow.init()
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    if use_ray_client == "ray_client":
-        cluster.shutdown()
-    subprocess.check_call(["ray", "stop"])
+    cluster.shutdown()
 
 
 @pytest.fixture(scope="function")
