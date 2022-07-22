@@ -179,7 +179,7 @@ def run_async(
     with workflow_context.workflow_step_context(context):
         # checkpoint the workflow
         @client_mode_wrap
-        def _try_checkpoint_workflow() -> bool:
+        def _try_checkpoint_workflow(workflow_state) -> bool:
             ws = WorkflowStorage(workflow_id)
             ws.save_workflow_user_metadata(metadata)
             try:
@@ -187,10 +187,10 @@ def run_async(
                 return True
             except Exception:
                 # The workflow does not exist. We must checkpoint entry workflow.
-                ws.save_workflow_execution_state("", state)
+                ws.save_workflow_execution_state("", workflow_state)
                 return False
 
-        wf_exists = _try_checkpoint_workflow()
+        wf_exists = _try_checkpoint_workflow(state)
         if wf_exists:
             return resume_async(workflow_id)
         ray.get(

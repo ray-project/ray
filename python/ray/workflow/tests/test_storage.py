@@ -39,10 +39,10 @@ def test_delete_1(workflow_start_regular):
 
 def test_delete_2(workflow_start_regular):
     from ray._private.storage import _storage_uri
-    from ray._private.client_mode_hook import client_mode_should_convert
+    from ray.workflow.tests.utils import skip_client_mode_test
 
-    if client_mode_should_convert(auto_init=False):
-        pytest.skip("Not for Ray client test")
+    # This test restarts the cluster, so we cannot test under client mode.
+    skip_client_mode_test()
 
     # Delete a workflow that has not finished and is not running.
     @ray.remote
@@ -126,10 +126,11 @@ def test_delete_2(workflow_start_regular):
 
 
 def test_workflow_storage(workflow_start_regular):
-    from ray._private.client_mode_hook import client_mode_should_convert
+    from ray.workflow.tests.utils import skip_client_mode_test
 
-    if client_mode_should_convert(auto_init=False):
-        pytest.skip("Not for Ray client test")
+    # This test depends on raw storage, so we cannot test under client mode.
+    skip_client_mode_test()
+
     workflow_id = test_workflow_storage.__name__
     wf_storage = workflow_storage.WorkflowStorage(workflow_id)
     task_id = "some_step"
