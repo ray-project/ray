@@ -599,6 +599,7 @@ class Node:
                 try:
                     gcs_address = self.gcs_address
                     self._gcs_client = GcsClient(address=gcs_address)
+                    break
                 except Exception:
                     last_ex = traceback.format_exc()
                     logger.debug(f"Connecting to GCS: {last_ex}")
