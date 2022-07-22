@@ -115,6 +115,7 @@ class MARWILConfig(AlgorithmConfig):
         # fmt: on
 
         # TODO: Delete this and change off_policy_estimation_methods to {}
+        # Also remove the same section from BC
         self.off_policy_estimation_methods = {
             "is": {"type": ImportanceSampling},
             "wis": {"type": WeightedImportanceSampling},
