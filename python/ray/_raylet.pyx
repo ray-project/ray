@@ -1532,6 +1532,7 @@ cdef class CoreWorker:
         cdef:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
+            CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
             c_vector[CObjectReference] return_refs
             CSchedulingStrategy c_scheduling_strategy
@@ -1548,17 +1549,17 @@ cdef class CoreWorker:
                 self, language, args, &args_vector, function_descriptor,
                 &incremented_put_arg_ids)
 
-            # NOTE(edoakes): releasing the GIL while calling this method causes
-            # segfaults. See relevant issue for details:
-            # https://github.com/ray-project/ray/pull/12803
-            return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
-                ray_function, args_vector, CTaskOptions(
-                    name, num_returns, c_resources,
-                    b"",
-                    serialized_runtime_env_info),
-                max_retries, retry_exceptions,
-                c_scheduling_strategy,
-                debugger_breakpoint)
+            task_options = CTaskOptions(
+                name, num_returns, c_resources,
+                b"",
+                serialized_runtime_env_info)
+            with nogil:
+                return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+                    ray_function, args_vector, task_options,
+                    max_retries, retry_exceptions,
+                    c_scheduling_strategy,
+                    debugger_breakpoint,
+                )
 
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
@@ -1659,7 +1660,8 @@ cdef class CoreWorker:
                             c_string name,
                             c_vector[unordered_map[c_string, double]] bundles,
                             c_string strategy,
-                            c_bool is_detached):
+                            c_bool is_detached,
+                            double max_cpu_fraction_per_node):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
@@ -1684,8 +1686,8 @@ cdef class CoreWorker:
                                 name,
                                 c_strategy,
                                 bundles,
-                                is_detached
-                            ),
+                                is_detached,
+                                max_cpu_fraction_per_node),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())
@@ -1742,15 +1744,13 @@ cdef class CoreWorker:
                 self, language, args, &args_vector, function_descriptor,
                 &incremented_put_arg_ids)
 
-            # NOTE(edoakes): releasing the GIL while calling this method causes
-            # segfaults. See relevant issue for details:
-            # https://github.com/ray-project/ray/pull/12803
-            return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
-                c_actor_id,
-                ray_function,
-                args_vector,
-                CTaskOptions(
-                    name, num_returns, c_resources, concurrency_group_name))
+            with nogil:
+                return_refs = CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                    c_actor_id,
+                    ray_function,
+                    args_vector,
+                    CTaskOptions(
+                        name, num_returns, c_resources, concurrency_group_name))
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we

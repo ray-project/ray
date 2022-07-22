@@ -275,7 +275,10 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                 if connect_to_serve:
                     from ray import serve
 
-                    serve.start(detached=True, http_options={"host": "0.0.0.0"})
+                    serve.start(
+                        detached=True,
+                        http_options={"host": "0.0.0.0", "location": "EveryNode"},
+                    )
 
                 return await f(self, *args, **kwargs)
             except Exception as e:

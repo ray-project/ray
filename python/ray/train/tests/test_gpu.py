@@ -1,16 +1,24 @@
 import os
 from timeit import default_timer as timer
+from collections import Counter
 
+from unittest.mock import patch
 import pytest
 import torch
 import torchvision
-from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
+from test_tune import (
+    torch_fashion_mnist,
+    tune_tensorflow_mnist,
+)
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+from ray.cluster_utils import Cluster
+
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
+from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
@@ -24,6 +32,7 @@ from ray.train.examples.torch_fashion_mnist_example import (
 from ray.train.examples.torch_linear_example import LinearDataset
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+from ray.train.torch import TorchConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 
 
@@ -40,6 +49,20 @@ def ray_start_1_cpu_1_gpu():
     address_info = ray.init(num_cpus=1, num_gpus=1)
     yield address_info
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_4_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=8, num_gpus=4)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 # TODO: Refactor as a backend test.
@@ -62,6 +85,40 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
         assert devices == [0, 0]
     elif num_gpus_per_worker == 1:
         assert devices == [0, 1]
+    else:
+        raise RuntimeError(
+            "New parameter for this test has been added without checking that the "
+            "correct devices have been returned."
+        )
+
+
+# TODO: Refactor as a backend test.
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_torch_get_device_dist(ray_2_node_4_gpu, num_gpus_per_worker):
+    @patch("torch.cuda.is_available", lambda: True)
+    def train_fn():
+        return train.torch.get_device().index
+
+    trainer = Trainer(
+        TorchConfig(backend="gloo"),
+        num_workers=int(8 / num_gpus_per_worker),
+        use_gpu=True,
+        resources_per_worker={"GPU": num_gpus_per_worker},
+    )
+    trainer.start()
+    devices = trainer.run(train_fn)
+    trainer.shutdown()
+
+    count = Counter(devices)
+    if num_gpus_per_worker == 0.5:
+        for i in range(4):
+            assert count[i] == 4
+    elif num_gpus_per_worker == 1:
+        for i in range(4):
+            assert count[i] == 2
+    elif num_gpus_per_worker == 2:
+        for i in range(2):
+            assert count[2 * i] == 2
     else:
         raise RuntimeError(
             "New parameter for this test has been added without checking that the "
@@ -302,7 +359,7 @@ def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
 
@@ -319,7 +376,7 @@ def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = TorchTrainer(
         fashion_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
 
@@ -334,7 +391,7 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = HorovodTrainer(
         horovod_torch_train_func,
         train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
     result = results.metrics
@@ -343,6 +400,10 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     torch_fashion_mnist(num_workers=2, use_gpu=True, num_samples=1)
+
+
+def test_concurrent_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
+    torch_fashion_mnist(num_workers=1, use_gpu=True, num_samples=2)
 
 
 def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
@@ -414,6 +475,33 @@ def test_auto_transfer_data_from_host_to_device(
 
     if device_choice == "cuda" and auto_transfer:
         assert compute_average_runtime(host_to_device) >= with_auto_transfer
+
+
+def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
+    """Tests that auto_transfer uses the right device for the cuda stream."""
+    import nvidia_smi
+
+    nvidia_smi.nvmlInit()
+
+    def get_gpu_used_mem(i):
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
+        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        return info.used
+
+    start_gpu_memory = get_gpu_used_mem(1)
+
+    device = torch.device("cuda:1")
+    small_dataloader = [(torch.randn((1024 * 4, 1024 * 4)),) for _ in range(10)]
+    wrapped_dataloader = (  # noqa: F841
+        ray.train.torch.train_loop_utils._WrappedDataLoader(
+            small_dataloader, device, True
+        )
+    )
+
+    end_gpu_memory = get_gpu_used_mem(1)
+
+    # Verify GPU memory usage increases on the right cuda device
+    assert end_gpu_memory > start_gpu_memory
 
 
 if __name__ == "__main__":

@@ -34,15 +34,7 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
-from ray.rllib.offline import InputReader, IOContext, NoopOutput, OutputWriter
-from ray.rllib.offline.estimators import (
-    DirectMethod,
-    DoublyRobust,
-    ImportanceSampling,
-    OffPolicyEstimate,
-    OffPolicyEstimator,
-    WeightedImportanceSampling,
-)
+from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
@@ -143,10 +135,10 @@ class RolloutWorker(ParallelIteratorWorker):
         >>> # Create a rollout worker and using it to collect experiences.
         >>> import gym
         >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
         >>> worker = RolloutWorker( # doctest: +SKIP
         ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-        ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+        ...   policy_spec=PGTF1Policy) # doctest: +SKIP
         >>> print(worker.sample()) # doctest: +SKIP
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
@@ -248,7 +240,6 @@ class RolloutWorker(ParallelIteratorWorker):
         input_creator: Callable[
             [IOContext], InputReader
         ] = lambda ioctx: ioctx.default_sampler_input(),
-        off_policy_estimation_methods: Optional[Dict[str, Dict]] = None,
         output_creator: Callable[
             [IOContext], OutputWriter
         ] = lambda ioctx: NoopOutput(),
@@ -345,19 +336,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator: Function that returns an InputReader object for
                 loading previous generated experiences.
-            off_policy_estimation_methods: Specify how to evaluate the current policy,
-                along with any optional config parameters. This only has an effect when
-                reading offline experiences ("input" is not "sampler").
-                Available keys:
-                {ope_method_name: {"type": ope_type, ...}} where `ope_method_name`
-                is a user-defined string to save the OPE results under, and
-                `ope_type` can be any subclass of OffPolicyEstimator, e.g.
-                ray.rllib.offline.estimators.is::ImportanceSampling
-                or your own custom subclass, or the full class path to the subclass.
-                You can also add additional config arguments to be passed to the
-                OffPolicyEstimator in the dict, e.g.
-                {"qreg_dr": {"type": DoublyRobust, "q_model_type": "qreg", "k": 5}}
-                See ray/rllib/offline/estimators for more information.
             output_creator: Function that returns an OutputWriter object for
                 saving generated experiences.
             remote_worker_envs: If using num_envs_per_worker > 1,
@@ -422,7 +400,10 @@ class RolloutWorker(ParallelIteratorWorker):
         policy_config = policy_config or {}
         if (
             tf1
-            and policy_config.get("framework") in ["tf2", "tfe"]
+            and (
+                policy_config.get("framework") in ["tf2", "tfe"]
+                or policy_config.get("enable_tf1_exec_eagerly")
+            )
             # This eager check is necessary for certain all-framework tests
             # that use tf's eager_mode() context generator.
             and not tf1.executing_eagerly()
@@ -473,13 +454,8 @@ class RolloutWorker(ParallelIteratorWorker):
         self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
-        self.preprocessing_enabled: bool = (
-            False
-            if (
-                policy_config.get("_disable_preprocessor_api")
-                or policy_config.get("enable_connectors")
-            )
-            else True
+        self.preprocessing_enabled: bool = not policy_config.get(
+            "_disable_preprocessor_api"
         )
         self.observation_filter = observation_filter
         self.last_batch: Optional[SampleBatchType] = None
@@ -719,56 +695,6 @@ class RolloutWorker(ParallelIteratorWorker):
         self.io_context: IOContext = IOContext(
             log_dir, policy_config, worker_index, self
         )
-        self.reward_estimators: List[OffPolicyEstimator] = []
-        ope_types = {
-            "is": ImportanceSampling,
-            "wis": WeightedImportanceSampling,
-            "dm": DirectMethod,
-            "dr": DoublyRobust,
-        }
-        off_policy_estimation_methods = off_policy_estimation_methods or {}
-        for name, method_config in off_policy_estimation_methods.items():
-            method_type = method_config.pop("type")
-            if method_type in ope_types:
-                deprecation_warning(
-                    old=method_type,
-                    new=str(ope_types[method_type]),
-                    error=False,
-                )
-                method_type = ope_types[method_type]
-            if method_type == "simulation":
-                deprecation_warning(
-                    old='off_policy_estimation_methods={"simulation"}',
-                    new='input="sampler"',
-                    help="The `simulation` estimation method has been deprecated."
-                    "If you want to run online evaluation on your data, use"
-                    'config.evaluation_config["input"] = "sampler" instead.',
-                    error=False,
-                )
-                sample_async = True
-            # TODO: Allow for this to be a full classpath string as well, then construct
-            #  this with our `from_config` util.
-            elif isinstance(method_type, type) and issubclass(
-                method_type, OffPolicyEstimator
-            ):
-                gamma = self.io_context.worker.policy_config["gamma"]
-                # Grab a reference to the current model
-                keys = list(self.io_context.worker.policy_map.keys())
-                if len(keys) > 1:
-                    raise NotImplementedError(
-                        "Off-policy estimation is not implemented for multi-agent. "
-                        "You can set `input_evaluation: []` to resolve this."
-                    )
-                policy = self.io_context.worker.get_policy(keys[0])
-                self.reward_estimators.append(
-                    method_type(name=name, policy=policy, gamma=gamma, **method_config)
-                )
-            else:
-                raise ValueError(
-                    f"Unknown off_policy_estimation type: {method_type}! Must be "
-                    "either a class path or a sub-class of ray.rllib."
-                    "offline.estimators.off_policy_estimator::OffPolicyEstimator"
-                )
 
         render = False
         if policy_config.get("render_env") is True and (
@@ -795,7 +721,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 observation_fn=observation_fn,
                 sample_collector_class=policy_config.get("sample_collector"),
                 render=render,
-                blackhole_outputs="simulation" in off_policy_estimation_methods,
             )
             # Start the Sampler thread.
             self.sampler.start()
@@ -855,10 +780,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
             >>> print(worker.sample()) # doctest: +SKIP
             SampleBatch({"obs": [...], "action": [...], ...})
         """
@@ -909,10 +834,6 @@ class RolloutWorker(ParallelIteratorWorker):
         # for better compression inside the writer.
         self.output_writer.write(batch)
 
-        # Do off-policy estimation, if needed.
-        for estimator in self.reward_estimators:
-            estimator.process(batch)
-
         if log_once("sample_end"):
             logger.info("Completed sample batch:\n\n{}\n".format(summarize(batch)))
 
@@ -935,7 +856,7 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
             ...   policy_spec=PGTFPolicy) # doctest: +SKIP
@@ -961,10 +882,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
         """
@@ -1078,10 +999,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
             >>> batch = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
         """
@@ -1147,10 +1068,10 @@ class RolloutWorker(ParallelIteratorWorker):
         Examples:
             >>> import gym
             >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGStaticGraphTFPolicy
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
             >>> worker = RolloutWorker( # doctest: +SKIP
             ...   env_creator=lambda _: gym.make("CartPole-v0"), # doctest: +SKIP
-            ...   policy_spec=PGStaticGraphTFPolicy) # doctest: +SKIP
+            ...   policy_spec=PGTF1Policy) # doctest: +SKIP
             >>> samples = worker.sample() # doctest: +SKIP
             >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
             >>> worker.apply_gradients(grads) # doctest: +SKIP
@@ -1168,11 +1089,11 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     @DeveloperAPI
-    def get_metrics(self) -> List[Union[RolloutMetrics, OffPolicyEstimate]]:
+    def get_metrics(self) -> List[RolloutMetrics]:
         """Returns the thus-far collected metrics from this worker's rollouts.
 
         Returns:
-             List of RolloutMetrics and/or OffPolicyEstimate objects
+             List of RolloutMetrics
              collected thus-far.
         """
 
@@ -1181,9 +1102,6 @@ class RolloutWorker(ParallelIteratorWorker):
             out = self.sampler.get_metrics()
         else:
             out = []
-        # Get metrics from our reward estimators (if any).
-        for m in self.reward_estimators:
-            out.extend(m.get_metrics())
 
         return out
 
@@ -1840,17 +1758,27 @@ class RolloutWorker(ParallelIteratorWorker):
             merged_conf["num_workers"] = self.num_workers
             merged_conf["worker_index"] = self.worker_index
 
+            connectors_enabled = policy_config.get("enable_connectors", False)
+
             # Preprocessors.
             obs_space = policy_spec.observation_space
+            # Initialize preprocessor for this policy to None.
+            self.preprocessors[name] = None
             if self.preprocessing_enabled:
+                # Policies should deal with preprocessed (automatically flattened)
+                # observations if preprocessing is enabled.
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model")
                 )
-                self.preprocessors[name] = preprocessor
+                # Original observation space should be accessible at
+                # obs_space.original_space after this step.
                 if preprocessor is not None:
                     obs_space = preprocessor.observation_space
-            else:
-                self.preprocessors[name] = None
+
+                if not connectors_enabled:
+                    # If connectors are not enabled, rollout worker will handle
+                    # the running of these preprocessors.
+                    self.preprocessors[name] = preprocessor
 
             # Create the actual policy object.
             self.policy_map.create_policy(
@@ -1862,11 +1790,13 @@ class RolloutWorker(ParallelIteratorWorker):
                 merged_conf,
             )
 
-            if (
-                policy_config.get("enable_connectors", False)
-                and name in self.policy_map
-            ):
+            if connectors_enabled and name in self.policy_map:
                 create_connectors_for_policy(self.policy_map[name], policy_config)
+
+            if name in self.policy_map:
+                self.callbacks.on_create_policy(
+                    policy_id=name, policy=self.policy_map[name]
+                )
 
         if self.worker_index == 0:
             logger.info(f"Built policy map: {self.policy_map}")

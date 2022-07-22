@@ -274,11 +274,11 @@ class Deployment:
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None,
-        _health_check_period_s: Optional[float] = None,
-        _health_check_timeout_s: Optional[float] = None,
+        autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+        graceful_shutdown_wait_loop_s: Optional[float] = None,
+        graceful_shutdown_timeout_s: Optional[float] = None,
+        health_check_period_s: Optional[float] = None,
+        health_check_timeout_s: Optional[float] = None,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -287,10 +287,10 @@ class Deployment:
         """
         new_config = self._config.copy()
 
-        if num_replicas is not None and _autoscaling_config is not None:
+        if num_replicas is not None and autoscaling_config is not None:
             raise ValueError(
                 "Manually setting num_replicas is not allowed when "
-                "_autoscaling_config is provided."
+                "autoscaling_config is provided."
             )
 
         if num_replicas == 0:
@@ -325,20 +325,20 @@ class Deployment:
         if ray_actor_options is None:
             ray_actor_options = self._ray_actor_options
 
-        if _autoscaling_config is not None:
-            new_config.autoscaling_config = _autoscaling_config
+        if autoscaling_config is not None:
+            new_config.autoscaling_config = autoscaling_config
 
-        if _graceful_shutdown_wait_loop_s is not None:
-            new_config.graceful_shutdown_wait_loop_s = _graceful_shutdown_wait_loop_s
+        if graceful_shutdown_wait_loop_s is not None:
+            new_config.graceful_shutdown_wait_loop_s = graceful_shutdown_wait_loop_s
 
-        if _graceful_shutdown_timeout_s is not None:
-            new_config.graceful_shutdown_timeout_s = _graceful_shutdown_timeout_s
+        if graceful_shutdown_timeout_s is not None:
+            new_config.graceful_shutdown_timeout_s = graceful_shutdown_timeout_s
 
-        if _health_check_period_s is not None:
-            new_config.health_check_period_s = _health_check_period_s
+        if health_check_period_s is not None:
+            new_config.health_check_period_s = health_check_period_s
 
-        if _health_check_timeout_s is not None:
-            new_config.health_check_timeout_s = _health_check_timeout_s
+        if health_check_timeout_s is not None:
+            new_config.health_check_timeout_s = health_check_timeout_s
 
         return Deployment(
             func_or_class,
@@ -365,11 +365,11 @@ class Deployment:
         ray_actor_options: Optional[Dict] = None,
         user_config: Optional[Any] = None,
         max_concurrent_queries: Optional[int] = None,
-        _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-        _graceful_shutdown_wait_loop_s: Optional[float] = None,
-        _graceful_shutdown_timeout_s: Optional[float] = None,
-        _health_check_period_s: Optional[float] = None,
-        _health_check_timeout_s: Optional[float] = None,
+        autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+        graceful_shutdown_wait_loop_s: Optional[float] = None,
+        graceful_shutdown_timeout_s: Optional[float] = None,
+        health_check_period_s: Optional[float] = None,
+        health_check_timeout_s: Optional[float] = None,
     ) -> None:
         """Overwrite this deployment's options. Mutates the deployment.
 
@@ -388,11 +388,11 @@ class Deployment:
             ray_actor_options=ray_actor_options,
             user_config=user_config,
             max_concurrent_queries=max_concurrent_queries,
-            _autoscaling_config=_autoscaling_config,
-            _graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
-            _graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
-            _health_check_period_s=_health_check_period_s,
-            _health_check_timeout_s=_health_check_timeout_s,
+            autoscaling_config=autoscaling_config,
+            graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
+            graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
+            health_check_period_s=health_check_period_s,
+            health_check_timeout_s=health_check_timeout_s,
         )
 
         self._func_or_class = validated._func_or_class

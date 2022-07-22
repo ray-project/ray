@@ -20,8 +20,9 @@ Workflow events are a special type of workflow task. They "finish" when the even
 
 .. code-block:: python
 
-    from ray import workflow
     import time
+    import ray
+    from ray import workflow
 
     # Create an event which finishes after 60 seconds.
     event1_task = workflow.wait_for_event(workflow.event_listener.TimerListener, time.time() + 60)
@@ -34,7 +35,7 @@ Workflow events are a special type of workflow task. They "finish" when the even
         return args
 
     # Gather will run after 60 seconds, when both event1 and event2 are done.
-    workflow.run(gather.bind(event1_task, event_2_task))
+    workflow.run(gather.bind(event1_task, event2_task))
 
 
 Custom event listeners

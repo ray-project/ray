@@ -7,14 +7,7 @@ from ray.data.preprocessors import StandardScaler
 from ray.air import train_test_split
 
 # Load data.
-import pandas as pd
-
-bc_df = pd.read_csv(
-    "https://air-example-data.s3.us-east-2.amazonaws.com/breast_cancer.csv"
-)
-dataset = ray.data.from_pandas(bc_df)
-# Optionally, read directly from s3
-# dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
+dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
 train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
@@ -33,27 +26,13 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 import numpy as np
 import pandas as pd
 
-from ray.data.preprocessors import BatchMapper, Chain
-
-# Get the training data schema
-schema_order = [k for k in train_dataset.schema().names if k != "target"]
-
-
-def concat_for_tensor(dataframe):
-    # Concatenate the dataframe into a single tensor.
-    from ray.data.extensions import TensorArray
-
-    result = {}
-    input_data = dataframe[schema_order].to_numpy(dtype=np.float32)
-    result["input"] = TensorArray(input_data)
-    if "target" in dataframe:
-        target_data = dataframe["target"].to_numpy(dtype=np.float32)
-        result["target"] = TensorArray(target_data)
-    return pd.DataFrame(result)
-
+from ray.data.preprocessors import Concatenator, Chain
 
 # Chain the preprocessors together.
-preprocessor = Chain(preprocessor, BatchMapper(concat_for_tensor))
+preprocessor = Chain(
+    preprocessor,
+    Concatenator(exclude=["target"], dtype=np.float32),
+)
 # __air_pytorch_preprocess_end__
 
 
@@ -64,7 +43,8 @@ from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
 from ray import train
 from ray.air import session
-from ray.train.torch import TorchTrainer, to_air_checkpoint
+from ray.air.config import ScalingConfig
+from ray.train.torch import TorchCheckpoint, TorchTrainer
 
 
 def create_model(input_features):
@@ -92,9 +72,12 @@ def train_loop_per_worker(config):
         data_iterator = dataset.iter_batches(
             batch_format="numpy", batch_size=batch_size
         )
-
         for d in data_iterator:
-            yield torch.Tensor(d["input"]).float(), torch.Tensor(d["target"]).float()
+            # "concat_out" is the output column of the Concatenator.
+            yield (
+                torch.Tensor(d["concat_out"]).float(),
+                torch.Tensor(d["target"]).float(),
+            )
 
     # Create model.
     model = create_model(num_features)
@@ -111,31 +94,24 @@ def train_loop_per_worker(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
+        session.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
 
 
-num_features = len(schema_order)
+num_features = len(train_dataset.schema().names) - 1
 
 trainer = TorchTrainer(
     train_loop_per_worker=train_loop_per_worker,
     train_loop_config={
-        # Training batch size
         "batch_size": 128,
-        # Number of epochs to train each task for.
         "num_epochs": 20,
-        # Number of columns of datset
         "num_features": num_features,
-        # Optimizer args.
         "lr": 0.001,
     },
-    scaling_config={
-        # Number of workers to use for data parallelism.
-        "num_workers": 3,
-        # Whether to use GPU acceleration.
-        "use_gpu": False,
-        # trainer_resources=0 so that the example works on Colab.
-        "trainer_resources": {"CPU": 0},
-    },
+    scaling_config=ScalingConfig(
+        num_workers=3,  # Number of workers to use for data parallelism.
+        use_gpu=False,
+        trainer_resources={"CPU": 0},  # so that the example works on Colab.
+    ),
     datasets={"train": train_dataset},
     preprocessor=preprocessor,
 )
@@ -174,7 +150,8 @@ print("Best Result:", best_result)
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor
 
-# You can also create a checkpoint from a trained model using `to_air_checkpoint`.
+# You can also create a checkpoint from a trained model using
+# `TorchCheckpoint.from_model`.
 checkpoint = best_result.checkpoint
 
 batch_predictor = BatchPredictor.from_checkpoint(

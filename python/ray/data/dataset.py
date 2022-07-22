@@ -32,22 +32,23 @@ from ray.data._internal.compute import (
     TaskPoolStrategy,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.util import _estimate_available_parallelism
 from ray.data._internal.plan import (
-    AllToAllStage,
     ExecutionPlan,
     OneToOneStage,
+)
+from ray.data._internal.stage_impl import (
     RandomizeBlocksStage,
+    RepartitionStage,
+    RandomShuffleStage,
+    ZipStage,
+    SortStage,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.shuffle_and_partition import (
-    PushBasedShufflePartitionOp,
-    SimpleShufflePartitionOp,
-)
-from ray.data._internal.sort import sort_impl
+from ray.data._internal.split import _split_at_index, _split_at_indices, _get_num_rows
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.table_block import VALUE_COL_NAME
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
@@ -56,7 +57,6 @@ from ray.data.block import (
     BatchUDF,
     Block,
     BlockAccessor,
-    BlockExecStats,
     BlockMetadata,
     BlockPartition,
     BlockPartitionMetadata,
@@ -66,7 +66,12 @@ from ray.data.block import (
     U,
     _validate_key_fn,
 )
-from ray.data.context import DatasetContext
+from ray.data.context import (
+    DatasetContext,
+    WARN_PREFIX,
+    OK_PREFIX,
+    ESTIMATED_SAFE_MEMORY_FRACTION,
+)
 from ray.data.datasource import (
     BlockWritePathProvider,
     CSVDatasource,
@@ -142,6 +147,10 @@ class Dataset(Generic[T]):
         >>> # Save dataset back to external storage system.
         >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
 
+    Datasets has two kinds of operations: tranformation, which takes in Datasets and
+    outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption, which
+    produces values (not Dataset) as output (e.g. :py:meth:`.iter_batches()`).
+
     Datasets supports parallel processing at scale: transformations such as
     :py:meth:`.map_batches()`, aggregations such as
     :py:meth:`.min()`/:py:meth:`.max()`/:py:meth:`.mean()`, grouping via
@@ -176,7 +185,6 @@ class Dataset(Generic[T]):
         lazy: bool,
         *,
         defer_execution: bool = False,
-        used_from_dataset_pipeline: bool = False,
     ):
         """Construct a Dataset (internal API).
 
@@ -190,7 +198,6 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._lazy = lazy
-        self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
         if not lazy and not defer_execution:
             self._plan.execute(allow_clear_input_blocks=False)
@@ -201,7 +208,7 @@ class Dataset(Generic[T]):
 
     def map(
         self,
-        fn: RowUDF,
+        fn: RowUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -267,7 +274,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
-        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -572,7 +579,7 @@ class Dataset(Generic[T]):
 
     def flat_map(
         self,
-        fn: RowUDF,
+        fn: RowUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -618,7 +625,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
-        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -638,7 +645,7 @@ class Dataset(Generic[T]):
 
     def filter(
         self,
-        fn: RowUDF,
+        fn: RowUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -684,7 +691,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
-        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = block.builder()
@@ -725,50 +732,7 @@ class Dataset(Generic[T]):
             The repartitioned dataset.
         """
 
-        if shuffle:
-
-            def do_shuffle(
-                block_list, clear_input_blocks: bool, block_udf, remote_args
-            ):
-                if clear_input_blocks:
-                    blocks = block_list.copy()
-                    block_list.clear()
-                else:
-                    blocks = block_list
-                context = DatasetContext.get_current()
-                if context.use_push_based_shuffle:
-                    shuffle_op_cls = PushBasedShufflePartitionOp
-                else:
-                    shuffle_op_cls = SimpleShufflePartitionOp
-                shuffle_op = shuffle_op_cls(block_udf, random_shuffle=False)
-                return shuffle_op.execute(
-                    blocks,
-                    num_blocks,
-                    clear_input_blocks,
-                    map_ray_remote_args=remote_args,
-                    reduce_ray_remote_args=remote_args,
-                )
-
-            plan = self._plan.with_stage(
-                AllToAllStage(
-                    "repartition", num_blocks, do_shuffle, supports_block_udf=True
-                )
-            )
-
-        else:
-
-            def do_fast_repartition(block_list, clear_input_blocks: bool, *_):
-                if clear_input_blocks:
-                    blocks = block_list.copy()
-                    block_list.clear()
-                else:
-                    blocks = block_list
-                return fast_repartition(blocks, num_blocks)
-
-            plan = self._plan.with_stage(
-                AllToAllStage("repartition", num_blocks, do_fast_repartition)
-            )
-
+        plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
         return Dataset(plan, self._epoch, self._lazy)
 
     def random_shuffle(
@@ -801,36 +765,7 @@ class Dataset(Generic[T]):
             The shuffled dataset.
         """
 
-        def do_shuffle(block_list, clear_input_blocks: bool, block_udf, remote_args):
-            num_blocks = block_list.executed_num_blocks()  # Blocking.
-            if num_blocks == 0:
-                return block_list, {}
-            if clear_input_blocks:
-                blocks = block_list.copy()
-                block_list.clear()
-            else:
-                blocks = block_list
-            context = DatasetContext.get_current()
-            if context.use_push_based_shuffle:
-                shuffle_op_cls = PushBasedShufflePartitionOp
-            else:
-                shuffle_op_cls = SimpleShufflePartitionOp
-            random_shuffle_op = shuffle_op_cls(
-                block_udf, random_shuffle=True, random_seed=seed
-            )
-            return random_shuffle_op.execute(
-                blocks,
-                num_blocks,
-                clear_input_blocks,
-                map_ray_remote_args=remote_args,
-                reduce_ray_remote_args=remote_args,
-            )
-
-        plan = self._plan.with_stage(
-            AllToAllStage(
-                "random_shuffle", num_blocks, do_shuffle, supports_block_udf=True
-            )
-        )
+        plan = self._plan.with_stage(RandomShuffleStage(seed, num_blocks))
         return Dataset(plan, self._epoch, self._lazy)
 
     def randomize_block_order(
@@ -936,8 +871,8 @@ class Dataset(Generic[T]):
             equal: Whether to guarantee each split has an equal
                 number of records. This may drop records if they cannot be
                 divided equally among the splits.
-            locality_hints: A list of Ray actor handles of size ``n``. The
-                system will try to co-locate the blocks of the i-th dataset
+            locality_hints: [Experimental] A list of Ray actor handles of size ``n``.
+                The system will try to co-locate the blocks of the i-th dataset
                 with the i-th actor to maximize data locality.
 
         Returns:
@@ -945,6 +880,19 @@ class Dataset(Generic[T]):
         """
         if n <= 0:
             raise ValueError(f"The number of splits {n} is not positive.")
+
+        # fallback to split_at_indices for equal split without locality hints.
+        # simple benchmarks shows spilit_at_indices yields more stable performance.
+        # https://github.com/ray-project/ray/pull/26641 for more context.
+        if equal and locality_hints is None:
+            count = self.count()
+            split_index = count // n
+            # we are creating n split_indices which will generate
+            # n + 1 splits; the last split will at most contains (n - 1)
+            # rows, which could be safely dropped.
+            split_indices = [split_index * i for i in range(1, n + 1)]
+            shards = self.split_at_indices(split_indices)
+            return shards[:n]
 
         if locality_hints and len(locality_hints) != n:
             raise ValueError(
@@ -1114,6 +1062,7 @@ class Dataset(Generic[T]):
 
         block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
+        owned_by_consumer = blocks._owned_by_consumer
 
         if locality_hints is None:
             ds = equalize(
@@ -1121,13 +1070,15 @@ class Dataset(Generic[T]):
                     Dataset(
                         ExecutionPlan(
                             BlockList(
-                                list(blocks), [metadata_mapping[b] for b in blocks]
+                                list(blocks),
+                                [metadata_mapping[b] for b in blocks],
+                                owned_by_consumer=owned_by_consumer,
                             ),
                             stats,
+                            run_by_consumer=owned_by_consumer,
                         ),
                         self._epoch,
                         self._lazy,
-                        used_from_dataset_pipeline=self._used_from_dataset_pipeline,
                     )
                     for blocks in np.array_split(block_refs, n)
                 ],
@@ -1235,12 +1186,13 @@ class Dataset(Generic[T]):
                         BlockList(
                             allocation_per_actor[actor],
                             [metadata_mapping[b] for b in allocation_per_actor[actor]],
+                            owned_by_consumer=owned_by_consumer,
                         ),
                         stats,
+                        run_by_consumer=owned_by_consumer,
                     ),
                     self._epoch,
                     self._lazy,
-                    used_from_dataset_pipeline=self._used_from_dataset_pipeline,
                 )
                 for actor in locality_hints
             ],
@@ -1280,16 +1232,29 @@ class Dataset(Generic[T]):
             raise ValueError("indices must be sorted")
         if indices[0] < 0:
             raise ValueError("indices must be positive")
-
-        rest = self
+        start_time = time.perf_counter()
+        block_list = self._plan.execute()
+        blocks_with_metadata = block_list.get_blocks_with_metadata()
+        blocks, metadata = _split_at_indices(blocks_with_metadata, indices)
+        split_duration = time.perf_counter() - start_time
+        parent_stats = self._plan.stats()
         splits = []
-        prev = 0
-        for i in indices:
-            first, rest = rest._split(i - prev, return_right_half=True)
-            prev = i
-            splits.append(first)
-        splits.append(rest)
-
+        for bs, ms in zip(blocks, metadata):
+            stats = DatasetStats(stages={"split": ms}, parent=parent_stats)
+            stats.time_total_s = split_duration
+            splits.append(
+                Dataset(
+                    ExecutionPlan(
+                        BlockList(
+                            bs, ms, owned_by_consumer=block_list._owned_by_consumer
+                        ),
+                        stats,
+                        run_by_consumer=block_list._owned_by_consumer,
+                    ),
+                    self._epoch,
+                    self._lazy,
+                )
+            )
         return splits
 
     def split_proportionately(self, proportions: List[float]) -> List["Dataset[T]"]:
@@ -1378,6 +1343,7 @@ class Dataset(Generic[T]):
 
         start_time = time.perf_counter()
 
+        owned_by_consumer = self._plan.execute()._owned_by_consumer
         datasets = [self] + list(other)
         bls = []
         has_nonlazy = False
@@ -1396,7 +1362,7 @@ class Dataset(Generic[T]):
                     bs, ms = bl._blocks, bl._metadata
                 blocks.extend(bs)
                 metadata.extend(ms)
-            blocklist = BlockList(blocks, metadata)
+            blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1406,7 +1372,10 @@ class Dataset(Generic[T]):
                 block_partition_refs.extend(bl._block_partition_refs)
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             blocklist = LazyBlockList(
-                tasks, block_partition_refs, block_partition_meta_refs
+                tasks,
+                block_partition_refs,
+                block_partition_meta_refs,
+                owned_by_consumer=owned_by_consumer,
             )
 
         epochs = [ds._get_epoch() for ds in datasets]
@@ -1427,10 +1396,9 @@ class Dataset(Generic[T]):
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(blocklist, dataset_stats),
+            ExecutionPlan(blocklist, dataset_stats, run_by_consumer=owned_by_consumer),
             max_epoch,
             self._lazy,
-            used_from_dataset_pipeline=self._used_from_dataset_pipeline,
         )
 
     def groupby(self, key: Optional[KeyFn]) -> "GroupedDataset[T]":
@@ -1839,25 +1807,7 @@ class Dataset(Generic[T]):
             A new, sorted dataset.
         """
 
-        def do_sort(block_list, clear_input_blocks: bool, *_):
-            # Handle empty dataset.
-            if block_list.initial_num_blocks() == 0:
-                return block_list, {}
-            if clear_input_blocks:
-                blocks = block_list.copy()
-                block_list.clear()
-            else:
-                blocks = block_list
-            if isinstance(key, list):
-                if not key:
-                    raise ValueError("`key` must be a list of non-zero length")
-                for subkey in key:
-                    _validate_key_fn(self, subkey)
-            else:
-                _validate_key_fn(self, key)
-            return sort_impl(blocks, clear_input_blocks, key, descending)
-
-        plan = self._plan.with_stage(AllToAllStage("sort", None, do_sort))
+        plan = self._plan.with_stage(SortStage(self, key, descending))
         return Dataset(plan, self._epoch, self._lazy)
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
@@ -1887,46 +1837,7 @@ class Dataset(Generic[T]):
             comes from the first dataset and v comes from the second.
         """
 
-        def do_zip_all(block_list, clear_input_blocks: bool, *_):
-            blocks1 = block_list.get_blocks()
-            blocks2 = other.get_internal_block_refs()
-
-            if clear_input_blocks:
-                block_list.clear()
-
-            if len(blocks1) != len(blocks2):
-                # TODO(ekl) consider supporting if num_rows are equal.
-                raise ValueError(
-                    "Cannot zip dataset of different num blocks: {} vs {}".format(
-                        len(blocks1), len(blocks2)
-                    )
-                )
-
-            def do_zip(block1: Block, block2: Block) -> (Block, BlockMetadata):
-                stats = BlockExecStats.builder()
-                b1 = BlockAccessor.for_block(block1)
-                result = b1.zip(block2)
-                br = BlockAccessor.for_block(result)
-                return result, br.get_metadata(input_files=[], exec_stats=stats.build())
-
-            do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
-
-            blocks = []
-            metadata = []
-            for b1, b2 in zip(blocks1, blocks2):
-                res, meta = do_zip_fn.remote(b1, b2)
-                blocks.append(res)
-                metadata.append(meta)
-
-            # Early release memory.
-            del blocks1, blocks2
-
-            # TODO(ekl) it might be nice to have a progress bar here.
-            metadata = ray.get(metadata)
-            blocks = BlockList(blocks, metadata)
-            return blocks, {}
-
-        plan = self._plan.with_stage(AllToAllStage("zip", None, do_zip_all))
+        plan = self._plan.with_stage(ZipStage(other))
         return Dataset(plan, self._epoch, self._lazy)
 
     def limit(self, limit: int) -> "Dataset[T]":
@@ -2440,6 +2351,8 @@ class Dataset(Generic[T]):
         batch_size: Optional[int] = None,
         batch_format: str = "native",
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> Iterator[BatchType]:
         """Return a local batched iterator over the dataset.
 
@@ -2461,6 +2374,23 @@ class Dataset(Generic[T]):
                 to select ``numpy.ndarray`` for tensor datasets and
                 ``Dict[str, numpy.ndarray]`` for tabular datasets. Default is "native".
             drop_last: Whether to drop the last batch if it's incomplete.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. This is a light-weight alternative to
+                the global `.random_shuffle()` operation; this shuffle will be less
+                random but will be faster and less resource-intensive. This buffer size
+                must be greater than or equal to ``batch_size``, and therefore
+                ``batch_size`` must also be specified when using local shuffling.
+                When there are no more rows to be added to the buffer, the number of
+                rows in the buffer *will* decrease below this value while yielding
+                the remaining batches, and the final batch may have less than
+                ``batch_size`` rows. Increasing this will improve the randomness of
+                the shuffle but will increase CPU memory utilization and the latency
+                to the first batch. The CPU memory utilization ceiling is the max of
+                the prefetch buffer size (controlled by ``prefetch_blocks``) and
+                this shuffle buffer size.
+            local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
             An iterator over record batches.
@@ -2477,6 +2407,8 @@ class Dataset(Generic[T]):
             batch_size=batch_size,
             batch_format=batch_format,
             drop_last=drop_last,
+            shuffle_buffer_min_size=local_shuffle_buffer_size,
+            shuffle_seed=local_shuffle_seed,
         )
 
         stats.iter_total_s.add(time.perf_counter() - time_start)
@@ -2495,6 +2427,8 @@ class Dataset(Generic[T]):
         batch_size: int = 1,
         prefetch_blocks: int = 0,
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
         unsqueeze_label_tensor: bool = True,
         unsqueeze_feature_tensors: bool = True,
     ) -> "torch.utils.data.IterableDataset":
@@ -2563,6 +2497,19 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. This is a light-weight alternative to
+                the global `.random_shuffle()` operation; this shuffle will be less
+                random but will be faster and less resource-intensive. This buffer size
+                must be greater than or equal to ``batch_size``, and therefore
+                ``batch_size`` must also be specified when using local shuffling.
+                Increasing this will improve the randomness of the shuffle but will
+                increase CPU memory utilization and the latency to the first batch. The
+                CPU memory utilization ceiling is the max of the prefetch buffer size
+                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+            local_shuffle_seed: The seed to use for the local random shuffle.
             unsqueeze_label_tensor: If set to True, the label tensor
                 will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
                 be left as is, that is (N, ). In general, regression loss
@@ -2621,6 +2568,8 @@ class Dataset(Generic[T]):
                 batch_format="pandas",
                 prefetch_blocks=prefetch_blocks,
                 drop_last=drop_last,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
+                local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
                     label_tensor = convert_pandas_to_torch_tensor(
@@ -2670,6 +2619,8 @@ class Dataset(Generic[T]):
         prefetch_blocks: int = 0,
         batch_size: int = 1,
         drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -2727,6 +2678,19 @@ class Dataset(Generic[T]):
                 if the dataset size is not divisible by the batch size. If
                 False and the size of dataset is not divisible by the batch
                 size, then the last batch will be smaller. Defaults to False.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. This is a light-weight alternative to
+                the global `.random_shuffle()` operation; this shuffle will be less
+                random but will be faster and less resource-intensive. This buffer size
+                must be greater than or equal to ``batch_size``, and therefore
+                ``batch_size`` must also be specified when using local shuffling.
+                Increasing this will improve the randomness of the shuffle but will
+                increase CPU memory utilization and the latency to the first batch. The
+                CPU memory utilization ceiling is the max of the prefetch buffer size
+                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+            local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
             A tf.data.Dataset.
@@ -2752,6 +2716,8 @@ class Dataset(Generic[T]):
                 batch_size=batch_size,
                 batch_format="pandas",
                 drop_last=drop_last,
+                local_shuffle_buffer_size=local_shuffle_buffer_size,
+                local_shuffle_seed=local_shuffle_seed,
             ):
                 if label_column:
                     targets = convert_pandas_to_tf_tensor(batch[[label_column]])
@@ -3076,10 +3042,9 @@ class Dataset(Generic[T]):
             raise ValueError("`times` must be >= 1, got {}".format(times))
 
         class Iterator:
-            def __init__(self, blocks, used_from_dataset_pipeline):
+            def __init__(self, blocks):
                 self._blocks = blocks
                 self._i = 0
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __next__(self) -> "Dataset[T]":
                 if times and self._i >= times:
@@ -3090,10 +3055,11 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
+                        ExecutionPlan(
+                            blocks, outer_stats, dataset_uuid=uuid, run_by_consumer=True
+                        ),
                         epoch,
                         lazy=False,
-                        used_from_dataset_pipeline=True,
                     )
                     ds._set_uuid(uuid)
                     return ds
@@ -3101,25 +3067,17 @@ class Dataset(Generic[T]):
                 return gen
 
         class Iterable:
-            def __init__(self, blocks, used_from_dataset_pipeline):
+            def __init__(self, blocks):
                 self._blocks = blocks
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __iter__(self):
-                return Iterator(self._blocks, self._used_from_dataset_pipeline)
+                return Iterator(self._blocks)
 
-        pipe = DatasetPipeline(
-            Iterable(blocks, self._used_from_dataset_pipeline),
-            False,
-            length=times or float("inf"),
-        )
+        pipe = DatasetPipeline(Iterable(blocks), False, length=times or float("inf"))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage),
-                    ds._epoch,
-                    True,
-                    used_from_dataset_pipeline=True,
+                    ds._plan.with_stage(read_stage), ds._epoch, True
                 )
             )
         return pipe
@@ -3201,10 +3159,9 @@ class Dataset(Generic[T]):
             read_stage = None
 
         class Iterator:
-            def __init__(self, splits, epoch, used_from_dataset_pipeline):
+            def __init__(self, splits, epoch):
                 self._splits = splits.copy()
                 self._epoch = epoch
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __next__(self) -> "Dataset[T]":
                 if not self._splits:
@@ -3214,40 +3171,89 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats),
+                        ExecutionPlan(blocks, outer_stats, run_by_consumer=True),
                         self._epoch,
                         lazy=True,
-                        used_from_dataset_pipeline=True,
                     )
                     return ds
 
                 return gen
 
         class Iterable:
-            def __init__(self, blocks, epoch, used_from_dataset_pipeline):
+            def __init__(self, blocks, epoch):
                 if bytes_per_window:
                     self._splits = blocks.split_by_bytes(bytes_per_window)
                 else:
                     self._splits = blocks.split(split_size=blocks_per_window)
                 try:
                     sizes = [s.size_bytes() for s in self._splits]
+                    num_blocks = [s.initial_num_blocks() for s in self._splits]
                     assert [s > 0 for s in sizes], sizes
 
                     def fmt(size_bytes):
-                        if size_bytes > 10 * 1024:
+                        if size_bytes > 1024 * 1024 * 1024:
+                            return "{}GiB".format(
+                                round(size_bytes / (1024 * 1024 * 1024), 2)
+                            )
+                        elif size_bytes > 10 * 1024:
                             return "{}MiB".format(round(size_bytes / (1024 * 1024), 2))
                         else:
                             return "{}b".format(size_bytes)
 
+                    mean_bytes = int(np.mean(sizes))
                     logger.info(
                         "Created DatasetPipeline with {} windows: "
                         "{} min, {} max, {} mean".format(
                             len(self._splits),
                             fmt(min(sizes)),
                             fmt(max(sizes)),
-                            fmt(int(np.mean(sizes))),
+                            fmt(mean_bytes),
                         )
                     )
+                    mean_num_blocks = int(np.mean(num_blocks))
+                    logger.info(
+                        "Blocks per window: "
+                        "{} min, {} max, {} mean".format(
+                            min(num_blocks),
+                            max(num_blocks),
+                            mean_num_blocks,
+                        )
+                    )
+                    # TODO(ekl) we should try automatically choosing the default
+                    # windowing settings to meet these best-practice constraints.
+                    avail_parallelism = _estimate_available_parallelism()
+                    if mean_num_blocks < avail_parallelism:
+                        logger.warning(
+                            f"{WARN_PREFIX} This pipeline's parallelism is limited "
+                            f"by its blocks per window to ~{mean_num_blocks} "
+                            "concurrent tasks per window. To maximize "
+                            "performance, increase the blocks per window to at least "
+                            f"{avail_parallelism}. This may require increasing the "
+                            "base dataset's parallelism and/or adjusting the "
+                            "windowing parameters."
+                        )
+                    else:
+                        logger.info(
+                            f"{OK_PREFIX} This pipeline's per-window parallelism "
+                            "is high enough to fully utilize the cluster."
+                        )
+                    obj_store_mem = ray.cluster_resources().get(
+                        "object_store_memory", 0
+                    )
+                    safe_mem_bytes = int(obj_store_mem * ESTIMATED_SAFE_MEMORY_FRACTION)
+                    if mean_bytes > safe_mem_bytes:
+                        logger.warning(
+                            f"{WARN_PREFIX} This pipeline's windows are "
+                            f"~{fmt(mean_bytes)} in size each and may not fit in "
+                            "object store memory without spilling. To improve "
+                            "performance, consider reducing the size of each window "
+                            f"to {fmt(safe_mem_bytes)} or less."
+                        )
+                    else:
+                        logger.info(
+                            f"{OK_PREFIX} This pipeline's windows can each fit in "
+                            "object store memory without spilling."
+                        )
                 except Exception as e:
                     logger.info(
                         "Created DatasetPipeline with {} windows; "
@@ -3257,22 +3263,16 @@ class Dataset(Generic[T]):
                         )
                     )
                 self._epoch = epoch
-                self._used_from_dataset_pipeline = used_from_dataset_pipeline
 
             def __iter__(self):
-                return Iterator(
-                    self._splits, self._epoch, self._used_from_dataset_pipeline
-                )
+                return Iterator(self._splits, self._epoch)
 
-        it = Iterable(blocks, self._epoch, self._used_from_dataset_pipeline)
+        it = Iterable(blocks, self._epoch)
         pipe = DatasetPipeline(it, False, length=len(it._splits))
         if read_stage:
             pipe = pipe.foreach_window(
                 lambda ds, read_stage=read_stage: Dataset(
-                    ds._plan.with_stage(read_stage),
-                    ds._epoch,
-                    True,
-                    used_from_dataset_pipeline=True,
+                    ds._plan.with_stage(read_stage), ds._epoch, True
                 )
             )
         return pipe
@@ -3422,43 +3422,13 @@ class Dataset(Generic[T]):
         self, index: int, return_right_half: bool
     ) -> ("Dataset[T]", "Dataset[T]"):
         start_time = time.perf_counter()
-        get_num_rows = cached_remote_fn(_get_num_rows)
-        split_block = cached_remote_fn(_split_block, num_returns=4)
-
-        count = 0
-        left_blocks = []
-        left_metadata = []
-        right_blocks = []
-        right_metadata = []
-        it = self._plan.execute().get_blocks_with_metadata()
-        for b, m in it:
-            if m.num_rows is None:
-                num_rows = ray.get(get_num_rows.remote(b))
-            else:
-                num_rows = m.num_rows
-            if count >= index:
-                if not return_right_half:
-                    break
-                right_blocks.append(b)
-                right_metadata.append(m)
-            elif count + num_rows < index:
-                left_blocks.append(b)
-                left_metadata.append(m)
-            elif count + num_rows == index:
-                left_blocks.append(b)
-                left_metadata.append(m)
-            else:
-                b0, m0, b1, m1 = split_block.remote(
-                    b, m, index - count, return_right_half
-                )
-                left_blocks.append(b0)
-                left_metadata.append(ray.get(m0))
-                right_blocks.append(b1)
-                right_metadata.append(ray.get(m1))
-                if self._lazy and self._used_from_dataset_pipeline:
-                    ray._private.internal_api.free(b, local_only=False)
-            count += num_rows
-
+        block_list = self._plan.execute()
+        blocks_with_metadata = block_list.get_blocks_with_metadata()
+        left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
+            blocks_with_metadata,
+            index,
+            return_right_half,
+        )
         split_duration = time.perf_counter() - start_time
         left_meta_for_stats = [
             BlockMetadata(
@@ -3477,12 +3447,16 @@ class Dataset(Generic[T]):
         left_dataset_stats.time_total_s = split_duration
         left = Dataset(
             ExecutionPlan(
-                BlockList(left_blocks, left_metadata),
+                BlockList(
+                    left_blocks,
+                    left_metadata,
+                    owned_by_consumer=block_list._owned_by_consumer,
+                ),
                 left_dataset_stats,
+                run_by_consumer=block_list._owned_by_consumer,
             ),
             self._epoch,
             self._lazy,
-            used_from_dataset_pipeline=self._used_from_dataset_pipeline,
         )
         if return_right_half:
             right_meta_for_stats = [
@@ -3502,22 +3476,37 @@ class Dataset(Generic[T]):
             right_dataset_stats.time_total_s = split_duration
             right = Dataset(
                 ExecutionPlan(
-                    BlockList(right_blocks, right_metadata),
+                    BlockList(
+                        right_blocks,
+                        right_metadata,
+                        owned_by_consumer=block_list._owned_by_consumer,
+                    ),
                     right_dataset_stats,
+                    run_by_consumer=block_list._owned_by_consumer,
                 ),
                 self._epoch,
                 self._lazy,
-                used_from_dataset_pipeline=self._used_from_dataset_pipeline,
             )
         else:
             right = None
         return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
-        left, right = self._plan.execute().divide(block_idx)
-        l_ds = Dataset(ExecutionPlan(left, self._plan.stats()), self._epoch, self._lazy)
+        block_list = self._plan.execute()
+        left, right = block_list.divide(block_idx)
+        l_ds = Dataset(
+            ExecutionPlan(
+                left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+            ),
+            self._epoch,
+            self._lazy,
+        )
         r_ds = Dataset(
-            ExecutionPlan(right, self._plan.stats()), self._epoch, self._lazy
+            ExecutionPlan(
+                right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+            ),
+            self._epoch,
+            self._lazy,
         )
         return l_ds, r_ds
 
@@ -3676,11 +3665,6 @@ class Dataset(Generic[T]):
             )
 
 
-def _get_num_rows(block: Block) -> int:
-    block = BlockAccessor.for_block(block)
-    return block.num_rows()
-
-
 def _get_size_bytes(block: Block) -> int:
     block = BlockAccessor.for_block(block)
     return block.size_bytes()
@@ -3727,37 +3711,6 @@ def _sliding_window(iterable: Iterable, n: int):
     for elem in it:
         window.append(elem)
         yield tuple(window)
-
-
-def _split_block(
-    block: Block, meta: BlockMetadata, count: int, return_right_half: bool
-) -> (Block, BlockMetadata, Optional[Block], Optional[BlockMetadata]):
-    stats = BlockExecStats.builder()
-    block = BlockAccessor.for_block(block)
-    logger.debug("Truncating last block to size: {}".format(count))
-    b0 = block.slice(0, count, copy=True)
-    a0 = BlockAccessor.for_block(b0)
-    m0 = BlockMetadata(
-        num_rows=a0.num_rows(),
-        size_bytes=a0.size_bytes(),
-        schema=meta.schema,
-        input_files=meta.input_files,
-        exec_stats=stats.build(),
-    )
-    if return_right_half:
-        b1 = block.slice(count, block.num_rows(), copy=True)
-        a1 = BlockAccessor.for_block(b1)
-        m1 = BlockMetadata(
-            num_rows=a1.num_rows(),
-            size_bytes=a1.size_bytes(),
-            schema=meta.schema,
-            input_files=meta.input_files,
-            exec_stats=stats.build(),
-        )
-    else:
-        b1 = None
-        m1 = None
-    return b0, m0, b1, m1
 
 
 def _do_write(

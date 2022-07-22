@@ -1,7 +1,8 @@
 import json
 import logging
+from datetime import datetime
 from enum import Enum, unique
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import click
 import yaml
@@ -9,25 +10,36 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-
+from ray._private.gcs_utils import GcsClient
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.state.api import (
     StateApiClient,
-    summarize_tasks,
     summarize_actors,
     summarize_objects,
+    summarize_tasks,
 )
-from ray._private.gcs_utils import GcsClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
+    STATE_OBS_ALPHA_FEEDBACK_MSG,
     GetApiOptions,
     ListApiOptions,
-    StateResource,
     PredicateType,
+    StateResource,
     SupportedFilterType,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _alpha_doc():
+    def decorator(func):
+        func.__doc__ = "{doc}\n{alpha_feedback}".format(
+            doc=func.__doc__, alpha_feedback="\n\n".join(STATE_OBS_ALPHA_FEEDBACK_MSG)
+        )
+        return func
+
+    return decorator
 
 
 @unique
@@ -133,18 +145,41 @@ def get_api_server_url() -> str:
     return api_server_url
 
 
+def get_table_output(state_data: List) -> str:
+    time = datetime.now()
+    header = "=" * 8 + f" List: {time} " + "=" * 8
+    headers = []
+    table = []
+    for data in state_data:
+        for key, val in data.items():
+            if isinstance(val, dict):
+                data[key] = yaml.dump(val, indent=2)
+        headers = sorted([key.upper() for key in data.keys()])
+        table.append([data[header.lower()] for header in headers])
+    return f"""
+{header}
+Stats:
+------------------------------
+Total: {len(state_data)}
+
+Table:
+------------------------------
+{tabulate(table, headers=headers, showindex=True, tablefmt="plain", floatfmt=".3f")}
+"""
+
+
 def output_with_format(
-    state_data: Union[dict, list], format: AvailableFormat = AvailableFormat.DEFAULT
-):
+    state_data: List, format: AvailableFormat = AvailableFormat.DEFAULT
+) -> str:
     # Default is yaml.
     if format == AvailableFormat.DEFAULT:
-        return yaml.dump(state_data, indent=4, explicit_start=True)
+        return get_table_output(state_data)
     if format == AvailableFormat.YAML:
         return yaml.dump(state_data, indent=4, explicit_start=True)
     elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
     elif format == AvailableFormat.TABLE:
-        raise NotImplementedError("Table formatter is not implemented yet.")
+        return get_table_output(state_data)
     else:
         raise ValueError(
             f"Unexpected format: {format}. "
@@ -152,11 +187,101 @@ def output_with_format(
         )
 
 
+def format_summary_output(state_data: Dict, *, resource: StateResource) -> str:
+    if len(state_data) == 0:
+        return "No resource in the cluster"
+
+    # Parse the data.
+    cluster_data = state_data["cluster"]
+    summaries = cluster_data["summary"]
+    summary_by = cluster_data["summary_by"]
+    del cluster_data["summary_by"]
+    del cluster_data["summary"]
+
+    cluster_info_table = yaml.dump(cluster_data, indent=2)
+
+    # Create a table.
+    table = []
+    headers = []
+    for summary in summaries.values():
+        # Convert dict to yaml for better formatting.
+        for key, val in summary.items():
+            if isinstance(val, dict):
+                summary[key] = yaml.dump(val, indent=2)
+
+        headers = sorted([key.upper() for key in summary.keys()])
+        table.append([summary[header.lower()] for header in headers])
+
+    summary_table = tabulate(
+        table, headers=headers, showindex=True, tablefmt="plain", numalign="left"
+    )
+
+    time = datetime.now()
+    header = "=" * 8 + f" {resource.value.capitalize()} Summary: {time} " + "=" * 8
+    return f"""
+{header}
+Stats:
+------------------------------------
+{cluster_info_table}
+
+Table (group by {summary_by}):
+------------------------------------
+{summary_table}
+"""
+
+
+def format_object_summary_output(state_data: Dict) -> str:
+    if len(state_data) == 0:
+        return "No resource in the cluster"
+
+    # Parse the data.
+    cluster_data = state_data["cluster"]
+    summaries = cluster_data["summary"]
+    summary_by = cluster_data["summary_by"]
+    del cluster_data["summary_by"]
+    del cluster_data["summary"]
+
+    cluster_info_table = yaml.dump(cluster_data, indent=2)
+
+    # Create a table per callsite.
+    tables = []
+    for callsite, summary in summaries.items():
+        # Convert dict to yaml for better formatting.
+        for key, val in summary.items():
+            if isinstance(val, dict):
+                summary[key] = yaml.dump(val, indent=2)
+
+        table = []
+        headers = sorted([key.upper() for key in summary.keys()])
+        table.append([summary[header.lower()] for header in headers])
+        table_for_callsite = tabulate(
+            table, headers=headers, showindex=True, numalign="left"
+        )
+
+        # Format callsite. | is a separator for ray callsite.
+        formatted_callsite = callsite.replace("|", "\n|")
+        tables.append(f"{formatted_callsite}\n{table_for_callsite}")
+
+    time = datetime.now()
+    header = "=" * 8 + f" Object Summary: {time} " + "=" * 8
+    table_string = "\n\n\n\n".join(tables)
+    return f"""
+{header}
+Stats:
+------------------------------------
+{cluster_info_table}
+
+Table (group by {summary_by})
+------------------------------------
+{table_string}
+"""
+
+
 def format_get_api_output(
     state_data: Union[dict, list],
     id: str,
     format: AvailableFormat = AvailableFormat.DEFAULT,
-):
+) -> str:
     if len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
@@ -165,13 +290,13 @@ def format_get_api_output(
 
 def format_list_api_output(
     state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
-):
+) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
     return output_with_format(state_data, format)
 
 
-def _should_explain(format: AvailableFormat):
+def _should_explain(format: AvailableFormat) -> bool:
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
@@ -187,7 +312,7 @@ timeout_option = click.option(
 )
 address_option = click.option(
     "--address",
-    default="",
+    default=None,
     help=(
         "The address of Ray API server. If not provided, it will be configured "
         "automatically from querying the GCS server."
@@ -214,6 +339,7 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
+@_alpha_doc()
 def get(
     resource: str,
     id: str,
@@ -245,12 +371,12 @@ def get(
     resource = StateResource(resource.replace("-", "_"))
 
     # Get the state API server address from ray if not provided by user
-    api_server_address = address if address else get_api_server_url()
+    address = address if address else get_api_server_url()
 
     # Create the State API server and put it into context
-    logger.debug(f"Create StateApiClient at {api_server_address}...")
+    logger.debug(f"Create StateApiClient at {address}...")
     client = StateApiClient(
-        api_server_address=api_server_address,
+        address=address,
     )
 
     options = GetApiOptions(
@@ -295,6 +421,12 @@ def get(
     multiple=True,
 )
 @click.option(
+    "--limit",
+    default=DEFAULT_LIMIT,
+    type=int,
+    help=("Maximum number of entries to return. 100 by default."),
+)
+@click.option(
     "--detail",
     help=(
         "If the flag is set, the output will contain data in more details. "
@@ -306,11 +438,13 @@ def get(
 )
 @timeout_option
 @address_option
+@_alpha_doc()
 def list(
     resource: str,
     format: str,
-    detail: bool,
     filter: List[str],
+    limit: int,
+    detail: bool,
     timeout: float,
     address: str,
 ):
@@ -346,19 +480,15 @@ def list(
     resource = StateResource(resource.replace("-", "_"))
     format = AvailableFormat(format)
 
-    # Get the state API server address from ray if not provided by user
-    api_server_address = address if address else get_api_server_url()
-
     # Create the State API server and put it into context
-    logger.debug(f"Create StateApiClient at {api_server_address}...")
     client = StateApiClient(
-        api_server_address=api_server_address,
+        address=address if address else get_api_server_url(),
     )
 
     filter = [_parse_filter(f) for f in filter]
 
     options = ListApiOptions(
-        limit=DEFAULT_LIMIT,  # TODO(rickyyx): parameters discussion to be finalized
+        limit=limit,
         timeout=timeout,
         filters=filter,
         detail=detail,
@@ -378,6 +508,7 @@ def list(
 
 @click.group("summary")
 @click.pass_context
+@_alpha_doc()
 def summary_state_cli_group(ctx):
     """Return the summarized information of a given resource."""
     ctx.ensure_object(dict)
@@ -403,13 +534,13 @@ def task_summary(ctx, timeout: float, address: str):
     """
     address = address or ctx.obj["api_server_url"]
     print(
-        output_with_format(
+        format_summary_output(
             summarize_tasks(
                 address=address,
                 timeout=timeout,
                 _explain=True,
             ),
-            format=AvailableFormat.YAML,
+            resource=StateResource.TASKS,
         )
     )
 
@@ -434,13 +565,13 @@ def actor_summary(ctx, timeout: float, address: str):
     """
     address = address or ctx.obj["api_server_url"]
     print(
-        output_with_format(
+        format_summary_output(
             summarize_actors(
                 address=address,
                 timeout=timeout,
                 _explain=True,
             ),
-            format=AvailableFormat.YAML,
+            resource=StateResource.ACTORS,
         )
     )
 
@@ -484,12 +615,11 @@ def object_summary(ctx, timeout: float, address: str):
     """
     address = address or ctx.obj["api_server_url"]
     print(
-        output_with_format(
+        format_object_summary_output(
             summarize_objects(
                 address=address,
                 timeout=timeout,
                 _explain=True,
             ),
-            format=AvailableFormat.YAML,
         )
     )
