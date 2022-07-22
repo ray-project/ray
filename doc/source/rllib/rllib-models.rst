@@ -600,8 +600,7 @@ Custom models can be used to work with environments where (1) the set of valid a
             return action_logits + inf_mask, state
 
 
-Depending on your use case it may make sense to use |just the masking|_, |just action embeddings|_, or |both|_.  
-For a runnable example of "just action embeddings" in code, 
+Depending on your use case it may make sense to use |just the masking|_, |just action embeddings|_, or |both|_.  For a runnable example of "just action embeddings" in code, 
 check out `examples/parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__. 
 
 .. |just the masking| replace:: just the **masking**
