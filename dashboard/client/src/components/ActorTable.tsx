@@ -196,7 +196,12 @@ const ActorTable = ({
               >
                 <TableCell align="center">
                   {/* <div className={classes.idCol}>{actorId}</div> */}
-                  <Tooltip className={classes.idCol} title={actorId} arrow interactive>
+                  <Tooltip
+                    className={classes.idCol}
+                    title={actorId}
+                    arrow
+                    interactive
+                  >
                     <div>{actorId}</div>
                   </Tooltip>
                 </TableCell>
