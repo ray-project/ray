@@ -267,8 +267,8 @@ class TestUnzipIfNeeded(unittest.TestCase):
         # were able to be converted into a dataset
         with tempfile.TemporaryDirectory() as tmp_dir:
             shutil.copyfile(
-                str(Path(self.absolute_path) / "enormous.zip"),
-                str(Path(tmp_dir) / "enormous.zip"),
+                str(Path(self.absolute_path) / "large.json"),
+                str(Path(tmp_dir) / "large.json"),
             )
             config = {
                 "input": "dataset",
