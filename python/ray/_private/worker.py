@@ -1306,7 +1306,7 @@ def init(
         warnings.warn(
             "DeprecationWarning: local mode is an experimental feature that is no "
             "longer maintained and will be removed in the future."
-            "To debug, consider using Ray debugger ",
+            "For debugging consider using Ray debugger. ",
             DeprecationWarning,
             stacklevel=2,
         )
