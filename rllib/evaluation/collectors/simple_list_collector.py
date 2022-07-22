@@ -57,11 +57,19 @@ class _AgentCollector:
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
     def __init__(
-        self, view_reqs, *, max_seq_len, is_policy_recurrent, disable_action_flattening
+        self,
+        view_reqs,
+        *,
+        max_seq_len,
+        disable_action_flattening,
+        intial_states=None,
     ):
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
-        self.is_policy_recurrent = is_policy_recurrent
+        self.view_requirements = view_reqs
+        self.intial_states = intial_states or []
+        self.is_policy_recurrent = len(self.intial_states) > 0
+
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
         # or internal state inputs.
@@ -195,20 +203,31 @@ class _AgentCollector:
                     sub_list.append(flattened[i])
         self.agent_steps += 1
 
-    def build_last_timestep(
-        self, view_requirements: ViewRequirementsDict
-    ) -> SampleBatch:
+    def build_for_inference(self) -> SampleBatch:
 
         batch_data = {}
         np_data = {}
-        for view_col, view_req in view_requirements.items():
+        for view_col, view_req in self.view_requirements.items():
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
 
-            # Some columns don't exist yet (get created during postprocessing).
-            # -> skip.
+            # Some columns don't exist yet
+            # (get created during postprocessing or depend on state_out).
             if data_col not in self.buffers:
-                continue
+                # special treatment for state_out_<i>
+                # add them to the buffer in case they don't exist yet
+                if data_col.startswith("state_out_"):
+                    if not self.is_policy_recurrent:
+                        raise ValueError(
+                            f"{data_col} is not available, because the given policy is"
+                            f"not recurrent according to the input model_inital_states."
+                            f"Have you forgotten to return non-empty lists in"
+                            f"policy.get_initial_states()?"
+                        )
+                    state_ind = int(data_col.split("_")[-1])
+                    self._build_buffers({data_col: self.intial_states[state_ind]})
+                else:
+                    continue
 
             # OBS are already shifted by -1 (the initial obs starts one ts
             # before all other data columns).
@@ -255,7 +274,9 @@ class _AgentCollector:
         batch = self._get_sample_batch(batch_data)
         return batch
 
-    def build(self, view_requirements: ViewRequirementsDict) -> SampleBatch:
+    def build_for_training(
+        self, view_requirements: ViewRequirementsDict
+    ) -> SampleBatch:
         """Builds a SampleBatch from the thus-far collected agent data.
 
         If the episode/trajectory has no DONE=True at the end, will copy
@@ -281,10 +302,21 @@ class _AgentCollector:
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
 
-            # Some columns don't exist yet (get created during postprocessing).
-            # -> skip.
             if data_col not in self.buffers:
-                continue
+                # special treatment for state_out_<i>
+                # add them to the buffer in case they don't exist yet
+                if data_col.startswith("state_out_"):
+                    if not self.is_policy_recurrent:
+                        raise ValueError(
+                            f"{data_col} is not available, because the given policy is"
+                            f"not recurrent according to the input model_inital_states."
+                            f"Have you forgotten to return non-empty lists in"
+                            f"policy.get_initial_states()?"
+                        )
+                    state_ind = int(data_col.split("_")[-1])
+                    self._build_buffers({data_col: self.intial_states[state_ind]})
+                else:
+                    continue
 
             # OBS are already shifted by -1 (the initial obs starts one ts
             # before all other data columns).
@@ -763,9 +795,11 @@ class SimpleListCollector(SampleCollector):
         # TODO: determine exact shift-before based on the view-req shifts.
         self.agent_collectors[agent_key] = _AgentCollector(
             policy.view_requirements,
-            max_seq_len=policy.config["model"]["max_seq_len"],
+            max_seq_len=policy.config["model"].get("max_seq_len"),
             is_policy_recurrent=policy.is_recurrent(),
-            disable_action_flattening=policy.config["_disable_action_flattening"],
+            disable_action_flattening=policy.config.get(
+                "_disable_action_flattening", False
+            ),
         )
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
@@ -952,7 +986,7 @@ class SimpleListCollector(SampleCollector):
                 continue
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
             policy = self.policy_map[pid]
-            pre_batch = collector.build(policy.view_requirements)
+            pre_batch = collector.build_for_training(policy.view_requirements)
             pre_batches[agent_id] = (policy, pre_batch)
 
         # Apply reward clipping before calling postprocessing functions.

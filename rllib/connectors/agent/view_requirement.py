@@ -43,7 +43,7 @@ class ViewRequirementAgentConnector(AgentConnector):
             lambda: _AgentCollector(
                 self._view_requirements,
                 max_seq_len=ctx.config["model"]["max_seq_len"],
-                is_policy_recurrent=len(ctx.model_initial_states) > 0,
+                intial_states=ctx.initial_states,
                 disable_action_flattening=ctx.config["_disable_action_flattening"],
             )
         )
@@ -101,20 +101,21 @@ class ViewRequirementAgentConnector(AgentConnector):
         # agent_batch = self._agent_data[env_id][agent_id]
 
         # TODO: Ask @jun: what is eps_id, agent_id, env_id? and how are they different?
-        agent_collector = self._agent_data[env_id][agent_id]
+        agent_collector = self.agent_collectors[env_id][agent_id]
 
         if agent_collector.is_empty():
-            agent_collector.add_init_batch(
+            agent_collector.add_init_obs(
                 episode_id=episode_id,
                 agent_index=agent_id,
                 env_id=env_id,
                 t=-1,  # not sure about this?
-                init_obs=d[SampleBatch.OBS],  # not sure about this?
+                init_obs=d[SampleBatch.OBS],
             )
         else:
             agent_collector.add_action_reward_next_obs(d)
 
-        sample_batch = agent_collector.build_last_timestep(self._view_requirements)
+        breakpoint()
+        sample_batch = agent_collector.build_for_inference()
 
         # for col, req in vr.items():
         #     # Not used for action computation.

@@ -2,6 +2,7 @@ import gym
 import numpy as np
 import unittest
 import pytest
+from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
@@ -194,7 +195,7 @@ class TestAgentConnector(unittest.TestCase):
         self.assertTrue("prev_actions" in processed[0].data.for_action)
 
 
-@pytest.mark.skip(reason="activate when view_requirement is fully implemented.")
+# @pytest.mark.skip(reason="activate when view_requirement is fully implemented.")
 class TestViewRequirementConnector(unittest.TestCase):
     def test_vr_connector_respects_training_or_inference_vr_flags(self):
         """Tests that the connector respects the flags within view_requirements (i.e.
@@ -224,7 +225,12 @@ class TestViewRequirementConnector(unittest.TestCase):
         agent_data = dict(obs=obs_arr)
         data = AgentConnectorDataType(0, 1, agent_data)
 
-        ctx = ConnectorContext(view_requirements=view_rq_dict)
+        config = PPOConfig().to_dict()
+        ctx = ConnectorContext(
+            view_requirements=view_rq_dict,
+            config=config,
+            model_initial_states=[np.zeros(10)]
+        )
 
         # TODO @jun What is the expected behavior of this test?
         for_action_expected_list = [
