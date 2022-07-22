@@ -105,9 +105,9 @@ def test_task_id_generation(workflow_start_regular_shared, request):
 
     workflow_id = "test_task_id_generation"
     ret = workflow.run_async(x, workflow_id=workflow_id)
-    outputs = [workflow.get_output_async(workflow_id, name="simple")]
+    outputs = [workflow.get_output_async(workflow_id, task_id="simple")]
     for i in range(1, n):
-        outputs.append(workflow.get_output_async(workflow_id, name=f"simple_{i}"))
+        outputs.append(workflow.get_output_async(workflow_id, task_id=f"simple_{i}"))
     assert ray.get(ret) == n - 1
     assert ray.get(outputs) == list(range(n))
 

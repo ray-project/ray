@@ -124,7 +124,9 @@ def test_get_output_4(workflow_start_regular, tmp_path):
         workflow_id=workflow_id,
     )
 
-    outputs = [workflow.get_output_async(workflow_id, name=str(i)) for i in range(11)]
+    outputs = [
+        workflow.get_output_async(workflow_id, task_id=str(i)) for i in range(11)
+    ]
     outputs.append(obj)
 
     import time
@@ -161,8 +163,8 @@ def test_output_with_name(workflow_start_regular):
     inner_task = double.options(**workflow.options(name="inner")).bind(1)
     outer_task = double.options(**workflow.options(name="outer")).bind(inner_task)
     result = workflow.run_async(outer_task, workflow_id="double")
-    inner = workflow.get_output_async("double", name="inner")
-    outer = workflow.get_output_async("double", name="outer")
+    inner = workflow.get_output_async("double", task_id="inner")
+    outer = workflow.get_output_async("double", task_id="outer")
 
     assert ray.get(inner) == 2
     assert ray.get(outer) == 4
@@ -178,8 +180,8 @@ def test_output_with_name(workflow_start_regular):
     workflow_id = "double_2"
     result = workflow.run_async(outer_task, workflow_id=workflow_id)
 
-    inner = workflow.get_output_async(workflow_id, name="double")
-    outer = workflow.get_output_async(workflow_id, name="double_1")
+    inner = workflow.get_output_async(workflow_id, task_id="double")
+    outer = workflow.get_output_async(workflow_id, task_id="double_1")
 
     assert ray.get(inner) == 2
     assert ray.get(outer) == 4
@@ -199,8 +201,8 @@ def test_get_non_exist_output(workflow_start_regular, tmp_path):
     with FileLock(lock_path):
         dag = simple.options(**workflow.options(name="simple")).bind()
         ret = workflow.run_async(dag, workflow_id=workflow_id)
-        exist = workflow.get_output_async(workflow_id, name="simple")
-        non_exist = workflow.get_output_async(workflow_id, name="non_exist")
+        exist = workflow.get_output_async(workflow_id, task_id="simple")
+        non_exist = workflow.get_output_async(workflow_id, task_id="non_exist")
 
     assert ray.get(ret) == "hello"
     assert ray.get(exist) == "hello"
@@ -245,8 +247,8 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
         workflow_id="double-2",
     )
 
-    inner = workflow.get_output_async("double-2", name="inner")
-    outer = workflow.get_output_async("double-2", name="outer")
+    inner = workflow.get_output_async("double-2", task_id="inner")
+    outer = workflow.get_output_async("double-2", task_id="outer")
 
     @ray.remote
     def wait(obj_ref):
@@ -263,8 +265,8 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     lock.release()
     assert [4, 2, 4] == ray.get([output, inner, outer])
 
-    inner = workflow.get_output_async("double-2", name="inner")
-    outer = workflow.get_output_async("double-2", name="outer")
+    inner = workflow.get_output_async("double-2", task_id="inner")
+    outer = workflow.get_output_async("double-2", task_id="outer")
     assert [2, 4] == ray.get([inner, outer])
 
 
