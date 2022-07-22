@@ -43,7 +43,6 @@ from ray.serve.utils import (
     msgpack_serialize,
 )
 from ray.serve.version import DeploymentVersion, VersionedReplica
-from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -77,7 +76,6 @@ SLOW_STARTUP_WARNING_PERIOD_S = int(
 )
 
 ALL_REPLICA_STATES = list(ReplicaState)
-USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
 _SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
 
 
@@ -146,7 +144,6 @@ class ActorReplicaWrapper:
         deployment_name: str,
     ):
         self._actor_name = actor_name
-        self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
         self._controller_name = controller_name
 
@@ -169,7 +166,6 @@ class ActorReplicaWrapper:
         # NOTE: storing these is necessary to keep the actor and PG alive in
         # the non-detached case.
         self._actor_handle: ActorHandle = None
-        self._placement_group: PlacementGroup = None
 
         # Populated after replica is allocated.
         self._node_id: str = None
@@ -220,38 +216,6 @@ class ActorReplicaWrapper:
         ready, _ = ray.wait([obj_ref], timeout=0)
         return len(ready) == 1
 
-    def create_placement_group(
-        self, placement_group_name: str, actor_resources: dict
-    ) -> PlacementGroup:
-        # Only need one placement group per actor
-        if self._placement_group:
-            return self._placement_group
-
-        logger.debug(
-            "Creating placement group '{}' for deployment '{}'".format(
-                placement_group_name, self.deployment_name
-            )
-        )
-
-        self._placement_group = ray.util.placement_group(
-            [actor_resources],
-            lifetime="detached" if self._detached else None,
-            name=placement_group_name,
-        )
-
-        return self._placement_group
-
-    def get_placement_group(self, placement_group_name) -> Optional[PlacementGroup]:
-        if not self._placement_group:
-            try:
-                self._placement_group = ray.util.get_placement_group(
-                    placement_group_name
-                )
-            except ValueError:
-                self._placement_group = None
-
-        return self._placement_group
-
     def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
         """
         Start a new actor for current DeploymentReplica instance.
@@ -270,16 +234,6 @@ class ActorReplicaWrapper:
         )
 
         self._actor_resources = deployment_info.replica_config.resource_dict
-        # it is currently not possible to create a placement group
-        # with no resources (https://github.com/ray-project/ray/issues/20401)
-        has_resources_assigned = all(
-            (r is not None and r > 0 for r in self._actor_resources.values())
-        )
-        if USE_PLACEMENT_GROUP and has_resources_assigned:
-            self._placement_group = self.create_placement_group(
-                self._placement_group_name, self._actor_resources
-            )
-
         logger.debug(
             f"Starting replica {self.replica_tag} for deployment "
             f"{self.deployment_name}."
@@ -333,8 +287,10 @@ class ActorReplicaWrapper:
             name=self._actor_name,
             namespace=SERVE_NAMESPACE,
             lifetime="detached" if self._detached else None,
-            placement_group=self._placement_group,
-            placement_group_capture_child_tasks=False,
+            # Spread replicas to avoid correlated failures on a single node.
+            # This is a soft spread, so if there is only space on a single node
+            # the replicas will be placed there.
+            scheduling_strategy="SPREAD",
             **deployment_info.replica_config.ray_actor_options,
         ).remote(*init_args)
 
@@ -374,8 +330,6 @@ class ActorReplicaWrapper:
             f"{self.deployment_name}."
         )
         self._actor_handle = self.actor_handle
-        if USE_PLACEMENT_GROUP:
-            self._placement_group = self.get_placement_group(self._placement_group_name)
 
         # Re-fetch initialization proof
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
@@ -600,20 +554,6 @@ class ActorReplicaWrapper:
         except ValueError:
             pass
 
-    def cleanup(self):
-        """Clean up any remaining resources after the actor has exited.
-
-        Currently, this just removes the placement group.
-        """
-        if not USE_PLACEMENT_GROUP:
-            return
-
-        try:
-            if self._placement_group is not None:
-                ray.util.remove_placement_group(self._placement_group)
-        except ValueError:
-            pass
-
 
 class DeploymentReplica(VersionedReplica):
     """Manages state transitions for deployment replicas.
@@ -734,8 +674,6 @@ class DeploymentReplica(VersionedReplica):
     def check_stopped(self) -> bool:
         """Check if the replica has finished stopping."""
         if self._actor.check_stopped():
-            # Clean up any associated resources (e.g., placement group).
-            self._actor.cleanup()
             return True
 
         timeout_passed = time.time() > self._shutdown_deadline
