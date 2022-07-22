@@ -25,12 +25,24 @@ def some_func2(x):
     return x - 1
 
 
-def test_delete(workflow_start_regular):
-    from ray._private.storage import _storage_uri
-
-    # Try deleting a random workflow that never existed.
+def test_delete_1(workflow_start_regular):
     with pytest.raises(WorkflowNotFoundError):
         workflow.delete(workflow_id="never_existed")
+
+    @ray.remote
+    def hello():
+        return "hello world"
+
+    workflow.run(hello.bind(), workflow_id="workflow_exists")
+    workflow.delete(workflow_id="workflow_exists")
+
+
+def test_delete_2(workflow_start_regular):
+    from ray._private.storage import _storage_uri
+    from ray._private.client_mode_hook import client_mode_should_convert
+
+    if client_mode_should_convert(auto_init=False):
+        pytest.skip("Not for Ray client test")
 
     # Delete a workflow that has not finished and is not running.
     @ray.remote
@@ -114,6 +126,10 @@ def test_delete(workflow_start_regular):
 
 
 def test_workflow_storage(workflow_start_regular):
+    from ray._private.client_mode_hook import client_mode_should_convert
+
+    if client_mode_should_convert(auto_init=False):
+        pytest.skip("Not for Ray client test")
     workflow_id = test_workflow_storage.__name__
     wf_storage = workflow_storage.WorkflowStorage(workflow_id)
     task_id = "some_step"
