@@ -6,14 +6,16 @@
 
 You can leverage your Kubernetes cluster as a substrate for execution of distributed Ray programs.
 
-The [KubeRay Operator](https://ray-project.github.io/kuberay/components/operator/) provides a Kubernetes-native interface for managing Ray clusters. Each Ray cluster consist of a head pod and collection of worker pods. Optional autoscaling support allows
-the KubeRay Operator to size your Ray clusters according to the needs of your Ray workload, adding
-and removing Ray pods as needed.
+The [KubeRay Operator](https://ray-project.github.io/kuberay/components/operator/) provides a Kubernetes-native
+interface for managing Ray clusters. Each Ray cluster consist of a head pod and collection of worker pods.
+Optional autoscaling support allows the KubeRay Operator to size your Ray clusters according to the requirements
+of your Ray workload, adding and removing Ray pods as needed.
 
 ## Learn More
 
 The Ray docs present all the information you need to start running Ray workloads on Kubernetes.
 
+```{eval-rst}
 .. panels::
     :container: text-center
     :column: col-lg-6 px-2 py-2
@@ -30,7 +32,7 @@ The Ray docs present all the information you need to start running Ray workloads
         :text: Get Started with Ray on Kubernetes
         :classes: btn-outline-info btn-block
     ---
-
+```
 
 ## The KubeRay project
 
