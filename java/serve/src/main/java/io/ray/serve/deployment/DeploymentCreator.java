@@ -250,7 +250,8 @@ public class DeploymentCreator {
     return deploymentLanguage;
   }
 
-  public void setDeploymentLanguage(DeploymentLanguage deploymentLanguage) {
+  public DeploymentCreator setDeploymentLanguage(DeploymentLanguage deploymentLanguage) {
     this.deploymentLanguage = deploymentLanguage;
+    return this;
   }
 }

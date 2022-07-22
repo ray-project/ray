@@ -1,6 +1,7 @@
 package io.ray.serve;
 
 import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.serve.config.DeploymentConfig;
@@ -30,8 +31,7 @@ public class ReplicaSetTest extends BaseTest {
     ActorNameList.Builder builder = ActorNameList.newBuilder();
 
     replicaSet.updateWorkerReplicas(builder.build());
-    Map<ActorHandle<RayServeWrappedReplica>, Set<ObjectRef<Object>>> inFlightQueries =
-        replicaSet.getInFlightQueries();
+    Map<BaseActorHandle, Set<ObjectRef<Object>>> inFlightQueries = replicaSet.getInFlightQueries();
     Assert.assertTrue(inFlightQueries.isEmpty());
   }
 
