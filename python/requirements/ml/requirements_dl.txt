@@ -14,8 +14,8 @@ torchvision==0.10.0;sys_platform=="darwin"
 torch==1.9.0+cpu;sys_platform!="darwin"
 torchvision==0.10.0+cpu;sys_platform!="darwin"
 
-jax==0.1.69;sys_platform!="darwin"
-jaxlib==0.1.69;sys_platform!="darwin"
-flax==0.4.0;sys_platform!="darwin"
-optax==0.0.9;sys_platform!="darwin"
-einops==0.4.1;sys_platform!="darwin"
+# If you make changes to the torch or tensorflow versions update, please also make the corresponding changes to `jax` related packages!
+# If you make changes to the jax versions, please also make the corresponding changes to `requirements_ml_docker.txt`!
+jax[cpu]==0.2.17
+flax==0.3.5
+einops==0.4.1
