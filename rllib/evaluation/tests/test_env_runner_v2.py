@@ -1,11 +1,9 @@
-from random import sample
 import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.tune import register_env
 
 
