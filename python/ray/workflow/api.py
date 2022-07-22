@@ -290,17 +290,19 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
     Returns:
         The output of the workflow task.
     """
-    return ray.get(get_output_async(workflow_id, name=name))
+    return ray.get(get_output_async(workflow_id, task_id=name))
 
 
 @PublicAPI(stability="beta")
-def get_output_async(workflow_id: str, *, name: Optional[str] = None) -> ray.ObjectRef:
+def get_output_async(
+    workflow_id: str, *, task_id: Optional[str] = None
+) -> ray.ObjectRef:
     """Get the output of a running workflow asynchronously.
 
     Args:
         workflow_id: The workflow to get the output of.
-        name: If set, fetch the specific step instead of the output of the
-            workflow.
+        task_id: If set, fetch the specific task output instead of the output
+            of the workflow.
 
     Returns:
         An object reference that can be used to retrieve the workflow task result.
@@ -318,15 +320,15 @@ def get_output_async(workflow_id: str, *, name: Optional[str] = None) -> ray.Obj
     try:
         # check storage first
         wf_store = WorkflowStorage(workflow_id)
-        tid = wf_store.inspect_output(name)
+        tid = wf_store.inspect_output(task_id)
         if tid is not None:
             return workflow_access.load_step_output_from_storage.remote(
-                workflow_id, name
+                workflow_id, task_id
             )
     except ValueError:
         pass
 
-    return workflow_manager.get_output.remote(workflow_id, name)
+    return workflow_manager.get_output.remote(workflow_id, task_id)
 
 
 @PublicAPI(stability="beta")

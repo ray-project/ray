@@ -263,27 +263,27 @@ class WorkflowManagementActor:
         return result
 
     async def get_output(
-        self, workflow_id: str, name: Optional[TaskID]
+        self, workflow_id: str, task_id: Optional[TaskID]
     ) -> ray.ObjectRef:
         """Get the output of a running workflow.
 
         Args:
             workflow_id: The ID of a workflow job.
+            task_id: If set, fetch the specific task output instead of the output
+                of the workflow.
 
         Returns:
-            An object reference that can be used to retrieve the
-            workflow result.
+            An object reference that can be used to retrieve the workflow result.
         """
-        # TODO(suquark): Use 'task_id' instead of 'name' for the API.
         ref = None
         if self.is_workflow_non_terminating(workflow_id):
             executor = self._workflow_executors[workflow_id]
-            if name is None:
-                name = executor.output_task_id
-            workflow_ref = await executor.get_task_output_async(name)
-            name, ref = workflow_ref.task_id, workflow_ref.ref
+            if task_id is None:
+                task_id = executor.output_task_id
+            workflow_ref = await executor.get_task_output_async(task_id)
+            task_id, ref = workflow_ref.task_id, workflow_ref.ref
         if ref is None:
-            ref = load_step_output_from_storage.remote(workflow_id, name)
+            ref = load_step_output_from_storage.remote(workflow_id, task_id)
         return SelfResolvingObject(ref)
 
     def ready(self) -> None:
