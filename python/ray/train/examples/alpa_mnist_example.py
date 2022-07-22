@@ -170,7 +170,7 @@ def tune_mnist(num_samples):
 
     trainer = AlpaTrainer(
         train_loop_per_worker=train_func,
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=True, resources_per_worker={'CPU': 1, 'GPU': 1}),
+        scaling_config=ScalingConfig(num_workers=2, use_gpu=True, resources_per_worker={'CPU': 1, 'GPU': 2}),
     )
 
     tuner = Tuner(
@@ -204,4 +204,4 @@ if __name__ == "__main__":
     ray.init('auto')
     # train_mnist()
 
-    tune_mnist(num_samples=2)
+    tune_mnist(num_samples=8)
