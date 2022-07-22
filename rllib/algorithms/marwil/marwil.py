@@ -1,4 +1,4 @@
-from typing import Optional, Type
+from typing import Optional, Type, Dict
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -13,7 +13,11 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -104,7 +108,7 @@ class MARWILConfig(AlgorithmConfig):
         # the same line.
         self.input_ = "sampler"
         # Use importance sampling estimators for reward.
-        self.evaluation_config["off_policy_estimation_methods"] = {
+        self.off_policy_estimation_methods = {
             "is": {"type": ImportanceSampling},
             "wis": {"type": WeightedImportanceSampling},
         }
@@ -205,6 +209,19 @@ class MARWILConfig(AlgorithmConfig):
         if grad_clip is not None:
             self.grad_clip = grad_clip
         return self
+
+    @override(AlgorithmConfig)
+    def evaluation(self, *, off_policy_estimation_methods: Dict = None, **kwargs):
+        if not off_policy_estimation_methods and self.off_policy_estimation_methods:
+            deprecation_warning(
+                old="MARWIL currently uses off_policy_estimation_methods: "
+                f"{self.off_policy_estimation_methods} by default. This will"
+                "change to off_policy_estimation_methods: {} in a future release."
+                "If you want to use an off-policy estimator, specify it in"
+                ".evaluation(off_policy_estimation_methods=...)",
+                error=False,
+            )
+        return super().evaluation(**kwargs)
 
 
 class MARWIL(Algorithm):
