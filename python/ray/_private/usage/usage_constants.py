@@ -46,4 +46,6 @@ USAGE_STATS_CONFIRMATION_MESSAGE = (
 
 LIBRARY_USAGE_PREFIX = "library_usage_"
 
+EXTRA_USAGE_TAG_PREFIX = "extra_usage_tag_"
+
 USAGE_STATS_NAMESPACE = "usage_stats"
