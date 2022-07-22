@@ -258,11 +258,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             ip = log_batch["ip"]
             pid = str(log_batch["pid"])
             if pid != "autoscaler":
-                logs_for_ip = dict(DataSource.ip_and_pid_to_log_counts.get(ip, {}))
-                log_counts_for_pid = logs_for_ip.get(pid, 0)
+                log_counts_for_ip = dict(
+                    DataSource.ip_and_pid_to_log_counts.get(ip, {})
+                )
+                log_counts_for_pid = log_counts_for_ip.get(pid, 0)
                 log_counts_for_pid += len(log_batch["lines"])
-                logs_for_ip[pid] = log_counts_for_pid
-                DataSource.ip_and_pid_to_log_counts[ip] = logs_for_ip
+                log_counts_for_ip[pid] = log_counts_for_pid
+                DataSource.ip_and_pid_to_log_counts[ip] = log_counts_for_ip
             logger.debug(f"Received a log for {ip} and {pid}")
 
         while True:

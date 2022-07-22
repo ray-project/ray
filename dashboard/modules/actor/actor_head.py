@@ -1,6 +1,7 @@
 import asyncio
 from collections import deque
 import logging
+import os
 
 import aiohttp.web
 
@@ -26,11 +27,11 @@ try:
 except ImportError:
     from grpc.experimental import aio as aiogrpc
 
-
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
-MAX_ACTORS_TO_CACHE = 5000
+MAX_ACTORS_TO_CACHE = int(os.environ.get("DASHBOARD_MAX_ACTORS_TO_CACHE", 5000))
+ACTOR_CLEANUP_FREQUENCY = 10  # seconds
 
 
 def actor_table_data_to_dict(message):
@@ -206,7 +207,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                         node_id = actor["address"]["rayletId"]
                         del DataSource.node_actors[node_id][actor_id]
                         del DataSource.job_actors[job_id][actor_id]
-                await asyncio.sleep(10)
+                await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)
             except Exception:
                 logger.exception("Error cleaning up actor info from GCS.")
 
