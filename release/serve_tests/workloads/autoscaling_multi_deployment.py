@@ -187,7 +187,12 @@ def main(
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
-        trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
+        trial_length,
+        NUM_CONNECTIONS,
+        http_host,
+        http_port,
+        all_endpoints=all_endpoints,
+        debug=True,
     )
 
     aggregated_metrics = aggregate_all_metrics(all_metrics)

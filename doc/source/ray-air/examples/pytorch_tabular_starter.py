@@ -43,7 +43,8 @@ from torch.nn.modules.utils import consume_prefix_in_state_dict_if_present
 
 from ray import train
 from ray.air import session
-from ray.train.torch import TorchTrainer, to_air_checkpoint
+from ray.air.config import ScalingConfig
+from ray.train.torch import TorchCheckpoint, TorchTrainer
 
 
 def create_model(input_features):
@@ -93,7 +94,7 @@ def train_loop_per_worker(config):
             train_loss.backward()
             optimizer.step()
         loss = train_loss.item()
-        session.report({"loss": loss}, checkpoint=to_air_checkpoint(model))
+        session.report({"loss": loss}, checkpoint=TorchCheckpoint.from_model(model))
 
 
 num_features = len(train_dataset.schema().names) - 1
@@ -106,12 +107,11 @@ trainer = TorchTrainer(
         "num_features": num_features,
         "lr": 0.001,
     },
-    scaling_config={
-        "num_workers": 3,  # Number of data parallel training workers.
-        "use_gpu": False,
-        # trainer_resources=0 so that the example works on Colab.
-        "trainer_resources": {"CPU": 0},
-    },
+    scaling_config=ScalingConfig(
+        num_workers=3,  # Number of workers to use for data parallelism.
+        use_gpu=False,
+        trainer_resources={"CPU": 0},  # so that the example works on Colab.
+    ),
     datasets={"train": train_dataset},
     preprocessor=preprocessor,
 )
@@ -150,7 +150,8 @@ print("Best Result:", best_result)
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.torch import TorchPredictor
 
-# You can also create a checkpoint from a trained model using `to_air_checkpoint`.
+# You can also create a checkpoint from a trained model using
+# `TorchCheckpoint.from_model`.
 checkpoint = best_result.checkpoint
 
 batch_predictor = BatchPredictor.from_checkpoint(

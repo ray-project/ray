@@ -115,7 +115,7 @@ def workflow_state_from_dag(
                 else:
                     catch_exceptions = False
 
-            max_retries = workflow_options.get("max_retries", 3)
+            max_retries = bound_options.get("max_retries", 3)
             if not isinstance(max_retries, int) or max_retries < -1:
                 raise ValueError(
                     "'max_retries' only accepts 0, -1 or a positive integer."

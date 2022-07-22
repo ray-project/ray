@@ -1,14 +1,17 @@
+import os
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
 
+from ray import tune
 from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import RunConfig, ScalingConfig, ScalingConfigDataClass
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
+from ray.util.ml_utils.dict import flatten_dict
 
 if TYPE_CHECKING:
     import xgboost_ray
@@ -17,7 +20,7 @@ if TYPE_CHECKING:
 
 
 def _convert_scaling_config_to_ray_params(
-    scaling_config: ScalingConfigDataClass,
+    scaling_config: ScalingConfig,
     ray_params_cls: Type["xgboost_ray.RayParams"],
     default_ray_params: Optional[Dict[str, Any]] = None,
 ) -> "xgboost_ray.RayParams":
@@ -70,9 +73,13 @@ class GBDTTrainer(BaseTrainer):
         "use_gpu",
         "placement_strategy",
     ]
+    _handles_checkpoint_freq = True
+    _handles_checkpoint_at_end = True
+
     _dmatrix_cls: type
     _ray_params_cls: type
-    _tune_callback_cls: type
+    _tune_callback_report_cls: type
+    _tune_callback_checkpoint_cls: type
     _default_ray_params: Dict[str, Any] = {"checkpoint_frequency": 1}
     _init_model_arg_name: str
 
@@ -138,11 +145,15 @@ class GBDTTrainer(BaseTrainer):
     def _train(self, **kwargs):
         raise NotImplementedError
 
+    def _save_model(self, model: Any, path: str):
+        raise NotImplementedError
+
+    def _model_iteration(self, model: Any) -> int:
+        raise NotImplementedError
+
     @property
     def _ray_params(self) -> "xgboost_ray.RayParams":
-        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config_dataclass = self._validate_scaling_config(self.scaling_config)
         return _convert_scaling_config_to_ray_params(
             scaling_config_dataclass, self._ray_params_cls, self._default_ray_params
         )
@@ -181,12 +192,29 @@ class GBDTTrainer(BaseTrainer):
 
         config.setdefault("verbose_eval", False)
         config.setdefault("callbacks", [])
-        config["callbacks"] += [
-            self._tune_callback_cls(filename=MODEL_KEY, frequency=1)
-        ]
+
+        if not any(
+            isinstance(
+                cb, (self._tune_callback_report_cls, self._tune_callback_checkpoint_cls)
+            )
+            for cb in config["callbacks"]
+        ):
+            # Only add our own callback if it hasn't been added before
+            checkpoint_frequency = (
+                self.run_config.checkpoint_config.checkpoint_frequency
+            )
+            if checkpoint_frequency > 0:
+                callback = self._tune_callback_checkpoint_cls(
+                    filename=MODEL_KEY, frequency=checkpoint_frequency
+                )
+            else:
+                callback = self._tune_callback_report_cls()
+
+            config["callbacks"] += [callback]
+
         config[self._init_model_arg_name] = init_model
 
-        self._train(
+        model = self._train(
             params=self.params,
             dtrain=train_dmatrix,
             evals_result=evals_result,
@@ -194,6 +222,21 @@ class GBDTTrainer(BaseTrainer):
             ray_params=self._ray_params,
             **config,
         )
+
+        checkpoint_at_end = self.run_config.checkpoint_config.checkpoint_at_end
+        if checkpoint_at_end is None:
+            checkpoint_at_end = True
+
+        if checkpoint_at_end:
+            # We need to call tune.report to save checkpoints, so we report
+            # the last received metrics (possibly again).
+            result_dict = flatten_dict(evals_result, delimiter="-")
+            for k in list(result_dict):
+                result_dict[k] = result_dict[k][-1]
+
+            with tune.checkpoint_dir(step=self._model_iteration(model)) as cp_dir:
+                self._save_model(model, path=os.path.join(cp_dir, MODEL_KEY))
+                tune.report(**result_dict)
 
     def as_trainable(self) -> Type[Trainable]:
         trainable_cls = super().as_trainable()
@@ -219,14 +262,17 @@ class GBDTTrainer(BaseTrainer):
 
             @classmethod
             def default_resource_request(cls, config):
+                # `config["scaling_config"] is a dataclass when passed via the
+                # `scaling_config` argument in `Trainer` and is a dict when passed
+                # via the `scaling_config` key of `param_spec`.
                 updated_scaling_config = config.get("scaling_config", scaling_config)
-                scaling_config_dataclass = (
-                    trainer_cls._validate_and_get_scaling_config_data_class(
-                        updated_scaling_config
-                    )
+                if isinstance(updated_scaling_config, dict):
+                    updated_scaling_config = ScalingConfig(**updated_scaling_config)
+                validated_scaling_config = trainer_cls._validate_scaling_config(
+                    updated_scaling_config
                 )
                 return _convert_scaling_config_to_ray_params(
-                    scaling_config_dataclass, ray_params_cls, default_ray_params
+                    validated_scaling_config, ray_params_cls, default_ray_params
                 ).get_tune_resources()
 
         return GBDTTrainable

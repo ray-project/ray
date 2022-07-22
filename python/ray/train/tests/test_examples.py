@@ -2,6 +2,7 @@ import pytest
 
 import ray
 from ray.train import Trainer
+from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import HorovodTrainClass
 from ray.train.examples.horovod.horovod_example import (
@@ -43,7 +44,7 @@ def test_tensorflow_mnist(ray_start_4_cpus, num_workers):
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers),
+        scaling_config=ScalingConfig(num_workers=num_workers),
     )
     results = trainer.fit()
 
@@ -60,7 +61,7 @@ def test_tf_non_distributed(ray_start_4_cpus):
     """Make sure Ray Train works without TF MultiWorkerMirroredStrategy."""
 
     trainer = TorchTrainer(
-        tf_quick_start_train_func, scaling_config=dict(num_workers=1)
+        tf_quick_start_train_func, scaling_config=ScalingConfig(num_workers=1)
     )
     trainer.fit()
 
@@ -100,7 +101,7 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
     trainer = TorchTrainer(
         linear_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers),
+        scaling_config=ScalingConfig(num_workers=num_workers),
     )
     results = trainer.fit()
 
@@ -139,7 +140,7 @@ def test_torch_fashion_mnist(ray_start_4_cpus):
     trainer = TorchTrainer(
         fashion_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers),
+        scaling_config=ScalingConfig(num_workers=num_workers),
     )
     results = trainer.fit()
 
@@ -155,7 +156,7 @@ def test_torch_non_distributed(ray_start_4_cpus):
     """Make sure Ray Train works without torch DDP."""
 
     trainer = TorchTrainer(
-        torch_quick_start_train_func, scaling_config=dict(num_workers=1)
+        torch_quick_start_train_func, scaling_config=ScalingConfig(num_workers=1)
     )
     trainer.fit()
 
@@ -166,7 +167,7 @@ def test_horovod_torch_mnist(ray_start_4_cpus):
     trainer = HorovodTrainer(
         horovod_torch_train_func,
         train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
-        scaling_config=dict(num_workers=num_workers),
+        scaling_config=ScalingConfig(num_workers=num_workers),
     )
     results = trainer.fit()
     result = results.metrics
