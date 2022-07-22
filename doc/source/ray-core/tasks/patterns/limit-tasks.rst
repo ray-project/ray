@@ -38,11 +38,13 @@ Code example
 .. code-block:: python
 
     result_refs = []
+    max_in_flight_tasks = 1000
     for i in range(1_000_000):
         large_array = np.zeros(1_000_000)
 
         # Limit in-flight tasks to 1000
-        if len(result_refs) >= 1000:
-            _, result_refs = ray.wait(result_refs, num_returns=len(result_refs))
+        if len(result_refs) > max_in_flight_tasks:
+            num_ready = len(result_refs) - max_in_flight_tasks:
+            _, result_refs = ray.wait(result_refs, num_returns=num_ready)
 
         result_refs.append(actor.heavy_compute.remote(large_array))
