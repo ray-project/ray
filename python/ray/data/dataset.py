@@ -353,8 +353,9 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
-            batch_size: Request a specific batch size, or None to use entire blocks
+            batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
+                The final batch may include fewer than ``batch_size`` rows.
                 Defaults to 4096.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling actor pool. If wanting to
@@ -2331,7 +2332,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 4096,
+        batch_size: Optional[int] = 256,
         batch_format: str = "native",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -2349,9 +2350,10 @@ class Dataset(Generic[T]):
         Args:
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: Request a specific batch size, or None to use entire blocks
+            batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
-                Defaults to 4096.
+                The final batch may include fewer than ``batch_size`` rows.
+                Defaults to 256.
             batch_format: The format in which to return each batch.
                 Specify "native" to use the native block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
