@@ -1,4 +1,4 @@
-from gym.spaces import Box, Discrete, MultiDiscrete
+import gym
 import numpy as np
 import tree  # pip install dm_tree
 import unittest
@@ -8,8 +8,14 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor as flatten_np
 from ray.rllib.utils.numpy import make_action_immutable
 from ray.rllib.utils.test_utils import check
-from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor as flatten_tf
-from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor as flatten_torch
+from ray.rllib.utils.tf_utils import (
+    flatten_inputs_to_1d_tensor as flatten_tf,
+    one_hot as one_hot_tf,
+)
+from ray.rllib.utils.torch_utils import (
+    flatten_inputs_to_1d_tensor as flatten_torch,
+    one_hot as one_hot_torch,
+)
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -42,12 +48,12 @@ class TestUtils(unittest.TestCase):
     # Corresponding space struct.
     spaces = dict(
         {
-            "a": Discrete(4),
-            "b": (Box(-1.0, 10.0, (3,)), Box(-1.0, 1.0, (3, 1))),
+            "a": gym.spaces.Discrete(4),
+            "b": (gym.spaces.Box(-1.0, 10.0, (3,)), gym.spaces.Box(-1.0, 1.0, (3, 1))),
             "c": dict(
                 {
-                    "ca": MultiDiscrete([4, 6]),
-                    "cb": Box(-1.0, 1.0, ()),
+                    "ca": gym.spaces.MultiDiscrete([4, 6]),
+                    "cb": gym.spaces.Box(-1.0, 1.0, ()),
                 }
             ),
         }
@@ -55,6 +61,7 @@ class TestUtils(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        tf1.enable_eager_execution()
         ray.init()
 
     @classmethod
@@ -62,7 +69,6 @@ class TestUtils(unittest.TestCase):
         ray.shutdown()
 
     def test_make_action_immutable(self):
-        import gym
         from types import MappingProxyType
 
         # Test Box space.
@@ -542,6 +548,19 @@ class TestUtils(unittest.TestCase):
                 ]
             ),
         )
+
+    def test_one_hot(self):
+        space = gym.spaces.MultiDiscrete([[3, 3], [3, 3]])
+
+        # TF
+        x = tf.Variable([[0, 2, 1, 0]], dtype=tf.int32)
+        y = one_hot_tf(x, space)
+        self.assertTrue(([1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0] == y.numpy()).all())
+
+        # Torch
+        x = torch.tensor([[0, 2, 1, 0]], dtype=torch.int32)
+        y = one_hot_torch(x, space)
+        self.assertTrue(([1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0] == y.numpy()).all())
 
 
 if __name__ == "__main__":

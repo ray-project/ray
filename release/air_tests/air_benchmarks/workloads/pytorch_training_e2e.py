@@ -12,7 +12,7 @@ import torch.optim as optim
 
 import ray
 from ray.air.util.tensor_extensions.pandas import TensorArray
-from ray.train.torch import to_air_checkpoint
+from ray.train.torch import TorchCheckpoint
 from ray.data.preprocessors import BatchMapper
 from ray import train
 from ray.air import session
@@ -77,7 +77,7 @@ def train_loop_per_worker(config):
 
         session.report(
             dict(running_loss=running_loss),
-            checkpoint=to_air_checkpoint(model),
+            checkpoint=TorchCheckpoint.from_model(model),
         )
 
 
