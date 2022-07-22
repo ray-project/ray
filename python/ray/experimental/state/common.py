@@ -4,9 +4,9 @@ from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
 
+from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskType
 from ray.dashboard.modules.job.common import JobInfo
-from ray._private.ray_constants import env_integer
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +95,6 @@ class ListApiOptions:
         assert self.timeout != 0, "0 second timeout is not supported."
         if self.filters is None:
             self.filters = []
-
-        if self.limit > RAY_MAX_LIMIT_FROM_API_SERVER:
-            raise ValueError(
-                f"Given limit {self.limit} exceeds the supported "
-                f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit."
-            )
 
         for filter in self.filters:
             _, filter_predicate, _ = filter
@@ -644,6 +638,6 @@ class SummaryApiResponse:
     total: int
     # Carried over from ListApiResponse
     # Number of resources returned by data sources after truncation
-    num_from_source: int
+    num_after_truncation: int
     result: StateSummary = None
     partial_failure_warning: str = ""

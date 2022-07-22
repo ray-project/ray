@@ -14,7 +14,6 @@ from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
-    RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ActorState,
     GetApiOptions,
     GetLogOptions,
@@ -328,19 +327,19 @@ class StateApiClient(SubmissionClient):
         data = list_api_response["result"]
 
         # Print warnings if data is truncated at the data source.
-        num_from_source = list_api_response["num_from_source"]
+        num_after_truncation = list_api_response["num_after_truncation"]
         total = list_api_response["total"]
-        if total > num_from_source:
+        if total > num_after_truncation:
             # NOTE(rickyyx): For now, there's not much users could do (neither can we),
             # with hard truncation. Unless we allow users to set a higher
             # `RAY_MAX_LIMIT_FROM_DATA_SOURCE`, the data will always be truncated at the
             # data source.
             warnings.warn(
                 (
-                    f"{num_from_source} ({total} total) {resource.value} "
+                    f"{num_after_truncation} ({total} total) {resource.value} "
                     "are retrieved from the data source. "
-                    f"{total - num_from_source} entries have been truncated. Max of "
-                    f"{RAY_MAX_LIMIT_FROM_DATA_SOURCE} entries are retrieved from data "
+                    f"{total - num_after_truncation} entries have been truncated. "
+                    f"Max of {num_after_truncation} entries are retrieved from data "
                     "source to prevent over-sized payloads."
                 ),
             )
