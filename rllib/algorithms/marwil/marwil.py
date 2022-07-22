@@ -113,12 +113,20 @@ class MARWILConfig(AlgorithmConfig):
         self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
-        # TODO: Delete this to change default off_policy_eestimation_methods to {}
-        # Also delete the deprecation warning in .evaluate()
+
+        # TODO: Delete this and change off_policy_estimation_methods to {}
         self.off_policy_estimation_methods = {
             "is": {"type": ImportanceSampling},
             "wis": {"type": WeightedImportanceSampling},
         }
+        deprecation_warning(
+            old="MARWIL currently uses off_policy_estimation_methods: "
+            f"{self.off_policy_estimation_methods} by default. This will"
+            "change to off_policy_estimation_methods: {} in a future release."
+            "If you want to use an off-policy estimator, specify it in"
+            ".evaluation(off_policy_estimation_methods=...)",
+            error=False,
+        )
 
     @override(AlgorithmConfig)
     def training(
@@ -210,19 +218,6 @@ class MARWILConfig(AlgorithmConfig):
         if grad_clip is not None:
             self.grad_clip = grad_clip
         return self
-
-    @override(AlgorithmConfig)
-    def evaluation(self, *, off_policy_estimation_methods: Dict = None, **kwargs):
-        if not off_policy_estimation_methods and self.off_policy_estimation_methods:
-            deprecation_warning(
-                old="MARWIL currently uses off_policy_estimation_methods: "
-                f"{self.off_policy_estimation_methods} by default. This will"
-                "change to off_policy_estimation_methods: {} in a future release."
-                "If you want to use an off-policy estimator, specify it in"
-                ".evaluation(off_policy_estimation_methods=...)",
-                error=False,
-            )
-        return super().evaluation(**kwargs)
 
 
 class MARWIL(Algorithm):
