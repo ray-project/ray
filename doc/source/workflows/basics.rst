@@ -135,7 +135,8 @@ The ID of the task would be same as the name. If there are multiple tasks with t
 The suffix with a counter ``_n`` is a sequential number (1,2,3,...) of the tasks to be executed.
 (Note that the first task does not have the suffix.)
 
-Once a task is given a name, the result of the task will be retrievable via ``workflow.get_output(workflow_id, task_id="task_name")``. If the task with the given name hasn't been executed yet, an exception will be thrown. Here are some examples:
+Once a task is given a name, the result of the task will be retrievable via ``workflow.get_output(workflow_id, task_id="task_name")``.
+If the task with the given ``task_id`` hasn't been executed before the workflow completes, an exception will be thrown. Here are some examples:
 
 .. code-block:: python
 
