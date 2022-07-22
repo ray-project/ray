@@ -95,9 +95,9 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata(None, None))
         total_rows += block_size
-    block_list = BlockList(blocks, metadata)
+    block_list = BlockList(blocks, metadata, owned_by_consumer=True)
     ds = Dataset(
-        ExecutionPlan(block_list, DatasetStats.TODO()),
+        ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
         0,
         False,
     )

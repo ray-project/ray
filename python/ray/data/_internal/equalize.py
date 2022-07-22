@@ -53,7 +53,9 @@ def _equalize(
         for (block_ref, m) in split:
             block_refs.append(block_ref)
             meta.append(m)
-        equalized_block_lists.append(BlockList(block_refs, meta, owned_by_consumer))
+        equalized_block_lists.append(
+            BlockList(block_refs, meta, owned_by_consumer=owned_by_consumer)
+        )
     return equalized_block_lists
 
 

@@ -920,7 +920,9 @@ class Dataset(Generic[T]):
             return [
                 Dataset(
                     ExecutionPlan(
-                        BlockList(b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer),
+                        BlockList(
+                            b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
+                        ),
                         stats,
                         run_by_consumer=owned_by_consumer,
                     ),
