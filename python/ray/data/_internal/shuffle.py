@@ -92,6 +92,8 @@ class SimpleShufflePlan(ShuffleOp):
             shuffle_map_metadata.append(refs[-1])
             shuffle_map_out[i] = refs[:-1]
 
+        in_blocks_owned_by_consumer = input_blocks._owned_by_consumer
+
         # Eagerly delete the input block references in order to eagerly release
         # the blocks' memory.
         del input_blocks_list
@@ -120,4 +122,11 @@ class SimpleShufflePlan(ShuffleOp):
             "reduce": new_metadata,
         }
 
-        return BlockList(list(new_blocks), list(new_metadata)), stats
+        return (
+            BlockList(
+                list(new_blocks),
+                list(new_metadata),
+                owned_by_consumer=in_blocks_owned_by_consumer,
+            ),
+            stats,
+        )
