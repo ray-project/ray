@@ -64,7 +64,11 @@ class ScalingConfigWithIPs(ScalingConfig):
             {**worker_resources, **worker_resources_extra, **{f"node:{self.ips[_]}": 1e-3}}
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
-        bundles = trainer_bundle + worker_bundles
+        daemon_worker_bundles = [
+            {**{f"node:{self.ips[_]}": 1e-3}}
+            for _ in range(self.num_workers if self.num_workers else 0)
+        ]
+        bundles = trainer_bundle + worker_bundles + daemon_worker_bundles
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
     
     
