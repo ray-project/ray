@@ -16,7 +16,7 @@ from ray.workflow.common import (
     asyncio_run,
     validate_user_metadata,
 )
-from ray.workflow.exceptions import WorkflowRunningError, WorkflowNotFoundError
+from ray.workflow.exceptions import WorkflowAlreadyRunningError, WorkflowNotFoundError
 from ray.workflow import serialization, workflow_access, workflow_context
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
 from ray.workflow.workflow_storage import WorkflowStorage
@@ -689,7 +689,7 @@ def delete(workflow_id: str) -> None:
     try:
         status = get_status(workflow_id)
         if status == WorkflowStatus.RUNNING:
-            raise WorkflowRunningError("DELETE", workflow_id)
+            raise WorkflowAlreadyRunningError("DELETE", workflow_id)
     except ValueError:
         raise WorkflowNotFoundError(workflow_id)
 
