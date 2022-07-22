@@ -296,7 +296,9 @@ class JobManager:
     goes down.
     """
 
-    JOB_ACTOR_NAME = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
+    JOB_ACTOR_NAME = (
+        f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
+    )
     # Time that we will sleep while tailing logs if no new log line is
     # available.
     LOG_TAIL_SLEEP_S = 1
