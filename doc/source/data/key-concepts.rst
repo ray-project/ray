@@ -45,14 +45,10 @@ on creating datasets.
 Dataset Transforms
 ==================
 
-Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for
-:meth:`ds.map_batches() <ray.data.Dataset.map_batches>`,
-:meth:`ds.map() <ray.data.Dataset.map>`, or
-:meth:`ds.flat_map() <ray.data.Dataset.flat_map>`). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used:
+Datasets can use either Ray tasks or Ray actors to transform datasets. By default, tasks are used. Actors can be specified using ``compute=ActorPoolStrategy()``, which creates an autoscaling pool of Ray actors to process transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be cached:
 
 .. image:: images/dataset-map.svg
    :align: center
-
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
@@ -62,87 +58,61 @@ on transforming datasets.
 Shuffling Data
 ==============
 
-[todo: simplify]
-Certain operations like :meth:`ds.sort() <ray.data.Dataset.sort>` and
-:meth:`ds.groupby() <ray.data.Dataset.groupby>` require data blocks to be partitioned by value. Datasets executes this in three phases. First, a wave of sampling tasks determines suitable partition boundaries based on a random sample of data. Second, map tasks divide each input block into a number of output blocks equal to the number of reduce tasks. Third, reduce tasks take assigned output blocks from each map task and combines them into one block. Overall, this strategy generates ``O(n^2)`` intermediate objects where ``n`` is the number of input blocks.
+Certain operations like *sort* or *groupby* require data blocks to be partitioned by value, or *shuffled*. Datasets uses tasks to implement distributed shuffles in a map-reduce style, using map tasks to partition blocks by value, and then reduce tasks to merge co-partitioned blocks together.
 
-You can also change the partitioning of a Dataset using :meth:`ds.random_shuffle()
-<ray.data.Dataset.random_shuffle>` or
-:meth:`ds.repartition() <ray.data.Dataset.repartition>`. The former should be used if you want to randomize the order of elements in the dataset. The second should be used if you only want to equalize the size of the Dataset blocks (e.g., after a read or transformation that may skew the distribution of block sizes). Note that repartition has two modes, ``shuffle=False``, which performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full (non-random) distributed shuffle:
+You can also change just the number of blocks of a Dataset using :meth:`ds.repartition() <ray.data.Dataset.repartition>`. Repartition has two modes, ``shuffle=False``, which performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full distributed shuffle:
 
 .. image:: images/dataset-shuffle.svg
-   :width: 650px
    :align: center
 
 ..
   https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
-  
+
+Datasets shuffle can scale to processing hundreds of terabytes of data. See the :ref:`Performance Tips Guide <shuffle_performance_tips>` for an in-depth guide on shuffle performance.
+
 Fault tolerance
 ===============
 
-Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in Ray core. Specifically, a ``Dataset`` will be automatically recovered by Ray in case of failures. This works through **lineage reconstruction**: a Dataset is a collection of Ray objects stored in shared memory, and if any of these objects are lost, then Ray will recreate them by re-executing the task(s) that created them.
+Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in Ray core. Specifically, a Dataset will be automatically recovered by Ray in case of failures. This works through *lineage reconstruction*: a Dataset is a collection of Ray objects stored in shared memory, and if any of these objects are lost, then Ray will recreate them by re-executing the tasks that created them.
 
 There are a few cases that are not currently supported:
-1. If the original creator of the ``Dataset`` dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the ``Dataset``.
-2. For a :meth:`DatasetPipeline.split() <ray.data.DatasetPipeline.split>`, we do not support recovery for a consumer failure. When there are multiple consumers, they must all read the split pipeline in lockstep. To recover from this case, the pipeline and all consumers must be restarted together.
-3. The ``compute=actors`` option for transformations.
+
+ * If the original worker process that created the Dataset dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
+ * When ``compute=ActorPoolStrategy()`` is specified for transformations.
 
 -----------------
 Dataset Pipelines
 -----------------
 
-Sometimes, you may want to execute your Datasets transformations
+Dataset pipelines allow Dataset transformations to be executed incrementally on *windows* of the base data, instead of on all of the data at once. This can be used for streaming data loading into ML training, or to execute batch transformations on large datasets without needing to load the entire dataset into cluster memory.
 
+See the :ref:`Dataset Pipelines Guide <pipelining_datasets>` for an in-depth guide on pipelining compute.
 
-Datasets execute their transformations synchronously in blocking calls. However, it can be useful to overlap dataset computations with output. This can be done with a `DatasetPipeline <package-ref.html#datasetpipeline-api>`__.
+----------------------------
+Datasets and Other Libraries
+----------------------------
 
-A DatasetPipeline is an unified iterator over a (potentially infinite) sequence of Ray Datasets, each of which represents a *window* over the original data. Conceptually it is similar to a `Spark DStream <https://spark.apache.org/docs/latest/streaming-programming-guide.html#discretized-streams-dstreams>`__, but manages execution over a bounded amount of source data instead of an unbounded stream. Ray computes each dataset window on-demand and stitches their output together into a single logical data iterator. DatasetPipeline implements most of the same transformation and output methods as Datasets (e.g., map, filter, split, iter_rows, to_torch, etc.).
-
-.. _dataset_execution_concept:
-
-
-[todo: move this to separate page]
-
--------------------
-Reserving Resources
--------------------
-
-Unlike libraries like Tune and Train, Datasets does not use placement groups to allocate
-resources for execution (its tasks and actor pools). Instead, Datasets makes plain
-CPU/GPU resource requests to the cluster, *ignoring placement groups by default*. This
-can be thought of as Datasets requesting resources from the margins of the cluster,
-outside of those ML library placement groups.
-
-To avoid hangs or CPU starvation of Datasets when used with Tune or Train, you can
-exclude a fraction of CPUs from placement group scheduling, using the
-``_max_cpu_fraction_per_node`` placement group option (Experimental).
-
-Example: Datasets in Tune
-=========================
+When using Datasets in conjunction with other Ray libraries, it is important to ensure there are enough free CPUs for Datasets to run on. Libraries such as Tune by default try to fully utilize cluster CPUs. This can prevent Datasets from scheduling tasks, reducing performance or causing workloads to hang.
 
 .. _datasets_tune:
 
-Here's an example of how you can configure Datasets to run within Tune trials, which
-is the typical case of when you'd encounter placement groups with Datasets. Two
-scenarios are shown: running outside the trial group using spare resources, and running with reserved resources.
+As an example, the following shows two ways to use Datasets together with the Ray Tune library:
 
-.. tabbed:: Using Spare Cluster Resources
+.. tabbed:: Limiting Tune Concurrency
 
-    By default, Dataset tasks escape the trial placement group. This means they will use
-    spare cluster resources for execution, which can be problematic since the availability
-    of such resources is not guaranteed.
+    By limiting the number of concurrent Tune trials, we ensure CPU resources are always available for Datasets execution.
+    This can be done using the ``max_concurrent_trials`` Tune option.
 
     .. literalinclude:: ./doc_code/key_concepts.py
       :language: python
       :start-after: __resource_allocation_1_begin__
       :end-before: __resource_allocation_1_end__
 
-.. tabbed:: Using Reserved CPUs (Experimental)
+.. tabbed:: Reserving CPUs (Experimental)
 
-    The ``_max_cpu_fraction_per_node`` option can be used to exclude CPUs from placement
-    group scheduling. In the below example, setting this parameter to ``0.8`` enables Tune
-    trials to run smoothly without risk of deadlock by reserving 20% of node CPUs for
-    Dataset execution.
+    Alternatively, we can tell Tune to set aside CPU resources for other libraries.
+    This can be done by setting ``_max_cpu_fraction_per_node=0.8``, which reserves
+    20% of node CPUs for Dataset execution.
 
     .. literalinclude:: ./doc_code/key_concepts.py
       :language: python
@@ -151,5 +121,5 @@ scenarios are shown: running outside the trial group using spare resources, and 
 
     .. warning::
 
-        ``_max_cpu_fraction_per_node`` is experimental and not currently recommended for use with
+        This option is experimental and not currently recommended for use with
         autoscaling clusters (scale-up will not trigger properly).

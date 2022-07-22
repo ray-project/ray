@@ -136,6 +136,8 @@ Note that the number of blocks a Dataset created from ``ray.data.read_*`` contai
 The number of blocks printed in the Dataset's string representation is initially set to the number of read tasks generated.
 To view the actual number of blocks created after block splitting, use ``len(ds.get_internal_block_refs())``, which will block until all data has been read.
 
+.. _shuffle_performance_tips:
+
 Improving shuffle performance
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
