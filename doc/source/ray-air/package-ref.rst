@@ -1,7 +1,7 @@
 .. _air-api-ref:
 
-Ray AIR API
-===========
+API Reference
+=============
 
 .. contents::
     :local:
