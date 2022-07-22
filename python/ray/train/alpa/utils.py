@@ -63,6 +63,9 @@ class ScalingConfigWithIPs(ScalingConfig):
             {**worker_resources, **worker_resources_extra, **{f"node:{self.ips[_]}": 1e-3}}
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
+        
+        # added here to gives the deamon resources
+        # otherwise hang out forever when the trainer is killed
         daemon_worker_bundles = [
             {**{f"node:{self.ips[_]}": 1e-3}, **{"CPU": 1}}
             for _ in range(self.num_workers if self.num_workers else 0)

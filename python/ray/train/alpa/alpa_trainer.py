@@ -75,7 +75,7 @@ from icecream import ic
 
 import alpa
 from alpa.util import update_jax_platform
-from alpa.device_mesh import VirtualPhysicalMesh, DistributedPhysicalDeviceMesh
+from alpa.device_mesh import VirtualPhysicalMesh
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +136,6 @@ class AlpaTrainer(BaseTrainer):
         from ray._private.worker import _global_node as ray_global_node
         self.head_info = ray_global_node.address_info
         self.head_ip = self.head_info["node_ip_address"]
-
-        ic(self.head_ip)
         
         # Gather host ids
         self.host_info = []
@@ -256,22 +254,17 @@ class AlpaTrainer(BaseTrainer):
                 # because this is a class method.
                 updated_scaling_config = config.get("scaling_config", scaling_config)
                 updated_scaling_config_dict = updated_scaling_config.__dict__
+                # adding the ip address of the head node to the config
+                # `alpa` needs to allocate resources on the fixed node 
                 updated_scaling_config_dict['ips'] = self.host_ips            
-                ic(updated_scaling_config_dict)
                 
                 assert updated_scaling_config_dict['num_workers'] <= len(self.host_ips), \
                     "The number of workers must not exceed the number of hosts" \
                     "Either decrease the number of workers or check whether connected to" \
                     "the ray cluster via `ray.init('auto')`"
-                # "num_workers" in updated_scaling_config_dict
-                # ic(ScalingConfigWithIPs(**updated_scaling_config_dict))
                 if isinstance(updated_scaling_config_dict, dict):
                     updated_scaling_config = ScalingConfigWithIPs(**updated_scaling_config_dict)
-                # validated_scaling_config = trainer_cls._validate_scaling_config(
-                #     updated_scaling_config
-                # ) 
-                ic(updated_scaling_config)
-                ic(updated_scaling_config.as_placement_group_factory())
+
                 return updated_scaling_config.as_placement_group_factory()
             
         return TrainTrainable
