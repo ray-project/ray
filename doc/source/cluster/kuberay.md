@@ -6,8 +6,7 @@
 
 You can leverage your Kubernetes cluster as a substrate for execution of distributed Ray programs.
 
-The KubeRay Operator provides a Kubernetes-native interface for managing Ray clusters. Each Ray
-cluster consist of a head pod and collection of worker pods. Optional Ray Autoscaler support allows
+The [KubeRay Operator](https://ray-project.github.io/kuberay/components/operator/) provides a Kubernetes-native interface for managing Ray clusters. Each Ray cluster consist of a head pod and collection of worker pods. Optional autoscaling support allows
 the KubeRay Operator to size your Ray clusters according to the needs of your Ray workload, adding
 and removing Ray pods as needed.
 
@@ -20,17 +19,24 @@ The Ray docs present all the information you need to start running Ray workloads
     :column: col-lg-6 px-2 py-2
     :card:
 
-    **Quick start**
+    **Getting started**
     ^^^
 
     Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
 
+    +++
+    .. link-button:: getting-started
+        :type: ref
+        :text: Get Started with Ray on Kubernetes
+        :classes: btn-outline-info btn-block
+    ---
+
 
 ## The KubeRay project
 
-Ray's Kubernetes support is developed at the KubeRay GitHub repository, under the broader Ray project.
+Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/).
 
-- Visit the KubeRay GitHub repo to track progress, report bugs, propose new features, or contribute to
+- Visit the [KubeRay GitHub repo](https://github.com/ray-project/kuberay) to track progress, report bugs, propose new features, or contribute to
 the project.
-- Check out the KubeRay documentation for further technical information, developer guides,
+- Check out the [KubeRay docs](https://ray-project.github.io/kuberay/) for further technical information, developer guides,
 and discussion of new and upcoming features.
