@@ -152,7 +152,7 @@ prepare_docker() {
     " > $tmp_dir/Dockerfile
 
     pushd $tmp_dir
-    docker build . -t flovena/ray_ci:s5
+    docker build . -t ray_ci:v1
     popd
 
     popd
