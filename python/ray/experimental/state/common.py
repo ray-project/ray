@@ -317,7 +317,6 @@ class WorkerState(StateSchema):
     ip: str = state_column(filterable=True)
     pid: str = state_column(filterable=True)
     exit_detail: str = state_column(detail=True, filterable=False)
-    worker_info: dict = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
