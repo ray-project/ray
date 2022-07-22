@@ -1,4 +1,5 @@
-from typing import Any, List, Mapping, Optional, Union
+from dataclasses import dataclass
+from typing import Any, List, Mapping, Optional, Union, Tuple
 
 import click
 from datetime import datetime
@@ -89,6 +90,13 @@ def load_trials_from_experiment_checkpoint(
         trials.append(load_trial_from_checkpoint(trial_cp, stub=stub))
 
     return trials
+
+
+@dataclass
+class _ResumeConfig:
+    resume_unfinished: bool = True
+    resume_errored: bool = False
+    restart_errored: bool = False
 
 
 class _ExperimentCheckpointManager:
@@ -380,15 +388,18 @@ class TrialRunner:
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
-        if self._validate_resume(
+        should_resume, resume_config = self._validate_resume(
             resume_type=resume,
             driver_sync_trial_checkpoints=driver_sync_trial_checkpoints,
-        ):
-            errored_only = False
-            if isinstance(resume, str):
-                errored_only = resume.upper() == "ERRORED_ONLY"
+        )
+
+        if should_resume:
             try:
-                self.resume(run_errored_only=errored_only)
+                self.resume(
+                    resume_unfinished=resume_config.resume_unfinished,
+                    resume_errored=resume_config.resume_errored,
+                    restart_errored=resume_config.restart_errored,
+                )
                 self._resumed = True
             except Exception as e:
                 if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
@@ -469,18 +480,53 @@ class TrialRunner:
     def scheduler_alg(self):
         return self._scheduler_alg
 
-    def _validate_resume(self, resume_type, driver_sync_trial_checkpoints=True):
+    def _validate_resume(
+        self, resume_type: Union[str, bool], driver_sync_trial_checkpoints=True
+    ) -> Tuple[bool, Optional[_ResumeConfig]]:
         """Checks whether to resume experiment.
 
         Args:
-            resume_type: One of True, "REMOTE", "LOCAL",
-                "PROMPT", "ERRORED_ONLY", "AUTO".
+            resume_type: One of ["REMOTE", "LOCAL", "PROMPT", "AUTO"]. Can
+                be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
+                "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"]
             driver_sync_trial_checkpoints: Boolean indicating if the driver
                 should sync trial checkpoints from the driver node to cloud.
+
+        Returns:
+            Tuple of (should_resume, _ResumeConfig).
         """
-        # TODO: Consider supporting ERRORED_ONLY+REMOTE?
         if not resume_type:
-            return False
+            return False, None
+
+        if resume_type is True:
+            resume_type = "LOCAL"
+        elif resume_type == "ERRORED_ONLY":
+            warnings.warn(
+                "Passing `resume='ERRORED_ONLY'` to tune.run() is deprecated and "
+                "will be removed in the future. Please pass e.g. "
+                "`resume='LOCAL+RESTART_ERRORED_ONLY'` instead."
+            )
+            resume_type = "LOCAL+RESTART_ERRORED_ONLY"
+
+        # Parse resume string, e.g. AUTO+ERRORED
+        resume_config = _ResumeConfig()
+        resume_settings = resume_type.split("+")
+        resume_type = resume_settings[0]
+
+        for setting in resume_settings:
+            if setting == "ERRORED":
+                resume_config.resume_errored = True
+            elif setting == "RESTART_ERRORED":
+                resume_config.restart_errored = True
+            elif setting == "ERRORED_ONLY":
+                resume_config.resume_unfinished = False
+                resume_config.restart_errored = False
+                resume_config.resume_errored = True
+            elif setting == "RESTART_ERRORED_ONLY":
+                resume_config.resume_unfinished = False
+                resume_config.restart_errored = True
+                resume_config.resume_errored = False
+
         assert (
             resume_type in self.VALID_RESUME_TYPES
         ), "resume_type {} is not one of {}".format(
@@ -521,7 +567,7 @@ class TrialRunner:
                         "details. "
                         "Ray Tune will now start a new experiment."
                     )
-                    return False
+                    return False, None
                 if not self.checkpoint_exists(self._local_checkpoint_dir):
                     logger.warning(
                         "A remote checkpoint was fetched, but no checkpoint "
@@ -529,25 +575,25 @@ class TrialRunner:
                         "bucket exists but does not contain any data. "
                         "Ray Tune will start a new, fresh run."
                     )
-                    return False
+                    return False, None
                 logger.info(
                     "A remote experiment checkpoint was found and will be "
                     "used to restore the previous experiment state."
                 )
-                return True
+                return True, resume_config
             elif not self.checkpoint_exists(self._local_checkpoint_dir):
                 logger.info(
                     "No local checkpoint was found. "
                     "Ray Tune will now start a new experiment."
                 )
-                return False
+                return False, None
             logger.info(
                 "A local experiment checkpoint was found and will be used "
                 "to restore the previous experiment state."
             )
-            return True
+            return True, resume_config
 
-        if resume_type in [True, "LOCAL", "PROMPT", "ERRORED_ONLY"]:
+        if resume_type in ["LOCAL", "PROMPT"]:
             if not self.checkpoint_exists(self._local_checkpoint_dir):
                 raise ValueError(
                     f"You called resume ({resume_type}) when no checkpoint "
@@ -562,14 +608,14 @@ class TrialRunner:
                 if click.confirm(
                     f"Resume from local directory? " f"({self._local_checkpoint_dir})"
                 ):
-                    return True
+                    return True, resume_config
 
         if resume_type in ["REMOTE", "PROMPT"]:
             if resume_type == "PROMPT" and not click.confirm(
                 f"Try downloading from remote directory? "
                 f"({self._remote_checkpoint_dir})"
             ):
-                return False
+                return False, None
             if not self._remote_checkpoint_dir or not self._syncer:
                 raise ValueError(
                     "Called resume from remote without remote directory or "
@@ -611,7 +657,7 @@ class TrialRunner:
                     "Called resume when no checkpoint exists "
                     "in remote or local directory."
                 )
-        return True
+        return True, resume_config
 
     @classmethod
     def checkpoint_exists(cls, directory):
@@ -656,7 +702,12 @@ class TrialRunner:
                 force=force,
             )
 
-    def resume(self, run_errored_only=False):
+    def resume(
+        self,
+        resume_unfinished: bool = True,
+        resume_errored: bool = False,
+        restart_errored: bool = False,
+    ):
         """Resumes all checkpointed trials from previous run.
 
         Requires user to manually re-register their objects. Also stops
@@ -693,11 +744,17 @@ class TrialRunner:
 
         trials = load_trials_from_experiment_checkpoint(runner_state)
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
-            if run_errored_only and trial.status == Trial.ERROR:
-                new_trial = trial.reset()
-                self.add_trial(new_trial)
-            else:
-                self.add_trial(trial)
+            trial_to_add = trial
+            if trial.status == Trial.ERROR:
+                if resume_errored:
+                    trial_to_add = trial.reset()
+                    trial_to_add.restore_path = trial.checkpoint.dir_or_data
+                elif restart_errored:
+                    trial_to_add = trial.reset()
+                    trial_to_add.restore_path = None
+            elif trial.status != Trial.TERMINATED and not resume_unfinished:
+                trial_to_add.status = Trial.TERMINATED
+            self.add_trial(trial_to_add)
 
     def update_pending_trial_resources(
         self, resources: Union[dict, PlacementGroupFactory]
