@@ -210,8 +210,11 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         "ray.serve.long_poll.LongPollHost"
     ) as mock_long_poll:
 
+        def mock_save_checkpoint_fn(*args, **kwargs):
+            pass
+
         deployment_state = DeploymentState(
-            "name", "name", True, mock_long_poll, lambda: None
+            "name", "name", True, mock_long_poll, mock_save_checkpoint_fn
         )
         yield deployment_state, timer
 
