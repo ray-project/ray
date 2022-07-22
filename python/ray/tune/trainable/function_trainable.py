@@ -9,12 +9,14 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional, Type
+from typing import Any, Callable, Dict, Optional, Type, Union
 
+from ray.tune.resources import Resources
 from six.moves import queue
 
 from ray.air.checkpoint import Checkpoint
 from ray.tune import TuneError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
 from ray.tune.result import (
     DEFAULT_METRIC,
@@ -641,6 +643,8 @@ def wrap_function(
                     DeprecationWarning,
                 )
 
+    resources = getattr(train_func, "_resources", None)
+
     class ImplicitFunc(*inherit_from):
         _name = name or (
             train_func.__name__ if hasattr(train_func, "__name__") else "func"
@@ -684,5 +688,13 @@ def wrap_function(
             # with the keyword RESULT_DUPLICATE -- see tune/trial_runner.py.
             reporter(**{RESULT_DUPLICATE: True})
             return output
+
+        @classmethod
+        def default_resource_request(
+            cls, config: Dict[str, Any]
+        ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+            if not isinstance(resources, PlacementGroupFactory) and callable(resources):
+                return resources(config)
+            return resources
 
     return ImplicitFunc
