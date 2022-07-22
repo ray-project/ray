@@ -5,7 +5,7 @@
 This section should help you:
 
 - Learn how to use the Serve Autoscaling API.
-- Lean how to optimize the Serve Autoscaling parameters for your workload.
+- Learn how to optimize the Serve Autoscaling parameters for your workload.
 
 To learn about the architecture underlying Ray Serve Autoscaling, see {ref}`serve-autoscaling-architecture`.
 
