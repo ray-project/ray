@@ -3,6 +3,7 @@ import os
 import time
 
 import ray
+from ray.air import ScalingConfig
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
@@ -18,7 +19,7 @@ if __name__ == "__main__":
     trainer = HorovodTrainer(
         horovod_torch_train_func,
         train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
-        scaling_config=dict(
+        scaling_config=ScalingConfig(
             num_workers=num_workers,
             trainer_resources={"CPU": 0},
         ),
