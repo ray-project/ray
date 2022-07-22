@@ -50,7 +50,7 @@ class ScalingConfigWithIPs(ScalingConfig):
         from ray.tune import PlacementGroupFactory
 
         trainer_resources = (
-            self.trainer_resources if self.trainer_resources else {"CPU": 1, f"node:{self.head_ip}": 1e-3}
+            self.trainer_resources if self.trainer_resources else {"CPU": 1}
         )
         trainer_bundle = [trainer_resources]
         worker_resources = {
