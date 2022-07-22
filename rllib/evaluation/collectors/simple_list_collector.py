@@ -16,7 +16,6 @@ from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
-from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import (
     AgentID,
     EpisodeID,
@@ -56,19 +55,17 @@ class _AgentCollector:
 
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
-    #TODO: @kourosh add different types of padding. e.g. zeros vs. same
+    # TODO: @kourosh add different types of padding. e.g. zeros vs. same
     def __init__(self, view_reqs, policy):
         self.policy = policy
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
         # or internal state inputs.
-
         view_req_shifts = [
             min(vr.shift_arr) - int((vr.data_col or k) == SampleBatch.OBS)
             for k, vr in view_reqs.items()
         ]
         self.shift_before = -min(view_req_shifts)
-
 
         # The actual data buffers. Keys are column names, values are lists
         # that contain the sub-components (e.g. for complex obs spaces) with
