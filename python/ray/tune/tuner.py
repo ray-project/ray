@@ -17,10 +17,11 @@ if TYPE_CHECKING:
 
 ClientActorHandle = Any
 
-try:
-    from ray.util.client.common import ClientActorHandle
-except Exception:
-    pass
+# try:
+#     # Breaks lint right now.
+#     from ray.util.client.common import ClientActorHandle
+# except Exception:
+#     pass
 
 # The magic key that is used when instantiating Tuner during resume.
 _TUNER_INTERNAL = "_tuner_internal"
