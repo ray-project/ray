@@ -17,5 +17,5 @@ torch-geometric==2.0.3; python_version < '3.7'
 torch-geometric==2.0.4; python_version >= '3.7'
 
 # Jax
--f https://storage.googleapis.com/jax-releases/jax_releases.html
+-f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 jax[cuda111]==0.2.17
