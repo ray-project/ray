@@ -127,7 +127,7 @@ def test_pipeline_splitting_has_no_spilling(shutdown_only):
 
     @ray.remote
     def consume(p):
-        for batch in p.iter_batches():
+        for batch in p.iter_batches(batch_size=None):
             pass
 
     tasks = [consume.remote(p1), consume.remote(p2)]
