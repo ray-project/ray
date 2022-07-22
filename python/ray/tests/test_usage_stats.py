@@ -114,7 +114,7 @@ def reset_ray_version_commit():
     ray.__commit__ = saved_ray_commit
 
 
-def test_get_extra_usage_tags_to_report(monkeypatch):
+def test_get_extra_usage_tags_to_report(monkeypatch, shutdown_only, reset_lib_usage):
     with monkeypatch.context() as m:
         # Test a normal case.
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2")
@@ -151,6 +151,21 @@ def test_get_extra_usage_tags_to_report(monkeypatch):
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         assert result == {}
+
+        m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val")
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "val1")
+        ray.init()
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
+        result = ray_usage_lib.get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        assert result == {"key": "val", "_test1": "val1", "_test2": "val2"}
+        # Make sure the value is overwritten.
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
+        result = ray_usage_lib.get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        assert result == {"key": "val", "_test1": "val1", "_test2": "val3"}
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_lib_usage):
@@ -826,11 +841,11 @@ provider:
             from ray import tune  # noqa: F401
             from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
-        ray_usage_lib.record_extra_usage_tag("extra_k2", "extra_v2")
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "extra_v2")
 
         ray.init(address=cluster.address)
 
-        ray_usage_lib.record_extra_usage_tag("extra_k3", "extra_v3")
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "extra_v3")
 
         @ray.remote(num_cpus=0)
         class StatusReporter:
@@ -908,8 +923,8 @@ provider:
         assert payload["total_object_store_memory_gb"] > 0
         assert payload["extra_usage_tags"] == {
             "extra_k1": "extra_v1",
-            "extra_k2": "extra_v2",
-            "extra_k3": "extra_v3",
+            "_test1": "extra_v2",
+            "_test2": "extra_v3",
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1

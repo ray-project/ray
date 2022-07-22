@@ -44,6 +44,7 @@ folder (e.g., /tmp/ray/session_[id]/*).
 import glob
 import json
 import logging
+import threading
 import os
 import re
 import sys
@@ -167,7 +168,9 @@ class UsageStatsEnabledness(Enum):
 
 
 _recorded_library_usages = set()
+_recorded_library_usages_lock = threading.Lock()
 _recorded_extra_usage_tags = dict()
+_recorded_extra_usage_tags_lock = threading.Lock()
 
 
 # NOTE: Do not change the write / read protocol. That will cause
@@ -238,17 +241,25 @@ def _put_library_usage(library_usage: str):
             logger.debug(f"Failed to write a library usage to the home folder, {e}")
 
 
-def record_extra_usage_tag(key: str, value: str):
+class TagKey(Enum):
+    _TEST1 = auto()
+    _TEST2 = auto()
+
+
+def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.
 
     If the key already exists, the value will be overwritten.
-    Caller should make sure the uniqueness of the key to avoid conflicts.
 
-    It will make a synchronous call to the internal kv store.
+    To record an extra tag, first add the key to the TagKey enum and
+    then call this function.
+    It will make a synchronous call to the internal kv store if the tag is updated.
     """
-    if _recorded_extra_usage_tags.get(key) == value:
-        return
-    _recorded_extra_usage_tags[key] = value
+    key = key.name.lower()
+    with _recorded_extra_usage_tags_lock:
+        if _recorded_extra_usage_tags.get(key) == value:
+            return
+        _recorded_extra_usage_tags[key] = value
 
     if not _internal_kv_initialized():
         # This happens if the record is before ray.init
@@ -271,13 +282,15 @@ def _put_extra_usage_tag(key: str, value: str):
 
 def record_library_usage(library_usage: str):
     """Record library usage (e.g. which library is used)"""
-    if library_usage in _recorded_library_usages:
-        return
     if "-" in library_usage:
         # - is not permitted since it should be used as a separator
         # of the lib usage file name. See LibUsageRecorder.
         raise ValueError("The library name contains a char - which is not permitted.")
-    _recorded_library_usages.add(library_usage)
+
+    with _recorded_library_usages_lock:
+        if library_usage in _recorded_library_usages:
+            return
+        _recorded_library_usages.add(library_usage)
 
     if not _internal_kv_initialized():
         # This happens if the library is imported before ray.init
