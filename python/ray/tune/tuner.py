@@ -1,9 +1,8 @@
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray
 
 from ray.air.config import RunConfig
-from ray.train.trainer import BaseTrainer
 from ray.tune import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
@@ -11,6 +10,9 @@ from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
 from ray.util import PublicAPI
 from ray.util.ml_utils.node import force_on_current_node
+
+if TYPE_CHECKING:
+    from ray.train.trainer import BaseTrainer
 
 ClientActorHandle = Any
 
@@ -111,7 +113,7 @@ class Tuner:
                 str,
                 Callable,
                 Type[Trainable],
-                BaseTrainer,
+                "BaseTrainer",
             ]
         ] = None,
         *,
