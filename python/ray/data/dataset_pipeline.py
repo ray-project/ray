@@ -161,7 +161,8 @@ class DatasetPipeline(Generic[T]):
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
             batch_size: Request a specific batch size, or None to use entire blocks
-                as batches. Defaults to a system-chosen batch size.
+                as batches (blocks may contain different number of rows).
+                Defaults to 4096.
             batch_format: The format in which to return each batch.
                 Specify "native" to use the current block format (promoting
                 Arrow to pandas automatically), "pandas" to

@@ -355,7 +355,7 @@ class Dataset(Generic[T]):
                 only supported for the actor compute strategy.
             batch_size: Request a specific batch size, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
-                Defaults to a system-chosen batch size.
+                Defaults to 4096.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling actor pool. If wanting to
                 configure the min or max size of the autoscaling actor pool, you can
@@ -2351,7 +2351,7 @@ class Dataset(Generic[T]):
                 current block during the scan.
             batch_size: Request a specific batch size, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
-                Defaults to a system-chosen batch size.
+                Defaults to 4096.
             batch_format: The format in which to return each batch.
                 Specify "native" to use the native block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
