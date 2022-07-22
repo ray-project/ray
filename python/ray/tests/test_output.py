@@ -410,6 +410,7 @@ ray.init()
     lines = output.strip("\n").split("\n")
     for line in lines:
         print(line)
+    lines = [line for line in lines if "The object store is using /tmp" not in line]
     assert len(lines) == 1
     line = lines[0]
     print(line)
