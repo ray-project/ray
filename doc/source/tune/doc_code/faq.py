@@ -132,7 +132,7 @@ def train(config, checkpoint_dir=None, num_epochs=5, data=None):
 data = np.random.random(size=100000000)
 
 tuner = tune.Tuner(
-    tune.with_resources(tune.with_parameters(train, num_epochs=5, data=data))
+    tune.with_parameters(train, num_epochs=5, data=data)
 )
 tuner.fit()
 # __huge_data_end__
