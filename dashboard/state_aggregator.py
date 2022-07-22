@@ -147,7 +147,7 @@ class StateAPIManager:
 
         Returns:
             A list of filtered state data in dictionary. Each state data's
-            unncessary columns are filtered by the given state_dataclass schema.
+            unnecessary columns are filtered by the given state_dataclass schema.
         """
         filters = _convert_filters_type(filters, state_dataclass)
         result = []
@@ -196,7 +196,7 @@ class StateAPIManager:
         for message in reply.actor_table_data:
             data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
             result.append(data)
-        num_from_source = len(result)
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, ActorState, option.detail)
         num_filtered = len(result)
 
@@ -206,7 +206,7 @@ class StateAPIManager:
         return ListApiResponse(
             result=result,
             total=reply.total,
-            num_from_source=num_from_source,
+            num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
 
@@ -232,7 +232,7 @@ class StateAPIManager:
                 fields_to_decode=["placement_group_id", "node_id"],
             )
             result.append(data)
-        num_from_source = len(result)
+        num_after_truncation = len(result)
 
         result = self._filter(
             result, option.filters, PlacementGroupState, option.detail
@@ -243,7 +243,7 @@ class StateAPIManager:
         return ListApiResponse(
             result=list(islice(result, option.limit)),
             total=reply.total,
-            num_from_source=num_from_source,
+            num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
 
@@ -267,7 +267,7 @@ class StateAPIManager:
 
         total_nodes = len(result)
         # No reason to truncate node because they are usually small.
-        num_from_source = len(result)
+        num_after_truncation = len(result)
 
         result = self._filter(result, option.filters, NodeState, option.detail)
         num_filtered = len(result)
@@ -278,7 +278,7 @@ class StateAPIManager:
         return ListApiResponse(
             result=result,
             total=total_nodes,
-            num_from_source=num_from_source,
+            num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
 
@@ -304,7 +304,7 @@ class StateAPIManager:
             data["ip"] = data["worker_address"]["ip_address"]
             result.append(data)
 
-        num_from_source = len(result)
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, WorkerState, option.detail)
         num_filtered = len(result)
         # Sort to make the output deterministic.
@@ -313,7 +313,7 @@ class StateAPIManager:
         return ListApiResponse(
             result=result,
             total=reply.total,
-            num_from_source=num_from_source,
+            num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
 
@@ -332,7 +332,7 @@ class StateAPIManager:
             result=result,
             # TODO(sang): Support this.
             total=len(result),
-            num_from_source=len(result),
+            num_after_truncation=len(result),
             num_filtered=len(result),
         )
 
@@ -396,7 +396,7 @@ class StateAPIManager:
                         TaskStatus.RUNNING
                     ].name
                 result.append(data)
-        num_from_source = len(result)
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, TaskState, option.detail)
         num_filtered = len(result)
         # Sort to make the output deterministic.
@@ -406,7 +406,7 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_tasks,
-            num_from_source=num_from_source,
+            num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
 
@@ -476,7 +476,7 @@ class StateAPIManager:
             data["ip"] = data["node_ip_address"]
             del data["node_ip_address"]
             result.append(data)
-        num_from_source = len(result)
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, ObjectState, option.detail)
         num_filtered = len(result)
         # Sort to make the output deterministic.
@@ -486,7 +486,7 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_objects,
-            num_from_source=num_from_source,
+            num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
 
@@ -543,7 +543,7 @@ class StateAPIManager:
             partial_failure_warning = (
                 f"The returned data may contain incomplete result. {warning_msg}"
             )
-        num_from_source = len(result)
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, RuntimeEnvState, option.detail)
         num_filtered = len(result)
 
@@ -565,7 +565,7 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_runtime_envs,
-            num_from_source=num_from_source,
+            num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
 
@@ -585,7 +585,7 @@ class StateAPIManager:
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
             total=result.total,
-            num_from_source=result.num_from_source,
+            num_after_truncation=result.num_after_truncation,
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -604,7 +604,7 @@ class StateAPIManager:
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
             total=result.total,
-            num_from_source=result.num_from_source,
+            num_after_truncation=result.num_after_truncation,
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -623,7 +623,7 @@ class StateAPIManager:
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
             total=result.total,
-            num_from_source=result.num_from_source,
+            num_after_truncation=result.num_after_truncation,
         )
 
     def _message_to_dict(
