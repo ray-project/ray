@@ -146,6 +146,9 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
     """
 
     def mapping(item):
+        if item is None:
+            # returns None with dtype=np.obj
+            return np.asarray(item)
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             return item if device is None else item.to(device)
