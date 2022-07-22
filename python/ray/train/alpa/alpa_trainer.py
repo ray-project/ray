@@ -136,6 +136,8 @@ class AlpaTrainer(BaseTrainer):
         from ray._private.worker import _global_node as ray_global_node
         self.head_info = ray_global_node.address_info
         self.head_ip = self.head_info["node_ip_address"]
+
+        ic(self.head_ip)
         
         # Gather host ids
         self.host_info = []
