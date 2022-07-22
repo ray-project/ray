@@ -58,6 +58,14 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
   arguments->SetMaxSendMessageSize(::RayConfig::instance().max_grpc_message_size());
   arguments->SetMaxReceiveMessageSize(::RayConfig::instance().max_grpc_message_size());
 
+  arguments->SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 10000);
+  arguments->SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 5000);
+  arguments->SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 1);
+  arguments->SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
+  arguments->SetInt(GRPC_ARG_HTTP2_MIN_SENT_PING_INTERVAL_WITHOUT_DATA_MS, 10000);
+  arguments->SetInt(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, 5000);
+
+
   std::shared_ptr<grpc::Channel> channel;
   if (::RayConfig::instance().USE_TLS()) {
     std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());
@@ -100,8 +108,7 @@ class GrpcClient {
              bool use_tls = false,
              std::optional<grpc::ChannelArguments> arguments = std::nullopt)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
-    std::shared_ptr<grpc::Channel> channel = BuildChannel(address, port, std::move(arguments));
-    channel_ = BuildChannel(address, port);
+    channel_ = BuildChannel(address, port, std::move(arguments));
     stub_ = GrpcService::NewStub(channel_);
     RAY_LOG(INFO) << address << ":" << port << "\t" << channel_.get();
     client_call_manager_.channel_.push_back(channel_);

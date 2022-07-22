@@ -281,7 +281,8 @@ class CoreWorkerDirectActorTaskSubmitter
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
 
   /// Mutex to protect the various maps below.
-  mutable absl::Mutex mu_;
+  /// mutable absl::Mutex mu_;
+  mutable std::mutex mu_;
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);
 

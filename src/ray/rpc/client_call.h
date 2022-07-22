@@ -313,7 +313,7 @@ class ClientCallManager {
       } else {
         RAY_LOG(INFO) << "--- DUMP ---\t" << name_;
         for(auto c : channel_) {
-          RAY_LOG(INFO) << "DBG: STATUS: " << c.get() << "\t" << c->GetState(false) << "\t" << name_;
+          RAY_LOG(INFO) << "DBG: STATUS: " << c.get() << "\t" << c->GetState(false) << "\t" << name_ << "\t" << status << "\t" << got_tag;
         }
       }
     }

@@ -30,7 +30,7 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
     int32_t max_pending_calls,
     bool execute_out_of_order,
     bool fail_if_actor_unreachable) {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
   RAY_LOG(INFO) << "Set max pending calls to " << max_pending_calls << " for actor "
@@ -44,7 +44,7 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
                                                    bool force_kill,
                                                    bool no_restart) {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor_id.Binary());
   request.set_force_kill(force_kill);
@@ -79,7 +79,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   bool task_queued = false;
   uint64_t send_pos = 0;
   {
-    absl::MutexLock lock(&mu_);
+    std::lock_guard<std::mutex> lock(mu_);
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (queue->second.state != rpc::ActorTableData::DEAD) {
@@ -104,7 +104,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
           resolver_.ResolveDependencies(
               task_spec, [this, send_pos, actor_id, task_id](Status status) {
                 task_finisher_.MarkDependenciesResolved(task_id);
-                absl::MutexLock lock(&mu_);
+                std::lock_guard<std::mutex> lock(mu_);
                 auto queue = client_queues_.find(actor_id);
                 RAY_CHECK(queue != client_queues_.end());
                 auto &actor_submit_queue = queue->second.actor_submit_queue;
@@ -130,7 +130,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     rpc::ErrorType error_type;
     rpc::RayErrorInfo error_info;
     {
-      absl::MutexLock lock(&mu_);
+      std::lock_guard<std::mutex> lock(mu_);
       const auto queue_it = client_queues_.find(task_spec.ActorId());
       const auto &death_cause = queue_it->second.death_cause;
       error_type = GenErrorTypeFromDeathCause(death_cause);
@@ -178,7 +178,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
       inflight_task_callbacks;
 
   {
-    absl::MutexLock lock(&mu_);
+    std::lock_guard<std::mutex> lock(mu_);
 
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
@@ -239,9 +239,9 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
-
+  std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
   {
-    absl::MutexLock lock(&mu_);
+    std::lock_guard<std::mutex> lock(mu_);
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (!dead) {
@@ -272,7 +272,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
       auto status = Status::IOError("cancelling all pending tasks of dead actor");
       auto task_ids = queue->second.actor_submit_queue->ClearAllTasks();
-      rpc::ErrorType error_type = GenErrorTypeFromDeathCause(death_cause);
+      auto error_type = GenErrorTypeFromDeathCause(death_cause);
       const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
 
       for (auto &task_id : task_ids) {
@@ -286,24 +286,28 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
             task_id, error_type, &status, &error_info));
       }
 
-      auto &wait_for_death_info_tasks = queue->second.wait_for_death_info_tasks;
-
-      RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
-                    << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
-      for (auto &net_err_task : wait_for_death_info_tasks) {
-        RAY_UNUSED(task_finisher_.MarkTaskReturnObjectsFailed(
-            net_err_task.second, error_type, &error_info));
-      }
-
       // No need to clean up tasks that have been sent and are waiting for
       // replies. They will be treated as failed once the connection dies.
       // We retain the sequencing information so that we can properly fail
       // any tasks submitted after the actor death.
+      // We need to execute this outside of the lock to prevent deadlock.
+      wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
     } else if (queue->second.state != rpc::ActorTableData::DEAD) {
       // Only update the actor's state if it is not permanently dead. The actor
       // will eventually get restarted or marked as permanently dead.
       queue->second.state = rpc::ActorTableData::RESTARTING;
       queue->second.num_restarts = num_restarts;
+    }
+  }
+
+  if(!wait_for_death_info_tasks.empty()) {
+    auto error_type = GenErrorTypeFromDeathCause(death_cause);
+    const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
+    RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
+                  << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
+    for (auto &net_err_task : wait_for_death_info_tasks) {
+      RAY_UNUSED(task_finisher_.MarkTaskReturnObjectsFailed(
+          net_err_task.second, error_type, &error_info));
     }
   }
 
@@ -314,7 +318,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   std::vector<TaskSpecification> task_specs;
   {
-    absl::MutexLock lock(&mu_);
+    std::lock_guard<std::mutex> lock(mu_);
     for (auto &queue_pair : client_queues_) {
       auto &queue = queue_pair.second;
       auto deque_itr = queue.wait_for_death_info_tasks.begin();
@@ -443,7 +447,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         {
           RAY_LOG(INFO) << "DBG:::: " << status.ToString()
                         << ". Cost: " << static_cast<double>(absl::GetCurrentTimeNanos() - now) / 1000.0;
-          absl::MutexLock lock(&mu_);
+          std::lock_guard<std::mutex> lock(mu_);
           auto it = client_queues_.find(actor_id);
           RAY_CHECK(it != client_queues_.end());
           auto &queue = it->second;
@@ -485,7 +489,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   } else {
     // push task failed due to network error. For example, actor is dead
     // and no process response for the push task.
-    absl::MutexLock lock(&mu_);
+    std::lock_guard<std::mutex> lock(mu_);
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
@@ -520,7 +524,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     }
   }
   {
-    absl::MutexLock lock(&mu_);
+    std::lock_guard<std::mutex> lock(mu_);
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
@@ -532,14 +536,14 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
 }
 
 bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
 
   auto iter = client_queues_.find(actor_id);
   return (iter != client_queues_.end() && iter->second.rpc_client);
 }
 
 bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   return it->second.max_pending_calls > 0 &&
@@ -548,7 +552,7 @@ bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_i
 
 std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
     const ActorID &actor_id) const {
-  absl::MutexLock lock(&mu_);
+  std::lock_guard<std::mutex> lock(mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   std::ostringstream stream;
