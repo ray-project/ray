@@ -31,6 +31,7 @@ const columns = [
   "Logs",
   "StartTime",
   "EndTime",
+  "Driver Pid",
 ];
 
 const JobList = () => {
@@ -146,6 +147,9 @@ const JobList = () => {
                               "YYYY/MM/DD HH:mm:ss",
                             )
                           : "-"}
+                      </TableCell>
+                      <TableCell align="center">
+                        {driver_info?.pid ?? "-"}
                       </TableCell>
                     </TableRow>
                   ),

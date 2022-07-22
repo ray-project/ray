@@ -1,9 +1,11 @@
+import asyncio
+import concurrent
 import dataclasses
 import json
 import logging
 import traceback
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -49,6 +51,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._dashboard_head = dashboard_head
         self._job_manager = None
         self._gcs_job_info_stub = None
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 
     async def _parse_and_validate_request(
         self, req: Request, request_type: dataclass
@@ -89,7 +92,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             # then lets try to search for a submission with given id
             submission_id = job_or_submission_id
 
-        job_info = self._job_manager.get_job_info(submission_id)
+        job_info = await asyncio.get_running_loop().run_in_executor(
+            self._executor, lambda: self._job_manager.get_job_info(submission_id)
+        )
         if job_info:
             driver = submission_job_drivers.get(submission_id)
             job = JobDetails(
@@ -102,10 +107,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             return job
 
         return None
-
-    def job_exists(self, job_id: str) -> bool:
-        status = self._job_manager.get_job_status(job_id)
-        return status is not None
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
@@ -252,7 +253,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         driver_jobs, submission_job_drivers = await self._get_driver_jobs()
 
         # TODO(aguo): convert _job_manager.list_jobs to an async function.
-        submission_jobs = self._job_manager.list_jobs()
+        submission_jobs = await asyncio.get_running_loop().run_in_executor(
+            self._executor, self._job_manager.list_jobs
+        )
         submission_jobs = [
             JobDetails(
                 **dataclasses.asdict(job),
@@ -275,7 +278,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json",
         )
 
-    async def _get_driver_jobs(self):
+    async def _get_driver_jobs(
+        self,
+    ) -> Tuple[Dict[str, JobDetails], Dict[str, DriverInfo]]:
         """Returns a tuple of dictionaries related to drivers.
 
         The first dictionary contains all driver jobs and is keyed by the job's id.
