@@ -189,6 +189,7 @@ def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_lib_usage):
             ray_usage_lib._usage_stats_enabledness()
 
     with monkeypatch.context() as m:
+        m.delenv("RAY_USAGE_STATS_ENABLED")
         tmp_usage_stats_config_path = tmp_path / "config.json"
         monkeypatch.setenv(
             "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
