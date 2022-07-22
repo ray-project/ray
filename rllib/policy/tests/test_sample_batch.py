@@ -271,13 +271,26 @@ class TestSampleBatch(unittest.TestCase):
                 "dones": np.array([0, 0, 0, 1, 0, 1]),
             }
         )
+        true_split = [np.array([0, 1, 2, 3]), np.array([4, 5])]
+
+        # Check that splitting by EPS_ID works correctly
         eps_split = [b["a"] for b in s.split_by_episode()]
+        check(true_split, eps_split)
+
+        # Check that splitting by DONES works correctly
         del s["eps_id"]
         dones_split = [b["a"] for b in s.split_by_episode()]
-        check(eps_split, dones_split)
+        check(true_split, dones_split)
+
+        # Check that splitting without the EPS_ID or DONES key raise an error
         del s["dones"]
         with self.assertRaises(KeyError):
             s.split_by_episode()
+
+        # Check that splitting with DONES always False returns the whole batch
+        s["dones"] = np.array([0, 0, 0, 0, 0, 0])
+        batch_split = [b["a"] for b in s.split_by_episode()]
+        check(s["a"], batch_split)
 
     def test_copy(self):
         s = SampleBatch(

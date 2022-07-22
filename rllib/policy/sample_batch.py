@@ -357,7 +357,17 @@ class SampleBatch(dict):
             >>> batch = SampleBatch( # doctest: +SKIP
             ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 1]})
             >>> print(batch.split_by_episode()) # doctest: +SKIP
-            [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "eps_id": [0, 1]}]
+            [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 1]}]
+            >>>
+            >>> # The last episode is appended even if it does not end with done
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 0]})
+            >>> print(batch.split_by_episode()) # doctest: +SKIP
+            [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 0]}]
+            >>> batch = SampleBatch( # doctest: +SKIP
+            ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]})
+            >>> print(batch.split_by_episode()) # doctest: +SKIP
+            [{"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]}]
         """
 
         slices = []
@@ -379,15 +389,21 @@ class SampleBatch(dict):
             offset = 0
             for i in range(self.count):
                 if self[SampleBatch.DONES][i]:
+                    # Since self[i] is the last timestep of the episode,
+                    # append it to the batch, then set offset to the start
+                    # of the next batch
                     slices.append(self[offset : i + 1])
                     offset = i + 1
             # Add final slice.
             if offset != self.count:
-                slices.append(self[offset : self.count])
+                slices.append(self[offset:])
         else:
             raise KeyError(f"{self} does not have `eps_id` or `dones`!")
 
-        assert sum(s.count for s in slices) == self.count, (slices, self.count)
+        assert (
+            sum(s.count for s in slices) == self.count
+        ), f"Calling split_by_episode on {self} returns {slices}"
+        f"which should both have {self.count} timesteps!"
         return slices
 
     @Deprecated(new="SampleBatch[start:stop]", error=False)
