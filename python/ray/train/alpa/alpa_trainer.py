@@ -258,6 +258,10 @@ class AlpaTrainer(BaseTrainer):
                 updated_scaling_config_dict = updated_scaling_config.__dict__
                 updated_scaling_config_dict['ips'] = self.host_ips            
                 ic(updated_scaling_config_dict)
+                
+                assert updated_scaling_config_dict['num_workers'] <= len(self.host_ips), \
+                    "The number of workers must not exceed the number of hosts"
+                # "num_workers" in updated_scaling_config_dict
                 # ic(ScalingConfigWithIPs(**updated_scaling_config_dict))
                 if isinstance(updated_scaling_config_dict, dict):
                     updated_scaling_config = ScalingConfigWithIPs(**updated_scaling_config_dict)
