@@ -239,7 +239,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
-
+  std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
   {
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(actor_id);
@@ -286,24 +286,24 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
             task_id, error_type, &status, &error_info));
       }
 
-      auto &wait_for_death_info_tasks = queue->second.wait_for_death_info_tasks;
-
-      RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
-                    << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
-      for (auto &net_err_task : wait_for_death_info_tasks) {
-        RAY_UNUSED(task_finisher_.MarkTaskReturnObjectsFailed(
-            net_err_task.second, error_type, &error_info));
-      }
-
-      // No need to clean up tasks that have been sent and are waiting for
-      // replies. They will be treated as failed once the connection dies.
-      // We retain the sequencing information so that we can properly fail
-      // any tasks submitted after the actor death.
+      // We need to execute this outside of the lock to prevent deadlock.
+      wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
     } else if (queue->second.state != rpc::ActorTableData::DEAD) {
       // Only update the actor's state if it is not permanently dead. The actor
       // will eventually get restarted or marked as permanently dead.
       queue->second.state = rpc::ActorTableData::RESTARTING;
       queue->second.num_restarts = num_restarts;
+    }
+  }
+
+  if (!wait_for_death_info_tasks.empty()) {
+    auto error_type = GenErrorTypeFromDeathCause(death_cause);
+    const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
+    RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
+                  << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
+    for (auto &net_err_task : wait_for_death_info_tasks) {
+      RAY_UNUSED(task_finisher_.MarkTaskReturnObjectsFailed(
+          net_err_task.second, error_type, &error_info));
     }
   }
 
