@@ -31,9 +31,7 @@ py_test_run_all_notebooks(
     include = ["*.ipynb"],
     exclude = [
         "huggingface_text_classification.ipynb",
-        "torch_incremental_learning.ipynb",
         "feast_example.ipynb",  # REGRESSION
-        "tfx_tabular_train_to_serve.ipynb", # REGRESSION
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
