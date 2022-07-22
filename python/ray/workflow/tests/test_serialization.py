@@ -67,6 +67,11 @@ def test_dedupe_serialization(workflow_start_regular_shared):
 
 
 def test_dedupe_serialization_2(workflow_start_regular_shared):
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # TODO(suquark): Fix workflow with ObjectRefs as inputs under client mode.
+    skip_client_mode_test()
+
     ref = ray.put("hello world 12345")
     list_of_refs = [ref for _ in range(20)]
 
@@ -89,6 +94,10 @@ def test_same_object_many_workflows(workflow_start_regular_shared):
     """Ensure that when we dedupe uploads, we upload the object once per workflow,
     since different workflows shouldn't look in each others object directories.
     """
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # TODO(suquark): Fix workflow with ObjectRefs as inputs under client mode.
+    skip_client_mode_test()
 
     @ray.remote
     def f(a):
@@ -168,6 +177,12 @@ if __name__ == "__main__":
 
 
 def test_embedded_objectrefs(workflow_start_regular):
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # This test uses low-level storage APIs and restarts the cluster,
+    # so it is not for client mode test
+    skip_client_mode_test()
+
     workflow_id = test_embedded_objectrefs.__name__
 
     class ObjectRefsWrapper:
@@ -178,7 +193,7 @@ def test_embedded_objectrefs(workflow_start_regular):
 
     wrapped = ObjectRefsWrapper([ray.put(1), ray.put(2)])
 
-    store = workflow_storage.get_workflow_storage(workflow_id)
+    store = workflow_storage.WorkflowStorage(workflow_id)
     serialization.dump_to_storage("key", wrapped, workflow_id, store)
 
     # Be extremely explicit about shutting down. We want to make sure the
@@ -190,7 +205,7 @@ def test_embedded_objectrefs(workflow_start_regular):
 
     ray.init(storage=_storage_uri)
     workflow.init()
-    storage2 = workflow_storage.get_workflow_storage(workflow_id)
+    storage2 = workflow_storage.WorkflowStorage(workflow_id)
 
     result = storage2._get("key")
     assert ray.get(result.refs) == [1, 2]
