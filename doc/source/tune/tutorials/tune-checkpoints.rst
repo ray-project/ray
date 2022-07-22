@@ -38,15 +38,19 @@ For this case, we only need to tell Ray Tune not to do any syncing at all (as sy
 .. code-block:: python
 
     from ray import tune
+    from ray.air.config import RunConfig
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        local_dir="/path/to/shared/storage/",
+        run_config=RunConfig(
+            name="experiment_name",
+            local_dir="/path/to/shared/storage/",
+        ),
         sync_config=tune.SyncConfig(
             syncer=None  # Disable syncing
         )
     )
+    tuner.fit()
 
 Note that the driver (on the head node) will have access to all checkpoints locally (in the
 shared directory) for further processing.
@@ -69,14 +73,18 @@ This will automatically store both the experiment state and the trial checkpoint
 .. code-block:: python
 
     from ray import tune
+    from ray.air.config import RunConfig
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
+        run_config=RunConfig(
+            name="experiment_name",
+        ),
         sync_config=tune.SyncConfig(
             upload_dir="s3://bucket-name/sub-path/"
         )
     )
+    tuner.fit()
 
 We don't have to provide a ``syncer`` here as it will be automatically detected. However, you can provide
 a string if you want to use a custom command:
@@ -84,15 +92,20 @@ a string if you want to use a custom command:
 .. code-block:: python
 
     from ray import tune
+    from ray.air.config import RunConfig
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
+        run_config=RunConfig(
+            name="experiment_name",
+        ),
         sync_config=tune.SyncConfig(
             upload_dir="s3://bucket-name/sub-path/",
             syncer="aws s3 sync {source} {target}",  # Custom sync command
         )
     )
+    tuner.fit()
+
 
 If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``,
 as demonstrated in the example above.
