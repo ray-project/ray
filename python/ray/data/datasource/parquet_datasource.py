@@ -1,5 +1,6 @@
 import itertools
 import logging
+import time
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
@@ -38,16 +39,19 @@ PARALLELIZE_META_FETCH_THRESHOLD = 24
 PARQUET_READER_ROW_BATCH_SIZE = 100000
 FILE_READING_RETRY = 8
 
-# The minimum size multiplier for reading Parquet data source in Arrow.
+# The default size multiplier for reading Parquet data source in Arrow.
 # Parquet in-memory data format is encoded with various encoding techniques (such as
 # dictionary, RLE, delta), so Arrow in-memory representation uses much more memory
 # compared to Parquet in-memory representation. Parquet file statistics only record
 # encoded (i.e. uncompressed) data size information.
 #
 # To estimate real-time in-memory data size, Datasets will try to estimate the correct
-# inflation ratio from Parquet to Arrow, using this constant as a lower bound for
+# inflation ratio from Parquet to Arrow, using this constant as the default value for
 # safety. See https://github.com/ray-project/ray/pull/26516 for more context.
-PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 5
+PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
+
+# The lower bound size to estimate Parquet encoding ratio.
+PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 2
 
 # The percentage of files (1% by default) to be sampled from the dataset to estimate
 # Parquet encoding ratio.
@@ -253,7 +257,8 @@ class _ParquetDatasourceReader(Reader):
                 pieces=pieces,
                 prefetched_metadata=metadata,
             )
-            meta.size_bytes *= self._encoding_ratio
+            if meta.size_bytes is not None:
+                meta.size_bytes *= self._encoding_ratio
             block_udf, reader_args, columns, schema = (
                 self._block_udf,
                 self._reader_args,
@@ -280,10 +285,14 @@ class _ParquetDatasourceReader(Reader):
 
         To avoid OOMs, it is safer to return an over-estimate than an underestimate.
         """
+        if not DatasetContext.get_current().decoding_size_estimation:
+            return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+
         # Sample a few rows from Parquet files to estimate the encoding ratio.
         # Launch tasks to sample multiple files remotely in parallel.
         # Evenly distributed to sample N rows in i-th row group in i-th file.
         # TODO(ekl/cheng) take into account column pruning.
+        start_time = time.perf_counter()
         num_files = len(self._pq_ds.pieces)
         num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
         min_num_samples = min(
@@ -301,18 +310,20 @@ class _ParquetDatasourceReader(Reader):
             for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
         ]
 
-        ratio = 0
-        if len(file_samples) > 1:
-            sample_piece = cached_remote_fn(_sample_piece)
-            futures = []
-            for idx, sample in enumerate(file_samples):
-                # Sample i-th row group in i-th file.
-                futures.append(sample_piece.remote(_SerializedPiece(sample), idx))
-            sample_ratios = ray.get(futures)
-            ratio = np.mean(sample_ratios)
-        else:
-            ratio = _sample_piece(file_samples[0], 0)
+        sample_piece = cached_remote_fn(_sample_piece)
+        futures = []
+        for idx, sample in enumerate(file_samples):
+            # Sample i-th row group in i-th file.
+            futures.append(sample_piece.remote(_SerializedPiece(sample), idx))
+        sample_ratios = ray.get(futures)
+        ratio = np.mean(sample_ratios)
 
+        sampling_duration = time.perf_counter() - start_time
+        if sampling_duration > 5:
+            logger.info(
+                "Parquet input size estimation took "
+                f"{round(sampling_duration, 2)} seconds."
+            )
         logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
         return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
@@ -407,16 +418,13 @@ def _fetch_metadata(
 
 
 def _sample_piece(
-    file_piece: Union[_SerializedPiece, "pyarrow.dataset.ParquetFileFragment"],
+    file_piece: _SerializedPiece,
     row_group_id: int,
 ) -> float:
     # Sample the `row_group_id`-th row group from file piece `serialized_piece`.
     # Return the encoding ratio calculated from the sampled rows.
-    piece = (
-        _deserialize_pieces_with_retry([file_piece])[0]
-        if isinstance(file_piece, _SerializedPiece)
-        else file_piece
-    )
+    piece = _deserialize_pieces_with_retry([file_piece])[0]
+
     # If required row group index is out of boundary, sample the last row group.
     row_group_id = min(piece.num_row_groups - 1, row_group_id)
     assert (
