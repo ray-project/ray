@@ -16,6 +16,7 @@ torchvision==0.10.0+cpu;sys_platform!="darwin"
 
 # If you make changes to the torch or tensorflow versions update, please also make the corresponding changes to `jax` related packages!
 # If you make changes to the jax versions, please also make the corresponding changes to `requirements_ml_docker.txt`!
-jax[cpu]==0.2.17;sys_platform == 'linux' 
+jax[cpu]==0.2.17;sys_platform == 'linux' and python_version > '3.6'
+jax[cpu]==0.2.14;sys_platform == 'linux' and python_version <= '3.6'
 flax==0.3.5;sys_platform == 'linux' 
 einops==0.4.1;sys_platform == 'linux' 
