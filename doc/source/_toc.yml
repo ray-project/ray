@@ -273,76 +273,68 @@ parts:
         title: Getting Started
       - file: cluster_under_construction/key-concepts
         title: Key Concepts
+      - file: cluster_under_construction/ray-clusters-on-kubernetes/index
+        title: Ray Clusters on Kubernetes
         sections:
-          - file: cluster_under_construction/key-concepts/overview
-          - file: cluster_under_construction/key-concepts/high-level-architecture
-          - file: cluster_under_construction/key-concepts/jobs
-          - file: cluster_under_construction/key-concepts/nodes-vs-workers
-          - file: cluster_under_construction/key-concepts/scheduling-and-autoscaling
-          - file: cluster_under_construction/key-concepts/configuration
-          - file: cluster_under_construction/key-concepts/things-to-know
-      - file: cluster_under_construction/user-guides/user-guides
-        title: User Guides
+        - file: cluster_under_construction/ray-clusters-on-kubernetes/getting-started
+        - file: cluster_under_construction/ray-clusters-on-kubernetes/user-guides
+        - file: cluster_under_construction/ray-clusters-on-kubernetes/examples
+        - file: cluster_under_construction/ray-clusters-on-kubernetes/reference
+      - file: cluster_under_construction/ray-clusters-on-vms/index
+        title: Ray Clusters on VMs
         sections:
-        - file: cluster_under_construction/user-guides/installing-ray
-        - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/launching-ray-cluster-on-k8s
+        - file: cluster_under_construction/ray-clusters-on-vms/getting-started
+        - file: cluster_under_construction/ray-clusters-on-vms/user-guides/index
+          title: User Guides
           sections:
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/deploy-and-interact-with-your-cluster
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/using-ray-operator
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/crds
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/networking
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/deploy-on-aws
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/deploy-on-azure
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/deploy-on-gcp
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/set-up-gpus
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-k8s/run-workloads
-        - file: cluster_under_construction/user-guides/launching-ray-cluster-on-cloud-vms/launching-ray-cluster-on-cloud-vms
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/installing-ray
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/index
+            title: Launching Clusters
+            sections:
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/aws
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/azure
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/gcp
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/add-your-own-cloud-provider
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/running-ray-cluster-on-prem
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/monitoring-and-observing-ray-cluster
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/manual-cluster-setup
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/large-cluster-best-practices
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/multi-tenancy-best-practices
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/configuring-autoscaling
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/index
+            title: Community-supported Cluster Managers
+            sections:
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/yarn
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/slurm
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/lsf
+          - file: cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/index
+            title: Running Jobs
+            sections:
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-cli
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-sdk
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-rest
+            - file: cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/ray-client
+        - file: cluster_under_construction/ray-clusters-on-vms/examples/index
+          title: Examples
           sections:
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-cloud-vms/aws.md
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-cloud-vms/azure.md
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-cloud-vms/gcp.md
-          - file: cluster_under_construction/user-guides/launching-ray-cluster-on-cloud-vms/add-your-own-cloud-provider.md
-        - file: cluster_under_construction/user-guides/running-ray-cluster-on-prem
-        - file: cluster_under_construction/user-guides/running-jobs/running-jobs
+          - file: cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/index
+            sections:
+              - file: cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/launching-ray-cluster
+              - file: cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/running-job-via-job-submission
+              - file: cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/scale-your-job-with-autoscaling
+              - file: cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/observe-your-app
+              - file: cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/shutting-down-your-ray-cluster
+          - file: cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-development/index
+            sections:
+              - file: cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-development/todo
+          - file: cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/index
+            sections:
+              - file: cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/todo
+        - file: cluster_under_construction/ray-clusters-on-vms/references/index
           sections:
-          - file: cluster_under_construction/user-guides/running-jobs/job-submission-cli
-          - file: cluster_under_construction/user-guides/running-jobs/job-submission-sdk
-          - file: cluster_under_construction/user-guides/running-jobs/job-submission-rest
-          - file: cluster_under_construction/user-guides/running-jobs/ray-client
-        - file: cluster_under_construction/user-guides/monitoring-and-observing-ray-cluster
-        - file: cluster_under_construction/user-guides/manual-cluster-setup
-        - file: cluster_under_construction/user-guides/large-cluster-best-practices
-        - file: cluster_under_construction/user-guides/multi-tenancy-best-practices
-        - file: cluster_under_construction/user-guides/configuring-autoscaling
-        - file: cluster_under_construction/user-guides/community-supported-cluster-manager/using-a-community-supported-cluster-manager
-          sections:
-          - file: cluster_under_construction/user-guides/community-supported-cluster-manager/yarn
-          - file: cluster_under_construction/user-guides/community-supported-cluster-manager/slurm
-          - file: cluster_under_construction/user-guides/community-supported-cluster-manager/lsf
-      - file: cluster_under_construction/tutorials/tutorials
-        title: Examples
-        sections:
-          - file: cluster_under_construction/tutorials/learn-ray-cluster-basics/learn-ray-cluster-basics
-            sections:
-              - file: cluster_under_construction/tutorials/learn-ray-cluster-basics/launching-ray-cluster-on-k8s
-              - file: cluster_under_construction/tutorials/learn-ray-cluster-basics/running-job-via-job-submission
-              - file: cluster_under_construction/tutorials/learn-ray-cluster-basics/scale-your-job-with-autoscaling
-              - file: cluster_under_construction/tutorials/learn-ray-cluster-basics/observe-your-app
-              - file: cluster_under_construction/tutorials/learn-ray-cluster-basics/shutting-down-your-ray-cluster
-          - file: cluster_under_construction/tutorials/running-autoscaling-program-on-ray-on-k8s/running-autoscaling-program-on-ray-on-k8s
-            sections:
-              - file: cluster_under_construction/tutorials/running-autoscaling-program-on-ray-on-k8s/running-a-rec-model
-          - file: cluster_under_construction/tutorials/setting-up-ray-cluster-for-development/setting-up-ray-cluster-for-development
-            sections:
-              - file: cluster_under_construction/tutorials/setting-up-ray-cluster-for-development/todo
-          - file: cluster_under_construction/tutorials/setting-up-ray-cluster-for-production/setting-up-ray-cluster-for-production
-            sections:
-              - file: cluster_under_construction/tutorials/setting-up-ray-cluster-for-production/todo
-      - file: cluster_under_construction/references/references
-        sections:
-          - file: cluster_under_construction/references/job-submission-apis
-          - file: cluster_under_construction/references/ray-cluster-configuration
-          - file: cluster_under_construction/references/ray-job-submission
+            - file: cluster_under_construction/ray-clusters-on-vms/references/job-submission-apis
+            - file: cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-configuration
+            - file: cluster_under_construction/ray-clusters-on-vms/references/ray-job-submission
 
   - caption: References
     chapters:

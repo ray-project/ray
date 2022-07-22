@@ -7,6 +7,14 @@
 .. warning::
     This page is under construction!
 
+TODO(cade)
+Direct users, based on what they are trying to accomplish, to the
+correct page between "Managing Ray Clusters on Kubernetes",
+"Managing Ray Clusters via `ray up`", and "Using Ray Clusters".
+There should be some discussion on Kubernetes vs. `ray up` for
+those looking to create new Ray clusters for the first time.
+
+
 Getting Started with Ray Clusters
 =================================
 
