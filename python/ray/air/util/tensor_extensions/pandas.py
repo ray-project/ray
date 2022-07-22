@@ -355,14 +355,18 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
             )
         # Upstream code uses exceptions as part of its normal control flow and
         # will pass this method bogus class names.
-        regex = r"^TensorDtype\(shape=(\(\d+,(?:\s\d+,?)*\)), dtype=(\w+)\)$"
+        regex = r"^TensorDtype\(shape=(\((?:\d+,?\s?)*\)), dtype=(\w+)\)$"
         m = re.search(regex, string)
+        err_msg = (
+            f"Cannot construct a '{cls.__name__}' from '{string}'; expected a string "
+            "like 'TensorDtype(shape=(1, 2, 3), dtype=int64)'."
+        )
         if m is None:
-            raise TypeError(
-                f"Cannot construct a '{cls.__name__}' from '{string}'; expected a "
-                "string like 'TensorDtype(shape=(1, 2, 3), dtype=int64)'."
-            )
-        shape, dtype = m.groups()
+            raise TypeError(err_msg)
+        groups = m.groups()
+        if len(groups) != 2:
+            raise TypeError(err_msg)
+        shape, dtype = groups
         shape = ast.literal_eval(shape)
         dtype = np.dtype(dtype)
         return cls(shape, dtype)
