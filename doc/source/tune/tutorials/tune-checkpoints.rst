@@ -42,12 +42,12 @@ For this case, we only need to tell Ray Tune not to do any syncing at all (as sy
 
     tuner = tune.Tuner(
         trainable,
-        run_config=RunConfig(
+        run_config=air.RunConfig(
             name="experiment_name",
             local_dir="/path/to/shared/storage/",
-        ),
-        sync_config=tune.SyncConfig(
-            syncer=None  # Disable syncing
+            sync_config=tune.SyncConfig(
+                syncer=None  # Disable syncing
+            )
         )
     )
     tuner.fit()
@@ -79,11 +79,9 @@ This will automatically store both the experiment state and the trial checkpoint
         trainable,
         run_config=RunConfig(
             name="experiment_name",
-        ),
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://bucket-name/sub-path/"
-        )
-    )
+            sync_config=tune.SyncConfig(
+                upload_dir="s3://bucket-name/sub-path/"
+            )))
     tuner.fit()
 
 We don't have to provide a ``syncer`` here as it will be automatically detected. However, you can provide
@@ -98,11 +96,10 @@ a string if you want to use a custom command:
         trainable,
         run_config=RunConfig(
             name="experiment_name",
-        ),
-        sync_config=tune.SyncConfig(
-            upload_dir="s3://bucket-name/sub-path/",
-            syncer="aws s3 sync {source} {target}",  # Custom sync command
-        )
+            sync_config=tune.SyncConfig(
+                upload_dir="s3://bucket-name/sub-path/",
+                syncer="aws s3 sync {source} {target}",  # Custom sync command
+            )),
     )
     tuner.fit()
 
@@ -136,14 +133,16 @@ If you want to customize syncing behavior, you can again specify a custom sync t
 
     from ray import tune
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            # Do not specify an upload dir here
-            syncer="rsync -savz -e "ssh -i ssh_key.pem" {source} {target}",  # Custom sync command
-        )
+        run_config=air.RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                # Do not specify an upload dir here
+                syncer="rsync -savz -e "ssh -i ssh_key.pem" {source} {target}",  # Custom sync command
+            ))
     )
+    results = tuner.fit()
 
 
 Alternatively, a function can be provided with the following signature:
@@ -157,14 +156,16 @@ Alternatively, a function can be provided with the following signature:
         sync_process = subprocess.Popen(sync_cmd, shell=True)
         sync_process.wait()
 
-    tune.run(
+    tuner = tune.Tuner(
         trainable,
-        name="experiment_name",
-        sync_config=tune.SyncConfig(
-            syncer=custom_sync_func,
-            sync_period=60  # Synchronize more often
-        )
-    )
+        run_config=air.RunConfig(
+            name="experiment_name",
+            sync_config=tune.SyncConfig(
+                syncer=custom_sync_func,
+                sync_period=60  # Synchronize more often
+            )
+        ))
+    results = tuner.fit()
 
 When syncing results back to the driver, the source would be a path similar to
 ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
@@ -227,28 +228,27 @@ via ``ray.init()``, making your script on your laptop the "driver".
     )
 
     # this starts the run!
-    tune.run(
+    tuner = tune.Tuner(
         my_trainable,
-
-        # name of your experiment
-        name="my-tune-exp",
-
-        # a directory where results are stored before being
-        # sync'd to head node/cloud storage
-        local_dir="/tmp/mypath",
-
-        # see above! we will sync our checkpoints to S3 directory
-        sync_config=sync_config,
-
-        # we'll keep the best five checkpoints at all times
-        # checkpoints (by AUC score, reported by the trainable, descending)
-        checkpoint_score_attr="max-auc",
-        keep_checkpoints_num=5,
-
-        # a very useful trick! this will resume from the last run specified by
-        # sync_config (if one exists), otherwise it will start a new tuning run
-        resume="AUTO",
+        run_config=air.RunConfig(
+            # name of your experiment
+            # if this experiment exists, we will resume from the last run
+            # as specified by
+            name="my-tune-exp",
+            # a directory where results are stored before being
+            # sync'd to head node/cloud storage
+            local_dir="/tmp/mypath",
+            # see above! we will sync our checkpoints to S3 directory
+            sync_config=sync_config,
+            checkpoint_config=air.CheckpointConfig(
+                # we'll keep the best five checkpoints at all times
+                # checkpoints (by AUC score, reported by the trainable, descending)
+                checkpoint_score_attr="max-auc",
+                keep_checkpoints_num=5,
+            ),
+        ),
     )
+    results = tuner.fit()
 
 In this example, checkpoints will be saved:
 
@@ -300,29 +300,29 @@ Let's take a look at an example:
     sync_config = tune.syncConfig()  # the default mode is to use use rsync
 
     # this starts the run!
-    tune.run(
+    tuner = tune.Tuner(
         my_trainable,
 
-        # name of your experiment
-        name="my-tune-exp",
-
-        # a directory where results are stored before being
-        # sync'd to head node/cloud storage
-        local_dir="/tmp/mypath",
-
-        # sync our checkpoints via rsync
-        # you don't have to pass an empty sync config - but we
-        # do it here for clarity and comparison
-        sync_config=sync_config,
-
-        # we'll keep the best five checkpoints at all times
-        # checkpoints (by AUC score, reported by the trainable, descending)
-        checkpoint_score_attr="max-auc",
-        keep_checkpoints_num=5,
-
-        # a very useful trick! this will resume from the last run specified by
-        # sync_config (if one exists), otherwise it will start a new tuning run
-        resume="AUTO",
+        run_config=air.RunConfig(
+            # name of your experiment
+            # If the experiment with the same name is already run,
+            # Tuner willl resume from the last run specified by sync_config(if one exists).
+            # Otherwise, will start a new run.
+            name="my-tune-exp",
+            # a directory where results are stored before being
+            # sync'd to head node/cloud storage
+            local_dir="/tmp/mypath",
+            # sync our checkpoints via rsync
+            # you don't have to pass an empty sync config - but we
+            # do it here for clarity and comparison
+            sync_config=sync_config,
+            checkpoint_config=air.CheckpointConfig(
+                # we'll keep the best five checkpoints at all times
+                # checkpoints (by AUC score, reported by the trainable, descending)
+                checkpoint_score_attr="max-auc",
+                keep_checkpoints_num=5,
+            )
+        )
     )
 
 .. _tune-distributed-checkpointing:
@@ -348,4 +348,5 @@ disable cross-node syncing:
 .. code-block:: python
 
     sync_config = tune.SyncConfig(syncer=None)
-    tune.run(func, sync_config=sync_config)
+    tuner = tune.Tuner(func, run_config=air.RunConfig(sync_config=sync_config))
+    results = tuner.fit()

@@ -1217,8 +1217,10 @@ Reproducibility
     # Convert this to a trainable.
     trainable = trainer.to_tune_trainable(training_func, dataset=dataset)
 
-    analysis = tune.run(trainable, config={
-        "lr": tune.uniform(), "batch_size": tune.randint(1, 2, 3)}, num_samples=12)
+    tuner = tune.Tuner(trainable,
+        param_space={"lr": tune.uniform(), "batch_size": tune.randint(1, 2, 3)},
+        tune_config=tune.TuneConfig(num_samples=12))
+    results = tuner.fit()
 ..
     Advanced APIs
     -------------
