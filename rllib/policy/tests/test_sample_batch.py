@@ -290,7 +290,7 @@ class TestSampleBatch(unittest.TestCase):
         # Check that splitting with DONES always False returns the whole batch
         s["dones"] = np.array([0, 0, 0, 0, 0, 0])
         batch_split = [b["a"] for b in s.split_by_episode()]
-        check(s["a"], batch_split)
+        check(s["a"], batch_split[0])
 
     def test_copy(self):
         s = SampleBatch(
