@@ -42,7 +42,10 @@ Code example
     for i in range(1_000_000):
         large_array = np.zeros(1_000_000)
 
-        # Limit in-flight tasks to 1000
+        # Limit in-flight tasks to 1000.
+        # When the 1001st task is added
+        # we wait for 1 task to complete
+        # before adding another.
         if len(result_refs) > max_in_flight_tasks:
             num_ready = len(result_refs) - max_in_flight_tasks:
             _, result_refs = ray.wait(result_refs, num_returns=num_ready)
