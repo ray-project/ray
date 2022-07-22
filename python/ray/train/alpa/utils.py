@@ -43,7 +43,6 @@ class ScalingConfigWithIPs(ScalingConfig):
     ips: A list of IP addresses to use for the workers.
     """
     ips: Optional[List[str]] = None
-    head_ip: Optional[str] = None
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
         """Returns a PlacementGroupFactory to specify resources for Tune."""
