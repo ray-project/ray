@@ -43,13 +43,14 @@ class ScalingConfigWithIPs(ScalingConfig):
     ips: A list of IP addresses to use for the workers.
     """
     ips: Optional[List[str]] = None
+    head_ip: Optional[str] = None
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
         """Returns a PlacementGroupFactory to specify resources for Tune."""
         from ray.tune import PlacementGroupFactory
 
         trainer_resources = (
-            self.trainer_resources if self.trainer_resources else {"CPU": 1}
+            self.trainer_resources if self.trainer_resources else {"CPU": 1, f"node:{self.head_ip}": 1e-3}
         )
         trainer_bundle = [trainer_resources]
         worker_resources = {
