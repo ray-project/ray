@@ -111,7 +111,9 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
         latency_ms = (time.time() - start_time) * 1000.0
-        logger.info(f"??? - latency: {latency_ms} obj_ref: {debug_obj_ref} {result.status_code}")
+        logger.info(
+            f"??? - latency: {latency_ms} obj_ref: {debug_obj_ref} {result.status_code}"
+        )
         return str(result.status_code)
     else:
         await Response(result).send(scope, receive, send)

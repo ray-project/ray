@@ -213,14 +213,16 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// \param[in] port Port of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] channel_arguments The channel arguments for gRPC.
-  CoreWorkerClient(
-      const rpc::Address &address,
-      ClientCallManager &client_call_manager,
-      std::optional<grpc::ChannelArguments> channel_arguments = std::nullopt)
+  CoreWorkerClient(const rpc::Address &address,
+                   ClientCallManager &client_call_manager,
+                   std::optional<grpc::ChannelArguments> channel_arguments = std::nullopt)
       : addr_(address) {
-    grpc_client_ = std::make_unique<GrpcClient<CoreWorkerService>>(
-        addr_.ip_address(), addr_.port(), client_call_manager, false,
-        std::move(channel_arguments));
+    grpc_client_ =
+        std::make_unique<GrpcClient<CoreWorkerService>>(addr_.ip_address(),
+                                                        addr_.port(),
+                                                        client_call_manager,
+                                                        false,
+                                                        std::move(channel_arguments));
   };
 
   const rpc::Address &Addr() const override { return addr_; }

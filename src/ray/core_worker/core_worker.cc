@@ -19,7 +19,6 @@
 #endif
 
 #include <google/protobuf/util/json_util.h>
-
 #include <grpcpp/ext/channelz_service_plugin.h>
 
 #include "boost/fiber/all.hpp"
@@ -85,7 +84,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                          : nullptr),
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_),
-      client_call_manager_(new rpc::ClientCallManager(io_service_, 1, -1, "CoreWorkerClient:")),
+      client_call_manager_(
+          new rpc::ClientCallManager(io_service_, 1, -1, "CoreWorkerClient:")),
       periodical_runner_(io_service_),
       task_queue_length_(0),
       num_executed_tasks_(0),

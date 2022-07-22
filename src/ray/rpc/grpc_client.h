@@ -65,7 +65,6 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
   arguments->SetInt(GRPC_ARG_HTTP2_MIN_SENT_PING_INTERVAL_WITHOUT_DATA_MS, 10000);
   arguments->SetInt(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS, 5000);
 
-
   std::shared_ptr<grpc::Channel> channel;
   if (::RayConfig::instance().USE_TLS()) {
     std::string server_cert_file = std::string(::RayConfig::instance().TLS_SERVER_CERT());

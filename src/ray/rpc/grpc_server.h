@@ -68,12 +68,13 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(std::string name,
-             const uint32_t port,
-             bool listen_to_localhost_only,
-             int num_threads = 1,
-             int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/,
-             int64_t keepalive_timeout_ms = ::RayConfig::instance().grpc_keepalive_timeout_ms());
+  GrpcServer(
+      std::string name,
+      const uint32_t port,
+      bool listen_to_localhost_only,
+      int num_threads = 1,
+      int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/,
+      int64_t keepalive_timeout_ms = ::RayConfig::instance().grpc_keepalive_timeout_ms());
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }

@@ -68,7 +68,8 @@ class CoreWorkerClientPool {
       // RAY_LOG(INFO) << GRPC_ARG_KEEPALIVE_TIME_MS << "\t" << 10000;
       // RAY_LOG(INFO) << GRPC_ARG_KEEPALIVE_TIMEOUT_MS << "\t" << 5000;
 
-      return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(addr, ccm, channel_arguments));
+      return std::shared_ptr<rpc::CoreWorkerClient>(
+          new rpc::CoreWorkerClient(addr, ccm, channel_arguments));
     };
   }
 

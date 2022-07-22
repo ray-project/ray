@@ -131,7 +131,6 @@ class ClientCallImpl : public ClientCall {
   /// the server and/or tweak certain RPC behaviors.
   grpc::ClientContext context_;
 
-
   friend class ClientCallManager;
 };
 
@@ -266,6 +265,7 @@ class ClientCallManager {
 
   std::string name_;
   std::vector<std::shared_ptr<grpc::Channel>> channel_;
+
  private:
   /// This function runs in a background thread. It keeps polling events from the
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
@@ -312,8 +312,9 @@ class ClientCallManager {
         }
       } else {
         RAY_LOG(INFO) << "--- DUMP ---\t" << name_;
-        for(auto c : channel_) {
-          RAY_LOG(INFO) << "DBG: STATUS: " << c.get() << "\t" << c->GetState(false) << "\t" << name_ << "\t" << status << "\t" << got_tag;
+        for (auto c : channel_) {
+          RAY_LOG(INFO) << "DBG: STATUS: " << c.get() << "\t" << c->GetState(false)
+                        << "\t" << name_ << "\t" << status << "\t" << got_tag;
         }
       }
     }
@@ -339,7 +340,6 @@ class ClientCallManager {
 
   // Timeout in ms for calls created.
   int64_t call_timeout_ms_;
-
 };
 
 }  // namespace rpc
