@@ -171,6 +171,16 @@ This means data scientists and ML practitioners spend less time fighting YAMLs a
 
 **3. Future-proof via flexibility and scalability**: Ray's scalability and flexibility make Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common model deployment patterns are being incorporated into libraries like Ray Serve.
 
+AIR Ecosystem
+-------------
+
+AIR is currently in *beta*, but some components are more stable. The following diagram provides an overview of the AIR components, ecosystem integrations, and their readiness.
+
+..
+  https://docs.google.com/drawings/d/1pZkRrkAbRD8jM-xlGlAaVo3T66oBQ_HpsCzomMT7OIc/edit
+
+.. image:: images/air-ecosystem.svg
+
 Next Steps
 ----------
 
@@ -178,4 +188,3 @@ Next Steps
 - `Examples <https://github.com/ray-project/ray/tree/master/python/ray/air/examples>`__
 - :ref:`Deployment Guide <air-deployment>`
 - :ref:`API reference <air-api-ref>`
-
