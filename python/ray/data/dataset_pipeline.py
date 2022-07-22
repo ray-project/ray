@@ -141,7 +141,7 @@ class DatasetPipeline(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: int = None,
+        batch_size: Optional[int] = 4096,
         batch_format: str = "native",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -160,7 +160,8 @@ class DatasetPipeline(Generic[T]):
         Args:
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: Record batch size, or None to let the system pick.
+            batch_size: Request a specific batch size, or None to use entire blocks
+                as batches. Defaults to a system-chosen batch size.
             batch_format: The format in which to return each batch.
                 Specify "native" to use the current block format (promoting
                 Arrow to pandas automatically), "pandas" to

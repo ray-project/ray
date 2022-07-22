@@ -1531,17 +1531,17 @@ def test_iter_batches_basic(ray_start_regular_shared):
     ds = ray.data.from_pandas(dfs)
 
     # Default.
-    for batch, df in zip(ds.iter_batches(batch_format="pandas"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pandas"), dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
     # pyarrow.Table format.
-    for batch, df in zip(ds.iter_batches(batch_format="pyarrow"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pyarrow"), dfs):
         assert isinstance(batch, pa.Table)
         assert batch.equals(pa.Table.from_pandas(df))
 
     # NumPy format.
-    for batch, df in zip(ds.iter_batches(batch_format="numpy"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="numpy"), dfs):
         assert isinstance(batch, dict)
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
@@ -1556,7 +1556,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
     # Native format.
-    for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
         assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
@@ -1657,7 +1657,11 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     # Input validation.
     # Batch size must be given for local shuffle.
     with pytest.raises(ValueError):
-        list(ray.data.range(100).iter_batches(local_shuffle_buffer_size=10))
+        list(
+            ray.data.range(100).iter_batches(
+                batch_size=None, local_shuffle_buffer_size=10
+            )
+        )
 
     # Shuffle buffer min size must be at least as large as batch size.
     with pytest.raises(ValueError):
@@ -1952,7 +1956,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
 def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
-    for _, expected in zip(ds.iter_batches(), expected_num_blocks):
+    for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
         assert ds._plan.execute()._num_computed() == expected
 
 
