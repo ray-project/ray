@@ -32,11 +32,11 @@ class WorkflowNotResumableError(WorkflowError):
 
 @PublicAPI(stability="alpha")
 class WorkflowTaskNotRecoverableError(WorkflowNotResumableError):
-    """Raise the exception when we find a workflow step cannot be recovered
+    """Raise the exception when we find a workflow task cannot be recovered
     using the checkpointed inputs."""
 
     def __init__(self, task_id: TaskID):
-        self.message = f"Workflow step[id={task_id}] is not recoverable"
+        self.message = f"Workflow task[id={task_id}] is not recoverable"
         super(WorkflowError, self).__init__(self.message)
 
 
