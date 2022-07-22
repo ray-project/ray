@@ -6,8 +6,8 @@ User Guides
 
 .. _air-feature-guide:
 
-AIR Feature Guides
-------------------
+AIR User Guides
+---------------
 
 .. panels::
     :container: container pb-4 full-width
@@ -54,18 +54,18 @@ AIR Feature Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: predictors
+    .. link-button:: /ray-air/examples/analyze_tuning_results
         :type: ref
-        :text: Using Predictors for Inference
+        :text: Analyzing Tune Results
         :classes: btn-link btn-block stretched-link
 
     ---
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: /ray-air/examples/analyze_tuning_results
+    .. link-button:: predictors
         :type: ref
-        :text: Analyzing Tune Results
+        :text: Using Predictors for Inference
         :classes: btn-link btn-block stretched-link
 
     ---
