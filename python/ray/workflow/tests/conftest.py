@@ -5,6 +5,7 @@ import ray
 
 from ray.tests.conftest import get_default_fixture_ray_kwargs
 from ray._private.test_utils import simulate_storage
+from ray.cluster_utils import Cluster
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
@@ -17,22 +18,23 @@ def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     init_kwargs["storage"] = storage_url
-    if ray.is_initialized():
-        ray.shutdown()
-        if use_ray_client:
-            # Kill the Ray cluster.
-            subprocess.check_call(["ray", "stop"])
+    ray.shutdown()
+    if use_ray_client:
+        # Kill the Ray cluster.
+        subprocess.check_call(["ray", "stop"])
     # Sometimes pytest does not cleanup all global variables.
     # we have to manually reset the workflow storage. This
     # should not be an issue for normal use cases, because global variables
     # are freed after the driver exits.
     if use_ray_client == "ray_client":
-        parameter = (
-            "ray start --head --num-cpus=1 --min-worker-port=0 "
-            "--max-worker-port=0 --port 0 --storage=" + storage_url
+        subprocess.check_call(["ray", "stop", "--force"])
+        init_kwargs["ray_client_server_port"] = 10001
+        cluster = Cluster()
+        namespace = init_kwargs.pop("namespace")
+        cluster.add_node(**init_kwargs)
+        address_info = ray.init(
+            address=f"ray://{cluster.address.split(':')[0]}:10001", namespace=namespace
         )
-        _ = _start_cluster_and_get_address(parameter)
-        address_info = ray.init(address="ray://127.0.0.1:10001")
     else:
         address_info = ray.init(**init_kwargs)
     utils.clear_marks()
@@ -40,9 +42,9 @@ def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    if use_ray_client:
-        # Kill the Ray cluster.
-        subprocess.check_call(["ray", "stop"])
+    if use_ray_client == "ray_client":
+        cluster.shutdown()
+    subprocess.check_call(["ray", "stop"])
 
 
 @pytest.fixture(scope="function")
