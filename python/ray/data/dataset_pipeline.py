@@ -156,8 +156,8 @@ class DatasetPipeline(Generic[T]):
                 current block during the scan.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows.
-                Defaults to 256.
+                The final batch may include fewer than ``batch_size`` rows if
+                ``drop_last`` is ``False``. Defaults to 256.
             batch_format: The format in which to return each batch.
                 Specify "native" to use the current block format (promoting
                 Arrow to pandas automatically), "pandas" to
