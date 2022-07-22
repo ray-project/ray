@@ -55,6 +55,7 @@ class BCConfig(MARWILConfig):
         # No off-policy estimation.
         self.off_policy_estimation_methods = {}
 
+
 class BC(MARWIL):
     """Behavioral Cloning (derived from MARWIL).
 
