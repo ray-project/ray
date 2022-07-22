@@ -194,7 +194,9 @@ class StateAPIManager:
 
         result = []
         for message in reply.actor_table_data:
-            data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
+            data = self._message_to_dict(
+                message=message, fields_to_decode=["actor_id", "owner_id"]
+            )
             result.append(data)
 
         result = self._filter(result, option.filters, ActorState, option.detail)
@@ -443,6 +445,7 @@ class StateAPIManager:
 
         result = []
         memory_table = memory_utils.construct_memory_table(worker_stats)
+        callsite_enabled = True
         for entry in memory_table.table:
             data = entry.as_dict()
             # `construct_memory_table` returns object_ref field which is indeed
@@ -452,7 +455,22 @@ class StateAPIManager:
             del data["object_ref"]
             data["ip"] = data["node_ip_address"]
             del data["node_ip_address"]
+
+            # If there's any "disabled" callsite, we consider the callsite collection
+            # is disabled.
+            if data["call_site"] == "disabled":
+                callsite_enabled = False
             result.append(data)
+
+        # Add callsite warnings if it is not configured.
+        callsite_warning = []
+        if not callsite_enabled:
+            callsite_warning.append(
+                "Callsite is not being recorded. "
+                "To record callsite information for each ObjectRef created, set "
+                "env variable RAY_record_ref_creation_sites=1 during `ray start` "
+                "and and `ray.init`."
+            )
 
         result = self._filter(result, option.filters, ObjectState, option.detail)
         # Sort to make the output deterministic.
@@ -462,6 +480,7 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_objects,
+            warnings=callsite_warning,
         )
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -551,7 +570,10 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
-            result=summary, partial_failure_warning=result.partial_failure_warning
+            total=result.total,
+            result=summary,
+            partial_failure_warning=result.partial_failure_warning,
+            warnings=result.warnings,
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -565,7 +587,10 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
-            result=summary, partial_failure_warning=result.partial_failure_warning
+            total=result.total,
+            result=summary,
+            partial_failure_warning=result.partial_failure_warning,
+            warnings=result.warnings,
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -579,7 +604,10 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
-            result=summary, partial_failure_warning=result.partial_failure_warning
+            total=result.total,
+            result=summary,
+            partial_failure_warning=result.partial_failure_warning,
+            warnings=result.warnings,
         )
 
     def _message_to_dict(
