@@ -107,17 +107,18 @@ class MARWILConfig(AlgorithmConfig):
         # discounted returns. It is ok, though, to have multiple episodes in
         # the same line.
         self.input_ = "sampler"
-        # Use importance sampling estimators for reward.
-        self.off_policy_estimation_methods = {
-            "is": {"type": ImportanceSampling},
-            "wis": {"type": WeightedImportanceSampling},
-        }
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
         self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
+        # TODO: Delete this to change default off_policy_eestimation_methods to {}
+        # Also delete the deprecation warning in .evaluate()
+        self.off_policy_estimation_methods = {
+            "is": {"type": ImportanceSampling},
+            "wis": {"type": WeightedImportanceSampling},
+        }
 
     @override(AlgorithmConfig)
     def training(
