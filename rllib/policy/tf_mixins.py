@@ -242,10 +242,6 @@ class TargetNetworkMixin:
             self._target_q_func_vars = self.target_model.variables()
         return self._target_q_func_vars
 
-    @override(TFPolicy)
-    def variables(self):
-        return self.q_func_vars + self.target_q_func_vars
-
 
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TFPolicy.

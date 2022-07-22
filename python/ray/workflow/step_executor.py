@@ -35,80 +35,14 @@ logger = logging.getLogger(__name__)
 
 def get_step_executor(step_options: "WorkflowStepRuntimeOptions"):
     if step_options.step_type == StepType.FUNCTION:
+        # prevent automatic lineage reconstruction
+        step_options.ray_options["max_retries"] = 0
         executor = _workflow_step_executor_remote.options(
             **step_options.ray_options
         ).remote
     else:
         raise ValueError(f"Invalid step type {step_options.step_type}")
     return executor
-
-
-def _wrap_run(
-    func: Callable, runtime_options: "WorkflowStepRuntimeOptions", *args, **kwargs
-) -> Tuple[Any, Any]:
-    """Wrap the function and execute it.
-
-    Args:
-        func: The function body.
-        runtime_options: Step execution params.
-
-    Returns:
-        State and output.
-    """
-    exception = None
-    result = None
-    done = False
-    # max_retries are for application level failure.
-    # For ray failure, we should use max_retries.
-    i = 0
-    while not done:
-        if i == 0:
-            logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
-        else:
-            total_retries = (
-                runtime_options.max_retries
-                if runtime_options.max_retries != -1
-                else "inf"
-            )
-            logger.info(
-                f"{get_step_status_info(WorkflowStatus.RUNNING)}"
-                f"\tretries: [{i}/{total_retries}]"
-            )
-        try:
-            result = func(*args, **kwargs)
-            exception = None
-            done = True
-        except BaseException as e:
-            if i == runtime_options.max_retries:
-                retry_msg = "Maximum retry reached, stop retry."
-                exception = e
-                done = True
-            else:
-                retry_msg = "The step will be retried."
-                i += 1
-            logger.error(
-                f"{workflow_context.get_name()} failed with error message"
-                f" {e}. {retry_msg}"
-            )
-    step_type = runtime_options.step_type
-    if runtime_options.catch_exceptions:
-        if step_type == StepType.FUNCTION:
-            if isinstance(result, DAGNode):
-                assert exception is None
-                output = result
-            else:
-                output = (result, exception)
-        else:
-            raise ValueError(f"Unknown StepType '{step_type}'")
-    else:
-        if exception is not None:
-            raise exception
-        if step_type == StepType.FUNCTION:
-            output = result
-        else:
-            raise ValueError(f"Unknown StepType '{step_type}'")
-
-    return output
 
 
 def _workflow_step_executor(
@@ -139,7 +73,8 @@ def _workflow_step_executor(
         try:
             store.save_step_prerun_metadata(task_id, {"start_time": time.time()})
             with workflow_context.workflow_execution():
-                output = _wrap_run(func, runtime_options, *args, **kwargs)
+                logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
+                output = func(*args, **kwargs)
             store.save_step_postrun_metadata(task_id, {"end_time": time.time()})
         except Exception as e:
             # Always checkpoint the exception.
@@ -151,6 +86,8 @@ def _workflow_step_executor(
             execution_metadata = WorkflowExecutionMetadata(is_output_workflow=True)
         else:
             execution_metadata = WorkflowExecutionMetadata()
+            if runtime_options.catch_exceptions:
+                output = (output, None)
 
         # Part 3: save outputs
         # TODO(suquark): Validate checkpoint options before commit the task.
