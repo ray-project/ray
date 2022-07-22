@@ -18,7 +18,7 @@ The Ray docs present all the information you need to start running Ray workloads
 ```{eval-rst}
 .. panels::
     :container: text-center
-    :column: col-lg-6 px-2 py-2
+    :column: col-lg-12 p-2
     :card:
 
     **Getting started**
@@ -27,11 +27,10 @@ The Ray docs present all the information you need to start running Ray workloads
     Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
 
     +++
-    .. link-button:: getting-started
+    .. link-button:: kuberay-quickstart
         :type: ref
         :text: Get Started with Ray on Kubernetes
         :classes: btn-outline-info btn-block
-    ---
 ```
 
 ## The KubeRay project
