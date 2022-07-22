@@ -301,10 +301,15 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
 
     assert math.factorial(5) == workflow.run(factorial.bind(5), workflow_id="factorial")
     for i in range(5):
-        step_name = (
-            "python.ray.workflow.tests.test_basic_workflows_2."
-            "test_get_named_step_default.locals.factorial"
-        )
+        if not client_mode_should_convert(auto_init=False):
+            step_name = (
+                "python.ray.workflow.tests.test_basic_workflows_2."
+                "test_get_named_step_default.locals.factorial"
+            )
+        else:
+            step_name = (
+                "test_basic_workflows_2.test_get_named_step_default.locals.factorial"
+            )
         if i != 0:
             step_name += "_" + str(i)
         # All outputs will be 120
