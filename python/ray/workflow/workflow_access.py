@@ -283,7 +283,17 @@ class WorkflowManagementActor:
             workflow_ref = await executor.get_task_output_async(name)
             name, ref = workflow_ref.task_id, workflow_ref.ref
         if ref is None:
-            ref = load_step_output_from_storage.remote(workflow_id, name)
+            wf_store = workflow_storage.WorkflowStorage(workflow_id)
+            tid = wf_store.inspect_output(name)
+            if tid is not None:
+                ref = load_step_output_from_storage.remote(workflow_id, name)
+            elif name is not None:
+                raise ValueError(
+                    f"Cannot load output from task id '{name}' in workflow "
+                    f"'{workflow_id}'"
+                )
+            else:
+                raise ValueError(f"Cannot load output from workflow '{workflow_id}'")
         return SelfResolvingObject(ref)
 
     def ready(self) -> None:

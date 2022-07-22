@@ -315,18 +315,6 @@ def get_output_async(workflow_id: str, *, name: Optional[str] = None) -> ray.Obj
             "actor. The workflow could have already failed. You can use "
             "workflow.resume() to resume the workflow."
         ) from e
-
-    try:
-        # check storage first
-        wf_store = WorkflowStorage(workflow_id)
-        tid = wf_store.inspect_output(name)
-        if tid is not None:
-            return workflow_access.load_step_output_from_storage.remote(
-                workflow_id, name
-            )
-    except ValueError:
-        pass
-
     return workflow_manager.get_output.remote(workflow_id, name)
 
 
