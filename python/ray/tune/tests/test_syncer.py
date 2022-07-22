@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 from typing import List, Optional
 
@@ -89,6 +90,54 @@ class CustomSyncer(Syncer):
 
     def delete(self, remote_dir: str) -> bool:
         self._sync_status.pop(remote_dir, None)
+        return True
+
+    def retry(self):
+        raise NotImplementedError
+
+    def wait(self):
+        pass
+
+
+class CustomCommandSyncer(Syncer):
+    def __init__(
+        self,
+        sync_up_template: str,
+        sync_down_template: str,
+        delete_template: str,
+        sync_period: float = 300.0,
+    ):
+        self.sync_up_template = sync_up_template
+        self.sync_down_template = sync_down_template
+        self.delete_template = delete_template
+
+        super().__init__(sync_period=sync_period)
+
+    def sync_up(
+        self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
+    ) -> bool:
+        cmd_str = self.sync_up_template.format(
+            source=local_dir,
+            target=remote_dir,
+        )
+        subprocess.check_call(cmd_str, shell=True)
+        return True
+
+    def sync_down(
+        self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
+    ) -> bool:
+        cmd_str = self.sync_down_template.format(
+            source=remote_dir,
+            local_dir=local_dir,
+        )
+        subprocess.check_call(cmd_str, shell=True)
+        return True
+
+    def delete(self, remote_dir: str) -> bool:
+        cmd_str = self.delete_template.format(
+            target=remote_dir,
+        )
+        subprocess.check_call(cmd_str, shell=True)
         return True
 
     def retry(self):
@@ -368,6 +417,28 @@ def test_trainable_syncer_custom(ray_start_2_cpus, temp_data_dirs):
 
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
     assert_file(False, tmp_target, os.path.join(checkpoint_dir, "custom_syncer.txt"))
+
+
+def test_trainable_syncer_custom_command(ray_start_2_cpus, temp_data_dirs):
+    """Check that Trainable.save() triggers syncing using custom syncer"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    trainable = ray.remote(TestTrainable).remote(
+        remote_checkpoint_dir=f"file://{tmp_target}",
+        custom_syncer=CustomCommandSyncer(
+            sync_up_template="cp -rf {source} `echo '{target}' | cut -c 8-`",
+            sync_down_template="cp -rf `echo '{source}' | cut -c 8-` {target}",
+            delete_template="rm -rf `echo '{target}' | cut -c 8-`",
+        ),
+    )
+
+    checkpoint_dir = ray.get(trainable.save.remote())
+
+    assert_file(True, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
+
+    ray.get(trainable.delete_checkpoint.remote(checkpoint_dir))
+
+    assert_file(False, tmp_target, os.path.join(checkpoint_dir, "checkpoint.data"))
 
 
 if __name__ == "__main__":
