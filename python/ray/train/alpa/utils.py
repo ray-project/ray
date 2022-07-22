@@ -6,7 +6,7 @@ from ray.air.config import ScalingConfig
 if TYPE_CHECKING:
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 import jax
-from jax._src.lib import xla_bridge as xb, xla_client as xc, xla_extension as xe
+from jax._src.lib import xla_bridge as xb
 
 
 def is_ray_node_resource(resource_key):
