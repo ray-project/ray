@@ -2409,7 +2409,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = None,
+        batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         drop_last: bool = False,
@@ -2439,7 +2439,10 @@ class Dataset(Generic[T]):
         Args:
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: Record batch size, or None to let the system pick.
+            batch_size: The number of rows in each batch, or None to use entire blocks
+                as batches (blocks may contain different number of rows).
+                The final batch may include fewer than ``batch_size`` rows.
+                Defaults to 256.
             dtypes: The Torch dtype(s) for the created tensor(s); if None, the dtype
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
@@ -2480,7 +2483,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = None,
+        batch_size: Optional[int] = 256,
         dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -2510,7 +2513,10 @@ class Dataset(Generic[T]):
         Args:
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: Record batch size, or None to let the system pick.
+            batch_size: The number of rows in each batch, or None to use entire blocks
+                as batches (blocks may contain different number of rows).
+                The final batch may include fewer than ``batch_size`` rows.
+                Defaults to 256.
             dtypes: The TensorFlow dtype(s) for the created tensor(s); if None, the
                 dtype will be inferred from the tensor data.
             drop_last: Whether to drop the last batch if it's incomplete.
