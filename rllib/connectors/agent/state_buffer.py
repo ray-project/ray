@@ -27,7 +27,7 @@ class StateBufferConnector(AgentConnector):
 
     def reset(self, env_id: str):
         # If soft horizon, states should be carried over between episodes.
-        if not self._soft_horizon:
+        if not self._soft_horizon and env_id in self._states:
             del self._states[env_id]
 
     def on_policy_output(self, ac_data: ActionConnectorDataType):

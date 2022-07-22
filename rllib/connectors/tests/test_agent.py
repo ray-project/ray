@@ -6,11 +6,16 @@ from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
+from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
 from ray.rllib.connectors.connector import ConnectorContext, get_connector
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import AgentConnectorDataType, AgentConnectorsOutput
+from ray.rllib.utils.typing import (
+    ActionConnectorDataType,
+    AgentConnectorDataType,
+    AgentConnectorsOutput,
+)
 
 
 class TestAgentConnector(unittest.TestCase):
@@ -119,6 +124,36 @@ class TestAgentConnector(unittest.TestCase):
         # Not flattened.
         self.assertEqual(len(batch[SampleBatch.ACTIONS]), 2)
         self.assertEqual(batch[SampleBatch.INFOS]["random"], "info")
+
+    def test_state_buffer_connector(self):
+        ctx = ConnectorContext(
+            action_space=gym.spaces.Box(low=-1.0, high=1.0, shape=(3,)),
+        )
+        c = StateBufferConnector(ctx)
+
+        # Reset without any buffered data should do nothing.
+        c.reset(env_id=0)
+
+        d = AgentConnectorDataType(
+            0,
+            1,
+            {
+                SampleBatch.NEXT_OBS: {
+                    "sensor1": [[1, 1], [2, 2]],
+                    "sensor2": 8.8,
+                },
+            },
+        )
+
+        with_buffered = c([d])
+        self.assertEqual(len(with_buffered), 1)
+        self.assertTrue((with_buffered[0].data[SampleBatch.ACTIONS] == [0, 0, 0]).all())
+
+        c.on_policy_output(ActionConnectorDataType(0, 1, ([1, 2, 3], [], {})))
+
+        with_buffered = c([d])
+        self.assertEqual(len(with_buffered), 1)
+        self.assertEqual(with_buffered[0].data[SampleBatch.ACTIONS], [1, 2, 3])
 
     def test_view_requirement_connector(self):
         view_requirements = {
