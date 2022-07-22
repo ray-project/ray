@@ -47,8 +47,6 @@ usage_lib.record_library_usage("tune")
 
 __all__ = [
     "Trainable",
-    "DurableTrainable",
-    "durable",
     "Callback",
     "TuneError",
     "grid_search",
@@ -59,9 +57,7 @@ __all__ = [
     "with_parameters",
     "Stopper",
     "Experiment",
-    "function",
     "sample_from",
-    "track",
     "uniform",
     "quniform",
     "choice",
