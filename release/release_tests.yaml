@@ -567,6 +567,9 @@
     timeout: 10800
     script: python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
 
+    wait_for_nodes:
+      num_nodes: 4
+
     type: sdk_command
     file_manager: job
 
