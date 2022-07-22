@@ -777,6 +777,9 @@ class EnvRunnerV2:
                 item = _PolicyEvalData(d.env_id, d.agent_id, d.data.for_action)
                 to_eval[policy_id].append(item)
 
+            # Step after adding initial obs. This will give us 0 env and agent step.
+            new_episode.step()
+
     def end_episode(
         self, env_id: EnvID, episode_or_exception: Union[EpisodeV2, Exception]
     ):

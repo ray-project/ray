@@ -49,10 +49,10 @@ class EpisodeV2:
         # Summed reward across all agents in this episode.
         self.total_reward: float = 0.0
         # Active (uncollected) # of env steps taken by this episode.
-        # Start from -1, since after add_init_obs(), we will be at 0 step.
+        # Start from -1. After add_init_obs(), we will be at 0 step.
         self.active_env_steps: int = -1
         # Total # of env steps taken by this episode.
-        # Start from -1, since after add_init_obs(), we will be at 0 step.
+        # Start from -1, After add_init_obs(), we will be at 0 step.
         self.total_env_steps: int = -1
         # Active (uncollected) agent steps.
         self.active_agent_steps: int = 0
