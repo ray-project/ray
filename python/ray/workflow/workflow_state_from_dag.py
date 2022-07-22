@@ -168,8 +168,14 @@ def workflow_state_from_dag(
                 # so it won't be mutated later. This guarantees correct
                 # semantics. See "tests/test_variable_mutable.py" as
                 # an example.
-                # Handle client mode
                 if client_mode_should_convert(auto_init=False):
+                    # Handle client mode. The Ray client would serialize and
+                    # then deserialize objects in the Ray client server. When
+                    # the object is being deserialized, the serialization context
+                    # will be missing, resulting in failures. Here we protect the
+                    # object from deserialization in client server, and we make sure
+                    # the 'real' deserialization happens under the serialization
+                    # context later.
                     flattened_args = _SerializationContextPreservingWrapper(
                         flattened_args
                     )

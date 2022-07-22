@@ -94,7 +94,9 @@ def _ensure_workflow_initialized() -> None:
 def client_mode_wrap(func):
     """Wraps a function called during client mode for execution as a remote task.
 
-    Adopted from "ray._private.client_mode_hook.client_mode_wrap"
+    Adopted from "ray._private.client_mode_hook.client_mode_wrap". Some changes are made
+    (e.g., init the workflow instead of init Ray; the latter does not specify a storage
+    during Ray init and will result in workflow failures).
     """
 
     @functools.wraps(func)
