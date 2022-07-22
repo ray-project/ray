@@ -291,6 +291,8 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
 
 
 def test_get_named_step_default(workflow_start_regular, tmp_path):
+    from ray._private.client_mode_hook import client_mode_should_convert
+
     @ray.remote
     def factorial(n, r=1):
         if n == 1:

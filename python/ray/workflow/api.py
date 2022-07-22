@@ -1,10 +1,11 @@
+import functools
 import logging
 from typing import Dict, Set, List, Tuple, Union, Optional, Any
+import os
 import time
 import uuid
 
 import ray
-from ray._private.client_mode_hook import client_mode_wrap
 from ray.dag import DAGNode
 from ray.dag.input_node import DAGInputData
 from ray.remote_function import RemoteFunction
@@ -88,6 +89,30 @@ def _ensure_workflow_initialized() -> None:
             workflow_access.get_management_actor()
         except ValueError:
             init()
+
+
+def client_mode_wrap(func):
+    """Wraps a function called during client mode for execution as a remote task.
+
+    Adopted from "ray._private.client_mode_hook.client_mode_wrap"
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        from ray._private.client_mode_hook import client_mode_should_convert
+
+        if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
+            _ensure_workflow_initialized()
+
+        # `is_client_mode_enabled_by_default` is used for testing with
+        # `RAY_CLIENT_MODE=1`. This flag means all tests run with client mode.
+        if client_mode_should_convert(auto_init=False):
+            f = ray.remote(num_cpus=0)(func)
+            ref = f.remote(*args, **kwargs)
+            return ray.get(ref)
+        return func(*args, **kwargs)
+
+    return wrapper
 
 
 @PublicAPI(stability="beta")
