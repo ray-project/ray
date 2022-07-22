@@ -18,5 +18,8 @@ pong-apex:
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
           capacity: 1000000
+        # we should set compress_observations to True because few machines
+        # would be able to contain the replay buffers in memory otherwise
+        compress_observations: True
         gamma: 0.99
         training_intensity: 16
