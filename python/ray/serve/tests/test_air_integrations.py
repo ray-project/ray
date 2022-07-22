@@ -1,3 +1,4 @@
+import os
 import tempfile
 from typing import Optional
 
@@ -90,8 +91,13 @@ class TestBatchingFunctionFunctions:
 
         unpacked_list = BatchingManager.split_dataframe(batched_df, 1)
         assert len(unpacked_list) == 1
-        assert unpacked_list[0]["a"].equals(split_df["a"])
-        assert unpacked_list[0]["b"].equals(split_df["b"])
+        # On windows, conversion dtype is not preserved.
+        check_dtype = not os.name == "nt"
+        pd.testing.assert_frame_equal(
+            unpacked_list[0].reset_index(drop=True),
+            split_df.reset_index(drop=True),
+            check_dtype=check_dtype,
+        )
 
 
 class AdderPredictor(Predictor):
