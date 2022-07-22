@@ -16,7 +16,11 @@ ray.init(num_cpus=4)
 # cluster for Dataset execution. However, deadlock can occur if you set num_samples=4,
 # which would leave no extra CPUs for Datasets! To resolve these issues, see the
 # "Inside Trial Placement Group" example tab.
-tune.run(objective, num_samples=1, resources_per_trial={"cpu": 1})
+tuner = tune.Tuner(
+    tune.with_resources(objective, {"cpu": 1}),
+    tune_config=tune.TuneConfig(num_samples=1)
+)
+tuner.fit()
 # __resource_allocation_1_end__
 # fmt: on
 
@@ -34,14 +38,14 @@ ray.init(num_cpus=4)
 
 # This runs smoothly since _max_cpu_fraction_per_node is set to 0.8, effectively
 # reserving 1 CPU for Datasets task execution.
-tune.run(
-    objective,
-    num_samples=4,
-    resources_per_trial=tune.PlacementGroupFactory(
+tuner = tune.Tuner(
+    tune.with_resources(objective, tune.PlacementGroupFactory(
         [{"CPU": 1}],
         _max_cpu_fraction_per_node=0.8,
-    ),
+    )),
+    tune_config=tune.TuneConfig(num_samples=1)
 )
+tuner.fit()
 # __resource_allocation_2_end__
 # fmt: on
 
