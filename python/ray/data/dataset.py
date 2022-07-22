@@ -1234,8 +1234,7 @@ class Dataset(Generic[T]):
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
         block_list = self._plan.execute()
-        blocks_with_metadata = block_list.get_blocks_with_metadata()
-        blocks, metadata = _split_at_indices(blocks_with_metadata, indices)
+        blocks, metadata = _split_at_indices(block_list, indices)
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
         splits = []
