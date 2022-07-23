@@ -29,7 +29,7 @@ from ray._private.usage import usage_lib
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def init(
     *,
     max_running_workflows: Optional[int] = None,
@@ -116,7 +116,7 @@ def client_mode_wrap(func):
     return wrapper
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def run(
     dag: DAGNode,
     *args,
@@ -162,7 +162,7 @@ def run(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def run_async(
     dag: DAGNode,
     *args,
@@ -228,7 +228,7 @@ def run_async(
         return workflow_manager.execute_workflow.remote(job_id, context)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def resume(workflow_id: str) -> Any:
     """Resume a workflow.
 
@@ -253,7 +253,7 @@ def resume(workflow_id: str) -> Any:
     return ray.get(resume_async(workflow_id))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def resume_async(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow asynchronously.
 
@@ -293,7 +293,7 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
     return result
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
     """Get the output of a running workflow.
 
@@ -319,7 +319,7 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
     return ray.get(get_output_async(workflow_id, task_id=name))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 @client_mode_wrap
 def get_output_async(
     workflow_id: str, *, task_id: Optional[str] = None
@@ -346,7 +346,7 @@ def get_output_async(
     return workflow_manager.get_output.remote(workflow_id, task_id)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 @client_mode_wrap
 def list_all(
     status_filter: Optional[
@@ -462,7 +462,7 @@ def list_all(
     return ret
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 @client_mode_wrap
 def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     """Resume all resumable workflow jobs.
@@ -527,7 +527,7 @@ def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     return results
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def get_status(workflow_id: str) -> WorkflowStatus:
     """Get the status for a given workflow.
 
@@ -551,7 +551,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     return ray.get(workflow_manager.get_workflow_status.remote(workflow_id))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def wait_for_event(
     event_listener_type: EventListenerType, *args, **kwargs
 ) -> "DAGNode[Event]":
@@ -579,7 +579,7 @@ def wait_for_event(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def sleep(duration: float) -> "DAGNode[Event]":
     """
     A workfow that resolves after sleeping for a given duration.
@@ -592,7 +592,7 @@ def sleep(duration: float) -> "DAGNode[Event]":
     return wait_for_event(TimerListener, end_time.bind())
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 @client_mode_wrap
 def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]:
     """Get the metadata of the workflow.
@@ -650,7 +650,7 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
         return store.load_step_metadata(name)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def cancel(workflow_id: str) -> None:
     """Cancel a workflow. Workflow checkpoints will still be saved in storage. To
        clean up saved checkpoints, see `workflow.delete()`.
@@ -678,7 +678,7 @@ def cancel(workflow_id: str) -> None:
     ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def delete(workflow_id: str) -> None:
     """Delete a workflow, its checkpoints, and other information it may have
        persisted to storage. To stop a running workflow, see
@@ -704,7 +704,7 @@ def delete(workflow_id: str) -> None:
     ray.get(workflow_manager.delete_workflow.remote(workflow_id))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def continuation(dag_node: "DAGNode") -> Union["DAGNode", Any]:
     """Converts a DAG into a continuation.
 
@@ -725,7 +725,7 @@ def continuation(dag_node: "DAGNode") -> Union["DAGNode", Any]:
     return ray.get(dag_node.execute())
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class options:
     """This class serves both as a decorator and options for workflow.
 
