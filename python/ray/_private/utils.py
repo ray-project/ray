@@ -80,6 +80,48 @@ def get_ray_temp_dir():
     return os.path.join(get_user_temp_dir(), "ray")
 
 
+def get_ray_address_file(temp_dir: Optional[str]):
+    if temp_dir is None:
+        temp_dir = get_ray_temp_dir()
+    return os.path.join(temp_dir, "ray_current_cluster")
+
+
+def write_ray_address(ray_address: str, temp_dir: Optional[str] = None):
+    address_file = get_ray_address_file(temp_dir)
+    if os.path.exists(address_file):
+        with open(address_file, "r") as f:
+            prev_address = f.read()
+        if prev_address == ray_address:
+            return
+
+        logger.info(
+            f"Overwriting previous Ray address ({prev_address}). "
+            "Running ray.init() on this node will now connect to the new "
+            f"instance at {ray_address}. To override this behavior, pass "
+            f"address={prev_address} to ray.init()."
+        )
+
+    with open(address_file, "w+") as f:
+        f.write(ray_address)
+
+
+def reset_ray_address(temp_dir: Optional[str] = None):
+    address_file = get_ray_address_file(temp_dir)
+    if os.path.exists(address_file):
+        try:
+            os.remove(address_file)
+        except OSError:
+            pass
+
+
+def read_ray_address(temp_dir: Optional[str] = None) -> str:
+    address_file = get_ray_address_file(temp_dir)
+    if not os.path.exists(address_file):
+        return None
+    with open(address_file, "r") as f:
+        return f.read().strip()
+
+
 def _random_string():
     id_hash = hashlib.shake_128()
     id_hash.update(uuid.uuid4().bytes)
@@ -1257,7 +1299,7 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
             logger.debug(f"Fetched {prefix}=None from KV. Retrying.")
             time.sleep(2)
     if result is None:
-        raise RuntimeError(
+        raise ConnectionError(
             f"Could not list '{prefix}' from GCS. Did GCS start successfully?"
         )
     return result
@@ -1291,7 +1333,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             logger.debug(f"Fetched {key}=None from KV. Retrying.")
             time.sleep(2)
     if not result:
-        raise RuntimeError(
+        raise ConnectionError(
             f"Could not read '{key.decode()}' from GCS. Did GCS start successfully?"
         )
     return result
