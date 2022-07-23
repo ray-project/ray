@@ -1222,6 +1222,7 @@ Reproducibility
         param_space={"lr": tune.uniform(), "batch_size": tune.randint(1, 2, 3)},
         tune_config=tune.TuneConfig(num_samples=12))
     results = tuner.fit()
+
 ..
     Advanced APIs
     -------------

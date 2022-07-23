@@ -138,7 +138,7 @@ if __name__ == "__main__":
     # for early stopping
     sched = AsyncHyperBandScheduler()
 
-    resources_per_trial = ({"cpu": 2, "gpu": int(args.cuda)},)  # set this for GPUs
+    resources_per_trial = {"cpu": 2, "gpu": int(args.cuda)}  # set this for GPUs
     tuner = tune.Tuner(
         tune.with_resources(train_mnist, resources=resources_per_trial),
         tune_config=tune.TuneConfig(
