@@ -404,7 +404,7 @@ def _get_unique_value_indices(
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
     final_counters = {col: Counter() for col in columns}
-    for batch in value_counts.iter_batches():
+    for batch in value_counts.iter_batches(batch_size=None):
         for col_value_counts in batch:
             for col, value_counts in col_value_counts.items():
                 final_counters[col] += value_counts

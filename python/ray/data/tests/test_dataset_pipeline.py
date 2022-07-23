@@ -402,7 +402,7 @@ def test_repartition(ray_start_regular_shared):
 
 def test_iter_batches_basic(ray_start_regular_shared):
     pipe = ray.data.range(10, parallelism=10).window(blocks_per_window=2)
-    batches = list(pipe.iter_batches())
+    batches = list(pipe.iter_batches(batch_size=None))
     assert len(batches) == 10
     assert all(len(e) == 1 for e in batches)
 
