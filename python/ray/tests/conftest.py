@@ -126,7 +126,7 @@ def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     # Start the Ray processes.
-    address_info = ray.init(**init_kwargs)
+    address_info = ray.init("local", **init_kwargs)
 
     yield address_info
     # The code after the yield will run as teardown code.
@@ -290,7 +290,7 @@ def ray_start_object_store_memory(request, maybe_external_redis):
         "_system_config": system_config,
         "object_store_memory": store_size,
     }
-    ray.init(**init_kwargs)
+    ray.init("local", **init_kwargs)
     yield store_size
     # The code after the yield will run as teardown code.
     ray.shutdown()
