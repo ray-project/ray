@@ -240,6 +240,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
   std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
+  std::vector<TaskID> task_ids_to_fail;
   {
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(actor_id);
@@ -270,22 +271,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
                     << " because the actor is already dead.";
 
-      auto status = Status::IOError("cancelling all pending tasks of dead actor");
-      auto task_ids = queue->second.actor_submit_queue->ClearAllTasks();
-      rpc::ErrorType error_type = GenErrorTypeFromDeathCause(death_cause);
-      const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
-
-      for (auto &task_id : task_ids) {
-        // No need to increment the number of completed tasks since the actor is
-        // dead.
-        task_finisher_.MarkTaskCanceled(task_id);
-        // This task may have been waiting for dependency resolution, so cancel
-        // this first.
-        resolver_.CancelDependencyResolution(task_id);
-        RAY_UNUSED(!task_finisher_.FailOrRetryPendingTask(
-            task_id, error_type, &status, &error_info));
-      }
-
+      task_ids_to_fail = queue->second.actor_submit_queue->ClearAllTasks();
       // We need to execute this outside of the lock to prevent deadlock.
       wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
       // Reset the queue
@@ -298,17 +284,31 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     }
   }
 
-  if (!wait_for_death_info_tasks.empty()) {
-    auto error_type = GenErrorTypeFromDeathCause(death_cause);
+  if (task_ids_to_fail.size() + wait_for_death_info_tasks.size() != 0) {
+    // Failing tasks has to be done without mu_ hold because the callback
+    // might require holding mu_ which will lead to a deadlock.
+    auto status = Status::IOError("cancelling all pending tasks of dead actor");
+    rpc::ErrorType error_type = GenErrorTypeFromDeathCause(death_cause);
     const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
-    RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
-                  << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
+
+    for (auto &task_id : task_ids_to_fail) {
+      // No need to increment the number of completed tasks since the actor is
+      // dead.
+      task_finisher_.MarkTaskCanceled(task_id);
+      // This task may have been waiting for dependency resolution, so cancel
+      // this first.
+      resolver_.CancelDependencyResolution(task_id);
+      RAY_UNUSED(!task_finisher_.FailOrRetryPendingTask(
+          task_id, error_type, &status, &error_info));
+    }
+
+    RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
+                   << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
     for (auto &net_err_task : wait_for_death_info_tasks) {
       RAY_UNUSED(task_finisher_.MarkTaskReturnObjectsFailed(
           net_err_task.second, error_type, &error_info));
     }
   }
-
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
   FailInflightTasks(inflight_task_callbacks);
 }
