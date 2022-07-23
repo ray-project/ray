@@ -688,7 +688,7 @@ def delete(workflow_id: str) -> None:
         workflow_id: The workflow to delete.
 
     Raises:
-        WorkflowRunningError: The workflow is still active.
+        WorkflowStillActiveError: The workflow is still active.
         WorkflowNotFoundError: The workflow does not exist.
 
     Examples:

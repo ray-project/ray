@@ -48,7 +48,7 @@ class WorkflowNotFoundError(WorkflowError):
 
 
 @PublicAPI(stability="alpha")
-class WorkflowAlreadyRunningError(WorkflowError):
+class WorkflowStillActiveError(WorkflowError):
     def __init__(self, operation: str, workflow_id: str):
         self.message = (
             f"{operation} couldn't be completed because "

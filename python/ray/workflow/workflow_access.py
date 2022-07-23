@@ -14,7 +14,7 @@ from ray.workflow.exceptions import (
     WorkflowCancellationError,
     WorkflowNotFoundError,
     WorkflowNotResumableError,
-    WorkflowRunningError,
+    WorkflowStillActiveError,
 )
 from ray.workflow.workflow_executor import WorkflowExecutor
 from ray.workflow.workflow_state import WorkflowExecutionState
@@ -305,11 +305,11 @@ class WorkflowManagementActor:
             workflow_id: The workflow to delete.
 
         Raises:
-            WorkflowRunningError: The workflow is still active.
+            WorkflowStillActiveError: The workflow is still active.
             WorkflowNotFoundError: The workflow does not exist.
         """
         if self.is_workflow_non_terminating(workflow_id):
-            raise WorkflowRunningError("DELETE", workflow_id)
+            raise WorkflowStillActiveError("DELETE", workflow_id)
         wf_storage = workflow_storage.WorkflowStorage(workflow_id)
         wf_storage.delete_workflow()
         self._executed_workflows.discard(workflow_id)
