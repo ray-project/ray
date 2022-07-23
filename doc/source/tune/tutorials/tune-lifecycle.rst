@@ -8,7 +8,7 @@ and what the architectural components of Tune are.
 .. tip:: Before you continue, be sure to have read :ref:`the Tune Key Concepts page <tune-60-seconds>`.
 
 What happens in ``Tuner.fit``?
------------------------------
+------------------------------
 
 When calling the following:
 
