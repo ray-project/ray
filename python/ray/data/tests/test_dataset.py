@@ -1659,12 +1659,6 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     with pytest.raises(ValueError):
         list(ray.data.range(100).iter_batches(local_shuffle_buffer_size=10))
 
-    # Shuffle buffer min size must be at least as large as batch size.
-    with pytest.raises(ValueError):
-        list(
-            ray.data.range(100).iter_batches(batch_size=10, local_shuffle_buffer_size=5)
-        )
-
     def range(n, parallelism=200):
         if ds_format == "simple":
             ds = ray.data.range(n, parallelism=parallelism)
