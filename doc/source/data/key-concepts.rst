@@ -89,6 +89,6 @@ Dataset pipelines allow Dataset transformations to be executed incrementally on 
 ..
   https://docs.google.com/drawings/d/1A_nWvignkdvs4GPRShCNYcnb1T--iQoSEeS4uWRVQ4k/edit
 
-.. image:: images/dataset-pipeline-2.svg
+.. image:: images/dataset-pipeline-2-mini.svg
 
 Dataset pipelines can be read in a streaming fashion by one consumer, or split into multiple sub-pipelines and read in parallel by multiple consumers for distributd training. See the :ref:`Dataset Pipelines Guide <pipelining_datasets>` for an in-depth guide on pipelining compute.
