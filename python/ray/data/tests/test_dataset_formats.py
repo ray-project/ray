@@ -1170,7 +1170,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
         "Dataset(num_blocks=2, num_rows=None, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1182,7 +1182,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1195,7 +1195,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds.count() == 10
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     assert [v.item() for v in ds.take(2)] == [0, 1]
 
@@ -1208,7 +1208,7 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1265,7 +1265,7 @@ def test_numpy_read_partitioned_with_filter(
         val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema="{__value__: <ArrowTensorType: shape=(2,), dtype=int8>}",
+            schema="{__value__: ArrowTensorType(shape=(2,), dtype=int8)}",
             sorted_values=f"[[{val_str}]]",
             ds_take_transform_fn=lambda taken: [taken],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
@@ -2754,7 +2754,7 @@ def test_image_folder_datasource_raises_value_error(ray_start_regular_shared):
 
 def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from ray.air.util.tensor_extensions.pandas import TensorArray
-    from ray.train.torch import to_air_checkpoint, TorchPredictor
+    from ray.train.torch import TorchCheckpoint, TorchPredictor
     from ray.train.batch_predictor import BatchPredictor
 
     from torchvision import transforms
@@ -2780,7 +2780,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     preprocessor = BatchMapper(preprocess)
 
     model = resnet18(pretrained=True)
-    checkpoint = to_air_checkpoint(model=model, preprocessor=preprocessor)
+    checkpoint = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
 
     predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
     predictor.predict(dataset, feature_columns=["image"])

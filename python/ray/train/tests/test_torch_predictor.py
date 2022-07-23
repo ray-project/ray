@@ -12,7 +12,7 @@ from ray.air.util.data_batch_conversion import (
 )
 from ray.data.preprocessor import Preprocessor
 from ray.train.predictor import TYPE_TO_ENUM
-from ray.train.torch import TorchPredictor, to_air_checkpoint
+from ray.train.torch import TorchCheckpoint, TorchPredictor
 
 
 class DummyPreprocessor(Preprocessor):
@@ -151,7 +151,7 @@ def test_predict_array_with_different_dtypes(
 
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array_no_training(model, use_gpu):
-    checkpoint = to_air_checkpoint(model)
+    checkpoint = TorchCheckpoint.from_model(model)
     predictor = TorchPredictor.from_checkpoint(checkpoint, use_gpu=use_gpu)
 
     data_batch = np.array([1, 2, 3])
@@ -180,6 +180,9 @@ def test_multi_modal_real_model(use_gpu):
             self.linear2 = torch.nn.Linear(1, 1)
 
         def forward(self, input_dict: dict):
+            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
+            input_dict["A"] = input_dict["A"].unsqueeze(1)
+            input_dict["B"] = input_dict["B"].unsqueeze(1)
             out1 = self.linear1(input_dict["A"])
             out2 = self.linear2(input_dict["B"])
             return out1 + out2
