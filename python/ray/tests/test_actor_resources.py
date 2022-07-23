@@ -1,16 +1,17 @@
 import collections
 import os
+import sys
+import time
+
 import pytest
+
+import ray
+import ray.cluster_utils
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import sys
-import time
-
-import ray
-import ray.cluster_utils
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
@@ -96,7 +97,10 @@ def test_actor_gpus(ray_start_cluster):
 
         def get_location_and_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
-            return (ray.worker.global_worker.node.unique_id, tuple(self.gpu_ids))
+            return (
+                ray._private.worker.global_worker.node.unique_id,
+                tuple(self.gpu_ids),
+            )
 
     # Create one actor per GPU.
     actors = [Actor1.remote() for _ in range(num_nodes * num_gpus_per_raylet)]
@@ -136,7 +140,10 @@ def test_actor_multiple_gpus(ray_start_cluster):
 
         def get_location_and_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
-            return (ray.worker.global_worker.node.unique_id, tuple(self.gpu_ids))
+            return (
+                ray._private.worker.global_worker.node.unique_id,
+                tuple(self.gpu_ids),
+            )
 
     # Create some actors.
     actors1 = [Actor1.remote() for _ in range(num_nodes * 2)]
@@ -167,7 +174,10 @@ def test_actor_multiple_gpus(ray_start_cluster):
             self.gpu_ids = ray.get_gpu_ids()
 
         def get_location_and_ids(self):
-            return (ray.worker.global_worker.node.unique_id, tuple(self.gpu_ids))
+            return (
+                ray._private.worker.global_worker.node.unique_id,
+                tuple(self.gpu_ids),
+            )
 
     # Create some actors.
     actors2 = [Actor2.remote() for _ in range(num_nodes)]
@@ -206,7 +216,10 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
             self.gpu_ids = ray.get_gpu_ids()
 
         def get_location_and_ids(self):
-            return (ray.worker.global_worker.node.unique_id, tuple(self.gpu_ids))
+            return (
+                ray._private.worker.global_worker.node.unique_id,
+                tuple(self.gpu_ids),
+            )
 
     # Create some actors.
     actors = [Actor1.remote() for _ in range(0 + 5 + 10)]
@@ -250,7 +263,10 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
                 self.gpu_ids = ray.get_gpu_ids()
 
             def get_location_and_ids(self):
-                return ((ray.worker.global_worker.node.unique_id), tuple(self.gpu_ids))
+                return (
+                    (ray._private.worker.global_worker.node.unique_id),
+                    tuple(self.gpu_ids),
+                )
 
             def sleep(self):
                 time.sleep(100)
@@ -293,7 +309,10 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
             self.gpu_ids = ray.get_gpu_ids()
 
         def get_location_and_ids(self):
-            return (ray.worker.global_worker.node.unique_id, tuple(self.gpu_ids))
+            return (
+                ray._private.worker.global_worker.node.unique_id,
+                tuple(self.gpu_ids),
+            )
 
     # All the GPUs should be used up now.
     a = Actor.remote()
@@ -336,7 +355,11 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
         assert gpu_ids[0] in range(num_gpus_per_raylet)
-        return (ray.worker.global_worker.node.unique_id, tuple(gpu_ids), [t1, t2])
+        return (
+            ray._private.worker.global_worker.node.unique_id,
+            tuple(gpu_ids),
+            [t1, t2],
+        )
 
     @ray.remote(num_gpus=2)
     def f2():
@@ -347,7 +370,11 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
         assert len(gpu_ids) == 2
         assert gpu_ids[0] in range(num_gpus_per_raylet)
         assert gpu_ids[1] in range(num_gpus_per_raylet)
-        return (ray.worker.global_worker.node.unique_id, tuple(gpu_ids), [t1, t2])
+        return (
+            ray._private.worker.global_worker.node.unique_id,
+            tuple(gpu_ids),
+            [t1, t2],
+        )
 
     @ray.remote(num_gpus=1)
     class Actor1:
@@ -358,7 +385,10 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
         def get_location_and_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
-            return (ray.worker.global_worker.node.unique_id, tuple(self.gpu_ids))
+            return (
+                ray._private.worker.global_worker.node.unique_id,
+                tuple(self.gpu_ids),
+            )
 
     def locations_to_intervals_for_many_tasks():
         # Launch a bunch of GPU tasks.
@@ -568,12 +598,12 @@ def test_custom_label_placement(ray_start_cluster):
     @ray.remote(resources={"CustomResource1": 1})
     class ResourceActor1:
         def get_location(self):
-            return ray.worker.global_worker.node.unique_id
+            return ray._private.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource2": 1})
     class ResourceActor2:
         def get_location(self):
-            return ray.worker.global_worker.node.unique_id
+            return ray._private.worker.global_worker.node.unique_id
 
     # Create some actors.
     actors1 = [ResourceActor1.remote() for _ in range(2)]
@@ -637,4 +667,7 @@ def test_creating_more_actors_than_resources(shutdown_only):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

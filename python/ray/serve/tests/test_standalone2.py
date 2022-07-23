@@ -10,7 +10,7 @@ import pytest
 import requests
 
 import ray
-import ray.state
+import ray._private.state
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
@@ -34,9 +34,13 @@ def shutdown_ray():
 
 @contextmanager
 def start_and_shutdown_ray_cli():
-    subprocess.check_output(["ray", "start", "--head"])
+    subprocess.check_output(
+        ["ray", "start", "--head"],
+    )
     yield
-    subprocess.check_output(["ray", "stop", "--force"])
+    subprocess.check_output(
+        ["ray", "stop", "--force"],
+    )
 
 
 @pytest.fixture(scope="function")
@@ -79,8 +83,7 @@ def test_memory_omitted_option(ray_shutdown):
         return "world"
 
     ray.init(num_gpus=3, namespace="serve")
-    serve.start()
-    hello.deploy()
+    serve.run(hello.bind())
 
     assert ray.get(hello.get_handle().remote()) == "world"
 
@@ -91,13 +94,12 @@ def test_serve_namespace(shutdown_ray, detached, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
     with ray.init(namespace=ray_namespace):
-        serve.start(detached=detached)
 
         @serve.deployment
         def f(*args):
             return "got f"
 
-        f.deploy()
+        serve.run(f.bind())
 
         actors = ray.util.list_named_actors(all_namespaces=True)
 
@@ -113,23 +115,22 @@ def test_update_num_replicas(shutdown_ray, detached):
     """Test updating num_replicas."""
 
     with ray.init():
-        serve.start(detached=detached)
 
         @serve.deployment(num_replicas=2)
         def f(*args):
             return "got f"
 
-        f.deploy()
+        serve.run(f.bind())
 
         actors = ray.util.list_named_actors(all_namespaces=True)
 
-        f.options(num_replicas=4).deploy()
+        serve.run(f.options(num_replicas=4).bind())
         updated_actors = ray.util.list_named_actors(all_namespaces=True)
 
         # Check that only 2 new replicas were created
         assert len(updated_actors) == len(actors) + 2
 
-        f.options(num_replicas=1).deploy()
+        serve.run(f.options(num_replicas=1).bind())
         updated_actors = ray.util.list_named_actors(all_namespaces=True)
 
         # Check that all but 1 replica has spun down
@@ -174,14 +175,14 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
 def test_get_serve_status(shutdown_ray):
 
     ray.init()
-    client = serve.start()
 
     @serve.deployment
     def f(*args):
         return "Hello world"
 
-    f.deploy()
+    serve.run(f.bind())
 
+    client = get_global_client()
     status_info_1 = client.get_serve_status()
     assert status_info_1.app_status.status == "RUNNING"
     assert status_info_1.deployment_statuses[0].name == "f"
@@ -251,8 +252,9 @@ def test_controller_deserialization_args_and_kwargs():
         pass
 
     def generate_pid_based_deserializer(pid, raw_deserializer):
+        """Cannot be deserialized by the process with specified pid."""
+
         def deserializer(*args):
-            """Cannot be deserialized by the process with specified pid."""
 
             import os
 
@@ -276,7 +278,7 @@ def test_controller_deserialization_args_and_kwargs():
         def __call__(self, request):
             return self.arg_str + self.kwarg_str
 
-    Echo.deploy(PidBasedString("hello "), kwarg_str=PidBasedString("world!"))
+    serve.run(Echo.bind(PidBasedString("hello "), kwarg_str=PidBasedString("world!")))
 
     assert requests.get("http://localhost:8000/Echo").text == "hello world!"
 
@@ -560,7 +562,7 @@ class TestDeployApp:
         assert client.get_serve_status().app_status.deployment_timestamp == 0
 
 
-def test_controller_recover_and_delete():
+def test_controller_recover_and_delete(shutdown_ray):
     """Ensure that in-progress deletion can finish even after controller dies."""
 
     ray.init()
@@ -576,17 +578,16 @@ def test_controller_recover_and_delete():
     f.deploy()
 
     actors = ray.util.list_named_actors(all_namespaces=True)
-    client.delete_deployments(["f"], blocking=False)
 
+    # Try to delete the deployments and kill the controller right after
+    client.delete_deployments(["f"], blocking=False)
+    ray.kill(client._controller, no_restart=False)
+
+    # All replicas should be removed already or after the controller revives
     wait_for_condition(
         lambda: len(ray.util.list_named_actors(all_namespaces=True)) < len(actors)
     )
-    ray.kill(client._controller, no_restart=False)
 
-    # There should still be replicas remaining
-    assert len(ray.util.list_named_actors(all_namespaces=True)) > 2
-
-    # All replicas should be removed once the controller revives
     wait_for_condition(
         lambda: len(ray.util.list_named_actors(all_namespaces=True)) == len(actors) - 50
     )
@@ -614,7 +615,7 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
         "def f(*args):\n"
         '   return "got f"\n'
         "\n"
-        "f.deploy()\n"
+        "serve.run(f.bind())\n"
     )
 
     shutdown_serve_script = (
@@ -680,7 +681,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     assert ray.get(a.ready.remote()) == 1
 
     # 2 proxies, 1 controller, and one placeholder.
-    wait_for_condition(lambda: len(ray.state.actors()) == 4)
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 4)
     assert len(ray.nodes()) == 2
 
     # Now make sure the placeholder actor exits.
@@ -688,7 +689,12 @@ def test_autoscaler_shutdown_node_http_everynode(
     # The http proxy on worker node should exit as well.
     wait_for_condition(
         lambda: len(
-            list(filter(lambda a: a["State"] == "ALIVE", ray.state.actors().values()))
+            list(
+                filter(
+                    lambda a: a["State"] == "ALIVE",
+                    ray._private.state.actors().values(),
+                )
+            )
         )
         == 2
     )

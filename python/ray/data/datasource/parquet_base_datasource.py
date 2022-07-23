@@ -1,13 +1,5 @@
 import logging
-from typing import (
-    Dict,
-    Any,
-    Callable,
-    TYPE_CHECKING,
-)
-
-if TYPE_CHECKING:
-    import pyarrow
+from typing import TYPE_CHECKING, Any, Callable, Dict
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (
@@ -16,12 +8,18 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.util.annotations import PublicAPI
 
+if TYPE_CHECKING:
+    import pyarrow
+
+
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI
 class ParquetBaseDatasource(FileBasedDatasource):
     """Minimal Parquet datasource, for reading and writing Parquet files."""
+
+    _FILE_EXTENSION = "parquet"
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         import pyarrow.parquet as pq
@@ -49,6 +47,3 @@ class ParquetBaseDatasource(FileBasedDatasource):
 
         writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         pq.write_table(block.to_arrow(), f, **writer_args)
-
-    def _file_format(self) -> str:
-        return "parquet"

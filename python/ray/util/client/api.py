@@ -1,32 +1,30 @@
 """This file defines the interface between the ray client worker
 and the overall ray module API.
 """
-from concurrent.futures import Future
 import json
 import logging
+from concurrent.futures import Future
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
-from ray.util.client.runtime_context import ClientWorkerPropertyAPI
 from ray._private import ray_option_utils
-from typing import Any, Callable, List, Optional, TYPE_CHECKING
+from ray.util.client.runtime_context import _ClientWorkerPropertyAPI
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
-    from ray.remote_function import RemoteFunction
-    from ray.util.client.common import ClientStub
-    from ray.util.client.common import ClientActorHandle
-    from ray.util.client.common import ClientObjectRef
     from ray.core.generated.ray_client_pb2 import DataResponse
+    from ray.remote_function import RemoteFunction
+    from ray.util.client.common import ClientActorHandle, ClientObjectRef, ClientStub
 
 logger = logging.getLogger(__name__)
 
 
-def as_bytes(value):
+def _as_bytes(value):
     if isinstance(value, str):
         return value.encode("utf-8")
     return value
 
 
-class ClientAPI:
+class _ClientAPI:
     """The Client-side methods corresponding to the ray API. Delegates
     to the Client Worker that contains the connection to the ClientServer.
     """
@@ -285,7 +283,7 @@ class ClientAPI:
         Returns:
             A RuntimeContext wrapping a client making get_cluster_info calls.
         """
-        return ClientWorkerPropertyAPI(self.worker).build_runtime_context()
+        return _ClientWorkerPropertyAPI(self.worker).build_runtime_context()
 
     # Client process isn't assigned any GPUs.
     def get_gpu_ids(self) -> list:
@@ -316,25 +314,25 @@ class ClientAPI:
 
     def _internal_kv_exists(self, key: bytes) -> bool:
         """Hook for internal_kv._internal_kv_exists."""
-        return self.worker.internal_kv_exists(as_bytes(key))
+        return self.worker.internal_kv_exists(_as_bytes(key))
 
     def _internal_kv_get(self, key: bytes) -> bytes:
         """Hook for internal_kv._internal_kv_get."""
-        return self.worker.internal_kv_get(as_bytes(key))
+        return self.worker.internal_kv_get(_as_bytes(key))
 
     def _internal_kv_put(
         self, key: bytes, value: bytes, overwrite: bool = False
     ) -> bool:
         """Hook for internal_kv._internal_kv_put."""
-        return self.worker.internal_kv_put(as_bytes(key), as_bytes(value), overwrite)
+        return self.worker.internal_kv_put(_as_bytes(key), _as_bytes(value), overwrite)
 
     def _internal_kv_del(self, key: bytes) -> None:
         """Hook for internal_kv._internal_kv_del."""
-        return self.worker.internal_kv_del(as_bytes(key))
+        return self.worker.internal_kv_del(_as_bytes(key))
 
     def _internal_kv_list(self, prefix: bytes) -> bytes:
         """Hook for internal_kv._internal_kv_list."""
-        return self.worker.internal_kv_list(as_bytes(prefix))
+        return self.worker.internal_kv_list(_as_bytes(prefix))
 
     def _pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
         """Hook for internal_kv._pin_runtime_env_uri."""

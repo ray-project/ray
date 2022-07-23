@@ -1,11 +1,14 @@
 import math
-from typing import List, Iterator, Tuple, Optional, Dict, Any
 import uuid
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 
 import ray
-from ray.types import ObjectRef
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -16,10 +19,7 @@ from ray.data.block import (
 )
 from ray.data.context import DatasetContext
 from ray.data.datasource import ReadTask
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
+from ray.types import ObjectRef
 
 
 class LazyBlockList(BlockList):
@@ -40,6 +40,8 @@ class LazyBlockList(BlockList):
         cached_metadata: Optional[List[BlockPartitionMetadata]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         stats_uuid: str = None,
+        *,
+        owned_by_consumer: bool,
     ):
         """Create a LazyBlockList on the provided read tasks.
 
@@ -90,6 +92,9 @@ class LazyBlockList(BlockList):
             tasks,
             self._cached_metadata,
         )
+        # Whether the block list is owned by consuming APIs, and if so it can be
+        # eagerly deleted after read by the consumer.
+        self._owned_by_consumer = owned_by_consumer
 
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
@@ -121,6 +126,7 @@ class LazyBlockList(BlockList):
             block_partition_meta_refs=self._block_partition_meta_refs.copy(),
             cached_metadata=self._cached_metadata,
             ray_remote_args=self._remote_args.copy(),
+            owned_by_consumer=self._owned_by_consumer,
             stats_uuid=self._stats_uuid,
         )
 
@@ -148,13 +154,18 @@ class LazyBlockList(BlockList):
         block_partition_meta_refs = np.array_split(
             self._block_partition_meta_refs, num_splits
         )
+        cached_metadata = np.array_split(self._cached_metadata, num_splits)
         output = []
-        for t, b, m in zip(tasks, block_partition_refs, block_partition_meta_refs):
+        for t, b, m, c in zip(
+            tasks, block_partition_refs, block_partition_meta_refs, cached_metadata
+        ):
             output.append(
                 LazyBlockList(
                     t.tolist(),
                     b.tolist(),
                     m.tolist(),
+                    c.tolist(),
+                    owned_by_consumer=self._owned_by_consumer,
                 )
             )
         return output
@@ -162,12 +173,13 @@ class LazyBlockList(BlockList):
     # Note: does not force execution prior to splitting.
     def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
         output = []
-        cur_tasks, cur_blocks, cur_blocks_meta = [], [], []
+        cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta = [], [], [], []
         cur_size = 0
-        for t, b, bm in zip(
+        for t, b, bm, c in zip(
             self._tasks,
             self._block_partition_refs,
             self._block_partition_meta_refs,
+            self._cached_metadata,
         ):
             m = t.get_metadata()
             if m.size_bytes is None:
@@ -177,16 +189,31 @@ class LazyBlockList(BlockList):
             size = m.size_bytes
             if cur_blocks and cur_size + size > bytes_per_split:
                 output.append(
-                    LazyBlockList(cur_tasks, cur_blocks, cur_blocks_meta),
+                    LazyBlockList(
+                        cur_tasks,
+                        cur_blocks,
+                        cur_blocks_meta,
+                        cur_cached_meta,
+                        owned_by_consumer=self._owned_by_consumer,
+                    ),
                 )
-                cur_tasks, cur_blocks, cur_blocks_meta = [], [], []
+                cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta = [], [], [], []
                 cur_size = 0
             cur_tasks.append(t)
             cur_blocks.append(b)
             cur_blocks_meta.append(bm)
+            cur_cached_meta.append(c)
             cur_size += size
         if cur_blocks:
-            output.append(LazyBlockList(cur_tasks, cur_blocks, cur_blocks_meta))
+            output.append(
+                LazyBlockList(
+                    cur_tasks,
+                    cur_blocks,
+                    cur_blocks_meta,
+                    cur_cached_meta,
+                    owned_by_consumer=self._owned_by_consumer,
+                )
+            )
         return output
 
     # Note: does not force execution prior to division.
@@ -195,11 +222,15 @@ class LazyBlockList(BlockList):
             self._tasks[:part_idx],
             self._block_partition_refs[:part_idx],
             self._block_partition_meta_refs[:part_idx],
+            self._cached_metadata[:part_idx],
+            owned_by_consumer=self._owned_by_consumer,
         )
         right = LazyBlockList(
             self._tasks[part_idx:],
             self._block_partition_refs[part_idx:],
             self._block_partition_meta_refs[part_idx:],
+            self._cached_metadata[part_idx:],
+            owned_by_consumer=self._owned_by_consumer,
         )
         return left, right
 
@@ -266,7 +297,7 @@ class LazyBlockList(BlockList):
     def compute_to_blocklist(self) -> BlockList:
         """Launch all tasks and return a concrete BlockList."""
         blocks, metadata = self._get_blocks_with_metadata()
-        return BlockList(blocks, metadata)
+        return BlockList(blocks, metadata, owned_by_consumer=self._owned_by_consumer)
 
     def compute_first_block(self):
         """Kick off computation for the first block in the list.
@@ -305,6 +336,29 @@ class LazyBlockList(BlockList):
             metadata = ray.get(metadata_ref)
             self._cached_metadata[0] = metadata
         return metadata
+
+    def iter_blocks(self) -> Iterator[ObjectRef[Block]]:
+        """Iterate over the blocks of this block list.
+
+        This blocks on the execution of the tasks generating block outputs.
+        The length of this iterator is not known until execution.
+        """
+        self._check_if_cleared()
+        outer = self
+
+        class Iter:
+            def __init__(self):
+                self._base_iter = outer.iter_blocks_with_metadata()
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                ref, meta = next(self._base_iter)
+                assert isinstance(ref, ray.ObjectRef), (ref, meta)
+                return ref
+
+        return Iter()
 
     def iter_blocks_with_metadata(
         self,
@@ -394,6 +448,7 @@ class LazyBlockList(BlockList):
             block_partition_meta_refs=block_partition_meta_refs,
             cached_metadata=cached_metadata,
             ray_remote_args=self._remote_args.copy(),
+            owned_by_consumer=self._owned_by_consumer,
             stats_uuid=self._stats_uuid,
         )
 

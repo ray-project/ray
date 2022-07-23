@@ -1,33 +1,35 @@
-import jsonschema
+import copy
 import logging
-import mock
 import os
 import sys
 import tempfile
 import unittest
 import urllib
-import yaml
-import copy
 from unittest.mock import MagicMock, Mock, patch
+
+import jsonschema
 import pytest
+import yaml
 from click.exceptions import ClickException
 
+import mock
+from ray._private.test_utils import load_test_config, recursive_fnmatch
+from ray._private import ray_constants
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
 )
+from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler._private.gcp import config as gcp_config
+from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.util import (
+    _get_default_config,
+    fill_node_type_min_max_workers,
+    merge_setup_commands,
     prepare_config,
     validate_config,
-    _get_default_config,
-    merge_setup_commands,
-    fill_node_type_min_max_workers,
 )
-from ray.autoscaler._private.providers import _NODE_PROVIDERS
-from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
-
-from ray._private.test_utils import load_test_config, recursive_fnmatch
+from ray.autoscaler._private._kubernetes.config import get_autodetected_resources
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 CONFIG_PATHS = recursive_fnmatch(os.path.join(RAY_PATH, "autoscaler"), "*.yaml")
@@ -91,7 +93,7 @@ class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
             try:
-                if "aws/example-multi-node-type.yaml" in config_path:
+                if os.path.join("aws", "example-multi-node-type.yaml") in config_path:
                     # aws tested in testValidateDefaultConfigAWSMultiNodeTypes.
                     continue
                 if "local" in config_path:
@@ -720,9 +722,29 @@ class AutoscalingConfigTest(unittest.TestCase):
         with pytest.raises(jsonschema.exceptions.ValidationError):
             validate_config(config)
 
+    @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
+    def test_k8s_get_autodetected_resources(self):
+        """Verify container requests are ignored when detected resource limits for the
+        Ray Operator.
+        """
+        sample_container = {
+            "resources": {
+                "limits": {"memory": "1G", "cpu": "2"},
+                "requests": {"memory": "512M", "cpu": "2"},
+            }
+        }
+        out = get_autodetected_resources(sample_container)
+        expected_memory = int(
+            2 ** 30 * (1 - ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+        )
+        expected_out = {"CPU": 2, "memory": expected_memory, "GPU": 0}
+        assert out == expected_out
+
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

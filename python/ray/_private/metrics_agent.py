@@ -7,25 +7,24 @@ import traceback
 from collections import namedtuple
 from typing import List
 
+from opencensus.metrics.export.value import ValueDouble
 from opencensus.stats import aggregation
 from opencensus.stats import measure as measure_module
 from opencensus.stats import stats as stats_module
-from opencensus.stats.view import View
-from opencensus.stats.view_data import ViewData
 from opencensus.stats.aggregation_data import (
     CountAggregationData,
     DistributionAggregationData,
     LastValueAggregationData,
 )
-from opencensus.metrics.export.value import ValueDouble
+from opencensus.stats.view import View
+from opencensus.stats.view_data import ViewData
 from opencensus.tags import tag_key as tag_key_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 
 import ray
-from ray._private.gcs_utils import GcsClient
-
 import ray._private.prometheus_exporter as prometheus_exporter
+from ray._private.gcs_utils import GcsClient
 from ray.core.generated.metrics_pb2 import Metric
 
 logger = logging.getLogger(__name__)
@@ -211,7 +210,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_address)
         self.gcs_address = gcs_address
 
-        ray.state.state._initialize_global_state(gcs_client_options)
+        ray._private.state.state._initialize_global_state(gcs_client_options)
         self.temp_dir = temp_dir
         self.default_service_discovery_flush_period = 5
         super().__init__()
@@ -247,13 +246,15 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
 
     def get_target_file_name(self):
         return os.path.join(
-            self.temp_dir, ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
+            self.temp_dir, ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
 
     def get_temp_file_name(self):
         return os.path.join(
             self.temp_dir,
-            "{}_{}".format("tmp", ray.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE),
+            "{}_{}".format(
+                "tmp", ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
+            ),
         )
 
     def run(self):

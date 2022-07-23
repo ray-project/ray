@@ -177,13 +177,6 @@ DEFINE_stats(spill_manager_throughput_mb,
              (),
              ray::stats::GAUGE);
 
-/// GCS Resource Manager
-DEFINE_stats(gcs_new_resource_creation_latency_ms,
-             "Time to persist newly created resources to Redis.",
-             (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ),
-             ray::stats::HISTOGRAM);
-
 /// GCS Storage
 DEFINE_stats(gcs_storage_operation_latency_ms,
              "Time to invoke an operation on Gcs storage",

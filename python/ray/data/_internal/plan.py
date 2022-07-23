@@ -1,26 +1,38 @@
 import copy
-from typing import (
-    Callable,
-    List,
-    Tuple,
-    Optional,
-    Union,
-    Iterator,
-    Iterable,
-    TYPE_CHECKING,
-)
+import itertools
 import uuid
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
+
+import ray
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.compute import (
+    UDF,
+    ActorPoolStrategy,
+    BlockTransform,
+    CallableClass,
+    ComputeStrategy,
+    get_compute,
+    is_task_compute,
+)
+from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.stats import DatasetStats
+from ray.data.block import Block
+from ray.data.context import DatasetContext
 
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
-from ray.data.context import DatasetContext
-from ray.data.block import Block
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.compute import get_compute, is_task_compute
-from ray.data._internal.stats import DatasetStats
-from ray.data._internal.lazy_block_list import LazyBlockList
 
 # Scheduling strategy can be inherited from prev stage if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -73,13 +85,22 @@ class ExecutionPlan:
     # execution, any future executions will only have to execute the "after the
     # snapshot" subchain, using the snapshot as the input to that subchain.
 
-    def __init__(self, in_blocks: BlockList, stats: DatasetStats, dataset_uuid=None):
+    def __init__(
+        self,
+        in_blocks: BlockList,
+        stats: DatasetStats,
+        dataset_uuid=None,
+        *,
+        run_by_consumer: bool,
+    ):
         """Create a plan with no transformation stages.
 
         Args:
             in_blocks: Base list of blocks.
             stats: Stats for the base blocks.
             dataset_uuid: Dataset's UUID.
+            run_by_consumer: Whether this plan is invoked to run by the consumption
+            APIs (e.g. .iter_batches()).
         """
         self._in_blocks = in_blocks
         self._in_stats = stats
@@ -95,6 +116,19 @@ class ExecutionPlan:
         self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
         if not stats.dataset_uuid:
             stats.dataset_uuid = self._dataset_uuid
+
+        self._run_by_consumer = run_by_consumer
+
+    def __repr__(self) -> str:
+        return (
+            f"ExecutionPlan("
+            f"dataset_uuid={self._dataset_uuid}, "
+            f"run_by_consumer={self._run_by_consumer}, "
+            f"in_blocks={self._in_blocks}, "
+            f"stages_before_snapshot={self._stages_before_snapshot}, "
+            f"stages_after_snapshot={self._stages_after_snapshot}, "
+            f"snapshot_blocks={self._snapshot_blocks})"
+        )
 
     def with_stage(self, stage: "Stage") -> "ExecutionPlan":
         """Return a copy of this plan with the given stage appended.
@@ -118,7 +152,9 @@ class ExecutionPlan:
         Returns:
             A shallow copy of this execution plan.
         """
-        plan_copy = ExecutionPlan(self._in_blocks, self._in_stats)
+        plan_copy = ExecutionPlan(
+            self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
+        )
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks
@@ -145,7 +181,10 @@ class ExecutionPlan:
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
         plan_copy = ExecutionPlan(
-            in_blocks, copy.copy(self._in_stats), dataset_uuid=dataset_uuid
+            in_blocks,
+            copy.copy(self._in_stats),
+            dataset_uuid=dataset_uuid,
+            run_by_consumer=self._run_by_consumer,
         )
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
@@ -182,9 +221,21 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
         if self._stages_after_snapshot:
             if fetch_if_missing:
-                self.execute()
+                if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
+                    # TODO(ekl): this is a hack to optimize the case where we have a
+                    # trailing randomize block stages. That stage has no effect and
+                    # so we don't need to execute all blocks to get the schema.
+                    a = self._stages_after_snapshot.pop()
+                    try:
+                        self.execute()
+                    finally:
+                        self._stages_after_snapshot.append(a)
+                else:
+                    self.execute()
             else:
                 return None
         # Snapshot is now guaranteed to be the output of the final stage or None.
@@ -254,7 +305,9 @@ class ExecutionPlan:
                 else:
                     clear_input_blocks = False
                 stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(blocks, clear_input_blocks)
+                blocks, stage_info = stage(
+                    blocks, clear_input_blocks, self._run_by_consumer
+                )
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
@@ -317,6 +370,8 @@ class ExecutionPlan:
         """
         context = DatasetContext.get_current()
         blocks, stats, stages = self._get_source_blocks_and_stages()
+        if context.optimize_reorder_stages:
+            stages = _reorder_stages(stages)
         if context.optimize_fuse_stages:
             if context.optimize_fuse_read_stages:
                 # If using a lazy datasource, rewrite read stage into one-to-one stage
@@ -370,12 +425,22 @@ class ExecutionPlan:
         """Return whether this plan has lazy input blocks."""
         return _is_lazy(self._in_blocks)
 
-    def is_read_stage(self) -> bool:
-        """Return whether this plan only consists of a read stage."""
+    def is_read_stage_equivalent(self) -> bool:
+        """Return whether this plan can be executed as only a read stage."""
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
+        context = DatasetContext.get_current()
+        remaining_stages = self._stages_after_snapshot
+        if (
+            context.optimize_fuse_stages
+            and remaining_stages
+            and isinstance(remaining_stages[0], RandomizeBlocksStage)
+        ):
+            remaining_stages = remaining_stages[1:]
         return (
             self.has_lazy_input()
             and not self._stages_before_snapshot
-            and not self._stages_after_snapshot
+            and not remaining_stages
             and (
                 not self._snapshot_blocks
                 or isinstance(self._snapshot_blocks, LazyBlockList)
@@ -393,20 +458,96 @@ class ExecutionPlan:
         )
 
 
+def _pack_args(
+    self_fn_args: Iterable[Any],
+    self_fn_kwargs: Dict[str, Any],
+    prev_fn_args: Iterable[Any],
+    prev_fn_kwargs: Dict[str, Any],
+) -> Tuple[
+    Tuple[Any],
+    Callable[
+        [Tuple[Any]],
+        Tuple[
+            Tuple[Any],
+            Dict[str, Any],
+            Tuple[Any],
+            Dict[str, Any],
+        ],
+    ],
+]:
+    """Pack the (kw)args from two stages into a single, flat positional args tuple that
+    can be given to a Ray task, ensuring resoultion of each argument.
+    This function returns this args tuple along with a function that will unpack this
+    flat args tuple back into it's original args and kwargs structure.
+    """
+    if not self_fn_args:
+        self_fn_args = tuple()
+    if not self_fn_kwargs:
+        self_fn_kwargs = {}
+    if not prev_fn_args:
+        prev_fn_args = tuple()
+    if not prev_fn_kwargs:
+        prev_fn_kwargs = {}
+    # Offsets into flat args tuple.
+    offsets = list(
+        itertools.accumulate(
+            [
+                len(self_fn_args),
+                len(prev_fn_args),
+                len(self_fn_kwargs),
+                len(prev_fn_kwargs),
+            ]
+        )
+    )
+    # Keys for the kwargs.
+    keys = list(self_fn_kwargs.keys()) + list(prev_fn_kwargs.keys())
+
+    fn_args = (
+        self_fn_args
+        + prev_fn_args
+        + tuple(self_fn_kwargs.values())
+        + tuple(prev_fn_kwargs.values())
+    )
+
+    def unpack(
+        fn_args: List[Any],
+    ) -> Tuple[List[Any], Dict[str, Any], List[Any], Dict[str, Any]]:
+        self_fn_args = fn_args[: offsets[0]]
+        prev_fn_args = fn_args[offsets[0] : offsets[1]]
+        self_fn_kwargs = fn_args[offsets[1] : offsets[2]]
+        prev_fn_kwargs = fn_args[offsets[2] :]
+        prev_key_offset = offsets[2] - offsets[1]
+        self_fn_kwargs = {k: v for k, v in zip(keys[:prev_key_offset], self_fn_kwargs)}
+        prev_fn_kwargs = {k: v for k, v in zip(keys[prev_key_offset:], prev_fn_kwargs)}
+        return self_fn_args, self_fn_kwargs, prev_fn_args, prev_fn_kwargs
+
+    return fn_args, unpack
+
+
 class OneToOneStage(Stage):
     """A stage that transforms blocks independently (e.g., map or filter)."""
 
     def __init__(
         self,
         name: str,
-        block_fn: Callable[[Block], Block],
-        compute: str,
+        block_fn: BlockTransform,
+        compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
+        fn: Optional[UDF] = None,
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(name, None)
         self.block_fn = block_fn
         self.compute = compute or "tasks"
         self.ray_remote_args = ray_remote_args or {}
+        self.fn = fn
+        self.fn_args = fn_args
+        self.fn_kwargs = fn_kwargs
+        self.fn_constructor_args = fn_constructor_args
+        self.fn_constructor_kwargs = fn_constructor_kwargs
 
     def can_fuse(self, prev: Stage):
         if not isinstance(prev, OneToOneStage):
@@ -414,6 +555,22 @@ class OneToOneStage(Stage):
         # Allow fusing tasks->actors if the resources are compatible (read->map), but
         # not the other way around. The latter will be used as the compute if fused.
         if is_task_compute(self.compute) and prev.compute != self.compute:
+            return False
+        if (
+            isinstance(self.fn, CallableClass)
+            and isinstance(prev.fn, CallableClass)
+            and (
+                prev.fn != self.fn
+                or (
+                    prev.fn_constructor_args != self.fn_constructor_args
+                    or prev.fn_constructor_kwargs != self.fn_constructor_kwargs
+                )
+            )
+        ):
+            # Fusing callable classes is only supported if they are the same function
+            # AND their construction arguments are the same.
+            # TODO(Clark): Support multiple callable classes instantiating in the same
+            # actor worker constructor.
             return False
         if not _are_remote_args_compatible(prev.ray_remote_args, self.ray_remote_args):
             return False
@@ -425,24 +582,97 @@ class OneToOneStage(Stage):
                 f"Tried to fuse {prev} with {self}, but these are not fusable."
             )
         name = prev.name + "->" + self.name
-        fn1 = prev.block_fn
-        fn2 = self.block_fn
+        prev_fn = prev.fn
+        if isinstance(self.fn, CallableClass) and isinstance(prev_fn, CallableClass):
+            assert self.fn == prev_fn
+            assert (
+                prev.fn_constructor_args == self.fn_constructor_args
+                and prev.fn_constructor_kwargs == self.fn_constructor_kwargs
+            )
+            # If both UDFs are callable classes, they must be equal and have the same
+            # construction args, so we tell the previous stage to reuse the passed
+            # (instantiated) callable class UDF that's provided to the block function.
+            use_outer_fn = True
+            prev_fn = None
+        else:
+            # Otherwise, we're either fusing two non-callable class UDFs, or a
+            # non-callable class UDF with a callable class UDF. In either case, prev
+            # will be a non-callable class UDF, so we use it within the block function.
+            use_outer_fn = False
 
-        def block_fn(block: Block) -> Iterable[Block]:
-            for tmp1 in fn1(block):
-                for tmp2 in fn2(tmp1):
+        # Package args into a flat positional args list.
+        fn_args, unpack_args = _pack_args(
+            self.fn_args,
+            self.fn_kwargs,
+            prev.fn_args,
+            prev.fn_kwargs,
+        )
+
+        block_fn1 = prev.block_fn
+        block_fn2 = self.block_fn
+
+        def block_fn(
+            block: Block,
+            fn: UDF,
+            *fn_args,
+            **fn_kwargs,
+        ) -> Iterable[Block]:
+            assert not fn_kwargs, fn_kwargs
+            # Unpack flat position args list into
+            self_fn_args, self_fn_kwargs, prev_fn_args, prev_fn_kwargs = unpack_args(
+                fn_args
+            )
+            self_fn_args = self_fn_args if fn is None else (fn,) + self_fn_args
+            if use_outer_fn:
+                prev_fn_ = fn
+            else:
+                prev_fn_ = prev_fn
+            prev_fn_args = (
+                prev_fn_args if prev_fn_ is None else (prev_fn_,) + prev_fn_args
+            )
+            for tmp1 in block_fn1(block, *prev_fn_args, **prev_fn_kwargs):
+                for tmp2 in block_fn2(tmp1, *self_fn_args, **self_fn_kwargs):
                     yield tmp2
 
-        return OneToOneStage(name, block_fn, self.compute, prev.ray_remote_args)
+        return OneToOneStage(
+            name,
+            block_fn,
+            self.compute,
+            prev.ray_remote_args,
+            fn=self.fn,
+            fn_args=fn_args,
+            fn_kwargs={},
+            fn_constructor_args=self.fn_constructor_args,
+            fn_constructor_kwargs=self.fn_constructor_kwargs,
+        )
 
     def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
+        self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
     ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
+        assert (
+            self.fn_constructor_args is None and self.fn_constructor_kwargs is None
+        ) or isinstance(compute, ActorPoolStrategy)
+
+        if blocks._owned_by_consumer:
+            assert (
+                run_by_consumer
+            ), "Blocks owned by consumer can only be consumed by consumer"
+
         blocks = compute._apply(
-            self.block_fn, self.ray_remote_args, blocks, clear_input_blocks, self.name
+            self.block_fn,
+            self.ray_remote_args,
+            blocks,
+            clear_input_blocks,
+            name=self.name,
+            fn=self.fn,
+            fn_args=self.fn_args,
+            fn_kwargs=self.fn_kwargs,
+            fn_constructor_args=self.fn_constructor_args,
+            fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
         assert isinstance(blocks, BlockList), blocks
+        blocks._owned_by_consumer = run_by_consumer
         return blocks, {}
 
 
@@ -455,8 +685,8 @@ class AllToAllStage(Stage):
         num_blocks: Optional[int],
         fn: Callable[[BlockList, bool, Callable], Tuple[BlockList, dict]],
         supports_block_udf: bool = False,
-        block_udf=None,
-        remote_args=None,
+        block_udf: Optional[BlockTransform] = None,
+        remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(name, num_blocks)
         self.fn = fn
@@ -485,18 +715,55 @@ class AllToAllStage(Stage):
                 f"Tried to fuse {prev} with {self}, but these are not fusable."
             )
         assert self.supports_block_udf
+        assert prev.fn_constructor_args is None and prev.fn_constructor_kwargs is None
         name = prev.name + "->" + self.name
+        prev_fn_args = prev.fn_args or tuple()
+        prev_fn_args = prev_fn_args if prev.fn is None else (prev.fn,) + prev_fn_args
+        prev_fn_kwargs = prev.fn_kwargs or {}
+        prev_block_fn = prev.block_fn
+        if self.block_udf is None:
+
+            def block_udf(block: Block) -> Iterable[Block]:
+                yield from prev_block_fn(block, *prev_fn_args, **prev_fn_kwargs)
+
+        else:
+            self_block_udf = self.block_udf
+
+            def block_udf(block: Block) -> Iterable[Block]:
+                for tmp1 in prev_block_fn(
+                    block,
+                    *prev_fn_args,
+                    **prev_fn_kwargs,
+                ):
+                    for tmp2 in self_block_udf(tmp1):
+                        yield tmp2
+
         return AllToAllStage(
-            name, self.num_blocks, self.fn, True, prev.block_fn, prev.ray_remote_args
+            name, self.num_blocks, self.fn, True, block_udf, prev.ray_remote_args
         )
 
     def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
+        self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
     ) -> Tuple[BlockList, dict]:
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
+        in_blocks_owned_by_consumer = blocks._owned_by_consumer
+        if in_blocks_owned_by_consumer:
+            assert (
+                run_by_consumer
+            ), "Blocks owned by consumer can only be consumed by consumer"
         blocks, stage_info = self.fn(
             blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
         )
         assert isinstance(blocks, BlockList), blocks
+
+        # RandomizeBlocksStage is an in-place transformation, so the ownership
+        # of blocks doesn't change.
+        if isinstance(self, RandomizeBlocksStage):
+            blocks._owned_by_consumer = in_blocks_owned_by_consumer
+        else:
+            blocks._owned_by_consumer = run_by_consumer
+
         return blocks, stage_info
 
 
@@ -508,15 +775,14 @@ def _rewrite_read_stages(
 ) -> Tuple[BlockList, DatasetStats, List[Stage]]:
     """Rewrites read stages into one-to-one stages, if needed."""
     if _is_lazy(blocks) and stages:
-        blocks, stats, stage = _rewrite_read_stage(blocks)
+        blocks, stats, stages = _rewrite_read_stage(blocks, stages)
         stats.dataset_uuid = dataset_uuid
-        stages.insert(0, stage)
     return blocks, stats, stages
 
 
 def _rewrite_read_stage(
-    in_blocks: LazyBlockList,
-) -> Tuple[BlockList, DatasetStats, Stage]:
+    in_blocks: LazyBlockList, stages: List[Stage]
+) -> Tuple[BlockList, DatasetStats, List[Stage]]:
     """Rewrite the read stage to a OneToOne stage over read tasks as input.
 
     For example, suppose the plan was [Read -> MapBatches(Fn)]. These stages cannot
@@ -527,26 +793,79 @@ def _rewrite_read_stage(
 
     Args:
         blocks: Lazy block list representing read stage.
+        stages: List of current stages.
 
     Returns:
         Non-lazy block list containing read tasks for not-yet-read block partitions,
-        new stats for the block list, and the new one-to-one read stage.
+        new stats for the block list, and the new list of stages.
     """
+    from ray.data._internal.stage_impl import RandomizeBlocksStage
+
     # Generate the "GetReadTasks" stage blocks.
     remote_args = in_blocks._remote_args
     blocks, metadata = [], []
     for read_task in in_blocks._tasks:
         blocks.append(ray.put(read_task._read_fn))
         metadata.append(read_task.get_metadata())
-    block_list = BlockList(blocks, metadata)
+    block_list = BlockList(
+        blocks, metadata, owned_by_consumer=in_blocks._owned_by_consumer
+    )
 
     def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
         for block in read_fn():
             yield block
 
-    stage = OneToOneStage("read", block_fn, "tasks", remote_args)
+    name = "read"
+
+    # Fuse downstream randomize stage with the read stage if possible. This is needed
+    # when .window() is called right after read->randomize, since it forces execution.
+    has_randomize = stages and isinstance(stages[0], RandomizeBlocksStage)
+    if has_randomize:
+        if stages and isinstance(stages[0], RandomizeBlocksStage):
+            block_list, _ = stages[0].do_randomize(block_list)
+            stages = stages[1:]
+        name += "->randomize_block_order"
+
+    stage = OneToOneStage(
+        name,
+        block_fn,
+        "tasks",
+        remote_args,
+    )
     stats = DatasetStats(stages={}, parent=None)
-    return block_list, stats, stage
+    stages.insert(0, stage)
+    return block_list, stats, stages
+
+
+def _reorder_stages(stages: List[Stage]) -> List[Stage]:
+    """Reorder randomize stages to the end to enable better stage fusion.
+
+    This applies to RandomizeBlockOrder stages specifically (issue #26057).
+
+    Args:
+        stages: Stages to try to reorder.
+
+    Returns:
+        Reordered stages.
+    """
+    from ray.data._internal.stage_impl import RandomizeBlocksStage
+
+    output: List[Stage] = []
+    reorder_buf: List[RandomizeBlocksStage] = []
+
+    for s in stages:
+        if isinstance(s, RandomizeBlocksStage):
+            # Buffer it for later reordering.
+            reorder_buf.append(s)
+        else:
+            # Barrier: flush the reorder buffer.
+            if isinstance(s, AllToAllStage):
+                output.extend(reorder_buf)
+                reorder_buf = []
+            output.append(s)
+
+    output.extend(reorder_buf)
+    return output
 
 
 def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:

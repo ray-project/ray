@@ -81,14 +81,14 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # To run the Trainer without tune.run, using our LSTM model and
+    # To run the Algorithm without tune.run, using our LSTM model and
     # manual state-in handling, do the following:
 
     # Example (use `config` from the above code):
     # >> import numpy as np
     # >> from ray.rllib.algorithms.ppo import PPO
     # >>
-    # >> trainer = PPO(config)
+    # >> algo = PPO(config)
     # >> lstm_cell_size = config["model"]["lstm_cell_size"]
     # >> env = StatelessCartPole()
     # >> obs = env.reset()
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     # >> prev_r = 0.0
     # >>
     # >> while True:
-    # >>     a, state_out, _ = trainer.compute_single_action(
+    # >>     a, state_out, _ = algo.compute_single_action(
     # ..         obs, state, prev_a, prev_r)
     # >>     obs, reward, done, _ = env.step(a)
     # >>     if done:

@@ -4,7 +4,7 @@ import warnings
 from collections import defaultdict
 from time import time
 from traceback import format_exc
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -19,10 +19,8 @@ from sklearn.model_selection._validation import _check_multimetric_scoring, _sco
 import ray.cloudpickle as cpickle
 from ray import tune
 from ray.air._internal.checkpointing import (
-    load_preprocessor_from_dir,
     save_preprocessor_to_dir,
 )
-from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import MODEL_KEY, TRAIN_DATASET_KEY
 from ray.train.sklearn._sklearn_utils import _has_cpu_params, _set_cpu_params
@@ -76,9 +74,9 @@ class SklearnTrainer(BaseTrainer):
             trainer = SklearnTrainer(
                 sklearn_estimator=RandomForestRegressor,
                 label_column="y",
-                scaling_config={
-                    "trainer_resources": {"CPU": 4}
-                },
+                scaling_config=ray.air.config.ScalingConfig(
+                    trainer_resources={"CPU": 4}
+                ),
                 datasets={"train": train_dataset}
             )
             result = trainer.fit()
@@ -234,9 +232,7 @@ class SklearnTrainer(BaseTrainer):
                 "`parallelize_cv` must be a bool or None, got "
                 f"'{self.parallelize_cv}'"
             )
-        scaling_config = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config = self._validate_scaling_config(self.scaling_config)
         if (
             self.cv
             and self.parallelize_cv
@@ -375,14 +371,12 @@ class SklearnTrainer(BaseTrainer):
             groups = X_train["cv_groups"]
             X_train = X_train.drop("cv_groups", axis=1)
 
-        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config = self._validate_scaling_config(self.scaling_config)
 
-        num_workers = scaling_config_dataclass.num_workers or 0
+        num_workers = scaling_config.num_workers or 0
         assert num_workers == 0  # num_workers is not in scaling config allowed_keys
 
-        trainer_resources = scaling_config_dataclass.trainer_resources or {"CPU": 1}
+        trainer_resources = scaling_config.trainer_resources or {"CPU": 1}
         has_gpus = bool(trainer_resources.get("GPU", 0))
         num_cpus = int(trainer_resources.get("CPU", 1))
 
@@ -434,25 +428,3 @@ class SklearnTrainer(BaseTrainer):
             "fit_time": fit_time,
         }
         tune.report(**results)
-
-
-def load_checkpoint(
-    checkpoint: Checkpoint,
-) -> Tuple[BaseEstimator, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``SklearnTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the estimator and
-            preprocessor from. It is expected to be from the result of a
-            ``SklearnTrainer`` run.
-
-    Returns:
-        The estimator and AIR preprocessor contained within.
-    """
-    with checkpoint.as_directory() as checkpoint_path:
-        estimator_path = os.path.join(checkpoint_path, MODEL_KEY)
-        with open(estimator_path, "rb") as f:
-            estimator = cpickle.load(f)
-        preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
-    return estimator, preprocessor

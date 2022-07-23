@@ -1,30 +1,30 @@
-import pytest
 import sys
 import time
+
+import pytest
+
+import ray
+import ray._private.gcs_utils as gcs_utils
+import ray.cluster_utils
+import ray.experimental.internal_kv as internal_kv
+from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.test_utils import (
+    convert_actor_state,
+    generate_system_config_map,
+    is_placement_group_removed,
+    kill_actor_and_wait_for_failure,
+    run_string_as_driver,
+    wait_for_condition,
+)
+from ray.autoscaler._private.commands import debug_status
+from ray.exceptions import RaySystemError
+from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.placement_group import placement_group, remove_placement_group
 
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-
-import ray
-import ray.cluster_utils
-import ray._private.gcs_utils as gcs_utils
-
-from ray.autoscaler._private.commands import debug_status
-from ray._private.test_utils import (
-    generate_system_config_map,
-    kill_actor_and_wait_for_failure,
-    run_string_as_driver,
-    wait_for_condition,
-    is_placement_group_removed,
-    convert_actor_state,
-)
-from ray.exceptions import RaySystemError
-from ray.util.placement_group import placement_group, remove_placement_group
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
-import ray.experimental.internal_kv as internal_kv
-from ray.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):
@@ -169,7 +169,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.state.jobs()
+        jobs = ray._private.state.jobs()
         for job in jobs:
             if job["IsDead"]:
                 return True
@@ -184,7 +184,7 @@ ray.shutdown()
 
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
-        for actor_info in ray.state.actors().values():
+        for actor_info in ray._private.state.actors().values():
             if actor_info["State"] == convert_actor_state(
                 gcs_utils.ActorTableData.ALIVE
             ):
@@ -274,7 +274,7 @@ ray.shutdown()
 
     # Wait until the driver is reported as dead by GCS.
     def is_job_done():
-        jobs = ray.state.jobs()
+        jobs = ray._private.state.jobs()
         for job in jobs:
             if job["IsDead"]:
                 return True
@@ -684,4 +684,9 @@ def test_fractional_resources_handle_correct(ray_start_cluster):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

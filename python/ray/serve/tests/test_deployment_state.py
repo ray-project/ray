@@ -60,12 +60,15 @@ class MockReplicaActorWrapper:
         self.done_stopping = False
         # Will be set when `force_stop()` is called.
         self.force_stopped_counter = 0
-        # Will be cleaned up when `cleanup()` is called.
-        self.cleaned_up = False
         # Will be set when `check_health()` is called.
         self.health_check_called = False
         # Returned by the health check.
         self.healthy = True
+        self._is_cross_language = False
+
+    @property
+    def is_cross_language(self) -> bool:
+        return self._is_cross_language
 
     @property
     def replica_tag(self) -> str:
@@ -154,9 +157,6 @@ class MockReplicaActorWrapper:
     def force_stop(self):
         self.force_stopped_counter += 1
 
-    def cleanup(self):
-        self.cleaned_up = True
-
     def check_health(self):
         self.health_check_called = True
         return self.healthy
@@ -210,8 +210,11 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         "ray.serve.long_poll.LongPollHost"
     ) as mock_long_poll:
 
+        def mock_save_checkpoint_fn(*args, **kwargs):
+            pass
+
         deployment_state = DeploymentState(
-            "name", "name", True, mock_long_poll, lambda: None
+            "name", "name", True, mock_long_poll, mock_save_checkpoint_fn
         )
         yield deployment_state, timer
 
@@ -483,7 +486,6 @@ def test_create_delete_single_replica(mock_deployment_state):
     deployment_state.update()
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state._replicas.get()[0]._actor.stopped
-    assert not deployment_state._replicas.get()[0]._actor.cleaned_up
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Once it's done stopping, replica should be removed.
@@ -492,7 +494,6 @@ def test_create_delete_single_replica(mock_deployment_state):
     deleted = deployment_state.update()
     assert deleted
     check_counts(deployment_state, total=0)
-    assert replica._actor.cleaned_up
 
 
 def test_force_kill(mock_deployment_state):
@@ -518,21 +519,18 @@ def test_force_kill(mock_deployment_state):
 
     # force_stop shouldn't be called until after the timer.
     assert not deployment_state._replicas.get()[0]._actor.force_stopped_counter
-    assert not deployment_state._replicas.get()[0]._actor.cleaned_up
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
 
     # Advance the timer, now the replica should be force stopped.
     timer.advance(grace_period_s + 0.1)
     deployment_state.update()
     assert deployment_state._replicas.get()[0]._actor.force_stopped_counter == 1
-    assert not deployment_state._replicas.get()[0]._actor.cleaned_up
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Force stop should be called repeatedly until the replica stops.
     deployment_state.update()
     assert deployment_state._replicas.get()[0]._actor.force_stopped_counter == 2
-    assert not deployment_state._replicas.get()[0]._actor.cleaned_up
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -542,7 +540,6 @@ def test_force_kill(mock_deployment_state):
     deleted = deployment_state.update()
     assert deleted
     check_counts(deployment_state, total=0)
-    assert replica._actor.cleaned_up
 
 
 def test_redeploy_same_version(mock_deployment_state):
@@ -1991,7 +1988,6 @@ def test_shutdown(mock_deployment_state_manager):
 
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state._replicas.get()[0]._actor.stopped
-    assert not deployment_state._replicas.get()[0]._actor.cleaned_up
     assert len(deployment_state_manager.get_deployment_statuses()) > 0
 
     # Once it's done stopping, replica should be removed.
@@ -1999,7 +1995,6 @@ def test_shutdown(mock_deployment_state_manager):
     replica._actor.set_done_stopping()
     deployment_state_manager.update()
     check_counts(deployment_state, total=0)
-    assert replica._actor.cleaned_up
     assert len(deployment_state_manager.get_deployment_statuses()) == 0
 
 

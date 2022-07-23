@@ -10,18 +10,18 @@ from ray import tune
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.callback import Callback
-from ray.tune.ray_trial_executor import (
+from ray.tune.execution.ray_trial_executor import (
     _ExecutorEvent,
     _ExecutorEventType,
     RayTrialExecutor,
 )
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_trainable
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
-from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial
+from ray.tune.search import BasicVariantGenerator
+from ray.tune.experiment import Trial
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-from ray.tune.utils.placement_groups import (
+from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     _PlacementGroupManager,
 )
@@ -47,7 +47,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
         self.cluster.shutdown()
 
     # no autoscaler case, resource is not sufficient. Log warning for now.
-    @patch.object(ray.tune.insufficient_resources_manager.logger, "warning")
+    @patch.object(ray.tune.execution.insufficient_resources_manager.logger, "warning")
     def testRaiseErrorNoAutoscaler(self, mocked_warn):
         class FailureInjectorCallback(Callback):
             """Adds random failure injection to the TrialExecutor."""

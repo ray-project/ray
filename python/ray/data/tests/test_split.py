@@ -1,20 +1,29 @@
+import itertools
 import math
 import random
 import time
-
 from unittest.mock import patch
+
 import numpy as np
 import pytest
+from ray.data.block import BlockMetadata
 
 import ray
-
-from ray.tests.conftest import *  # noqa
-from ray.data.dataset import Dataset
-from ray.data.block import BlockAccessor
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.stats import DatasetStats
 from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.stats import DatasetStats
+from ray.data._internal.split import (
+    _drop_empty_block_split,
+    _generate_valid_indices,
+    _generate_per_block_split_indices,
+    _generate_global_split_results,
+    _split_single_block,
+    _split_at_indices,
+)
+from ray.data.block import BlockAccessor
+from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 @ray.remote
@@ -188,7 +197,7 @@ def test_split_small(ray_start_regular_shared, pipelined):
     assert not fail, fail
 
 
-def test_split_at_indices(ray_start_regular_shared):
+def test_split_at_indices_simple(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=3)
 
     with pytest.raises(ValueError):
@@ -219,6 +228,79 @@ def test_split_at_indices(ray_start_regular_shared):
     splits = ds.split_at_indices([0])
     r = [s.take() for s in splits]
     assert r == [[], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
+
+
+@pytest.mark.parametrize("num_blocks", list(range(1, 20)) + [25, 40])
+@pytest.mark.parametrize(
+    "indices",
+    [
+        # Two-splits.
+        [5],
+        [10],
+        [15],
+        # Three-splits.
+        [5, 12],
+        [1, 18],
+        [9, 10],
+        # Misc.
+        [3, 10, 17],
+        [2, 4, 11, 12, 19],
+        list(range(20)),
+        list(range(0, 20, 2)),
+        # Empty splits.
+        [10, 10],
+        [5, 10, 10, 15],
+        # Out-of-bounds.
+        [25],
+        [7, 11, 23, 33],
+    ],
+)
+def test_split_at_indices_coverage(ray_start_regular_shared, num_blocks, indices):
+    # Test that split_at_indices() creates the expected splits on a set of partition and
+    # indices configurations.
+    ds = ray.data.range(20, parallelism=num_blocks)
+    splits = ds.split_at_indices(indices)
+    r = [s.take_all() for s in splits]
+    # Use np.array_split() semantics as our correctness ground-truth.
+    assert r == [arr.tolist() for arr in np.array_split(list(range(20)), indices)]
+
+
+@pytest.mark.parametrize("num_blocks", list(range(1, 5)) + [8, 10])
+@pytest.mark.parametrize(
+    "indices",
+    [
+        # Two-splits.
+        list(range(5)),
+    ]
+    + list(
+        # Three-splits.
+        map(list, itertools.combinations_with_replacement(list(range(5)), 2))
+    )
+    + list(
+        # Four-splits.
+        map(list, itertools.combinations_with_replacement(list(range(5)), 3))
+    )
+    + list(
+        # Five-splits.
+        map(list, itertools.combinations_with_replacement(list(range(5)), 4))
+    )
+    + list(
+        # Six-splits.
+        map(list, itertools.combinations_with_replacement(list(range(5)), 5))
+    ),
+)
+def test_split_at_indices_coverage_complete(
+    ray_start_regular_shared,
+    num_blocks,
+    indices,
+):
+    # Test that split_at_indices() creates the expected splits on a set of partition and
+    # indices configurations.
+    ds = ray.data.range(5, parallelism=num_blocks)
+    splits = ds.split_at_indices(indices)
+    r = [s.take_all() for s in splits]
+    # Use np.array_split() semantics as our correctness ground-truth.
+    assert r == [arr.tolist() for arr in np.array_split(list(range(5)), indices)]
 
 
 def test_split_proportionately(ray_start_regular_shared):
@@ -324,7 +406,7 @@ def test_split_hints(ray_start_regular_shared):
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
-            with patch("ray.state.actors") as state_mock:
+            with patch("ray._private.state.actors") as state_mock:
                 block_locations = {}
                 for i, node_id in enumerate(block_node_ids):
                     if node_id:
@@ -394,3 +476,139 @@ def test_split_hints(ray_start_regular_shared):
         ["n1", "n2", "n0"],
         [range(200, 301), range(100, 200), list(range(0, 50)) + list(range(50, 100))],
     )
+
+
+def test_generate_valid_indices():
+    assert [1, 2, 3] == _generate_valid_indices([10], [1, 2, 3])
+    assert [1, 2, 2] == _generate_valid_indices([1, 1], [1, 2, 3])
+
+
+def test_generate_per_block_split_indices():
+    assert [[1], [1, 2], [], []] == _generate_per_block_split_indices(
+        [3, 3, 3, 1], [1, 4, 5]
+    )
+    assert [[3], [], [], [1, 1]] == _generate_per_block_split_indices(
+        [3, 3, 3, 1], [3, 10, 10]
+    )
+    assert [[], [], [], []] == _generate_per_block_split_indices([3, 3, 3, 1], [])
+
+
+def _create_meta(num_rows):
+    return BlockMetadata(
+        num_rows=num_rows,
+        size_bytes=None,
+        schema=None,
+        input_files=None,
+        exec_stats=None,
+    )
+
+
+def _create_block(data):
+    return (ray.put(data), _create_meta(len(data)))
+
+
+def test_split_single_block(ray_start_regular_shared):
+    block = [1, 2, 3]
+    meta = _create_meta(3)
+
+    block_id, splits = ray.get(
+        ray.remote(_split_single_block).remote(234, block, meta, [])
+    )
+    assert 234 == block_id
+    assert len(splits) == 1
+    assert ray.get(splits[0][0]) == [1, 2, 3]
+    assert splits[0][1].num_rows == 3
+
+    block_id, splits = ray.get(
+        ray.remote(_split_single_block).remote(234, block, meta, [1])
+    )
+    assert 234 == block_id
+    assert len(splits) == 2
+    assert ray.get(splits[0][0]) == [1]
+    assert splits[0][1].num_rows == 1
+    assert ray.get(splits[1][0]) == [2, 3]
+    assert splits[1][1].num_rows == 2
+
+    block_id, splits = ray.get(
+        ray.remote(_split_single_block).remote(234, block, meta, [0, 1, 1, 3])
+    )
+    assert 234 == block_id
+    assert len(splits) == 5
+    assert ray.get(splits[0][0]) == []
+    assert ray.get(splits[1][0]) == [1]
+    assert ray.get(splits[2][0]) == []
+    assert ray.get(splits[3][0]) == [2, 3]
+    assert ray.get(splits[4][0]) == []
+
+    block = []
+    meta = _create_meta(0)
+
+    block_id, splits = ray.get(
+        ray.remote(_split_single_block).remote(234, block, meta, [0])
+    )
+    assert 234 == block_id
+    assert len(splits) == 2
+    assert ray.get(splits[0][0]) == []
+    assert ray.get(splits[1][0]) == []
+
+
+def test_drop_empty_block_split():
+    assert [1, 2] == _drop_empty_block_split([0, 1, 2, 3], 3)
+    assert [1, 2] == _drop_empty_block_split([1, 1, 2, 2], 3)
+    assert [] == _drop_empty_block_split([0], 0)
+
+
+def verify_splits(splits, blocks_by_split):
+    assert len(splits) == len(blocks_by_split)
+    for blocks, (block_refs, meta) in zip(blocks_by_split, splits):
+        assert len(blocks) == len(block_refs)
+        assert len(blocks) == len(meta)
+        for block, block_ref, meta in zip(blocks, block_refs, meta):
+            assert ray.get(block_ref) == block
+            assert meta.num_rows == len(block)
+
+
+def test_generate_global_split_results(ray_start_regular_shared):
+    inputs = [_create_block([1]), _create_block([2, 3]), _create_block([4])]
+
+    splits = list(zip(*_generate_global_split_results(iter(inputs), [1, 2, 1])))
+    verify_splits(splits, [[[1]], [[2, 3]], [[4]]])
+
+    splits = list(zip(*_generate_global_split_results(iter(inputs), [3, 1])))
+    verify_splits(splits, [[[1], [2, 3]], [[4]]])
+
+    splits = list(zip(*_generate_global_split_results(iter(inputs), [3, 0, 1])))
+    verify_splits(splits, [[[1], [2, 3]], [], [[4]]])
+
+    inputs = []
+    splits = list(zip(*_generate_global_split_results(iter(inputs), [0, 0])))
+    verify_splits(splits, [[], []])
+
+
+def test_private_split_at_indices(ray_start_regular_shared):
+    inputs = []
+    splits = list(zip(*_split_at_indices(iter(inputs), [0])))
+    verify_splits(splits, [[], []])
+
+    splits = list(zip(*_split_at_indices(iter(inputs), [])))
+    verify_splits(splits, [[]])
+
+    inputs = [_create_block([1]), _create_block([2, 3]), _create_block([4])]
+
+    splits = list(zip(*_split_at_indices(iter(inputs), [1])))
+    verify_splits(splits, [[[1]], [[2, 3], [4]]])
+
+    splits = list(zip(*_split_at_indices(iter(inputs), [2])))
+    verify_splits(splits, [[[1], [2]], [[3], [4]]])
+
+    splits = list(zip(*_split_at_indices(iter(inputs), [1])))
+    verify_splits(splits, [[[1]], [[2, 3], [4]]])
+
+    splits = list(zip(*_split_at_indices(iter(inputs), [2, 2])))
+    verify_splits(splits, [[[1], [2]], [], [[3], [4]]])
+
+    splits = list(zip(*_split_at_indices(iter(inputs), [])))
+    verify_splits(splits, [[[1], [2, 3], [4]]])
+
+    splits = list(zip(*_split_at_indices(iter(inputs), [0, 4])))
+    verify_splits(splits, [[], [[1], [2, 3], [4]], []])

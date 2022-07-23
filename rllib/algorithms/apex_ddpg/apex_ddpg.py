@@ -194,8 +194,11 @@ class ApexDDPG(DDPG, ApexDQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        self._sampling_actor_manager.remove_workers(removed_workers)
-        self._sampling_actor_manager.add_workers(new_workers)
+        if self.config["_disable_execution_plan_api"]:
+            self._sampling_actor_manager.remove_workers(
+                removed_workers, remove_in_flight_requests=True
+            )
+            self._sampling_actor_manager.add_workers(new_workers)
 
 
 # Deprecated: Use ray.rllib.algorithms.apex_ddpg.ApexDDPGConfig instead!

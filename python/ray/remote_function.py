@@ -1,24 +1,27 @@
-from functools import wraps
 import inspect
 import logging
-import uuid
 import os
+import uuid
+from functools import wraps
 
-from ray import cloudpickle as pickle
-from ray.util.annotations import DeveloperAPI
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray._raylet import PythonFunctionDescriptor
-from ray import cross_language, Language
-from ray._private.client_mode_hook import client_mode_convert_function
-from ray._private.client_mode_hook import client_mode_should_convert
-from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
-from ray.utils import get_runtime_env_info, parse_runtime_env
-from ray.util.tracing.tracing_helper import (
-    _tracing_task_invocation,
-    _inject_tracing_into_function,
-)
+from ray import Language
+from ray import cloudpickle as pickle
+from ray import cross_language
 from ray._private import ray_option_utils
+from ray._private.client_mode_hook import (
+    client_mode_convert_function,
+    client_mode_should_convert,
+)
+from ray._private.utils import get_runtime_env_info, parse_runtime_env
+from ray._raylet import PythonFunctionDescriptor
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.placement_group import _configure_placement_group_based_on_context
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.tracing.tracing_helper import (
+    _inject_tracing_into_function,
+    _tracing_task_invocation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,7 @@ logger = logging.getLogger(__name__)
 _task_launch_hook = None
 
 
+@PublicAPI
 class RemoteFunction:
     """A remote function.
 
@@ -131,6 +135,54 @@ class RemoteFunction:
         The arguments are the same as those that can be passed to :obj:`ray.remote`.
         Overriding `max_calls` is not supported.
 
+        Args:
+            num_returns: It specifies the number of object refs returned by
+                the remote function invocation.
+            num_cpus: The quantity of CPU cores to reserve
+                for this task or for the lifetime of the actor.
+            num_gpus: The quantity of GPUs to reserve
+                for this task or for the lifetime of the actor.
+            resources (Dict[str, float]): The quantity of various custom resources
+                to reserve for this task or for the lifetime of the actor.
+                This is a dictionary mapping strings (resource names) to floats.
+            accelerator_type: If specified, requires that the task or actor run
+                on a node with the specified type of accelerator.
+                See `ray.accelerators` for accelerator types.
+            memory: The heap memory request for this task/actor.
+            object_store_memory: The object store memory request for actors only.
+            max_calls: This specifies the
+                maximum number of times that a given worker can execute
+                the given remote function before it must exit
+                (this can be used to address memory leaks in third-party
+                libraries or to reclaim resources that cannot easily be
+                released, e.g., GPU memory that was acquired by TensorFlow).
+                By default this is infinite.
+            max_retries: This specifies the maximum number of times that the remote
+                function should be rerun when the worker process executing it
+                crashes unexpectedly. The minimum valid value is 0,
+                the default is 4 (default), and a value of -1 indicates
+                infinite retries.
+            runtime_env (Dict[str, Any]): Specifies the runtime environment for
+                this actor or task and its children. See
+                :ref:`runtime-environments` for detailed documentation. This API is
+                in beta and may change before becoming stable.
+            retry_exceptions: This specifies whether application-level errors
+                should be retried up to max_retries times.
+            scheduling_strategy: Strategy about how to
+                schedule a remote function or actor. Possible values are
+                None: ray will figure out the scheduling strategy to use, it
+                will either be the PlacementGroupSchedulingStrategy using parent's
+                placement group if parent has one and has
+                placement_group_capture_child_tasks set to true,
+                or "DEFAULT";
+                "DEFAULT": default hybrid scheduling;
+                "SPREAD": best effort spread scheduling;
+                `PlacementGroupSchedulingStrategy`:
+                placement group based scheduling.
+            _metadata: Extended options for Ray libraries. For example,
+                _metadata={"workflows.io/options": <workflow options>} for
+                Ray workflows.
+
         Examples:
 
         .. code-block:: python
@@ -138,7 +190,7 @@ class RemoteFunction:
             @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
             def f():
                return 1, 2
-            # Task f will require 2 gpus instead of 1.
+            # Task g will require 2 gpus instead of 1.
             g = f.options(num_gpus=2)
         """
 
@@ -168,7 +220,7 @@ class RemoteFunction:
                 For Ray DAG building that creates static graph from decorated
                 class or functions.
                 """
-                from ray.experimental.dag.function_node import FunctionNode
+                from ray.dag.function_node import FunctionNode
 
                 return FunctionNode(func_cls._function, args, kwargs, updated_options)
 
@@ -183,7 +235,7 @@ class RemoteFunction:
         if client_mode_should_convert(auto_init=True):
             return client_mode_convert_function(self, args, kwargs, **task_options)
 
-        worker = ray.worker.global_worker
+        worker = ray._private.worker.global_worker
         worker.check_connected()
 
         # If this function was not exported in this session and job, we need to
@@ -267,7 +319,7 @@ class RemoteFunction:
                 placement_group_capture_child_tasks = (
                     worker.should_capture_child_tasks_in_placement_group
                 )
-            placement_group = configure_placement_group_based_on_context(
+            placement_group = _configure_placement_group_based_on_context(
                 placement_group_capture_child_tasks,
                 placement_group_bundle_index,
                 resources,
@@ -297,7 +349,7 @@ class RemoteFunction:
 
         def invocation(args, kwargs):
             if self._is_cross_language:
-                list_args = cross_language.format_args(worker, args, kwargs)
+                list_args = cross_language._format_args(worker, args, kwargs)
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
@@ -305,7 +357,7 @@ class RemoteFunction:
                     self._function_signature, args, kwargs
                 )
 
-            if worker.mode == ray.worker.LOCAL_MODE:
+            if worker.mode == ray._private.worker.LOCAL_MODE:
                 assert (
                     not self._is_cross_language
                 ), "Cross language remote function cannot be executed locally."
@@ -342,6 +394,6 @@ class RemoteFunction:
         class or functions.
         """
 
-        from ray.experimental.dag.function_node import FunctionNode
+        from ray.dag.function_node import FunctionNode
 
         return FunctionNode(self._function, args, kwargs, self._default_options)

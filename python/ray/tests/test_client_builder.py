@@ -1,17 +1,18 @@
 import os
-import pytest
 import subprocess
 import sys
 import warnings
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
+
+import pytest
 
 import ray
-import ray.util.client.server.server as ray_client_server
 import ray.client_builder as client_builder
+import ray.util.client.server.server as ray_client_server
 from ray._private.test_utils import (
+    run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
-    run_string_as_driver,
 )
 
 
@@ -104,7 +105,7 @@ print("Current namespace:", ray.get_runtime_context().namespace)
 def test_connect_to_cluster(ray_start_regular_shared):
     server = ray_client_server.serve("localhost:50055")
     with ray.client("localhost:50055").connect() as client_context:
-        assert client_context.dashboard_url == ray.worker.get_dashboard_url()
+        assert client_context.dashboard_url == ray._private.worker.get_dashboard_url()
         python_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
         assert client_context.python_version == python_version
         assert client_context.ray_version == ray.__version__
@@ -415,4 +416,7 @@ def test_client_deprecation_warn():
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

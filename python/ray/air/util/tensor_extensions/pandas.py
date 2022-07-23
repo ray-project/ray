@@ -30,23 +30,150 @@
 # - Miscellaneous small bug fixes and optimizations.
 
 import numbers
-from typing import Sequence, Any, Union, Tuple, Optional, Callable
+import os
+from distutils.version import LooseVersion
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 from pandas._typing import Dtype
 from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries
+from pandas.core.indexers import check_array_indexer, validate_indices
+from pandas.io.formats.format import ExtensionArrayFormatter
+
+from ray.util.annotations import PublicAPI
 
 try:
     from pandas.core.dtypes.generic import ABCIndex
 except ImportError:
     # ABCIndexClass changed to ABCIndex in Pandas 1.3
     from pandas.core.dtypes.generic import ABCIndexClass as ABCIndex
-from pandas.core.indexers import check_array_indexer, validate_indices
-import pyarrow as pa
 
-from ray.util.annotations import PublicAPI
+
+#############################################
+# Begin patching of ExtensionArrayFormatter #
+#############################################
+
+
+def _format_strings_patched(self) -> List[str]:
+    from pandas.core.construction import extract_array
+    from pandas.io.formats.format import format_array
+
+    if not isinstance(self.values, TensorArray):
+        return self._format_strings_orig()
+
+    values = extract_array(self.values, extract_numpy=True)
+    array = np.asarray(values)
+
+    if array.ndim == 1:
+        return self._format_strings_orig()
+
+    def format_array_wrap(array_, formatter_):
+        fmt_values = format_array(
+            array_,
+            formatter_,
+            float_format=self.float_format,
+            na_rep=self.na_rep,
+            digits=self.digits,
+            space=self.space,
+            justify=self.justify,
+            decimal=self.decimal,
+            leading_space=self.leading_space,
+            quoting=self.quoting,
+        )
+        return fmt_values
+
+    flat_formatter = self.formatter
+    if flat_formatter is None:
+        flat_formatter = values._formatter(boxed=True)
+
+    # Flatten array, call function, reshape (use ravel_compat in v1.3.0)
+    flat_array = array.ravel("K")
+    fmt_flat_array = np.asarray(format_array_wrap(flat_array, flat_formatter))
+    order = "F" if array.flags.f_contiguous else "C"
+    fmt_array = fmt_flat_array.reshape(array.shape, order=order)
+
+    # Format the array of nested strings, use default formatter
+    return format_array_wrap(fmt_array, None)
+
+
+def _format_strings_patched_v1_0_0(self) -> List[str]:
+    from functools import partial
+
+    from pandas.core.construction import extract_array
+    from pandas.io.formats.format import format_array
+    from pandas.io.formats.printing import pprint_thing
+
+    if not isinstance(self.values, TensorArray):
+        return self._format_strings_orig()
+
+    values = extract_array(self.values, extract_numpy=True)
+    array = np.asarray(values)
+
+    if array.ndim == 1:
+        return self._format_strings_orig()
+
+    def format_array_wrap(array_, formatter_):
+        fmt_values = format_array(
+            array_,
+            formatter_,
+            float_format=self.float_format,
+            na_rep=self.na_rep,
+            digits=self.digits,
+            space=self.space,
+            justify=self.justify,
+            decimal=self.decimal,
+            leading_space=self.leading_space,
+        )
+        return fmt_values
+
+    flat_formatter = self.formatter
+    if flat_formatter is None:
+        flat_formatter = values._formatter(boxed=True)
+
+    # Flatten array, call function, reshape (use ravel_compat in v1.3.0)
+    flat_array = array.ravel("K")
+    fmt_flat_array = np.asarray(format_array_wrap(flat_array, flat_formatter))
+    order = "F" if array.flags.f_contiguous else "C"
+    fmt_array = fmt_flat_array.reshape(array.shape, order=order)
+
+    # Slimmed down version of GenericArrayFormatter due to:
+    # https://github.com/pandas-dev/pandas/issues/33770
+    def format_strings_slim(array_, leading_space):
+        formatter = partial(
+            pprint_thing,
+            escape_chars=("\t", "\r", "\n"),
+        )
+
+        def _format(x):
+            return str(formatter(x))
+
+        fmt_values = []
+        for v in array_:
+            tpl = "{v}" if leading_space is False else " {v}"
+            fmt_values.append(tpl.format(v=_format(v)))
+        return fmt_values
+
+    return format_strings_slim(fmt_array, self.leading_space)
+
+
+_FORMATTER_ENABLED_ENV_VAR = "TENSOR_COLUMN_EXTENSION_FORMATTER_ENABLED"
+
+if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
+    ExtensionArrayFormatter._format_strings_orig = (
+        ExtensionArrayFormatter._format_strings
+    )
+    if LooseVersion("1.1.0") <= LooseVersion(pd.__version__) < LooseVersion("1.3.0"):
+        ExtensionArrayFormatter._format_strings = _format_strings_patched
+    else:
+        ExtensionArrayFormatter._format_strings = _format_strings_patched_v1_0_0
+    ExtensionArrayFormatter._patched_by_ray_datasets = True
+
+###########################################
+# End patching of ExtensionArrayFormatter #
+###########################################
 
 
 @PublicAPI(stability="beta")
@@ -77,12 +204,12 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         dtype: object
         >>> # Cast column to our TensorDtype extension type.
         >>> from ray.data.extensions import TensorDtype
-        >>> df["two"] = df["two"].astype(TensorDtype())
+        >>> df["two"] = df["two"].astype(TensorDtype((3, 2, 2, 2), np.int64))
         >>> # Note that the column dtype is now TensorDtype instead of
         >>> # np.object.
         >>> df.dtypes # doctest: +SKIP
         one          int64
-        two    TensorDtype
+        two    TensorDtype(shape=(3, 2, 2, 2), dtype=int64)
         dtype: object
         >>> # Pandas is now aware of this tensor column, and we can do the
         >>> # typical DataFrame operations on this column.
@@ -104,7 +231,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
               [38 40]]
              [[42 44]
               [46 48]]]
-        Name: two, dtype: TensorDtype
+        Name: two, dtype: TensorDtype(shape=(3, 2, 2, 2), dtype=int64)
         >>> # Once you do an aggregation on that column that returns a single
         >>> # row's value, you get back our TensorArrayElement type.
         >>> tensor = col.mean()
@@ -137,7 +264,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         >>> read_df = ray.get(read_ds.to_pandas_refs())[0] # doctest: +SKIP
         >>> read_df.dtypes # doctest: +SKIP
         one          int64
-        two    TensorDtype
+        two    TensorDtype(shape=(3, 2, 2, 2), dtype=int64)
         dtype: object
         >>> # The tensor extension type is preserved along the
         >>> # Pandas --> Arrow --> Parquet --> Arrow --> Pandas
@@ -150,6 +277,10 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     # errors, but is an undocumented ExtensionDtype attribute. See issue:
     # https://github.com/CODAIT/text-extensions-for-pandas/issues/166
     base = None
+
+    def __init__(self, shape: Tuple[int, ...], dtype: np.dtype):
+        self._shape = shape
+        self._dtype = dtype
 
     @property
     def type(self):
@@ -168,7 +299,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         A string identifying the data type.
         Will be used for display in, e.g. ``Series.dtype``
         """
-        return "TensorDtype"
+        return f"{type(self).__name__}(shape={self._shape}, dtype={self._dtype})"
 
     @classmethod
     def construct_from_string(cls, string: str):
@@ -215,16 +346,26 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         ...             f"Cannot construct a '{cls.__name__}' from '{string}'"
         ...         )
         """
+        import ast
+        import re
+
         if not isinstance(string, str):
             raise TypeError(
                 f"'construct_from_string' expects a string, got {type(string)}"
             )
         # Upstream code uses exceptions as part of its normal control flow and
         # will pass this method bogus class names.
-        if string == cls.__name__:
-            return cls()
-        else:
-            raise TypeError(f"Cannot construct a '{cls.__name__}' from '{string}'")
+        regex = r"^TensorDtype\(shape=(\(\d+,(?:\s\d+,?)*\)), dtype=(\w+)\)$"
+        m = re.search(regex, string)
+        if m is None:
+            raise TypeError(
+                f"Cannot construct a '{cls.__name__}' from '{string}'; expected a "
+                "string like 'TensorDtype(shape=(1, 2, 3), dtype=int64)'."
+            )
+        shape, dtype = m.groups()
+        shape = ast.literal_eval(shape)
+        dtype = np.dtype(dtype)
+        return cls(shape, dtype)
 
     @classmethod
     def construct_array_type(cls):
@@ -260,6 +401,33 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
             values = array.to_numpy()
 
         return TensorArray(values)
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    @property
+    def _is_boolean(self):
+        """
+        Whether this extension array should be considered boolean.
+
+        By default, ExtensionArrays are assumed to be non-numeric.
+        Setting this to True will affect the behavior of several places,
+        e.g.
+
+        * is_bool
+        * boolean indexing
+
+        Returns
+        -------
+        bool
+        """
+        # This is needed to support returning a TensorArray from .isnan().
+        from pandas.core.dtypes.common import is_bool_dtype
+
+        return is_bool_dtype(self._dtype)
 
 
 class TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
@@ -425,7 +593,7 @@ class TensorArray(
         >>> # Note that the column dtype is TensorDtype.
         >>> df.dtypes # doctest: +SKIP
         one          int64
-        two    TensorDtype
+        two    TensorDtype(shape=(3, 2, 2, 2), dtype=int64)
         dtype: object
         >>> # Pandas is aware of this tensor column, and we can do the
         >>> # typical DataFrame operations on this column.
@@ -447,7 +615,7 @@ class TensorArray(
               [38 40]]
              [[42 44]
               [46 48]]]
-        Name: two, dtype: TensorDtype
+        Name: two, dtype: TensorDtype(shape=(3, 2, 2, 2), dtype=int64)
         >>> # Once you do an aggregation on that column that returns a single
         >>> # row's value, you get back our TensorArrayElement type.
         >>> tensor = col.mean() # doctest: +SKIP
@@ -481,7 +649,7 @@ class TensorArray(
         >>> read_df = ray.get(read_ds.to_pandas_refs())[0] # doctest: +SKIP
         >>> read_df.dtypes # doctest: +SKIP
         one          int64
-        two    TensorDtype
+        two    TensorDtype(shape=(3, 2, 2, 2), dtype=int64)
         dtype: object
         >>> # The tensor extension type is preserved along the
         >>> # Pandas --> Arrow --> Parquet --> Arrow --> Pandas
@@ -524,24 +692,40 @@ class TensorArray(
             # Convert series to ndarray and passthrough to ndarray handling
             # logic.
             values = values.to_numpy()
+        elif isinstance(values, Sequence):
+            values = np.array([np.asarray(v) for v in values])
 
         if isinstance(values, np.ndarray):
-            if (
-                values.dtype.type is np.object_
-                and len(values) > 0
-                and isinstance(values[0], (np.ndarray, TensorArrayElement))
-            ):
-                # Convert ndarrays of ndarrays/TensorArrayElements
-                # with an opaque object type to a properly typed ndarray of
-                # ndarrays.
-                self._tensor = np.array([np.asarray(v) for v in values])
+            if values.dtype.type is np.object_:
+                if len(values) == 0 or (
+                    not isinstance(values[0], str)
+                    and isinstance(
+                        values[0], (np.ndarray, TensorArrayElement, Sequence)
+                    )
+                ):
+                    # Convert ndarrays of ndarrays/TensorArrayElements
+                    # with an opaque object type to a properly typed ndarray of
+                    # ndarrays.
+                    self._tensor = np.array([np.asarray(v) for v in values])
+                    if self._tensor.dtype.type is np.object_:
+                        subndarray_types = [v.dtype for v in self._tensor]
+                        raise TypeError(
+                            "Tried to convert an ndarray of ndarray pointers (object "
+                            "dtype) to a well-typed ndarray but this failed; convert "
+                            "the ndarray to a well-typed ndarray before casting it as "
+                            "a TensorArray, and note that ragged tensors are NOT "
+                            "supported by TensorArray. subndarray types: "
+                            f"{subndarray_types}"
+                        )
+                else:
+                    raise TypeError(
+                        "Expected a well-typed ndarray or an object-typed ndarray of "
+                        "ndarray pointers, but got an object-typed ndarray whose "
+                        f"subndarrays are of type {type(values[0])}."
+                    )
             else:
+                # ndarray is well-typed, use it directly as the backing tensor.
                 self._tensor = values
-        elif isinstance(values, Sequence):
-            if len(values) == 0:
-                self._tensor = np.array([])
-            else:
-                self._tensor = np.stack([np.asarray(v) for v in values], axis=0)
         elif isinstance(values, TensorArrayElement):
             self._tensor = np.array([np.asarray(values)])
         elif np.isscalar(values):
@@ -673,7 +857,7 @@ class TensorArray(
         """
         An instance of 'ExtensionDtype'.
         """
-        return TensorDtype()
+        return TensorDtype(self.numpy_shape[1:], self.numpy_dtype)
 
     @property
     def nbytes(self) -> int:
@@ -1057,27 +1241,6 @@ class TensorArray(
         """
         return self._tensor.size
 
-    @property
-    def _is_boolean(self):
-        """
-        Whether this extension array should be considered boolean.
-
-        By default, ExtensionArrays are assumed to be non-numeric.
-        Setting this to True will affect the behavior of several places,
-        e.g.
-
-        * is_bool
-        * boolean indexing
-
-        Returns
-        -------
-        bool
-        """
-        # This is needed to support returning a TensorArray from .isnan().
-        # TODO(Clark): Propagate tensor dtype to extension TensorDtype and
-        # move this property there.
-        return np.issubdtype(self._tensor.dtype, np.bool)
-
     def astype(self, dtype, copy=True):
         """
         Cast to a NumPy array with 'dtype'.
@@ -1161,6 +1324,25 @@ class TensorArray(
         from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 
         return ArrowTensorArray.from_numpy(self._tensor)
+
+    @property
+    def _is_boolean(self):
+        """
+        Whether this extension array should be considered boolean.
+
+        By default, ExtensionArrays are assumed to be non-numeric.
+        Setting this to True will affect the behavior of several places,
+        e.g.
+
+        * is_bool
+        * boolean indexing
+
+        Returns
+        -------
+        bool
+        """
+        # This is needed to support returning a TensorArray from .isnan().
+        return self.dtype._is_boolean()
 
 
 # Add operators from the mixin to the TensorArrayElement and TensorArray

@@ -1,15 +1,13 @@
 from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
-import os
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
-from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.util.annotations import PublicAPI
-from ray.train.constants import MODEL_KEY
+from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
 
 import lightgbm
 import lightgbm_ray
-from lightgbm_ray.tune import TuneReportCheckpointCallback
+from lightgbm_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -32,13 +30,14 @@ class LightGBMTrainer(GBDTTrainer):
             import ray
 
             from ray.train.lightgbm import LightGBMTrainer
+            from ray.air.config import ScalingConfig
 
             train_dataset = ray.data.from_items(
                 [{"x": x, "y": x + 1} for x in range(32)])
             trainer = LightGBMTrainer(
                 label_column="y",
                 params={"objective": "regression"},
-                scaling_config={"num_workers": 3},
+                scaling_config=ScalingConfig(num_workers=3),
                 datasets={"train": train_dataset}
             )
             result = trainer.fit()
@@ -71,7 +70,8 @@ class LightGBMTrainer(GBDTTrainer):
     # but it is explicitly set here for forward compatibility
     _dmatrix_cls: type = lightgbm_ray.RayDMatrix
     _ray_params_cls: type = lightgbm_ray.RayParams
-    _tune_callback_cls: type = TuneReportCheckpointCallback
+    _tune_callback_report_cls: type = TuneReportCallback
+    _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,
         "allow_less_than_two_cpus": True,
@@ -84,26 +84,11 @@ class LightGBMTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        return load_checkpoint(checkpoint)
+        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint.get_model(), checkpoint.get_preprocessor()
 
+    def _save_model(self, model: lightgbm.LGBMModel, path: str):
+        model.booster_.save_model(path)
 
-def load_checkpoint(
-    checkpoint: Checkpoint,
-) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-    """Load a Checkpoint from ``LightGBMTrainer``.
-
-    Args:
-        checkpoint: The checkpoint to load the model and
-            preprocessor from. It is expected to be from the result of a
-            ``LightGBMTrainer`` run.
-
-    Returns:
-        The model and AIR preprocessor contained within.
-    """
-    with checkpoint.as_directory() as checkpoint_path:
-        lgbm_model = lightgbm.Booster(
-            model_file=os.path.join(checkpoint_path, MODEL_KEY)
-        )
-        preprocessor = load_preprocessor_from_dir(checkpoint_path)
-
-    return lgbm_model, preprocessor
+    def _model_iteration(self, model: lightgbm.LGBMModel) -> int:
+        return model.booster_.current_iteration()
