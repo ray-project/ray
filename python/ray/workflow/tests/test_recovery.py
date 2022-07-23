@@ -254,7 +254,7 @@ def test_recovery_non_exists_workflow(workflow_start_regular):
 
 def test_recovery_cluster_failure(tmp_path, shutdown_only):
     ray.shutdown()
-    subprocess.check_call(["ray", "start", "--head"])
+    subprocess.check_call(["ray", "start", "--head", f"--storage={tmp_path}"])
     time.sleep(1)
     proc = run_string_as_driver_nonblocking(
         f"""
@@ -272,7 +272,7 @@ def foo(x):
         return 20
 
 if __name__ == "__main__":
-    ray.init(storage="{tmp_path}")
+    ray.init()
     assert workflow.run(foo.bind(0), workflow_id="cluster_failure") == 20
 """
     )
