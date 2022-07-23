@@ -232,6 +232,8 @@ print(my_trainer.get_dataset_config())
 my_trainer.fit()
 # __local_shuffling_end__
 
+ray.shutdown()
+
 # __resource_allocation_1_begin__
 import ray
 from ray.air import session

@@ -31,7 +31,7 @@ on the train dataset passed to the Trainer, followed by ``prep.transform()`` on 
 Getting Started
 ---------------
 
-The following is a simple example of how to configure ingest for a dummy ``TorchTrainer``. Below, we are passing a small tensor dataset to the Trainer via the ``datasets`` argument. In the Trainer's ``train_loop``, we access the preprocessed dataset using ``get_dataset_shard()``.
+The following is a simple example of how to configure ingest for a dummy ``TorchTrainer``. Below, we are passing a small tensor dataset to the Trainer via the ``datasets`` argument. In the Trainer's ``train_loop_per_worker``, we access the preprocessed dataset using ``get_dataset_shard()``.
 
 .. tabbed:: Bulk Ingest
 
@@ -343,5 +343,5 @@ Performance Tips
 Dataset Sharing
 ~~~~~~~~~~~~~~~
 
-When you pass Datasets to a Tuner, Datasets are executed independently per-trial. This could potentially duplicate data reads in the cluster. To share Dataset blocks between trials, call `ds = ds.fully_executed()` prior to passing the Dataset to the Tuner. This ensures that the initial read operation will not be repeated per trial.
+When you pass Datasets to a Tuner, Datasets are executed independently per-trial. This could potentially duplicate data reads in the cluster. To share Dataset blocks between trials, call ``ds = ds.fully_executed()`` prior to passing the Dataset to the Tuner. This ensures that the initial read operation will not be repeated per trial.
 
