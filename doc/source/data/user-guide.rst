@@ -23,7 +23,6 @@ you will learn
     dataset-ml-preprocessing
     dataset-tensor-support
     pipelining-compute
-    custom-data
     dataset-internals
     performance-tips
     random-access
