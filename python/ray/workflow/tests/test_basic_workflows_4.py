@@ -17,6 +17,7 @@ def test_workflow_error_message(shutdown_only):
                 storage_url, storage_url
             )
         )
+    ray.shutdown()
     with pytest.raises(ValueError) as e:
         ray.init(storage=storage_url)
     assert str(e.value) == expected_error_msg
