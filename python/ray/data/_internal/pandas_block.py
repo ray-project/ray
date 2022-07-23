@@ -100,7 +100,10 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         pandas = lazy_import_pandas()
         from ray.data.extensions.tensor_extension import TensorArray
 
-        df = pandas.concat(tables, ignore_index=True)
+        if len(tables) > 1:
+            df = pandas.concat(tables, ignore_index=True)
+        else:
+            df = tables[0]
         # Try to convert any ndarray columns to TensorArray columns.
         # TODO(Clark): Once Pandas supports registering extension types for type
         # inference on construction, implement as much for NumPy ndarrays and remove
@@ -109,10 +112,10 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
             if (
                 col.dtype.type is np.object_
                 and not col.empty
-                and isinstance(col[0], np.ndarray)
+                and isinstance(col.iloc[0], np.ndarray)
             ):
                 try:
-                    df[col_name] = TensorArray(col)
+                    df.loc[:, col_name] = TensorArray(col)
                 except Exception as e:
                     if ray.util.log_once("datasets_tensor_array_cast_warning"):
                         logger.warning(
