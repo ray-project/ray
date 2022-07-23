@@ -760,7 +760,7 @@ def next_job_id():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook(auto_init=True)
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
