@@ -104,22 +104,29 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
           resolver_.ResolveDependencies(
               task_spec, [this, send_pos, actor_id, task_id](Status status) {
                 task_finisher_.MarkDependenciesResolved(task_id);
-                absl::MutexLock lock(&mu_);
-                auto queue = client_queues_.find(actor_id);
-                RAY_CHECK(queue != client_queues_.end());
-                auto &actor_submit_queue = queue->second.actor_submit_queue;
-                // Only dispatch tasks if the submitted task is still queued. The task
-                // may have been dequeued if the actor has since failed.
-                if (actor_submit_queue->Contains(send_pos)) {
-                  if (status.ok()) {
-                    actor_submit_queue->MarkDependencyResolved(send_pos);
-                    SendPendingTasks(actor_id);
-                  } else {
-                    auto task_id = actor_submit_queue->Get(send_pos).first.TaskId();
-                    actor_submit_queue->MarkDependencyFailed(send_pos);
-                    task_finisher_.FailOrRetryPendingTask(
-                        task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
+                auto fail_or_retry_task = TaskID::Nil();
+                {
+                  absl::MutexLock lock(&mu_);
+                  auto queue = client_queues_.find(actor_id);
+                  RAY_CHECK(queue != client_queues_.end());
+                  auto &actor_submit_queue = queue->second.actor_submit_queue;
+                  // Only dispatch tasks if the submitted task is still queued. The task
+                  // may have been dequeued if the actor has since failed.
+                  if (actor_submit_queue->Contains(send_pos)) {
+                    if (status.ok()) {
+                      actor_submit_queue->MarkDependencyResolved(send_pos);
+                      SendPendingTasks(actor_id);
+                    } else {
+                      fail_or_retry_task =
+                          actor_submit_queue->Get(send_pos).first.TaskId();
+                      actor_submit_queue->MarkDependencyFailed(send_pos);
+                    }
                   }
+                }
+
+                if (!fail_or_retry_task.IsNil()) {
+                  GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
+                      task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
                 }
               });
         },
@@ -139,8 +146,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    RAY_UNUSED(!task_finisher_.FailOrRetryPendingTask(
-        task_id, error_type, &status, &error_info));
+    GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
+        task_id, error_type, &status, &error_info);
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -299,14 +306,14 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       // This task may have been waiting for dependency resolution, so cancel
       // this first.
       resolver_.CancelDependencyResolution(task_id);
-      RAY_UNUSED(!task_finisher_.FailOrRetryPendingTask(
-          task_id, error_type, &status, &error_info));
+      GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
+          task_id, error_type, &status, &error_info);
     }
 
     RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
                    << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
     for (auto &net_err_task : wait_for_death_info_tasks) {
-      RAY_UNUSED(task_finisher_.MarkTaskReturnObjectsFailed(
+      RAY_UNUSED(GetTaskFinisherWithoutMu().MarkTaskReturnObjectsFailed(
           net_err_task.second, error_type, &error_info));
     }
   }
@@ -333,7 +340,8 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   // Do not hold mu_, because MarkTaskReturnObjectsFailed may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
   for (auto &task_spec : task_specs) {
-    task_finisher_.MarkTaskReturnObjectsFailed(task_spec, rpc::ErrorType::ACTOR_DIED);
+    GetTaskFinisherWithoutMu().MarkTaskReturnObjectsFailed(task_spec,
+                                                           rpc::ErrorType::ACTOR_DIED);
   }
 }
 
@@ -483,40 +491,55 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   } else if (status.ok()) {
     task_finisher_.CompletePendingTask(task_id, reply, addr);
   } else {
-    // push task failed due to network error. For example, actor is dead
-    // and no process response for the push task.
-    absl::MutexLock lock(&mu_);
-    auto queue_pair = client_queues_.find(actor_id);
-    RAY_CHECK(queue_pair != client_queues_.end());
-    auto &queue = queue_pair->second;
+    bool is_actor_dead = false;
+    rpc::ErrorType error_type;
+    rpc::RayErrorInfo error_info;
+    {
+      // push task failed due to network error. For example, actor is dead
+      // and no process response for the push task.
+      absl::MutexLock lock(&mu_);
+      auto queue_pair = client_queues_.find(actor_id);
+      RAY_CHECK(queue_pair != client_queues_.end());
+      auto &queue = queue_pair->second;
 
-    // If the actor is already dead, immediately mark the task object as failed.
-    // Otherwise, start the grace period before marking the object as dead.
-    bool is_actor_dead = (queue.state == rpc::ActorTableData::DEAD);
-    const auto &death_cause = queue.death_cause;
-    const auto &error_info = GetErrorInfoFromActorDeathCause(death_cause);
-    const auto &error_type = GenErrorTypeFromDeathCause(death_cause);
+      // If the actor is already dead, immediately mark the task object as failed.
+      // Otherwise, start the grace period before marking the object as dead.
+      is_actor_dead = queue.state == rpc::ActorTableData::DEAD;
+      const auto &death_cause = queue.death_cause;
+      error_info = GetErrorInfoFromActorDeathCause(death_cause);
+      error_type = GenErrorTypeFromDeathCause(death_cause);
+    }
+
     // This task may have been waiting for dependency resolution, so cancel
     // this first.
     resolver_.CancelDependencyResolution(task_id);
-    will_retry =
-        task_finisher_.FailOrRetryPendingTask(task_id,
-                                              error_type,
-                                              &status,
-                                              &error_info,
-                                              /*mark_task_object_failed*/ is_actor_dead);
+
+    will_retry = GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
+        task_id,
+        error_type,
+        &status,
+        &error_info,
+        /*mark_task_object_failed*/ is_actor_dead);
+
     if (!is_actor_dead && !will_retry) {
       // No retry == actor is dead.
       // If actor is not dead yet, wait for the grace period until we mark the
       // return object as failed.
       int64_t death_info_grace_period_ms =
           current_time_ms() + RayConfig::instance().timeout_ms_task_wait_for_death_info();
-      queue.wait_for_death_info_tasks.emplace_back(death_info_grace_period_ms, task_spec);
-      RAY_LOG(INFO)
-          << "PushActorTask failed because of network error, this task "
-             "will be stashed away and waiting for Death info from GCS, task_id="
-          << task_spec.TaskId()
-          << ", wait queue size=" << queue.wait_for_death_info_tasks.size();
+      {
+        absl::MutexLock lock(&mu_);
+        auto queue_pair = client_queues_.find(actor_id);
+        RAY_CHECK(queue_pair != client_queues_.end());
+        auto &queue = queue_pair->second;
+        queue.wait_for_death_info_tasks.emplace_back(death_info_grace_period_ms,
+                                                     task_spec);
+        RAY_LOG(INFO)
+            << "PushActorTask failed because of network error, this task "
+               "will be stashed away and waiting for Death info from GCS, task_id="
+            << task_spec.TaskId()
+            << ", wait queue size=" << queue.wait_for_death_info_tasks.size();
+      }
     }
   }
   {
