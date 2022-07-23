@@ -267,6 +267,7 @@ my_trainer = TorchTrainer(
 my_trainer.fit()
 # __resource_allocation_1_end__
 
+ray.shutdown()
 
 # __resource_allocation_2_begin__
 import ray
