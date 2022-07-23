@@ -1,7 +1,7 @@
 .. _air-predictors:
 
-Inference with `Predictors`
-===========================
+Using Predictors for Inference
+==============================
 
 .. https://docs.google.com/presentation/d/1jfkQk0tGqgkLgl10vp4-xjcbYG9EEtlZV_Vnve_NenQ/edit
 

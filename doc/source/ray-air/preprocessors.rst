@@ -1,7 +1,7 @@
 .. _air-preprocessors:
 
-Preprocessing Data
-==================
+Using Preprocessors
+===================
 
 This page describes how to perform data preprocessing in Ray AIR.
 
