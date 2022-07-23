@@ -48,7 +48,7 @@ class RuntimeEnvPluginSchemaManager:
             for f in files:
                 if f.endswith(RAY_RUNTIME_ENV_PLUGIN_SCHEMA_SUFFIX):
                     schema_json_files.append(os.path.join(root, f))
-            logger.debug(
+            logger.info(
                 f"Loading the default runtime env schemas: {schema_json_files}."
             )
             cls._load_schemas(schema_json_files)
