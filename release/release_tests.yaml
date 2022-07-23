@@ -418,7 +418,7 @@
   group: AIR tests
   working_dir: air_tests/air_benchmarks
 
-  frequency: nightly
+  frequency: weekly
   team: ml
   env: staging
 
