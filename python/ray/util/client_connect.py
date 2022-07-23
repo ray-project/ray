@@ -2,7 +2,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import grpc
 
-import ray
 from ray._private.client_mode_hook import (
     _explicitly_enable_client_mode,
     _set_client_hook_status,
@@ -14,8 +13,9 @@ from ray.util.client import ray
 
 @Deprecated(
     message="Use ray.init(ray://<head_node_ip_address>:<ray_client_server_port>) "
-    "instead. See detailed usage at "
-    f"https://docs.ray.io/en/{ray.__version__}/ray-core/package-ref.html#ray-init"
+    "instead. See detailed usage at {}.".format(
+        "https://docs.ray.io/en/{}/ray-core/package-ref.html#ray-init"
+    )
 )
 def connect(
     conn_str: str,
@@ -58,8 +58,9 @@ def connect(
 
 
 @Deprecated(
-    message="Use ray.shutdown() instead. See detailed usage at "
-    f"https://docs.ray.io/en/{ray.__version__}/ray-core/package-ref.html#ray-shutdown"
+    message="Use ray.shutdown() instead. See detailed usage at {}.".format(
+        "https://docs.ray.io/en/{ray.__version__}/ray-core/package-ref.html#ray-shutdown"  # noqa: E501
+    )
 )
 def disconnect():
     """Disconnects from server; is idempotent."""
