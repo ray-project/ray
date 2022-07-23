@@ -355,6 +355,13 @@ def test_resume_different_storage(shutdown_only, tmp_path):
     assert workflow.resume(workflow_id="const") == 31416
 
 
+def test_no_side_effects_of_resuming(workflow_start_regular):
+    with pytest.raises(Exception):
+        workflow.resume("doesnt_exist")
+
+    assert workflow.list_all() == [], "Shouldn't list the resume that didn't work"
+
+
 if __name__ == "__main__":
     import sys
 
