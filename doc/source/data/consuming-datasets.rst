@@ -1,4 +1,4 @@
-.. _accessing_datasets:
+.. _consuming_datasets:
 
 ==================
 Consuming Datasets

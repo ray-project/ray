@@ -108,5 +108,5 @@ training actors:
    :start-after: __dataset_split_begin__
    :end-before: __dataset_split_end__
 
-See the :ref:`Accessing Datasets guide <accessing_datasets>` for an in-depth guide
+See the :ref:`Consuming Datasets guide <consuming_datasets>` for an in-depth guide
 on accessing and exchanging datasets.

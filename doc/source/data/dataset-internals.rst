@@ -11,7 +11,7 @@ Datasets uses Ray core for execution, and hence is subject to the same schedulin
 
  * The ``SPREAD`` scheduling strategy is used to ensure data blocks are evenly balanced across the cluster.
  * Retries of application-level exceptions are enabled to handle transient errors from remote datasources.
- * Dataset tasks ignore placement groups by defualt, see :ref:`Datasets and Placement Groups <datasets_pg>`.
+ * Dataset tasks ignore placement groups by default, see :ref:`Datasets and Placement Groups <datasets_pg>`.
 
 .. _datasets_tune:
 
