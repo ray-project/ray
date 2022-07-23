@@ -8,8 +8,7 @@ The data underlying a ``Dataset`` can be consumed in several ways:
 
 * Retrieving a limited prefix of rows.
 * Iterating over rows and batches.
-* Converting into a Torch dataset or a TensorFlow dataset.
-* Converting into a RandomAccessDataset for random access (experimental).
+* Saving to files.
 
 Retrieving limited set of rows
 ==============================
@@ -60,111 +59,6 @@ This does not incur a copy, since the blocks of the Dataset are passed by refere
   :start-after: __remote_iterators_begin__
   :end-before: __remote_iterators_end__
 
-Converting to Torch dataset
-===========================
-
-For ingestion into one or more Torch trainers, Datasets offers a :meth:`ds.to_torch()
-<ray.data.Dataset.to_torch>` API that returns a
-`Torch IterableDataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset>`__
-that the Torch trainers can consume. This API takes care of both batching and converting
-the underlying Datasets data to Torch tensors, building on top of the
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` API.
-
-.. note::
-
-  The returned ``torch.utils.data.IterableDataset`` instance should be consumed directly
-  in your training loop directly; it should **not** be used with the Torch data loader.
-  Using Torch's data loader isn't necessary because upstream Ray Datasets preprocessing
-  operations in conjunction with :meth:`ds.to_torch() <ray.data.Dataset.to_torch>`
-  implements the data loader functionality (shuffling, batching, prefetching, etc.). If
-  you use the Torch data loader with this ``IterableDataset``, it will perform
-  inefficient unbatching and rebatching without adding any value. 
-
-.. literalinclude:: ./doc_code/accessing_datasets.py
-  :language: python
-  :start-after: __torch_begin__
-  :end-before: __torch_end__
-
-When performing supervised learning, we'll have both feature columns and a label column
-that we may want to split into separate tensors. By informing ``ds.to_torch()`` of the
-label column, it will yield ``(features, label)`` tensor pairs for each batch.
-
-.. note::
-
-  We set ``unsqueeze_label_tensor=False`` in order to remove a redundant unit column
-  dimension. E.g., with ``batch_size=2`` and ``unsqueeze_label_tensor=True``, you would
-  get ``(2, 1)``-shaped label tensor batches instead of the desired ``(2,)`` shape.
-
-.. literalinclude:: ./doc_code/accessing_datasets.py
-  :language: python
-  :start-after: __torch_with_label_begin__
-  :end-before: __torch_with_label_end__
-
-The types of the label and feature columns will be inferred from the data by default;
-these can be overridden with the ``label_column_dtype`` and ``feature_column_dtypes``
-args.
-
-By default, all feature columns will be concatenated into a single tensor; however,
-depending on the structure of the ``feature_columns`` argument, you can also get feature
-column batches as a list of tensors or a dict of tensors (with one or more column in
-each tensor). See the :meth:`.to_torch() API docs <ray.data.Dataset.to_torch>` for
-details.
-
-.. note::
-
-  If we have tensor feature columns (where each item in the column is an multi-dimensional
-  tensor) and any of the feature columns are different shapes, these columns are
-  incompatible and we will not be able to stack the column tensors into a single tensor.
-  Instead, we will need to group the columns by compatibility in the ``feature_columns``
-  argument.
-
-  Check out the :ref:`tensor data feature guide <datasets_tensor_ml_exchange>` for more
-  information on how to handle this.
-
-Converting to TensorFlow dataset
-================================
-
-For ingestion into one or more TensorFlow trainers, Datasets offers a :meth:`ds.to_tf()
-<ray.data.Dataset.to_tf>` API that returns a
-`tf.data.Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset>`__
-that the TensorFlow trainers can consume. This API takes care of both batching and converting
-the underlying Datasets data to TensorFlow tensors, building on top of the
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` API.
-
-.. literalinclude:: ./doc_code/accessing_datasets.py
-  :language: python
-  :start-after: __tf_begin__
-  :end-before: __tf_end__
-
-When performing supervised learning, we'll have both feature columns and a label column
-that we may want to split into separate tensors. By informing ``ds.to_tf()`` of the
-label column, it will yield ``(features, label)`` tensor pairs for each batch.
-
-.. literalinclude:: ./doc_code/accessing_datasets.py
-  :language: python
-  :start-after: __tf_with_label_begin__
-  :end-before: __tf_with_label_end__
-
-The types of the label and feature columns will be inferred from the data by default;
-these can be overridden with the ``label_column_dtype`` and ``feature_column_dtypes``
-args.
-
-By default, all feature columns will be concatenated into a single tensor; however,
-depending on the structure of the ``feature_columns`` argument, you can also get feature
-column batches as a list of tensors or a dict of tensors (with one or more column in
-each tensor). See the :meth:`.to_tf() API docs <ray.data.Dataset.to_tf>` for
-details.
-
-.. note::
-
-  If we have tensor feature columns (where each item in the column is an multi-dimensional
-  tensor) and any of the feature columns are different shapes, these columns are
-  incompatible and we will not be able to stack the column tensors into a single tensor.
-  Instead, we will need to group the columns by compatibility in the ``feature_columns``
-  argument.
-
-  Check out the :ref:`tensor data feature guide <datasets_tensor_ml_exchange>` for more
-  information on how to handle this.
 
 Splitting Into and Consuming Shards
 ===================================
@@ -183,6 +77,45 @@ This is a common pattern useful for loading and sharding data between distribute
   :language: python
   :start-after: __split_begin__
   :end-before: __split_end__
+
+.. _saving_datasets:
+
+===============
+Saving Datasets
+===============
+
+Datasets can be written to local or remote storage in the desired data format.
+The supported formats include Parquet, CSV, JSON, NumPy. To control the number
+of output files, you may use :meth:`ds.repartition() <ray.data.Dataset.repartition>`
+to repartition the Dataset before writing out.
+
+.. tabbed:: Parquet
+
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_parquet_begin__
+    :end-before: __write_parquet_end__
+
+.. tabbed:: CSV
+
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_csv_begin__
+    :end-before: __write_csv_end__
+
+.. tabbed:: JSON
+
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_json_begin__
+    :end-before: __write_json_end__
+
+.. tabbed:: NumPy 
+
+  .. literalinclude:: ./doc_code/saving_datasets.py
+    :language: python
+    :start-after: __write_numpy_begin__
+    :end-before: __write_numpy_end__
 
 Random Access Datasets (Experimental)
 =====================================
