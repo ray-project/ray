@@ -114,15 +114,17 @@ class JobSubmissionClient(SubmissionClient):
             job_id: DEPRECATED. This has been renamed to submission_id
 
         Returns:
-            The submission ID of the submitted job.  If not specified, this is a randomly
-            generated unique ID.
+            The submission ID of the submitted job.  If not specified,
+            this is a randomly generated unique ID.
 
         Raises:
             RuntimeError: If the request to the job server fails, or if the specified
             submission_id has already been used by a job on this cluster.
         """
         if job_id:
-            logger.warning("job_id kwarg is deprecated. Please use submission_id instead.")
+            logger.warning(
+                "job_id kwarg is deprecated. Please use submission_id instead."
+            )
 
         runtime_env = runtime_env or {}
         metadata = metadata or {}
@@ -161,8 +163,8 @@ class JobSubmissionClient(SubmissionClient):
         Example:
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
-            >>> submission_id = client.submit_job(entrypoint="sleep 10") # doctest: +SKIP
-            >>> client.stop_job(submission_id) # doctest: +SKIP
+            >>> sub_id = client.submit_job(entrypoint="sleep 10") # doctest: +SKIP
+            >>> client.stop_job(sub_id) # doctest: +SKIP
             True
 
         Args:
@@ -200,7 +202,8 @@ class JobSubmissionClient(SubmissionClient):
             metadata={}, runtime_env={})
 
         Args:
-            job_id: The job ID or submission ID of the job whose information is being requested.
+            job_id: The job ID or submission ID of the job whose information
+            is being requested.
 
         Returns:
             The JobInfo for the job.
@@ -269,7 +272,8 @@ class JobSubmissionClient(SubmissionClient):
             'SUCCEEDED'
 
         Args:
-            job_id: The job ID or submission ID of the job whose status is being requested.
+            job_id: The job ID or submission ID of the job whose status is being
+            requested.
 
         Returns:
             The JobStatus of the job.
@@ -287,12 +291,13 @@ class JobSubmissionClient(SubmissionClient):
         Example:
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
-            >>> submission_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
-            >>> client.get_job_logs(submission_id) # doctest: +SKIP
+            >>> sub_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
+            >>> client.get_job_logs(sub_id) # doctest: +SKIP
             'hello\\n'
 
         Args:
-            job_id: The job ID or submission ID of the job whose logs are being requested.
+            job_id: The job ID or submission ID of the job whose logs are being
+            requested.
 
         Returns:
             A string containing the full logs of the job.
@@ -324,7 +329,8 @@ class JobSubmissionClient(SubmissionClient):
             hi2
 
         Args:
-            job_id: The job ID or submission ID of the job whose logs are being requested.
+            job_id: The job ID or submission ID of the job whose logs are being
+            requested.
 
         Returns:
             The iterator.

@@ -5,6 +5,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+import subprocess
 from typing import Optional
 from unittest.mock import patch
 
@@ -52,7 +53,7 @@ def test_list_jobs_empty(headers, use_sdk: bool):
     try:
         with set_env_var("RAY_ADDRESS", address):
             client = JobSubmissionClient(format_web_url(address), headers=headers)
-        
+
             if use_sdk:
                 assert client.list_jobs() == []
             else:
@@ -68,7 +69,6 @@ def test_list_jobs_empty(headers, use_sdk: bool):
         subprocess.check_output(["ray", "stop", "--force"])
 
 
-
 @pytest.mark.parametrize("use_sdk", [True, False])
 def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
     client = job_sdk_client
@@ -82,7 +82,11 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=submission_id)
     if use_sdk:
-        info: JobDetails = next(job_info for job_info in client.list_jobs() if job_info.submission_id == submission_id)
+        info: JobDetails = next(
+            job_info
+            for job_info in client.list_jobs()
+            if job_info.submission_id == submission_id
+        )
     else:
         r = client._do_request(
             "GET",
@@ -91,7 +95,11 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
 
         assert r.status_code == 200
         jobs_info_json = json.loads(r.text)
-        info_json = next(job_info for job_info in jobs_info_json if job_info["submission_id"] == submission_id)
+        info_json = next(
+            job_info
+            for job_info in jobs_info_json
+            if job_info["submission_id"] == submission_id
+        )
         info = JobDetails(**info_json)
 
     assert info.entrypoint == entrypoint
@@ -456,7 +464,9 @@ def test_submit_optional_args(job_sdk_client):
         json_data={"entrypoint": "ls"},
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=r.json()["submission_id"])
+    wait_for_condition(
+        _check_job_succeeded, client=client, job_id=r.json()["submission_id"]
+    )
 
 
 def test_missing_resources(job_sdk_client):

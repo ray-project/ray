@@ -181,9 +181,9 @@ def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) ->
 class JobSubmitRequest:
     # Command to start execution, ex: "python script.py"
     entrypoint: str
-    # Optional submission_id to specify for the job. If the submission_id is not specified,
-    # one will be generated. If a job with the same submission_id already exists, it
-    # will be rejected.
+    # Optional submission_id to specify for the job. If the submission_id
+    # is not specified, one will be generated. If a job with the same
+    # submission_id already exists, it will be rejected.
     submission_id: Optional[str] = None
     # Dict to setup execution environment.
     runtime_env: Optional[Dict[str, Any]] = None
@@ -196,7 +196,8 @@ class JobSubmitRequest:
 
         if self.submission_id is not None and not isinstance(self.submission_id, str):
             raise TypeError(
-                f"submission_id must be a string if provided, got {type(self.submission_id)}"
+                "submission_id must be a string if provided, "
+                f"got {type(self.submission_id)}"
             )
 
         if self.runtime_env is not None:
@@ -239,4 +240,3 @@ class JobStopResponse:
 @dataclass
 class JobLogsResponse:
     logs: str
-

@@ -297,7 +297,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         jobs = {}
         submission_job_drivers = {}
         for job_table_entry in reply.job_info_list:
-            if job_table_entry.config.ray_namespace.startswith(ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX):
+            if job_table_entry.config.ray_namespace.startswith(
+                ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
+            ):
                 # Skip jobs in any _ray_internal_ namespace
                 continue
             job_id = job_table_entry.job_id.hex()

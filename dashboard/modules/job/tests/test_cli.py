@@ -223,7 +223,8 @@ class TestSubmit:
             assert mock_client_instance.called_with(submission_id=None)
 
             result = runner.invoke(
-                job_cli_group, ["submit", "--", "--submission-id=my_job_id", "echo hello"]
+                job_cli_group,
+                ["submit", "--", "--submission-id=my_job_id", "echo hello"],
             )
             assert result.exit_code == 0
             assert mock_client_instance.called_with(submission_id="my_job_id")

@@ -94,7 +94,10 @@ def job_cli_group():
     type=str,
     default=None,
     required=False,
-    help=("Submission ID to specify for the job. " "If not provided, one will be generated."),
+    help=(
+        "Submission ID to specify for the job. "
+        "If not provided, one will be generated."
+    ),
 )
 @click.option(
     "--runtime-env",
@@ -148,8 +151,10 @@ def submit(
     """
 
     if job_id:
-        cli_logger.warning("--job-id option is deprecated. ""Please use --submission-id instead.")
-    
+        cli_logger.warning(
+            "--job-id option is deprecated. " "Please use --submission-id instead."
+        )
+
     submission_id = submission_id or job_id
 
     if ray_constants.RAY_JOB_SUBMIT_HOOK in os.environ:
