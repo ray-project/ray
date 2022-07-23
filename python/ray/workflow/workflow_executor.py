@@ -308,13 +308,43 @@ class WorkflowExecutor:
                 f"[{workflow_id}@{task_id}]"
             )
 
-            if self._retry_failed_task(workflow_id, task_id, e):
+            is_application_error = isinstance(e, RayTaskError)
+            options = state.tasks[task_id].options
+
+            # ---------------------- retry the task ----------------------
+            if not is_application_error or options.retry_exceptions:
+                if state.task_retries[task_id] < options.max_retries:
+                    state.task_retries[task_id] += 1
+                    logger.info(
+                        f"Retry [{workflow_id}@{task_id}] "
+                        f"({state.task_retries[task_id]}/{options.max_retries})"
+                    )
+                    state.construct_scheduling_plan(task_id)
+                    return
+
+            # ----------- retry used up, handle the task error -----------
+            exception_catcher = None
+            if is_application_error:
+                for t, task in self._iter_callstack(task_id):
+                    if task.options.catch_exceptions:
+                        exception_catcher = t
+                        break
+            if exception_catcher is not None:
+                logger.info(
+                    f"Exception raised by '{workflow_id}@{task_id}' is caught by "
+                    f"'{workflow_id}@{exception_catcher}'"
+                )
+                # assign output to exception catching task;
+                # compose output with caught exception
+                await self._post_process_ready_task(
+                    exception_catcher,
+                    metadata=WorkflowExecutionMetadata(),
+                    output_ref=WorkflowRef(task_id, ray.put((None, e))),
+                )
+                # TODO(suquark): cancel other running tasks?
                 return
 
-            if await self._catch_failed_task(workflow_id, task_id, e):
-                return
-
-            # raise the task error
+            # ------------------- raise the task error -------------------
             # NOTE: We must update the workflow status before broadcasting
             # the exception. Otherwise, the workflow status would still be
             # 'RUNNING' if check the status immediately after the exception.

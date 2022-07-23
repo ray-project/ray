@@ -106,11 +106,9 @@ def workflow_state_from_dag(
                     catch_exceptions = False
 
             # We do not need to check the validness of bound options, because
-            # Ray options already check them for us.
+            # Ray option has already checked them for us.
             max_retries = bound_options.get("max_retries", 3)
-            # 'retry_exceptions' is True by default in Ray Workflow, but it is
-            # False by default in normal Ray task.
-            retry_exceptions = bound_options.get("retry_exceptions", True)
+            retry_exceptions = bound_options.get("retry_exceptions", False)
 
             step_options = WorkflowStepRuntimeOptions(
                 step_type=StepType.FUNCTION,

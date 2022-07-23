@@ -208,9 +208,32 @@ When the task name duplicates, we append ``_n`` to the name by the order of exec
 Error handling
 --------------
 
-Workflows provides two ways to handle application-level exceptions: (1) automatic retry (as in normal Ray tasks), and (2) the ability to catch and handle exceptions.
+Workflows provides two ways to handle application-level exceptions: (1) automatic retry (as in normal Ray tasks) , and (2) the ability to catch and handle exceptions.
 
-The following error handling flags can be either set in the task decorator or via ``.options()``:
+- If ``max_retries`` is given, the task will be retried for the given number of times if the workflow task failed.
+- If ``retry_exceptions`` is True, then the workflow task retries both task crashes and application-level errors;
+  if it is ``False``, then the workflow task only retries task crashes.
+- If ``catch_exceptions`` is True, the return value of the function will be converted to ``Tuple[Optional[T], Optional[Exception]]``.
+  It can be combined with ``max_retries`` to retry a given number of times before returning the result tuple.
+
+``max_retries`` and ``retry_exceptions`` are also Ray task options,
+so they should be used inside the Ray remote decorator. Here is how you could use them:
+
+.. code-block:: python
+
+    # specify in decorator
+    @workflow.options(catch_exceptions=True)
+    @ray.remote(max_retries=5, retry_exceptions=True)
+    def faulty_function():
+        pass
+
+    # specify in .options()
+    faulty_function.options(max_retries=3, retry_exceptions=False,
+                            **workflow.options(catch_exceptions=False))
+
+.. note::  By default ``retry_exceptions`` is ``False``,  ``max_retries`` is ``3``.
+
+Here is one example:
 
 .. code-block:: python
 
@@ -243,24 +266,6 @@ The following error handling flags can be either set in the task decorator or vi
     r2 = faulty_function.options(**workflow.options(catch_exceptions=True)).bind()
     workflow.run(handle_errors.bind(r2))
 
-
-- Ray Workflow also supports ``max_retries`` as in Ray tasks. If ``max_retries`` is given, the task will be retried for the given number of times if an exception is raised. It will only retry for the application level error. For system errors, it's controlled by ray. By default, ``max_retries`` is set to be 3.
-- If ``catch_exceptions`` is True, the return value of the function will be converted to ``Tuple[Optional[T], Optional[Exception]]``. This can be combined with ``max_retries`` to try a given number of times before returning the result tuple.
-- Ray Workflow also supports ``retry_exceptions`` and ``max_retries`` as in Ray tasks. If ``retry_exceptions`` is True, then the workflow task retries both task crashes and application-level errors;
-  if it is ``False``, then the workflow task only retries task crashes.
-
-.. note::  In Ray task, ``retry_exceptions`` is defaulted to ``False``. However, ``retry_exceptions`` is ``True``
-           by default in Ray Workflow.
-
-The parameters can also be passed to the decorator. Here ``catch_exceptions`` is a workflow-only option;
-``max_retries`` and ``retry_exceptions`` are both Ray options, so they should be used inside the Ray remote decorator.
-
-.. code-block:: python
-
-    @workflow.options(catch_exceptions=True)
-    @ray.remote(max_retries=5, retry_exceptions=True)
-    def faulty_function():
-        pass
 
 Durability guarantees
 ---------------------

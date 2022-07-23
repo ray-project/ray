@@ -7,7 +7,7 @@ from ray.tests.conftest import *  # noqa
 
 
 def test_step_failure(workflow_start_regular_shared, tmp_path):
-    @ray.remote(max_retries=10)
+    @ray.remote(max_retries=10, retry_exceptions=True)
     def unstable_task_exception(n):
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -25,7 +25,7 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
             os.kill(os.getpid(), 9)
         return v
 
-    @ray.remote(max_retries=10)
+    @ray.remote(max_retries=10, retry_exceptions=True)
     def unstable_task_crash_then_exception(n):
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
