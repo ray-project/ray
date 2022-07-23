@@ -40,9 +40,9 @@ PARQUET_READER_ROW_BATCH_SIZE = 100000
 FILE_READING_RETRY = 8
 
 # The default size multiplier for reading Parquet data source in Arrow.
-# Parquet in-memory data format is encoded with various encoding techniques (such as
+# Parquet data format is encoded with various encoding techniques (such as
 # dictionary, RLE, delta), so Arrow in-memory representation uses much more memory
-# compared to Parquet in-memory representation. Parquet file statistics only record
+# compared to Parquet encoded representation. Parquet file statistics only record
 # encoded (i.e. uncompressed) data size information.
 #
 # To estimate real-time in-memory data size, Datasets will try to estimate the correct
@@ -258,7 +258,7 @@ class _ParquetDatasourceReader(Reader):
                 prefetched_metadata=metadata,
             )
             if meta.size_bytes is not None:
-                meta.size_bytes *= self._encoding_ratio
+                meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
             block_udf, reader_args, columns, schema = (
                 self._block_udf,
                 self._reader_args,
@@ -434,7 +434,7 @@ def _sample_piece(
     row_group = piece.subset(row_group_ids=[row_group_id])
     metadata = row_group.metadata.row_group(0)
     num_rows = min(PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS, metadata.num_rows)
-    assert num_rows >= 0 and metadata.num_rows >= 0, (
+    assert num_rows > 0 and metadata.num_rows > 0, (
         f"Sampled number of rows: {num_rows} and total number of rows: "
         f"{metadata.num_rows} should be positive"
     )

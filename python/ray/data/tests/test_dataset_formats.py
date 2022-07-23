@@ -952,7 +952,11 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
     data_size = reader.estimate_inmemory_data_size()
     assert (
         data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "estimated data size is out of expected bound"
+    ), "estimated data size is either out of expected bound"
+    assert (
+        data_size
+        == _ParquetDatasourceReader(tensor_output_path).estimate_inmemory_data_size()
+    ), "estimated data size is not deterministic in multiple calls."
 
     text_output_path = os.path.join(tmp_path, "text")
     ray.data.range(1000).map(lambda _: "a" * 1000).write_parquet(text_output_path)
@@ -975,6 +979,10 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
     assert (
         data_size >= 1_000_000 and data_size <= 2_000_000
     ), "estimated data size is out of expected bound"
+    assert (
+        data_size
+        == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
+    ), "estimated data size is not deterministic in multiple calls."
 
 
 @pytest.mark.parametrize(
