@@ -205,6 +205,10 @@ class Cluster:
                 # Init global state accessor when creating head node.
                 gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
                 self.global_state._initialize_global_state(gcs_options)
+                # Write the Ray cluster address for convenience in unit
+                # testing. ray.init() and ray.init(address="auto") will connect
+                # to the local cluster.
+                ray._private.utils.write_ray_address(self.head_node.gcs_address)
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)
                 ray_params.update_if_absent(gcs_address=self.gcs_address)
@@ -361,3 +365,5 @@ class Cluster:
             self.remove_node(self.head_node)
         # need to reset internal kv since gcs is down
         ray.experimental.internal_kv._internal_kv_reset()
+        # Delete the cluster address.
+        ray._private.utils.reset_ray_address()
