@@ -12,14 +12,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray.air import Checkpoint
-from ray.tune.result import NODE_IP
+from ray.air import Checkpoint, CheckpointConfig
+from ray.air.config import MAX
 from ray.util import log_once
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.ml_utils.util import is_nan
 
-MAX = "max"
-MIN = "min"
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +63,8 @@ class _TrackedCheckpoint:
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
     ):
+        from ray.tune.result import NODE_IP
+
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
         self.storage_mode = storage_mode
@@ -191,85 +191,6 @@ class _HeapCheckpointWrapper:
 
     def __repr__(self):
         return f"_HeapCheckpoint({repr(self.tracked_checkpoint)})"
-
-
-# Move to ray.air.config when ml_utils is deprecated.
-# Doing it now causes a circular import.
-@dataclass
-@PublicAPI(stability="alpha")
-class CheckpointConfig:
-    """Configurable parameters for defining the checkpointing strategy.
-
-    Default behavior is to persist all checkpoints to disk. If
-    ``num_to_keep`` is set, the default retention policy is to keep the
-    checkpoints with maximum timestamp, i.e. the most recent checkpoints.
-
-    Args:
-        num_to_keep: The number of checkpoints to keep
-            on disk for this run. If a checkpoint is persisted to disk after
-            there are already this many checkpoints, then an existing
-            checkpoint will be deleted. If this is ``None`` then checkpoints
-            will not be deleted. If this is ``0`` then no checkpoints will be
-            persisted to disk.
-        checkpoint_score_attribute: The attribute that will be used to
-            score checkpoints to determine which checkpoints should be kept
-            on disk when there are greater than ``num_to_keep`` checkpoints.
-            This attribute must be a key from the checkpoint
-            dictionary which has a numerical value. Per default, the last
-            checkpoints will be kept.
-        checkpoint_score_order: Either "max" or "min".
-            If "max", then checkpoints with highest values of
-            ``checkpoint_score_attribute`` will be kept.
-            If "min", then checkpoints with lowest values of
-            ``checkpoint_score_attribute`` will be kept.
-        checkpoint_frequency: Number of iterations between checkpoints. If 0
-            this will disable checkpointing.
-            Please note that most trainers will still save one checkpoint at
-            the end of training.
-            This attribute is only supported
-            by trainers that don't take in custom training loops.
-        checkpoint_at_end: If True, will save a checkpoint at the end of training.
-            This attribute is only supported by trainers that don't take in
-            custom training loops. Defaults to True for trainers that support it
-            and False for generic function trainables.
-
-    """
-
-    num_to_keep: Optional[int] = None
-    checkpoint_score_attribute: Optional[str] = None
-    checkpoint_score_order: str = MAX
-    checkpoint_frequency: int = 0
-    checkpoint_at_end: Optional[bool] = None
-
-    def __post_init__(self):
-        if self.num_to_keep is not None and self.num_to_keep < 0:
-            raise ValueError(
-                f"Received invalid num_to_keep: "
-                f"{self.num_to_keep}. "
-                f"Must be None or non-negative integer."
-            )
-        if self.checkpoint_score_order not in (MAX, MIN):
-            raise ValueError(
-                f"checkpoint_score_order must be either " f'"{MAX}" or "{MIN}".'
-            )
-
-        if self.checkpoint_frequency < 0:
-            raise ValueError(
-                f"checkpoint_frequency must be >=0, got {self.checkpoint_frequency}"
-            )
-
-    @property
-    def _tune_legacy_checkpoint_score_attr(self) -> Optional[str]:
-        """Same as ``checkpoint_score_attr`` in ``tune.run``.
-
-        Only used for Legacy API compatibility.
-        """
-        if self.checkpoint_score_attribute is None:
-            return self.checkpoint_score_attribute
-        prefix = ""
-        if self.checkpoint_score_order == MIN:
-            prefix = "min-"
-        return f"{prefix}{self.checkpoint_score_attribute}"
 
 
 # Alias for backwards compatibility
