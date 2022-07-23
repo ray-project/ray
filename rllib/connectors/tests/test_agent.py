@@ -229,7 +229,7 @@ class TestViewRequirementConnector(unittest.TestCase):
         ctx = ConnectorContext(
             view_requirements=view_rq_dict,
             config=config,
-            model_initial_states=[np.zeros(10)]
+            model_initial_states=[np.zeros(10)],
         )
 
         # TODO @jun What is the expected behavior of this test?
