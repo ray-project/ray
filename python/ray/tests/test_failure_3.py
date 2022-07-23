@@ -227,7 +227,7 @@ def test_actor_failure_async_2(ray_start_regular, tmp_path):
         # When ray.get(o) failed,
         # new_task will be executed
         ray.get(o)
-    except Exception as e:
+    except Exception:
         pass
     t.join()
 
