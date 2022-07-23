@@ -290,9 +290,9 @@ def test_recovery_cluster_failure_resume_all(tmp_path, shutdown_only):
     ray.shutdown()
 
     tmp_path = tmp_path
-    subprocess.check_call(["ray", "start", "--head"])
-    time.sleep(1)
     workflow_dir = tmp_path / "workflow"
+    subprocess.check_call(["ray", "start", "--head", f"--storage={workflow_dir}"])
+    time.sleep(1)
     lock_file = tmp_path / "lock_file"
     lock = FileLock(lock_file)
     lock.acquire()
@@ -310,7 +310,7 @@ def foo(x):
         return 20
 
 if __name__ == "__main__":
-    ray.init(storage="{str(workflow_dir)}")
+    ray.init()
     assert workflow.run(foo.bind(0), workflow_id="cluster_failure") == 20
 """
     )
