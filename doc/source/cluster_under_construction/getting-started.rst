@@ -2,7 +2,7 @@
 
 .. include:: we_are_hiring.rst
 
-.. _ref-cluster-getting-started:
+.. _ref-cluster-getting-started-under-construction:
 
 .. warning::
     This page is under construction!
