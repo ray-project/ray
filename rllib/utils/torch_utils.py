@@ -48,28 +48,23 @@ def apply_grad_clipping(
     """
     grad_gnorm = 0
     if policy.config["grad_clip"]:
-        for param_group in optimizer.param_groups:
-            # Make sure we only pass params with grad != None into torch
-            # clip_grad_norm_. Would fail otherwise.
-            params = list(filter(lambda p: p.grad is not None, param_group["params"]))
-            if params:
-                # PyTorch clips gradients inplace and returns the norm before clipping
-                # We therefore need to compute grad_gnorm further down (fixes #4965)
-                clip_value = policy.config["grad_clip"]
-                global_norm = nn.utils.clip_grad_norm_(params, clip_value)
-
-                if isinstance(global_norm, torch.Tensor):
-                    global_norm = global_norm.cpu().numpy()
-
-                grad_gnorm += min(global_norm, clip_value)
-
+        clip_value = policy.config["grad_clip"]
     else:
-        for param_group in optimizer.param_groups:
-            # Make sure we only pass params with grad != None into torch
-            # clip_grad_norm_. Would fail otherwise.
-            params = list(filter(lambda p: p.grad is not None, param_group["params"]))
-            if params:
-                grad_gnorm += torch.linalg.norm(params)
+        clip_value = np.inf
+
+    for param_group in optimizer.param_groups:
+        # Make sure we only pass params with grad != None into torch
+        # clip_grad_norm_. Would fail otherwise.
+        params = list(filter(lambda p: p.grad is not None, param_group["params"]))
+        if params:
+            # PyTorch clips gradients inplace and returns the norm before clipping
+            # We therefore need to compute grad_gnorm further down (fixes #4965)
+            global_norm = nn.utils.clip_grad_norm_(params, clip_value)
+
+            if isinstance(global_norm, torch.Tensor):
+                global_norm = global_norm.cpu().numpy()
+
+            grad_gnorm += min(global_norm, clip_value)
 
     if grad_gnorm > 0:
         return {"grad_gnorm": grad_gnorm}
