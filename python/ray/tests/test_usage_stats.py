@@ -102,6 +102,7 @@ def reset_lib_usage():
     ).delete_lib_usages()
     ray.experimental.internal_kv._internal_kv_reset()
     ray_usage_lib._recorded_library_usages.clear()
+    ray_usage_lib._recorded_extra_usage_tags.clear()
 
 
 @pytest.fixture
@@ -113,33 +114,58 @@ def reset_ray_version_commit():
     ray.__commit__ = saved_ray_commit
 
 
-def test_parse_extra_usage_tags(monkeypatch):
+def test_get_extra_usage_tags_to_report(monkeypatch, shutdown_only, reset_lib_usage):
     with monkeypatch.context() as m:
         # Test a normal case.
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2")
-        result = ray_usage_lib._parse_extra_usage_tags()
+        result = ray_usage_lib.get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
         assert result["key"] == "val"
         assert result["key2"] == "val2"
 
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2;")
-        result = ray_usage_lib._parse_extra_usage_tags()
+        result = ray_usage_lib.get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
         assert result["key"] == "val"
         assert result["key2"] == "val2"
 
         # Test that the env var is not given.
         m.delenv("RAY_USAGE_STATS_EXTRA_TAGS")
-        result = ray_usage_lib._parse_extra_usage_tags()
-        assert result is None
+        result = ray_usage_lib.get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        assert result == {}
 
         # Test the parsing failure.
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val,key2=val2")
-        result = ray_usage_lib._parse_extra_usage_tags()
-        assert result is None
+        result = ray_usage_lib.get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        assert result == {}
 
         # Test differnt types of parsing failures.
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=v=al,key2=val2")
-        result = ray_usage_lib._parse_extra_usage_tags()
-        assert result is None
+        result = ray_usage_lib.get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        assert result == {}
+
+        m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val")
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "val1")
+        ray.init()
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
+        result = ray_usage_lib.get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        assert result == {"key": "val", "_test1": "val1", "_test2": "val2"}
+        # Make sure the value is overwritten.
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val3")
+        result = ray_usage_lib.get_extra_usage_tags_to_report(
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
+        )
+        assert result == {"key": "val", "_test1": "val1", "_test2": "val3"}
 
 
 def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_lib_usage):
@@ -163,6 +189,7 @@ def test_usage_stats_enabledness(monkeypatch, tmp_path, reset_lib_usage):
             ray_usage_lib._usage_stats_enabledness()
 
     with monkeypatch.context() as m:
+        m.delenv("RAY_USAGE_STATS_ENABLED")
         tmp_usage_stats_config_path = tmp_path / "config.json"
         monkeypatch.setenv(
             "RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path)
@@ -807,6 +834,7 @@ provider:
         m.setenv("RAY_USAGE_STATS_ENABLED", "1")
         m.setenv("RAY_USAGE_STATS_REPORT_URL", "http://127.0.0.1:8000/usage")
         m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "extra_k1=extra_v1")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=3)
         if os.environ.get("RAY_MINIMAL") != "1":
@@ -814,7 +842,11 @@ provider:
             from ray import tune  # noqa: F401
             from ray.rllib.algorithms.ppo import PPO  # noqa: F401
 
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "extra_v2")
+
         ray.init(address=cluster.address)
+
+        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "extra_v3")
 
         @ray.remote(num_cpus=0)
         class StatusReporter:
@@ -890,7 +922,11 @@ provider:
         assert payload["total_num_gpus"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
-        assert payload["extra_usage_tags"] is None
+        assert payload["extra_usage_tags"] == {
+            "extra_k1": "extra_v1",
+            "_test1": "extra_v2",
+            "_test2": "extra_v3",
+        }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
         if os.environ.get("RAY_MINIMAL") == "1":
