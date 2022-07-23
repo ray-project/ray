@@ -37,16 +37,14 @@ def run_optuna_tune(smoke_test=False):
     algo = OptunaSearch()
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
-    tuner = tune.Tuner(
+    analysis = tune.run(
         easy_objective,
-        tune_config=tune.TuneConfig(
-            metric="mean_loss",
-            mode="min",
-            search_alg=algo,
-            scheduler=scheduler,
-            num_samples=10 if smoke_test else 100,
-        ),
-        param_space={
+        metric="mean_loss",
+        mode="min",
+        search_alg=algo,
+        scheduler=scheduler,
+        num_samples=10 if smoke_test else 100,
+        config={
             "steps": 100,
             "width": tune.uniform(0, 20),
             "height": tune.uniform(-100, 100),
@@ -54,9 +52,8 @@ def run_optuna_tune(smoke_test=False):
             "activation": tune.choice(["relu", "tanh"]),
         },
     )
-    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", results.get_best_result().config)
+    print("Best hyperparameters found were: ", analysis.best_config)
 
 
 if __name__ == "__main__":

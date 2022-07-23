@@ -101,7 +101,6 @@ To report metrics back to Tune after each validation epoch, we can use the ``Tun
 
 .. code-block:: python
 
-    from ray import air, tune
     from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
     def train_mnist(config):
@@ -124,20 +123,15 @@ To report metrics back to Tune after each validation epoch, we can use the ``Tun
     }
 
     # Make sure to specify how many actors each training run will create via the "extra_cpu" field.
-    tuner = tune.Tuner(
-        train_mnist,
-        tune_config=tune.TuneConfig(
+    analysis = tune.run(
+            train_mnist,
             metric="loss",
             mode="min",
-            num_samples=num_samples
-        ),
-        param_space=config,
-        run_config=air.RunConfig(name="tune_mnist"),
-    )
-    
-    results = tuner.fit()
+            config=config,
+            num_samples=num_samples,
+            name="tune_mnist")
 
-    print("Best hyperparameters found were: ", results.get_best_result().config)
+    print("Best hyperparameters found were: ", analysis.best_config)
 
 
 And if you want to add periodic checkpointing as well, you can use the ``TuneReportCheckpointCallback`` instead.
@@ -161,7 +155,7 @@ In this case, you want to use the `Ray Lightning Library's <https://github.com/r
 
 With this integration, you can run multiple PyTorch Lightning training runs in parallel,
 each with a different hyperparameter configuration, and each training run also parallelized.
-All you have to do is move your training code to a function, pass the function to ``Tuner()``, and make sure to add the appropriate callback (Either ``TuneReportCallback`` or ``TuneReportCheckpointCallback``) to your PyTorch Lightning Trainer.
+All you have to do is move your training code to a function, pass the function to ``tune.run``, and make sure to add the appropriate callback (Either ``TuneReportCallback`` or ``TuneReportCheckpointCallback``) to your PyTorch Lightning Trainer.
 
 .. warning:: Make sure to use the callbacks from the Ray Lightning library and not the one from the Tune library, i.e. use ``ray_lightning.tune.TuneReportCallback`` and not ``ray.tune.integrations.pytorch_lightning.TuneReportCallback``.
 
@@ -169,7 +163,6 @@ Example using Ray Lightning with Tune:
 
 .. code-block:: python
 
-    from ray import air, tune
     from ray_lightning import RayPlugin
     from ray_lightning.tune import TuneReportCallback
 
@@ -196,16 +189,16 @@ Example using Ray Lightning with Tune:
     }
 
     # Make sure to specify how many actors each training run will create via the "extra_cpu" field.
-    tuner = tune.Tuner(
-        tune.with_resources(train_mnist, {"cpu": 1, "extra_cpu": 4}),
-        tune_config=tune.TuneConfig(
+    analysis = tune.run(
+            train_mnist,
             metric="loss",
             mode="min",
+            config=config,
             num_samples=num_samples,
-        ),
-        param_space=config
-    )
-    
-    results = tuner.fit()
+            resources_per_trial={
+                "cpu": 1,
+                "extra_cpu": 4
+            },
+            name="tune_mnist")
 
-    print("Best hyperparameters found were: ", results.get_best_result().config)
+    print("Best hyperparameters found were: ", analysis.best_config)

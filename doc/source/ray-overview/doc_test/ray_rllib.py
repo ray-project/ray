@@ -1,11 +1,8 @@
-from ray import air, tune
+from ray import tune
 from ray.rllib.algorithms.ppo import PPO
 
-tuner = tune.Tuner(
+tune.run(
     PPO,
-    run_config=air.RunConfig(
-        stop={"episode_len_mean": 20},
-    ),
-    param_space={"env": "CartPole-v0", "framework": "torch", "log_level": "INFO"},
+    stop={"episode_len_mean": 20},
+    config={"env": "CartPole-v0", "framework": "torch", "log_level": "INFO"},
 )
-tuner.fit()

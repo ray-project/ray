@@ -3,7 +3,7 @@
 import argparse
 
 import ray
-from ray import air, tune
+from ray import tune
 from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.schedulers import HyperBandScheduler
 
@@ -30,24 +30,17 @@ if __name__ == "__main__":
     # which is automatically filled by Tune.
     hyperband = HyperBandScheduler(time_attr="training_iteration", max_t=200)
 
-    tuner = tune.Tuner(
+    analysis = tune.run(
         MyTrainableClass,
-        run_config=air.RunConfig(
-            name="hyperband_test",
-            stop={"training_iteration": 1 if args.smoke_test else 200},
-            verbose=1,
-            failure_config=air.FailureConfig(
-                fail_fast=True,
-            ),
-        ),
-        tune_config=tune.TuneConfig(
-            num_samples=20 if args.smoke_test else 200,
-            metric="episode_reward_mean",
-            mode="max",
-            scheduler=hyperband,
-        ),
-        param_space={"width": tune.randint(10, 90), "height": tune.randint(0, 100)},
+        name="hyperband_test",
+        num_samples=20 if args.smoke_test else 200,
+        metric="episode_reward_mean",
+        mode="max",
+        stop={"training_iteration": 1 if args.smoke_test else 200},
+        config={"width": tune.randint(10, 90), "height": tune.randint(0, 100)},
+        verbose=1,
+        scheduler=hyperband,
+        fail_fast=True,
     )
-    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", results.get_best_result().config)
+    print("Best hyperparameters found were: ", analysis.best_config)

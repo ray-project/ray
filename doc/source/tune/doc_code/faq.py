@@ -20,15 +20,12 @@ def train(config):
 # If you remove this line, you will get different configurations
 # each time you run the script.
 np.random.seed(1234)
-tuner = tune.Tuner(
+tune.run(
     train,
-    tune_config=tune.TuneConfig(
-        num_samples=10,
-        search_alg=tune.search.BasicVariantGenerator(),
-    ),
-    param_space={"seed": tune.randint(0, 1000)},
+    config={"seed": tune.randint(0, 1000)},
+    search_alg=tune.search.BasicVariantGenerator(),
+    num_samples=10,
 )
-tuner.fit()
 # __reproducible_end__
 
 # __basic_config_start__
@@ -68,29 +65,24 @@ MOCK = True
 
 if not MOCK:
     # __resources_start__
-    tuner = tune.Tuner(
-        tune.with_resources(
-            train_fn, resources={"cpu": 2, "gpu": 0.5, "custom_resources": {"hdd": 80}}
-        ),
+    tune.run(
+        train_fn,
+        resources_per_trial={"cpu": 2, "gpu": 0.5, "custom_resources": {"hdd": 80}},
     )
-    tuner.fit()
     # __resources_end__
 
     # __resources_pgf_start__
-    tuner = tune.Tuner(
-        tune.with_resources(
-            train_fn,
-            resources=tune.PlacementGroupFactory(
-                [
-                    {"CPU": 2, "GPU": 0.5, "hdd": 80},
-                    {"CPU": 1},
-                    {"CPU": 1},
-                ],
-                strategy="PACK",
-            ),
-        )
+    tune.run(
+        train_fn,
+        resources_per_trial=tune.PlacementGroupFactory(
+            [
+                {"CPU": 2, "GPU": 0.5, "hdd": 80},
+                {"CPU": 1},
+                {"CPU": 1},
+            ],
+            strategy="PACK",
+        ),
     )
-    tuner.fit()
     # __resources_pgf_end__
 
     metric = None
@@ -101,19 +93,16 @@ if not MOCK:
         # import modin.pandas as pd
         session.report({"metric": metric})
 
-    tuner = tune.Tuner(
-        tune.with_resources(
-            train_fn,
-            resources=tune.PlacementGroupFactory(
-                [
-                    {"CPU": 1},  # this bundle will be used by the trainable itself
-                    {"CPU": 1},  # this bundle will be used by Modin
-                ],
-                strategy="PACK",
-            ),
-        )
+    tune.run(
+        train_fn,
+        resources_per_trial=tune.PlacementGroupFactory(
+            [
+                {"CPU": 1},  # this bundle will be used by the trainable itself
+                {"CPU": 1},  # this bundle will be used by Modin
+            ],
+            strategy="PACK",
+        ),
     )
-    tuner.fit()
 # __modin_end__
 
 # __huge_data_start__
@@ -131,8 +120,7 @@ def train(config, checkpoint_dir=None, num_epochs=5, data=None):
 # Some huge dataset
 data = np.random.random(size=100000000)
 
-tuner = tune.Tuner(tune.with_parameters(train, num_epochs=5, data=data))
-tuner.fit()
+tune.run(tune.with_parameters(train, num_epochs=5, data=data))
 # __huge_data_end__
 
 
@@ -191,12 +179,11 @@ if __name__ == "__main__":
     random.seed(1234)
     np.random.seed(1234)
     # Don't forget to check if the search alg has a `seed` parameter
-    tuner = tune.Tuner(trainable, param_space=config)
-    tuner.fit()
+    tune.run(trainable, config=config)
 # __torch_seed_example_end__
 
 # __large_data_start__
-from ray import tune, air
+from ray import tune
 import numpy as np
 
 
@@ -207,19 +194,18 @@ def f(config, data=None):
 
 data = np.random.random(size=100000000)
 
-tuner = tune.Tuner(tune.with_parameters(f, data=data))
-tuner.fit()
+tune.run(tune.with_parameters(f, data=data))
 # __large_data_end__
 
 MyTrainableClass = None
 
 if not MOCK:
     # __log_1_start__
-    tuner = tune.Tuner(
+    tune.run(
         MyTrainableClass,
+        local_dir="~/ray_results",
         sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir"),
     )
-    tuner.fit()
     # __log_1_end__
 
     # __log_2_start__
@@ -239,13 +225,12 @@ if not MOCK:
         def delete(self, remote_dir: str) -> bool:
             pass  # delete
 
-    tuner = tune.Tuner(
+    tune.run(
         MyTrainableClass,
         sync_config=tune.SyncConfig(
             upload_dir="s3://my-log-dir", syncer=CustomSyncer()
         ),
     )
-    tuner.fit()
     # __log_2_end__
 
     # __custom_command_syncer_start__
@@ -314,28 +299,25 @@ if not MOCK:
     # __s3_start__
     from ray import tune
 
-    tuner = tune.Tuner(
-        train_fn,
+    tune.run(
+        tune.durable(train_fn),
         # ...,
         sync_config=tune.SyncConfig(upload_dir="s3://your-s3-bucket/durable-trial/"),
     )
-    tuner.fit()
     # __s3_end__
 
     # __sync_config_start__
-    from ray import air, tune
+    from ray import tune
 
-    tuner = tune.Tuner(
+    tune.run(
         train_fn,
-        run_config=air.RunConfig(
-            local_dir="/path/to/shared/storage",
-        ),
+        # ...,
+        local_dir="/path/to/shared/storage",
         sync_config=tune.SyncConfig(
             # Do not sync because we are on shared storage
             syncer=None
         ),
     )
-    tuner.fit()
     # __sync_config_end__
 
 
@@ -351,18 +333,15 @@ parameters = {
     "baz": "asd",  # a constant value
 }
 
-tuner = tune.Tuner(train_fn, param_space=parameters)
-tuner.fit()
+tune.run(train_fn, config=parameters)
 # __grid_search_end__
 
 # __grid_search_2_start__
 # num_samples=10 repeats the 3x3 grid search 10 times, for a total of 90 trials
-tuner = tune.Tuner(
+tune.run(
     train_fn,
-    run_config=air.RunConfig(
-        name="my_trainable",
-    ),
-    param_space={
+    name="my_trainable",
+    config={
         "alpha": tune.uniform(100, 200),
         "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
         "nn_layers": [
@@ -370,8 +349,6 @@ tuner = tune.Tuner(
             tune.grid_search([16, 64, 256]),
         ],
     },
-    tune_config=tune.TuneConfig(
-        num_samples=10,
-    ),
+    num_samples=10,
 )
 # __grid_search_2_end__

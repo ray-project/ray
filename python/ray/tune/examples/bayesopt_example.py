@@ -6,7 +6,7 @@ Requires the BayesOpt library to be installed (`pip install bayesian-optimizatio
 """
 import time
 
-from ray import air, tune
+from ray import tune
 from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search import ConcurrencyLimiter
@@ -53,24 +53,19 @@ if __name__ == "__main__":
     algo = BayesOptSearch(utility_kwargs={"kind": "ucb", "kappa": 2.5, "xi": 0.0})
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
-    tuner = tune.Tuner(
+    analysis = tune.run(
         easy_objective,
-        tune_config=tune.TuneConfig(
-            metric="mean_loss",
-            mode="min",
-            search_alg=algo,
-            scheduler=scheduler,
-            num_samples=10 if args.smoke_test else 1000,
-        ),
-        run_config=air.RunConfig(
-            name="my_exp",
-        ),
-        param_space={
+        name="my_exp",
+        metric="mean_loss",
+        mode="min",
+        search_alg=algo,
+        scheduler=scheduler,
+        num_samples=10 if args.smoke_test else 1000,
+        config={
             "steps": 100,
             "width": tune.uniform(0, 20),
             "height": tune.uniform(-100, 100),
         },
     )
-    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", results.get_best_result().config)
+    print("Best hyperparameters found were: ", analysis.best_config)

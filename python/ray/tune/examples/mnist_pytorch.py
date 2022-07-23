@@ -10,7 +10,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 
 import ray
-from ray import air, tune
+from ray import tune
 from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
@@ -138,27 +138,22 @@ if __name__ == "__main__":
     # for early stopping
     sched = AsyncHyperBandScheduler()
 
-    resources_per_trial = {"cpu": 2, "gpu": int(args.cuda)}  # set this for GPUs
-    tuner = tune.Tuner(
-        tune.with_resources(train_mnist, resources=resources_per_trial),
-        tune_config=tune.TuneConfig(
-            metric="mean_accuracy",
-            mode="max",
-            scheduler=sched,
-            num_samples=1 if args.smoke_test else 50,
-        ),
-        run_config=air.RunConfig(
-            name="exp",
-            stop={
-                "mean_accuracy": 0.98,
-                "training_iteration": 5 if args.smoke_test else 100,
-            },
-        ),
-        param_space={
+    analysis = tune.run(
+        train_mnist,
+        metric="mean_accuracy",
+        mode="max",
+        name="exp",
+        scheduler=sched,
+        stop={
+            "mean_accuracy": 0.98,
+            "training_iteration": 5 if args.smoke_test else 100,
+        },
+        resources_per_trial={"cpu": 2, "gpu": int(args.cuda)},  # set this for GPUs
+        num_samples=1 if args.smoke_test else 50,
+        config={
             "lr": tune.loguniform(1e-4, 1e-2),
             "momentum": tune.uniform(0.1, 0.9),
         },
     )
-    results = tuner.fit()
 
-    print("Best config is:", results.get_best_result().config)
+    print("Best config is:", analysis.best_config)

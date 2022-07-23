@@ -233,7 +233,7 @@ See the :ref:`tune-autofilled-metrics` section for a glossary.
 How do I set resources?
 ~~~~~~~~~~~~~~~~~~~~~~~
 If you want to allocate specific resources to a trial, you can use the
-``tune.with_resources`` and wrap it around you trainable together with
+``resources_per_trial`` parameter of ``tune.run()``, to which you can pass
 a dict or a :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>` object:
 
 .. literalinclude:: doc_code/faq.py
@@ -694,7 +694,7 @@ result in less overhead and provide naturally durable checkpoint storage.
 How do I configure search spaces?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can specify a grid search or sampling distribution via the dict passed into ``Tuner(param_space=...)``.
+You can specify a grid search or sampling distribution via the dict passed into ``tune.run(config=...)``.
 
 .. literalinclude:: doc_code/faq.py
     :dedent:

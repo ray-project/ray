@@ -40,13 +40,11 @@ def easy_objective(config):
 def run_optuna_tune(smoke_test=False):
     algo = OptunaSearch(metric=["loss", "gain"], mode=["min", "max"])
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
-    tuner = tune.Tuner(
+    analysis = tune.run(
         easy_objective,
-        tune_config=tune.TuneConfig(
-            search_alg=algo,
-            num_samples=10 if smoke_test else 100,
-        ),
-        param_space={
+        search_alg=algo,
+        num_samples=10 if smoke_test else 100,
+        config={
             "steps": 100,
             "width": tune.uniform(0, 20),
             "height": tune.uniform(-100, 100),
@@ -54,15 +52,14 @@ def run_optuna_tune(smoke_test=False):
             "activation": tune.choice(["relu", "tanh"]),
         },
     )
-    results = tuner.fit()
 
     print(
         "Best hyperparameters for loss found were: ",
-        results.get_best_result("loss", "min").config,
+        analysis.get_best_config("loss", "min"),
     )
     print(
         "Best hyperparameters for gain found were: ",
-        results.get_best_result("gain", "max").config,
+        analysis.get_best_config("gain", "max"),
     )
 
 

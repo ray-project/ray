@@ -3,7 +3,7 @@
 import argparse
 
 import ray
-from ray import air, tune
+from ray import tune
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.examples.pbt_function import pbt_function
 
@@ -36,31 +36,24 @@ if __name__ == "__main__":
         },
     )
 
-    tuner = tune.Tuner(
+    analysis = tune.run(
         pbt_function,
-        run_config=air.RunConfig(
-            name="pbt_test",
-            verbose=False,
-            stop={
-                "training_iteration": 30,
-            },
-            failure_config=air.FailureConfig(
-                fail_fast=True,
-            ),
-        ),
-        tune_config=tune.TuneConfig(
-            scheduler=pbt,
-            metric="mean_accuracy",
-            mode="max",
-            num_samples=8,
-        ),
-        param_space={
+        name="pbt_test",
+        scheduler=pbt,
+        metric="mean_accuracy",
+        mode="max",
+        verbose=False,
+        stop={
+            "training_iteration": 30,
+        },
+        num_samples=8,
+        fail_fast=True,
+        config={
             "lr": 0.0001,
             # note: this parameter is perturbed but has no effect on
             # the model training in this example
             "some_other_factor": 1,
         },
     )
-    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", results.get_best_result().config)
+    print("Best hyperparameters found were: ", analysis.best_config)

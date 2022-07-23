@@ -81,18 +81,16 @@ def run_hyperopt_tune(config_dict=config_space, smoke_test=False):
     algo = HyperOptSearch(space=config_dict, metric="mean_loss", mode="min")
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
-    tuner = tune.Tuner(
+    analysis = tune.run(
         easy_objective,
-        tune_config=tune.TuneConfig(
-            metric="mean_loss",
-            mode="min",
-            search_alg=algo,
-            scheduler=scheduler,
-            num_samples=10 if smoke_test else 100,
-        ),
+        metric="mean_loss",
+        mode="min",
+        search_alg=algo,
+        scheduler=scheduler,
+        num_samples=10 if smoke_test else 100,
     )
-    results = tuner.fit()
-    print("Best hyperparameters found were: ", results.get_best_result().config)
+
+    print("Best hyperparameters found were: ", analysis.best_config)
 
 
 if __name__ == "__main__":

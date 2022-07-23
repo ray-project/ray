@@ -15,14 +15,7 @@ ray.init(num_cpus=4)
 # By setting `max_concurrent_trials=3`, this ensures the cluster will always
 # have a sparse CPU for Datasets. Try setting `max_concurrent_trials=4` here,
 # and notice that the experiment will appear to hang.
-tuner = tune.Tuner(
-    tune.with_resources(objective, {"cpu": 1}),
-    tune_config=tune.TuneConfig(
-        num_samples=1,
-        max_concurrent_trials=3
-    )
-)
-tuner.fit()
+tune.run(objective, num_samples=4, max_concurrent_trials=3)
 # __resource_allocation_1_end__
 # fmt: on
 
@@ -40,14 +33,14 @@ ray.init(num_cpus=4)
 
 # This runs smoothly since _max_cpu_fraction_per_node is set to 0.8, effectively
 # reserving 1 CPU for Datasets task execution.
-tuner = tune.Tuner(
-    tune.with_resources(objective, tune.PlacementGroupFactory(
+tune.run(
+    objective,
+    num_samples=4,
+    resources_per_trial=tune.PlacementGroupFactory(
         [{"CPU": 1}],
         _max_cpu_fraction_per_node=0.8,
-    )),
-    tune_config=tune.TuneConfig(num_samples=1)
+    ),
 )
-tuner.fit()
 # __resource_allocation_2_end__
 # fmt: on
 

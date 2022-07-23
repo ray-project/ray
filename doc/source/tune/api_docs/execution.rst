@@ -1,12 +1,12 @@
-Execution (Tuner, tune.Experiment)
+Execution (tune.run, tune.Experiment)
 =====================================
 
 .. _tune-run-ref:
 
-Tuner
------
+tune.run
+--------
 
-.. autofunction:: ray.tune.Tuner
+.. autofunction:: ray.tune.run
 
 tune.run_experiments
 --------------------

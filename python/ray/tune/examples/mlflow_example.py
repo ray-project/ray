@@ -7,7 +7,7 @@ import time
 
 import mlflow
 
-from ray import air, tune
+from ray import tune
 from ray.air import session
 from ray.air.callbacks.mlflow import MLflowLoggerCallback
 from ray.tune.integration.mlflow import mlflow_mixin
@@ -30,29 +30,23 @@ def easy_objective(config):
 
 
 def tune_function(mlflow_tracking_uri, finish_fast=False):
-
-    tuner = tune.Tuner(
+    tune.run(
         easy_objective,
-        run_config=air.RunConfig(
-            name="mlflow",
-            callbacks=[
-                MLflowLoggerCallback(
-                    tracking_uri=mlflow_tracking_uri,
-                    experiment_name="example",
-                    save_artifact=True,
-                )
-            ],
-        ),
-        tune_config=tune.TuneConfig(
-            num_samples=5,
-        ),
-        param_space={
+        name="mlflow",
+        num_samples=5,
+        callbacks=[
+            MLflowLoggerCallback(
+                tracking_uri=mlflow_tracking_uri,
+                experiment_name="example",
+                save_artifact=True,
+            )
+        ],
+        config={
             "width": tune.randint(10, 100),
             "height": tune.randint(0, 100),
             "steps": 5 if finish_fast else 100,
         },
     )
-    tuner.fit()
 
 
 @mlflow_mixin
@@ -74,15 +68,11 @@ def tune_decorated(mlflow_tracking_uri, finish_fast=False):
     # Set the experiment, or create a new one if does not exist yet.
     mlflow.set_tracking_uri(mlflow_tracking_uri)
     mlflow.set_experiment(experiment_name="mixin_example")
-    tuner = tune.Tuner(
+    tune.run(
         decorated_easy_objective,
-        run_config=air.RunConfig(
-            name="mlflow",
-        ),
-        tune_config=tune.TuneConfig(
-            num_samples=5,
-        ),
-        param_space={
+        name="mlflow",
+        num_samples=5,
+        config={
             "width": tune.randint(10, 100),
             "height": tune.randint(0, 100),
             "steps": 5 if finish_fast else 100,
@@ -92,7 +82,6 @@ def tune_decorated(mlflow_tracking_uri, finish_fast=False):
             },
         },
     )
-    tuner.fit()
 
 
 if __name__ == "__main__":

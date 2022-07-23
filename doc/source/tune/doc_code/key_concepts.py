@@ -51,23 +51,16 @@ class Trainable(tune.Trainable):
 
 # __run_tunable_start__
 # Pass in a Trainable class or function, along with a search space "config".
-tuner = tune.Tuner(trainable, param_space={"a": 2, "b": 4})
-tuner.fit()
+tune.run(trainable, config={"a": 2, "b": 4})
 # __run_tunable_end__
 
 # __run_tunable_samples_start__
-tuner = tune.Tuner(
-    trainable, param_space={"a": 2, "b": 4}, tune_config=tune.TuneConfig(num_samples=10)
-)
-tuner.fit()
+tune.run(trainable, config={"a": 2, "b": 4}, num_samples=10)
 # __run_tunable_samples_end__
 
 # __search_space_start__
 space = {"a": tune.uniform(0, 1), "b": tune.uniform(0, 1)}
-tuner = tune.Tuner(
-    trainable, param_space=space, tune_config=tune.TuneConfig(num_samples=10)
-)
-tuner.fit()
+tune.run(trainable, config=space, num_samples=10)
 # __search_space_end__
 
 # __config_start__
@@ -92,24 +85,20 @@ config = {
 
 # __bayes_start__
 from ray.tune.search.bayesopt import BayesOptSearch
-from ray import air
 
 # Define the search space
 search_space = {"a": tune.uniform(0, 1), "b": tune.uniform(0, 20)}
 
 algo = BayesOptSearch(random_search_steps=4)
 
-tuner = tune.Tuner(
+tune.run(
     trainable,
-    tune_config=tune.TuneConfig(
-        metric="score",
-        mode="min",
-        search_alg=algo,
-    ),
-    run_config=air.RunConfig(stop={"training_iteration": 20}),
-    param_space=search_space,
+    config=search_space,
+    metric="score",
+    mode="min",
+    search_alg=algo,
+    stop={"training_iteration": 20},
 )
-tuner.fit()
 # __bayes_end__
 
 # __hyperband_start__
@@ -120,44 +109,31 @@ hyperband = HyperBandScheduler(metric="score", mode="max")
 
 config = {"a": tune.uniform(0, 1), "b": tune.uniform(0, 1)}
 
-tuner = tune.Tuner(
-    trainable,
-    tune_config=tune.TuneConfig(
-        num_samples=20,
-        scheduler=hyperband,
-    ),
-    param_space=config,
-)
-tuner.fit()
+tune.run(trainable, config=config, num_samples=20, scheduler=hyperband)
 # __hyperband_end__
 
 # __analysis_start__
-tuner = tune.Tuner(
+analysis = tune.run(
     trainable,
-    tune_config=tune.TuneConfig(
-        metric="score",
-        mode="min",
-        search_alg=BayesOptSearch(random_search_steps=4),
-    ),
-    run_config=air.RunConfig(
-        stop={"training_iteration": 20},
-    ),
-    param_space=config,
+    config=config,
+    metric="score",
+    mode="min",
+    search_alg=BayesOptSearch(random_search_steps=4),
+    stop={"training_iteration": 20},
 )
-results = tuner.fit()
 
-best_result = results.get_best_result()  # Get best result object
-best_config = best_result.config  # Get best trial's hyperparameters
-best_logdir = best_result.log_dir  # Get best trial's logdir
-best_checkpoint = best_result.checkpoint  # Get best trial's best checkpoint
-best_metrics = best_result.metrics  # Get best trial's last results
-best_result_df = best_result.metrics_dataframe  # Get best result as pandas dataframe
+best_trial = analysis.best_trial  # Get best trial
+best_config = analysis.best_config  # Get best trial's hyperparameters
+best_logdir = analysis.best_logdir  # Get best trial's logdir
+best_checkpoint = analysis.best_checkpoint  # Get best trial's best checkpoint
+best_result = analysis.best_result  # Get best trial's last results
+best_result_df = analysis.best_result_df  # Get best result as pandas dataframe
 # __analysis_end__
 
 # __results_start__
 # Get a dataframe with the last results for each trial
-df_results = results.get_dataframe()
+df_results = analysis.results_df
 
 # Get a dataframe of results for a specific score or mode
-df = results.get_dataframe(filter_metric="score", filter_mode="max")
+df = analysis.dataframe(metric="score", mode="max")
 # __results_end__

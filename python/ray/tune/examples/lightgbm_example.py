@@ -104,16 +104,13 @@ if __name__ == "__main__":
         "learning_rate": tune.loguniform(1e-8, 1e-1),
     }
 
-    tuner = tune.Tuner(
+    analysis = tune.run(
         train_breast_cancer if not args.use_cv else train_breast_cancer_cv,
-        tune_config=tune.TuneConfig(
-            metric="binary_error",
-            mode="min",
-            num_samples=2,
-            scheduler=ASHAScheduler(),
-        ),
-        param_space=config,
+        metric="binary_error",
+        mode="min",
+        config=config,
+        num_samples=2,
+        scheduler=ASHAScheduler(),
     )
-    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", results.get_best_result().config)
+    print("Best hyperparameters found were: ", analysis.best_config)

@@ -135,19 +135,17 @@ This example runs a parallel grid search to optimize an example objective functi
             session.report({"mean_loss": intermediate_score})
 
 
-    tuner = tune.Tuner(
+    analysis = tune.run(
         training_function,
-        param_space={
+        config={
             "alpha": tune.grid_search([0.001, 0.01, 0.1]),
             "beta": tune.choice([1, 2, 3])
         })
-    
-    results = tuner.fit()
 
-    print("Best config: ", results.get_best_result(metric="mean_loss", mode="min").config)
+    print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
 
     # Get a dataframe for analyzing trial results.
-    df = results.get_dataframe()
+    df = analysis.results_df
 
 If TensorBoard is installed, automatically visualize all trial results:
 
