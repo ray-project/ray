@@ -122,7 +122,7 @@ def _get_available_resources(
 
 
 def get_api_server_url() -> str:
-    address = services.canonicalize_bootstrap_address(None)
+    address = services.canonicalize_bootstrap_address_or_die(None)
     gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(

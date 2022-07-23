@@ -77,8 +77,7 @@ You can start Ray on a single machine by adding this to your code.
 
         import ray
 
-        # Start Ray. If you're connecting to an existing cluster, you would use
-        # ray.init(address=<cluster-address>) instead.
+        # Start Ray.
         ray.init()
 
         ...

@@ -254,10 +254,10 @@ def test_recovery_non_exists_workflow(workflow_start_regular):
 
 def test_recovery_cluster_failure(tmp_path, shutdown_only):
     ray.shutdown()
-    subprocess.check_call(["ray", "start", "--head"])
+    subprocess.check_call(["ray", "start", "--head", f"--storage={tmp_path}"])
     time.sleep(1)
     proc = run_string_as_driver_nonblocking(
-        f"""
+        """
 import time
 import ray
 from ray import workflow
@@ -272,7 +272,7 @@ def foo(x):
         return 20
 
 if __name__ == "__main__":
-    ray.init(storage="{tmp_path}")
+    ray.init()
     assert workflow.run(foo.bind(0), workflow_id="cluster_failure") == 20
 """
     )
@@ -290,9 +290,9 @@ def test_recovery_cluster_failure_resume_all(tmp_path, shutdown_only):
     ray.shutdown()
 
     tmp_path = tmp_path
-    subprocess.check_call(["ray", "start", "--head"])
-    time.sleep(1)
     workflow_dir = tmp_path / "workflow"
+    subprocess.check_call(["ray", "start", "--head", f"--storage={workflow_dir}"])
+    time.sleep(1)
     lock_file = tmp_path / "lock_file"
     lock = FileLock(lock_file)
     lock.acquire()
@@ -310,7 +310,7 @@ def foo(x):
         return 20
 
 if __name__ == "__main__":
-    ray.init(storage="{str(workflow_dir)}")
+    ray.init()
     assert workflow.run(foo.bind(0), workflow_id="cluster_failure") == 20
 """
     )
