@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Optional, Union
 
 from ray.tune.schedulers import TrialScheduler
-from ray.tune.search import Searcher
+from ray.tune.search import Searcher, SearchAlgorithm
 from ray.util import PublicAPI
 
 
@@ -46,7 +46,7 @@ class TuneConfig:
     # We should carefully introduce arguments here instead of just dumping everything.
     mode: Optional[str] = None
     metric: Optional[str] = None
-    search_alg: Optional[Searcher] = None
+    search_alg: Optional[Union[Searcher, SearchAlgorithm]] = None
     scheduler: Optional[TrialScheduler] = None
     num_samples: int = 1
     max_concurrent_trials: Optional[int] = None

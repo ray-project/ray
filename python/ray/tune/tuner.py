@@ -1,9 +1,8 @@
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray
 
 from ray.air.config import RunConfig
-from ray.train.trainer import BaseTrainer
 from ray.tune import TuneError
 from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
@@ -13,12 +12,16 @@ from ray.tune.tune_config import TuneConfig
 from ray.util import PublicAPI
 from ray.util.ml_utils.node import force_on_current_node
 
+if TYPE_CHECKING:
+    from ray.train.trainer import BaseTrainer
+
 ClientActorHandle = Any
 
-try:
-    from ray.util.client.common import ClientActorHandle
-except Exception:
-    pass
+# try:
+#     # Breaks lint right now.
+#     from ray.util.client.common import ClientActorHandle
+# except Exception:
+#     pass
 
 # The magic key that is used when instantiating Tuner during resume.
 _TUNER_INTERNAL = "_tuner_internal"
@@ -112,7 +115,7 @@ class Tuner:
                 str,
                 Callable,
                 Type[Trainable],
-                BaseTrainer,
+                "BaseTrainer",
             ]
         ] = None,
         *,

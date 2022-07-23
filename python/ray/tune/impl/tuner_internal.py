@@ -1,10 +1,9 @@
 import copy
 import os
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray.cloudpickle as pickle
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.registry import is_function_trainable
@@ -13,6 +12,8 @@ from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
 
+if TYPE_CHECKING:
+    from ray.train.trainer import BaseTrainer
 
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
@@ -58,7 +59,7 @@ class TunerInternal:
                 str,
                 Callable,
                 Type[Trainable],
-                BaseTrainer,
+                "BaseTrainer",
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
@@ -66,6 +67,8 @@ class TunerInternal:
         run_config: Optional[RunConfig] = None,
         _tuner_kwargs: Optional[Dict] = None,
     ):
+        from ray.train.trainer import BaseTrainer
+
         # Restored from Tuner checkpoint.
         if restore_path:
             trainable_ckpt = os.path.join(restore_path, _TRAINABLE_PKL)
@@ -153,6 +156,8 @@ class TunerInternal:
 
     @staticmethod
     def _convert_trainable(trainable: Any) -> Type[Trainable]:
+        from ray.train.trainer import BaseTrainer
+
         if isinstance(trainable, BaseTrainer):
             trainable = trainable.as_trainable()
         else:

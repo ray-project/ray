@@ -9,10 +9,6 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.tune import Trainable
-from ray.tune.error import TuneError
-from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trainable import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.dict import merge_dicts
@@ -20,6 +16,8 @@ from ray.util.ml_utils.dict import merge_dicts
 if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.data.preprocessor import Preprocessor
+
+    from ray.tune import Trainable
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
@@ -325,6 +323,7 @@ class BaseTrainer(abc.ABC):
             ``self.as_trainable()``.
         """
         from ray.tune.tuner import Tuner
+        from ray.tune.error import TuneError
 
         trainable = self.as_trainable()
 
@@ -339,8 +338,10 @@ class BaseTrainer(abc.ABC):
             raise TrainingFailedError from e
         return result
 
-    def as_trainable(self) -> Type[Trainable]:
+    def as_trainable(self) -> Type["Trainable"]:
         """Convert self to a ``tune.Trainable`` class."""
+        from ray.tune.execution.placement_groups import PlacementGroupFactory
+        from ray.tune.trainable import wrap_function
 
         base_config = self._param_dict
         trainer_cls = self.__class__
