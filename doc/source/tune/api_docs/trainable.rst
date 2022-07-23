@@ -39,7 +39,7 @@ With the Function API, you can report intermediate metrics by simply calling ``s
     )
     results = tuner.fit()
 
-    print("best results: ", results.get_best_result(metric="score", mode="max"))
+    print("best config: ", results.get_best_result(metric="score", mode="max").config)
 
 .. tip:: Do not use ``session.report`` within a ``Trainable`` class.
 
@@ -65,7 +65,7 @@ such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an 
     )
     results = tuner.fit()
 
-    print("best result: ", results.get_best_result(metric="score", mode="max"))
+    print("best config: ", results.get_best_result(metric="score", mode="max").config)
 
 
 .. _tune-function-checkpointing:
@@ -152,7 +152,7 @@ The Trainable **class API** will require users to subclass ``ray.tune.Trainable`
         })
     results = tuner.fit()
 
-    print('best result: ', results.get_best_result(metric="score", mode="max"))
+    print('best config: ', results.get_best_result(metric="score", mode="max").config)
 
 As a subclass of ``tune.Trainable``, Tune will create a ``Trainable`` object on a
 separate process (using the :ref:`Ray Actor API <actor-guide>`).

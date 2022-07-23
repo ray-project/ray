@@ -117,5 +117,5 @@ tuner = tune.Tuner(
     param_space=search_space,
 )
 results = tuner.fit()
-print("Best result:", results.get_best_result())
+print("Best config is:", results.get_best_result().config)
 # __pytorch_optuna_end__

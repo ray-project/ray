@@ -144,7 +144,7 @@ This example runs a parallel grid search to optimize an example objective functi
     
     results = tuner.fit()
 
-    print("Best result: ", results.get_best_result(metric="mean_loss", mode="min"))
+    print("Best config: ", results.get_best_result(metric="mean_loss", mode="min").config)
 
     # Get a dataframe for analyzing trial results.
     df = results.get_dataframe()

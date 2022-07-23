@@ -137,7 +137,7 @@ To report metrics back to Tune after each validation epoch, we can use the ``Tun
     
     results = tuner.fit()
 
-    print("Best result: ", results.get_best_result())
+    print("Best hyperparameters found were: ", results.get_best_result().config)
 
 
 And if you want to add periodic checkpointing as well, you can use the ``TuneReportCheckpointCallback`` instead.
@@ -208,4 +208,4 @@ Example using Ray Lightning with Tune:
     
     results = tuner.fit()
 
-    print("Best result: ", results.get_best_result())
+    print("Best hyperparameters found were: ", results.get_best_result().config)
