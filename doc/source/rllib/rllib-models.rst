@@ -608,7 +608,7 @@ check out `examples/parametric_actions_cartpole.py <https://github.com/ray-proje
 .. |just action embeddings| replace:: just action **embeddings**
 .. _just action embeddings: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
 .. |both| replace:: **both**
-.. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/models/parametric_actions_model.py
+.. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/models/parametric_actions_model.py 
 
 Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__.
 
