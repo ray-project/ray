@@ -31,7 +31,9 @@ GcsHeartbeatManager::GcsHeartbeatManager(
           RayConfig::instance().initial_num_heartbeats_timeout()),
       periodical_runner_(io_service) {
   RAY_LOG(INFO) << "GcsHeartbeatManager start, num_heartbeats_timeout="
-                << num_heartbeats_timeout_;
+                << num_heartbeats_timeout_
+                << ", initial_num_heartbeats_timeout=" << initial_num_heartbeats_timeout_;
+
   io_service_thread_.reset(new std::thread([this] {
     SetThreadName("heartbeat");
     /// The asio work to keep io_service_ alive.
