@@ -1,69 +1,85 @@
+import copy
+import os
+import shutil
+import unittest
+from typing import Dict
+
+import numpy as np
+import torch
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.dqn import DQNConfig
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.offline import JsonReader, JsonWriter
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
-from ray.rllib.offline import JsonReader, JsonWriter
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
+
 import ray
-import torch
-import copy
-import numpy as np
-import shutil
-import os
-import unittest
 
 
 class TestFQE(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
+        regenerate_data = False
+        num_workers = 4 if regenerate_data else 0
         checkpoint_dir = "/tmp/cartpole/"
-        num_episodes = 100
-        recollect_data = True
+        num_episodes = 1000
         cls.gamma = 0.99
 
         config = (
             DQNConfig()
             .environment(env="CartPole-v0")
             .framework("torch")
-            .rollouts(num_rollout_workers=8, batch_mode="complete_episodes")
+            .rollouts(
+                num_rollout_workers=num_workers,
+                batch_mode="complete_episodes",
+            )
         )
         cls.algo = config.build()
+        cls.fqe_config = {"n_iters": 160, "minibatch_size": 256, "tau": 1.0}
 
-        if recollect_data:
+        if regenerate_data:
             shutil.rmtree(checkpoint_dir, ignore_errors=True)
             os.makedirs(checkpoint_dir, exist_ok=True)
 
-            cls.collect_data(cls.algo, checkpoint_dir, "random", 20, num_episodes)
-            cls.collect_data(cls.algo, checkpoint_dir, "mixed", 120, num_episodes)
-            cls.collect_data(cls.algo, checkpoint_dir, "optimal", 200, num_episodes)
-
+        if regenerate_data:
+            cls.generate_data(cls.algo, checkpoint_dir, "random", 20, num_episodes)
+            print("Generated random dataset")
         cls.random_path = os.path.join(checkpoint_dir, "checkpoint", "random")
         cls.random_batch, cls.random_reward = cls.get_batch_and_mean_ret(
             os.path.join(checkpoint_dir, "data", "random"),
             cls.gamma,
             num_episodes,
         )
-        # TODO (Rohan138): Add error message
-        assert cls.random_reward < 20
+        print(
+            f"Random batch length {cls.random_batch.count} return {cls.random_reward}"
+        )
 
+        if regenerate_data:
+            cls.generate_data(cls.algo, checkpoint_dir, "mixed", 120, num_episodes)
+            print("Generated mixed dataset")
         cls.mixed_path = os.path.join(checkpoint_dir, "checkpoint", "mixed")
         cls.mixed_batch, cls.mixed_reward = cls.get_batch_and_mean_ret(
             os.path.join(checkpoint_dir, "data", "mixed"),
             cls.gamma,
             num_episodes,
         )
+        print(f"Mixed batch length {cls.mixed_batch.count} return {cls.mixed_reward}")
 
-        cls.optimal_path = os.path.join(checkpoint_dir, "checkpoint", "optimal")
-        cls.optimal_batch, cls.optimal_reward = cls.get_batch_and_mean_ret(
-            os.path.join(checkpoint_dir, "data", "optimal"),
+        if regenerate_data:
+            cls.generate_data(cls.algo, checkpoint_dir, "expert", 200, num_episodes)
+            print("Generated expert dataset")
+        cls.expert_path = os.path.join(checkpoint_dir, "checkpoint", "expert")
+        cls.expert_batch, cls.expert_reward = cls.get_batch_and_mean_ret(
+            os.path.join(checkpoint_dir, "data", "expert"),
             cls.gamma,
             num_episodes,
         )
-        # TODO (Rohan138): Add error message
-        assert cls.optimal_reward > 85
+        print(
+            f"expert batch length {cls.expert_batch.count} return {cls.expert_reward}"
+        )
 
     @classmethod
     def tearDownClass(cls):
@@ -71,13 +87,19 @@ class TestFQE(unittest.TestCase):
         ray.shutdown()
 
     @staticmethod
-    def collect_data(
+    def generate_data(
         algo: Algorithm,
         checkpoint_dir: str,
         name: str,
         stop_reward: float,
         num_episodes: int,
     ):
+        """Generates training data and writes it to an offline dataset
+
+        Train the algorithm until `episode_reward_mean` reaches the given `stop_reward`,
+        then save a checkpoint to `checkpoint_dir`/checkpoint/`name`
+        and a dataset with `n_episodes` episodes to `checkpoint_dir`/data/`name`.
+        """
         results = algo.train()
         while results["episode_reward_mean"] < stop_reward:
             results = algo.train()
@@ -88,13 +110,10 @@ class TestFQE(unittest.TestCase):
 
         output_path = os.path.join(checkpoint_dir, "data", name)
         writer = JsonWriter(output_path)
-        n_episodes = 0
-        while n_episodes < num_episodes:
-            episodes = synchronous_parallel_sample(
-                worker_set=algo.workers, concat=False
-            )
-            for episode in episodes:
-                writer.write(episode)
+        for _ in range(num_episodes // algo.config["num_workers"] + 1):
+            # This is how many episodes we get per iteration
+            batch = synchronous_parallel_sample(worker_set=algo.workers)
+            writer.write(batch)
 
     @staticmethod
     def get_batch_and_mean_ret(data_path: str, gamma: float, num_episodes: int):
@@ -103,33 +122,38 @@ class TestFQE(unittest.TestCase):
         batches = []
         n_eps = 0
         while n_eps < num_episodes:
-            episode = batches.append(reader.next())
-            ret = 0
-            for r in episode[SampleBatch.REWARDS][::-1]:
-                ret = r + gamma * ret
-            ep_ret.append(ret)
+            batch = reader.next()
+            batches.append(batch)
+            for episode in batch.split_by_episode():
+                ret = 0
+                for r in episode[SampleBatch.REWARDS][::-1]:
+                    ret = r + gamma * ret
+                ep_ret.append(ret)
+                n_eps += 1
         return concat_samples(batches), np.mean(ep_ret)
 
     @staticmethod
     def check_fqe(
-        algo: Algorithm, checkpoint: str, batch: SampleBatch, mean_ret: float
+        algo: Algorithm,
+        checkpoint: str,
+        batch: SampleBatch,
+        mean_ret: float,
+        fqe_config: Dict,
     ):
         algo.load_checkpoint(checkpoint)
 
         fqe = FQETorchModel(
             policy=algo.get_policy(),
             gamma=algo.config["gamma"],
-            n_iters=160,
-            minibatch_size=128,
-            tau=1,
+            **fqe_config,
         )
         losses = fqe.train(batch)
         estimates = fqe.estimate_v(batch)
         estimates = convert_to_numpy(estimates)
         # Change to check()
-        print(np.mean(estimates), mean_ret, np.mean(losses))
+        print(np.mean(estimates), np.std(estimates), mean_ret, np.mean(losses))
 
-    def test_fqe_model(self):
+    def test_fqe_compilation_and_stopping(self):
         # Test FQETorchModel for:
         # (1) Check that it does not modify the underlying batch during training
         # (2) Check that the stopping criteria from FQE are working correctly
@@ -139,11 +163,11 @@ class TestFQE(unittest.TestCase):
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
-        tmp_batch = copy.deepcopy(self.batch)
-        losses = fqe.train(self.batch)
+        tmp_batch = copy.deepcopy(self.random_batch)
+        losses = fqe.train(self.random_batch)
 
-        # Make sure FQETorchModel.train() does not modify self.batch
-        check(tmp_batch, self.batch)
+        # Make sure FQETorchModel.train() does not modify the batch
+        check(tmp_batch, self.random_batch)
 
         # Make sure FQE stopping criteria are respected
         assert (
@@ -154,16 +178,16 @@ class TestFQE(unittest.TestCase):
         # Test fqe._compute_action_probs against "brute force" method
         # of computing log_prob for each possible action individually
         # using policy.compute_log_likelihoods
-        obs = torch.tensor(self.batch["obs"], device=fqe.device)
+        obs = torch.tensor(self.random_batch["obs"], device=fqe.device)
         action_probs = fqe._compute_action_probs(obs)
         action_probs = convert_to_numpy(action_probs)
 
         tmp_probs = []
         for act in range(fqe.policy.action_space.n):
-            tmp_actions = np.zeros_like(self.batch["actions"]) + act
+            tmp_actions = np.zeros_like(self.random_batch["actions"]) + act
             log_probs = fqe.policy.compute_log_likelihoods(
                 actions=tmp_actions,
-                obs_batch=self.batch["obs"],
+                obs_batch=self.random_batch["obs"],
             )
             tmp_probs.append(torch.exp(log_probs))
         tmp_probs = torch.stack(tmp_probs).transpose(0, 1)
@@ -171,17 +195,36 @@ class TestFQE(unittest.TestCase):
         check(action_probs, tmp_probs, decimals=3)
 
     def test_random(self):
-        self.check_fqe(self.random_path, self.random_batch, self.random_reward)
+        self.check_fqe(
+            self.algo,
+            self.random_path,
+            self.random_batch,
+            self.random_reward,
+            self.fqe_config,
+        )
 
     def test_mixed(self):
-        self.check_fqe(self.mixed_path, self.mixed_batch, self.mixed_reward)
+        self.check_fqe(
+            self.algo,
+            self.mixed_path,
+            self.mixed_batch,
+            self.mixed_reward,
+            self.fqe_config,
+        )
 
-    def test_optimal(self):
-        self.check_fqe(self.optimal_path, self.optimal_batch, self.optimal_reward)
+    def test_expert(self):
+        self.check_fqe(
+            self.algo,
+            self.expert_path,
+            self.expert_batch,
+            self.expert_reward,
+            self.fqe_config,
+        )
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
