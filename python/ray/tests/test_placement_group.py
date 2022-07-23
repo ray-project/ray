@@ -450,6 +450,8 @@ def test_placement_group_hang(ray_start_cluster, connect_to_client):
 
 
 def test_placement_group_scheduling_warning(ray_start_regular_shared):
+    ray.__version__ = "1.12.0"
+
     @ray.remote
     class Foo:
         def foo():

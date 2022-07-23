@@ -9,12 +9,13 @@ from ray._private.client_mode_hook import (
 from ray.job_config import JobConfig
 from ray.util.annotations import Deprecated
 from ray.util.client import ray
+from ray._private.utils import get_ray_doc_version
 
 
 @Deprecated(
     message="Use ray.init(ray://<head_node_ip_address>:<ray_client_server_port>) "
     "instead. See detailed usage at {}.".format(
-        "https://docs.ray.io/en/{}/ray-core/package-ref.html#ray-init"
+        f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-init"  # noqa: E501
     )
 )
 def connect(
@@ -59,7 +60,7 @@ def connect(
 
 @Deprecated(
     message="Use ray.shutdown() instead. See detailed usage at {}.".format(
-        "https://docs.ray.io/en/{ray.__version__}/ray-core/package-ref.html#ray-shutdown"  # noqa: E501
+        f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-shutdown"  # noqa: E501
     )
 )
 def disconnect():

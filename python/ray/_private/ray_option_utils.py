@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 import warnings
 
-import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -188,7 +188,7 @@ def _warn_if_using_deprecated_placement_group(
             "placement_group parameter is deprecated. Use "
             "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
             "instead, see the usage at "
-            f"https://docs.ray.io/en/{ray.__version__}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
             DeprecationWarning,
             stacklevel=caller_stacklevel + 1,
         )
@@ -197,7 +197,7 @@ def _warn_if_using_deprecated_placement_group(
             "placement_group_bundle_index parameter is deprecated. Use "
             "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
             "instead, see the usage at "
-            f"https://docs.ray.io/en/{ray.__version__}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
             DeprecationWarning,
             stacklevel=caller_stacklevel + 1,
         )
@@ -206,7 +206,7 @@ def _warn_if_using_deprecated_placement_group(
             "placement_group_capture_child_tasks parameter is deprecated. Use "
             "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
             "instead, see the usage at "
-            f"https://docs.ray.io/en/{ray.__version__}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
             DeprecationWarning,
             stacklevel=caller_stacklevel + 1,
         )

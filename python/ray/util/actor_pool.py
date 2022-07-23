@@ -2,14 +2,15 @@ from typing import List, Callable, Any
 
 import ray
 from ray.util.annotations import Deprecated, PublicAPI
+from ray._private.utils import get_ray_doc_version
 
 
 @Deprecated(
     message="For stateless/task processing, use ray.util.multiprocessing, see details "
-    f"in https://docs.ray.io/en/{ray.__version__}/ray-more-libs/multiprocessing.html. "
+    f"in https://docs.ray.io/en/{get_ray_doc_version()}/ray-more-libs/multiprocessing.html. "  # noqa: E501
     "For stateful/actor processing such as batch prediction, use "
     "Datasets.map_batches(compute=ActorPoolStrategy, ...), see details in "
-    f"https://docs.ray.io/en/{ray.__version__}/data/package-ref.html#ray.data.Dataset.map_batches."  # noqa: E501
+    f"https://docs.ray.io/en/{get_ray_doc_version()}/data/package-ref.html#ray.data.Dataset.map_batches."  # noqa: E501
 )
 @PublicAPI(stability="beta")
 class ActorPool:
