@@ -287,6 +287,12 @@ class DynamicTFPolicy(TFPolicy):
         # Placeholder for `is_training` flag.
         self._input_dict.set_training(self._get_is_training_placeholder())
 
+        sess = tf1.get_default_session() or tf1.Session(
+            config=tf1.ConfigProto(**self.config["tf_session_args"])
+        )
+
+        self._sess = sess
+
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
         sampled_action = None
@@ -399,9 +405,9 @@ class DynamicTFPolicy(TFPolicy):
             )
 
         # Phase 1 init.
-        sess = tf1.get_default_session() or tf1.Session(
-            config=tf1.ConfigProto(**self.config["tf_session_args"])
-        )
+        # sess = tf1.get_default_session() or tf1.Session(
+        #     config=tf1.ConfigProto(**self.config["tf_session_args"])
+        # )
 
         batch_divisibility_req = (
             get_batch_divisibility_req(self)
