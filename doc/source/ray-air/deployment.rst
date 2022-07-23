@@ -1,7 +1,7 @@
 .. _air-deployment:
 
-Deployment Guide
-================
+How to Deploy AIR
+=================
 
 Here, we describe how you might use or deploy AIR in your infrastructure. There are two main deployment patterns -- pick and choose and within existing platforms.
 

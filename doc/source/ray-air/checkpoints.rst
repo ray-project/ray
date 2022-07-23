@@ -1,7 +1,7 @@
 .. _air-checkpoints-doc:
 
-Checkpoints
-===========
+Using Checkpoints
+=================
 
 Checkpoints are the common format for models that are used across different components of the Ray AI Runtime.
 
