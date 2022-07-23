@@ -143,6 +143,8 @@ By default, Datasets configures its tasks and actors to use the cluster-default 
 ``ray.data.context.DatasetContext.get_current().scheduling_strategy``. This scheduling strategy will schedule these tasks and actors outside any present
 placement group. If you want to force Datasets to schedule tasks within the current placement group, you can set ``ray.data.context.DatasetContext.get_current().scheduling_strategy = None``.
 
+This should be considered for advanced use cases only. We generally recommend letting Datasets run outside placement groups as documented in the :ref:`Datasets and Other Libraries <dataset_tune>` section.
+
 .. _shuffle_performance_tips:
 
 Improving shuffle performance
