@@ -11,6 +11,7 @@ import aiohttp.web
 from aiohttp.web import Request, Response
 
 import ray
+from ray._private import ray_constants
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.runtime_env.packaging import (
@@ -28,6 +29,8 @@ from ray.dashboard.modules.job.common import (
     JobLogsResponse,
     validate_request_type,
     JOB_ID_METADATA_KEY,
+)
+from ray.dashboard.modules.job.pydantic_models import (
     DriverInfo,
     JobDetails,
     JobType,
@@ -177,14 +180,14 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             submit_request = result
 
         try:
-            job_id = self._job_manager.submit_job(
+            submission_id = self._job_manager.submit_job(
                 entrypoint=submit_request.entrypoint,
-                job_id=submit_request.job_id,
+                submission_id=submit_request.submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
             )
 
-            resp = JobSubmitResponse(job_id=job_id)
+            resp = JobSubmitResponse(submission_id=submission_id)
         except (TypeError, ValueError):
             return Response(
                 text=traceback.format_exc(),
@@ -214,7 +217,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
         if job.type is not JobType.SUBMISSION:
             return Response(
-                text=f"Can only stop submission type jobs",
+                text="Can only stop submission type jobs",
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
@@ -294,6 +297,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         jobs = {}
         submission_job_drivers = {}
         for job_table_entry in reply.job_info_list:
+            if job_table_entry.config.ray_namespace.startswith(ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX):
+                # Skip jobs in any _ray_internal_ namespace
+                continue
             job_id = job_table_entry.job_id.hex()
             metadata = dict(job_table_entry.config.metadata)
             job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
@@ -342,7 +348,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         if job.type is not JobType.SUBMISSION:
             return Response(
-                text=f"Can only get logs of submission type jobs",
+                text="Can only get logs of submission type jobs",
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
@@ -364,7 +370,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         if job.type is not JobType.SUBMISSION:
             return Response(
-                text=f"Can only get logs of submission type jobs",
+                text="Can only get logs of submission type jobs",
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 

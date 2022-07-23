@@ -1,6 +1,6 @@
 import dataclasses
 import logging
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 try:
     import aiohttp
@@ -15,6 +15,8 @@ from ray.dashboard.modules.job.common import (
     JobSubmitResponse,
     JobStopResponse,
     JobLogsResponse,
+)
+from ray.dashboard.modules.job.pydantic_models import (
     JobDetails,
 )
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
@@ -83,6 +85,7 @@ class JobSubmissionClient(SubmissionClient):
         job_id: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
+        submission_id: Optional[str] = None,
     ) -> str:
         """Submit and execute a job asynchronously.
 
@@ -105,18 +108,22 @@ class JobSubmissionClient(SubmissionClient):
 
         Args:
             entrypoint: The shell command to run for this job.
-            job_id: A unique ID for this job.
+            submission_id: A unique ID for this job.
             runtime_env: The runtime environment to install and run this job in.
             metadata: Arbitrary data to store along with this job.
+            job_id: DEPRECATED. This has been renamed to submission_id
 
         Returns:
-            The job ID of the submitted job.  If not specified, this is a randomly
+            The submission ID of the submitted job.  If not specified, this is a randomly
             generated unique ID.
 
         Raises:
             RuntimeError: If the request to the job server fails, or if the specified
-            job_id has already been used by a job on this cluster.
+            submission_id has already been used by a job on this cluster.
         """
+        if job_id:
+            logger.warning("job_id kwarg is deprecated. Please use submission_id instead.")
+
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
@@ -127,18 +134,20 @@ class JobSubmissionClient(SubmissionClient):
         # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
 
+        submission_id = submission_id or job_id
+
         req = JobSubmitRequest(
             entrypoint=entrypoint,
-            job_id=job_id,
+            submission_id=submission_id,
             runtime_env=runtime_env,
             metadata=metadata,
         )
 
-        logger.debug(f"Submitting job with job_id={job_id}.")
+        logger.debug(f"Submitting job with submission_id={submission_id}.")
         r = self._do_request("POST", "/api/jobs/", json_data=dataclasses.asdict(req))
 
         if r.status_code == 200:
-            return JobSubmitResponse(**r.json()).job_id
+            return JobSubmitResponse(**r.json()).submission_id
         else:
             self._raise_error(r)
 
@@ -152,12 +161,12 @@ class JobSubmissionClient(SubmissionClient):
         Example:
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
-            >>> job_id = client.submit_job(entrypoint="sleep 10") # doctest: +SKIP
-            >>> client.stop_job(job_id) # doctest: +SKIP
+            >>> submission_id = client.submit_job(entrypoint="sleep 10") # doctest: +SKIP
+            >>> client.stop_job(submission_id) # doctest: +SKIP
             True
 
         Args:
-            job_id: The job ID for the job to be stopped.
+            job_id: The job ID or submission ID for the job to be stopped.
 
         Returns:
             True if the job was running, otherwise False.
@@ -184,14 +193,14 @@ class JobSubmissionClient(SubmissionClient):
         Example:
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
-            >>> job_id = client.submit_job(entrypoint="sleep 1") # doctest: +SKIP
-            >>> job_submission_client.get_job_info(job_id) # doctest: +SKIP
+            >>> submission_id = client.submit_job(entrypoint="sleep 1") # doctest: +SKIP
+            >>> job_submission_client.get_job_info(submission_id) # doctest: +SKIP
             JobInfo(status='SUCCEEDED', message='Job finished successfully.',
             error_type=None, start_time=1647388711, end_time=1647388712,
             metadata={}, runtime_env={})
 
         Args:
-            job_id: The ID of the job whose information is being requested.
+            job_id: The job ID or submission ID of the job whose information is being requested.
 
         Returns:
             The JobInfo for the job.
@@ -208,7 +217,7 @@ class JobSubmissionClient(SubmissionClient):
             self._raise_error(r)
 
     @PublicAPI(stability="beta")
-    def list_jobs(self) -> Dict[str, JobDetails]:
+    def list_jobs(self) -> List[JobDetails]:
         """List all jobs along with their status and other information.
 
         Lists all jobs that have ever run on the cluster, including jobs that are
@@ -260,7 +269,7 @@ class JobSubmissionClient(SubmissionClient):
             'SUCCEEDED'
 
         Args:
-            job_id: The ID of the job whose status is being requested.
+            job_id: The job ID or submission ID of the job whose status is being requested.
 
         Returns:
             The JobStatus of the job.
@@ -278,12 +287,12 @@ class JobSubmissionClient(SubmissionClient):
         Example:
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
-            >>> job_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
-            >>> client.get_job_logs(job_id) # doctest: +SKIP
+            >>> submission_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
+            >>> client.get_job_logs(submission_id) # doctest: +SKIP
             'hello\\n'
 
         Args:
-            job_id: The ID of the job whose logs are being requested.
+            job_id: The job ID or submission ID of the job whose logs are being requested.
 
         Returns:
             A string containing the full logs of the job.
@@ -306,7 +315,7 @@ class JobSubmissionClient(SubmissionClient):
         Example:
             >>> from ray.job_submission import JobSubmissionClient
             >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
-            >>> job_id = client.submit_job( # doctest: +SKIP
+            >>> submission_id = client.submit_job( # doctest: +SKIP
             ...     entrypoint="echo hi && sleep 5 && echo hi2")
             >>> async for lines in client.tail_job_logs( # doctest: +SKIP
             ...           'raysubmit_Xe7cvjyGJCyuCvm2'):
@@ -315,7 +324,7 @@ class JobSubmissionClient(SubmissionClient):
             hi2
 
         Args:
-            job_id: The ID of the job whose logs are being requested.
+            job_id: The job ID or submission ID of the job whose logs are being requested.
 
         Returns:
             The iterator.
