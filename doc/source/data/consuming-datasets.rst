@@ -10,8 +10,8 @@ The data underlying a ``Dataset`` can be consumed in several ways:
 * Iterating over rows and batches.
 * Saving to files.
 
-Retrieving limited set of rows
-==============================
+Retrieving a limited set of rows
+================================
 
 A limited set of rows can be retried from a ``Dataset`` via the
 :meth:`ds.take() <ray.data.Dataset.take>` API, along with its sibling helper APIs
