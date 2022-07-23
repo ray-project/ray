@@ -255,7 +255,7 @@ Advanced: Reusing Actors
 .. note:: This feature is only for the Trainable Class API.
 
 Your Trainable can often take a long time to start.
-To avoid this, you can do ``air.RunConfig(reuse_actors=True)`` (which is taken in by ``Tuner``) to reuse the same Trainable Python process and
+To avoid this, you can do ``tune.TuneConfig(reuse_actors=True)`` (which is taken in by ``Tuner``) to reuse the same Trainable Python process and
 object for multiple hyperparameters.
 
 This requires you to implement ``Trainable.reset_config``, which provides a new set of hyperparameters.
