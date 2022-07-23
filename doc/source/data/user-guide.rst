@@ -25,4 +25,3 @@ you will learn
     pipelining-compute
     dataset-internals
     performance-tips
-    random-access
