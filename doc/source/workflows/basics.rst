@@ -208,7 +208,7 @@ When the task name duplicates, we append ``_n`` to the name by the order of exec
 Error handling
 --------------
 
-Workflows provides two ways to handle application-level exceptions: (1) automatic retry (as in normal Ray tasks) , and (2) the ability to catch and handle exceptions.
+Workflows provides two ways to handle application-level exceptions: (1) automatic retry (as in normal Ray tasks), and (2) the ability to catch and handle exceptions.
 
 - If ``max_retries`` is given, the task will be retried for the given number of times if the workflow task failed.
 - If ``retry_exceptions`` is True, then the workflow task retries both task crashes and application-level errors;
