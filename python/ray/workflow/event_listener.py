@@ -7,7 +7,7 @@ from typing import Callable
 EventListenerType = Callable[[], "EventListener"]
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class EventListener:
     """Defining a custom event listener. Event listeners provide an efficient way
     to listen for a custom event.
@@ -35,10 +35,10 @@ class EventListener:
     =============
     >>> from ray import workflow
     >>> CustomEventListener = ... # doctest: +SKIP
-    >>> event_step = workflow.wait_for_event( # doctest: +SKIP
+    >>> event_task = workflow.wait_for_event( # doctest: +SKIP
     ...     CustomEventListener, "topic1", "partition2")
     >>> handle_event = ... # doctest: +SKIP
-    >>> handle_event.step(event_step).run() # doctest: +SKIP
+    >>> workflow.run(handle_event.task(event_task)) # doctest: +SKIP
 
     """
 
@@ -57,7 +57,7 @@ class EventListener:
         pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class TimerListener(EventListener):
     """
     A listener that produces an event at a given timestamp.

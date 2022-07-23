@@ -80,7 +80,7 @@ class WorkflowRef:
         return hash(self.task_id)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 @unique
 class WorkflowStatus(str, Enum):
     # No status is set for this workflow.

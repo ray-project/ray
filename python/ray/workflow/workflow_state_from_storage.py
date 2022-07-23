@@ -3,7 +3,7 @@ from collections import deque
 
 from ray.workflow import serialization
 from ray.workflow.common import TaskID, WorkflowRef
-from ray.workflow.exceptions import WorkflowStepNotRecoverableError
+from ray.workflow.exceptions import WorkflowTaskNotRecoverableError
 from ray.workflow import workflow_storage
 from ray.workflow.workflow_state import WorkflowExecutionState, Task
 
@@ -42,7 +42,7 @@ def workflow_state_from_storage(
             visited_tasks.add(task_id)
             r = reader.inspect_step(task_id)
             if not r.is_recoverable():
-                raise WorkflowStepNotRecoverableError(task_id)
+                raise WorkflowTaskNotRecoverableError(task_id)
             if r.output_object_valid:
                 target = state.continuation_root.get(task_id, task_id)
                 state.checkpoint_map[target] = WorkflowRef(task_id)
