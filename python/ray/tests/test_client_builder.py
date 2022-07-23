@@ -296,6 +296,7 @@ def test_address_resolution(call_ray_stop_only):
     finally:
         if os.environ.get("RAY_ADDRESS"):
             del os.environ["RAY_ADDRESS"]
+        ray.shutdown()
 
 
 def mock_connect(*args, **kwargs):
