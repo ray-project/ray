@@ -124,7 +124,7 @@ def test_internal_kv(ray_start_regular):
         kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
-def test_run_on_all_workers(ray_start_regular, tmp_path):
+def test_run_on_all_workers(call_ray_start, tmp_path):
     # This test is to ensure run_function_on_all_workers are executed
     # on all workers.
     lock_file = tmp_path / "lock"

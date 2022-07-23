@@ -25,7 +25,7 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
-from ray._private.services import canonicalize_bootstrap_address
+from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray.job_config import JobConfig
 from ray.util.client.common import (
@@ -799,7 +799,7 @@ def try_create_gcs_client(
     Try to create a gcs client based on the the command line args or by
     autodetecting a running Ray cluster.
     """
-    address = canonicalize_bootstrap_address(address)
+    address = canonicalize_bootstrap_address_or_die(address)
     return GcsClient(address=address)
 
 

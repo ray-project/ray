@@ -89,7 +89,7 @@ You can now get the url of metrics agents using `ray.nodes()`
 
     # In a head node,
     import ray
-    ray.init(address='auto')
+    ray.init()
     from pprint import pprint
     pprint(ray.nodes())
 

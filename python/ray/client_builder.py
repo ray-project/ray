@@ -333,19 +333,11 @@ def _split_address(address: str) -> Tuple[str, str]:
 
 def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     if address == "local":
-        return _LocalClientBuilder(None)
+        return _LocalClientBuilder("local")
     if address is None:
-        try:
-            # NOTE: This is not placed in `Node::get_temp_dir_path`, because
-            # this file is accessed before the `Node` object is created.
-            cluster_file = os.path.join(
-                ray._private.utils.get_user_temp_dir(), "ray_current_cluster"
-            )
-            with open(cluster_file, "r") as f:
-                address = f.read().strip()
-        except FileNotFoundError:
-            # `address` won't be set and we'll create a new cluster.
-            pass
+        # NOTE: This is not placed in `Node::get_temp_dir_path`, because
+        # this file is accessed before the `Node` object is created.
+        address = ray._private.services.canonicalize_bootstrap_address(address)
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
     try:

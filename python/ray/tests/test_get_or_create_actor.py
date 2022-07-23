@@ -93,7 +93,7 @@ print("DONE")
     # actor creation races.
     out = []
     for line in out_str.split("\n"):
-        if "Ray dashboard" not in line and "The object store" not in line:
+        if "local Ray instance" not in line and "The object store" not in line:
             out.append(line)
     valid = "".join(out)
     assert valid.strip() == "DONE", out_str

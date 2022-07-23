@@ -174,7 +174,10 @@ class JobSupervisor:
 
     def _get_driver_env_vars(self) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
-        ray_addr = ray._private.services.find_bootstrap_address().pop()
+        ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
+            "auto", ray.worker._global_node._ray_params.temp_dir
+        )
+        assert ray_addr is not None
         return {
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(

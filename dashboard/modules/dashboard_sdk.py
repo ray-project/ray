@@ -126,7 +126,11 @@ def parse_cluster_info(
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
     if address is None:
-        if ray.is_initialized():
+        if (
+            ray.is_initialized()
+            and ray._private.worker.global_worker.node.address_info["webui_url"]
+            is not None
+        ):
             address = (
                 "http://"
                 f"{ray._private.worker.global_worker.node.address_info['webui_url']}"
