@@ -136,6 +136,17 @@ Note that the number of blocks a Dataset created from ``ray.data.read_*`` contai
 The number of blocks printed in the Dataset's string representation is initially set to the number of read tasks generated.
 To view the actual number of blocks created after block splitting, use ``len(ds.get_internal_block_refs())``, which will block until all data has been read.
 
+Datasets and Placement Groups
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, Datasets configures its tasks and actors to use the cluster-default scheduling strategy ("DEFAULT"). You can inspect this configuration variable here:
+``ray.data.context.DatasetContext.get_current().scheduling_strategy``. This scheduling strategy will schedule these tasks and actors outside any present
+placement group. If you want to force Datasets to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Datasets), you can set ``ray.data.context.DatasetContext.get_current().scheduling_strategy = None``.
+
+This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Datasets run outside placement groups as documented in the :ref:`Datasets and Other Libraries <datasets_tune>` section.
+
+.. _shuffle_performance_tips:
+
 Improving shuffle performance
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
