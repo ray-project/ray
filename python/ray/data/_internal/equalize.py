@@ -4,11 +4,10 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.split import _split_at_indices, _calculate_blocks_rows
 from ray.data.block import (
     Block,
+    BlockPartition,
     BlockMetadata,
 )
 from ray.types import ObjectRef
-
-BlockRefWithMeta = Tuple[ObjectRef[Block], BlockMetadata]
 
 
 def _equalize(
@@ -22,6 +21,8 @@ def _equalize(
     Returns:
         the equalized block lists.
     """
+    if len(per_split_block_lists) == 0:
+        return per_split_block_lists
     per_split_blocks_with_metadata = [
         block_list.get_blocks_with_metadata() for block_list in per_split_block_lists
     ]
@@ -60,14 +61,14 @@ def _equalize(
 
 
 def _shave_one_split(
-    split: List[BlockRefWithMeta], num_rows_per_block: List[int], target_size: int
-) -> Tuple[List[BlockRefWithMeta], int, List[BlockRefWithMeta]]:
+    split: BlockPartition, num_rows_per_block: List[int], target_size: int
+) -> Tuple[BlockPartition, int, BlockPartition]:
     """Shave a block list to the target size.
 
     Args:
         split: the block list to shave.
         num_rows_per_block: num rows for each block in the list.
-        targe_size: the upper bound target size of the shaved list.
+        target_size: the upper bound target size of the shaved list.
     Returns:
         A tuple of:
             - shaved block list.
@@ -90,22 +91,21 @@ def _shave_one_split(
 
 
 def _shave_all_splits(
-    input_splits: List[List[BlockRefWithMeta]],
+    input_splits: List[BlockPartition],
     per_split_num_rows: List[List[int]],
     target_size: int,
-) -> Tuple[List[List[BlockRefWithMeta]], List[int], List[BlockRefWithMeta]]:
+) -> Tuple[List[BlockPartition], List[int], BlockPartition]:
     """Shave all block list to the target size.
 
     Args:
         input_splits: all block list to shave.
         input_splits: num rows (per block) for each block list.
-        targe_size:  the upper bound target size of the shaved lists.
+        target_size:  the upper bound target size of the shaved lists.
     Returns:
         A tuple of:
             - all shaved block list.
             - num of rows needed for the block list to meet the target size.
             - leftover blocks.
-
     """
     shaved_splits = []
     per_split_needed_rows = []
@@ -123,8 +123,8 @@ def _shave_all_splits(
 
 
 def _split_leftovers(
-    leftovers: List[BlockRefWithMeta], per_split_needed_rows: List[int]
-) -> List[List[BlockRefWithMeta]]:
+    leftovers: BlockPartition, per_split_needed_rows: List[int]
+) -> List[BlockPartition]:
     """Split leftover blocks by the num of rows needed."""
     num_splits = len(per_split_needed_rows)
     split_indices = []
