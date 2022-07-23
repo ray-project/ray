@@ -471,18 +471,14 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
         "placement_group parameter is deprecated" in str(warning.message)
         for warning in w
     )
-    assert any(
-        "docs.ray.io/en/master" in str(warning.message)
-        for warning in w
-    )
+    assert any("docs.ray.io/en/master" in str(warning.message) for warning in w)
 
     # Pointing to the same doc version as ray.__version__.
     ray.__version__ = "1.13.0"
     with warnings.catch_warnings(record=True) as w:
         Foo.options(placement_group=pg, placement_group_bundle_index=0).remote()
     assert any(
-        "docs.ray.io/en/releases-1.13.0" in str(warning.message)
-        for warning in w
+        "docs.ray.io/en/releases-1.13.0" in str(warning.message) for warning in w
     )
 
     # No warning when scheduling_strategy is specified.
