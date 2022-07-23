@@ -22,7 +22,7 @@ In all cases, ``ray.init()`` will try to automatically find a Ray instance to
 connect to. It checks, in order:
 1. The ``RAY_ADDRESS`` OS environment variable.
 2. The concrete address passed to ``ray.init(address=<address>)``.
-3. If no address is provided, the latest Ray instance that was started on the same machine.
+3. If no address is provided, the latest Ray instance that was started on the same machine using ``ray start``.
 
 .. _start-ray-init:
 
