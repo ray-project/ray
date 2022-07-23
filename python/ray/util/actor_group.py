@@ -51,11 +51,11 @@ class ActorGroupMethod:
 
 
 @Deprecated(
-    message="For stateless/task processing, use ray.util.multiprocessing, "
-    "see details in https://docs.ray.io/en/latest/ray-more-libs/multiprocessing.html. "
+    message="For stateless/task processing, use ray.util.multiprocessing, see details "
+    f"in https://docs.ray.io/en/{ray.__version__}/ray-more-libs/multiprocessing.html. "
     "For stateful/actor processing such as batch prediction, use "
     "Datasets.map_batches(compute=ActorPoolStrategy, ...), see details in "
-    "https://docs.ray.io/en/latest/data/package-ref.html#ray.data.Dataset.map_batches."
+    f"https://docs.ray.io/en/{ray.__version__}/data/package-ref.html#ray.data.Dataset.map_batches."  # noqa: E501
 )
 class ActorGroup:
     """Group of Ray Actors that can execute arbitrary functions.
