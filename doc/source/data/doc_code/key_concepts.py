@@ -12,11 +12,10 @@ def objective(*args):
 # Create a cluster with 4 CPU slots available.
 ray.init(num_cpus=4)
 
-# This runs, since Tune schedules one trial on 1 CPU, leaving 3 spare CPUs in the
-# cluster for Dataset execution. However, deadlock can occur if you set num_samples=4,
-# which would leave no extra CPUs for Datasets! To resolve these issues, see the
-# "Inside Trial Placement Group" example tab.
-tune.run(objective, num_samples=1, resources_per_trial={"cpu": 1})
+# By setting `max_concurrent_trials=3`, this ensures the cluster will always
+# have a sparse CPU for Datasets. Try setting `max_concurrent_trials=4` here,
+# and notice that the experiment will appear to hang.
+tune.run(objective, num_samples=4, max_concurrent_trials=3)
 # __resource_allocation_1_end__
 # fmt: on
 
