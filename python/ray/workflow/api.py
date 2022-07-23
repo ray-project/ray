@@ -18,7 +18,6 @@ from ray.workflow.common import (
     asyncio_run,
     validate_user_metadata,
 )
-from ray.workflow.exceptions import WorkflowRunningError, WorkflowNotFoundError
 from ray.workflow import serialization, workflow_access, workflow_context
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
 from ray.workflow.workflow_storage import WorkflowStorage
@@ -680,17 +679,17 @@ def cancel(workflow_id: str) -> None:
 
 
 @PublicAPI(stability="beta")
-@client_mode_wrap
 def delete(workflow_id: str) -> None:
     """Delete a workflow, its checkpoints, and other information it may have
        persisted to storage. To stop a running workflow, see
        `workflow.cancel()`.
 
-        NOTE: The caller should ensure that the workflow is not currently
-        running before deleting it.
-
     Args:
         workflow_id: The workflow to delete.
+
+    Raises:
+        WorkflowRunningError: The workflow is still active.
+        WorkflowNotFoundError: The workflow does not exist.
 
     Examples:
         >>> from ray import workflow
@@ -699,22 +698,10 @@ def delete(workflow_id: str) -> None:
         >>> output = workflow_step.run_async(workflow_id="some_job") # doctest: +SKIP
         >>> workflow.delete(workflow_id="some_job") # doctest: +SKIP
         >>> assert [] == workflow.list_all() # doctest: +SKIP
-
-    Returns:
-        None
-
     """
-
     _ensure_workflow_initialized()
-    try:
-        status = get_status(workflow_id)
-        if status == WorkflowStatus.RUNNING:
-            raise WorkflowRunningError("DELETE", workflow_id)
-    except ValueError:
-        raise WorkflowNotFoundError(workflow_id)
-
-    wf_storage = WorkflowStorage(workflow_id)
-    wf_storage.delete_workflow()
+    workflow_manager = workflow_access.get_management_actor()
+    ray.get(workflow_manager.delete_workflow.remote(workflow_id))
 
 
 @PublicAPI(stability="beta")

@@ -63,12 +63,12 @@ def test_delete_2(workflow_start_regular):
     ray.init(storage=_storage_uri)
     workflow.init()
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ValueError):
         workflow.get_output("never_finishes")
 
     workflow.delete("never_finishes")
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ValueError):
         # TODO(suquark): we should raise "ValueError" without
         #  been blocking over the result.
         workflow.get_output("never_finishes")
@@ -92,7 +92,7 @@ def test_delete_2(workflow_start_regular):
 
     workflow.delete(workflow_id="finishes")
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ValueError):
         # TODO(suquark): we should raise "ValueError" without
         #  blocking over the result.
         workflow.get_output("finishes")

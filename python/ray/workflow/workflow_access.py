@@ -14,6 +14,7 @@ from ray.workflow.exceptions import (
     WorkflowCancellationError,
     WorkflowNotFoundError,
     WorkflowNotResumableError,
+    WorkflowRunningError,
 )
 from ray.workflow.workflow_executor import WorkflowExecutor
 from ray.workflow.workflow_state import WorkflowExecutionState
@@ -295,6 +296,23 @@ class WorkflowManagementActor:
             else:
                 raise ValueError(f"Cannot load output from workflow '{workflow_id}'")
         return SelfResolvingObject(ref)
+
+    def delete_workflow(self, workflow_id: str) -> None:
+        """Delete a workflow, its checkpoints, and other information it may have
+           persisted to storage.
+
+        Args:
+            workflow_id: The workflow to delete.
+
+        Raises:
+            WorkflowRunningError: The workflow is still active.
+            WorkflowNotFoundError: The workflow does not exist.
+        """
+        if self.is_workflow_non_terminating(workflow_id):
+            raise WorkflowRunningError("DELETE", workflow_id)
+        wf_storage = workflow_storage.WorkflowStorage(workflow_id)
+        wf_storage.delete_workflow()
+        self._executed_workflows.discard(workflow_id)
 
     def ready(self) -> None:
         """A no-op to make sure the actor is ready."""
