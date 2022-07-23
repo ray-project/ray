@@ -191,12 +191,13 @@ with one of the following:
 
     .. code-block:: python
 
+        from ray.air import ScalingConfig
         from ray.train.torch import TorchTrainer
         # For GPU Training, set `use_gpu` to True.
         use_gpu = False
         trainer = TorchTrainer(
             train_func,
-            scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+            scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
         )
 
 
@@ -204,24 +205,26 @@ with one of the following:
 
     .. code-block:: python
 
+        from ray.air import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
         # For GPU Training, set `use_gpu` to True.
         use_gpu = False
         trainer = TensorflowTrainer(
             train_func,
-            scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+            scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
         )
 
 .. tabbed:: Horovod
 
     .. code-block:: python
 
+        from ray.air import ScalingConfig
         from ray.train.horovod import HorovodTrainer
         # For GPU Training, set `use_gpu` to True.
         use_gpu = False
         trainer = HorovodTrainer(
             train_func,
-            scaling_config=dict(use_gpu=use_gpu, num_workers=2)
+            scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=2)
         )
 
 To customize the backend setup, you can use a :ref:`train-api-backend-config` object.
@@ -230,12 +233,13 @@ To customize the backend setup, you can use a :ref:`train-api-backend-config` ob
 
     .. code-block:: python
 
+        from ray.air import ScalingConfig
         from ray.train.torch import TorchTrainer, TorchConfig
 
         trainer = TorchTrainer(
             train_func,
             torch_backend=TorchConfig(...),
-            scaling_config=dict(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
         )
 
 
@@ -243,24 +247,26 @@ To customize the backend setup, you can use a :ref:`train-api-backend-config` ob
 
     .. code-block:: python
 
+        from ray.air import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
 
         trainer = TensorflowTrainer(
             train_func,
             tensorflow_backend=TensorflowConfig(...),
-            scaling_config=dict(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
         )
 
 .. tabbed:: Horovod
 
     .. code-block:: python
 
+        from ray.air import ScalingConfig
         from ray.train.horovod import HorovodTrainer, HorovodConfig
 
         trainer = HorovodTrainer(
             train_func,
             tensorflow_backend=HorovodConfig(...),
-            scaling_config=dict(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
         )
 
 For more configurability, please reference the :class:`BaseTrainer` API.
@@ -295,7 +301,7 @@ Then, you can pass in the config dictionary as an argument to ``Trainer``:
     trainer = TorchTrainer(
         train_func,
     +   train_loop_config=config,
-        scaling_config=dict(num_workers=2)
+        scaling_config=ScalingConfig(num_workers=2)
     )
 
 Putting this all together, you can run your training function with different
@@ -303,7 +309,7 @@ configurations. As an example:
 
 .. code-block:: python
 
-    from ray.air import session
+    from ray.air import session, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
@@ -313,7 +319,7 @@ configurations. As an example:
     trainer = TorchTrainer(
         train_func,
         train_loop_config={"num_epochs": 2},
-        scaling_config=dict(num_workers=2)
+        scaling_config=ScalingConfig(num_workers=2)
     )
     result = trainer.fit()
     print(result.metrics["num_epochs"])
@@ -441,7 +447,7 @@ Using Ray Datasets is the recommended way for ingesting data into ``Trainer``\s 
 
     import ray
     from ray import train
-    from ray.air import train_test_split
+    from ray.air import train_test_split, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
@@ -480,7 +486,7 @@ Using Ray Datasets is the recommended way for ingesting data into ``Trainer``\s 
         train_func,
         train_loop_config={"worker_batch_size": 64, "num_epochs": 2},
         datasets={"train": train_dataset, "validation": validation_dataset},
-        scaling_config=dict(num_workers=8),
+        scaling_config=ScalingConfig(num_workers=8),
     )
     dataset = ray.data.read_csv("...")
 
@@ -564,7 +570,7 @@ appropriately in distributed training.
         :emphasize-lines: 36, 37, 38, 39, 40, 41
 
         import ray.train.torch
-        from ray.air import session, Checkpoint
+        from ray.air import session, Checkpoint, ScalingConfig
         from ray.train.torch import TorchTrainer
 
         import torch
@@ -608,7 +614,7 @@ appropriately in distributed training.
         trainer = TorchTrainer(
             train_func,
             train_loop_config={"num_epochs": 5},
-            scaling_config=dict(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
         )
         result = trainer.fit()
 
@@ -621,7 +627,7 @@ appropriately in distributed training.
     .. code-block:: python
         :emphasize-lines: 23
 
-        from ray.air import session, Checkpoint
+        from ray.air import session, Checkpoint, ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
         import numpy as np
@@ -651,7 +657,7 @@ appropriately in distributed training.
         trainer = TensorflowTrainer(
             train_func,
             train_loop_config={"num_epochs": 5},
-            scaling_config=dict(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
         )
         result = trainer.fit()
 
@@ -683,7 +689,7 @@ As an example, to completely disable writing checkpoints to disk:
     :emphasize-lines: 9,14
 
     from ray import train
-    from ray.air import RunConfig, CheckpointConfig
+    from ray.air import RunConfig, CheckpointConfig, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func():
@@ -694,7 +700,7 @@ As an example, to completely disable writing checkpoints to disk:
 
     trainer = TorchTrainer(
         train_func,
-        scaling_config=dict(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(checkpoint_config=checkpoint_config)
     )
     trainer.fit()
@@ -704,7 +710,7 @@ You may also config ``CheckpointConfig`` to keep the "N best" checkpoints persis
 
 .. code-block:: python
 
-    from ray.air import session, Checkpoint, RunConfig, CheckpointConfig
+    from ray.air import session, Checkpoint, RunConfig, CheckpointConfig, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func():
@@ -724,7 +730,7 @@ You may also config ``CheckpointConfig`` to keep the "N best" checkpoints persis
 
     trainer = TorchTrainer(
         train_func,
-        scaling_config=dict(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(checkpoint_config=checkpoint_config),
     )
     result = trainer.fit()
@@ -751,7 +757,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         :emphasize-lines: 23, 25, 26, 29, 30, 31, 35
 
         import ray.train.torch
-        from ray.air import session, Checkpoint
+        from ray.air import session, Checkpoint, ScalingConfig
         from ray.train.torch import TorchTrainer
 
         import torch
@@ -802,7 +808,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         trainer = TorchTrainer(
             train_func,
             train_loop_config={"num_epochs": 2},
-            scaling_config=dict(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
         )
         # save a checkpoint
         result = trainer.fit()
@@ -811,7 +817,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         trainer = TorchTrainer(
             train_func,
             train_loop_config={"num_epochs": 4},
-            scaling_config=dict(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
             resume_from_checkpoint=result.checkpoint,
         )
         result = trainer.fit()
@@ -824,7 +830,7 @@ Checkpoints can be loaded into the training function in 2 steps:
     .. code-block:: python
         :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
 
-        from ray.air import session, Checkpoint
+        from ray.air import session, Checkpoint, ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
         import numpy as np
@@ -863,7 +869,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         trainer = TensorflowTrainer(
             train_func,
             train_loop_config={"num_epochs": 2},
-            scaling_config=dict(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
         )
         # save a checkpoint
         result = trainer.fit()
@@ -872,7 +878,7 @@ Checkpoints can be loaded into the training function in 2 steps:
         trainer = TensorflowTrainer(
             train_func,
             train_loop_config={"num_epochs": 5},
-            scaling_config=dict(num_workers=2),
+            scaling_config=ScalingConfig(num_workers=2),
             resume_from_checkpoint=result.checkpoint,
         )
         result = trainer.fit()
@@ -925,8 +931,7 @@ A simple example for creating a callback that will print out results:
 
     from typing import List, Dict
 
-    from ray.air import session
-    from ray.air.config import RunConfig
+    from ray.air import session, RunConfig, ScalingConfig
     from ray.train.torch import TorchTrainer
     from ray.tune.logger import LoggerCallback
 
@@ -946,7 +951,7 @@ A simple example for creating a callback that will print out results:
     trainer = TorchTrainer(
         train_func,
         run_config=RunConfig(callbacks=[callback]),
-        scaling_config=dict(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=2),
     )
     trainer.fit()
 
@@ -969,7 +974,7 @@ Here is an example:
 .. code-block:: python
 
     from typing import List, Dict
-    from ray.air import session
+    from ray.air import session, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     import torch
@@ -981,7 +986,7 @@ Here is an example:
         accuracy = torchmetrics.functional.accuracy(preds, target).item()
         session.report({"accuracy": accuracy})
 
-    trainer = TorchTrainer(train_func, scaling_config=dict(num_workers=2))
+    trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=2))
     result = trainer.fit()
     print(result.metrics["accuracy"])
     # 0.20000000298023224
@@ -1095,7 +1100,7 @@ pass it into a :class:`Tuner`.
 .. code-block:: python
 
     from ray import tune
-    from ray.air import session
+    from ray.air import session, ScalingConfig
     from ray.train.torch import TorchTrainer
     from ray.tune.tuner import Tuner, TuneConfig
 
@@ -1105,7 +1110,7 @@ pass it into a :class:`Tuner`.
         for _ in range(config["num_epochs"]):
             session.report(dict(output=config["input"]))
 
-    trainer = TorchTrainer(train_func, scaling_config=dict(num_workers=2))
+    trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=2))
     tuner = Tuner(
         trainer,
         param_space={
