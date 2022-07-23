@@ -83,7 +83,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
 
     Understand the key concepts behind Ray Datasets.
     Learn what :ref:`Datasets<dataset_concept>` and :ref:`Dataset Pipelines<dataset_pipeline_concept>` are
-    and :ref:`how they get executed<dataset_execution_concept>` in Ray Datasets.
+    and how they get executed in Ray Datasets.
 
     +++
     .. link-button:: data_key_concepts
