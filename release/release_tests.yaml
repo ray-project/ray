@@ -414,6 +414,30 @@
 
   alert: default
 
+- name: air_benchmark_tune_torch_mnist_large_gpu
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: weekly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_8_g4_12xl.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 8 --use-gpu
+
+    wait_for_nodes:
+      num_nodes: 8
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 
 # Ray AIR distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_cpu_4x1
