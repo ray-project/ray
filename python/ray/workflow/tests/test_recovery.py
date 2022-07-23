@@ -257,7 +257,7 @@ def test_recovery_cluster_failure(tmp_path, shutdown_only):
     subprocess.check_call(["ray", "start", "--head", f"--storage={tmp_path}"])
     time.sleep(1)
     proc = run_string_as_driver_nonblocking(
-        f"""
+        """
 import time
 import ray
 from ray import workflow
