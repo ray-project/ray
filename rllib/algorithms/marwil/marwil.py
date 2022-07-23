@@ -122,7 +122,14 @@ class MARWILConfig(AlgorithmConfig):
             "is": {"type": ImportanceSampling},
             "wis": {"type": WeightedImportanceSampling},
         }
-        self._set_off_policy_estimation_methods = False
+        deprecation_warning(
+            old="MARWIL currently uses off_policy_estimation_methods: "
+            f"{self.off_policy_estimation_methods} by default. This will"
+            "change to off_policy_estimation_methods: {} in a future release."
+            "If you want to use an off-policy estimator, specify it in"
+            ".evaluation(off_policy_estimation_methods=...)",
+            error=False,
+        )
 
     @override(AlgorithmConfig)
     def training(
