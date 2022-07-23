@@ -284,12 +284,12 @@ class WorkflowManagementActor:
             task_id, ref = workflow_ref.task_id, workflow_ref.ref
         if ref is None:
             wf_store = workflow_storage.WorkflowStorage(workflow_id)
-            tid = wf_store.inspect_output(name)
+            tid = wf_store.inspect_output(task_id)
             if tid is not None:
                 ref = load_step_output_from_storage.remote(workflow_id, task_id)
-            elif name is not None:
+            elif task_id is not None:
                 raise ValueError(
-                    f"Cannot load output from task id '{name}' in workflow "
+                    f"Cannot load output from task id '{task_id}' in workflow "
                     f"'{workflow_id}'"
                 )
             else:
