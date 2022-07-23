@@ -27,6 +27,8 @@ GcsHeartbeatManager::GcsHeartbeatManager(
     : io_service_(io_service),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
+      initial_num_heartbeats_timeout_(
+          RayConfig::instance().initial_num_heartbeats_timeout()),
       periodical_runner_(io_service) {
   RAY_LOG(INFO) << "GcsHeartbeatManager start, num_heartbeats_timeout="
                 << num_heartbeats_timeout_;
@@ -41,7 +43,7 @@ GcsHeartbeatManager::GcsHeartbeatManager(
 void GcsHeartbeatManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      AddNode(item.second);
+      AddNode(item.second, initial_num_heartbeats_timeout_);
     }
   }
 }
@@ -76,14 +78,15 @@ void GcsHeartbeatManager::RemoveNode(const NodeID &node_id) {
       "GcsHeartbeatManager::RemoveNode");
 }
 
-void GcsHeartbeatManager::AddNode(const rpc::GcsNodeInfo &node_info) {
+void GcsHeartbeatManager::AddNode(const rpc::GcsNodeInfo &node_info,
+                                  int64_t heartbeats_counts) {
   auto node_id = NodeID::FromBinary(node_info.node_id());
   auto node_addr = node_info.node_manager_address() + ":" +
                    std::to_string(node_info.node_manager_port());
   io_service_.post(
-      [this, node_id, node_addr] {
+      [this, node_id, node_addr, heartbeats_counts] {
         node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
-        heartbeats_.emplace(node_id, num_heartbeats_timeout_);
+        heartbeats_.emplace(node_id, heartbeats_counts);
       },
       "GcsHeartbeatManager.AddNode");
 }
