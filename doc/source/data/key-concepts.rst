@@ -26,8 +26,6 @@ Since a Dataset is just a list of Ray object references, it can be freely passed
 actors, and libraries like any other object reference.
 This flexibility is a unique characteristic of Ray Datasets.
 
-.. _dataset_pipeline_concept:
-
 Reading Data
 ============
 
@@ -79,6 +77,8 @@ There are a few cases that are not currently supported:
 
  * If the original worker process that created the Dataset dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
  * When ``compute=ActorPoolStrategy()`` is specified for transformations.
+
+.. _dataset_pipeline_concept:
 
 -----------------
 Dataset Pipelines
