@@ -341,7 +341,10 @@ def test_nil_node(enable_test_module, disable_aiohttp_cache, ray_start_with_dash
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
-def test_actor_cleanup(disable_aiohttp_cache, reduce_actor_cache, ray_start_with_dashboard):
+
+def test_actor_cleanup(
+    disable_aiohttp_cache, reduce_actor_cache, ray_start_with_dashboard
+):
     @ray.remote
     class Foo:
         def __init__(self, num):
@@ -350,7 +353,14 @@ def test_actor_cleanup(disable_aiohttp_cache, reduce_actor_cache, ray_start_with
         def do_task(self):
             return self.num
 
-    foo_actors = [Foo.remote(1), Foo.remote(2), Foo.remote(3), Foo.remote(4), Foo.remote(5), Foo.remote(6)]
+    foo_actors = [
+        Foo.remote(1),
+        Foo.remote(2),
+        Foo.remote(3),
+        Foo.remote(4),
+        Foo.remote(5),
+        Foo.remote(6),
+    ]
     results = [actor.do_task.remote() for actor in foo_actors]  # noqa
     webui_url = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(webui_url)
@@ -366,8 +376,9 @@ def test_actor_cleanup(disable_aiohttp_cache, reduce_actor_cache, ray_start_with
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]
-            # Although max cache is 3, there should be 6 actors because they are all still alive.
-            assert len(actors) == 6 
+            # Although max cache is 3, there should be 6 actors
+            # because they are all still alive.
+            assert len(actors) == 6
 
             break
         except Exception as ex:
@@ -383,7 +394,7 @@ def test_actor_cleanup(disable_aiohttp_cache, reduce_actor_cache, ray_start_with
                 )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
-    
+
     # kill
     [ray.kill(foo_actor) for foo_actor in foo_actors]
     # Wait 5 seconds for cleanup to finish
@@ -415,7 +426,6 @@ def test_actor_cleanup(disable_aiohttp_cache, reduce_actor_cache, ray_start_with
                 )
                 ex_stack = "".join(ex_stack)
                 raise Exception(f"Timed out while testing, {ex_stack}")
-
 
 
 if __name__ == "__main__":
