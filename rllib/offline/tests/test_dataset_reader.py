@@ -139,7 +139,8 @@ class TestDatasetReader(unittest.TestCase):
             {"input": "dataset", "input_config": input_config}
         )
         reader = DatasetReader(dataset)
-        reader.next()
+        # Reads in one line of Pendulum dataset with 600 timesteps
+        assert len(reader.next()) == 600
 
 
 class TestUnzipIfNeeded(unittest.TestCase):
