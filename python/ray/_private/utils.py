@@ -81,7 +81,8 @@ def get_ray_temp_dir():
 
 
 def get_ray_address_file(temp_dir: Optional[str]):
-    temp_dir = get_ray_temp_dir()
+    if temp_dir is None:
+        temp_dir = get_ray_temp_dir()
     return os.path.join(temp_dir, "ray_current_cluster")
 
 

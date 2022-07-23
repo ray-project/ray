@@ -428,7 +428,9 @@ def remaining_processes_alive():
     return ray._private.worker._global_node.remaining_processes_alive()
 
 
-def canonicalize_bootstrap_address(addr: str, temp_dir: Optional[str] = None):
+def canonicalize_bootstrap_address(
+    addr: str, temp_dir: Optional[str] = None
+) -> Optional[str]:
     """Canonicalizes Ray cluster bootstrap address to host:port.
     Reads address from the environment if needed.
 
@@ -436,7 +438,8 @@ def canonicalize_bootstrap_address(addr: str, temp_dir: Optional[str] = None):
     via ray.init() or `--address` flags, before using the address to connect.
 
     Returns:
-        Ray cluster address string in <host:port> format.
+        Ray cluster address string in <host:port> format or None if the caller
+        should start a local Ray instance.
     """
     if addr is None or addr == "auto":
         addr = get_ray_address_from_environment(addr, temp_dir)
@@ -448,6 +451,45 @@ def canonicalize_bootstrap_address(addr: str, temp_dir: Optional[str] = None):
         logger.exception(f"Failed to convert {addr} to host:port")
         raise
     return bootstrap_address
+
+
+def canonicalize_bootstrap_address_or_die(
+    addr: str, temp_dir: Optional[str] = None
+) -> str:
+    """Canonicalizes Ray cluster bootstrap address to host:port.
+
+    This function should be used when the caller expects there to be an active
+    and local Ray instance. If no address is provided or address="auto", this
+    will autodetect the latest Ray instance created with `ray start`.
+
+    For convenience, if no address can be autodetected, this function will also
+    look for any running local GCS processes, based on pgrep output. This is to
+    allow easier use of Ray CLIs when debugging a local Ray instance (whose GCS
+    addresses are not recorded).
+
+    Returns:
+        Ray cluster address string in <host:port> format. Throws a
+        ConnectionError if zero or multiple active Ray instances are
+        autodetected.
+    """
+    bootstrap_addr = canonicalize_bootstrap_address(addr, temp_dir=temp_dir)
+    if bootstrap_addr is not None:
+        return bootstrap_addr
+
+    running_gcs_addresses = find_gcs_addresses()
+    if len(running_gcs_addresses) == 0:
+        raise ConnectionError(
+            "Could not find any running Ray instance. "
+            "Please specify the one to connect to by setting the `--address` "
+            "flag or `RAY_ADDRESS` environment variable."
+        )
+    if len(running_gcs_addresses) > 1:
+        raise ConnectionError(
+            f"Found multiple active Ray instances: {running_gcs_addresses}. "
+            "Please specify the one to connect to by setting the `--address` "
+            "flag or `RAY_ADDRESS` environment variable."
+        )
+    return running_gcs_addresses.pop()
 
 
 def extract_ip_port(bootstrap_address: str):
@@ -555,7 +597,7 @@ def create_redis_client(redis_address, password=None):
         cli = create_redis_client.instances.get(redis_address)
         if cli is None:
             redis_ip_address, redis_port = extract_ip_port(
-                canonicalize_bootstrap_address(redis_address)
+                canonicalize_bootstrap_address_or_die(redis_address)
             )
             cli = redis.StrictRedis(
                 host=redis_ip_address, port=int(redis_port), password=password

@@ -1463,10 +1463,8 @@ def init(
     # to log it again.
     info_str = "Connected to Ray cluster."
     if gcs_address is None:
-        info_str = (
-            f"Started a local Ray cluster at: {_global_node.address_info['address']}."
-        )
-    if dashboard_url is not None:
+        info_str = "Started a local Ray instance."
+    if dashboard_url:
         logger.info(
             info_str + " View the dashboard at %s%shttp://%s%s%s.",
             colorama.Style.BRIGHT,

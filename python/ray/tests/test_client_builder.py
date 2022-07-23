@@ -285,10 +285,13 @@ def test_address_resolution(call_ray_stop_only):
             # client(...) takes precedence of RAY_ADDRESS=local
             assert ray.util.client.ray.is_connected()
 
-        with pytest.raises(Exception):
-            # This tries to call `ray.init(address="local") which
-            # breaks.`
-            ray.client(None).connect()
+        # This tries to call `ray.init(address="local") which creates a new Ray
+        # instance.
+        with ray.client(None).connect():
+            wait_for_condition(
+                lambda: len(ray._private.services.find_gcs_addresses()) == 2,
+                retry_interval_ms=1000,
+            )
 
     finally:
         if os.environ.get("RAY_ADDRESS"):

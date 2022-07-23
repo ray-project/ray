@@ -337,7 +337,7 @@ def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     if address is None:
         # NOTE: This is not placed in `Node::get_temp_dir_path`, because
         # this file is accessed before the `Node` object is created.
-        address = ray._private.utils.read_ray_address()
+        address = ray._private.utils.canonicalize_bootstrap_address(address)
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
     try:
