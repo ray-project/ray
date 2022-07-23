@@ -1,7 +1,7 @@
 .. _air-ingest:
 
-Setting up Data Ingest
-======================
+Configuring Training Datasets
+=============================
 
 This page is a guide for setting up, understanding, and diagnosing data ingest problems in Ray AIR.
 
