@@ -663,6 +663,8 @@ def test_equalize(ray_start_regular_shared):
 
 
 def test_equalize_randomized(ray_start_regular_shared):
+    # verify the entries in the splits are in the range of 0 .. num_rows,
+    # unique, and the total number matches num_rows if exact_num == True.
     def assert_unique_and_inrange(splits, num_rows, exact_num=False):
         unique_set = set([])
         for split in splits:
@@ -674,11 +676,13 @@ def test_equalize_randomized(ray_start_regular_shared):
         if exact_num:
             assert len(unique_set) == num_rows
 
+    # verify that splits are equalized.
     def assert_equal_split(splits, num_rows, num_split):
         split_size = num_rows // num_split
         for split in splits:
             assert len((list(itertools.chain.from_iterable(split)))) == split_size
 
+    # create randomized splits contains entries from 0 ... num_rows.
     def random_split(num_rows, num_split):
         split_point = [int(random.random() * num_rows) for _ in range(num_split - 1)]
         split_index_helper = [0] + sorted(split_point) + [num_rows]
