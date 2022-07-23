@@ -86,40 +86,9 @@ Dataset Pipelines
 
 Dataset pipelines allow Dataset transformations to be executed incrementally on *windows* of the base data, instead of on all of the data at once. This can be used for streaming data loading into ML training, or to execute batch transformations on large datasets without needing to load the entire dataset into cluster memory.
 
-See the :ref:`Dataset Pipelines Guide <pipelining_datasets>` for an in-depth guide on pipelining compute.
+..
+  https://docs.google.com/drawings/d/1A_nWvignkdvs4GPRShCNYcnb1T--iQoSEeS4uWRVQ4k/edit
 
-----------------------------
-Datasets and Other Libraries
-----------------------------
+.. image:: images/dataset-pipeline-2.svg
 
-When using Datasets in conjunction with other Ray libraries, it is important to ensure there are enough free CPUs for Datasets to run on. Libraries such as Tune by default try to fully utilize cluster CPUs. This can prevent Datasets from scheduling tasks, reducing performance or causing workloads to hang.
-
-.. _datasets_tune:
-
-As an example, the following shows two ways to use Datasets together with the Ray Tune library:
-
-.. tabbed:: Limiting Tune Concurrency
-
-    By limiting the number of concurrent Tune trials, we ensure CPU resources are always available for Datasets execution.
-    This can be done using the ``max_concurrent_trials`` Tune option.
-
-    .. literalinclude:: ./doc_code/key_concepts.py
-      :language: python
-      :start-after: __resource_allocation_1_begin__
-      :end-before: __resource_allocation_1_end__
-
-.. tabbed:: Reserving CPUs (Experimental)
-
-    Alternatively, we can tell Tune to set aside CPU resources for other libraries.
-    This can be done by setting ``_max_cpu_fraction_per_node=0.8``, which reserves
-    20% of node CPUs for Dataset execution.
-
-    .. literalinclude:: ./doc_code/key_concepts.py
-      :language: python
-      :start-after: __resource_allocation_2_begin__
-      :end-before: __resource_allocation_2_end__
-
-    .. warning::
-
-        This option is experimental and not currently recommended for use with
-        autoscaling clusters (scale-up will not trigger properly).
+Dataset pipelines can be read in a streaming fashion by one consumer, or split into multiple sub-pipelines and read in parallel by multiple consumers for distributd training. See the :ref:`Dataset Pipelines Guide <pipelining_datasets>` for an in-depth guide on pipelining compute.

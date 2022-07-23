@@ -17,14 +17,13 @@ you will learn
     :maxdepth: 2
 
     creating-datasets
-    saving-datasets
     transforming-datasets
-    accessing-datasets
-    pipelining-compute
+    consuming-datasets
+    saving-datasets
     dataset-ml-preprocessing
     dataset-tensor-support
-    advanced-pipelines
-    random-access
+    pipelining-compute
     custom-data
-    memory-management
+    dataset-internals
     performance-tips
+    random-access

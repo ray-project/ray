@@ -57,6 +57,7 @@ parts:
                 title: Large-scale ML Ingest
               - file: data/examples/ocr_example
                 title: Scaling OCR with Ray Datasets
+              - file: data/advanced-pipelines
           - file: data/faq
           - file: data/package-ref
           - file: data/integrations

@@ -94,181 +94,6 @@ serving as pointers to a collection of distributed data blocks.
     :start-after: __gen_synth_tensor_range_begin__
     :end-before: __gen_synth_tensor_range_end__
 
-.. _dataset_from_in_memory_data:
-
------------------------------------------
-From Local and Distributed In-Memory Data
------------------------------------------
-
-Datasets can be constructed from existing in-memory data. In addition to being able to
-construct a ``Dataset`` from plain Python objects, Datasets also interoperates with popular
-single-node libraries (`Pandas <https://pandas.pydata.org/>`__,
-`NumPy <https://numpy.org/>`__, `Arrow <https://arrow.apache.org/>`__) as well as
-distributed frameworks (:ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
-:ref:`Modin <modin-on-ray>`, :ref:`Mars <mars-on-ray>`).
-
-.. _dataset_from_in_memory_data_single_node:
-
-Integration with Single-Node Data Libraries
-===========================================
-
-In this section, we demonstrate creating a ``Dataset`` from single-node in-memory data.
-
-.. tabbed:: Pandas
-
-  Create a ``Dataset`` from a Pandas DataFrame. This constructs a ``Dataset``
-  backed by a single Pandas DataFrame block.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_pandas_begin__
-    :end-before: __from_pandas_end__
-
-  We can also build a ``Dataset`` from more than one Pandas DataFrame, where each said
-  DataFrame will become a block in the ``Dataset``.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_pandas_mult_begin__
-    :end-before: __from_pandas_mult_end__
-
-.. tabbed:: NumPy
-
-  Create a ``Dataset`` from a NumPy ndarray. This constructs a ``Dataset``
-  backed by a single-column Arrow table block; the outer dimension of the ndarray
-  will be treated as the row dimension, and the column will have name ``"__value__"``.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_numpy_begin__
-    :end-before: __from_numpy_end__
-
-  We can also build a ``Dataset`` from more than one NumPy ndarray, where each said
-  ndarray will become a single-column Arrow table block in the ``Dataset``.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_numpy_mult_begin__
-    :end-before: __from_numpy_mult_end__
-
-.. tabbed:: Arrow
-
-  Create a ``Dataset`` from an
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__.
-  This constructs a ``Dataset`` backed by a single Arrow ``Table`` block.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_arrow_begin__
-    :end-before: __from_arrow_end__
-
-  We can also build a ``Dataset`` from more than one Arrow Table, where each said
-  ``Table`` will become a block in the ``Dataset``.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_arrow_mult_begin__
-    :end-before: __from_arrow_mult_end__
-
-.. tabbed:: Python Objects
-
-  Create a ``Dataset`` from a list of Python objects; since each object in this
-  particular list is a dictionary, Datasets will treat this list as a list of tabular
-  records, and will construct an Arrow ``Dataset``.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_items_begin__
-    :end-before: __from_items_end__
-
-.. _dataset_from_in_memory_data_distributed:
-
-Integration with Distributed Data Processing Frameworks
-=======================================================
-
-In addition to working with single-node in-memory data, Datasets can be constructed from
-distributed (multi-node) in-memory data, interoperating with popular distributed
-data processing frameworks such as :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
-:ref:`Modin <modin-on-ray>`, and :ref:`Mars <mars-on-ray>`.
-
-The common paradigm used by
-these conversions is to send out Ray tasks converting each Dask/Spark/Modin/Mars
-data partition to a format that Datasets can understand (if needed), and using the
-futures representing the return value of those conversion tasks as the ``Dataset`` block
-futures. If the upstream framework's data partitions are already in a format that
-Datasets understands (e.g. Arrow or Pandas), Datasets will elide the conversion task and
-will instead reinterpret those data partitions directly as its blocks.
-
-.. note::
-
-  These data processing frameworks must be running on Ray in order for these Datasets
-  integrations to work. See how these frameworks can be run on Ray in our
-  :ref:`data processing integrations docs <data_integrations>`.
-
-.. tabbed:: Dask
-
-  Create a ``Dataset`` from a
-  `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__. This constructs a
-  ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly the
-  Dask DataFrame.
-
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Dask DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_dask_begin__
-    :end-before: __from_dask_end__
-
-.. tabbed:: Spark
-
-  Create a ``Dataset`` from a `Spark DataFrame
-  <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html>`__.
-  This constructs a ``Dataset`` backed by the distributed Spark DataFrame partitions
-  that underly the Spark DataFrame. When this conversion happens, Spark-on-Ray (RayDP)
-  will save the Spark DataFrame partitions to Ray's object store in the Arrow format,
-  which Datasets will then interpret as its blocks.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_spark_begin__
-    :end-before: __from_spark_end__
-
-.. tabbed:: Modin
-
-  Create a ``Dataset`` from a Modin DataFrame. This constructs a ``Dataset``
-  backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
-
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Modin DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_modin_begin__
-    :end-before: __from_modin_end__
-
-.. tabbed:: Mars
-
-  Create a ``Dataset`` from a Mars DataFrame. This constructs a ``Dataset``
-  backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
-
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Mars DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
-
-  .. literalinclude:: ./doc_code/creating_datasets.py
-    :language: python
-    :start-after: __from_mars_begin__
-    :end-before: __from_mars_end__
-
 .. _dataset_reading_from_storage:
 
 --------------------------
@@ -281,47 +106,9 @@ or remote storage system such as S3, GCS, Azure Blob Storage, or HDFS. Any files
 can be used to specify file locations, and many common file formats are supported:
 Parquet, CSV, JSON, NPY, text, binary.
 
-Parallel + Distributed Reading
-==============================
-
 Each of these APIs take a path or list of paths to files or directories. Any directories
 provided will be walked in order to obtain concrete file paths, at which point all files
 will be read in parallel.
-
-Datasets automatically selects the read ``parallelism`` according to the following procedure:
-1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
-2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
-3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
-4. The parallelism is truncated to ``min(num_files, parallelism)``.
-
-To perform the read, ``parallelism`` parallel read tasks will be
-launched, each reading one or more files and each creating a single block of data.
-When reading from remote datasources, these parallel read tasks will be spread across
-the nodes in your Ray cluster, creating the distributed collection of blocks that makes
-up a distributed Ray Dataset.
-
-.. image:: images/dataset-read.svg
-   :width: 650px
-   :align: center
-
-This default parallelism can be overridden via the ``parallelism`` argument; see the
-:ref:`performance guide <data_performance_tips>`  for tips on how to tune this read
-parallelism.
-
-.. _dataset_deferred_reading:
-
-Deferred Read Task Execution
-============================
-
-Datasets created via the ``ray.data.read_*()`` APIs are semi-lazy: initially, only the
-first read task will be executed. This avoids blocking Dataset creation on the reading
-of all data files, enabling inspection functions like
-:meth:`ds.schema() <ray.data.Dataset.schema>` and
-:meth:`ds.show() <ray.data.Dataset.show>` to be used right away. Executing further
-transformations on the Dataset will trigger execution of all read tasks, and execution
-of all read tasks can be triggered manually using the
-:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>` API.
-
 
 .. _dataset_supported_file_formats:
 
@@ -539,6 +326,181 @@ are supported for each of these storage systems.
     :start-after: __read_parquet_az_begin__
     :end-before: __read_parquet_az_end__
 
+.. _dataset_from_in_memory_data:
+
+-------------------
+From In-Memory Data
+-------------------
+
+Datasets can be constructed from existing in-memory data. In addition to being able to
+construct a ``Dataset`` from plain Python objects, Datasets also interoperates with popular
+single-node libraries (`Pandas <https://pandas.pydata.org/>`__,
+`NumPy <https://numpy.org/>`__, `Arrow <https://arrow.apache.org/>`__) as well as
+distributed frameworks (:ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
+:ref:`Modin <modin-on-ray>`, :ref:`Mars <mars-on-ray>`).
+
+.. _dataset_from_in_memory_data_single_node:
+
+Integration with Single-Node Data Libraries
+===========================================
+
+In this section, we demonstrate creating a ``Dataset`` from single-node in-memory data.
+
+.. tabbed:: Pandas
+
+  Create a ``Dataset`` from a Pandas DataFrame. This constructs a ``Dataset``
+  backed by a single Pandas DataFrame block.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_pandas_begin__
+    :end-before: __from_pandas_end__
+
+  We can also build a ``Dataset`` from more than one Pandas DataFrame, where each said
+  DataFrame will become a block in the ``Dataset``.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_pandas_mult_begin__
+    :end-before: __from_pandas_mult_end__
+
+.. tabbed:: NumPy
+
+  Create a ``Dataset`` from a NumPy ndarray. This constructs a ``Dataset``
+  backed by a single-column Arrow table block; the outer dimension of the ndarray
+  will be treated as the row dimension, and the column will have name ``"__value__"``.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_numpy_begin__
+    :end-before: __from_numpy_end__
+
+  We can also build a ``Dataset`` from more than one NumPy ndarray, where each said
+  ndarray will become a single-column Arrow table block in the ``Dataset``.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_numpy_mult_begin__
+    :end-before: __from_numpy_mult_end__
+
+.. tabbed:: Arrow
+
+  Create a ``Dataset`` from an
+  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__.
+  This constructs a ``Dataset`` backed by a single Arrow ``Table`` block.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_arrow_begin__
+    :end-before: __from_arrow_end__
+
+  We can also build a ``Dataset`` from more than one Arrow Table, where each said
+  ``Table`` will become a block in the ``Dataset``.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_arrow_mult_begin__
+    :end-before: __from_arrow_mult_end__
+
+.. tabbed:: Python Objects
+
+  Create a ``Dataset`` from a list of Python objects; since each object in this
+  particular list is a dictionary, Datasets will treat this list as a list of tabular
+  records, and will construct an Arrow ``Dataset``.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_items_begin__
+    :end-before: __from_items_end__
+
+.. _dataset_from_in_memory_data_distributed:
+
+Integration with Distributed Data Processing Frameworks
+=======================================================
+
+In addition to working with single-node in-memory data, Datasets can be constructed from
+distributed (multi-node) in-memory data, interoperating with popular distributed
+data processing frameworks such as :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
+:ref:`Modin <modin-on-ray>`, and :ref:`Mars <mars-on-ray>`.
+
+The common paradigm used by
+these conversions is to send out Ray tasks converting each Dask/Spark/Modin/Mars
+data partition to a format that Datasets can understand (if needed), and using the
+futures representing the return value of those conversion tasks as the ``Dataset`` block
+futures. If the upstream framework's data partitions are already in a format that
+Datasets understands (e.g. Arrow or Pandas), Datasets will elide the conversion task and
+will instead reinterpret those data partitions directly as its blocks.
+
+.. note::
+
+  These data processing frameworks must be running on Ray in order for these Datasets
+  integrations to work. See how these frameworks can be run on Ray in our
+  :ref:`data processing integrations docs <data_integrations>`.
+
+.. tabbed:: Dask
+
+  Create a ``Dataset`` from a
+  `Dask DataFrame <https://docs.dask.org/en/stable/dataframe.html>`__. This constructs a
+  ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly the
+  Dask DataFrame.
+
+  .. note::
+
+    This conversion should have near-zero overhead: it involves zero data copying and
+    zero data movement. Datasets simply reinterprets the existing Dask DataFrame partitions
+    as Ray Datasets partitions without touching the underlying data.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_dask_begin__
+    :end-before: __from_dask_end__
+
+.. tabbed:: Spark
+
+  Create a ``Dataset`` from a `Spark DataFrame
+  <https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html>`__.
+  This constructs a ``Dataset`` backed by the distributed Spark DataFrame partitions
+  that underly the Spark DataFrame. When this conversion happens, Spark-on-Ray (RayDP)
+  will save the Spark DataFrame partitions to Ray's object store in the Arrow format,
+  which Datasets will then interpret as its blocks.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_spark_begin__
+    :end-before: __from_spark_end__
+
+.. tabbed:: Modin
+
+  Create a ``Dataset`` from a Modin DataFrame. This constructs a ``Dataset``
+  backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
+
+  .. note::
+
+    This conversion should have near-zero overhead: it involves zero data copying and
+    zero data movement. Datasets simply reinterprets the existing Modin DataFrame partitions
+    as Ray Datasets partitions without touching the underlying data.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_modin_begin__
+    :end-before: __from_modin_end__
+
+.. tabbed:: Mars
+
+  Create a ``Dataset`` from a Mars DataFrame. This constructs a ``Dataset``
+  backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
+
+  .. note::
+
+    This conversion should have near-zero overhead: it involves zero data copying and
+    zero data movement. Datasets simply reinterprets the existing Mars DataFrame partitions
+    as Ray Datasets partitions without touching the underlying data.
+
+  .. literalinclude:: ./doc_code/creating_datasets.py
+    :language: python
+    :start-after: __from_mars_begin__
+    :end-before: __from_mars_end__
+
 .. _dataset_from_torch_tf:
 
 -------------------------
@@ -620,3 +582,46 @@ converts it into a Ray Dataset directly.
     ray_datasets = ray.data.from_huggingface(hf_datasets)
     ray_datasets["train"].take(2)
     # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
+
+--------------------------
+Performance Considerations
+--------------------------
+
+Read Parallelism
+================
+
+Datasets automatically selects the read ``parallelism`` according to the following procedure:
+
+ 1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
+ 2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
+ 3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
+ 4. The parallelism is truncated to ``min(num_files, parallelism)``.
+
+To perform the read, ``parallelism`` parallel read tasks will be
+launched, each reading one or more files and each creating a single block of data.
+When reading from remote datasources, these parallel read tasks will be spread across
+the nodes in your Ray cluster, creating the distributed collection of blocks that makes
+up a distributed Ray Dataset.
+
+.. image:: images/dataset-read.svg
+   :width: 650px
+   :align: center
+
+This default parallelism can be overridden via the ``parallelism`` argument; see the
+:ref:`performance guide <data_performance_tips>`  for tips on how to tune this read
+parallelism.
+
+.. _dataset_deferred_reading:
+
+Deferred Read Task Execution
+============================
+
+Datasets created via the ``ray.data.read_*()`` APIs are semi-lazy: initially, only the
+first read task will be executed. This avoids blocking Dataset creation on the reading
+of all data files, enabling inspection functions like
+:meth:`ds.schema() <ray.data.Dataset.schema>` and
+:meth:`ds.show() <ray.data.Dataset.show>` to be used right away. Executing further
+transformations on the Dataset will trigger execution of all read tasks, and execution
+of all read tasks can be triggered manually using the
+:meth:`ds.fully_executed() <ray.data.Dataset.fully_executed>` API.
+

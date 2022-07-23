@@ -1,10 +1,10 @@
 .. _accessing_datasets:
 
-===================
-Accessing Datasets
-===================
+==================
+Consuming Datasets
+==================
 
-The data underlying a ``Dataset`` can be accessed in several ways:
+The data underlying a ``Dataset`` can be consumed in several ways:
 
 * Retrieving a limited prefix of rows.
 * Iterating over rows and batches.
