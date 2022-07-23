@@ -236,7 +236,7 @@ class _AgentCollector:
             assert (
                 view_req.shift_arr is not None
             ), "View requirement shift_arr cannot be None."
-            data_2 = []
+            data = []
             for d in np_data[data_col]:
                 shifted_data = []
 
@@ -277,136 +277,7 @@ class _AgentCollector:
                     shifted_data_np = np.stack(shifted_data, 0)
                 else:
                     shifted_data_np = np.array(shifted_data)
-                data_2.append(shifted_data_np)
-
-            if view_req.shift_from is not None:
-                # Batch repeat value > 1: Only repeat the shift_from/to range
-                # every n timesteps.
-                if view_req.batch_repeat_value > 1:
-                    count = int(
-                        math.ceil(
-                            (len(np_data[data_col][0]) - self.shift_before)
-                            / view_req.batch_repeat_value
-                        )
-                    )
-                    data = [
-                        np.asarray(
-                            [
-                                d[
-                                    self.shift_before
-                                    + (i * view_req.batch_repeat_value)
-                                    + view_req.shift_from
-                                    + obs_shift : self.shift_before
-                                    + (i * view_req.batch_repeat_value)
-                                    + view_req.shift_to
-                                    + 1
-                                    + obs_shift
-                                ]
-                                for i in range(count)
-                            ]
-                        )
-                        for d in np_data[data_col]
-                    ]
-                # Batch repeat value = 1: Repeat the shift_from/to range at
-                # each timestep.
-                else:
-                    # TODO: @kourosh we don't have test coverage on this block of code.
-                    d0 = np_data[data_col][0]
-                    shift_win = view_req.shift_to - view_req.shift_from + 1
-                    data_size = d0.itemsize * int(np.product(d0.shape[1:]))
-                    strides = [
-                        d0.itemsize * int(np.product(d0.shape[i + 1 :]))
-                        for i in range(1, len(d0.shape))
-                    ]
-                    start = (
-                        self.shift_before
-                        - shift_win
-                        + 1
-                        + obs_shift
-                        + view_req.shift_to
-                    )
-                    data = [
-                        np.lib.stride_tricks.as_strided(
-                            d[start : start + self.agent_steps],
-                            [self.agent_steps, shift_win]
-                            + [d.shape[i] for i in range(1, len(d.shape))],
-                            [data_size, data_size] + strides,
-                        )
-                        for d in np_data[data_col]
-                    ]
-            # Set of (probably non-consecutive) indices.
-            # Example:
-            #  shift=[-3, 0]
-            #  buffer=[-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-            #  resulting data=[[-3, 0], [-2, 1], [-1, 2], [0, 3], [1, 4], ...]
-            elif isinstance(view_req.shift, np.ndarray):
-                data = [
-                    d[self.shift_before + obs_shift + view_req.shift]
-                    for d in np_data[data_col]
-                ]
-            # Single shift int value. Use the trajectory as-is, and if
-            # `shift` != 0: shifted by that value.
-            else:
-                shift = view_req.shift + obs_shift
-
-                # Batch repeat (only provide a value every n timesteps).
-                if view_req.batch_repeat_value > 1:
-                    count = int(
-                        math.ceil(
-                            (len(np_data[data_col][0]) - self.shift_before)
-                            / view_req.batch_repeat_value
-                        )
-                    )
-                    data = [
-                        np.asarray(
-                            [
-                                d[
-                                    self.shift_before
-                                    + (i * view_req.batch_repeat_value)
-                                    + shift
-                                ]
-                                for i in range(count)
-                            ]
-                        )
-                        for d in np_data[data_col]
-                    ]
-                # Shift is exactly 0: Use trajectory as is.
-                # TODO @kourosh removing this since the last else statement is already
-                # capturing this
-                # elif shift == 0:
-                #     data = [d[self.shift_before :] for d in np_data[data_col]]
-                # Shift is positive: We still need to 0-pad at the end.
-                elif shift > 0:
-                    data = [
-                        _to_float_np_array(
-                            np.concatenate(
-                                [
-                                    d[self.shift_before + shift :],
-                                    [
-                                        np.zeros(
-                                            shape=view_req.space.shape,
-                                            dtype=view_req.space.dtype,
-                                        )
-                                        for _ in range(shift)
-                                    ],
-                                ]
-                            )
-                        )
-                        for d in np_data[data_col]
-                    ]
-                # Shift is negative: Shift into the already existing and
-                # 0-padded "before" area of our buffers.
-                else:
-                    data = [
-                        d[self.shift_before + shift : len(d) + shift]
-                        for d in np_data[data_col]
-                    ]
-
-            # try:
-            #     check(data, data_2)
-            # except Exception as e:
-            #     breakpoint()
-            data = data_2
+                data.append(shifted_data_np)
 
             if len(data) > 0:
                 if data_col not in self.buffer_structs:
