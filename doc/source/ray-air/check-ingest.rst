@@ -3,9 +3,9 @@
 Configuring Training Datasets
 =============================
 
-Data ingest is the process of loading data from storage, apply preprocessing steps, and feeding the data into Trainers in AIR.
+AIR builds its training data pipeline on :ref:`Ray Datasets <datasets>`, which is a scalable, framework-agnostic data loading and preprocessing library. Datasets enables AIR to seamlessly load data for local and distributed training with Train.
 
-AIR builds its ingest pipeline on :ref:`Ray Datasets <datasets>`, which is a scalable, framework-agnostic data loading and preprocessing library. This enables AIR to seamlessly load datasets ranging from just a few kilobytes to terabytes in size for training.
+This page describes how to setup and configure these datasets in Train under different scenarios and scales.
 
 Overview
 --------
