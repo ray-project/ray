@@ -288,6 +288,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
       // We need to execute this outside of the lock to prevent deadlock.
       wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
+      // Reset the queue
+      queue->second = std::deque<std::pair<int64_t, TaskSpecification>>();
     } else if (queue->second.state != rpc::ActorTableData::DEAD) {
       // Only update the actor's state if it is not permanently dead. The actor
       // will eventually get restarted or marked as permanently dead.
