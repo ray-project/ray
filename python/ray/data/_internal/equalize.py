@@ -38,6 +38,12 @@ def _equalize(
         per_split_blocks_with_metadata, per_split_num_rows, target_split_size
     )
 
+    # validate invariants
+    for shaved_split, split_needed_row in zip(shaved_splits, per_split_needed_rows):
+        num_shaved_rows = sum([meta.num_rows for _, meta in shaved_split])
+        assert num_shaved_rows <= target_split_size
+        assert num_shaved_rows + split_needed_row == target_split_size
+
     # phase 2: based on the num rows needed for each shaved split, split the leftovers
     # in the shape that exactly matches the rows needed.
     leftover_splits = _split_leftovers(leftovers, per_split_needed_rows)
@@ -45,6 +51,10 @@ def _equalize(
     # phase 3: merge the shaved_splits and leftoever splits and return.
     for i, leftover_split in enumerate(leftover_splits):
         shaved_splits[i].extend(leftover_split)
+
+        # validate invariants.
+        num_shaved_rows = sum([meta.num_rows for _, meta in shaved_splits[i]])
+        assert num_shaved_rows == target_split_size
 
     # Compose the result back to blocklists
     equalized_block_lists: List[BlockList] = []
@@ -100,7 +110,7 @@ def _shave_all_splits(
     Args:
         input_splits: all block list to shave.
         input_splits: num rows (per block) for each block list.
-        target_size:  the upper bound target size of the shaved lists.
+        target_size: the upper bound target size of the shaved lists.
     Returns:
         A tuple of:
             - all shaved block list.
