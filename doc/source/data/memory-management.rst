@@ -63,7 +63,7 @@ That's why Datasets offers a lazy execution mode, which you can transition to af
 you're done prototyping your Datasets pipeline.
 
 Lazy execution mode can be enabled by calling
-:meth:`ds = ds.experimental_lazy() <ray.data.Dataset.experimental_lazy()>`, which
+:meth:`ds = ds.lazy() <ray.data.Dataset.lazy()>`, which
 returns a dataset whose all subsequent operations will be **lazy**. These operations
 won't be executed until the dataset is consumed (e.g. via
 :meth:`ds.take() <ray.data.Dataset.take>`,
