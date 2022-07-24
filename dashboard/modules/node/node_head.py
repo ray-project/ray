@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 
 import aiohttp.web
 
@@ -70,8 +71,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._gcs_node_info_stub = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
-        # Whether or not the head node is registered to the module.
-        self._head_node_registered = False
+        # Total number of node updates happened.
+        self._node_update_cnt = 0
+        # The time where the module is started.
+        self._module_start_time = time.time()
+        # The time it takes until the head node is registered. None means
+        # head node hasn't been registered.
+        self._head_node_registration_time_s = None
 
     async def _update_stubs(self, change):
         if change.old:
@@ -122,8 +128,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     node_id = node["nodeId"]
                     ip = node["nodeManagerAddress"]
                     hostname = node["nodeManagerHostname"]
-                    if ip == self._dashboard_head.ip:
-                        self._head_node_registered = True
+                    if (
+                        ip == self._dashboard_head.ip
+                        and not self._head_node_registration_time_s
+                    ):
+                        self._head_node_registration_time_s = (
+                            time.time() - self._module_start_time
+                        )
                     node_id_to_ip[node_id] = ip
                     node_id_to_hostname[node_id] = hostname
                     assert node["state"] in ["ALIVE", "DEAD"]
@@ -150,12 +161,31 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception("Error updating nodes.")
             finally:
+                self._node_update_cnt += 1
                 # Until the head node is registered, we update the
                 # node status more frequently.
-                if not self._head_node_registered:
+                # If the head node is not updated after 10 seconds, it just stops
+                # doing frequent update to avoid unexpected edge case.
+                if (
+                    not self._head_node_registration_time_s
+                ) and self._node_update_cnt < 100:
                     await asyncio.sleep(0.1)
                 else:
                     await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
+
+    @routes.get("/internal/node_module")
+    async def get_node_module_internal_state(self, req) -> aiohttp.web.Response:
+        return dashboard_optional_utils.rest_response(
+            success=True,
+            message="",
+            **{
+                "head_node_registration_time_s": self._head_node_registration_time_s,
+                "registered_nodes": len(DataSource.nodes),
+                "registered_agents": len(DataSource.agents),
+                "node_update_count": self._node_update_cnt,
+                "module_lifetime_s": time.time() - self._module_start_time,
+            },
+        )
 
     @routes.get("/nodes")
     @dashboard_optional_utils.aiohttp_cache

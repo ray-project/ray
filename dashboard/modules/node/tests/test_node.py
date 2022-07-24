@@ -13,6 +13,7 @@ from ray.cluster_utils import Cluster
 from ray.dashboard.modules.node.node_consts import (
     LOG_PRUNE_THREASHOLD,
     MAX_LOGS_TO_CACHE,
+    UPDATE_NODES_INTERVAL_SECONDS,
 )
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (
@@ -524,6 +525,32 @@ def test_logs_max_count(
     assert wait_until_succeeded_without_exception(
         check_logs, (AssertionError,), timeout_ms=10000
     )
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+)
+def test_frequent_node_update(
+    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
+):
+    cluster: Cluster = ray_start_cluster_head
+    assert wait_until_server_available(cluster.webui_url)
+    webui_url = cluster.webui_url
+    webui_url = format_web_url(webui_url)
+
+    def verify():
+        response = requests.get(webui_url + "/internal/node_module")
+        response.raise_for_status()
+        result = response.json()
+        data = result["data"]
+        head_node_registration_time = data["headNodeRegistrationTimeS"]
+        # If the head node is not registered, it is None.
+        assert head_node_registration_time is not None
+        # Head node should be registered before the node update interval
+        # because we do frequent until the head node is registered.
+        return head_node_registration_time < UPDATE_NODES_INTERVAL_SECONDS
+
+    wait_for_condition(verify, timeout=15)
 
 
 if __name__ == "__main__":
