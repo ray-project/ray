@@ -2,25 +2,29 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Union, Tuple
 
 from ray.air.constants import WILDCARD_KEY
-from ray.tune.progress_reporter import ProgressReporter
-from ray.tune.syncer import SyncConfig
-from ray.tune.utils.log import Verbosity
 from ray.util.annotations import PublicAPI
-from ray.tune.search.sample import Domain
+
 
 # Move here later when ml_utils is deprecated. Doing it now causes a circular import.
-from ray.util.ml_utils.checkpoint_manager import CheckpointConfig
 
 if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.tune.callback import Callback
+    from ray.tune.progress_reporter import ProgressReporter
+    from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
+    from ray.tune.syncer import SyncConfig
+    from ray.tune.utils.log import Verbosity
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 # Dict[str, List] is to support `tune.grid_search`:
 # TODO(sumanthratna/matt): Upstream this to Tune.
-SampleRange = Union[Domain, Dict[str, List]]
+SampleRange = Union["Domain", Dict[str, List]]
+
+
+MAX = "max"
+MIN = "min"
 
 
 @dataclass
@@ -393,6 +397,83 @@ class FailureConfig:
 
 @dataclass
 @PublicAPI(stability="alpha")
+class CheckpointConfig:
+    """Configurable parameters for defining the checkpointing strategy.
+
+    Default behavior is to persist all checkpoints to disk. If
+    ``num_to_keep`` is set, the default retention policy is to keep the
+    checkpoints with maximum timestamp, i.e. the most recent checkpoints.
+
+    Args:
+        num_to_keep: The number of checkpoints to keep
+            on disk for this run. If a checkpoint is persisted to disk after
+            there are already this many checkpoints, then an existing
+            checkpoint will be deleted. If this is ``None`` then checkpoints
+            will not be deleted. If this is ``0`` then no checkpoints will be
+            persisted to disk.
+        checkpoint_score_attribute: The attribute that will be used to
+            score checkpoints to determine which checkpoints should be kept
+            on disk when there are greater than ``num_to_keep`` checkpoints.
+            This attribute must be a key from the checkpoint
+            dictionary which has a numerical value. Per default, the last
+            checkpoints will be kept.
+        checkpoint_score_order: Either "max" or "min".
+            If "max", then checkpoints with highest values of
+            ``checkpoint_score_attribute`` will be kept.
+            If "min", then checkpoints with lowest values of
+            ``checkpoint_score_attribute`` will be kept.
+        checkpoint_frequency: Number of iterations between checkpoints. If 0
+            this will disable checkpointing.
+            Please note that most trainers will still save one checkpoint at
+            the end of training.
+            This attribute is only supported
+            by trainers that don't take in custom training loops.
+        checkpoint_at_end: If True, will save a checkpoint at the end of training.
+            This attribute is only supported by trainers that don't take in
+            custom training loops. Defaults to True for trainers that support it
+            and False for generic function trainables.
+
+    """
+
+    num_to_keep: Optional[int] = None
+    checkpoint_score_attribute: Optional[str] = None
+    checkpoint_score_order: str = MAX
+    checkpoint_frequency: int = 0
+    checkpoint_at_end: Optional[bool] = None
+
+    def __post_init__(self):
+        if self.num_to_keep is not None and self.num_to_keep < 0:
+            raise ValueError(
+                f"Received invalid num_to_keep: "
+                f"{self.num_to_keep}. "
+                f"Must be None or non-negative integer."
+            )
+        if self.checkpoint_score_order not in (MAX, MIN):
+            raise ValueError(
+                f"checkpoint_score_order must be either " f'"{MAX}" or "{MIN}".'
+            )
+
+        if self.checkpoint_frequency < 0:
+            raise ValueError(
+                f"checkpoint_frequency must be >=0, got {self.checkpoint_frequency}"
+            )
+
+    @property
+    def _tune_legacy_checkpoint_score_attr(self) -> Optional[str]:
+        """Same as ``checkpoint_score_attr`` in ``tune.run``.
+
+        Only used for Legacy API compatibility.
+        """
+        if self.checkpoint_score_attribute is None:
+            return self.checkpoint_score_attribute
+        prefix = ""
+        if self.checkpoint_score_order == MIN:
+            prefix = "min-"
+        return f"{prefix}{self.checkpoint_score_attribute}"
+
+
+@dataclass
+@PublicAPI(stability="alpha")
 class RunConfig:
     """Runtime configuration for individual trials that are run.
 
@@ -449,14 +530,16 @@ class RunConfig:
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
-    sync_config: Optional[SyncConfig] = None
+    sync_config: Optional["SyncConfig"] = None
     checkpoint_config: Optional[CheckpointConfig] = None
-    progress_reporter: Optional[ProgressReporter] = None
-    verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS
+    progress_reporter: Optional["ProgressReporter"] = None
+    verbose: Union[int, "Verbosity"] = 3
     log_to_file: Union[bool, str, Tuple[str, str]] = False
     reuse_actors: Optional[bool] = None
 
     def __post_init__(self):
+        from ray.tune.syncer import SyncConfig
+
         if not self.failure_config:
             self.failure_config = FailureConfig()
 
