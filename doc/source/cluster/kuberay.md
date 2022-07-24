@@ -2,7 +2,7 @@
 (kuberay-index)=
 ## Overview
 
-You can leverage your Kubernetes cluster as a substrate for execution of distributed Ray programs.
+You can execute your distributed Ray programs on a Kubernetes cluster.
 
 The [KubeRay Operator](https://ray-project.github.io/kuberay/components/operator/) provides a Kubernetes-native
 interface for managing Ray clusters. Each Ray cluster consist of a head pod and collection of worker pods.
