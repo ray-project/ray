@@ -373,7 +373,7 @@ class StateApiClient(SubmissionClient):
         options: ListApiOptions,
         raise_on_missing_output: bool,
         _explain: bool = False,
-    ) -> Union[Dict, List]:
+    ) -> List[Dict]:
         """List resources states
 
         Args:
