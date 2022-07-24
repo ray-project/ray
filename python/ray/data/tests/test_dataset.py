@@ -1531,17 +1531,17 @@ def test_iter_batches_basic(ray_start_regular_shared):
     ds = ray.data.from_pandas(dfs)
 
     # Default.
-    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pandas"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_format="pandas"), dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
     # pyarrow.Table format.
-    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pyarrow"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_format="pyarrow"), dfs):
         assert isinstance(batch, pa.Table)
         assert batch.equals(pa.Table.from_pandas(df))
 
     # NumPy format.
-    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="numpy"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_format="numpy"), dfs):
         assert isinstance(batch, dict)
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
@@ -1549,14 +1549,14 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Test NumPy format on Arrow blocks.
     ds2 = ds.map_batches(lambda b: b, batch_size=None, batch_format="pyarrow")
-    for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
+    for batch, df in zip(ds2.iter_batches(batch_format="numpy"), dfs):
         assert isinstance(batch, dict)
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
     # Native format.
-    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
         assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
@@ -1616,9 +1616,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     )
 
     # Prefetch.
-    batches = list(
-        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
-    )
+    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
@@ -1637,11 +1635,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     )
 
     # Prefetch more than number of blocks.
-    batches = list(
-        ds.iter_batches(
-            prefetch_blocks=len(dfs), batch_size=None, batch_format="pandas"
-        )
-    )
+    batches = list(ds.iter_batches(prefetch_blocks=len(dfs), batch_format="pandas"))
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
@@ -1650,9 +1644,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     # Prefetch with ray.wait.
     context = DatasetContext.get_current()
     context.actor_prefetcher_enabled = False
-    batches = list(
-        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
-    )
+    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
@@ -1665,11 +1657,7 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     # Input validation.
     # Batch size must be given for local shuffle.
     with pytest.raises(ValueError):
-        list(
-            ray.data.range(100).iter_batches(
-                batch_size=None, local_shuffle_buffer_size=10
-            )
-        )
+        list(ray.data.range(100).iter_batches(local_shuffle_buffer_size=10))
 
     def range(n, parallelism=200):
         if ds_format == "simple":
@@ -1958,7 +1946,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
 def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
-    for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
+    for _, expected in zip(ds.iter_batches(), expected_num_blocks):
         assert ds._plan.execute()._num_computed() == expected
 
 
