@@ -19,7 +19,7 @@ on `Github`_.
     suggestion.rst
     schedulers.rst
     stoppers.rst
-    analysis.rst
+    result_grid.rst
     reporters.rst
     logging.rst
     env.rst

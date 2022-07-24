@@ -39,6 +39,13 @@ class TuneConfig:
         time_budget_s: Global time budget in
             seconds after which all trials are stopped. Can also be a
             ``datetime.timedelta`` object.
+        reuse_actors: Whether to reuse actors between different trials
+            when possible. This can drastically speed up experiments that start
+            and stop actors often (e.g., PBT in time-multiplexing mode). This
+            requires trials to have the same resource requirements.
+            Defaults to ``True`` for function trainables (including most
+            Ray AIR trainers) and ``False`` for class and registered trainables
+            (e.g. RLlib).
     """
 
     # Currently this is not at feature parity with `tune.run`, nor should it be.
@@ -51,3 +58,4 @@ class TuneConfig:
     num_samples: int = 1
     max_concurrent_trials: Optional[int] = None
     time_budget_s: Optional[Union[int, float, datetime.timedelta]] = None
+    reuse_actors: Optional[bool] = None

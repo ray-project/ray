@@ -15,7 +15,7 @@ First, you define the hyperparameters you want to tune in a `search space` and p
 that specifies the objective you want to tune.
 Then you select a `search algorithm` to effectively optimize your parameters and optionally use a
 `scheduler` to stop searches early and speed up your experiments.
-Together with other configuration, your `trainable`, algorithm, and scheduler are passed into ``tune.run()``,
+Together with other configuration, your `trainable`, algorithm, and scheduler are passed into ``Tuner``,
 which runs your experiments and creates `trials`.
 These trials can then be used in `analyses` to inspect your experiment results.
 The following figure shows an overview of these components, which we cover in detail in the next sections.
@@ -90,11 +90,11 @@ Here's an example covering all search space functions. Again,
 Trials
 ------
 
-You use :ref:`tune.run <tune-run-ref>` to execute and manage hyperparameter tuning and generate your `trials`.
-At a minimum, your ``tune.run()`` call takes in a trainable as first argument, and a ``config`` dictionary
+You use :ref:`Tuner.fit <tune-run-ref>` to execute and manage hyperparameter tuning and generate your `trials`.
+At a minimum, your ``Tuner`` call takes in a trainable as first argument, and a ``param_space`` dictionary
 to define your search space.
 
-The ``tune.run()`` function also provides many features such as :ref:`logging <tune-logging>`,
+The ``Tuner.fit()`` function also provides many features such as :ref:`logging <tune-logging>`,
 :ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping-ref>`.
 Continuing with the example defined earlier (minimizing ``a (x ** 2) + b``), a simple Tune run with a simplistic
 search space for ``a`` and ``b`` would look like this:
@@ -104,14 +104,14 @@ search space for ``a`` and ``b`` would look like this:
     :start-after: __run_tunable_start__
     :end-before: __run_tunable_end__
 
-``tune.run`` will generate a couple of hyperparameter configurations from its arguments,
+``Tuner.fit`` will generate a couple of hyperparameter configurations from its arguments,
 wrapping them into :ref:`Trial objects <trial-docstring>`.
 
 Trials contain a lot of information.
-For instance, you can get the hyperparameter configuration used (``trial.config``), the trial ID (``trial.trial_id``),
+For instance, you can get the hyperparameter configuration using (``trial.config``), the trial ID (``trial.trial_id``),
 the trial's resource specification (``resources_per_trial`` or ``trial.placement_group_factory``) and many other values.
 
-By default ``tune.run`` will execute until all trials stop or error.
+By default ``Tuner.fit`` will execute until all trials stop or error.
 Here's an example output of a trial run:
 
 .. TODO: how to make sure this doesn't get outdated?
@@ -151,7 +151,7 @@ Here's an example of uniformly sampling between ``[0, 1]`` for ``a`` and ``b``:
     :end-before: __search_space_end__
 
 To learn more about the various ways of configuring your Tune runs,
-check out the :ref:`tune.run() API reference<tune-run-ref>`.
+check out the :ref:`Tuner API reference<tune-run-ref>`.
 
 Search Algorithms
 -----------------
@@ -163,7 +163,7 @@ with a good starting point for your hyperparameter optimization.
 
 For instance, to use Tune with simple Bayesian optimization through the ``bayesian-optimization`` package
 (make sure to first run ``pip install bayesian-optimization``), we can define an ``algo`` using ``BayesOptSearch``.
-Simply pass in a ``search_alg`` argument to ``tune.run``:
+Simply pass in a ``search_alg`` argument to ``tune.TuneConfig``, which is taken in by ``Tuner``:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -280,7 +280,7 @@ configurations to evaluate.
 Here's a quick example of using the so-called ``HyperBand`` scheduler to tune an experiment.
 All schedulers take in a ``metric``, which is the value reported by your trainable.
 The ``metric`` is then maximized or minimized according to the ``mode`` you provide.
-To use a scheduler, just pass in a ``scheduler`` argument to ``tune.run()``:
+To use a scheduler, just pass in a ``scheduler`` argument to ``tune.TuneConfig``, which is taken in by ``Tuner``:
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -343,9 +343,9 @@ Learn more about trial schedulers in :ref:`the scheduler API documentation<sched
 Analyses
 --------
 
-``tune.run`` returns an :ref:`ExperimentAnalysis <tune-analysis-docs>` object which has methods you can use for
+``Tuner.fit()`` returns an :ref:`ResultGrid <tune-analysis-docs>` object which has methods you can use for
 analyzing your training.
-The following example shows you how to access various metrics from an ``analysis`` object, like the best available
+The following example shows you how to access various metrics from an ``ResultGrid`` object, like the best available
 trial, or the best hyperparameter configuration for that trial:
 
 .. literalinclude:: doc_code/key_concepts.py

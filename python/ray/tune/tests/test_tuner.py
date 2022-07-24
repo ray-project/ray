@@ -255,7 +255,7 @@ class TunerTest(unittest.TestCase):
             lambda kw: isinstance(kw["progress_reporter"], CLIReporter),
         ),
         (
-            {"run_config": RunConfig(reuse_actors=True)},
+            {"tune_config": TuneConfig(reuse_actors=True)},
             lambda kw: kw["reuse_actors"] is True,
         ),
         (

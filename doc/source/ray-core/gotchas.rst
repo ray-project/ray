@@ -95,22 +95,27 @@ of Ray Tasks itself, e.g.
 
 .. code-block:: python
 
+  from ray import air, tune
+
   def create_task_that_uses_resources():
     @ray.remote(num_cpus=10)
     def sample_task():
       print("Hello")
       return
 
-    return ray.get([my_task.remote() for i in range(10)])
+    return ray.get([sample_task.remote() for i in range(10)])
 
   def objective(config):
     create_task_that_uses_resources()
 
-  analysis = tune.run(objective, config=search_space)
+  tuner = tune.Tuner(objective, param_space={"a": 1})
+  tuner.fit()
 
-This will hang forever. 
+This will error with message: 
+ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group 
+because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
 
-**Expected behavior**: The above executes and doesn't hang.
+**Expected behavior**: The above executes.
 
 **Fix**: In the ``@ray.remote`` declaration of tasks
 called by ``create_task_that_uses_resources()`` , include a
