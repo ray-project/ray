@@ -2,6 +2,7 @@
 This file defines the common pytest fixtures used in current directory.
 """
 import json
+import logging
 import os
 import platform
 import shutil
@@ -25,7 +26,6 @@ from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchem
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
-    wait_for_redis_to_start,
 )
 from ray._private.test_utils import (
     get_and_run_node_killer,
@@ -36,6 +36,84 @@ from ray._private.test_utils import (
     enable_external_redis,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
+
+logger = logging.getLogger(__name__)
+
+START_REDIS_WAIT_RETRIES = int(os.environ.get("RAY_START_REDIS_WAIT_RETRIES", "60"))
+
+
+def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
+    """Wait for a Redis server to be available.
+
+    This is accomplished by creating a Redis client and sending a random
+    command to the server until the command gets through.
+
+    Args:
+        redis_ip_address: The IP address of the redis server.
+        redis_port: The port of the redis server.
+        password: The password of the redis server.
+
+    Raises:
+        Exception: An exception is raised if we could not connect with Redis.
+    """
+    import redis
+
+    redis_client = redis.StrictRedis(
+        host=redis_ip_address, port=redis_port, password=password
+    )
+    # Wait for the Redis server to start.
+    num_retries = START_REDIS_WAIT_RETRIES
+
+    delay = 0.001
+    for i in range(num_retries):
+        try:
+            # Run some random command and see if it worked.
+            logger.debug(
+                "Waiting for redis server at {}:{} to respond...".format(
+                    redis_ip_address, redis_port
+                )
+            )
+            redis_client.client_list()
+        # If the Redis service is delayed getting set up for any reason, we may
+        # get a redis.ConnectionError: Error 111 connecting to host:port.
+        # Connection refused.
+        # Unfortunately, redis.ConnectionError is also the base class of
+        # redis.AuthenticationError. We *don't* want to obscure a
+        # redis.AuthenticationError, because that indicates the user provided a
+        # bad password. Thus a double except clause to ensure a
+        # redis.AuthenticationError isn't trapped here.
+        except redis.AuthenticationError as authEx:
+            raise RuntimeError(
+                f"Unable to connect to Redis at {redis_ip_address}:{redis_port}."
+            ) from authEx
+        except redis.ConnectionError as connEx:
+            if i >= num_retries - 1:
+                raise RuntimeError(
+                    f"Unable to connect to Redis at {redis_ip_address}:"
+                    f"{redis_port} after {num_retries} retries. Check that "
+                    f"{redis_ip_address}:{redis_port} is reachable from this "
+                    "machine. If it is not, your firewall may be blocking "
+                    "this port. If the problem is a flaky connection, try "
+                    "setting the environment variable "
+                    "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of"
+                    " attempts to ping the Redis server."
+                ) from connEx
+            # Wait a little bit.
+            time.sleep(delay)
+            # Make sure the retry interval doesn't increase too large, which will
+            # affect the delivery time of the Ray cluster.
+            delay = min(1, delay * 2)
+        else:
+            break
+    else:
+        raise RuntimeError(
+            f"Unable to connect to Redis (after {num_retries} retries). "
+            "If the Redis instance is on a different machine, check that "
+            "your firewall and relevant Ray ports are configured properly. "
+            "You can also set the environment variable "
+            "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of "
+            "attempts to ping the Redis server."
+        )
 
 
 def get_default_fixure_system_config():
@@ -82,7 +160,6 @@ def _setup_redis(request):
             password=ray_constants.REDIS_DEFAULT_PASSWORD,
         )
         processes.append(proc)
-        wait_for_redis_to_start("127.0.0.1", port, ray_constants.REDIS_DEFAULT_PASSWORD)
     address_str = ",".join(map(lambda x: f"127.0.0.1:{x}", external_redis_ports))
     import os
 

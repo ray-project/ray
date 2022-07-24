@@ -130,7 +130,7 @@ Status RedisClient::Connect(std::vector<instrumented_io_context *> io_services) 
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
                                          options_.server_port_,
-                                         /*sharding=*/true,
+                                         /*sharding=*/options_.enable_sharding_conn_,
                                          /*password=*/options_.password_));
 
   if (options_.enable_sharding_conn_) {
