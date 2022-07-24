@@ -32,6 +32,7 @@ from ray.rllib.policy.tf_mixins import (
     LearningRateSchedule,
     KLCoeffMixin,
     ValueNetworkMixin,
+    GradStatsMixin,
 )
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -99,6 +100,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
         EntropyCoeffSchedule,
         ValueNetworkMixin,
         TargetNetworkMixin,
+        GradStatsMixin,
         base,
     ):
         def __init__(
@@ -137,6 +139,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             )
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
+            GradStatsMixin.__init__(self)
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
