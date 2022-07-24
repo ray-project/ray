@@ -10,6 +10,7 @@ import tensorflow as tf
 from ray.air.callbacks.keras import Callback as TrainReportCallback
 
 from ray.train.tensorflow import TensorflowTrainer
+from ray.air.config import ScalingConfig
 
 
 def mnist_dataset(batch_size):
@@ -78,7 +79,7 @@ def train_tensorflow_mnist(num_workers=2, use_gpu=False, epochs=4):
     trainer = TensorflowTrainer(
         train_func,
         train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": epochs},
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     results = trainer.fit()
     print(f"Results: {results.metrics}")

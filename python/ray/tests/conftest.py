@@ -117,6 +117,8 @@ def shutdown_only(maybe_external_redis):
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @contextmanager
@@ -124,11 +126,13 @@ def _ray_start(**kwargs):
     init_kwargs = get_default_fixture_ray_kwargs()
     init_kwargs.update(kwargs)
     # Start the Ray processes.
-    address_info = ray.init(**init_kwargs)
+    address_info = ray.init("local", **init_kwargs)
 
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -286,7 +290,7 @@ def ray_start_object_store_memory(request, maybe_external_redis):
         "_system_config": system_config,
         "object_store_memory": store_size,
     }
-    ray.init(**init_kwargs)
+    ray.init("local", **init_kwargs)
     yield store_size
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -328,6 +332,8 @@ def call_ray_start(request):
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"], env=env)
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -347,6 +353,8 @@ def call_ray_start_with_external_redis(request):
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"])
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -361,6 +369,8 @@ def init_and_serve():
 def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
+    # Delete the cluster address just in case.
+    ray._private.utils.reset_ray_address()
 
 
 # Used to test both Ray Client and non-Ray Client codepaths.

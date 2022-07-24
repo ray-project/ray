@@ -146,6 +146,9 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
     """
 
     def mapping(item):
+        if item is None:
+            # returns None with dtype=np.obj
+            return np.asarray(item)
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             return item if device is None else item.to(device)
@@ -459,11 +462,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     if isinstance(space, Discrete):
         return nn.functional.one_hot(x.long(), space.n)
     elif isinstance(space, MultiDiscrete):
+        if isinstance(space.nvec[0], np.ndarray):
+            nvec = np.ravel(space.nvec)
+            x = x.reshape(x.shape[0], -1)
+        else:
+            nvec = space.nvec
         return torch.cat(
-            [
-                nn.functional.one_hot(x[:, i].long(), n)
-                for i, n in enumerate(space.nvec)
-            ],
+            [nn.functional.one_hot(x[:, i].long(), n) for i, n in enumerate(nvec)],
             dim=-1,
         )
     else:

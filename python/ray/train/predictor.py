@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Type, Callable
+from typing import Dict, Type, Optional, Callable
 
 import numpy as np
 import pandas as pd
@@ -11,6 +11,7 @@ from ray.air.util.data_batch_conversion import (
     convert_batch_type_to_pandas,
     convert_pandas_to_batch_type,
 )
+from ray.data import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 try:
@@ -72,8 +73,11 @@ class Predictor(abc.ABC):
            tensor data to avoid extra copies from Pandas conversions.
     """
 
+    def __init__(self, preprocessor: Optional[Preprocessor] = None):
+        """Subclasseses must call Predictor.__init__() to set a preprocessor."""
+        self._preprocessor: Optional[Preprocessor] = preprocessor
+
     @classmethod
-    @PublicAPI(stability="alpha")
     @abc.abstractmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
         """Create a specific predictor from a checkpoint.
@@ -108,7 +112,14 @@ class Predictor(abc.ABC):
 
         return PandasUDFPredictor.from_checkpoint(Checkpoint.from_dict({"dummy": 1}))
 
-    @PublicAPI(stability="alpha")
+    def get_preprocessor(self) -> Optional[Preprocessor]:
+        """Get the preprocessor to use prior to executing predictions."""
+        return self._preprocessor
+
+    def set_preprocessor(self, preprocessor: Optional[Preprocessor]) -> None:
+        """Set the preprocessor to use prior to executing predictions."""
+        self._preprocessor = preprocessor
+
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
 
@@ -123,8 +134,13 @@ class Predictor(abc.ABC):
         """
         data_df = convert_batch_type_to_pandas(data)
 
-        if getattr(self, "preprocessor", None):
-            data_df = self.preprocessor.transform_batch(data_df)
+        if not hasattr(self, "_preprocessor"):
+            raise NotImplementedError(
+                "Subclasses of Predictor must call Predictor.__init__(preprocessor)."
+            )
+
+        if self._preprocessor:
+            data_df = self._preprocessor.transform_batch(data_df)
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
         return convert_pandas_to_batch_type(

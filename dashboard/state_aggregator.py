@@ -147,7 +147,7 @@ class StateAPIManager:
 
         Returns:
             A list of filtered state data in dictionary. Each state data's
-            unncessary columns are filtered by the given state_dataclass schema.
+            unnecessary columns are filtered by the given state_dataclass schema.
         """
         filters = _convert_filters_type(filters, state_dataclass)
         result = []
@@ -155,13 +155,16 @@ class StateAPIManager:
             match = True
             for filter_column, filter_predicate, filter_value in filters:
                 filterable_columns = state_dataclass.filterable_columns()
+                filter_column = filter_column.lower()
                 if filter_column not in filterable_columns:
                     raise ValueError(
                         f"The given filter column {filter_column} is not supported. "
                         f"Supported filter columns: {filterable_columns}"
                     )
 
-                if filter_predicate == "=":
+                if filter_column not in datum:
+                    match = False
+                elif filter_predicate == "=":
                     match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":
                     match = datum[filter_column] != filter_value

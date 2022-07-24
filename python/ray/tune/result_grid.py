@@ -7,7 +7,7 @@ import pandas as pd
 from ray.air.result import Result
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
-from ray.tune import ExperimentAnalysis
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI
@@ -157,6 +157,29 @@ class ResultGrid:
         """Returns the i'th result in the grid."""
         return self._trial_to_result(
             self._experiment_analysis.trials[i],
+        )
+
+    @property
+    def errors(self):
+        """Returns the exceptions of errored trials."""
+        return [result.error for result in self if result.error]
+
+    @property
+    def num_errors(self):
+        """Returns the number of errored trials."""
+        return len(
+            [t for t in self._experiment_analysis.trials if t.status == Trial.ERROR]
+        )
+
+    @property
+    def num_terminated(self):
+        """Returns the number of terminated (but not errored) trials."""
+        return len(
+            [
+                t
+                for t in self._experiment_analysis.trials
+                if t.status == Trial.TERMINATED
+            ]
         )
 
     @staticmethod

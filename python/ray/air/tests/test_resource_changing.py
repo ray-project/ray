@@ -1,6 +1,6 @@
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import FailureConfig, RunConfig
+from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.air.constants import TRAIN_DATASET_KEY
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -52,10 +52,8 @@ def train_fn(config):
 
 class AssertingDataParallelTrainer(DataParallelTrainer):
     def training_loop(self) -> None:
-        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
-        pgf = scaling_config_dataclass.as_placement_group_factory()
+        scaling_config = self._validate_scaling_config(self.scaling_config)
+        pgf = scaling_config.as_placement_group_factory()
         tr = session.get_trial_resources()
         assert pgf == tr, (pgf, tr)
         return super().training_loop()
@@ -64,12 +62,9 @@ class AssertingDataParallelTrainer(DataParallelTrainer):
 class AssertingXGBoostTrainer(XGBoostTrainer):
     @property
     def _ray_params(self):
-        scaling_config_dataclass = self._validate_and_get_scaling_config_data_class(
-            self.scaling_config
-        )
+        scaling_config = self._validate_scaling_config(self.scaling_config)
         assert (
-            scaling_config_dataclass.as_placement_group_factory()
-            == session.get_trial_resources()
+            scaling_config.as_placement_group_factory() == session.get_trial_resources()
         )
         return super()._ray_params
 
@@ -77,7 +72,7 @@ class AssertingXGBoostTrainer(XGBoostTrainer):
 def test_data_parallel_trainer(ray_start_8_cpus):
     num_workers = 2
     trainer = AssertingDataParallelTrainer(
-        train_fn, scaling_config=dict(num_workers=num_workers)
+        train_fn, scaling_config=ScalingConfig(num_workers=num_workers)
     )
     tuner = Tuner(
         trainer,
@@ -113,7 +108,7 @@ def test_gbdt_trainer(ray_start_8_cpus):
     trainer = AssertingXGBoostTrainer(
         datasets={TRAIN_DATASET_KEY: train_ds},
         label_column="target",
-        scaling_config=dict(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=2),
         params={
             "objective": "binary:logistic",
             "eval_metric": ["logloss"],

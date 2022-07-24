@@ -52,6 +52,8 @@ from ray.serve.utils import (
     install_serve_encoders_to_fastapi,
 )
 
+from ray.serve._private import api as _private_api
+
 logger = logging.getLogger(__file__)
 
 
@@ -343,10 +345,10 @@ def deployment(
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
     autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    _graceful_shutdown_wait_loop_s: Optional[float] = None,
-    _graceful_shutdown_timeout_s: Optional[float] = None,
-    _health_check_period_s: Optional[float] = None,
-    _health_check_timeout_s: Optional[float] = None,
+    graceful_shutdown_wait_loop_s: Optional[float] = None,
+    graceful_shutdown_timeout_s: Optional[float] = None,
+    health_check_period_s: Optional[float] = None,
+    health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -364,10 +366,10 @@ def deployment(
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
     autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    _graceful_shutdown_wait_loop_s: Optional[float] = None,
-    _graceful_shutdown_timeout_s: Optional[float] = None,
-    _health_check_period_s: Optional[float] = None,
-    _health_check_timeout_s: Optional[float] = None,
+    graceful_shutdown_wait_loop_s: Optional[float] = None,
+    graceful_shutdown_timeout_s: Optional[float] = None,
+    health_check_period_s: Optional[float] = None,
+    health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -439,10 +441,10 @@ def deployment(
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
         autoscaling_config=autoscaling_config,
-        graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
-        health_check_period_s=_health_check_period_s,
-        health_check_timeout_s=_health_check_timeout_s,
+        graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
+        health_check_period_s=health_check_period_s,
+        health_check_timeout_s=health_check_timeout_s,
     )
 
     def decorator(_func_or_class):
@@ -483,26 +485,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
-    try:
-        (
-            deployment_info,
-            route_prefix,
-        ) = get_global_client().get_deployment_info(name)
-    except KeyError:
-        raise KeyError(
-            f"Deployment {name} was not found. Did you call Deployment.deploy()?"
-        )
-    return Deployment(
-        deployment_info.replica_config.deployment_def,
-        name,
-        deployment_info.deployment_config,
-        version=deployment_info.version,
-        init_args=deployment_info.replica_config.init_args,
-        init_kwargs=deployment_info.replica_config.init_kwargs,
-        route_prefix=route_prefix,
-        ray_actor_options=deployment_info.replica_config.ray_actor_options,
-        _internal=True,
-    )
+    return _private_api.get_deployment(name)
 
 
 @deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
@@ -512,23 +495,8 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments()
 
-    deployments = {}
-    for name, (deployment_info, route_prefix) in infos.items():
-        deployments[name] = Deployment(
-            deployment_info.replica_config.deployment_def,
-            name,
-            deployment_info.deployment_config,
-            version=deployment_info.version,
-            init_args=deployment_info.replica_config.init_args,
-            init_kwargs=deployment_info.replica_config.init_kwargs,
-            route_prefix=route_prefix,
-            ray_actor_options=deployment_info.replica_config.ray_actor_options,
-            _internal=True,
-        )
-
-    return deployments
+    return _private_api.list_deployments()
 
 
 @PublicAPI(stability="alpha")
@@ -611,7 +579,7 @@ def run(
     )
 
     if ingress is not None:
-        return ingress.get_handle()
+        return ingress._get_handle()
 
 
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
