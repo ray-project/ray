@@ -1,31 +1,28 @@
-import copy
 import os
 import shutil
 import unittest
 from typing import Dict
 
 import numpy as np
-import torch
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.offline import JsonReader, JsonWriter
-from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
+from ray.rllib.offline.estimators.doubly_robust import DoublyRobust
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.test_utils import check
 
 import ray
 
 
-class TestFQE(unittest.TestCase):
+class TestDR(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-        regenerate_data = False
+        regenerate_data = True
         num_workers = 4 if regenerate_data else 0
         checkpoint_dir = "/tmp/cartpole/"
-        num_episodes = 1000
+        num_episodes = 50
         cls.gamma = 0.99
 
         config = (
@@ -36,9 +33,10 @@ class TestFQE(unittest.TestCase):
                 num_rollout_workers=num_workers,
                 batch_mode="complete_episodes",
             )
+            .exploration(exploration_config={"type": "SoftQ", "temperature": 0.1})
         )
         cls.algo = config.build()
-        cls.fqe_config = {"n_iters": 160, "minibatch_size": 256, "tau": 1.0}
+        cls.q_model_config = {"n_iters": 160, "minibatch_size": 128, "tau": 1.0}
 
         if regenerate_data:
             shutil.rmtree(checkpoint_dir, ignore_errors=True)
@@ -113,6 +111,13 @@ class TestFQE(unittest.TestCase):
         for _ in range(num_episodes // algo.config["num_workers"] + 1):
             # This is how many episodes we get per iteration
             batch = synchronous_parallel_sample(worker_set=algo.workers)
+            log_likelihoods = algo.get_policy().compute_log_likelihoods(
+                actions=batch[SampleBatch.ACTIONS],
+                obs_batch=batch[SampleBatch.OBS],
+                actions_normalized=False,
+            )
+            log_likelihoods = convert_to_numpy(log_likelihoods)
+            batch[SampleBatch.ACTION_PROB] = np.exp(log_likelihoods)
             writer.write(batch)
 
     @staticmethod
@@ -133,92 +138,115 @@ class TestFQE(unittest.TestCase):
         return concat_samples(batches), np.mean(ep_ret)
 
     @staticmethod
-    def check_fqe(
+    def check(
         algo: Algorithm,
         checkpoint: str,
         batch: SampleBatch,
         mean_ret: float,
-        fqe_config: Dict,
+        q_model_config: Dict,
     ):
         algo.load_checkpoint(checkpoint)
 
-        fqe = FQETorchModel(
+        q_model_config = q_model_config.copy()
+        estimator = DoublyRobust(
             policy=algo.get_policy(),
             gamma=algo.config["gamma"],
-            **fqe_config,
+            q_model_config=q_model_config,
         )
-        losses = fqe.train(batch)
-        estimates = fqe.estimate_v(batch)
-        estimates = convert_to_numpy(estimates)
-        # Change to check()
-        print(np.mean(estimates), np.std(estimates), mean_ret, np.mean(losses))
+        loss = estimator.train(batch)["loss"]
+        estimates = estimator.estimate(batch)
+        est_mean = estimates["v_target"]
+        est_std = estimates["v_target_std"]
+        print(f"{est_mean:.2f}, {est_std:.2f}, {mean_ret:.2f}, {loss:.2f}")
 
-    def test_fqe_compilation_and_stopping(self):
-        # Test FQETorchModel for:
-        # (1) Check that it does not modify the underlying batch during training
-        # (2) Check that the stopping criteria from FQE are working correctly
-        # (3) Check that using fqe._compute_action_probs equals brute force
-        # iterating over all actions with policy.compute_log_likelihoods
-        fqe = FQETorchModel(
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-        )
-        tmp_batch = copy.deepcopy(self.random_batch)
-        losses = fqe.train(self.random_batch)
-
-        # Make sure FQETorchModel.train() does not modify the batch
-        check(tmp_batch, self.random_batch)
-
-        # Make sure FQE stopping criteria are respected
-        assert (
-            len(losses) == fqe.n_iters or losses[-1] < fqe.delta
-        ), f"FQE.train() terminated early in {len(losses)} steps with final loss"
-        f"{losses[-1]} for n_iters: {fqe.n_iters} and delta: {fqe.delta}"
-
-        # Test fqe._compute_action_probs against "brute force" method
-        # of computing log_prob for each possible action individually
-        # using policy.compute_log_likelihoods
-        obs = torch.tensor(self.random_batch["obs"], device=fqe.device)
-        action_probs = fqe._compute_action_probs(obs)
-        action_probs = convert_to_numpy(action_probs)
-
-        tmp_probs = []
-        for act in range(fqe.policy.action_space.n):
-            tmp_actions = np.zeros_like(self.random_batch["actions"]) + act
-            log_probs = fqe.policy.compute_log_likelihoods(
-                actions=tmp_actions,
-                obs_batch=self.random_batch["obs"],
-            )
-            tmp_probs.append(torch.exp(log_probs))
-        tmp_probs = torch.stack(tmp_probs).transpose(0, 1)
-        tmp_probs = convert_to_numpy(tmp_probs)
-        check(action_probs, tmp_probs, decimals=3)
-
-    def test_random(self):
-        self.check_fqe(
+    def test_random_random_data(self):
+        print("Test random policy on random dataset")
+        self.check(
             self.algo,
             self.random_path,
             self.random_batch,
             self.random_reward,
-            self.fqe_config,
+            self.q_model_config,
         )
 
-    def test_mixed(self):
-        self.check_fqe(
+    def test_random_mixed_data(self):
+        print("Test random policy on mixed dataset")
+        self.check(
+            self.algo,
+            self.random_path,
+            self.mixed_batch,
+            self.random_reward,
+            self.q_model_config,
+        )
+
+    def test_random_expert_data(self):
+        print("Test random policy on expert dataset")
+        self.check(
+            self.algo,
+            self.random_path,
+            self.expert_batch,
+            self.random_reward,
+            self.q_model_config,
+        )
+
+    def test_mixed_random_data(self):
+        print("Test mixed policy on random dataset")
+        self.check(
+            self.algo,
+            self.mixed_path,
+            self.random_batch,
+            self.mixed_reward,
+            self.q_model_config,
+        )
+
+    def test_mixed_mixed_data(self):
+        print("Test mixed policy on mixed dataset")
+        self.check(
             self.algo,
             self.mixed_path,
             self.mixed_batch,
             self.mixed_reward,
-            self.fqe_config,
+            self.q_model_config,
         )
 
-    def test_expert(self):
-        self.check_fqe(
+    def test_mixed_expert_data(self):
+        print("Test mixed policy on expert dataset")
+        self.check(
+            self.algo,
+            self.mixed_path,
+            self.expert_batch,
+            self.mixed_reward,
+            self.q_model_config,
+        )
+
+    def test_expert_random_data(self):
+        print("Test expert policy on random dataset")
+        self.check(
+            self.algo,
+            self.expert_path,
+            self.random_batch,
+            self.expert_reward,
+            self.q_model_config,
+        )
+
+    def test_expert_mixed_data(self):
+        print("Test expert policy on mixed dataset")
+        self.check(
+            self.algo,
+            self.expert_path,
+            self.mixed_batch,
+            self.expert_reward,
+            self.q_model_config,
+        )
+
+    def test_expert_expert_data(self):
+        print("Test expert policy on expert dataset")
+        self.check(
             self.algo,
             self.expert_path,
             self.expert_batch,
             self.expert_reward,
-            self.fqe_config,
+            self.q_model_config,
         )
 
 
