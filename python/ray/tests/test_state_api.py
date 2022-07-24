@@ -2158,6 +2158,12 @@ def test_detail(shutdown_only):
         )
     )
 
+    # When the format is given, it should respect that formatting.
+    result = runner.invoke(cli_list, ["actors", "--detail", "--format=table"])
+    assert result.exit_code == 0
+    with pytest.raises(yaml.YAMLError):
+        yaml.load(result.output, Loader=yaml.FullLoader)
+
 
 def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None):
     """Utility functions for rate limit related e2e tests below"""
