@@ -4,7 +4,7 @@
 import time
 import argparse
 
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 
@@ -53,20 +53,26 @@ if __name__ == "__main__":
 
         ray.init(f"ray://{args.server_address}")
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         train_func,
-        name="hyperband_test",
-        metric="mean_loss",
-        mode="min",
-        num_samples=5,
-        stop={"training_iteration": 1 if args.smoke_test else 10},
-        config={
+        run_config=air.RunConfig(
+            name="hyperband_test",
+            stop={"training_iteration": 1 if args.smoke_test else 10},
+        ),
+        tune_config=tune.TuneConfig(
+            metric="mean_loss",
+            mode="min",
+            num_samples=5,
+        ),
+        param_space={
             "steps": 10,
             "width": tune.randint(10, 100),
             "height": tune.loguniform(10, 100),
         },
     )
-    print("Best hyperparameters: ", analysis.best_config)
-    best_checkpoint = analysis.best_checkpoint
+    results = tuner.fit()
+    best_result = results.get_best_result()
+    print("Best hyperparameters: ", best_result.config)
+    best_checkpoint = best_result.checkpoint
     checkpoint_data = best_checkpoint.to_dict()
     print("Best checkpoint: ", checkpoint_data)

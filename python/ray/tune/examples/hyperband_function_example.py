@@ -7,9 +7,9 @@ import os
 import numpy as np
 
 import ray
+from ray import air, tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray import tune
 from ray.tune.schedulers import HyperBandScheduler
 
 
@@ -57,15 +57,22 @@ if __name__ == "__main__":
     # which is automatically filled by Tune.
     hyperband = HyperBandScheduler(max_t=200)
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         train,
-        name="hyperband_test",
-        num_samples=20,
-        metric="episode_reward_mean",
-        mode="max",
-        stop={"training_iteration": 10 if args.smoke_test else 99999},
-        config={"height": tune.uniform(0, 100)},
-        scheduler=hyperband,
-        fail_fast=True,
+        run_config=air.RunConfig(
+            name="hyperband_test",
+            stop={"training_iteration": 10 if args.smoke_test else 99999},
+            failure_config=air.FailureConfig(
+                fail_fast=True,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            num_samples=20,
+            metric="episode_reward_mean",
+            mode="max",
+            scheduler=hyperband,
+        ),
+        param_space={"height": tune.uniform(0, 100)},
     )
-    print("Best hyperparameters found were: ", analysis.best_config)
+    results = tuner.fit()
+    print("Best hyperparameters found were: ", results.get_best_result().config)

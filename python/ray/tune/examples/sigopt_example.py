@@ -7,7 +7,7 @@ Requires the SigOpt library to be installed (`pip install sigopt`).
 import sys
 import time
 
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.sigopt import SigOptSearch
@@ -68,16 +68,21 @@ if __name__ == "__main__":
         mode="min",
     )
     scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        name="my_exp",
-        search_alg=algo,
-        scheduler=scheduler,
-        num_samples=4 if args.smoke_test else 100,
-        config={"steps": 10},
+        run_config=air.RunConfig(
+            name="my_exp",
+        ),
+        tune_config=tune.TuneConfig(
+            search_alg=algo,
+            scheduler=scheduler,
+            num_samples=4 if args.smoke_test else 100,
+        ),
+        param_space={"steps": 10},
     )
+    results = tuner.fit()
 
     print(
         "Best hyperparameters found were: ",
-        analysis.get_best_config("mean_loss", "min"),
+        results.get_best_result("mean_loss", "min").config,
     )

@@ -7,7 +7,7 @@ Requires the Ax library to be installed (`pip install ax-platform sqlalchemy`).
 import numpy as np
 import time
 
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search.ax import AxSearch
@@ -81,15 +81,20 @@ if __name__ == "__main__":
     # Limit to 4 concurrent trials
     algo = tune.search.ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        name="ax",
-        metric="hartmann6",  # provided in the 'easy_objective' function
-        mode="min",
-        search_alg=algo,
-        scheduler=scheduler,
-        num_samples=10 if args.smoke_test else 50,
-        config={
+        run_config=air.RunConfig(
+            name="ax",
+            stop={"timesteps_total": 100},
+        ),
+        tune_config=tune.TuneConfig(
+            metric="hartmann6",  # provided in the 'easy_objective' function
+            mode="min",
+            search_alg=algo,
+            scheduler=scheduler,
+            num_samples=10 if args.smoke_test else 50,
+        ),
+        param_space={
             "iterations": 100,
             "x1": tune.uniform(0.0, 1.0),
             "x2": tune.uniform(0.0, 1.0),
@@ -98,7 +103,6 @@ if __name__ == "__main__":
             "x5": tune.uniform(0.0, 1.0),
             "x6": tune.uniform(0.0, 1.0),
         },
-        stop={"timesteps_total": 100},
     )
-
-    print("Best hyperparameters found were: ", analysis.best_config)
+    results = tuner.fit()
+    print("Best hyperparameters found were: ", results.get_best_result().config)

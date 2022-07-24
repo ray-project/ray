@@ -60,12 +60,12 @@ def train_breast_cancer_cv(config: dict):
     )
 
 
-def get_best_model_checkpoint(analysis):
+def get_best_model_checkpoint(best_result: "ray.air.Result"):
     best_bst = xgb.Booster()
-    with analysis.best_checkpoint.as_directory() as checkpoint_dir:
+    with best_result.checkpoint.as_directory() as checkpoint_dir:
         best_bst.load_model(os.path.join(checkpoint_dir, "model.xgb"))
-    accuracy = 1.0 - analysis.best_result["test-error"]
-    print(f"Best model parameters: {analysis.best_config}")
+    accuracy = 1.0 - best_result.metrics["test-error"]
+    print(f"Best model parameters: {best_result.config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
     return best_bst
 
@@ -85,18 +85,23 @@ def tune_xgboost(use_cv: bool = False):
         max_t=10, grace_period=1, reduction_factor=2  # 10 training iterations
     )
 
-    analysis = tune.run(
-        train_breast_cancer if not use_cv else train_breast_cancer_cv,
-        metric="test-logloss",
-        mode="min",
-        # You can add "gpu": 0.1 to allocate GPUs
-        resources_per_trial={"cpu": 1},
-        config=search_space,
-        num_samples=10,
-        scheduler=scheduler,
+    tuner = tune.Tuner(
+        tune.with_resources(
+            train_breast_cancer if not use_cv else train_breast_cancer_cv,
+            # You can add "gpu": 0.1 to allocate GPUs
+            resources={"cpu": 1},
+        ),
+        tune_config=tune.TuneConfig(
+            metric="test-logloss",
+            mode="min",
+            num_samples=10,
+            scheduler=scheduler,
+        ),
+        param_space=search_space,
     )
+    results = tuner.fit()
 
-    return analysis
+    return results.get_best_result()
 
 
 if __name__ == "__main__":
@@ -120,7 +125,7 @@ if __name__ == "__main__":
 
         ray.init(f"ray://{args.server_address}")
 
-    analysis = tune_xgboost(args.use_cv)
+    best_result = tune_xgboost(args.use_cv)
 
     # Load the best model checkpoint.
     # Checkpointing is not supported when using `xgb.cv`
@@ -133,9 +138,9 @@ if __name__ == "__main__":
             from ray.util.ml_utils.node import force_on_current_node
 
             remote_fn = force_on_current_node(ray.remote(get_best_model_checkpoint))
-            best_bst = ray.get(remote_fn.remote(analysis))
+            best_bst = ray.get(remote_fn.remote(best_result))
         else:
-            best_bst = get_best_model_checkpoint(analysis)
+            best_bst = get_best_model_checkpoint(best_result)
 
         # You could now do further predictions with
         # best_bst.predict(...)

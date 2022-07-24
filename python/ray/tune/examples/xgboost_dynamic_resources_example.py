@@ -8,7 +8,7 @@ from xgboost.core import Booster
 import pickle
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
 from ray.tune.resources import Resources
@@ -20,10 +20,10 @@ from ray.tune.integration.xgboost import TuneReportCheckpointCallback
 CHECKPOINT_FILENAME = "model.xgb"
 
 
-def get_best_model_checkpoint(analysis):
+def get_best_model_checkpoint(best_result: "ray.air.Result"):
     best_bst = xgb.Booster()
 
-    with analysis.best_checkpoint.as_directory() as checkpoint_dir:
+    with best_result.checkpoint.as_directory() as checkpoint_dir:
         to_load = os.path.join(checkpoint_dir, CHECKPOINT_FILENAME)
 
         if not os.path.exists(to_load):
@@ -34,8 +34,8 @@ def get_best_model_checkpoint(analysis):
 
         best_bst.load_model(to_load)
 
-    accuracy = 1.0 - analysis.best_result["eval-logloss"]
-    print(f"Best model parameters: {analysis.best_config}")
+    accuracy = 1.0 - best_result.metrics["eval-logloss"]
+    print(f"Best model parameters: {best_result.config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
     return best_bst
 
@@ -190,7 +190,7 @@ def tune_xgboost(use_class_trainable=True):
         """
 
         # Get base trial resources as defined in
-        # ``tune.run(resources_per_trial)``
+        # ``tune.with_resources``
         base_trial_resource = scheduler._base_trial_resources
 
         # Don't bother if this is just the first iteration
@@ -202,7 +202,7 @@ def tune_xgboost(use_class_trainable=True):
             base_trial_resource = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
 
         # Assume that the number of CPUs cannot go below what was
-        # specified in tune.run
+        # specified in ``Tuner.fit()``.
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
 
         # Get the number of CPUs available in total (not just free)
@@ -235,21 +235,29 @@ def tune_xgboost(use_class_trainable=True):
     else:
         fn = train_breast_cancer
 
-    analysis = tune.run(
-        fn,
-        metric="eval-logloss",
-        mode="min",
-        resources_per_trial=PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
-        config=search_space,
-        num_samples=1,
-        scheduler=scheduler,
-        checkpoint_at_end=use_class_trainable,
+    tuner = tune.Tuner(
+        tune.with_resources(
+            fn, resources=PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+        ),
+        tune_config=tune.TuneConfig(
+            metric="eval-logloss",
+            mode="min",
+            num_samples=1,
+            scheduler=scheduler,
+        ),
+        run_config=air.RunConfig(
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=use_class_trainable,
+            )
+        ),
+        param_space=search_space,
     )
+    results = tuner.fit()
 
     if use_class_trainable:
-        assert analysis.results_df["nthread"].max() > 1
+        assert results.get_dataframe()["nthread"].max() > 1
 
-    return analysis
+    return results.get_best_result()
 
 
 if __name__ == "__main__":
@@ -283,23 +291,23 @@ if __name__ == "__main__":
         ray.init(num_cpus=8)
 
     if args.test:
-        analysis = tune_xgboost(use_class_trainable=True)
-        best_bst = get_best_model_checkpoint(analysis)
+        best_result = tune_xgboost(use_class_trainable=True)
+        best_bst = get_best_model_checkpoint(best_result)
 
-    analysis = tune_xgboost(use_class_trainable=args.class_trainable)
+    best_result = tune_xgboost(use_class_trainable=args.class_trainable)
 
     # Load the best model checkpoint.
     if args.server_address:
         # If connecting to a remote server with Ray Client, checkpoint loading
         # should be wrapped in a task so it will execute on the server.
         # We have to make sure it gets executed on the same node that
-        # ``tune.run`` is called on.
+        # ``Tuner.fit()`` is called on.
         from ray.util.ml_utils.node import force_on_current_node
 
         remote_fn = force_on_current_node(ray.remote(get_best_model_checkpoint))
-        best_bst = ray.get(remote_fn.remote(analysis))
+        best_bst = ray.get(remote_fn.remote(best_result))
     else:
-        best_bst = get_best_model_checkpoint(analysis)
+        best_bst = get_best_model_checkpoint(best_result)
 
     # You could now do further predictions with
     # best_bst.predict(...)
