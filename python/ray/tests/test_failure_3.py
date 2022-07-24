@@ -232,6 +232,81 @@ def test_actor_failure_async_2(ray_start_regular, tmp_path):
     t.join()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail on windowns")
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{"_system_config": {"timeout_ms_task_wait_for_death_info": 100000000}}],
+    indirect=True,
+)
+def test_actor_failure_async_3(ray_start_regular):
+    @ray.remote(max_restarts=1)
+    class A:
+        def pid(self):
+            return os.getpid()
+
+    a = A.remote()
+
+    def new_task(_):
+        print("new_task")
+        # make sure there is no deadlock
+        a.pid.remote()
+
+    t = a.pid.remote()
+    # Make sure there is no deadlock when executing
+    # the callback
+    t._on_completed(new_task)
+
+    ray.kill(a)
+
+    with pytest.raises(Exception):
+        ray.get(t)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail on windowns")
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{"_system_config": {"timeout_ms_task_wait_for_death_info": 100000000}}],
+    indirect=True,
+)
+def test_actor_failure_async_4(ray_start_regular, tmp_path):
+    from filelock import FileLock
+
+    l_file = tmp_path / "lock"
+
+    l_lock = FileLock(l_file)
+    l_lock.acquire()
+
+    @ray.remote
+    def f():
+        with FileLock(l_file):
+            os.kill(os.getpid(), signal.SIGKILL)
+
+    @ray.remote(max_restarts=1)
+    class A:
+        def pid(self, x):
+            return os.getpid()
+
+    a = A.remote()
+
+    def new_task(_):
+        print("new_task")
+        # make sure there is no deadlock
+        a.pid.remote(None)
+
+    t = a.pid.remote(f.remote())
+    # Make sure there is no deadlock when executing
+    # the callback
+    t._on_completed(new_task)
+
+    ray.kill(a)
+
+    # This will make the dependence failed
+    l_lock.release()
+
+    with pytest.raises(Exception):
+        ray.get(t)
+
+
 if __name__ == "__main__":
     import pytest
 
