@@ -29,7 +29,7 @@ This section shows how to create single and multi-column Tensor datasets.
       # -> Dataset(
       #       num_blocks=200,
       #       num_rows=409600,
-      #       schema={value: <ArrowTensorType: shape=(64, 64), dtype=int64>}
+      #       schema={__value__: <ArrowTensorType: shape=(64, 64), dtype=int64>}
       #    )
       
       ds.take(2)
@@ -244,28 +244,171 @@ This section shows how to create single and multi-column Tensor datasets.
       # -> one: int64
       #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
+.. note::
+  By convention, single-column datasets have a single ``__value__`` column.
+  When batches are read from single-column datasets in "numpy" format, the
+  data will be unwrapped as an ``np.ndarray`` rather than ``Dict[str, np.ndarray]``.
+
+
 Consuming Tensor Columns
 ------------------------
 
-Map batch formats
+Like any other Dataset, Datasets with Tensor columns can be consumed in batches via the ``.iter_batches(batch_format=<format>)`` and ``.map_batches(batch_fn, batch_format=<format>)`` APIs. This section shows the available batch formats and their behavior:
 
 .. tabbed:: "native" (default)
 
-  TODO
+  **Single-column**:
+
+  .. code-block:: python
+
+    import ray
+
+    # Read a single-column example dataset.
+    ds = ray.data.read_numpy("example://mnist_subset.npy")
+    # -> Dataset(num_blocks=1, num_rows=3,
+    #            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+
+    # This returns batches in numpy.ndarray format.
+    next(ds.iter_batches())
+    # -> array([[[0, 0, 0, ..., 0, 0, 0],
+    #            [0, 0, 0, ..., 0, 0, 0],
+    #            ...,
+    #            [0, 0, 0, ..., 0, 0, 0],
+    #            [0, 0, 0, ..., 0, 0, 0]],
+    #
+    #           ...,
+    #
+    #           [[0, 0, 0, ..., 0, 0, 0],
+    #            [0, 0, 0, ..., 0, 0, 0],
+    #            ...,
+    #            [0, 0, 0, ..., 0, 0, 0],
+    #            [0, 0, 0, ..., 0, 0, 0]]], dtype=uint8)
+
+  **Multi-column**:
+
+    Coming soon.
+
+  ..
+    #TODO(ekl) why does this crash with TensorDType not understood?
+
+    # Read a multi-column example dataset.
+    ray.data.read_parquet("example://parquet_images_mini")
+    # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
+
+    next(ds.iter_batches())
+    # -> TypeError: data type 'TensorDtype' not understood
 
 .. tabbed:: "pandas"
 
-  TODO
+  **Single-column**:
+
+  .. code-block:: python
+
+    import ray
+
+    # Read a single-column example dataset.
+    ds = ray.data.read_numpy("example://mnist_subset.npy")
+    # -> Dataset(num_blocks=1, num_rows=3,
+    #            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+
+    # This returns batches in pandas.DataFrame format.
+    next(ds.iter_batches(batch_format="pandas"))
+    # ->                                            __value__
+    # 0  [[  0,   0,   0,   0,   0,   0,   0,   0,   0,...
+    # 1  [[  0,   0,   0,   0,   0,   0,   0,   0,   0,...
+    # 2  [[  0,   0,   0,   0,   0,   0,   0,   0,   0,...
+
+  **Multi-column**:
+
+    Coming soon.
+
+  ..
+    #TODO(ekl) why does this crash with TensorDType not understood?
+
+    # Read a multi-column example dataset.
+    ray.data.read_parquet("example://parquet_images_mini")
+    # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
+
+    next(ds.iter_batches(batch_format="pandas"))
+    # -> TypeError: data type 'TensorDtype' not understood
 
 .. tabbed:: "pyarrow"
 
-  TODO
+  **Single-column**:
+
+  .. code-block:: python
+
+    import ray
+
+    # Read a single-column example dataset.
+    ds = ray.data.read_numpy("example://mnist_subset.npy")
+    # -> Dataset(num_blocks=1, num_rows=3,
+    #            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+
+    # This returns batches in pyarrow.Table format.
+    next(ds.iter_batches(batch_format="pyarrow"))
+    # pyarrow.Table
+    # __value__: extension<arrow.py_extension_type<ArrowTensorType>>
+    # ----
+    # __value__: [[[0,0,0,0,0,0,0,0,0,0,...],...,[0,0,0,0,0,0,0,0,0,0,...]]]
+
+  **Multi-column**:
+
+  .. code-block:: python
+
+    # Read a multi-column example dataset.
+    ray.data.read_parquet("example://parquet_images_mini")
+    # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
+
+    # This returns batches in pyarrow.Table format.
+    next(ds.iter_batches(batch_format="pyarrow"))
+    # pyarrow.Table
+    # image: extension<arrow.py_extension_type<ArrowTensorType>>
+    # label: string
+    # ----
+    # image: [[[92,71,57,107,87,72,113,97,85,122,...,85,170,152,88,167,150,89,165,146,90]]]
+    # label: [["cat"]]
 
 .. tabbed:: "numpy"
 
-  TODO
+  **Single-column**:
 
-Iterator formats
+  .. code-block:: python
+
+    import ray
+
+    # Read a single-column example dataset.
+    ds = ray.data.read_numpy("example://mnist_subset.npy")
+    # -> Dataset(num_blocks=1, num_rows=3,
+    #            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+
+    # This returns batches in np.ndarray format.
+    next(ds.iter_batches(batch_format="numpy"))
+
+  **Multi-column**:
+
+  .. code-block:: python
+
+    # Read a multi-column example dataset.
+    ray.data.read_parquet("example://parquet_images_mini")
+    # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
+
+    # This returns batches in Dict[str, np.ndarray] format.
+    next(ds.iter_batches(batch_format="numpy"))
+    # -> {'image': array([[[[ 92,  71,  57],
+    #                       [107,  87,  72],
+    #                       ...,
+    #                       [141, 161, 185],
+    #                       [139, 158, 184]],
+    #
+    #                      ...,
+    #
+    #                      [[135, 135, 109],
+    #                       [135, 135, 108],
+    #                       ...,
+    #                       [167, 150,  89],
+    #                       [165, 146,  90]]]], dtype=uint8),
+    #     'label': array(['cat'], dtype=object)}
 
 Saving Tensor Columns
 ~~~~~~~~~~~~~~~~~~~~~
