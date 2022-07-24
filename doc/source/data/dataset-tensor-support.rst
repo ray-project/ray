@@ -3,14 +3,187 @@
 Working with Tensors
 ====================
 
-Tables with tensor columns
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Tensor data (multi-dimensional arrays) are ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support Tensor data types. To bridge this gap, Datasets provides a unified Tensor data type that can be used to represent and store Tensor data:
 
-Datasets supports tables with fixed-shape tensor columns, where each element in the column is a tensor (n-dimensional array) with the same shape. As an example, this allows you to use Pandas and Ray Datasets to read, write, and manipulate e.g., images. All conversions between Pandas, Arrow, and Parquet, and all application of aggregations/operations to the underlying image ndarrays are taken care of by Ray Datasets.
+* For Pandas, the Datasets Pandas extension :class:`TensorDtype <ray.data.extensions.tensor_extension.TensorDtype>` and :class:`TensorArray <ray.data.extensions.tensor_extension.TensorArray>` enable Pandas-native manipulation of tensor data columns.
+* For Parquet, the Datasets Arrow extension :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>` and :class:`ArrowTensorArray <ray.data.extensions.tensor_extension.ArrowTensorArray>` allow Tensors to be loaded and stored in Parquet format.
+* In addition, single-column Tensor datasets can be created from image and Numpy (.npy) files.
 
-With our Pandas extension type, :class:`TensorDtype <ray.data.extensions.tensor_extension.TensorDtype>`, and extension array, :class:`TensorArray <ray.data.extensions.tensor_extension.TensorArray>`, you can do familiar aggregations and arithmetic, comparison, and logical operations on a DataFrame containing a tensor column and the operations will be applied to the underlying tensors as expected. With our Arrow extension type, :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>`, and extension array, :class:`ArrowTensorArray <ray.data.extensions.tensor_extension.ArrowTensorArray>`, you'll be able to import that DataFrame into Ray Datasets and read/write the data from/to the Parquet format.
+Datasets automatically converts between the Pandas and Arrow extension types/arrays above. This means you can just think of "Tensors" as a single first-class data type in Datasets.
 
-Automatic conversion between the Pandas and Arrow extension types/arrays keeps the details under-the-hood, so you only have to worry about casting the column to a tensor column using our Pandas extension type when first ingesting the table into a ``Dataset``, whether from storage or in-memory. All table operations downstream from that cast should work automatically.
+Creating Tensor Columns
+~~~~~~~~~~~~~~~~~~~~~~~
+
+This section shows how to create single and multi-column Tensor datasets.
+
+.. tabbed:: Synthetic Data
+
+  Create a synthetic tensor dataset from a range of integers.
+
+  **Single-column only**:
+
+  .. code-block:: python
+
+      # Create a Dataset of tensors.
+      ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
+      # -> Dataset(
+      #       num_blocks=200,
+      #       num_rows=409600,
+      #       schema={value: <ArrowTensorType: shape=(64, 64), dtype=int64>}
+      #    )
+      
+      ds.take(2)
+      # -> [array([[0, 0, 0, ..., 0, 0, 0],
+      #         [0, 0, 0, ..., 0, 0, 0],
+      #         [0, 0, 0, ..., 0, 0, 0],
+      #         ...,
+      #         [0, 0, 0, ..., 0, 0, 0],
+      #         [0, 0, 0, ..., 0, 0, 0],
+      #         [0, 0, 0, ..., 0, 0, 0]]),
+      #  array([[1, 1, 1, ..., 1, 1, 1],
+      #         [1, 1, 1, ..., 1, 1, 1],
+      #         [1, 1, 1, ..., 1, 1, 1],
+      #         ...,
+      #         [1, 1, 1, ..., 1, 1, 1],
+      #         [1, 1, 1, ..., 1, 1, 1],
+      #         [1, 1, 1, ..., 1, 1, 1]])]
+
+.. tabbed:: Pandas UDF
+
+  Create a tensor dataset by returning ``TensorArray`` columns from a Pandas UDF.
+
+  **Single-column**:
+
+  .. code-block:: python
+
+      import ray
+      from ray.data.extensions.tensor_extension import TensorArray
+
+      import pandas as pd
+
+      # Start with a tabular base dataset.
+      ds = ray.data.range_table(1000)
+
+      # Create a single TensorArray column.
+      def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
+          bs = len(batch)
+          arr = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
+          return pd.DataFrame({"__value__": arr})
+
+      ds.map_batches(single_col_udf)
+      # -> Dataset(num_blocks=17, num_rows=1000, schema={__value__: TensorDtype})
+
+  **Multi-column**:
+
+  .. code-block:: python
+
+      # Create multiple TensorArray columns.
+      def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
+          bs = len(batch)
+          image = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
+          embed = TensorArray(np.zeros((bs, 256,), dtype=np.uint8))
+          return pd.DataFrame({"image": image, "embed": embed})
+
+      ds.map_batches(multi_col_udf)
+      # -> Dataset(num_blocks=17, num_rows=1000, schema={image: TensorDtype, embed: TensorDtype})
+
+.. tabbed:: Numpy
+
+  **Single-column only**:
+
+  .. code-block:: python
+
+    import ray
+
+    # From in-memory numpy data.
+    ray.data.from_numpy(np.zeros((1000, 128, 128, 3), dtype=np.int64))
+    # -> Dataset(num_blocks=1, num_rows=1000,
+    #            schema={__value__: <ArrowTensorType: shape=(128, 128, 3), dtype=int64>})
+
+    # From saved numpy files.
+    ray.data.read_numpy("example://mnist_subset.npy")
+    # -> Dataset(num_blocks=1, num_rows=3,
+    #            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+
+.. tabbed:: Images
+
+  **Image and label only**:
+
+  .. code-block:: python
+
+      ray.data.read_datasource(ImageFolderDatasource(), paths=["example://image-folder"])
+      # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
+
+      ds.take(1)
+      # -> [{'image':
+      #         array([[[ 92,  71,  57],
+      #                 [107,  87,  72],
+      #                 ...,
+      #                 [141, 161, 185],
+      #                 [139, 158, 184]],
+      #                
+      #                ...,
+      #                
+      #                [[135, 135, 109],
+      #                 [135, 135, 108],
+      #                 ...,
+      #                 [167, 150,  89],
+      #                 [165, 146,  90]]], dtype=uint8),
+      #      'label': 'cat',
+      #     }]
+
+.. tabbed:: Parquet
+
+  (previously stored)
+
+  **Single and Multi-column**:
+
+  .. code-block:: python
+
+    TODO
+
+  (casting)
+
+Transforming Tensor Columns
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Map batch formats
+
+.. tabbed:: "native" (default)
+
+  TODO
+
+.. tabbed:: "pandas"
+
+  TODO
+
+.. tabbed:: "pyarrow"
+
+  TODO
+
+.. tabbed:: "numpy"
+
+  TODO
+
+Iterator formats
+
+Saving Tensor Columns
+~~~~~~~~~~~~~~~~~~~~~
+
+Write to numpy
+
+Write to parquet
+
+.. 
+  TODO: REWRITE ALL BELOW
+  TODO: REWRITE ALL BELOW
+  TODO: REWRITE ALL BELOW
+  TODO: REWRITE ALL BELOW
+  TODO: REWRITE ALL BELOW
+  TODO: REWRITE ALL BELOW
+  TODO: REWRITE ALL BELOW
+  TODO: REWRITE ALL BELOW
+  TODO: REWRITE ALL BELOW
 
 Single-column tensor datasets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
