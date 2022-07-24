@@ -79,6 +79,9 @@ class QMixConfig(SimpleQConfig):
         self.lr = 0.0005
         self.train_batch_size = 32
         self.target_network_update_freq = 500
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 1000
         self.replay_buffer_config = {
             "type": "ReplayBuffer",
             # Specify prioritized replay by supplying a buffer type that supports
@@ -86,10 +89,6 @@ class QMixConfig(SimpleQConfig):
             "prioritized_replay": DEPRECATED_VALUE,
             # Size of the replay buffer in batches (not timesteps!).
             "capacity": 1000,
-            # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size is reached,
-            # sample() will return an empty batch and no learning will happen.
-            "min_size": 1000,
             # Choosing `fragments` here makes it so that the buffer stores entire
             # batches, instead of sequences, episodes or timesteps.
             "storage_unit": "fragments",

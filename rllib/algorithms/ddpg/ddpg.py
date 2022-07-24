@@ -107,10 +107,6 @@ class DDPGConfig(SimpleQConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size is reached,
-            # sample() will return an empty batch and no learning will happen.
-            "min_size": 1500,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
         }
@@ -119,6 +115,9 @@ class DDPGConfig(SimpleQConfig):
         self.grad_clip = None
         self.train_batch_size = 256
         self.target_network_update_freq = 0
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 1500
 
         # .rollouts()
         self.rollout_fragment_length = 1
@@ -152,6 +151,7 @@ class DDPGConfig(SimpleQConfig):
         huber_threshold: Optional[float] = None,
         l2_reg: Optional[float] = None,
         training_intensity: Optional[float] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "DDPGConfig":
         """Sets the training related configuration.
@@ -208,6 +208,9 @@ class DDPGConfig(SimpleQConfig):
                     often as rollout+insert op (4 * 250 = 1000).
                 See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
                 details.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning.
 
         Returns:
             This updated DDPGConfig object.
@@ -250,6 +253,10 @@ class DDPGConfig(SimpleQConfig):
             self.l2_reg = l2_reg
         if training_intensity is not None:
             self.training_intensity = training_intensity
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 

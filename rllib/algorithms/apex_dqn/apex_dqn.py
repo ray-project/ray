@@ -133,6 +133,9 @@ class ApexDQNConfig(DQNConfig):
         self.train_batch_size = 512
         self.target_network_update_freq = 500000
         self.training_intensity = 1
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 50000
 
         # max number of inflight requests to each sampling worker
         # see the AsyncRequestsManager class for more details
@@ -162,10 +165,6 @@ class ApexDQNConfig(DQNConfig):
             "prioritized_replay_beta": 0.4,
             # Epsilon to add to the TD errors when updating priorities.
             "prioritized_replay_eps": 1e-6,
-            # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size is reached,
-            # sample() will return an empty batch and no learning will happen.
-            "min_size": 50000,
             # Whether all shards of the replay buffer must be co-located
             # with the learner process (running the execution plan).
             # This is preferred b/c the learner process should have quick
@@ -245,7 +244,6 @@ class ApexDQNConfig(DQNConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_size": 1000,
                 "capacity": 50000,
                 "replay_batch_size": 32,
                 "replay_sequence_length": 1,

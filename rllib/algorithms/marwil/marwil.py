@@ -84,15 +84,14 @@ class MARWILConfig(AlgorithmConfig):
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization
             "prioritized_replay": DEPRECATED_VALUE,
-            # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size is reached,
-            # sample() will return an empty batch and no learning will happen.
-            "min_size": 0,
             "replay_sequence_length": 1
         }
         self.use_gae = True
         self.vf_coeff = 1.0
         self.grad_clip = None
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 0
 
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
 
@@ -129,6 +128,7 @@ class MARWILConfig(AlgorithmConfig):
         use_gae: Optional[bool] = True,
         vf_coeff: Optional[float] = None,
         grad_clip: Optional[float] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "MARWILConfig":
         """Sets the training related configuration.
@@ -146,7 +146,6 @@ class MARWILConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_size": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
@@ -182,6 +181,9 @@ class MARWILConfig(AlgorithmConfig):
                 moving_average_sqd_adv_norm_update_rate: Update rate for the
                 squared moving average advantage norm (c^2).
             grad_clip: If specified, clip the global norm of gradients by this amount.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning.
 
         Returns:
             This updated AlgorithmConfig object.

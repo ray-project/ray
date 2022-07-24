@@ -84,14 +84,13 @@ class MADDPGConfig(AlgorithmConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
             "capacity": int(1e6),
-            # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size is reached,
-            # sample() will return an empty batch and no learning will happen.
-            "min_size": 1024 * 25,
             # Force lockstep replay mode for MADDPG.
             "replay_mode": "lockstep",
         }
         self.training_intensity = None
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 1024 * 25
         self.critic_lr = 1e-2
         self.actor_lr = 1e-2
         self.target_network_update_freq = 0
@@ -129,6 +128,7 @@ class MADDPGConfig(AlgorithmConfig):
         tau: Optional[float] = None,
         actor_feature_reg: Optional[float] = None,
         grad_norm_clipping: Optional[float] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "MADDPGConfig":
         """Sets the training related configuration.
@@ -159,7 +159,6 @@ class MADDPGConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_size": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
@@ -201,6 +200,9 @@ class MADDPGConfig(AlgorithmConfig):
             actor_feature_reg: Weights for feature regularization for the actor.
             grad_norm_clipping: If not None, clip gradients during optimization at this
                 value.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -245,6 +247,10 @@ class MADDPGConfig(AlgorithmConfig):
             self.actor_feature_reg = actor_feature_reg
         if grad_norm_clipping is not None:
             self.grad_norm_clipping = grad_norm_clipping
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 

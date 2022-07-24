@@ -112,11 +112,10 @@ class AlphaZeroConfig(AlgorithmConfig):
             # Choosing `fragments` here makes it so that the buffer stores entire
             # batches, instead of sequences, episodes or timesteps.
             "storage_unit": "fragments",
-            # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size is reached,
-            # sample() will return an empty batch and no learning will happen.
-            "min_size": 1000,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 1000
         self.lr_schedule = None
         self.vf_share_layers = False
         self.mcts_config = {
@@ -170,6 +169,7 @@ class AlphaZeroConfig(AlgorithmConfig):
         vf_share_layers: Optional[bool] = None,
         mcts_config: Optional[dict] = None,
         ranked_rewards: Optional[dict] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "AlphaZeroConfig":
         """Sets the training related configuration.
@@ -222,6 +222,9 @@ class AlphaZeroConfig(AlgorithmConfig):
             mcts_config: MCTS specific settings.
             ranked_rewards: Settings for the ranked reward (r2) algorithm
                 from: https://arxiv.org/pdf/1807.01672.pdf
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning.
 
         Returns:
             This updated AlgorithmConfig object.

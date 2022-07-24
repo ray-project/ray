@@ -245,10 +245,10 @@ def validate_buffer_config(config: dict) -> None:
         deprecation_warning(
             old="config['learning_starts'] or"
             "config['replay_buffer_config']['learning_starts']",
-            help="config['replay_buffer_config']['min_size']",
+            help="config['num_steps_sampled_before_learning_starts']",
             error=False,
         )
-        config["replay_buffer_config"]["min_size"] = learning_starts
+        config["num_steps_sampled_before_learning_starts"] = learning_starts
 
     # Can't use DEPRECATED_VALUE here because this is also a deliberate
     # value set for some algorithms

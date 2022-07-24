@@ -73,12 +73,11 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--min-size-for-sampling",
+    "--num-steps-sampled-before-learning_starts",
     type=int,
     default=20000,
-    help="The number of timesteps to add to the replay buffer before sampling from "
-    "it for learning returns experiences. This leads to a delay in learning to first "
-    "populate the buffer.",
+    help="Number of timesteps to collect from rollout workers before we start "
+    "sampling from replay buffers for learning..",
 )
 
 parser.add_argument(
@@ -136,9 +135,7 @@ def main():
         "num_gpus": args.num_gpus,
         "num_workers": args.num_workers,
         "env_config": env_config,
-        "replay_buffer_config": {
-            "min_size": args.min_size_for_sampling,  # noqa E501
-        },
+        "num_steps_sampled_before_learning_starts": args.num_steps_sampled_before_learning_starts,  # noqa E501
     }
 
     # Perform a test run on the env with a random agent to see, what

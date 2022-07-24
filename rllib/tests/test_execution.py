@@ -208,7 +208,6 @@ class TestExecution(unittest.TestCase):
     def test_store_to_replay_local(self):
         buf = MultiAgentReplayBuffer(
             num_shards=1,
-            min_size=200,
             capacity=1000,
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,
@@ -232,7 +231,6 @@ class TestExecution(unittest.TestCase):
         ReplayActor = ray.remote(num_cpus=0)(MultiAgentReplayBuffer)
         actor = ReplayActor.remote(
             num_shards=1,
-            min_size=200,
             capacity=1000,
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,

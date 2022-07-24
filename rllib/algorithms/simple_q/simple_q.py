@@ -82,7 +82,6 @@ class SimpleQConfig(AlgorithmConfig):
         >>>     })
         >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
         >>>                         .exploration(exploration_config=explore_config)\
-        >>>                         .training(min_size=200)
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
@@ -106,16 +105,15 @@ class SimpleQConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
-            # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size is reached,
-            # sample() will return an empty batch and no learning will happen.
-            "min_size": 1000,
             "type": "MultiAgentReplayBuffer",
             "capacity": 50000,
             # The number of contiguous environment steps to replay at once. This
             # may be set to greater than 1 to support recurrent models.
             "replay_sequence_length": 1,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 1000
         self.store_buffer_in_checkpoints = False
         self.lr_schedule = None
         self.adam_epsilon = 1e-8
@@ -182,7 +180,6 @@ class SimpleQConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_size": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }

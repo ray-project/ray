@@ -66,7 +66,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         capacity: int = 10000,
         storage_unit: str = "timesteps",
         num_shards: int = 1,
-        min_size: int = 1000,
         replay_mode: str = "independent",
         replay_sequence_override: bool = True,
         replay_sequence_length: int = 1,
@@ -84,9 +83,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
                 are stored in episodes, replay_sequence_length is ignored.
             num_shards: The number of buffer shards that exist in total
                 (including this one).
-            min_size: Number of timesteps after which a call
-                to `sample()` will yield samples (before that, `sample()` will
-                return None).
             replay_mode: One of "independent" or "lockstep". Determines,
                 whether batches are sampled independently or to an equal
                 amount.
@@ -121,7 +117,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         else:
             self.underlying_buffer_call_args = {}
         self.replay_sequence_override = replay_sequence_override
-        self.replay_starts = min_size // num_shards
         self.replay_mode = replay_mode
         self.replay_sequence_length = replay_sequence_length
         self.replay_burn_in = replay_burn_in
