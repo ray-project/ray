@@ -25,13 +25,13 @@ class TestOPE(unittest.TestCase):
     def setUpClass(cls):
         ray.init()
         rllib_dir = Path(__file__).parent.parent.parent.parent
-        train_data = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        train_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
         eval_data = train_data
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
-        n_episodes = 40
-        cls.q_model_config = {"n_iters": 600}
+        n_episodes = 3
+        cls.q_model_config = {"n_iters": 10}
 
         config = (
             DQNConfig()
@@ -179,11 +179,11 @@ class TestOPE(unittest.TestCase):
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
-        tmp_batch = copy.deepcopy(self.random_batch)
-        losses = fqe.train(self.random_batch)
+        tmp_batch = copy.deepcopy(self.batch)
+        losses = fqe.train(self.batch)
 
         # Make sure FQETorchModel.train() does not modify the batch
-        check(tmp_batch, self.random_batch)
+        check(tmp_batch, self.batch)
 
         # Make sure FQE stopping criteria are respected
         assert (
@@ -194,16 +194,16 @@ class TestOPE(unittest.TestCase):
         # Test fqe._compute_action_probs against "brute force" method
         # of computing log_prob for each possible action individually
         # using policy.compute_log_likelihoods
-        obs = torch.tensor(self.random_batch["obs"], device=fqe.device)
+        obs = torch.tensor(self.batch["obs"], device=fqe.device)
         action_probs = fqe._compute_action_probs(obs)
         action_probs = convert_to_numpy(action_probs)
 
         tmp_probs = []
         for act in range(fqe.policy.action_space.n):
-            tmp_actions = np.zeros_like(self.random_batch["actions"]) + act
+            tmp_actions = np.zeros_like(self.batch["actions"]) + act
             log_probs = fqe.policy.compute_log_likelihoods(
                 actions=tmp_actions,
-                obs_batch=self.random_batch["obs"],
+                obs_batch=self.batch["obs"],
             )
             tmp_probs.append(torch.exp(log_probs))
         tmp_probs = torch.stack(tmp_probs).transpose(0, 1)
