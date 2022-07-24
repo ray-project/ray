@@ -348,9 +348,19 @@ class AlphaZero(Algorithm):
                 self.local_replay_buffer.add(batch)
 
         if self.local_replay_buffer is not None:
-            train_batch = self.local_replay_buffer.sample(
-                self.config["train_batch_size"]
-            )
+            # Update target network every `target_network_update_freq` sample steps.
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self._by_agent_steps
+                else NUM_ENV_STEPS_SAMPLED
+            ]
+
+            if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+                train_batch = self.local_replay_buffer.sample(
+                    self.config["train_batch_size"]
+                )
+            else:
+                train_batch = None
         else:
             train_batch = SampleBatch.concat_samples(new_sample_batches)
 

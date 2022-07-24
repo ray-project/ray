@@ -444,12 +444,19 @@ class ApexDQN(DQN):
         # only do this if there are remote workers (config["num_workers"] > 1)
         if self.workers.remote_workers():
             self.update_workers(worker_samples_collected)
-        # trigger a sample from the replay actors and enqueue operation to the
-        # learner thread.
-        self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
-            worker_samples_collected
-        )
-        self.update_replay_sample_priority()
+
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
+
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            # trigger a sample from the replay actors and enqueue operation to the
+            # learner thread.
+            self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
+                worker_samples_collected
+            )
+            self.update_replay_sample_priority()
 
         return copy.deepcopy(self.learner_thread.learner_info)
 

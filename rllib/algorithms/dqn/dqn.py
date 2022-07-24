@@ -374,7 +374,6 @@ class DQN(SimpleQ):
             NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
         ]
 
-        # S
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
             for _ in range(sample_and_train_weight):
                 # Sample training batch (MultiAgentBatch) from replay buffer.
