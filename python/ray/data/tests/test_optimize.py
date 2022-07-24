@@ -160,7 +160,7 @@ def test_memory_release_lazy(shutdown_only):
     ds = ray.data.range(10)
 
     # Should get fused into single stage.
-    ds = ds.experimental_lazy()
+    ds = ds.lazy()
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
@@ -180,7 +180,7 @@ def test_memory_release_lazy_shuffle(shutdown_only):
             ds = ray.data.range(10)
 
             # Should get fused into single stage.
-            ds = ds.experimental_lazy()
+            ds = ds.lazy()
             ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
             ds.random_shuffle().fully_executed()
             meminfo = memory_summary(info.address_info["address"], stats_only=True)
@@ -213,7 +213,7 @@ def test_lazy_fanout(shutdown_only, local_path):
     # Test that fan-out of a lazy dataset results in re-execution up to the datasource,
     # due to block move semantics.
     ds = ray.data.read_datasource(source, parallelism=1, paths=path)
-    ds = ds.experimental_lazy()
+    ds = ds.lazy()
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
@@ -244,7 +244,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
     # The source data shouldn't be cleared since it's non-lazy.
     ds = ray.data.from_items(list(range(10)))
-    ds = ds.experimental_lazy()
+    ds = ds.lazy()
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
@@ -256,7 +256,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
 
 def test_spread_hint_inherit(ray_start_regular_shared):
-    ds = ray.data.range(10).experimental_lazy()
+    ds = ray.data.range(10).lazy()
     ds = ds.map(lambda x: x + 1)
     ds = ds.random_shuffle()
     for s in ds._plan._stages_before_snapshot:
@@ -288,7 +288,7 @@ def test_stage_linking(ray_start_regular_shared):
     _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
 
     # Test lazy dataset.
-    ds = ray.data.range(10).experimental_lazy()
+    ds = ray.data.range(10).lazy()
     assert len(ds._plan._stages_before_snapshot) == 0
     assert len(ds._plan._stages_after_snapshot) == 0
     assert len(ds._plan._last_optimized_stages) == 0
@@ -618,7 +618,7 @@ def test_optimize_lazy_reuse_base_data(
     ds = ray.data.read_datasource(source, parallelism=4, paths=paths)
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads
-    ds = ds.experimental_lazy()
+    ds = ds.lazy()
     ds = ds.map(lambda x: x)
     if with_shuffle:
         ds = ds.random_shuffle()

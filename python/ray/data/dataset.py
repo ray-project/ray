@@ -3434,8 +3434,8 @@ class Dataset(Generic[T]):
         """
         return self._plan.execute().get_blocks()
 
-    def experimental_lazy(self) -> "Dataset[T]":
-        """EXPERIMENTAL: Enable lazy evaluation.
+    def lazy(self) -> "Dataset[T]":
+        """Enable lazy evaluation.
 
         The returned dataset is a lazy dataset, where all subsequent operations on the
         dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
@@ -3445,6 +3445,9 @@ class Dataset(Generic[T]):
         ds = Dataset(self._plan, self._epoch, lazy=True)
         ds._set_uuid(self._get_uuid())
         return ds
+
+    def experimental_lazy(self) -> "Dataset[T]":
+        raise DeprecationWarning("Use self.lazy().")
 
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and

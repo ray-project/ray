@@ -57,7 +57,7 @@ def map_udf(df):
     return df
 
 ds = ray.data.read_parquet("example://iris.parquet") \
-    .experimental_lazy() \
+    .lazy() \
     .map_batches(map_udf) \
     .filter(lambda row: row["sepal.area"] > 15)
 # __block_move_end__
