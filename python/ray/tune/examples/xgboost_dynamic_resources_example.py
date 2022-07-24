@@ -257,7 +257,7 @@ def tune_xgboost(use_class_trainable=True):
     if use_class_trainable:
         assert results.get_dataframe()["nthread"].max() > 1
 
-    return results.get_best_result().checkpoint
+    return results.get_best_result()
 
 
 if __name__ == "__main__":
@@ -291,10 +291,10 @@ if __name__ == "__main__":
         ray.init(num_cpus=8)
 
     if args.test:
-        best_checkpoint = tune_xgboost(use_class_trainable=True)
-        best_bst = get_best_model_checkpoint(best_checkpoint)
+        best_result = tune_xgboost(use_class_trainable=True)
+        best_bst = get_best_model_checkpoint(best_result)
 
-    analysis = tune_xgboost(use_class_trainable=args.class_trainable)
+    best_result = tune_xgboost(use_class_trainable=args.class_trainable)
 
     # Load the best model checkpoint.
     if args.server_address:
@@ -305,9 +305,9 @@ if __name__ == "__main__":
         from ray.util.ml_utils.node import force_on_current_node
 
         remote_fn = force_on_current_node(ray.remote(get_best_model_checkpoint))
-        best_bst = ray.get(remote_fn.remote(analysis))
+        best_bst = ray.get(remote_fn.remote(best_result))
     else:
-        best_bst = get_best_model_checkpoint(analysis)
+        best_bst = get_best_model_checkpoint(best_result)
 
     # You could now do further predictions with
     # best_bst.predict(...)
