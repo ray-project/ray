@@ -46,7 +46,15 @@ def _equalize(
 
     # phase 2: based on the num rows needed for each shaved split, split the leftovers
     # in the shape that exactly matches the rows needed.
-    leftover_splits = _split_leftovers(leftovers, per_split_needed_rows)
+    leftover_refs = []
+    leftover_meta = []
+    for (ref, meta) in leftovers:
+        leftover_refs.append(ref)
+        leftover_meta.append(meta)
+    leftover_splits = _split_leftovers(
+        BlockList(leftover_refs, leftover_meta, owned_by_consumer=owned_by_consumer),
+        per_split_needed_rows,
+    )
 
     # phase 3: merge the shaved_splits and leftoever splits and return.
     for i, leftover_split in enumerate(leftover_splits):
@@ -133,7 +141,7 @@ def _shave_all_splits(
 
 
 def _split_leftovers(
-    leftovers: BlockPartition, per_split_needed_rows: List[int]
+    leftovers: BlockList, per_split_needed_rows: List[int]
 ) -> List[BlockPartition]:
     """Split leftover blocks by the num of rows needed."""
     num_splits = len(per_split_needed_rows)
