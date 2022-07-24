@@ -273,6 +273,10 @@ class RuntimeContext(object):
             the float represents the amount of that resource reserved
             for this worker.
         """
+        assert (
+            self.worker.mode == ray._private.worker.WORKER_MODE
+        ), f"This method is only available when the process is a\
+                 worker. Current mode: {self.worker.mode}"
         self.worker.check_connected()
         resource_id_map = self.worker.core_worker.resource_ids()
         resource_map = {
