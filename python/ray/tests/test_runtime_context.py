@@ -118,6 +118,34 @@ def test_current_actor(ray_start_regular):
     assert ray.get(ray.get(obj)) == "hello"
 
 
+def test_get_assigned_resources(ray_start_10_cpus):
+    @ray.remote
+    class Echo:
+        def check(self):
+            return ray.get_runtime_context().get_assigned_resources()
+
+    e = Echo.remote()
+    result = e.check.remote()
+    print(ray.get(result))
+    assert ray.get(result).get("CPU") is None
+    ray.kill(e)
+
+    e = Echo.options(num_cpus=4).remote()
+    result = e.check.remote()
+    assert ray.get(result)["CPU"] == 4.0
+    ray.kill(e)
+
+    @ray.remote
+    def check():
+        return ray.get_runtime_context().get_assigned_resources()
+
+    result = check.remote()
+    assert ray.get(result)["CPU"] == 1.0
+
+    result = check.options(num_cpus=2).remote()
+    assert ray.get(result)["CPU"] == 2.0
+
+
 def test_actor_stats_normal_task(ray_start_regular):
     # Because it works at the core worker level, this API works for tasks.
     @ray.remote

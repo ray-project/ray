@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
@@ -17,7 +17,7 @@ class RuntimeContext(object):
         assert worker is not None
         self.worker = worker
 
-    def get(self):
+    def get(self) -> Dict[str, Any]:
         """Get a dictionary of the current context.
 
         Returns:
@@ -260,6 +260,30 @@ class RuntimeContext(object):
                 capture the parent placement group.
         """
         return self.worker.should_capture_child_tasks_in_placement_group
+
+    def get_assigned_resources(self):
+        """Get the assigned resources to this worker.
+
+        By default for tasks, this will return {"CPU": 1}.
+        By default for actors, this will return {}. This is because
+        actors do not have CPUs assigned to them by default.
+
+        Returns:
+            A dictionary mapping the name of a resource to a float, where
+            the float represents the amount of that resource reserved
+            for this worker.
+        """
+        assert (
+            self.worker.mode == ray._private.worker.WORKER_MODE
+        ), f"This method is only available when the process is a\
+                 worker. Current mode: {self.worker.mode}"
+        self.worker.check_connected()
+        resource_id_map = self.worker.core_worker.resource_ids()
+        resource_map = {
+            res: sum(amt for _, amt in mapping)
+            for res, mapping in resource_id_map.items()
+        }
+        return resource_map
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
