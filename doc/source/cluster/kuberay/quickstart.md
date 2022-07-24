@@ -50,7 +50,7 @@ In the Python interpreter, run the following snippet to scale up the cluster:
 
 ```python
 import ray.autoscaler.sdk
-ray.init("auto")
+ray.init()
 ray.autoscaler.sdk.request_resources(num_cpus=4)
 ```
 

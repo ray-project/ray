@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 import tempfile
 import json
 from time import sleep
@@ -375,6 +376,25 @@ def test_plugin_priority(set_runtime_env_plugins, ray_start_regular):
         )
         assert value is not None
         assert value == "hello world"
+
+
+def test_unexpected_field_warning(shutdown_only):
+    """Test that an unexpected runtime_env field doesn't error."""
+    ray.init(runtime_env={"unexpected_field": "value"})
+
+    @ray.remote
+    def f():
+        return True
+
+    # Run a task to trigger runtime_env creation.
+    assert ray.get(f.remote())
+
+    # Check that the warning is logged.
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    dashboard_agent_log_path = Path(session_dir) / "logs" / "dashboard_agent.log"
+    wait_for_condition(lambda: dashboard_agent_log_path.exists())
+    with open(dashboard_agent_log_path, "r") as f:
+        wait_for_condition(lambda: "unexpected_field is not recognized" in f.read())
 
 
 if __name__ == "__main__":
