@@ -89,6 +89,8 @@ This section shows how to create single and multi-column Tensor datasets.
 
 .. tabbed:: Numpy
 
+  Create from in-memory numpy data or from previously saved Numpy (.npy) files.
+
   **Single-column only**:
 
   .. code-block:: python
@@ -107,7 +109,9 @@ This section shows how to create single and multi-column Tensor datasets.
 
 .. tabbed:: Images
 
-  **Image and label only**:
+  Load image data stored as individual files using ``ImageFolderDatasource()``.
+
+  **Image and label columns**:
 
   .. code-block:: python
 
@@ -134,15 +138,111 @@ This section shows how to create single and multi-column Tensor datasets.
 
 .. tabbed:: Parquet
 
-  (previously stored)
+  Datasets provides methods for loading both previously-saved Tensor datasets, and constructing
+  Tensor datasets by casting binary / other columns. When casting data, the schema and (optional)
+  deserialization UDF must be provided. The following are examples for each method.
 
-  **Single and Multi-column**:
+  **Previously-saved Tensor datasets**:
 
   .. code-block:: python
 
-    TODO
+      import ray
 
-  (casting)
+      # Reading previously saved Tensor data works out of the box.
+      ray.data.read_parquet("example://parquet_mnist_mini")
+      # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
+
+      ds.take(1)
+      # -> [{'image':
+      #         array([[[ 92,  71,  57],
+      #                 [107,  87,  72],
+      #                 ...,
+      #                 [141, 161, 185],
+      #                 [139, 158, 184]],
+      #                
+      #                ...,
+      #                
+      #                [[135, 135, 109],
+      #                 [135, 135, 108],
+      #                 ...,
+      #                 [167, 150,  89],
+      #                 [165, 146,  90]]], dtype=uint8),
+      #      'label': 'cat',
+      #     }]
+
+  **Cast from data stored in C-contiguous format**:
+
+  For tensors stored as raw NumPy ndarray bytes in C-contiguous order (e.g., via ``ndarray.tobytes()``), all you need to specify is the tensor column schema. The following is an end-to-end example:
+
+  .. code-block:: python
+
+      import ray
+      import numpy as np
+      import pandas as pd
+
+      path = "/tmp/some_path"
+
+      # Create a DataFrame with a list of serialized ndarrays as a column.
+      # Note that we do not cast it to a tensor array, so each element in the
+      # column is an opaque blob of bytes.
+      arr = np.arange(24).reshape((3, 2, 2, 2))
+      df = pd.DataFrame({
+          "one": [1, 2, 3],
+          "two": [tensor.tobytes() for tensor in arr]})
+
+      # Write the dataset to Parquet. The tensor column will be written as an
+      # array of opaque byte blobs.
+      ds = ray.data.from_pandas([df])
+      ds.write_parquet(path)
+
+      # Read the Parquet files into a new Dataset, with the serialized tensors
+      # automatically cast to our tensor column extension type.
+      ds = ray.data.read_parquet(
+          path, tensor_column_schema={"two": (np.int, (2, 2, 2))})
+
+      # The new column is represented with as a Tensor extension type.
+      print(ds.schema())
+      # -> one: int64
+      #    two: extension<arrow.py_extension_type<ArrowTensorType>>
+
+  **Cast from data stored in custom formats**:
+
+  For tensors stored in other formats (e.g., pickled), you must specify both a deserializer UDF and the tensor column schema:
+
+  .. code-block:: python
+
+      import pickle
+      import pyarrow as pa
+      from ray.data.extensions import TensorArray
+
+      # Create a DataFrame with a list of pickled ndarrays as a column.
+      arr = np.arange(24).reshape((3, 2, 2, 2))
+      df = pd.DataFrame({
+          "one": [1, 2, 3],
+          "two": [pickle.dumps(tensor) for tensor in arr]})
+
+      # Write the dataset to Parquet. The tensor column will be written as an
+      # array of opaque byte blobs.
+      ds = ray.data.from_pandas([df])
+      ds.write_parquet(path)
+
+      # Manually deserialize the tensor pickle bytes and cast to our tensor
+      # extension type. For the sake of efficiency, we directly construct a
+      # TensorArray rather than .astype() casting on the mutated column with
+      # TensorDtype.
+      def cast_udf(block: pa.Table) -> pa.Table:
+          block = block.to_pandas()
+          block["two"] = TensorArray([pickle.loads(a) for a in block["two"]])
+          return pa.Table.from_pandas(block)
+
+      # Read the Parquet files into a new Dataset, applying the casting UDF
+      # on-the-fly within the underlying read tasks.
+      ds = ray.data.read_parquet(path, _block_udf=cast_udf)
+
+      # The new column is represented with as a Tensor extension type.
+      print(ds.schema())
+      # -> one: int64
+      #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
 Transforming Tensor Columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
