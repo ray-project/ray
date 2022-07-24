@@ -70,12 +70,7 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   /// Only if the node has registered, its heartbeat data will be accepted.
   ///
   /// \param node_info The node to be registered.
-  /// \param heartbeats_counts The first heartbeat counts for this new node. Once it
-  /// goes to zero, it'll be considered as dead. It'll be reset to the default one
-  /// once it received any heartbeat response.
-  void AddNode(
-      const rpc::GcsNodeInfo &node_info,
-      int64_t heartbeats_counts = RayConfig::instance().num_heartbeats_timeout());
+  void AddNode(const rpc::GcsNodeInfo &node_info);
 
   /// Remove a node from this detector.
   ///
@@ -83,6 +78,8 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   void RemoveNode(const NodeID &node_id);
 
  protected:
+  void AddNodeInternal(const rpc::GcsNodeInfo &node_info, int64_t heartbeats_counts);
+
   /// Check that if any raylet is inactive due to no heartbeat for a period of time.
   /// If found any, mark it as dead.
   void DetectDeadNodes();
@@ -95,9 +92,9 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   std::function<void(const NodeID &)> on_node_death_callback_;
   /// The number of heartbeats that can be missed before a node is removed.
   const int64_t num_heartbeats_timeout_;
-  /// The initial heartbeat timeout when GCS restarts and waiting for raylet to
+  /// The heartbeat timeout when GCS restarts and waiting for raylet to
   /// reconnect. Once connected, we'll use num_heartbeats_timeout_
-  const int64_t initial_num_heartbeats_timeout_;
+  const int64_t gcs_failover_worker_reconnect_timeout_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks

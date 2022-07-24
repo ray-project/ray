@@ -29,7 +29,7 @@ class GcsHeartbeatManagerTest : public ::testing::Test {
         R"(
 {
   "num_heartbeats_timeout": 2,
-  "initial_num_heartbeats_timeout": 4
+  "gcs_failover_worker_reconnect_timeout": 4
 }
   )");
   }

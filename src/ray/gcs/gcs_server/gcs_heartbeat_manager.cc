@@ -27,12 +27,12 @@ GcsHeartbeatManager::GcsHeartbeatManager(
     : io_service_(io_service),
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
-      initial_num_heartbeats_timeout_(
-          RayConfig::instance().initial_num_heartbeats_timeout()),
+      gcs_failover_worker_reconnect_timeout_(
+          RayConfig::instance().gcs_failover_worker_reconnect_timeout()),
       periodical_runner_(io_service) {
   RAY_LOG(INFO) << "GcsHeartbeatManager start, num_heartbeats_timeout="
-                << num_heartbeats_timeout_
-                << ", initial_num_heartbeats_timeout=" << initial_num_heartbeats_timeout_;
+                << num_heartbeats_timeout_ << ", initial_num_heartbeats_timeout="
+                << gcs_failover_worker_reconnect_timeout_;
 
   io_service_thread_.reset(new std::thread([this] {
     SetThreadName("heartbeat");
@@ -45,7 +45,7 @@ GcsHeartbeatManager::GcsHeartbeatManager(
 void GcsHeartbeatManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
-      AddNode(item.second, initial_num_heartbeats_timeout_);
+      AddNodeInternal(item.second, gcs_failover_worker_reconnect_timeout_);
     }
   }
 }
@@ -80,8 +80,12 @@ void GcsHeartbeatManager::RemoveNode(const NodeID &node_id) {
       "GcsHeartbeatManager::RemoveNode");
 }
 
-void GcsHeartbeatManager::AddNode(const rpc::GcsNodeInfo &node_info,
-                                  int64_t heartbeats_counts) {
+void GcsHeartbeatManager::AddNode(const rpc::GcsNodeInfo &node_info) {
+  AddNodeInternal(node_info, num_heartbeats_timeout_);
+}
+
+void GcsHeartbeatManager::AddNodeInternal(const rpc::GcsNodeInfo &node_info,
+                                          int64_t heartbeats_counts) {
   auto node_id = NodeID::FromBinary(node_info.node_id());
   auto node_addr = node_info.node_manager_address() + ":" +
                    std::to_string(node_info.node_manager_port());
