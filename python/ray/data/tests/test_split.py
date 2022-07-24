@@ -510,6 +510,16 @@ def _create_block(data):
     return (ray.put(data), _create_meta(len(data)))
 
 
+def _create_blocklist(blocks):
+    block_refs = []
+    meta = []
+    for block in blocks:
+        block_ref, block_meta = _create_block(block)
+        block_refs.append(block_ref)
+        meta.append(block_meta)
+    return BlockList(block_refs, meta, owned_by_consumer=True)
+
+
 def test_split_single_block(ray_start_regular_shared):
     block = [1, 2, 3]
     meta = _create_meta(3)
@@ -589,42 +599,37 @@ def test_generate_global_split_results(ray_start_regular_shared):
 
 
 def test_private_split_at_indices(ray_start_regular_shared):
-    inputs = []
-    splits = list(zip(*_split_at_indices(iter(inputs), [0])))
+    inputs = _create_blocklist([])
+    splits = list(zip(*_split_at_indices(inputs, [0])))
     verify_splits(splits, [[], []])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [])))
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[]])
 
-    inputs = [_create_block([1]), _create_block([2, 3]), _create_block([4])]
+    inputs = _create_blocklist([[1], [2, 3], [4]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [1])))
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [2])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [2])))
     verify_splits(splits, [[[1], [2]], [[3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [1])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [2, 2])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [2, 2])))
     verify_splits(splits, [[[1], [2]], [], [[3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[[1], [2, 3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [0, 4])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [0, 4])))
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
-
-
-def _create_blocklist(blocks):
-    block_refs = []
-    meta = []
-    for block in blocks:
-        block_ref, block_meta = _create_block(block)
-        block_refs.append(block_ref)
-        meta.append(block_meta)
-    return BlockList(block_refs, meta, owned_by_consumer=True)
 
 
 def equalize_helper(input_block_lists):
