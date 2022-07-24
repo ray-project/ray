@@ -360,10 +360,8 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
-            batch_size: The number of rows in each batch, or None to use entire blocks
-                as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows.
-                Defaults to 4096.
+            batch_size: Request a specific batch size, or None to use entire
+                blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling actor pool. If wanting to
                 configure the min or max size of the autoscaling actor pool, you can
@@ -1239,8 +1237,7 @@ class Dataset(Generic[T]):
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
         block_list = self._plan.execute()
-        blocks_with_metadata = block_list.get_blocks_with_metadata()
-        blocks, metadata = _split_at_indices(blocks_with_metadata, indices)
+        blocks, metadata = _split_at_indices(block_list, indices)
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
         splits = []
@@ -2343,7 +2340,7 @@ class Dataset(Generic[T]):
                 else "native"
             )
         for batch in self.iter_batches(
-            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
+            prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
             batch = BlockAccessor.for_block(batch)
             for row in batch.iter_rows():
@@ -2353,7 +2350,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
+        batch_size: Optional[int] = None,
         batch_format: str = "native",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -2371,10 +2368,7 @@ class Dataset(Generic[T]):
         Args:
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: The number of rows in each batch, or None to use entire blocks
-                as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows if
-                ``drop_last`` is ``False``. Defaults to 256.
+            batch_size: Record batch size, or None to let the system pick.
             batch_format: The format in which to return each batch.
                 Specify "native" to use the native block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
@@ -2414,7 +2408,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
+        batch_size: Optional[int] = None,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         drop_last: bool = False,
@@ -2444,10 +2438,7 @@ class Dataset(Generic[T]):
         Args:
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: The number of rows in each batch, or None to use entire blocks
-                as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows if
-                ``drop_last`` is ``False``. Defaults to 256.
+            batch_size: Record batch size, or None to let the system pick.
             dtypes: The Torch dtype(s) for the created tensor(s); if None, the dtype
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
@@ -2488,7 +2479,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = 256,
+        batch_size: Optional[int] = None,
         dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -2518,10 +2509,7 @@ class Dataset(Generic[T]):
         Args:
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: The number of rows in each batch, or None to use entire blocks
-                as batches (blocks may contain different number of rows).
-                The final batch may include fewer than ``batch_size`` rows if
-                ``drop_last`` is ``False``. Defaults to 256.
+            batch_size: Record batch size, or None to let the system pick.
             dtypes: The TensorFlow dtype(s) for the created tensor(s); if None, the
                 dtype will be inferred from the tensor data.
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -3557,9 +3545,8 @@ class Dataset(Generic[T]):
     ) -> ("Dataset[T]", "Dataset[T]"):
         start_time = time.perf_counter()
         block_list = self._plan.execute()
-        blocks_with_metadata = block_list.get_blocks_with_metadata()
         left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
-            blocks_with_metadata,
+            block_list,
             index,
             return_right_half,
         )
