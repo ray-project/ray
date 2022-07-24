@@ -233,6 +233,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
             eps = torch.rand(1, model.action_space.shape[0], device=obs.device)
             action = 2.0 * eps - 1.0
             state_batches = model.get_initial_state()
+            # batchify the intial states to match the batch size of the obs tensor
             state_batches = [
                 s[None, :].expand(bsize, -1).to(device=obs.device)
                 for s in state_batches
@@ -242,6 +243,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
             if len(state_batches[0].size()) == 3:
                 # Very hacky, but works on all envs
                 state_batches = model.get_initial_state().to(device=obs.device)
+                # batchify the intial states to match the batch size of the obs tensor
                 state_batches = [
                     s[None, :].expand(bsize, -1).to(device=obs.device)
                     for s in state_batches

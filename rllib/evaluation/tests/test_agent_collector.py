@@ -225,6 +225,30 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         # check if the padding in the beginning is correct
         check(sample_batch["prev_obses"][0], np.ones((2, 1)) * expected_obses[0])
 
+    def test_view_requirement_with_shfit_step(self):
+        obs_space = gym.spaces.Box(-np.ones(4), np.ones(4))
+        view_reqs = {
+            SampleBatch.T: ViewRequirement(SampleBatch.T),
+            SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
+            "prev_obses": ViewRequirement("obs", shift="-5:-1:2"),  # [-5, -3, -1]
+        }
+
+        ac = _AgentCollector(view_reqs=view_reqs, policy=FakeRNNPolicy(max_seq_len=1))
+
+        obses = self._simulate_env_steps(ac, n_steps=10)
+
+        sample_batch = ac.build(view_reqs)
+        # exclude the last one since these are the next_obses
+        expected_obses = np.stack(obses[:-1])
+
+        self.assertEqual(sample_batch["prev_obses"].shape, (10, 3, 4))
+
+        # check if the last time step is correct
+        check(sample_batch["prev_obses"][-1], expected_obses[-6:-1:2])
+
+        # check if the padding in the beginning is correct
+        check(sample_batch["prev_obses"][0], np.ones((3, 1)) * expected_obses[0])
+
 
 if __name__ == "__main__":
     import pytest
