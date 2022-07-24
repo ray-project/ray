@@ -9,6 +9,7 @@ import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.utils import binary_to_hex
 from ray.core.generated.common_pb2 import TaskStatus
+from ray.experimental.state.custom_types import is_literal
 from ray.experimental.state.common import (
     ActorState,
     ListApiOptions,
@@ -80,7 +81,9 @@ def _convert_filters_type(
     for col, predicate, val in filter:
         if col in schema:
             column_type = schema[col]
-            if isinstance(val, column_type):
+            if is_literal(column_type):
+                pass
+            elif isinstance(val, column_type):
                 # Do nothing.
                 pass
             elif column_type is int:

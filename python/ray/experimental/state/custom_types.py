@@ -14,9 +14,9 @@ from ray.core.generated.gcs_pb2 import (
 from ray.dashboard.memory_utils import ReferenceType
 
 if sys.version_info >= (3, 8):
-    from typing import Literal
+    from typing import Literal, get_origin
 else:
-    from typing_extensions import Literal
+    from typing_extensions import Literal, get_origin
 
 
 ACTOR_STATUS = [
@@ -92,3 +92,8 @@ validate_protobuf_enum(GcsNodeInfo.GcsNodeState, NODE_STATUS)
 validate_protobuf_enum(WorkerType, WORKER_TYPE)
 validate_protobuf_enum(WorkerExitType, WORKER_EXIT_TYPE)
 validate_protobuf_enum(TaskType, TASK_TYPE)
+
+
+def is_literal(obj: object):
+    # We need a separate function because isinstance is not allowed for Literal.
+    return get_origin(obj) is Literal
