@@ -474,6 +474,10 @@ def list(
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.
     data = client.list(resource, options=options, _explain=_should_explain(format))
 
+    # If --detail is given, the default formatting is yaml.
+    if detail and format == AvailableFormat.DEFAULT:
+        format = AvailableFormat.YAML
+
     # Print data to console.
     print(
         format_list_api_output(

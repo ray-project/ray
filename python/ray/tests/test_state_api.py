@@ -2146,8 +2146,17 @@ def test_detail(shutdown_only):
     assert "test_detail" in result.output
 
     # Columns are upper case in the default formatting (table).
-    assert "serialized_runtime_env".upper() in result.output
-    assert "actor_id".upper() in result.output
+    assert "serialized_runtime_env" in result.output
+    assert "actor_id" in result.output
+
+    # Make sure when the --detail option is specified, the default formatting
+    # is yaml. If the format is not yaml, the below line will raise an yaml exception.
+    print(
+        yaml.load(
+            result.output,
+            Loader=yaml.FullLoader,
+        )
+    )
 
 
 def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None):

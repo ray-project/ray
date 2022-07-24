@@ -70,6 +70,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._gcs_node_info_stub = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
+        # Whether or not the head node is registered to the module.
+        self._head_node_registered = False
 
     async def _update_stubs(self, change):
         if change.old:
@@ -120,6 +122,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     node_id = node["nodeId"]
                     ip = node["nodeManagerAddress"]
                     hostname = node["nodeManagerHostname"]
+                    if ip == self._dashboard_head.ip:
+                        self._head_node_registered = True
                     node_id_to_ip[node_id] = ip
                     node_id_to_hostname[node_id] = hostname
                     assert node["state"] in ["ALIVE", "DEAD"]
@@ -146,7 +150,12 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception("Error updating nodes.")
             finally:
-                await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
+                # Until the head node is registered, we update the
+                # node status more frequently.
+                if not self._head_node_registered:
+                    await asyncio.sleep(0.1)
+                else:
+                    await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
 
     @routes.get("/nodes")
     @dashboard_optional_utils.aiohttp_cache
