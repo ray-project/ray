@@ -22,31 +22,10 @@ This section shows how to create single and multi-column Tensor datasets.
 
   **Single-column only**:
 
-  .. code-block:: python
-
-      # Create a Dataset of tensors.
-      ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
-      # -> Dataset(
-      #       num_blocks=200,
-      #       num_rows=409600,
-      #       schema={__value__: <ArrowTensorType: shape=(64, 64), dtype=int64>}
-      #    )
-      
-      ds.take(2)
-      # -> [array([[0, 0, 0, ..., 0, 0, 0],
-      #         [0, 0, 0, ..., 0, 0, 0],
-      #         [0, 0, 0, ..., 0, 0, 0],
-      #         ...,
-      #         [0, 0, 0, ..., 0, 0, 0],
-      #         [0, 0, 0, ..., 0, 0, 0],
-      #         [0, 0, 0, ..., 0, 0, 0]]),
-      #  array([[1, 1, 1, ..., 1, 1, 1],
-      #         [1, 1, 1, ..., 1, 1, 1],
-      #         [1, 1, 1, ..., 1, 1, 1],
-      #         ...,
-      #         [1, 1, 1, ..., 1, 1, 1],
-      #         [1, 1, 1, ..., 1, 1, 1],
-      #         [1, 1, 1, ..., 1, 1, 1]])]
+  .. literalinclude:: ./doc_code/tensor.py
+    :language: python
+    :start-after: __create_range_begin__
+    :end-before: __create_range_end__
 
 .. tabbed:: Pandas UDF
 
@@ -54,38 +33,17 @@ This section shows how to create single and multi-column Tensor datasets.
 
   **Single-column**:
 
-  .. code-block:: python
-
-      import ray
-      from ray.data.extensions.tensor_extension import TensorArray
-
-      import pandas as pd
-
-      # Start with a tabular base dataset.
-      ds = ray.data.range_table(1000)
-
-      # Create a single TensorArray column.
-      def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
-          bs = len(batch)
-          arr = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
-          return pd.DataFrame({"__value__": arr})
-
-      ds.map_batches(single_col_udf)
-      # -> Dataset(num_blocks=17, num_rows=1000, schema={__value__: TensorDtype})
+  .. literalinclude:: ./doc_code/tensor.py
+    :language: python
+    :start-after: __create_pandas_begin__
+    :end-before: __create_pandas_end__
 
   **Multi-column**:
 
-  .. code-block:: python
-
-      # Create multiple TensorArray columns.
-      def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
-          bs = len(batch)
-          image = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
-          embed = TensorArray(np.zeros((bs, 256,), dtype=np.uint8))
-          return pd.DataFrame({"image": image, "embed": embed})
-
-      ds.map_batches(multi_col_udf)
-      # -> Dataset(num_blocks=17, num_rows=1000, schema={image: TensorDtype, embed: TensorDtype})
+  .. literalinclude:: ./doc_code/tensor.py
+    :language: python
+    :start-after: __create_pandas_2_begin__
+    :end-before: __create_pandas_2_end__
 
 .. tabbed:: Numpy
 
@@ -93,19 +51,10 @@ This section shows how to create single and multi-column Tensor datasets.
 
   **Single-column only**:
 
-  .. code-block:: python
-
-    import ray
-
-    # From in-memory numpy data.
-    ray.data.from_numpy(np.zeros((1000, 128, 128, 3), dtype=np.int64))
-    # -> Dataset(num_blocks=1, num_rows=1000,
-    #            schema={__value__: <ArrowTensorType: shape=(128, 128, 3), dtype=int64>})
-
-    # From saved numpy files.
-    ray.data.read_numpy("example://mnist_subset.npy")
-    # -> Dataset(num_blocks=1, num_rows=3,
-    #            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+  .. literalinclude:: ./doc_code/tensor.py
+    :language: python
+    :start-after: __create_numpy_begin__
+    :end-before: __create_numpy_end__
 
 .. tabbed:: Parquet
 
