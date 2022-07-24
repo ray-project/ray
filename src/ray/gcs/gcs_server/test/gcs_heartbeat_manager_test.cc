@@ -46,7 +46,7 @@ class GcsHeartbeatManagerTest : public ::testing::Test {
     heartbeat_manager->AddNode(node_info);
   }
 
-  void TearDown() { heartbeat_manager->Stop(); }
+  void TearDown() override { heartbeat_manager->Stop(); }
 
   instrumented_io_context io_service;
   std::unique_ptr<GcsHeartbeatManager> heartbeat_manager;
