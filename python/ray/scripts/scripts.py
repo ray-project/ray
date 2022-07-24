@@ -9,6 +9,7 @@ import time
 import traceback
 import urllib
 import urllib.parse
+import warnings
 from datetime import datetime
 from distutils.dir_util import copy_tree
 from typing import Optional, Set
@@ -603,6 +604,21 @@ def start(
             "json.loads. Try using a format like\n\n"
             '    --resources=\'{"CustomResource1": 3, '
             '"CustomReseource2": 2}\''
+        )
+
+    if plasma_store_socket_name is not None:
+        warnings.warn(
+            "plasma_store_socket_name is deprecated and will be removed. You are not "
+            "supposed to specify this parameter as it's internal.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if raylet_socket_name is not None:
+        warnings.warn(
+            "raylet_socket_name is deprecated and will be removed. You are not "
+            "supposed to specify this parameter as it's internal.",
+            DeprecationWarning,
+            stacklevel=2,
         )
 
     redirect_output = None if not no_redirect_output else True
