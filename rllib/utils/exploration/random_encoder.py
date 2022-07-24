@@ -114,7 +114,7 @@ def compute_states_entropy(
     """
     obs_embeds_ = np.reshape(obs_embeds, [-1, embed_dim])
     dist = np.linalg.norm(obs_embeds_[:, None, :] - obs_embeds_[None, :, :], axis=-1)
-    return dist.argsort(axis=-1)[:, :k_nn][:, -1]
+    return dist.argsort(axis=-1)[:, :k_nn][:, -1].astype(np.float32)
 
 
 @PublicAPI
@@ -288,6 +288,6 @@ class RE3(Exploration):
         else:
             obs_embeds = tf.stop_gradient(
                 self._encoder_net({SampleBatch.OBS: sample_batch[SampleBatch.OBS]})[0]
-            )
+            ).numpy()
         sample_batch[SampleBatch.OBS_EMBEDS] = obs_embeds
         return sample_batch

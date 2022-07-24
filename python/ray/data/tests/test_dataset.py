@@ -41,7 +41,7 @@ def maybe_pipeline(ds, enabled):
 
 def maybe_lazy(ds, enabled):
     if enabled:
-        return ds.experimental_lazy()
+        return ds.lazy()
     else:
         return ds
 
@@ -2234,7 +2234,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
     fn_constructor_args = (ray.put(1),)
     fn_constructor_kwargs = {"b": ray.put(2)}
     ds2 = (
-        ds.experimental_lazy()
+        ds.lazy()
         .map_batches(
             CallableFn,
             batch_size=1,
@@ -2264,7 +2264,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
     fn_constructor_args = (ray.put(1),)
     fn_constructor_kwargs = {"b": ray.put(2)}
     ds2 = (
-        ds.experimental_lazy()
+        ds.lazy()
         .map_batches(
             lambda df, a, b=None: b * df + a,
             batch_size=1,
@@ -4550,9 +4550,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
 
 
 def test_split_is_not_disruptive(ray_start_regular):
-    ds = (
-        ray.data.range(100, parallelism=10).map_batches(lambda x: x).experimental_lazy()
-    )
+    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x).lazy()
 
     def verify_integrity(splits):
         for dss in splits:
