@@ -671,7 +671,7 @@ def test_equalize_randomized(ray_start_regular_shared):
     # verify the entries in the splits are in the range of 0 .. num_rows,
     # unique, and the total number matches num_rows if exact_num == True.
     def assert_unique_and_inrange(splits, num_rows, exact_num=False):
-        unique_set = set([])
+        unique_set = set()
         for split in splits:
             for block in split:
                 for entry in block:
