@@ -31,7 +31,7 @@ class DummyTrainer(DataParallelTrainer):
         scaling_config: Optional[ScalingConfig] = None,
         num_epochs: int = 1,
         prefetch_blocks: int = 1,
-        batch_size: Optional[int] = 4096,
+        batch_size: Optional[int] = None,
         **kwargs
     ):
         if not scaling_config:

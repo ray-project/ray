@@ -100,7 +100,7 @@ class CountVectorizer(Preprocessor):
 
         value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
         total_counts = [Counter() for _ in self.columns]
-        for batch in value_counts.iter_batches(batch_size=None):
+        for batch in value_counts.iter_batches():
             for i, col_value_counts in enumerate(batch):
                 total_counts[i].update(col_value_counts)
 
