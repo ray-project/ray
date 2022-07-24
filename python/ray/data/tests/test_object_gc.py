@@ -10,7 +10,7 @@ from ray.tests.conftest import *  # noqa
 def check_no_spill(ctx, pipe, prefetch_blocks: int = 0):
     # Run .iter_batches() for 10 secs, and we expect no object spilling.
     end_time = time.time() + 10
-    for batch in pipe.iter_batches(batch_size=None, prefetch_blocks=prefetch_blocks):
+    for batch in pipe.iter_batches(prefetch_blocks=prefetch_blocks):
         if time.time() > end_time:
             break
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)
@@ -127,7 +127,7 @@ def test_pipeline_splitting_has_no_spilling(shutdown_only):
 
     @ray.remote
     def consume(p):
-        for batch in p.iter_batches(batch_size=None):
+        for batch in p.iter_batches():
             pass
 
     tasks = [consume.remote(p1), consume.remote(p2)]
