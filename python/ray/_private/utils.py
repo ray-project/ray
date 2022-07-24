@@ -1047,6 +1047,13 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
+def get_ray_doc_version():
+    """Get the docs.ray.io version corresponding to the ray.__version__."""
+    if "dev" in ray.__version__:
+        return "master"
+    return f"releases-{ray.__version__}"
+
+
 # Used to only print a deprecation warning once for a given function if we
 # don't wish to spam the caller.
 _PRINTED_WARNING = set()

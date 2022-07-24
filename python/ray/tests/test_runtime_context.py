@@ -210,6 +210,60 @@ def test_actor_stats_async_actor(ray_start_regular):
     assert max(result["AysncActor.func"]["pending"] for result in results) == 3
 
 
+def test_ids(ray_start_regular):
+    rtc = ray.get_runtime_context()
+    # node id
+    assert isinstance(rtc.get_node_id(), str)
+    assert rtc.get_node_id() == rtc.node_id.hex()
+    # job id
+    assert isinstance(rtc.get_job_id(), str)
+    assert rtc.get_job_id() == rtc.job_id.hex()
+    # placement group id
+    # Driver doesn't belong to any placement group.
+    assert rtc.get_placement_group_id() is None
+    pg = ray.util.placement_group(
+        name="bar",
+        strategy="PACK",
+        bundles=[
+            {"CPU": 1, "GPU": 0},
+        ],
+    )
+    ray.get(pg.ready())
+
+    @ray.remote
+    def foo_pg():
+        rtc = ray.get_runtime_context()
+        assert isinstance(rtc.get_placement_group_id(), str)
+        assert rtc.get_placement_group_id() == rtc.current_placement_group_id.hex()
+
+    ray.get(foo_pg.options(placement_group=pg).remote())
+    ray.util.remove_placement_group(pg)
+
+    # task id
+    assert rtc.get_task_id() is None
+
+    @ray.remote
+    def foo_task():
+        rtc = ray.get_runtime_context()
+        assert isinstance(rtc.get_task_id(), str)
+        assert rtc.get_task_id() == rtc.task_id.hex()
+
+    ray.get(foo_task.remote())
+
+    # actor id
+    assert rtc.get_actor_id() is None
+
+    @ray.remote
+    class FooActor:
+        def foo(self):
+            rtc = ray.get_runtime_context()
+            assert isinstance(rtc.get_actor_id(), str)
+            assert rtc.get_actor_id() == rtc.actor_id.hex()
+
+    actor = FooActor.remote()
+    ray.get(actor.foo.remote())
+
+
 # get_runtime_context() can be called outside of Ray so it should not start
 # Ray automatically.
 def test_no_auto_init(shutdown_only):
