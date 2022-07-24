@@ -11,8 +11,8 @@ Tensor data (multi-dimensional arrays) are ubiquitous in ML workloads. However, 
 
 Datasets automatically converts between the Pandas and Arrow extension types/arrays above. This means you can just think of "Tensors" as a single first-class data type in Datasets.
 
-Creating Tensor Columns
------------------------
+Creating Tensor Datasets
+------------------------
 
 This section shows how to create single and multi-column Tensor datasets.
 
@@ -107,40 +107,11 @@ This section shows how to create single and multi-column Tensor datasets.
     # -> Dataset(num_blocks=1, num_rows=3,
     #            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
 
-.. tabbed:: Images
-
-  Load image data stored as individual files using ``ImageFolderDatasource()``.
-
-  **Image and label columns**:
-
-  .. code-block:: python
-
-      ray.data.read_datasource(ImageFolderDatasource(), paths=["example://image-folder"])
-      # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
-
-      ds.take(1)
-      # -> [{'image':
-      #         array([[[ 92,  71,  57],
-      #                 [107,  87,  72],
-      #                 ...,
-      #                 [141, 161, 185],
-      #                 [139, 158, 184]],
-      #                
-      #                ...,
-      #                
-      #                [[135, 135, 109],
-      #                 [135, 135, 108],
-      #                 ...,
-      #                 [167, 150,  89],
-      #                 [165, 146,  90]]], dtype=uint8),
-      #      'label': 'cat',
-      #     }]
-
 .. tabbed:: Parquet
 
-  Datasets provides methods for loading both previously-saved Tensor datasets, and constructing
-  Tensor datasets by casting binary / other columns. When casting data, the schema and (optional)
-  deserialization UDF must be provided. The following are examples for each method.
+  There are two ways to construct a parquet Tensor dataset: (1) loading a previously-saved Tensor
+  dataset, or (2) casting non-Tensor parquet columns to Tensor type. When casting data, a tensor
+  schema and (optional) deserialization UDF must be provided. The following are examples for each method.
 
   **Previously-saved Tensor datasets**:
 
@@ -244,16 +215,45 @@ This section shows how to create single and multi-column Tensor datasets.
       # -> one: int64
       #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
+.. tabbed:: Images (experimental)
+
+  Load image data stored as individual files using ``ImageFolderDatasource()``.
+
+  **Image and label columns**:
+
+  .. code-block:: python
+
+      ray.data.read_datasource(ImageFolderDatasource(), paths=["example://image-folder"])
+      # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
+
+      ds.take(1)
+      # -> [{'image':
+      #         array([[[ 92,  71,  57],
+      #                 [107,  87,  72],
+      #                 ...,
+      #                 [141, 161, 185],
+      #                 [139, 158, 184]],
+      #                
+      #                ...,
+      #                
+      #                [[135, 135, 109],
+      #                 [135, 135, 108],
+      #                 ...,
+      #                 [167, 150,  89],
+      #                 [165, 146,  90]]], dtype=uint8),
+      #      'label': 'cat',
+      #     }]
+
 .. note::
-  By convention, single-column datasets have a single ``__value__`` column.
-  When batches are read from single-column datasets in "numpy" format, the
-  data will be unwrapped as an ``np.ndarray`` rather than ``Dict[str, np.ndarray]``.
+
+  By convention, single-column Tensor datasets are represented with a single ``__value__`` column.
+  This kind of dataset can be converted directly to/from Numpy array format.
 
 
-Consuming Tensor Columns
-------------------------
+Consuming Tensor Datasets
+-------------------------
 
-Like any other Dataset, Datasets with Tensor columns can be consumed in batches via the ``.iter_batches(batch_format=<format>)`` and ``.map_batches(batch_fn, batch_format=<format>)`` APIs. This section shows the available batch formats and their behavior:
+Like any other Dataset, Datasets with Tensor columns can be consumed / transformed in batches via the ``.iter_batches(batch_format=<format>)`` and ``.map_batches(batch_fn, batch_format=<format>)`` APIs. This section shows the available batch formats and their behavior:
 
 .. tabbed:: "native" (default)
 
@@ -384,6 +384,19 @@ Like any other Dataset, Datasets with Tensor columns can be consumed in batches 
 
     # This returns batches in np.ndarray format.
     next(ds.iter_batches(batch_format="numpy"))
+    # -> array([[[0, 0, 0, ..., 0, 0, 0],
+    #            [0, 0, 0, ..., 0, 0, 0],
+    #            ...,
+    #            [0, 0, 0, ..., 0, 0, 0],
+    #            [0, 0, 0, ..., 0, 0, 0]],
+    #
+    #           ...,
+    #
+    #           [[0, 0, 0, ..., 0, 0, 0],
+    #            [0, 0, 0, ..., 0, 0, 0],
+    #            ...,
+    #            [0, 0, 0, ..., 0, 0, 0],
+    #            [0, 0, 0, ..., 0, 0, 0]]], dtype=uint8)
 
   **Multi-column**:
 
@@ -410,119 +423,49 @@ Like any other Dataset, Datasets with Tensor columns can be consumed in batches 
     #                       [165, 146,  90]]]], dtype=uint8),
     #     'label': array(['cat'], dtype=object)}
 
-Saving Tensor Columns
-~~~~~~~~~~~~~~~~~~~~~
+Saving Tensor Datasets
+~~~~~~~~~~~~~~~~~~~~~~
 
-Write to numpy
+Because Tensor datasets rely on Dataset-specific extension types, they can only be saved in formats that preserve Arrow metadata (currently only Parquet). In addition, single-column Tensor datasets can be saved in Numpy format.
 
-Write to parquet
+.. tabbed:: Parquet
 
-.. 
-  TODO: REWRITE ALL BELOW
-  TODO: REWRITE ALL BELOW
-  TODO: REWRITE ALL BELOW
-  TODO: REWRITE ALL BELOW
-  TODO: REWRITE ALL BELOW
-  TODO: REWRITE ALL BELOW
-  TODO: REWRITE ALL BELOW
-  TODO: REWRITE ALL BELOW
-  TODO: REWRITE ALL BELOW
+  .. code-block:: python
 
-Single-column tensor datasets
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # Read a multi-column example dataset.
+      ds = ray.data.read_parquet("example://parquet_images_mini")
+      # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
 
-The most basic case is when a dataset only has a single column, which is of tensor
-type. This kind of dataset can be:
+      # You can write the dataset to Parquet.
+      ds.write_parquet("/tmp/some_path")
 
-* created with :func:`range_tensor() <ray.data.range_tensor>`
-  or :func:`from_numpy() <ray.data.from_numpy>`,
-* transformed with NumPy UDFs via
-  :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`,
-* consumed with :meth:`ds.iter_rows() <ray.data.Dataset.iter_rows>` and
-  :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`, and
-* can be read from and written to ``.npy`` files.
+      # And you can read it back.
+      read_ds = ray.data.read_parquet("/tmp/some_path")
+      print(read_ds.schema())
+      # -> image: extension<arrow.py_extension_type<ArrowTensorType>>
+      #    label: string
 
-Here is an end-to-end example:
+.. tabbed:: Numpy
 
-.. code-block:: python
+  .. code-block:: python
 
-    # Create a synthetic pure-tensor Dataset.
-    ds = ray.data.range_tensor(10, shape=(3, 5))
-    # -> Dataset(num_blocks=10, num_rows=10,
-    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})
+      # Read a single-column example dataset.
+      ds = ray.data.read_numpy("example://mnist_subset.npy")
+      # -> Dataset(num_blocks=1, num_rows=3,
+      #            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
 
-    # Create a pure-tensor Dataset from an existing NumPy ndarray.
-    arr = np.arange(10 * 3 * 5).reshape((10, 3, 5))
-    ds = ray.data.from_numpy(arr)
-    # -> Dataset(num_blocks=1, num_rows=10,
-    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})
+      # You can write the dataset to Parquet.
+      ds.write_numpy("/tmp/some_path")
 
-    # Transform the tensors. Datasets will automatically unpack the single-column Arrow
-    # table into a NumPy ndarray, provide that ndarray to your UDF, and then repack it
-    # into a single-column Arrow table; this will be a zero-copy conversion in both
-    # cases.
-    ds = ds.map_batches(lambda arr: arr / arr.max())
-    # -> Dataset(num_blocks=1, num_rows=10,
-    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=double>})
+      # And you can read it back.
+      read_ds = ray.data.read_numpy("/tmp/some_path")
+      print(read_ds.schema())
+      # -> __value__: extension<arrow.py_extension_type<ArrowTensorType>>
 
-    # Consume the tensor. This will yield the underlying (3, 5) ndarrays.
-    for arr in ds.iter_rows():
-        assert isinstance(arr, np.ndarray)
-        assert arr.shape == (3, 5)
+Example: Working with the Pandas extension type
+-----------------------------------------------
 
-    # Consume the tensor in batches.
-    for arr in ds.iter_batches(batch_size=2):
-        assert isinstance(arr, np.ndarray)
-        assert arr.shape == (2, 3, 5)
-
-    # Save to storage. This will write out the blocks of the tensor column as NPY files.
-    ds.write_numpy("/tmp/tensor_out")
-
-    # Read back from storage.
-    ray.data.read_numpy("/tmp/tensor_out")
-    # -> Dataset(num_blocks=1, num_rows=?,
-    #            schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=double>})
-
-Working with tensor column datasets
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Now that the tensor column is properly typed and in a ``Dataset``, we can perform operations on the dataset as if it was a normal table:
-
-.. code-block:: python
-
-    # Arrow and Pandas is now aware of this tensor column, so we can do the
-    # typical DataFrame operations on this column.
-    ds = ds.map_batches(lambda x: 2 * (x + 1), batch_format="pandas")
-    # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1123.54it/s]
-    print(ds)
-    # -> Dataset(
-    #        num_blocks=1, num_rows=3,
-    #        schema=<class 'int',
-    #            class ray.data.extensions.tensor_extension.ArrowTensorType>)
-    print([row["two"] for row in ds.take(5)])
-    # -> [2, 4, 6, 8, 10]
-
-Writing and reading tensor columns
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-This dataset can then be written to Parquet files. The tensor column schema will be preserved via the Pandas and Arrow extension types and associated metadata, allowing us to later read the Parquet files into a Dataset without needing to specify a column casting schema. This Pandas --> Arrow --> Parquet --> Arrow --> Pandas conversion support makes working with tensor columns extremely easy when using Ray Datasets to both write and read data.
-
-.. code-block:: python
-
-    # You can write the dataset to Parquet.
-    ds.write_parquet("/some/path")
-    # And you can read it back.
-    read_ds = ray.data.read_parquet("/some/path")
-    print(read_ds.schema())
-    # -> one: int64
-    #    two: extension<arrow.py_extension_type<ArrowTensorType>>
-
-.. _datasets_tensor_ml_exchange:
-
-Example: End-to-end workflow with the Pandas extension type
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If working with in-memory Pandas DataFrames that you want to analyze, manipulate, store, and eventually read, the Pandas/Arrow extension types/arrays make it easy to extend this end-to-end workflow to tensor columns.
+This example shows how to work with the Pandas extension type directly.
 
 .. code-block:: python
 
@@ -595,30 +538,9 @@ If working with in-memory Pandas DataFrames that you want to analyze, manipulate
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-    # You can write the dataset to Parquet.
-    ds.write_parquet("/some/path")
-    # And you can read it back.
-    read_ds = ray.data.read_parquet("/some/path")
-    print(read_ds.schema())
-    # -> one: int64
-    #    two: extension<arrow.py_extension_type<ArrowTensorType>>
-
-    read_df = read_ds.to_pandas()
-    print(read_df.dtypes)
-    # -> one          int64
-    #    two    TensorDtype
-    #    dtype: object
-
-    # The tensor extension type is preserved along the
-    # Pandas --> Arrow --> Parquet --> Arrow --> Pandas
-    # conversion chain.
-    print(read_df.equals(df))
-    # -> True
-
 Limitations
-~~~~~~~~~~~
+-----------
 
-This feature currently comes with a few known limitations that we are either actively working on addressing or have already implemented workarounds for.
+The following are current limitations of Tensor datasets.
 
- * All tensors in a tensor column currently must be the same shape. Please let us know if you require heterogeneous tensor shape for your tensor column! Tracking issue is `here <https://github.com/ray-project/ray/issues/18316>`__.
- * Automatic casting via specifying an override Arrow schema when reading Parquet is blocked by Arrow supporting custom ExtensionType casting kernels. See `issue <https://issues.apache.org/jira/browse/ARROW-5890>`__. An explicit ``tensor_column_schema`` parameter has been added for :func:`read_parquet() <ray.data.read_api.read_parquet>` as a stopgap solution.
+ * All tensors in a tensor column must have the same shape; see GitHub issue `#18316 <https://github.com/ray-project/ray/issues/18316>`__.

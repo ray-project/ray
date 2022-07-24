@@ -118,7 +118,7 @@ details.
   Instead, we will need to group the columns by compatibility in the ``feature_columns``
   argument.
 
-  Check out the :ref:`tensor data feature guide <datasets_tensor_ml_exchange>` for more
+  Check out the :ref:`tensor data feature guide <datasets_tensor_support>` for more
   information on how to handle this.
 
 Converting to TensorFlow dataset
@@ -163,7 +163,7 @@ details.
   Instead, we will need to group the columns by compatibility in the ``feature_columns``
   argument.
 
-  Check out the :ref:`tensor data feature guide <datasets_tensor_ml_exchange>` for more
+  Check out the :ref:`tensor data feature guide <datasets_tensor_support>` for more
   information on how to handle this.
 
 Splitting Into and Consuming Shards
