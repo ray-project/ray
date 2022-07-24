@@ -339,7 +339,7 @@ class StateApiClient(SubmissionClient):
 
     def list(
         self, resource: StateResource, options: ListApiOptions, _explain: bool = False
-    ) -> Union[Dict, List]:
+    ) -> List[Dict]:
         """List resources states
 
         Args:

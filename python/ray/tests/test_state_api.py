@@ -164,6 +164,7 @@ def generate_worker_data(id, pid=1234):
         timestamp=1234,
         worker_type=WorkerType.WORKER,
         pid=pid,
+        exit_type=None,
     )
 
 
@@ -991,6 +992,27 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         result = await state_api_manager.list_runtime_envs(
             option=create_api_options(limit=1)
         )
+
+
+@pytest.mark.asyncio
+async def test_filter_non_existent_column(state_api_manager):
+    """Test when the non existent column is given, it handles that properly.
+
+    Related: https://github.com/ray-project/ray/issues/26811
+    """
+    data_source_client = state_api_manager.data_source_client
+    id = b"1234"
+    data_source_client.get_all_worker_info.return_value = GetAllWorkerInfoReply(
+        worker_table_data=[
+            generate_worker_data(id, pid=1),
+            generate_worker_data(b"12345", pid=2),
+        ],
+        total=2,
+    )
+    result = await state_api_manager.list_workers(
+        option=create_api_options(filters=[("exit_type", "=", "INTENDED_SYSTEM_EXIT")])
+    )
+    assert len(result.result) == 0
 
 
 def test_type_conversion():
@@ -2421,6 +2443,18 @@ def test_state_api_server_enforce_concurrent_http_requests(
             return True
 
         wait_for_condition(verify)
+
+
+def test_get_id_not_found(shutdown_only):
+    """Test get API CLI fails correctly when there's no corresponding id
+
+    Related: https://github.com/ray-project/ray/issues/26808
+    """
+    ray.init()
+    runner = CliRunner()
+    result = runner.invoke(cli_get, ["actors", "1234"])
+    assert result.exit_code == 0
+    assert "Resource with id=1234 not found in the cluster." in result.output
 
 
 if __name__ == "__main__":
