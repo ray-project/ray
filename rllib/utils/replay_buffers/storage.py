@@ -246,7 +246,7 @@ class LocalStorage(Sized, Iterable):
                 "after eviction has been started. Use .add(item) instead."
             )
         idx = self._get_internal_index(i)
-        drop_item = self._del(idx)
+        drop_item = self.__delitem__(idx)
         if drop_item.count < item.count:
             logger.warning(
                 "New item consists of more timesteps than "
@@ -298,7 +298,7 @@ class LocalStorage(Sized, Iterable):
             self._eviction_started = True
             self._evicted_hit_stats.push(self._hit_count[self._oldest_item_idx])
             self._hit_count[self._oldest_item_idx] = 0
-            drop_item = self._del(self._oldest_item_idx)
+            drop_item = self.__delitem__(self._oldest_item_idx)
             self._num_timesteps -= drop_item.count
             self._size_bytes -= drop_item.size_bytes()
             self._num_items -= 1
@@ -399,7 +399,7 @@ class LocalStorage(Sized, Iterable):
         raise NotImplementedError()
 
     @abstractmethod
-    def _del(self, idx: int) -> SampleBatchType:
+    def __delitem__(self, idx: int) -> SampleBatchType:
         """Remove and return the item at the specified index / key.
 
         This method may be overridden by subclasses
@@ -417,7 +417,7 @@ class LocalStorage(Sized, Iterable):
         Returns:
             Item at index that has been removed.
         """
-        return self._get(idx)
+        raise NotImplementedError()
 
 
 @ExperimentalAPI
@@ -537,7 +537,7 @@ class StorageView(LocalStorage):
         raise RuntimeError("The view of a storage is read-only.")
 
     @override(LocalStorage)
-    def _del(self, idx: int) -> SampleBatchType:
+    def __delitem__(self, idx: int) -> SampleBatchType:
         raise RuntimeError("The view of a storage is read-only.")
 
 
@@ -603,9 +603,11 @@ class InMemoryStorage(LocalStorage):
             self._samples[idx] = item
 
     @override(LocalStorage)
-    def _del(self, i: int) -> SampleBatchType:
+    def __delitem__(self, i: int) -> SampleBatchType:
         del_sample = self._samples[i]
         self._samples[i] = None
+        self._evicted_hit_stats.push(self._hit_count[i])
+        self._hit_count[i] = 0
         return del_sample
 
     def _warn_replay_capacity(self, item: SampleBatchType, num_items: int) -> None:
@@ -771,11 +773,13 @@ class OnDiskStorage(LocalStorage):
         self._samples.sync()
 
     @override(LocalStorage)
-    def _del(self, i: int) -> SampleBatchType:
+    def __delitem__(self, i: int) -> SampleBatchType:
         # Do not delete item since this leads to continuously
         # increasing file size
         # https://github.com/python/cpython/blob/4153f2cbcb41a1a9057bfba28d5f65d48ea39283/Lib/dbm/dumb.py#L11-L12
         drop_item = self._samples[str(i)]
+        self._evicted_hit_stats.push(self._hit_count[i])
+        self._hit_count[i] = 0
         # del self._samples[str(i)]
         return drop_item
 

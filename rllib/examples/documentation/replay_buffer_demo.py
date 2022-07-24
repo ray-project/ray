@@ -2,7 +2,6 @@
 
 from typing import Optional
 import random
-import numpy as np
 
 from ray import tune
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
@@ -51,35 +50,31 @@ buffer.sample(2)
 
 
 # __sphinx_doc_replay_buffer_own_buffer__begin__
-class LessSampledReplayBuffer(ReplayBuffer):
+class SimpleMixInBuffer(ReplayBuffer):
     @override(ReplayBuffer)
     def sample(
         self, num_items: int, evict_sampled_more_then: int = 30, **kwargs
     ) -> Optional[SampleBatchType]:
-        """Evicts experiences that have been sampled > evict_sampled_more_then times."""
-        idxes = [random.randint(0, len(self) - 1) for _ in range(num_items)]
-        often_sampled_idxes = list(
-            filter(
-                lambda x: self._storage._hit_count[x] >= evict_sampled_more_then,
-                set(idxes),
-            )
-        )
+        """At least 1/2 of samples is always newest samples.
+        This is similar to mixin sampling.
+        """
+        newest_samples = [
+            self._storage._get_internal_index(len(self._storage) - i)
+            for i in range(num_items // 2)
+        ]
+        random_samples = [
+            random.randint(0, len(self) - 1) for _ in range(num_items // 2)
+        ]
 
-        sample = self._encode_sample(idxes)
+        sample = self._encode_sample(newest_samples + random_samples)
         self._num_timesteps_sampled += sample.count
-
-        for idx in often_sampled_idxes:
-            del self._storage[idx]
-            self._storage._hit_count = np.append(
-                self._storage._hit_count[:idx], self._storage._hit_count[idx + 1 :]
-            )
 
         return sample
 
 
 config = (
     DQNConfig()
-    .training(replay_buffer_config={"type": LessSampledReplayBuffer})
+    .training(replay_buffer_config={"type": SimpleMixInBuffer})
     .environment(env="CartPole-v0")
 )
 
@@ -94,7 +89,7 @@ tune.run(
 # This line will make our buffer store only complete episodes found in a batch
 config.training(replay_buffer_config={"storage_unit": StorageUnit.EPISODES})
 
-less_sampled_buffer = LessSampledReplayBuffer(**config.replay_buffer_config)
+less_sampled_buffer = SimpleMixInBuffer(**config.replay_buffer_config)
 
 # Gather some random experiences
 env = RandomEnv()
@@ -111,12 +106,6 @@ while not done:
     batch = SampleBatch.concat_samples([batch, one_step_batch])
     t += 1
 
-less_sampled_buffer.add(batch)
-for i in range(10):
-    assert len(less_sampled_buffer._storage) == 1
-    less_sampled_buffer.sample(num_items=1, evict_sampled_more_then=9)
-
-assert len(less_sampled_buffer._storage) == 0
 # __sphinx_doc_replay_buffer_advanced_usage_storage_unit__end__
 
 
@@ -126,7 +115,7 @@ config = {
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
         "underlying_replay_buffer_config": {
-            "type": LessSampledReplayBuffer,
+            "type": SimpleMixInBuffer,
             "evict_sampled_more_then": 20  # We can specify the default call argument
             # for the sample method of the underlying buffer method here
         },
