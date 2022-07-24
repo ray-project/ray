@@ -13,6 +13,7 @@ from filelock import FileLock
 from torch.utils.data import random_split
 import torchvision
 import torchvision.transforms as transforms
+from typing import Dict
 import ray
 from ray import tune
 from ray.air import session
@@ -164,15 +165,15 @@ def train_cifar(config):
 
 
 # __test_acc_begin__
-def test_best_model(best_trial):
-    best_trained_model = Net(best_trial.config["l1"], best_trial.config["l2"])
+def test_best_model(config: Dict, checkpoint: "ray.air.Checkpoint"):
+    best_trained_model = Net(config["l1"], config["l2"])
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
     best_trained_model.to(device)
 
-    checkpoint_path = os.path.join(best_trial.checkpoint.dir_or_data, "checkpoint.pt")
-
-    model_state, optimizer_state = torch.load(checkpoint_path)
-    best_trained_model.load_state_dict(model_state)
+    with checkpoint.as_directory() as checkpoint_dir:
+        checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
+        model_state, optimizer_state = torch.load(checkpoint_path)
+        best_trained_model.load_state_dict(model_state)
 
     trainset, testset = load_data()
 
@@ -207,22 +208,23 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         max_t=max_num_epochs,
         grace_period=1,
         reduction_factor=2)
-    result = tune.run(
-        tune.with_parameters(train_cifar),
-        resources_per_trial={"cpu": 2, "gpu": gpus_per_trial},
-        config=config,
-        metric="loss",
+
+    tuner = tune.Tuner(
+        tune.with_resources(
+        tune.with_parameters(train_cifar), resources={"cpu": 2, "gpu": gpus_per_trial}),
+        tune_config=tune.TuneConfig(metric="loss",
         mode="min",
         num_samples=num_samples,
-        scheduler=scheduler
+        scheduler=scheduler),
+        param_space=config,
     )
-
-    best_trial = result.get_best_trial("loss", "min", "last")
-    print("Best trial config: {}".format(best_trial.config))
+    results = tuner.fit()
+    best_result = results.get_best_result("loss", "min")
+    print("Best trial config: {}".format(best_result.config))
     print("Best trial final validation loss: {}".format(
-        best_trial.last_result["loss"]))
+        best_result.metrics["loss"]))
     print("Best trial final validation accuracy: {}".format(
-        best_trial.last_result["accuracy"]))
+        best_result.metrics["accuracy"]))
 
     if ray.util.client.ray.is_connected():
         # If using Ray Client, we want to make sure checkpoint access
@@ -231,9 +233,9 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         # ``tune.run`` is called on.
         from ray.util.ml_utils.node import force_on_current_node
         remote_fn = force_on_current_node(ray.remote(test_best_model))
-        ray.get(remote_fn.remote(best_trial))
+        ray.get(remote_fn.remote(best_result.config, best_result.checkpoint))
     else:
-        test_best_model(best_trial)
+        test_best_model(best_result.config, best_result.checkpoint)
 
 
 # __main_end__

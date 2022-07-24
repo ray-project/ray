@@ -67,7 +67,7 @@ def train_convnet(config):
 
 
 def test_best_model(analysis):
-    """Test the best model given output of tune.run"""
+    """Test the best model given output of tuner.fit()."""
     with analysis.best_checkpoint.as_directory() as best_checkpoint_path:
         best_model = ConvNet()
         best_checkpoint = torch.load(

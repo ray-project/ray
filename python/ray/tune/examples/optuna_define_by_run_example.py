@@ -39,7 +39,7 @@ def define_by_run_func(trial) -> Optional[Dict[str, Any]]:
     """Define-by-run function to create the search space.
 
     Ensure no actual computation takes place here. That should go into
-    the trainable passed to ``tune.run`` (in this example, that's
+    the trainable passed to ``Tuner`` (in this example, that's
     ``easy_objective``).
 
     For more information, see https://optuna.readthedocs.io/en/stable\
@@ -64,16 +64,19 @@ def run_optuna_tune(smoke_test=False):
     algo = OptunaSearch(space=define_by_run_func, metric="mean_loss", mode="min")
     algo = ConcurrencyLimiter(algo, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        metric="mean_loss",
-        mode="min",
-        search_alg=algo,
-        scheduler=scheduler,
-        num_samples=10 if smoke_test else 100,
+        tune_config=tune.TuneConfig(
+            metric="mean_loss",
+            mode="min",
+            search_alg=algo,
+            scheduler=scheduler,
+            num_samples=10 if smoke_test else 100,
+        ),
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)
 
 
 if __name__ == "__main__":
