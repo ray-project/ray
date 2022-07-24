@@ -165,7 +165,8 @@ class RuntimeContext(object):
         """Get the assigned resources to this worker.
 
         By default for tasks, this will return {"CPU": 1}.
-        By default for actors, this will return {}.
+        By default for actors, this will return {}. This is because
+        actors do not have CPUs assigned to them by default.
 
         Returns:
             A dictionary mapping the name of a resource to a float, where
