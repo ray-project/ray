@@ -109,6 +109,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Whether we have warned of Datasets containing multiple epochs of data.
+_epoch_warned = False
+
+# Whether we have warned about using slow Dataset transforms.
+_slow_warned = False
+
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
@@ -1231,8 +1237,7 @@ class Dataset(Generic[T]):
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
         block_list = self._plan.execute()
-        blocks_with_metadata = block_list.get_blocks_with_metadata()
-        blocks, metadata = _split_at_indices(blocks_with_metadata, indices)
+        blocks, metadata = _split_at_indices(block_list, indices)
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
         splits = []
@@ -1378,13 +1383,15 @@ class Dataset(Generic[T]):
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
         if len(set(epochs)) > 1:
-            if ray.util.log_once("datasets_epoch_warned"):
+            global _epoch_warned
+            if not _epoch_warned:
                 logger.warning(
                     "Dataset contains data from multiple epochs: {}, "
                     "likely due to a `rewindow()` call. The higher epoch "
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch)
                 )
+                _epoch_warned = True
         dataset_stats = DatasetStats(
             stages={"union": []},
             parent=[d._plan.stats() for d in datasets],
@@ -2373,10 +2380,7 @@ class Dataset(Generic[T]):
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
-                buffer size must be greater than or equal to ``batch_size``, and
-                therefore ``batch_size`` must also be specified when using local
-                shuffling.
+                the buffer, the remaining rows in the buffer will be drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -3430,8 +3434,8 @@ class Dataset(Generic[T]):
         """
         return self._plan.execute().get_blocks()
 
-    def experimental_lazy(self) -> "Dataset[T]":
-        """EXPERIMENTAL: Enable lazy evaluation.
+    def lazy(self) -> "Dataset[T]":
+        """Enable lazy evaluation.
 
         The returned dataset is a lazy dataset, where all subsequent operations on the
         dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
@@ -3441,6 +3445,9 @@ class Dataset(Generic[T]):
         ds = Dataset(self._plan, self._epoch, lazy=True)
         ds._set_uuid(self._get_uuid())
         return ds
+
+    def experimental_lazy(self) -> "Dataset[T]":
+        raise DeprecationWarning("Use self.lazy().")
 
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
@@ -3538,9 +3545,8 @@ class Dataset(Generic[T]):
     ) -> ("Dataset[T]", "Dataset[T]"):
         start_time = time.perf_counter()
         block_list = self._plan.execute()
-        blocks_with_metadata = block_list.get_blocks_with_metadata()
         left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
-            blocks_with_metadata,
+            block_list,
             index,
             return_right_half,
         )
@@ -3723,7 +3729,7 @@ class Dataset(Generic[T]):
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
                     t = t.__name__
-                schema_str.append(f"{n}: {t}")
+                schema_str.append("{}: {}".format(n, t))
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
@@ -3771,7 +3777,9 @@ class Dataset(Generic[T]):
         self._epoch = epoch
 
     def _warn_slow(self):
-        if ray.util.log_once("datasets_slow_warned"):
+        global _slow_warned
+        if not _slow_warned:
+            _slow_warned = True
             logger.warning(
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
                 "can be very slow. Consider using `.map_batches()` instead."
