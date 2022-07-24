@@ -206,7 +206,7 @@ def format_table(table):
 )
 def debug(address):
     """Show all active breakpoints and exceptions in the Ray debugger."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
     while True:
@@ -738,11 +738,11 @@ def start(
         # Fail early when starting a new cluster when one is already running
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
-            bootstrap_addresses = services.find_bootstrap_address()
-            if default_address in bootstrap_addresses:
+            bootstrap_address = services.find_bootstrap_address(temp_dir)
+            if default_address == bootstrap_address:
                 raise ConnectionError(
                     f"Ray is trying to start at {default_address}, "
-                    f"but is already running at {bootstrap_addresses}. "
+                    f"but is already running at {bootstrap_address}. "
                     "Please specify a different port using the `--port`"
                     " flag of `ray start` command."
                 )
@@ -751,17 +751,7 @@ def start(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
         )
 
-        bootstrap_addresses = node.address
-        if temp_dir is None:
-            # Default temp directory.
-            temp_dir = ray._private.utils.get_user_temp_dir()
-        # Using the user-supplied temp dir unblocks on-prem
-        # users who can't write to the default temp.
-        current_cluster_path = os.path.join(temp_dir, "ray_current_cluster")
-        # TODO: Consider using the custom temp_dir for this file across the
-        # code base. (https://github.com/ray-project/ray/issues/16458)
-        with open(current_cluster_path, "w") as f:
-            print(bootstrap_addresses, file=f)
+        bootstrap_address = node.address
 
         # this is a noop if new-style is not set, so the old logger calls
         # are still in place
@@ -777,9 +767,9 @@ def start(
             # of the cluster. Please be careful when updating this line.
             cli_logger.print(
                 cf.bold("  ray start --address='{}'"),
-                bootstrap_addresses,
+                bootstrap_address,
             )
-            if bootstrap_addresses.startswith("127.0.0.1:"):
+            if bootstrap_address.startswith("127.0.0.1:"):
                 cli_logger.print(
                     "This Ray runtime only accepts connections from local host."
                 )
@@ -839,6 +829,7 @@ def start(
             cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
+        ray_params.gcs_address = bootstrap_address
     else:
         # Start worker node.
 
@@ -874,7 +865,9 @@ def start(
             )
 
         # Start Ray on a non-head node.
-        bootstrap_address = services.canonicalize_bootstrap_address(address)
+        bootstrap_address = services.canonicalize_bootstrap_address(
+            address, temp_dir=temp_dir
+        )
 
         if bootstrap_address is None:
             cli_logger.abort(
@@ -965,6 +958,9 @@ def start(
                 os._exit(1)
         # not-reachable
 
+    assert ray_params.gcs_address is not None
+    ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
+
 
 @cli.command()
 @click.option(
@@ -1051,14 +1047,6 @@ def stop(force, grace_period):
                     "Could not terminate `{}` due to {}", cf.bold(proc_string), str(ex)
                 )
 
-    try:
-        os.remove(
-            os.path.join(ray._private.utils.get_user_temp_dir(), "ray_current_cluster")
-        )
-    except OSError:
-        # This just means the file doesn't exist.
-        pass
-
     # Wait for the processes to actually stop.
     # Dedup processes.
     stopped, alive = psutil.wait_procs(stopped, timeout=0)
@@ -1102,6 +1090,10 @@ def stop(force, grace_period):
         proc.kill()
     # Wait a little bit to make sure processes are killed forcefully.
     psutil.wait_procs(alive, timeout=2)
+    # NOTE(swang): This will not reset the cluster address for a user-defined
+    # temp_dir. This is fine since it will get overwritten the next time we
+    # call `ray start`.
+    ray._private.utils.reset_ray_address()
 
 
 @cli.command()
@@ -1771,7 +1763,7 @@ def microbenchmark():
 )
 def timeline(address):
     """Take a Chrome tracing timeline for a Ray cluster."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -1845,7 +1837,7 @@ def memory(
     num_entries,
 ):
     """Print object references held in a Ray cluster."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
@@ -1878,7 +1870,7 @@ def memory(
 @PublicAPI
 def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
     if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
@@ -2109,7 +2101,9 @@ def ray_logs(
 
     # If both id & ip are not provided, choose a head node as a default.
     if node_id is None and node_ip is None:
-        address = ray._private.services.canonicalize_bootstrap_address(None)
+        # TODO(swang): This command should also support
+        # passing --address or RAY_ADDRESS, like others.
+        address = ray._private.services.canonicalize_bootstrap_address_or_die(None)
         node_ip = address.split(":")[0]
 
     filename = None
@@ -2304,8 +2298,6 @@ def cluster_dump(
 )
 def global_gc(address):
     """Trigger Python garbage collection on all cluster workers."""
-    address = services.canonicalize_bootstrap_address(address)
-    logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     ray._private.internal_api.global_gc()
     print("Triggered gc.collect() on all workers.")
@@ -2371,7 +2363,7 @@ def healthcheck(address, redis_password, component, skip_version_check):
     Health check a Ray or a specific component. Exit code 0 is healthy.
     """
 
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
 
     if not component:
         try:
