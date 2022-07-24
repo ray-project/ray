@@ -7,7 +7,7 @@ How to work with Callbacks?
 ---------------------------
 
 Ray Tune supports callbacks that are called during various times of the training process.
-Callbacks can be passed as a parameter to ``tune.run()``, and the sub-method you provide will be invoked automatically.
+Callbacks can be passed as a parameter to ``air.RunConfig``, taken in by ``Tuner``, and the sub-method you provide will be invoked automatically.
 
 This simple callback just prints a metric each time a result is received:
 
@@ -28,9 +28,10 @@ This simple callback just prints a metric each time a result is received:
             session.report({"metric": i})
 
 
-    tune.run(
+    tuner = tune.Tuner(
         train,
-        callbacks=[MyCallback()])
+        run_config=air.RunConfig(callbacks=[MyCallback()]))
+    tuner.fit()
 
 For more details and available hooks, please :ref:`see the API docs for Ray Tune callbacks <tune-callbacks-docs>`.
 

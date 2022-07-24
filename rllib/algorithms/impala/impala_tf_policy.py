@@ -19,6 +19,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
+from ray.rllib.policy.tf_mixins import GradStatsMixin
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
@@ -271,6 +272,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
         VTraceOptimizer,
         LearningRateSchedule,
         EntropyCoeffSchedule,
+        GradStatsMixin,
         base,
     ):
         def __init__(
@@ -298,6 +300,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 existing_model=existing_model,
             )
 
+            GradStatsMixin.__init__(self)
             VTraceClipGradients.__init__(self)
             VTraceOptimizer.__init__(self)
             LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
@@ -415,22 +418,6 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                     tf.reshape(self.vtrace_loss.value_targets, [-1]),
                     tf.reshape(values_batched, [-1]),
                 ),
-            }
-
-        @override(base)
-        def grad_stats_fn(
-            self, train_batch: SampleBatch, grads: ModelGradients
-        ) -> Dict[str, TensorType]:
-            # We have support for more than one loss (list of lists of grads).
-            if self.config.get("_tf_policy_handles_more_than_one_loss"):
-                grad_gnorm = [tf.linalg.global_norm(g) for g in grads]
-            # Old case: We have a single list of grads (only one loss term and
-            # optimizer).
-            else:
-                grad_gnorm = tf.linalg.global_norm(grads)
-
-            return {
-                "grad_gnorm": grad_gnorm,
             }
 
         @override(base)
