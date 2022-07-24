@@ -72,7 +72,7 @@ make sure that the function is :ref:`serializable by Ray <serialization-guide>`.
    :start-after: __train_func_begin__
    :end-before: __train_func_end__
 
-Let's run one trial by calling :ref:`tune.run <tune-run-ref>` and :ref:`randomly sample <tune-sample-docs>`
+Let's run one trial by calling :ref:`Tuner.fit <tune-run-ref>` and :ref:`randomly sample <tune-sample-docs>`
 from a uniform distribution for learning rate and momentum.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
@@ -80,7 +80,7 @@ from a uniform distribution for learning rate and momentum.
    :start-after: __eval_func_begin__
    :end-before: __eval_func_end__
 
-``tune.run`` returns an :ref:`ExperimentAnalysis object <tune-analysis-docs>`.
+``Tuner.fit`` returns an :ref:`ResultGrid object <tune-analysis-docs>`.
 You can use this to plot the performance of this trial.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py

@@ -515,13 +515,6 @@ class RunConfig:
             both streams are written. If this is a Sequence (e.g. a Tuple),
             it has to have length 2 and the elements indicate the files to
             which stdout and stderr are written, respectively.
-        reuse_actors: Whether to reuse actors between different trials
-            when possible. This can drastically speed up experiments that start
-            and stop actors often (e.g., PBT in time-multiplexing mode). This
-            requires trials to have the same resource requirements.
-            Defaults to ``True`` for function trainables (including most
-            Ray AIR trainers) and ``False`` for class and registered trainables
-            (e.g. RLlib).
 
     """
 
@@ -535,7 +528,6 @@ class RunConfig:
     progress_reporter: Optional["ProgressReporter"] = None
     verbose: Union[int, "Verbosity"] = 3
     log_to_file: Union[bool, str, Tuple[str, str]] = False
-    reuse_actors: Optional[bool] = None
 
     def __post_init__(self):
         from ray.tune.syncer import SyncConfig

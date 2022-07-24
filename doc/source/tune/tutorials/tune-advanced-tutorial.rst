@@ -65,7 +65,7 @@ Some of the most important parameters are:
   ``resample_probability`` by default is 0.25, thus hyperparameter with a distribution
   may go out of the specific range.
 
-Now we can kick off the tuning process by invoking tune.run:
+Now we can kick off the tuning process by invoking ``Tuner.fit()``:
 
 .. literalinclude:: /../../python/ray/tune/examples/pbt_convnet_function_example.py
    :language: python
@@ -140,10 +140,11 @@ thus just use the same ``Trainable`` for the replay run.
     replay = PopulationBasedTrainingReplay(
         "~/ray_results/pbt_test/pbt_policy_ba982_00003.txt")
 
-    tune.run(
+    tuner = tune.Tuner(
         PytorchTrainable,
-        scheduler=replay,
-        stop={"training_iteration": 100})
+        tune_config=tune.TuneConfig(scheduler=replay),
+        run_config=air.RunConfig(stop={"training_iteration": 100}),
+        )
 
 DCGAN with PBT
 --------------
