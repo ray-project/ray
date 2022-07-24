@@ -251,7 +251,7 @@ print(f"Results: {evals_result}")
 # and ``max_depth``. We are using [Tune's samplers to define the search
 # space](https://docs.ray.io/en/latest/tune/user-guide.html#search-space-grid-random).
 #
-# The experiment configuration is done through ``tune.run``. We set the amount
+# The experiment configuration is done through ``Tuner()``. We set the amount
 # of resources each trial (hyperparameter combination) requires by using the
 # ``get_tune_resources`` method of ``RayParams``. The ``num_samples`` argument
 # controls how many trials will be ran in total. In the end, the best
@@ -282,31 +282,36 @@ def tune_xgboost(train_df, test_df, target_column):
 
     tune_start_time = time.time()
 
-    analysis = tune.run(
-        tune.with_parameters(
-            train_xgboost,
-            train_df=train_df,
-            test_df=test_df,
-            target_column=target_column,
-            ray_params=ray_params,
+    tuner = tune.Tuner(
+        tune.with_resources(
+            tune.with_parameters(
+                train_xgboost,
+                train_df=train_df,
+                test_df=test_df,
+                target_column=target_column,
+                ray_params=ray_params,
+            ),
+            resources=ray_params.get_tune_resources(),
         ),
-        # Use the `get_tune_resources` helper function to set the resources.
-        resources_per_trial=ray_params.get_tune_resources(),
-        config=config,
-        num_samples=10,
-        metric="eval-error",
-        mode="min",
+        tune_config=tune.TuneConfig(
+            num_samples=10,
+            metric="eval-error",
+            mode="min",
+        ),
+        param_space=config,
     )
+    results = tuner.fit()
 
     tune_end_time = time.time()
     tune_duration = tune_end_time - tune_start_time
     print(f"Total time taken: {tune_duration} seconds.")
 
-    accuracy = 1.0 - analysis.best_result["eval-error"]
-    print(f"Best model parameters: {analysis.best_config}")
+    best_result = results.get_best_result()
+    accuracy = 1.0 - best_result.metrics["eval-error"]
+    print(f"Best model parameters: {best_result.config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
 
-    return analysis.best_config
+    return best_result.config
 
 
 # Hyperparameter optimization may take some time to complete.
