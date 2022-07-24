@@ -32,6 +32,7 @@ from ray.data._internal.compute import (
     TaskPoolStrategy,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _estimate_available_parallelism
@@ -909,186 +910,29 @@ class Dataset(Generic[T]):
                 )
 
         blocks = self._plan.execute()
-        stats = self._plan.stats()
-
-        def _partition_splits(
-            splits: List[Dataset[T]], part_size: int, counts_cache: Dict[str, int]
-        ):
-            """Partition splits into two sets: splits that are smaller than the
-            target size and splits that are larger than the target size.
-            """
-            splits = sorted(splits, key=lambda s: counts_cache[s._get_uuid()])
-            idx = next(
-                i
-                for i, split in enumerate(splits)
-                if counts_cache[split._get_uuid()] >= part_size
-            )
-            return splits[:idx], splits[idx:]
-
-        def _equalize_larger_splits(
-            splits: List[Dataset[T]],
-            target_size: int,
-            counts_cache: Dict[str, int],
-            num_splits_required: int,
-        ):
-            """Split each split into one or more subsplits that are each the
-            target size, with at most one leftover split that's smaller
-            than the target size.
-
-            This assume that the given splits are sorted in ascending order.
-            """
-            if target_size == 0:
-                return splits, []
-            new_splits = []
-            leftovers = []
-            for split in splits:
-                size = counts_cache[split._get_uuid()]
-                if size == target_size:
-                    new_splits.append(split)
-                    continue
-                split_indices = list(range(target_size, size, target_size))
-                split_splits = split.split_at_indices(split_indices)
-                last_split_size = split_splits[-1].count()
-                if last_split_size < target_size:
-                    # Last split is smaller than the target size, save it for
-                    # our unioning of small splits.
-                    leftover = split_splits.pop()
-                    leftovers.append(leftover)
-                    counts_cache[leftover._get_uuid()] = leftover.count()
-                if len(new_splits) + len(split_splits) >= num_splits_required:
-                    # Short-circuit if the new splits will make us reach the
-                    # desired number of splits.
-                    new_splits.extend(
-                        split_splits[: num_splits_required - len(new_splits)]
-                    )
-                    break
-                new_splits.extend(split_splits)
-            return new_splits, leftovers
-
-        def _equalize_smaller_splits(
-            splits: List[Dataset[T]],
-            target_size: int,
-            counts_cache: Dict[str, int],
-            num_splits_required: int,
-        ):
-            """Union small splits up to the target split size.
-
-            This assume that the given splits are sorted in ascending order.
-            """
-            new_splits = []
-            union_buffer = []
-            union_buffer_size = 0
-            low = 0
-            high = len(splits) - 1
-            while low <= high:
-                # Union small splits up to the target split size.
-                low_split = splits[low]
-                low_count = counts_cache[low_split._get_uuid()]
-                high_split = splits[high]
-                high_count = counts_cache[high_split._get_uuid()]
-                if union_buffer_size + high_count <= target_size:
-                    # Try to add the larger split to the union buffer first.
-                    union_buffer.append(high_split)
-                    union_buffer_size += high_count
-                    high -= 1
-                elif union_buffer_size + low_count <= target_size:
-                    union_buffer.append(low_split)
-                    union_buffer_size += low_count
-                    low += 1
-                else:
-                    # Neither the larger nor smaller split fit in the union
-                    # buffer, so we split the smaller split into a subsplit
-                    # that will fit into the union buffer and a leftover
-                    # subsplit that we add back into the candidate split list.
-                    diff = target_size - union_buffer_size
-                    diff_split, new_low_split = low_split.split_at_indices([diff])
-                    union_buffer.append(diff_split)
-                    union_buffer_size += diff
-                    # We overwrite the old low split and don't advance the low
-                    # pointer since (1) the old low split can be discarded,
-                    # (2) the leftover subsplit is guaranteed to be smaller
-                    # than the old low split, and (3) the low split should be
-                    # the smallest split in the candidate split list, which is
-                    # this subsplit.
-                    splits[low] = new_low_split
-                    counts_cache[new_low_split._get_uuid()] = low_count - diff
-                if union_buffer_size == target_size:
-                    # Once the union buffer is full, we union together the
-                    # splits.
-                    assert len(union_buffer) > 1, union_buffer
-                    first_ds = union_buffer[0]
-                    new_split = first_ds.union(*union_buffer[1:])
-                    new_splits.append(new_split)
-                    # Clear the union buffer.
-                    union_buffer = []
-                    union_buffer_size = 0
-                    if len(new_splits) == num_splits_required:
-                        # Short-circuit if we've reached the desired number of
-                        # splits.
-                        break
-            return new_splits
-
-        def equalize(splits: List[Dataset[T]], num_splits: int) -> List[Dataset[T]]:
-            if not equal:
-                return splits
-            counts = {s._get_uuid(): s.count() for s in splits}
-            total_rows = sum(counts.values())
-            # Number of rows for each split.
-            target_size = total_rows // num_splits
-
-            # Partition splits.
-            smaller_splits, larger_splits = _partition_splits(
-                splits, target_size, counts
-            )
-            if len(smaller_splits) == 0 and num_splits < len(splits):
-                # All splits are already equal.
-                return splits
-
-            # Split larger splits.
-            new_splits, leftovers = _equalize_larger_splits(
-                larger_splits, target_size, counts, num_splits
-            )
-            # Short-circuit if we've already reached the desired number of
-            # splits.
-            if len(new_splits) == num_splits:
-                return new_splits
-            # Add leftovers to small splits and re-sort.
-            smaller_splits += leftovers
-            smaller_splits = sorted(smaller_splits, key=lambda s: counts[s._get_uuid()])
-
-            # Union smaller splits.
-            new_splits_small = _equalize_smaller_splits(
-                smaller_splits, target_size, counts, num_splits - len(new_splits)
-            )
-            new_splits.extend(new_splits_small)
-            return new_splits
-
-        block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
-        metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
         owned_by_consumer = blocks._owned_by_consumer
+        stats = self._plan.stats()
+        block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
 
         if locality_hints is None:
-            ds = equalize(
-                [
-                    Dataset(
-                        ExecutionPlan(
-                            BlockList(
-                                list(blocks),
-                                [metadata_mapping[b] for b in blocks],
-                                owned_by_consumer=owned_by_consumer,
-                            ),
-                            stats,
-                            run_by_consumer=owned_by_consumer,
+            blocks = np.array_split(block_refs, n)
+            meta = np.array_split(metadata, n)
+            return [
+                Dataset(
+                    ExecutionPlan(
+                        BlockList(
+                            b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
                         ),
-                        self._epoch,
-                        self._lazy,
-                    )
-                    for blocks in np.array_split(block_refs, n)
-                ],
-                n,
-            )
-            assert len(ds) == n, (ds, n)
-            return ds
+                        stats,
+                        run_by_consumer=owned_by_consumer,
+                    ),
+                    self._epoch,
+                    self._lazy,
+                )
+                for b, m in zip(blocks, meta)
+            ]
+
+        metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -1182,25 +1026,31 @@ class Dataset(Generic[T]):
 
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
-        return equalize(
-            [
-                Dataset(
-                    ExecutionPlan(
-                        BlockList(
-                            allocation_per_actor[actor],
-                            [metadata_mapping[b] for b in allocation_per_actor[actor]],
-                            owned_by_consumer=owned_by_consumer,
-                        ),
-                        stats,
-                        run_by_consumer=owned_by_consumer,
-                    ),
-                    self._epoch,
-                    self._lazy,
-                )
-                for actor in locality_hints
-            ],
-            n,
-        )
+        per_split_block_lists = [
+            BlockList(
+                allocation_per_actor[actor],
+                [metadata_mapping[b] for b in allocation_per_actor[actor]],
+                owned_by_consumer=owned_by_consumer,
+            )
+            for actor in locality_hints
+        ]
+
+        if equal:
+            # equalize the splits
+            per_split_block_lists = _equalize(per_split_block_lists, owned_by_consumer)
+
+        return [
+            Dataset(
+                ExecutionPlan(
+                    block_split,
+                    stats,
+                    run_by_consumer=owned_by_consumer,
+                ),
+                self._epoch,
+                self._lazy,
+            )
+            for block_split in per_split_block_lists
+        ]
 
     def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
         """Split the dataset at the given indices (like np.split).

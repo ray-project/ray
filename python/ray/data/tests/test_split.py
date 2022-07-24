@@ -10,6 +10,9 @@ from ray.data.block import BlockMetadata
 
 import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.equalize import (
+    _equalize,
+)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.split import (
@@ -95,9 +98,9 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         blocks.append(ray.put(block))
         metadata.append(BlockAccessor.for_block(block).get_metadata(None, None))
         total_rows += block_size
-    block_list = BlockList(blocks, metadata)
+    block_list = BlockList(blocks, metadata, owned_by_consumer=True)
     ds = Dataset(
-        ExecutionPlan(block_list, DatasetStats.TODO()),
+        ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
         0,
         False,
     )
@@ -507,6 +510,16 @@ def _create_block(data):
     return (ray.put(data), _create_meta(len(data)))
 
 
+def _create_blocklist(blocks):
+    block_refs = []
+    meta = []
+    for block in blocks:
+        block_ref, block_meta = _create_block(block)
+        block_refs.append(block_ref)
+        meta.append(block_meta)
+    return BlockList(block_refs, meta, owned_by_consumer=True)
+
+
 def test_split_single_block(ray_start_regular_shared):
     block = [1, 2, 3]
     meta = _create_meta(3)
@@ -586,29 +599,123 @@ def test_generate_global_split_results(ray_start_regular_shared):
 
 
 def test_private_split_at_indices(ray_start_regular_shared):
-    inputs = []
-    splits = list(zip(*_split_at_indices(iter(inputs), [0])))
+    inputs = _create_blocklist([])
+    splits = list(zip(*_split_at_indices(inputs, [0])))
     verify_splits(splits, [[], []])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [])))
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[]])
 
-    inputs = [_create_block([1]), _create_block([2, 3]), _create_block([4])]
+    inputs = _create_blocklist([[1], [2, 3], [4]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [1])))
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [2])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [2])))
     verify_splits(splits, [[[1], [2]], [[3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [1])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [2, 2])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [2, 2])))
     verify_splits(splits, [[[1], [2]], [], [[3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[[1], [2, 3], [4]]])
 
-    splits = list(zip(*_split_at_indices(iter(inputs), [0, 4])))
+    inputs = _create_blocklist([[1], [2, 3], [4]])
+    splits = list(zip(*_split_at_indices(inputs, [0, 4])))
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
+
+
+def equalize_helper(input_block_lists):
+    result = _equalize(
+        [_create_blocklist(block_list) for block_list in input_block_lists],
+        owned_by_consumer=True,
+    )
+    result_block_lists = []
+    for blocklist in result:
+        block_list = []
+        for block_ref, _ in blocklist.get_blocks_with_metadata():
+            block = ray.get(block_ref)
+            block_accessor = BlockAccessor.for_block(block)
+            block_list.append(block_accessor.to_native())
+        result_block_lists.append(block_list)
+    return result_block_lists
+
+
+def verify_equalize_result(input_block_lists, expected_block_lists):
+    result_block_lists = equalize_helper(input_block_lists)
+    assert result_block_lists == expected_block_lists
+
+
+def test_equalize(ray_start_regular_shared):
+    verify_equalize_result([], [])
+    verify_equalize_result([[]], [[]])
+    verify_equalize_result([[[1]], []], [[], []])
+    verify_equalize_result([[[1], [2, 3]], [[4]]], [[[1], [2]], [[4], [3]]])
+    verify_equalize_result([[[1], [2, 3]], []], [[[1]], [[2]]])
+    verify_equalize_result(
+        [[[1], [2, 3], [4, 5]], [[6]], []], [[[1], [2]], [[6], [3]], [[4, 5]]]
+    )
+    verify_equalize_result(
+        [[[1, 2, 3], [4, 5]], [[6]], []], [[[4, 5]], [[6], [1]], [[2, 3]]]
+    )
+
+
+def test_equalize_randomized(ray_start_regular_shared):
+    # verify the entries in the splits are in the range of 0 .. num_rows,
+    # unique, and the total number matches num_rows if exact_num == True.
+    def assert_unique_and_inrange(splits, num_rows, exact_num=False):
+        unique_set = set([])
+        for split in splits:
+            for block in split:
+                for entry in block:
+                    assert entry not in unique_set
+                    assert entry >= 0 and entry < num_rows
+                    unique_set.add(entry)
+        if exact_num:
+            assert len(unique_set) == num_rows
+
+    # verify that splits are equalized.
+    def assert_equal_split(splits, num_rows, num_split):
+        split_size = num_rows // num_split
+        for split in splits:
+            assert len((list(itertools.chain.from_iterable(split)))) == split_size
+
+    # create randomized splits contains entries from 0 ... num_rows.
+    def random_split(num_rows, num_split):
+        split_point = [int(random.random() * num_rows) for _ in range(num_split - 1)]
+        split_index_helper = [0] + sorted(split_point) + [num_rows]
+        splits = []
+        for i in range(1, len(split_index_helper)):
+            split_start = split_index_helper[i - 1]
+            split_end = split_index_helper[i]
+            num_entries = split_end - split_start
+            split = []
+            num_block_split = int(random.random() * num_entries)
+            block_split_point = [
+                split_start + int(random.random() * num_entries)
+                for _ in range(num_block_split)
+            ]
+            block_index_helper = [split_start] + sorted(block_split_point) + [split_end]
+            for j in range(1, len(block_index_helper)):
+                split.append(
+                    list(range(block_index_helper[j - 1], block_index_helper[j]))
+                )
+            splits.append(split)
+        assert_unique_and_inrange(splits, num_rows, exact_num=True)
+        return splits
+
+    for i in range(100):
+        num_rows = int(random.random() * 100)
+        num_split = int(random.random() * 10) + 1
+        input_splits = random_split(num_rows, num_split)
+        print(input_splits)
+        equalized_splits = equalize_helper(input_splits)
+        assert_unique_and_inrange(equalized_splits, num_rows)
+        assert_equal_split(equalized_splits, num_rows, num_split)
