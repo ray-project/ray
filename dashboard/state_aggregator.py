@@ -5,6 +5,8 @@ from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
 
+from ray._private.ray_constants import env_integer
+
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.utils import binary_to_hex
@@ -445,7 +447,6 @@ class StateAPIManager:
 
         result = []
         memory_table = memory_utils.construct_memory_table(worker_stats)
-        callsite_enabled = True
         for entry in memory_table.table:
             data = entry.as_dict()
             # `construct_memory_table` returns object_ref field which is indeed
@@ -455,21 +456,17 @@ class StateAPIManager:
             del data["object_ref"]
             data["ip"] = data["node_ip_address"]
             del data["node_ip_address"]
-
-            # If there's any "disabled" callsite, we consider the callsite collection
-            # is disabled.
-            if data["call_site"] == "disabled":
-                callsite_enabled = False
             result.append(data)
 
         # Add callsite warnings if it is not configured.
         callsite_warning = []
+        callsite_enabled = env_integer("RAY_record_ref_creation_sites", 0)
         if not callsite_enabled:
             callsite_warning.append(
                 "Callsite is not being recorded. "
                 "To record callsite information for each ObjectRef created, set "
                 "env variable RAY_record_ref_creation_sites=1 during `ray start` "
-                "and and `ray.init`."
+                "and `ray.init`."
             )
 
         result = self._filter(result, option.filters, ObjectState, option.detail)

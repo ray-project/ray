@@ -363,7 +363,7 @@ class StateApiClient(SubmissionClient):
             raise RayStateApiException(
                 f"Failed to retrieve all {resource.value} from the cluster. "
                 f"It can happen when some of {resource.value} information is not "
-                "reachable the returned data is truncated because it is too large. "
+                "reachable or the returned data is truncated because it is too large. "
                 "To allow having missing output, set `raise_on_missing_output=False`. "
             )
 
@@ -380,10 +380,11 @@ class StateApiClient(SubmissionClient):
             resource: Resource names, i.e. 'jobs', 'actors', 'nodes',
                 see `StateResource` for details.
             options: List options. See `ListApiOptions` for details.
-            raise_on_missing_output: Raise an exception if the output has missing data.
-                Output can have missing data if (1) there's a partial network failure
-                when the source is distributed. (2) data is truncated
-                because it is too large.
+            raise_on_missing_output: When True, raise an exception if the output
+                is incomplete. Output can be incomplete if
+                (1) there's a partial network failure when the source is distributed.
+                (2) data is truncated because it is too large.
+                Set it to False to avoid throwing an exception on missing data.
             _explain: Print the API information such as API
                 latency or failed query information.
 
