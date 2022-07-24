@@ -699,46 +699,23 @@ def start(
                 cf.bold("RAY_REDIS_ADDRESS"),
                 address,
             )
-            cli_logger.print(
-                "Will use `{}` as external Redis server address(es). "
-                "If the primary one is not reachable, we starts new one(s) "
-                "with `{}` in local.",
-                cf.bold(address),
-                cf.bold("--port"),
-            )
             external_addresses = address.split(",")
 
             # We reuse primary redis as sharding when there's only one
             # instance provided.
             if len(external_addresses) == 1:
                 external_addresses.append(external_addresses[0])
-            reachable = False
-            try:
-                [primary_redis_ip, port] = external_addresses[0].split(":")
-                ray._private.services.wait_for_redis_to_start(
-                    primary_redis_ip, port, password=redis_password
+
+            ray_params.update_if_absent(external_addresses=external_addresses)
+            num_redis_shards = len(external_addresses) - 1
+            if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
+                cli_logger.warning(
+                    "`{}` should not be specified as empty string if "
+                    "external redis server(s) `{}` points to requires "
+                    "password.",
+                    cf.bold("--redis-password"),
+                    cf.bold("--address"),
                 )
-                reachable = True
-            # We catch a generic Exception here in case someone later changes
-            # the type of the exception.
-            except Exception:
-                cli_logger.print(
-                    "The primary external redis server `{}` is not reachable. "
-                    "Will starts new one(s) with `{}` in local.",
-                    cf.bold(external_addresses[0]),
-                    cf.bold("--port"),
-                )
-            if reachable:
-                ray_params.update_if_absent(external_addresses=external_addresses)
-                num_redis_shards = len(external_addresses) - 1
-                if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
-                    cli_logger.warning(
-                        "`{}` should not be specified as empty string if "
-                        "external redis server(s) `{}` points to requires "
-                        "password.",
-                        cf.bold("--redis-password"),
-                        cf.bold("--address"),
-                    )
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(node_ip_address=services.get_node_ip_address())

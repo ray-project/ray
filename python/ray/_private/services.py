@@ -30,8 +30,6 @@ from ray.core.generated.common_pb2 import Language
 
 resource = None
 if sys.platform != "win32":
-    import resource
-
     _timeout = 30
 else:
     _timeout = 60
@@ -853,79 +851,6 @@ def start_ray_process(
     )
 
 
-def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
-    """Wait for a Redis server to be available.
-
-    This is accomplished by creating a Redis client and sending a random
-    command to the server until the command gets through.
-
-    Args:
-        redis_ip_address: The IP address of the redis server.
-        redis_port: The port of the redis server.
-        password: The password of the redis server.
-
-    Raises:
-        Exception: An exception is raised if we could not connect with Redis.
-    """
-    import redis
-
-    redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=redis_port, password=password
-    )
-    # Wait for the Redis server to start.
-    num_retries = ray_constants.START_REDIS_WAIT_RETRIES
-    delay = 0.001
-    for i in range(num_retries):
-        try:
-            # Run some random command and see if it worked.
-            logger.debug(
-                "Waiting for redis server at {}:{} to respond...".format(
-                    redis_ip_address, redis_port
-                )
-            )
-            redis_client.client_list()
-        # If the Redis service is delayed getting set up for any reason, we may
-        # get a redis.ConnectionError: Error 111 connecting to host:port.
-        # Connection refused.
-        # Unfortunately, redis.ConnectionError is also the base class of
-        # redis.AuthenticationError. We *don't* want to obscure a
-        # redis.AuthenticationError, because that indicates the user provided a
-        # bad password. Thus a double except clause to ensure a
-        # redis.AuthenticationError isn't trapped here.
-        except redis.AuthenticationError as authEx:
-            raise RuntimeError(
-                f"Unable to connect to Redis at {redis_ip_address}:{redis_port}."
-            ) from authEx
-        except redis.ConnectionError as connEx:
-            if i >= num_retries - 1:
-                raise RuntimeError(
-                    f"Unable to connect to Redis at {redis_ip_address}:"
-                    f"{redis_port} after {num_retries} retries. Check that "
-                    f"{redis_ip_address}:{redis_port} is reachable from this "
-                    "machine. If it is not, your firewall may be blocking "
-                    "this port. If the problem is a flaky connection, try "
-                    "setting the environment variable "
-                    "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of"
-                    " attempts to ping the Redis server."
-                ) from connEx
-            # Wait a little bit.
-            time.sleep(delay)
-            # Make sure the retry interval doesn't increase too large, which will
-            # affect the delivery time of the Ray cluster.
-            delay = min(1, delay * 2)
-        else:
-            break
-    else:
-        raise RuntimeError(
-            f"Unable to connect to Redis (after {num_retries} retries). "
-            "If the Redis instance is on a different machine, check that "
-            "your firewall and relevant Ray ports are configured properly. "
-            "You can also set the environment variable "
-            "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of "
-            "attempts to ping the Redis server."
-        )
-
-
 def start_reaper(fate_share=None):
     """Start the reaper process.
 
@@ -1173,109 +1098,28 @@ def _start_redis_instance(
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
-    import redis
 
     assert os.path.isfile(executable)
-    counter = 0
 
-    while counter < num_retries:
-        # Construct the command to start the Redis server.
-        command = [executable]
-        if password:
-            if " " in password:
-                raise ValueError("Spaces not permitted in redis password.")
-            command += ["--requirepass", password]
-        command += ["--port", str(port), "--loglevel", "warning"]
-        if listen_to_localhost_only:
-            command += ["--bind", "127.0.0.1"]
-        pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
-        command += ["--pidfile", pidfile]
-        process_info = start_ray_process(
-            command,
-            ray_constants.PROCESS_TYPE_REDIS_SERVER,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            fate_share=fate_share,
-        )
-        try:
-            wait_for_redis_to_start("127.0.0.1", port, password=password)
-        except (redis.exceptions.ResponseError, RuntimeError):
-            # Connected to redis with the wrong password, or exceeded
-            # the number of retries. This means we got the wrong redis
-            # or there is some error in starting up redis.
-            # Try the next port by looping again.
-            pass
-        else:
-            r = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
-            # Check if Redis successfully started and we connected
-            # to the right server.
-            if r.config_get("pidfile")["pidfile"] == pidfile:
-                break
-        port = new_port(denylist=port_denylist)
-        counter += 1
-    if counter == num_retries:
-        raise RuntimeError(
-            "Couldn't start Redis. "
-            "Check log files: {} {}".format(
-                stdout_file.name if stdout_file is not None else "<stdout>",
-                stderr_file.name if stdout_file is not None else "<stderr>",
-            )
-        )
-
-    # Create a Redis client just for configuring Redis.
-    redis_client = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
-    # Wait for the Redis server to start.
-    wait_for_redis_to_start("127.0.0.1", port, password=password)
-    # Configure Redis to generate keyspace notifications. TODO(rkn): Change
-    # this to only generate notifications for the export keys.
-    redis_client.config_set("notify-keyspace-events", "Kl")
-
-    # Configure Redis to not run in protected mode so that processes on other
-    # hosts can connect to it. TODO(rkn): Do this in a more secure way.
-    redis_client.config_set("protected-mode", "no")
-
-    # Discard old task and object metadata.
-    if redis_max_memory is not None:
-        redis_client.config_set("maxmemory", str(redis_max_memory))
-        redis_client.config_set("maxmemory-policy", "allkeys-lru")
-        redis_client.config_set("maxmemory-samples", "10")
-        logger.debug(
-            "Starting Redis shard with {} GB max memory.".format(
-                round(redis_max_memory / 1e9, 2)
-            )
-        )
-
-    # If redis_max_clients is provided, attempt to raise the number of maximum
-    # number of Redis clients.
-    if redis_max_clients is not None:
-        redis_client.config_set("maxclients", str(redis_max_clients))
-    elif resource is not None:
-        # If redis_max_clients is not provided, determine the current ulimit.
-        # We will use this to attempt to raise the maximum number of Redis
-        # clients.
-        current_max_clients = int(redis_client.config_get("maxclients")["maxclients"])
-        # The below command should be the same as doing ulimit -n.
-        ulimit_n = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
-        # The quantity redis_client_buffer appears to be the required buffer
-        # between the maximum number of redis clients and ulimit -n. That is,
-        # if ulimit -n returns 10000, then we can set maxclients to
-        # 10000 - redis_client_buffer.
-        redis_client_buffer = 32
-        if current_max_clients < ulimit_n - redis_client_buffer:
-            redis_client.config_set("maxclients", ulimit_n - redis_client_buffer)
-
-    # Increase the hard and soft limits for the redis client pubsub buffer to
-    # 128MB. This is a hack to make it less likely for pubsub messages to be
-    # dropped and for pubsub connections to therefore be killed.
-    cur_config = redis_client.config_get("client-output-buffer-limit")[
-        "client-output-buffer-limit"
-    ]
-    cur_config_list = cur_config.split()
-    assert len(cur_config_list) == 12
-    cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
-    redis_client.config_set("client-output-buffer-limit", " ".join(cur_config_list))
-    # Put a time stamp in Redis to indicate when it was started.
-    redis_client.set("redis_start_time", time.time())
+    # Construct the command to start the Redis server.
+    command = [executable]
+    if password:
+        if " " in password:
+            raise ValueError("Spaces not permitted in redis password.")
+        command += ["--requirepass", password]
+    command += ["--port", str(port), "--loglevel", "warning"]
+    if listen_to_localhost_only:
+        command += ["--bind", "127.0.0.1"]
+    pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
+    command += ["--pidfile", pidfile]
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REDIS_SERVER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share,
+    )
+    port = new_port(denylist=port_denylist)
     return port, process_info
 
 

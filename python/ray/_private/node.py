@@ -96,10 +96,6 @@ class Node:
             if len(external_redis) == 1:
                 external_redis.append(external_redis[0])
             [primary_redis_ip, port] = external_redis[0].split(":")
-            ray._private.services.wait_for_redis_to_start(
-                primary_redis_ip, port, password=ray_params.redis_password
-            )
-
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
@@ -585,12 +581,6 @@ class Node:
     def is_head(self):
         return self.head
 
-    def create_redis_client(self):
-        """Create a redis client."""
-        return ray._private.services.create_redis_client(
-            self.redis_address, self._ray_params.redis_password
-        )
-
     def get_gcs_client(self):
         if self._gcs_client is None:
             for _ in range(NUM_REDIS_GET_RETRIES):
@@ -850,38 +840,6 @@ class Node:
                 process_info,
             ]
 
-    def start_or_configure_redis(self):
-        """Starts local Redis or configures external Redis."""
-        assert self._redis_address is None
-        redis_log_files = []
-        if self._ray_params.external_addresses is None:
-            redis_log_files = [self.get_log_file_handles("redis", unique=True)]
-            for i in range(self._ray_params.num_redis_shards):
-                redis_log_files.append(
-                    self.get_log_file_handles(f"redis-shard_{i}", unique=True)
-                )
-
-        (
-            self._redis_address,
-            redis_shards,
-            process_infos,
-        ) = ray._private.services.start_redis(
-            self._node_ip_address,
-            redis_log_files,
-            self.get_resource_spec(),
-            self.get_session_dir_path(),
-            port=self._ray_params.redis_port,
-            redis_shard_ports=self._ray_params.redis_shard_ports,
-            num_redis_shards=self._ray_params.num_redis_shards,
-            redis_max_clients=self._ray_params.redis_max_clients,
-            password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share,
-            external_addresses=self._ray_params.external_addresses,
-            port_denylist=self._ray_params.reserved_ports,
-        )
-        assert ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes
-        self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = process_infos
-
     def start_log_monitor(self):
         """Start the log monitor."""
         process_info = ray._private.services.start_log_monitor(
@@ -1090,13 +1048,7 @@ class Node:
         assert self._gcs_client is None
 
         if self._ray_params.external_addresses is not None:
-            # This only configures external Redis and does not start local
-            # Redis, when external Redis address is specified.
-            # TODO(mwtian): after GCS bootstrapping is default and stable,
-            # only keep external Redis configuration logic in the function.
-            self.start_or_configure_redis()
-            # Wait for Redis to become available.
-            self.create_redis_client()
+            self._redis_address = self._ray_params.external_addresses[0]
 
         self.start_gcs_server()
         assert self._gcs_client is not None
