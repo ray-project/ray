@@ -47,7 +47,7 @@ def apply_grad_clipping(
         gradients.
     """
     grad_gnorm = 0
-    if policy.config["grad_clip"]:
+    if policy.config["grad_clip"] is not None:
         clip_value = policy.config["grad_clip"]
     else:
         clip_value = np.inf
