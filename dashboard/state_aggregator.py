@@ -162,7 +162,9 @@ class StateAPIManager:
                         f"Supported filter columns: {filterable_columns}"
                     )
 
-                if filter_predicate == "=":
+                if filter_column not in datum:
+                    match = False
+                elif filter_predicate == "=":
                     match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":
                     match = datum[filter_column] != filter_value
