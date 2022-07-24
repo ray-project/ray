@@ -16,6 +16,7 @@ from ray.tune.progress_reporter import (
     detect_reporter,
     time_passed_str,
     trial_progress_str,
+    TuneReporterBase,
 )
 from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.trial import Trial
@@ -470,6 +471,20 @@ class ProgressReporterTest(unittest.TestCase):
 
         result = best_trial_str(trial, "metric", parameter_columns=["nested/conf"])
         self.assertIn("nested_value", result)
+
+    def testBestTrialZero(self):
+        trial1 = Trial("", config={}, stub=True)
+        trial1.last_result = {"metric": 7, "config": {}}
+
+        trial2 = Trial("", config={}, stub=True)
+        trial2.last_result = {"metric": 0, "config": {}}
+
+        trial3 = Trial("", config={}, stub=True)
+        trial3.last_result = {"metric": 2, "config": {}}
+
+        reporter = TuneReporterBase(metric="metric", mode="min")
+        best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
+        assert best_trial == trial2
 
     def testTimeElapsed(self):
         # Sun Feb 7 14:18:40 2016 -0800
