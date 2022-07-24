@@ -88,7 +88,7 @@ pytest-virtualenv
 redis >= 3.5.0, < 4.0.0
 scikit-learn==0.24.2
 testfixtures
-werkzeug==2.1.2
+Werkzeug==2.1.2
 xlrd
 starlette
 fastapi==0.76.0
