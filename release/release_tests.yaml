@@ -3413,7 +3413,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 
 - name: microbenchmark_staging
@@ -3431,7 +3431,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 
 - name: microbenchmark_38
@@ -3448,7 +3448,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 - name: dask_on_ray_10gb_sort
   group: core-daily-test
