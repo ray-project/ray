@@ -3,14 +3,14 @@
 Using Checkpoints
 =================
 
-The AIR trainers, tuners, and custom pretrained model produce Checkpoints. An AIR Checkpoint is a common format for models that
+The AIR trainers, tuners, and custom pretrained model generate Checkpoints. An AIR Checkpoint is a common format for models that
 are used across different components of the Ray AI Runtime. This common format allow easy interoperability among AIR components
-and integration with external supported machine learning frameworks.
+and seamless integration with external supported machine learning frameworks.
 
 .. image:: images/checkpoints.jpg
 
-What exactly is a checkpoint?
------------------------------
+What is a checkpoint?
+---------------------
 
 A Checkpoint object is a serializable reference to a model. A model can be represented in one of three ways:
 
@@ -63,7 +63,7 @@ Another example below demonstrates how to use a checkpoint for an online inferen
     :start-after: __online_inference_start__
     :end-before: __online_inference_end__
 
-A Checkpoint object has methods to translate between different checkpoint storage locations.
+Furthermore, a Checkpoint object has methods to translate between different checkpoint storage locations.
 With this flexibility, Checkpoint objects can be serialized and used in different contexts
 (e.g., on a different process or a different machine):
 
