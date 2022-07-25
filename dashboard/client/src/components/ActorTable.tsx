@@ -195,7 +195,6 @@ const ActorTable = ({
                 key={actorId}
               >
                 <TableCell align="center">
-                  {/* <div className={classes.idCol}>{actorId}</div> */}
                   <Tooltip
                     className={classes.idCol}
                     title={actorId}
