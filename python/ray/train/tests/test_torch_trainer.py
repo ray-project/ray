@@ -158,7 +158,8 @@ def test_tune_torch_get_device_gpu(ray_2_node_4_gpu, num_gpus_per_worker):
     @ray.remote(num_gpus=2)
     class TrialActor:
         def __init__(self, warmup_steps):
-            # adding warmup_steps to the config to avoid the error of checkpoint name conflict
+            # adding warmup_steps to the config
+            # to avoid the error of checkpoint name conflict
             time.sleep(2 * warmup_steps)
             trainer = TorchTrainer(
                 train_fn,
