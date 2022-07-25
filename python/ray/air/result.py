@@ -42,6 +42,7 @@ class Result:
     log_dir: Optional[Path]
     metrics_dataframe: Optional[pd.DataFrame]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]]
+    _items_to_repr = ["metrics", "error", "log_dir"]
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
@@ -49,3 +50,15 @@ class Result:
         if not self.metrics:
             return None
         return self.metrics.get("config", None)
+
+    def __repr__(self):
+        from ray.tune.result import AUTO_RESULT_KEYS
+
+        shown_attributes = {k: self.__dict__[k] for k in self._items_to_repr}
+
+        if self.metrics:
+            shown_attributes["metrics"] = {
+                k: v for k, v in self.metrics.items() if k not in AUTO_RESULT_KEYS
+            }
+        kws = [f"{key}={value!r}" for key, value in shown_attributes.items()]
+        return "{}({})".format(type(self).__name__, ", ".join(kws))

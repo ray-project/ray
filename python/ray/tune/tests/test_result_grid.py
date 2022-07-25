@@ -190,6 +190,22 @@ def test_best_result_no_report(ray_start_2_cpus):
         result_grid.get_best_result(metric="x", mode="max")
 
 
+def test_result_repr(ray_start_2_cpus):
+    def f(config):
+        from ray.air import session
+
+        session.report({"loss": 1})
+
+    tuner = tune.Tuner(f, param_space={"x": tune.grid_search([1, 2])})
+    result_grid = tuner.fit()
+    result = result_grid[0]
+
+    from ray.tune.result import AUTO_RESULT_KEYS
+
+    representation = result.__repr__()
+    assert not any(key in representation for key in AUTO_RESULT_KEYS)
+
+
 def test_no_metric_mode(ray_start_2_cpus):
     def f(config):
         tune.report(x=1)
