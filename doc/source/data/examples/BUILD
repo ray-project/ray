@@ -21,6 +21,5 @@ py_test_run_all_notebooks(
         "nyc_taxi_basic_processing.ipynb", # REGRESSION
     ],
     data = ["//doc/source/data/examples:data_examples"],
-    tags = ["exclusive", "team:ml"],
-    allow_empty = True  # REGRESSION
+    tags = ["exclusive", "team:ml"]
 )
