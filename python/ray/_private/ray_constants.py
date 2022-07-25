@@ -367,3 +367,8 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 # Default max_retries option in @ray.remote for non-actor
 # tasks.
 DEFAULT_TASK_MAX_RETRIES = 3
+
+# Prefix for namespaces which are used internally by ray.
+# Jobs within these namespaces should be hidden from users
+# and should not be considered user activity.
+RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
