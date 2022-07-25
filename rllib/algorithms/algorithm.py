@@ -2491,6 +2491,9 @@ class Algorithm(Trainable):
         # Custom metrics and episode media.
         results["custom_metrics"] = iteration_results.pop("custom_metrics", {})
         results["episode_media"] = iteration_results.pop("episode_media", {})
+        results["num_recreated_workers"] = iteration_results.pop(
+            "num_recreated_workers", 0
+        )
 
         # Learner info.
         results["info"] = {LEARNER_INFO: iteration_results}
@@ -2527,9 +2530,6 @@ class Algorithm(Trainable):
         results.update(results["sampler_results"])
 
         results["num_healthy_workers"] = len(self.workers.remote_workers())
-        results["num_recreated_workers"] = iteration_results.get(
-            "num_recreated_workers", 0
-        )
 
         # Train-steps- and env/agent-steps this iteration.
         for c in [
