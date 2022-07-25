@@ -6,7 +6,9 @@ from typing import (
     List,
     Tuple,
     Type,
-    Union, Optional, Any,
+    Union,
+    Optional,
+    Any,
 )
 
 from gym.spaces import Discrete, Box

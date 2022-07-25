@@ -129,7 +129,9 @@ class DTTorchModel(TorchModelV2, nn.Module):
         obs_embeds = self.obs_encoder(model_out)
         actions_embeds = self.action_encoder(input_dict[SampleBatch.ACTIONS])
         # Note: rtg might have an extra element at the end for targets
-        returns_embeds = self.return_encoder(input_dict[SampleBatch.RETURNS_TO_GO][:, :T, :])
+        returns_embeds = self.return_encoder(
+            input_dict[SampleBatch.RETURNS_TO_GO][:, :T, :]
+        )
         timestep_embeds = self.position_encoder(input_dict[SampleBatch.T])
 
         obs_embeds = obs_embeds + timestep_embeds
@@ -148,31 +150,31 @@ class DTTorchModel(TorchModelV2, nn.Module):
         ).reshape(B, 3 * T)
 
         # forward the transformer model
-        output_embeds = self.transformer(stacked_inputs, attention_masks=stacked_attention_masks)
+        output_embeds = self.transformer(
+            stacked_inputs, attention_masks=stacked_attention_masks
+        )
 
         # compute output heads
-        outputs = {
-            SampleBatch.ACTIONS: self.action_head(output_embeds[:, 1::3, :])
-        }
+        outputs = {SampleBatch.ACTIONS: self.action_head(output_embeds[:, 1::3, :])}
         if self.model_config["use_obs_output"]:
             outputs[SampleBatch.OBS] = self.obs_head(output_embeds[:, 0::3, :])
         if self.model_config["use_return_output"]:
-            outputs[SampleBatch.RETURNS_TO_GO] = self.return_head(output_embeds[:, 2::3, :])
+            outputs[SampleBatch.RETURNS_TO_GO] = self.return_head(
+                output_embeds[:, 2::3, :]
+            )
 
         return outputs
 
     def get_target(
-        self,
-        model_out: TensorType,
-        input_dict: SampleBatch
+        self, model_out: TensorType, input_dict: SampleBatch
     ) -> Dict[str, TensorType]:
         """Compute the target predictions for a given input_dict."""
-        targets = {
-            SampleBatch.ACTIONS: input_dict[SampleBatch.ACTIONS]
-        }
+        targets = {SampleBatch.ACTIONS: input_dict[SampleBatch.ACTIONS]}
         if self.model_config["use_obs_output"]:
             targets[SampleBatch.OBS] = model_out
         if self.model_config["use_return_output"]:
-            targets[SampleBatch.RETURNS_TO_GO] = input_dict[SampleBatch.RETURNS_TO_GO][:, 1:, :]
+            targets[SampleBatch.RETURNS_TO_GO] = input_dict[SampleBatch.RETURNS_TO_GO][
+                :, 1:, :
+            ]
 
         return targets
