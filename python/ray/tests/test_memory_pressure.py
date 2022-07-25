@@ -67,7 +67,7 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
     node_mem = psutil.virtual_memory()
     used = node_mem.total - node_mem.available
     bytes_needed = node_mem.total * pct - used
-    assert bytes_needed > 0
+    assert bytes_needed > 0, "node has less memory than what is requested"
     return bytes_needed
 
 
@@ -110,10 +110,10 @@ def test_memory_pressure_kill_newest_worker(shutdown_only):
     leaker1 = Leaker.options(name="leaker1").remote()
     leaker2 = Leaker.options(name="leaker2").remote()
 
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.4)
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.55)
     ray.get(leaker1.allocate.remote(bytes_to_alloc, 0))
 
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.6)
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.65)
     ray.get(leaker2.allocate.remote(bytes_to_alloc, 0))
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.8)
