@@ -36,7 +36,7 @@ cartpole_crr:
         evaluation_parallel_to_training: True
         # specific to CRR
         temperature: 1.0
-        weight_type: bin
+        weight_type: exp
         advantage_type: expectation
         max_weight: 20.0
         n_action_sample: 4

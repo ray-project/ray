@@ -7,7 +7,7 @@ from ray.tests.conftest import *  # noqa
 
 
 def test_step_failure(workflow_start_regular_shared, tmp_path):
-    @ray.remote(max_retries=10)
+    @ray.remote(max_retries=10, retry_exceptions=True)
     def unstable_task_exception(n):
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -25,7 +25,7 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
             os.kill(os.getpid(), 9)
         return v
 
-    @ray.remote(max_retries=10)
+    @ray.remote(max_retries=10, retry_exceptions=True)
     def unstable_task_crash_then_exception(n):
         v = int((tmp_path / "test").read_text())
         (tmp_path / "test").write_text(f"{v + 1}")
@@ -67,6 +67,19 @@ def test_step_failure(workflow_start_regular_shared, tmp_path):
         )
         assert ret is None
         assert err is not None
+
+    (tmp_path / "test").write_text("0")
+    with pytest.raises(workflow.WorkflowExecutionError):
+        workflow.run(unstable_task_exception.options(retry_exceptions=False).bind(10))
+
+    (tmp_path / "test").write_text("0")
+    workflow.run(unstable_task_crash.options(retry_exceptions=False).bind(10))
+
+    (tmp_path / "test").write_text("0")
+    with pytest.raises(workflow.WorkflowExecutionError):
+        workflow.run(
+            unstable_task_crash_then_exception.options(retry_exceptions=False).bind(10)
+        )
 
 
 def test_nested_catch_exception(workflow_start_regular_shared):

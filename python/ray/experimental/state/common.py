@@ -310,14 +310,13 @@ class JobState(JobInfo, StateSchema):
 @dataclass(init=True)
 class WorkerState(StateSchema):
     worker_id: str = state_column(filterable=True)
-    is_alive: str = state_column(filterable=True)
+    is_alive: bool = state_column(filterable=True)
     worker_type: str = state_column(filterable=True)
     exit_type: str = state_column(filterable=True)
     node_id: str = state_column(filterable=True)
     ip: str = state_column(filterable=True)
     pid: str = state_column(filterable=True)
     exit_detail: str = state_column(detail=True, filterable=False)
-    worker_info: dict = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
@@ -380,6 +379,8 @@ class ListApiResponse:
     # availability of data because ray's state information is
     # not replicated.
     partial_failure_warning: str = ""
+    # A list of warnings to print.
+    warnings: Optional[List[str]] = None
 
 
 """
@@ -608,5 +609,11 @@ class StateSummary:
 
 @dataclass(init=True)
 class SummaryApiResponse:
+    # Total number of the resource from the cluster.
+    # Note that this value can be larger than `result`
+    # because `result` can be truncated.
+    total: int
     result: StateSummary = None
     partial_failure_warning: str = ""
+    # A list of warnings to print.
+    warnings: Optional[List[str]] = None
