@@ -33,6 +33,12 @@ Here is a table listing some common transformations supported by Ray Datasets.
    * - :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
      - One-to-one
      - Apply a given function to batches of records of this dataset. 
+   * - :meth:`ds.add_column() <ray.data.Dataset.add_column>`
+     - One-to-one
+     - Apply a given function to batches of records to create a new column.
+   * - :meth:`ds.drop_columns() <ray.data.Dataset.add_column>`
+     - One-to-one
+     - Drop the given columns from the dataset.
    * - :meth:`ds.split() <ray.data.Dataset.split>`
      - One-to-one
      - | Split the dataset into N disjoint pieces.
@@ -110,7 +116,7 @@ per worker actor.
 UDF Input Batch Format
 ======================
 
-Datasets allows you to choose the input *batch format* given to UDFs
+Choose the *batch format* of the data given to UDFs
 by setting the ``batch_format`` option of :meth:`.map_batches() <ray.data.Dataset.map_batches>`.
 Here is an overview of the available batch formats:
 
