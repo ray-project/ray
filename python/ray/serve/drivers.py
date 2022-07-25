@@ -11,6 +11,8 @@ from fastapi import Body, Depends, FastAPI
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.http_util import ASGIHTTPSender
+from ray.serve.handle import RayServeLazySyncHandle
+from ray.serve.exceptions import RayServeException
 from ray import serve
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
@@ -63,14 +65,17 @@ class SimpleSchemaIngress:
         http_adapter = _load_http_adapter(http_adapter)
         self.app = FastAPI()
 
-        @self.app.get("/")
-        @self.app.post("/")
-        async def handle_request(inp=Depends(http_adapter)):
-            resp = await self.predict(inp)
+        # Accept all requests
+        @self.app.get("/{path_name:path}")
+        @self.app.post("/{path_name:path}")
+        async def handle_request(
+            request: starlette.requests.Request, inp=Depends(http_adapter)
+        ):
+            resp = await self.predict(inp, route_path=request.url.path)
             return resp
 
     @abstractmethod
-    async def predict(self, inp):
+    async def predict(self, inp, route_path):
         raise NotImplementedError()
 
     async def __call__(self, request: starlette.requests.Request):
@@ -86,13 +91,58 @@ class SimpleSchemaIngress:
 class DAGDriver(SimpleSchemaIngress):
     def __init__(
         self,
-        dag_handle: RayServeDAGHandle,
-        *,
+        *args,  # plan to change to ‘dag_handles’ variable instead of args
         http_adapter: Optional[Union[str, Callable]] = None,
+        dags_routes=None,
     ):
-        self.dag_handle = dag_handle
+        self.dag_handles = args
+
+        def _verify_dag_handles():
+            for handle in self.dag_handles:
+                assert isinstance(
+                    handle, (RayServeDAGHandle, RayServeLazySyncHandle)
+                ), (
+                    f"Currently DAGDriver constructor expects "
+                    f"RayServeDAGHandle as positional arguments, "
+                    f"but {str(type(handle))} passed in"
+                )
+
+        _verify_dag_handles()
+
+        if dags_routes is not None:
+            self._update_dag_routes(dags_routes)
+        else:
+            assert (
+                len(self.dag_handles) == 1
+            ), "Passing multiple Ray Serve DAGHandles without passing DAGs routes"
+            self.dags_routes = None
         super().__init__(http_adapter)
 
-    async def predict(self, *args, **kwargs):
+    def _update_dag_routes(self, dags_routes):
+        assert len(dags_routes) == len(self.dag_handles), (
+            f"Number of routes is not equal to number of dags: "
+            f"{len(dags_routes)} != {len(self.dag_handles)}"
+        )
+        assert len(dags_routes) == len(
+            set(dags_routes)
+        ), "Duplicate DAG route from dags_routes"
+        for route in dags_routes:
+            assert isinstance(
+                route, str
+            ), f"Expect string type for each DAG route, but get {type(route)}"
+        self.dags_routes = dict(zip(dags_routes, self.dag_handles))
+
+    async def predict(self, *args, route_path=None, **kwargs):
         """Perform inference directly without HTTP."""
-        return await self.dag_handle.remote(*args, **kwargs)
+        if self.dags_routes is None:
+            return await self.dag_handles[0].remote(*args, **kwargs)
+
+        if route_path not in self.dags_routes:
+            raise RayServeException(
+                f"Route path ({route_path}) does not exist in DAGs routes"
+            )
+        return await self.dags_routes[route_path].remote(*args, **kwargs)
+
+    def reconfigure(self, config):
+        dags_routes = config.get("DAG_ROUTES", {})
+        self._update_dag_routes(dags_routes)
