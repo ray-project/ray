@@ -29,6 +29,7 @@ import pkg_resources
 from packaging import version
 
 import ray
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -334,6 +335,8 @@ class Algorithm(Trainable):
         update_global_seed_if_necessary(self.config["framework"], self.config["seed"])
 
         self.validate_config(self.config)
+        self._record_usage(self.config)
+
         self.callbacks = self.config["callbacks"]()
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
@@ -2561,6 +2564,15 @@ class Algorithm(Trainable):
 
     def __repr__(self):
         return type(self).__name__
+
+    def _record_usage(self, config):
+        """Record the framework and algorithm used.
+
+        Args:
+            config: Algorithm config dict.
+        """
+        record_extra_usage_tag(TagKey._RLLIB_FRAMEWORK, config["framework"])
+        record_extra_usage_tag(TagKey._RLLIB_ALGORITHM, self.__class__.__name__)
 
     @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
