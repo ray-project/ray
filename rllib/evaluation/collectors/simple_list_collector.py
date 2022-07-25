@@ -15,6 +15,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import zeros_like
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.typing import (
     AgentID,
@@ -333,15 +334,34 @@ class _AgentCollector:
                 view_req.shift_arr is not None
             ), "View requirement shift_arr cannot be None."
             data = []
+
+            # Go throught each time-step in the buffer and construct the view
+            # accordingly.
             for d in np_data[data_col]:
                 shifted_data = []
 
+                # batch_repeat_value determines how many time steps should we skip
+                # before we repeat indexing the data.
+                # Example: batch_repeat_value=10, shift_arr = [-3, -2, -1],
+                # shift_before = 3
+                # buffer = [-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+                # resulting_data = [[-3, -2, -1], [7, 8, 9]]
+                # explanation: For t=0, we output [-3, -2, -1]. We then skip 10 time
+                # steps ahead and get to t=10. For t=10, we output [7, 8, 9]. We skip
+                # 10 more time steps and get to t=20. but since t=20 is out of bound we
+                # stop.
+
+                # count computes the number of time steps that we need to consider.
+                # if batch_repeat_value = 1, this number should be the length of
+                # episode so far, which is len(buffer) - shift_before.
                 count = int(
                     math.ceil(
                         (len(d) - self.shift_before) / view_req.batch_repeat_value
                     )
                 )
                 for i in range(count):
+
+                    # the indices for time step t
                     inds = (
                         self.shift_before
                         + obs_shift
@@ -349,18 +369,16 @@ class _AgentCollector:
                         + (i * view_req.batch_repeat_value)
                     )
 
-                    # handle the case where the inds are out of bounds from the end
+                    # handle the case where the inds are out of bounds from the end.
+                    # if during the indexing any of the indices are out of bounds, we
+                    # need to use padding on the end to fill in the missing indices.
                     element_at_t = []
                     for index in inds:
                         if index < len(d):
                             element_at_t.append(d[index])
                         else:
-                            element_at_t.append(
-                                np.zeros(
-                                    shape=view_req.space.shape,
-                                    dtype=view_req.space.dtype,
-                                )
-                            )
+                            # zero pad similar to the last element.
+                            element_at_t.append(zeros_like(d[-1]))
                     element_at_t = np.stack(element_at_t)
 
                     if element_at_t.shape[0] == 1:
@@ -369,6 +387,7 @@ class _AgentCollector:
                     shifted_data.append(element_at_t)
 
                 # in some multi-agent cases shifted_data may be an empty list.
+                # In this case we should just create an empty array and return it.
                 if shifted_data:
                     shifted_data_np = np.stack(shifted_data, 0)
                 else:

@@ -54,6 +54,17 @@ class ViewRequirement:
             used e.g. for the location of a requested inference dict within
             the trajectory. Negative values refer to counting from the end
             of a trajectory. (#TODO: Is this still used?)
+        batch_repeat_value: determines how many time steps we should skip
+            before we repeat the view indexing for the next timestep. For RNNs this
+            number is usually the sequence length that we will rollout over.
+            Example:
+                view_col = "state_in_0", data_col = "state_out_0"
+                batch_repeat_value = 5, shift = -1
+                buffer["state_out_0"] = [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                output["state_in_0"] = [-1, 4, 9]
+            Explanation: For t=0, we output buffer["state_out_0"][-1]. We then skip 5
+            time steps and repeat the view. for t=5, we output buffer["state_out_0"][4]
+            . Continuing on this pattern, for t=10, we output buffer["state_out_0"][9].
         used_for_compute_actions: Whether the data will be used for
             creating input_dicts for `Policy.compute_actions()` calls (or
             `Policy.compute_actions_from_input_dict()`).

@@ -3,7 +3,8 @@ from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 from types import MappingProxyType
-from typing import List, Optional
+from typing import Dict, Tuple, List, Optional
+import numbers
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
@@ -559,3 +560,22 @@ def softmax(
     # return x_exp /
     #   np.maximum(np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
     return np.maximum(x_exp / np.sum(x_exp, axis, keepdims=True), epsilon)
+
+
+@PublicAPI
+def zeros_like(object: Union[np.ndarray, Dict, List, Tuple]):
+    """Returns a copy of the object with all zeros."""
+
+    if isinstance(object, numbers.Number):
+        return object.__class__(0)
+    if isinstance(object, np.ndarray):
+        return np.zeros_like(object)
+    elif isinstance(object, dict):
+        return {k: zeros_like(v) for k, v in object.items()}
+    elif isinstance(object, (list, tuple)):
+        return object.__class__([zeros_like(v) for v in object])
+    else:
+        raise ValueError(
+            f"Zero padding only works on containers of np.ndarray or float or int, got"
+            f"container of type {type(object)}"
+        )
