@@ -94,16 +94,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a2c"]
 )
 
-py_test(
-    name = "learning_tests_cartpole_a2c_fake_gpus",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/a2c"]
-)
-
 # A3C
 
 # py_test(
@@ -731,7 +721,8 @@ py_test(
     name = "test_algorithm",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "large",
-    srcs = ["algorithms/tests/test_algorithm.py"]
+    srcs = ["algorithms/tests/test_algorithm.py"],
+    data = ["tests/data/cartpole/small.json"],
 )
 
 py_test(
@@ -845,6 +836,7 @@ py_test(
     name = "test_cql",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
+    data = ["tests/data/pendulum/small.json"],
     srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
@@ -853,7 +845,8 @@ py_test(
     name = "test_crr",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/crr/tests/test_crr.py"]
+    srcs = ["algorithms/crr/tests/test_crr.py"],
+    data = ["tests/data/pendulum/large.json"],
 )
 
 # DDPG
@@ -916,7 +909,11 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
+    data = [
+        "tests/data/cartpole/large.json",
+        "tests/data/pendulum/large.json",
+        "tests/data/cartpole/small.json",
+    ],
     srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
 
@@ -1562,6 +1559,13 @@ py_test(
 )
 
 py_test(
+    name = "evaluation/tests/test_env_runner_v2",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_env_runner_v2.py"]
+)
+
+py_test(
     name = "evaluation/tests/test_episode_v2",
     tags = ["team:rllib", "evaluation"],
     size = "small",
@@ -1671,7 +1675,11 @@ py_test(
     name = "test_dataset_reader",
     tags = ["team:rllib", "offline"],
     size = "medium",
-    srcs = ["offline/tests/test_dataset_reader.py"]
+    srcs = ["offline/tests/test_dataset_reader.py"],
+    data = [
+        "tests/data/pendulum/large.json",
+        "tests/data/pendulum/enormous.zip",
+    ],
 )
 
 py_test(

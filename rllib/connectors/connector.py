@@ -52,7 +52,7 @@ class ConnectorContext:
                 data format. E.g., python dict instead of DictSpace, python tuple
                 instead of TupleSpace.
         """
-        self.config = config
+        self.config = config or {}
         self.initial_states = model_initial_states or []
         self.observation_space = observation_space
         self.action_space = action_space

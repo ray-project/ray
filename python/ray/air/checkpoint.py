@@ -8,18 +8,25 @@ import tarfile
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
 from ray import cloudpickle as pickle
+from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air._internal.remote_storage import (
     download_from_uri,
     fs_hint,
     is_non_local_path_uri,
     upload_to_uri,
 )
+from ray.air.constants import PREPROCESSOR_KEY
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.ml_utils.filelock import TempFileLock
+
+
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
+
 
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
 _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY = "_ray_additional_checkpoint_files"
@@ -344,6 +351,26 @@ class Checkpoint:
         """
         return cls(local_path=path)
 
+    @classmethod
+    def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
+        """Create a checkpoint from a generic :py:class:`Checkpoint`.
+
+        This method can be used to create a framework-specific checkpoint from a
+        generic :py:class:`Checkpoint` object.
+
+        Examples:
+            >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
+            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP # noqa: E501
+            >>> model = checkpoint.get_model()  # doctest: +SKIP
+            Linear(in_features=1, out_features=1, bias=True)
+        """
+        return cls(
+            local_path=other._local_path,
+            data_dict=other._data_dict,
+            uri=other._uri,
+            obj_ref=other._obj_ref,
+        )
+
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
         if self._obj_ref:
@@ -599,6 +626,23 @@ class Checkpoint:
 
     def __setstate__(self, state):
         self.__dict__.update(state)
+
+    def get_preprocessor(self) -> Optional["Preprocessor"]:
+        """Return the saved preprocessor, if one exists."""
+
+        # The preprocessor will either be stored in an in-memory dict or
+        # written to storage. In either case, it will use the PREPROCESSOR_KEY key.
+
+        # First try converting to dictionary.
+        checkpoint_dict = self.to_dict()
+        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+
+        if preprocessor is None:
+            # Fallback to reading from directory.
+            with self.as_directory() as checkpoint_path:
+                preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+        return preprocessor
 
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:

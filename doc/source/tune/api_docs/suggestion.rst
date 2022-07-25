@@ -5,14 +5,16 @@ Search Algorithms (tune.search)
 
 Tune's Search Algorithms are wrappers around open-source optimization libraries for efficient hyperparameter selection.
 Each library has a specific way of defining the search space - please refer to their documentation for more details.
-Tune will automatically convert search spaces passed to ``tune.run`` to the library format in most cases.
+Tune will automatically convert search spaces passed to ``Tuner`` to the library format in most cases.
 
 You can utilize these search algorithms as follows:
 
 .. code-block:: python
 
+    from ray import tune
     from ray.tune.search.hyperopt import HyperOptSearch
-    tune.run(my_function, search_alg=HyperOptSearch(...))
+    tuner = tune.Tuner(my_function, tune_config=tune.TuneConfig(search_alg=HyperOptSearch(...)))
+    results = tuner.fit()
 
 
 Saving and Restoring
@@ -28,9 +30,10 @@ allowing reuse of learnings across multiple tuning runs.
 
     search_alg = HyperOptSearch()
 
-    experiment_1 = tune.run(
+    tuner_1 = tune.Tuner(
         trainable,
-        search_alg=search_alg)
+        tune_config=tune.TuneConfig(search_alg=search_alg))
+    results_1 = tuner_1.fit()
 
     search_alg.save("./my-checkpoint.pkl")
 
@@ -39,27 +42,32 @@ allowing reuse of learnings across multiple tuning runs.
     search_alg2 = HyperOptSearch()
     search_alg2.restore("./my-checkpoint.pkl")
 
-    experiment_2 = tune.run(
+    tuner_2 = tune.Tuner(
         trainable,
-        search_alg=search_alg2)
+        tune_config=tune.TuneConfig(search_alg=search_alg2))
+    results_2 = tuner_2.fit()
 
-Further, Tune automatically saves its state inside the current experiment folder ("Result Dir") during tuning.
+Tune automatically saves its state inside the current experiment folder ("Result Dir") during tuning.
 
 Note that if you have two Tune runs with the same experiment folder,
 the previous state checkpoint will be overwritten. You can
-avoid this by making sure ``tune.run(name=...)`` is set to a unique
+avoid this by making sure ``air.RunConfig(name=...)`` is set to a unique
 identifier.
 
 .. code-block:: python
 
     search_alg = HyperOptSearch()
-    experiment_1 = tune.run(
+    tuner_1 = tune.Tuner(
         cost,
-        num_samples=5,
-        search_alg=search_alg,
-        verbose=0,
-        name="my-experiment-1",
-        local_dir="~/my_results")
+        tune_config=tune.TuneConfig(
+            num_samples=5,
+            search_alg=search_alg),
+        run_config=air.RunConfig(
+            verbose=0,
+            name="my-experiment-1",
+            local_dir="~/my_results"
+        ))
+    results = tuner_1.fit()
 
     search_alg2 = HyperOptSearch()
     search_alg2.restore_from_dir(
@@ -76,7 +84,7 @@ class that generates trial variants given a search space definition.
 
 The :class:`BasicVariantGenerator <ray.tune.search.basic_variant.BasicVariantGenerator>` is used per
 default if no search algorithm is passed to
-:func:`tune.run() <ray.tune.run>`.
+:func:`Tuner <ray.tune.Tuner>`.
 
 .. autoclass:: ray.tune.search.basic_variant.BasicVariantGenerator
 

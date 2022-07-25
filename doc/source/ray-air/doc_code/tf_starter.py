@@ -20,12 +20,15 @@ from ray.air import session
 from ray.air.callbacks.keras import Callback
 from ray.train.tensorflow import prepare_dataset_shard
 from ray.train.tensorflow import TensorflowTrainer
+from ray.air.config import ScalingConfig
 
 
 def build_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
-            tf.keras.layers.InputLayer(input_shape=(1,)),
+            tf.keras.layers.InputLayer(input_shape=()),
+            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
+            tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(10),
             tf.keras.layers.Dense(1),
         ]
@@ -74,7 +77,7 @@ config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
 trainer = TensorflowTrainer(
     train_loop_per_worker=train_func,
     train_loop_config=config,
-    scaling_config=dict(num_workers=num_workers, use_gpu=use_gpu),
+    scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     datasets={"train": dataset},
 )
 result = trainer.fit()

@@ -119,6 +119,7 @@ scripts/nodes.txt
 /doc/_build
 /doc/source/_static/thumbs
 /doc/source/tune/generated_guides/
+/doc/source/ray-more-libs/
 
 # User-specific stuff:
 .idea/**/workspace.xml

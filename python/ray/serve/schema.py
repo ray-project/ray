@@ -118,7 +118,7 @@ class DeploymentSchema(
     user_config: Dict = Field(
         default=None,
         description=(
-            "[EXPERIMENTAL] Config to pass into this deployment's "
+            "Config to pass into this deployment's "
             "reconfigure method. This can be updated dynamically "
             "without restarting replicas"
         ),
@@ -141,7 +141,6 @@ class DeploymentSchema(
             "default if null."
         ),
         ge=0,
-        alias="_graceful_shutdown_wait_loop_s",
     )
     graceful_shutdown_timeout_s: float = Field(
         default=None,
@@ -151,7 +150,6 @@ class DeploymentSchema(
             "default if null."
         ),
         ge=0,
-        alias="_graceful_shutdown_timeout_s",
     )
     health_check_period_s: float = Field(
         default=None,
@@ -160,7 +158,6 @@ class DeploymentSchema(
             "replicas. Uses a default if null."
         ),
         gt=0,
-        alias="_health_check_period_s",
     )
     health_check_timeout_s: float = Field(
         default=None,
@@ -170,7 +167,6 @@ class DeploymentSchema(
             "unhealthy. Uses a default if null."
         ),
         gt=0,
-        alias="_health_check_timeout_s",
     )
     ray_actor_options: RayActorOptionsSchema = Field(
         default=None, description="Options set for each replica actor."

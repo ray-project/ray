@@ -16,6 +16,8 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.serve.scripts import remove_ansi_escape_sequences
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -184,6 +186,34 @@ def test_status(ray_start_stop):
         lambda: time.time() > serve_status["app_status"]["deployment_timestamp"],
         timeout=2,
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_error_msg_format(ray_start_stop):
+    """Deploys a faulty config file and checks its status."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "deployment_fail.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    status_response = subprocess.check_output(
+        ["serve", "status", "-a", "http://localhost:52365/"]
+    )
+    serve_status = yaml.safe_load(status_response)
+    print("serve_status", serve_status)
+
+    def check_for_failed_deployment():
+        app_status = ServeSubmissionClient("http://localhost:52365").get_status()
+        return (
+            len(serve_status["deployment_statuses"]) == 0
+            and serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and remove_ansi_escape_sequences(app_status["app_status"]["message"])
+            in serve_status["app_status"]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment, timeout=2)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")

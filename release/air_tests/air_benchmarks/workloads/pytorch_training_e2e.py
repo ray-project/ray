@@ -12,12 +12,13 @@ import torch.optim as optim
 
 import ray
 from ray.air.util.tensor_extensions.pandas import TensorArray
-from ray.train.torch import to_air_checkpoint
+from ray.train.torch import TorchCheckpoint
 from ray.data.preprocessors import BatchMapper
 from ray import train
 from ray.air import session
 from ray.train.torch import TorchTrainer
 from ray.data.datasource import ImageFolderDatasource
+from ray.air.config import ScalingConfig
 
 
 def preprocess_image_with_label(df: pd.DataFrame) -> pd.DataFrame:
@@ -76,7 +77,7 @@ def train_loop_per_worker(config):
 
         session.report(
             dict(running_loss=running_loss),
-            checkpoint=to_air_checkpoint(model),
+            checkpoint=TorchCheckpoint.from_model(model),
         )
 
 
@@ -92,6 +93,9 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     )
     print(f"Training for {num_epochs} epochs with {num_workers} workers.")
     start = time.time()
+    # Enable cross host NCCL for larger scale tests
+    runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens3"}}
+    ray.init(runtime_env=runtime_env)
     dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[data_url])
 
     preprocessor = BatchMapper(preprocess_image_with_label)
@@ -101,7 +105,7 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
         train_loop_config={"batch_size": 64, "num_epochs": num_epochs},
         datasets={"train": dataset},
         preprocessor=preprocessor,
-        scaling_config={"num_workers": num_workers, "use_gpu": True},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     trainer.fit()
 
