@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 from enum import Enum, unique
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import click
 import yaml
@@ -122,7 +122,7 @@ def _get_available_resources(
 
 
 def get_api_server_url() -> str:
-    address = services.canonicalize_bootstrap_address(None)
+    address = services.canonicalize_bootstrap_address_or_die(None)
     gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(
@@ -278,18 +278,18 @@ Table (group by {summary_by})
 
 
 def format_get_api_output(
-    state_data: Union[dict, list],
+    state_data: Optional[Dict],
     id: str,
     format: AvailableFormat = AvailableFormat.DEFAULT,
 ) -> str:
-    if len(state_data) == 0:
+    if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
     return output_with_format(state_data, format)
 
 
 def format_list_api_output(
-    state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
+    state_data: List[Dict], *, format: AvailableFormat = AvailableFormat.DEFAULT
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
@@ -391,8 +391,9 @@ def get(
 
     # Print data to console.
     print(
-        format_list_api_output(
+        format_get_api_output(
             state_data=data,
+            id=id,
             format=AvailableFormat.YAML,
         )
     )
@@ -472,7 +473,12 @@ def list(
     )
 
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.
-    data = client.list(resource, options=options, _explain=_should_explain(format))
+    data = client.list(
+        resource,
+        options=options,
+        raise_on_missing_output=False,
+        _explain=_should_explain(format),
+    )
 
     # Print data to console.
     print(
@@ -500,6 +506,7 @@ def task_summary(ctx, timeout: float, address: str):
             summarize_tasks(
                 address=address,
                 timeout=timeout,
+                raise_on_missing_output=False,
                 _explain=True,
             ),
             resource=StateResource.TASKS,
@@ -517,6 +524,7 @@ def actor_summary(ctx, timeout: float, address: str):
             summarize_actors(
                 address=address,
                 timeout=timeout,
+                raise_on_missing_output=False,
                 _explain=True,
             ),
             resource=StateResource.ACTORS,
@@ -534,6 +542,7 @@ def object_summary(ctx, timeout: float, address: str):
             summarize_objects(
                 address=address,
                 timeout=timeout,
+                raise_on_missing_output=False,
                 _explain=True,
             ),
         )

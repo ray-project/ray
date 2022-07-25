@@ -1074,8 +1074,7 @@ class Trainable:
         """Subclasses can optionally override this to customize logging.
 
         The logging here is done on the worker process rather than
-        the driver. You may want to turn off driver logging via the
-        ``loggers`` parameter in ``tune.run`` when overriding this function.
+        the driver.
 
         .. versionadded:: 0.8.7
 
