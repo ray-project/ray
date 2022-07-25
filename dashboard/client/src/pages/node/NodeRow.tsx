@@ -1,33 +1,16 @@
 import { IconButton, TableCell, TableRow, Tooltip } from "@material-ui/core";
-import { createStyles, makeStyles } from "@material-ui/core/styles";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import { sortBy } from "lodash";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
 import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
-
-const useNodeRowStyles = makeStyles((theme) =>
-  createStyles({
-    expandCollapseIcon: {
-      color: theme.palette.text.secondary,
-      fontSize: "1.5em",
-      verticalAlign: "middle",
-    },
-    idCol: {
-      display: "block",
-      width: "50px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-  }),
-);
 
 type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   /**
@@ -56,7 +39,7 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
     logUrl,
   } = node;
 
-  const classes = useNodeRowStyles();
+  const classes = rowStyles();
 
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
@@ -141,7 +124,7 @@ type WorkerRowProps = {
  * A single row that represents the data of a Worker
  */
 const WorkerRow = ({ node, worker }: WorkerRowProps) => {
-  const classes = useNodeRowStyles();
+  const classes = rowStyles();
 
   const { mem, logUrl } = node;
   const {
