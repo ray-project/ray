@@ -379,6 +379,8 @@ class ListApiResponse:
     # availability of data because ray's state information is
     # not replicated.
     partial_failure_warning: str = ""
+    # A list of warnings to print.
+    warnings: Optional[List[str]] = None
 
 
 """
@@ -607,5 +609,11 @@ class StateSummary:
 
 @dataclass(init=True)
 class SummaryApiResponse:
+    # Total number of the resource from the cluster.
+    # Note that this value can be larger than `result`
+    # because `result` can be truncated.
+    total: int
     result: StateSummary = None
     partial_failure_warning: str = ""
+    # A list of warnings to print.
+    warnings: Optional[List[str]] = None
