@@ -153,6 +153,9 @@ class _ClientContext:
         self.api = _ClientAPI()
         self.client_worker = None
 
+        from ray._private.usage import usage_lib
+        usage_lib.reset()
+
     # remote can be called outside of a connection, which is why it
     # exists on the same API layer as connect() itself.
     def remote(self, *args, **kwargs):

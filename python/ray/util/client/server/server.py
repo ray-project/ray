@@ -169,29 +169,42 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
             already_exists = ray.experimental.internal_kv._internal_kv_put(
-                request.key, request.value, overwrite=request.overwrite
+                request.key,
+                request.value,
+                overwrite=request.overwrite,
+                namespace=request.namespace,
             )
         return ray_client_pb2.KVPutResponse(already_exists=already_exists)
 
     def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
         with disable_client_hook():
-            value = ray.experimental.internal_kv._internal_kv_get(request.key)
+            value = ray.experimental.internal_kv._internal_kv_get(
+                request.key, namespace=request.namespace
+            )
         return ray_client_pb2.KVGetResponse(value=value)
 
     @_use_response_cache
     def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
         with disable_client_hook():
-            ray.experimental.internal_kv._internal_kv_del(request.key)
-        return ray_client_pb2.KVDelResponse()
+            deleted_num = ray.experimental.internal_kv._internal_kv_del(
+                request.key,
+                del_by_prefix=request.del_by_prefix,
+                namespace=request.namespace,
+            )
+        return ray_client_pb2.KVDelResponse(deleted_num=deleted_num)
 
     def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
         with disable_client_hook():
-            keys = ray.experimental.internal_kv._internal_kv_list(request.prefix)
+            keys = ray.experimental.internal_kv._internal_kv_list(
+                request.prefix, namespace=request.namespace
+            )
         return ray_client_pb2.KVListResponse(keys=keys)
 
     def KVExists(self, request, context=None) -> ray_client_pb2.KVExistsResponse:
         with disable_client_hook():
-            exists = ray.experimental.internal_kv._internal_kv_exists(request.key)
+            exists = ray.experimental.internal_kv._internal_kv_exists(
+                request.key, namespace=request.namespace
+            )
         return ray_client_pb2.KVExistsResponse(exists=exists)
 
     def ListNamedActors(

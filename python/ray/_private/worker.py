@@ -1507,6 +1507,9 @@ def shutdown(_exiting_interpreter: bool = False):
         del global_worker.gcs_client
     _internal_kv_reset()
 
+    from ray._private.usage import usage_lib
+    usage_lib.reset()
+
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
