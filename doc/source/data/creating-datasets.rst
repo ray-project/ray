@@ -388,11 +388,8 @@ futures.
   ``Dataset`` backed by the distributed Pandas DataFrame partitions that underly the
   Dask DataFrame.
 
-  .. note::
-
-    This conversion should have near-zero overhead: it involves zero data copying and
-    zero data movement. Datasets simply reinterprets the existing Dask DataFrame partitions
-    as Ray Datasets partitions without touching the underlying data.
+  This conversion has near-zero overhead, since Datasets simply reinterprets existing
+  Dask-in-Ray partition objects as Dataset blocks.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
