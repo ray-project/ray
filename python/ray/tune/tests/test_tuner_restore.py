@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray import tune
 from ray.air import RunConfig, Checkpoint, session, FailureConfig
+from ray.air._internal.remote_storage import download_from_uri
 from ray.tune import Callback
 from ray.tune.experiment import Trial
 from ray.tune.tune_config import TuneConfig
@@ -299,6 +300,36 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
     assert len(results) == 4
     assert len(results.errors) == 0
     assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
+
+
+def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
+    """Check that restoring Tuner() objects from cloud storage works"""
+    tuner = Tuner(
+        lambda config: 1,
+        run_config=RunConfig(
+            name="exp_dir",
+            local_dir=str(tmpdir / "ray_results"),
+            sync_config=tune.SyncConfig(upload_dir="memory:///test/restore"),
+        ),
+    )
+    tuner.fit()
+
+    check_path = tmpdir / "check_save"
+    download_from_uri("memory:///test/restore", str(check_path))
+    remote_contents = os.listdir(check_path / "exp_dir")
+
+    assert "tuner.pkl" in remote_contents
+    assert "trainable.pkl" in remote_contents
+
+    (tmpdir / "ray_results").remove(ignore_errors=True)
+
+    tuner2 = Tuner.restore("memory:///test/restore/exp_dir")
+    results = tuner2.fit()
+
+    assert results[0].metrics["_metric"] == 1
+    local_contents = os.listdir(tmpdir / "ray_results/exp_dir")
+    assert "tuner.pkl" in local_contents
+    assert "trainable.pkl" in local_contents
 
 
 if __name__ == "__main__":
