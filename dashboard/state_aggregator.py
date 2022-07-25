@@ -74,7 +74,7 @@ def _convert_filters_type(
         schema: The state schema. It is used to infer the type of the column for filter.
 
     Returns:
-        A new list of filters with correctly types that match the schema.
+        A new list of filters with correct types that match the schema.
     """
     new_filter = []
     schema = {field.name: field.type for field in fields(schema)}
@@ -82,37 +82,44 @@ def _convert_filters_type(
     for col, predicate, val in filter:
         if col in schema:
             column_type = schema[col]
-            if isinstance(val, column_type):
-                # Do nothing.
+            try:
+                isinstance(val, column_type)
+            except TypeError:
+                # Calling `isinstance` to the Literal type raises a TypeError.
+                # Ignore this case.
                 pass
-            elif column_type is int:
-                try:
-                    val = convert_string_to_type(val, int)
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid filter `--filter {col} {val}` for a int type "
-                        "column. Please provide an integer filter "
-                        f"`--filter {col} [int]`"
-                    )
-            elif column_type is float:
-                try:
-                    val = convert_string_to_type(val, float)
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid filter `--filter {col} {val}` for a float "
-                        "type column. Please provide an integer filter "
-                        f"`--filter {col} [float]`"
-                    )
-            elif column_type is bool:
-                try:
-                    val = convert_string_to_type(val, bool)
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid filter `--filter {col} {val}` for a boolean "
-                        "type column. Please provide "
-                        f"`--filter {col} [True|true|1]` for True or "
-                        f"`--filter {col} [False|false|0]` for False."
-                    )
+            else:
+                if isinstance(val, column_type):
+                    # Do nothing.
+                    pass
+                elif column_type is int:
+                    try:
+                        val = convert_string_to_type(val, int)
+                    except ValueError:
+                        raise ValueError(
+                            f"Invalid filter `--filter {col} {val}` for a int type "
+                            "column. Please provide an integer filter "
+                            f"`--filter {col} [int]`"
+                        )
+                elif column_type is float:
+                    try:
+                        val = convert_string_to_type(val, float)
+                    except ValueError:
+                        raise ValueError(
+                            f"Invalid filter `--filter {col} {val}` for a float "
+                            "type column. Please provide an integer filter "
+                            f"`--filter {col} [float]`"
+                        )
+                elif column_type is bool:
+                    try:
+                        val = convert_string_to_type(val, bool)
+                    except ValueError:
+                        raise ValueError(
+                            f"Invalid filter `--filter {col} {val}` for a boolean "
+                            "type column. Please provide "
+                            f"`--filter {col} [True|true|1]` for True or "
+                            f"`--filter {col} [False|false|0]` for False."
+                        )
         new_filter.append((col, predicate, val))
     return new_filter
 
