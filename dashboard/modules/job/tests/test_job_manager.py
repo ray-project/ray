@@ -349,9 +349,10 @@ class TestRuntimeEnv:
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         logs = job_manager.get_job_logs(job_id)
-        assert logs.startswith(
-            "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) " "are provided"
+        token = (
+            "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) are provided"
         )
+        assert token in logs, logs
         assert "JOB_1_VAR" in logs
 
     async def test_failed_runtime_env_validation(self, job_manager):

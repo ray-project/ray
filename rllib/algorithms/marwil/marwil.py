@@ -12,7 +12,10 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -86,17 +89,27 @@ class MARWILConfig(AlgorithmConfig):
         # discounted returns. It is ok, though, to have multiple episodes in
         # the same line.
         self.input_ = "sampler"
-        # Use importance sampling estimators for reward.
-        self.evaluation_config["off_policy_estimation_methods"] = {
-            "is": {"type": ImportanceSampling},
-            "wis": {"type": WeightedImportanceSampling},
-        }
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
         self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
+
+        # TODO: Delete this and change off_policy_estimation_methods to {}
+        # Also remove the same section from BC
+        self.off_policy_estimation_methods = {
+            "is": {"type": ImportanceSampling},
+            "wis": {"type": WeightedImportanceSampling},
+        }
+        deprecation_warning(
+            old="MARWIL currently uses off_policy_estimation_methods: "
+            f"{self.off_policy_estimation_methods} by default. This will"
+            "change to off_policy_estimation_methods: {} in a future release."
+            "If you want to use an off-policy estimator, specify it in"
+            ".evaluation(off_policy_estimation_methods=...)",
+            error=False,
+        )
 
     @override(AlgorithmConfig)
     def training(

@@ -41,7 +41,7 @@ def maybe_pipeline(ds, enabled):
 
 def maybe_lazy(ds, enabled):
     if enabled:
-        return ds.experimental_lazy()
+        return ds.lazy()
     else:
         return ds
 
@@ -458,29 +458,6 @@ def test_range_table(ray_start_regular_shared):
     assert ds.take() == [{"value": i} for i in range(10)]
 
 
-def test_tensor_array_validation():
-    # Test unknown input type raises TypeError.
-    with pytest.raises(TypeError):
-        TensorArray(object())
-
-    # Test ragged tensor raises TypeError.
-    with pytest.raises(TypeError):
-        TensorArray(np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object))
-
-    with pytest.raises(TypeError):
-        TensorArray([np.ones((2, 2)), np.ones((3, 3))])
-
-    with pytest.raises(TypeError):
-        TensorArray(pd.Series([np.ones((2, 2)), np.ones((3, 3))]))
-
-    # Test non-primitive element raises TypeError.
-    with pytest.raises(TypeError):
-        TensorArray(np.array([object(), object()]))
-
-    with pytest.raises(TypeError):
-        TensorArray([object(), object()])
-
-
 def test_tensor_array_block_slice():
     # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
@@ -627,7 +604,7 @@ def test_tensors_basic(ray_start_regular_shared):
     ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
     assert str(ds) == (
         "Dataset(num_blocks=6, num_rows=6, "
-        "schema={__value__: ArrowTensorType(shape=(3, 5), dtype=int64)})"
+        "schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
 
@@ -818,7 +795,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10).map(lambda _: np.ones((4, 4)))
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=10, "
-        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 
     # Test map_batches.
@@ -827,7 +804,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
-        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
 
     # Test flat_map.
@@ -836,23 +813,8 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=20, "
-        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
+        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
     )
-
-    # Test map_batches ndarray column.
-    ds = ray.data.range(16, parallelism=4).map_batches(
-        lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
-    )
-    assert str(ds) == (
-        "Dataset(num_blocks=4, num_rows=24, "
-        "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
-    )
-
-    # Test map_batches ragged ndarray column falls back to opaque object-typed column.
-    ds = ray.data.range(16, parallelism=4).map_batches(
-        lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}), batch_size=2
-    )
-    assert str(ds) == ("Dataset(num_blocks=4, num_rows=16, schema={a: object})")
 
 
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
@@ -863,7 +825,7 @@ def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
     arr = np.arange(num_items).reshape(shape)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": list(arr)})
     # Cast column to tensor extension dtype.
-    df["two"] = df["two"].astype(TensorDtype(shape, np.int64))
+    df["two"] = df["two"].astype(TensorDtype())
     ds = ray.data.from_pandas([df])
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -942,7 +904,7 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
     # extension type.
     def deser_mapper(batch: pd.DataFrame):
         batch["two"] = [pickle.loads(a) for a in batch["two"]]
-        batch["two"] = batch["two"].astype(TensorDtype(shape, np.int64))
+        batch["two"] = batch["two"].astype(TensorDtype())
         return batch
 
     casted_ds = ds.map_batches(deser_mapper, batch_format="pandas")
@@ -1697,12 +1659,6 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     with pytest.raises(ValueError):
         list(ray.data.range(100).iter_batches(local_shuffle_buffer_size=10))
 
-    # Shuffle buffer min size must be at least as large as batch size.
-    with pytest.raises(ValueError):
-        list(
-            ray.data.range(100).iter_batches(batch_size=10, local_shuffle_buffer_size=5)
-        )
-
     def range(n, parallelism=200):
         if ds_format == "simple":
             ds = ray.data.range(n, parallelism=parallelism)
@@ -2278,7 +2234,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
     fn_constructor_args = (ray.put(1),)
     fn_constructor_kwargs = {"b": ray.put(2)}
     ds2 = (
-        ds.experimental_lazy()
+        ds.lazy()
         .map_batches(
             CallableFn,
             batch_size=1,
@@ -2308,7 +2264,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
     fn_constructor_args = (ray.put(1),)
     fn_constructor_kwargs = {"b": ray.put(2)}
     ds2 = (
-        ds.experimental_lazy()
+        ds.lazy()
         .map_batches(
             lambda df, a, b=None: b * df + a,
             batch_size=1,
@@ -4594,9 +4550,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
 
 
 def test_split_is_not_disruptive(ray_start_regular):
-    ds = (
-        ray.data.range(100, parallelism=10).map_batches(lambda x: x).experimental_lazy()
-    )
+    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x).lazy()
 
     def verify_integrity(splits):
         for dss in splits:
