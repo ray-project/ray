@@ -79,9 +79,9 @@ class _PerfStats:
             # Global average.
             self.__dict__[field] += value
         else:
-            self.__dict__[field] = (
-                (1.0 - self.ema_coeff) * self.__dict__[field] + self.ema_coeff * value
-            )
+            self.__dict__[field] = (1.0 - self.ema_coeff) * self.__dict__[
+                field
+            ] + self.ema_coeff * value
 
     def _get_avg(self):
         # Mean multiplicator (1000 = ms -> sec).

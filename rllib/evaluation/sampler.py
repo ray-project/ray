@@ -229,7 +229,7 @@ class SyncSampler(SamplerInput):
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats(
             ema=worker.policy_config.get("sampler_perf_stats_use_ema"),
-            coeff=worker.policy_config.get("sampler_perf_stats_ema_coeff")
+            coeff=worker.policy_config.get("sampler_perf_stats_ema_coeff"),
         )
         if not sample_collector_class:
             sample_collector_class = SimpleListCollector
@@ -424,7 +424,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.no_done_at_end = no_done_at_end
         self.perf_stats = _PerfStats(
             ema=worker.policy_config.get("sampler_perf_stats_use_ema"),
-            coeff=worker.policy_config.get("sampler_perf_stats_ema_coeff")
+            coeff=worker.policy_config.get("sampler_perf_stats_ema_coeff"),
         )
         self.shutdown = False
         self.observation_fn = observation_fn
