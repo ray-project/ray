@@ -36,7 +36,13 @@ class ConcurrencyLimiter(Searcher):
         from ray.tune.search import ConcurrencyLimiter
         search_alg = HyperOptSearch(metric="accuracy")
         search_alg = ConcurrencyLimiter(search_alg, max_concurrent=2)
-        tune.run(trainable, search_alg=search_alg)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=search_alg
+            ),
+        )
+        tuner.fit()
     """
 
     def __init__(self, searcher: Searcher, max_concurrent: int, batch: bool = False):

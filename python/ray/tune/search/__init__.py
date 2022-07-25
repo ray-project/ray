@@ -155,22 +155,22 @@ UNRESOLVED_SEARCH_SPACE = str(
     "You passed a `{par}` parameter to {cls} that contained unresolved search "
     "space definitions. {cls} should however be instantiated with fully "
     "configured search spaces only. To use Ray Tune's automatic search space "
-    "conversion, pass the space definition as part of the `config` argument "
-    "to `tune.run()` instead."
+    "conversion, pass the space definition as part of the `param_space` argument "
+    "to `tune.Tuner()` instead."
 )
 
 UNDEFINED_SEARCH_SPACE = str(
     "Trying to sample a configuration from {cls}, but no search "
     "space has been defined. Either pass the `{space}` argument when "
-    "instantiating the search algorithm, or pass a `config` to "
-    "`tune.run()`."
+    "instantiating the search algorithm, or pass a `param_space` to "
+    "`tune.Tuner()`."
 )
 
 UNDEFINED_METRIC_MODE = str(
     "Trying to sample a configuration from {cls}, but the `metric` "
     "({metric}) or `mode` ({mode}) parameters have not been set. "
     "Either pass these arguments when instantiating the search algorithm, "
-    "or pass them to `tune.run()`."
+    "or pass them to `tune.TuneConfig()`."
 )
 
 

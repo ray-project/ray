@@ -75,7 +75,7 @@ class _TrialGroup:
 class Repeater(Searcher):
     """A wrapper algorithm for repeating trials of same parameters.
 
-    Set tune.run(num_samples=...) to be a multiple of `repeat`. For example,
+    Set tune.TuneConfig(num_samples=...) to be a multiple of `repeat`. For example,
     set num_samples=15 if you intend to obtain 3 search algorithm suggestions
     and repeat each suggestion 5 times. Any leftover trials
     (num_samples mod repeat) will be ignored.
@@ -105,7 +105,14 @@ class Repeater(Searcher):
         re_search_alg = Repeater(search_alg, repeat=10)
 
         # Repeat 2 samples 10 times each.
-        tune.run(trainable, num_samples=20, search_alg=re_search_alg)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=re_search_alg,
+                num_samples=20,
+            ),
+        )
+        tuner.fit()
 
     """
 

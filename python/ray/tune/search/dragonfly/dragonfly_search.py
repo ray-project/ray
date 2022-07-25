@@ -68,7 +68,7 @@ class DragonflySearch(Searcher):
         space: Search space. Should only be set if you don't pass
             an optimizer as the `optimizer` argument. Defines the search space
             and requires a `domain` to be set. Can be automatically converted
-            from the `config` dict passed to `tune.run()`.
+            from the `param_space` dict passed to `tune.Tuner()`.
         metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
@@ -109,7 +109,14 @@ class DragonflySearch(Searcher):
             metric="objective",
             mode="max")
 
-        tune.run(my_func, config=config, search_alg=df_search)
+        tuner = tune.Tuner(
+            my_func,
+            tune_config=tune.TuneConfig(
+                search_alg=df_search
+            ),
+            param_space=config
+        )
+        tuner.fit()
 
     If you would like to pass the search space/optimizer manually,
     the code would look like this:
@@ -142,7 +149,13 @@ class DragonflySearch(Searcher):
             metric="objective",
             mode="max")
 
-        tune.run(my_func, search_alg=df_search)
+        tuner = tune.Tuner(
+            my_func,
+            tune_config=tune.TuneConfig(
+                search_alg=df_search
+            ),
+        )
+        tuner.fit()
 
     """
 
@@ -225,8 +238,8 @@ class DragonflySearch(Searcher):
         if not self._space:
             raise ValueError(
                 "You have to pass a `space` when initializing dragonfly, or "
-                "pass a search space definition to the `config` parameter "
-                "of `tune.run()`."
+                "pass a search space definition to the `param_space` parameter "
+                "of `tune.Tuner()`."
             )
 
         if not self._domain:

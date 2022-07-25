@@ -222,7 +222,7 @@ class PB2(PopulationBasedTraining):
     It considers all trials added as part of the PB2 population. If the number
     of trials exceeds the cluster capacity, they will be time-multiplexed as to
     balance training progress across the population. To run multiple trials,
-    use `tune.run(num_samples=<int>)`.
+    use `tune.TuneConfig(num_samples=<int>)`.
 
     In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in
     `pb2_global.txt` and individual policy perturbations are recorded
@@ -276,9 +276,16 @@ class PB2(PopulationBasedTraining):
         ...     hyperparam_bounds={
         ...     "factor": [0.0, 20.0],
         ... })
-        >>> tune.run( # doctest: +SKIP
-        ...     pbt_function, config={"lr": 0.0001}, num_samples=8, scheduler=pb2
+        >>> tuner = tune.Tuner(  # doctest: +SKIP
+        ...     pbt_function,
+        ...     tune_config=tune.TuneConfig(
+        ...         scheduler=pb2,
+        ...         num_samples=8,
+        ...     ),
+        ...     param_space={"lr": 0.0001}
         ... )
+        >>> tuner.fit()  # doctest: +SKIP
+
     """
 
     def __init__(

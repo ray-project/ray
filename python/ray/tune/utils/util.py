@@ -54,7 +54,7 @@ class UtilMonitor(Thread):
     pinging for information every x seconds in a separate thread.
 
     Requires psutil and GPUtil to be installed. Can be enabled with
-    tune.run(config={"log_sys_usage": True}).
+    Tuner(param_space={"log_sys_usage": True}).
     """
 
     def __init__(self, start=True, delay=0.7):
@@ -289,7 +289,7 @@ def diagnose_serialization(trainable: Callable):
 
     Args:
         trainable: The trainable object passed to
-            tune.run(trainable). Currently only supports
+            tune.Tuner(trainable). Currently only supports
             Function API.
 
     Returns:
@@ -382,7 +382,7 @@ def diagnose_serialization(trainable: Callable):
 def atomic_save(state: Dict, checkpoint_dir: str, file_name: str, tmp_file_name: str):
     """Atomically saves the state object to the checkpoint directory.
 
-    This is automatically used by tune.run during a Tune job.
+    This is automatically used by Tuner().fit during a Tune job.
 
     Args:
         state: Object state to be serialized.
@@ -460,7 +460,15 @@ def wait_for_gpu(
             tune.util.wait_for_gpu()
             train()
 
-        tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
+        tuner = tune.Tuner(
+            tune.with_resources(
+                tune_func,
+                resources={"gpu": 1}
+            ),
+            tune_config=tune.TuneConfig(num_samples=10)
+        )
+        tuner.fit()
+
     """
     GPUtil = _import_gputil()
 

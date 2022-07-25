@@ -101,7 +101,14 @@ class HyperOptSearch(Searcher):
             metric="mean_loss", mode="min",
             points_to_evaluate=current_best_params)
 
-        tune.run(trainable, config=config, search_alg=hyperopt_search)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=hyperopt_search
+            ),
+            param_space=config
+        )
+        tuner.fit()
 
     If you would like to pass the search space manually, the code would
     look like this:
@@ -124,8 +131,13 @@ class HyperOptSearch(Searcher):
             space, metric="mean_loss", mode="min",
             points_to_evaluate=current_best_params)
 
-        tune.run(trainable, search_alg=hyperopt_search)
-
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=hyperopt_search
+            ),
+        )
+        tuner.fit()
 
     """
 
