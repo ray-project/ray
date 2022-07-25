@@ -15,7 +15,6 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import zeros_like
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.typing import (
     AgentID,
@@ -387,7 +386,9 @@ class _AgentCollector:
                             element_at_t.append(d[index])
                         else:
                             # zero pad similar to the last element.
-                            element_at_t.append(zeros_like(d[-1]))
+                            element_at_t.append(
+                                tree.map_structure(np.zeros_like, d[-1])
+                            )
                     element_at_t = np.stack(element_at_t)
 
                     if element_at_t.shape[0] == 1:
