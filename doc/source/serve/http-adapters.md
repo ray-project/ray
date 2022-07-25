@@ -123,7 +123,7 @@ DAGDriver.bind(other_node, http_adapter=User)
 ```
 ## List of Built-in Adapters
 
-Here is a list of adapters and please feel free to [contribute more](https://github.com/ray-project/ray/issues/new/choose)!
+Here is a list of adapters; please feel free to [contribute more](https://github.com/ray-project/ray/issues/new/choose)!
 
 ```{eval-rst}
 .. automodule:: ray.serve.http_adapters
