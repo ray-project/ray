@@ -199,6 +199,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
+
         # Fraction correctly specified.
         trainer = DummyTrainer(
             train_loop,
@@ -300,4 +301,4 @@ if __name__ == "__main__":
 
     import pytest
 
-    sys.exit(pytest.main(["-v", "-x", __file__]))
+    sys.exit(pytest.main(sys.argv[1:] + ["-v", "-x", __file__]))

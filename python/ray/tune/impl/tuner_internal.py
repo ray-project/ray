@@ -1,7 +1,10 @@
 import copy
 import os
+import math
+import warnings
 from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
+import ray
 import ray.cloudpickle as pickle
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
@@ -123,6 +126,51 @@ class TunerInternal:
         trainable_ckpt = os.path.join(self._experiment_checkpoint_dir, _TRAINABLE_PKL)
         with open(trainable_ckpt, "wb") as fp:
             pickle.dump(self._trainable, fp)
+        self._maybe_warn_resource_contention()
+
+    def _maybe_warn_resource_contention(self):
+        scaling_config = None
+        get_scaling_config = getattr(self._trainable, "base_scaling_config")
+        if callable(get_scaling_config):
+            scaling_config = get_scaling_config()
+
+        if not isinstance(scaling_config, ScalingConfig):
+            return
+
+        cpus_per_trial = scaling_config.total_resources.get("CPU", 0)
+        cpus_total = ray.cluster_resources().get("CPU", 1) + 0.01  # avoid zero error
+
+        num_samples = self._tune_config.num_samples
+        if num_samples < 1:  # simplify this in Tune
+            num_samples = math.inf
+        concurrent_trials = self._tune_config.max_concurrent_trials or 0
+        if concurrent_trials < 1:  # simplify this in Tune
+            concurrent_trials = math.inf
+
+        actual_concurrency = min(
+            (cpus_total // cpus_per_trial, num_samples, concurrent_trials)
+        )
+        fraction_configured = getattr(scaling_config, "_max_cpu_fraction_per_node")
+
+        # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
+        #  longer experimental.
+        if (
+            self._trainable.has_dataset
+            and not fraction_configured
+            and (actual_concurrency * cpus_per_trial) / cpus_total > 0.8
+        ):
+            warnings.warn(
+                "Instantiating this Trainer leaves less than 20% of CPUs in "
+                "this cluster for Dataset execution. To avoid this, it is "
+                "recommended to explicitly reserve at least 20% of node CPUs "
+                "for Dataset execution by "
+                "setting _max_cpu_fraction_per_node = 0.8 in the Trainer "
+                "scaling_config. Not doing so can lead to resource contention "
+                "or hangs. See "
+                "https://docs.ray.io/en/master/data/key-concepts.html"
+                "#example-datasets-in-tune for more info.",
+                stacklevel=2,
+            )
 
     def _process_scaling_config(self) -> None:
         """Converts ``self._param_space["scaling_config"]`` to a dict.

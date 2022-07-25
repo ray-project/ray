@@ -2,7 +2,6 @@ import abc
 import inspect
 import logging
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
-import warnings
 
 import ray
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
@@ -339,30 +338,6 @@ class BaseTrainer(abc.ABC):
         scaling_config = self.scaling_config
 
         def train_func(config, checkpoint_dir=None):
-            # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
-            #  longer experimental.
-            if (
-                self.datasets
-                and not self.scaling_config._max_cpu_fraction_per_node
-                and (
-                    ray.available_resources().get("CPU", 0)
-                    / ray.cluster_resources().get("CPU", 0)
-                    < 0.2
-                )
-            ):
-                warnings.warn(
-                    "Instantiating this Trainer leaves less than 20% of CPUs in "
-                    "this cluster for Dataset execution. To avoid this, it is "
-                    "recommended to explicitly reserve at least 20% of node CPUs "
-                    "for Dataset execution by "
-                    "setting _max_cpu_fraction_per_node = 0.8 in the Trainer "
-                    "scaling_config. Not doing so can lead to resource contention "
-                    "or hangs. See "
-                    "https://docs.ray.io/en/master/data/key-concepts.html"
-                    "#example-datasets-in-tune for more info.",
-                    stacklevel=2,
-                )
-
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
@@ -382,6 +357,7 @@ class BaseTrainer(abc.ABC):
         train_func.__name__ = trainer_cls.__name__
 
         trainable_cls = wrap_function(train_func, warn=False)
+        has_dataset = bool(self.datasets)
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
@@ -393,6 +369,14 @@ class BaseTrainer(abc.ABC):
             # if __repr__ is not directly defined in a class.
             def __repr__(self):
                 return super().__repr__()
+
+            @classmethod
+            def has_dataset(cls):
+                return has_dataset
+
+            @classmethod
+            def base_scaling_config(cls):
+                return scaling_config
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
