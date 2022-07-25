@@ -37,6 +37,8 @@ def get_step_executor(step_options: "WorkflowStepRuntimeOptions"):
     if step_options.step_type == StepType.FUNCTION:
         # prevent automatic lineage reconstruction
         step_options.ray_options["max_retries"] = 0
+        # prevent retrying exception by Ray
+        step_options.ray_options["retry_exceptions"] = False
         executor = _workflow_step_executor_remote.options(
             **step_options.ray_options
         ).remote
