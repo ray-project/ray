@@ -1,6 +1,9 @@
 import collections
+import gc
 import logging
+import os
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+import psutil
 
 import ray
 from ray.data._internal.block_list import BlockList
@@ -442,6 +445,11 @@ def _map_block_nosplit(
     *fn_args,
     **fn_kwargs,
 ) -> Tuple[Block, BlockMetadata]:
+    gc.collect()
+    process = psutil.Process(os.getpid())
+    start_uss = int(process.memory_full_info().uss)
+    start_rss = int(process.memory_full_info().rss)
+    
     stats = BlockExecStats.builder()
     builder = DelegatingBlockBuilder()
     if fn is not None:
@@ -450,6 +458,22 @@ def _map_block_nosplit(
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
+
+    end_uss = int(process.memory_full_info().uss)
+    end_rss = int(process.memory_full_info().rss)
+    uss_delta = end_uss - start_uss
+    available = psutil.virtual_memory().available
+    print(f'delta {uss_delta} end {end_uss} end-rss {end_rss} av {available} pid {os.getpid()}')
+    # if block_fn.__name__ not in blockfn_stats:
+    #     blockfn_stats[block_fn.__name__] = {}
+    #     blockfn_stats[block_fn.__name__]["uss"] = []
+    #     blockfn_stats[block_fn.__name__]["rss"] = []
+    #     blockfn_stats[block_fn.__name__]["uss_delta"] = []
+
+    # blockfn_stats[block_fn.__name__]["uss"].append(end_uss)
+    # blockfn_stats[block_fn.__name__]["rss"].append(end_rss)
+    # blockfn_stats[block_fn.__name__]["uss_delta"].append(uss_delta)
+    
     return new_block, accessor.get_metadata(
         input_files=input_files, exec_stats=stats.build()
     )
