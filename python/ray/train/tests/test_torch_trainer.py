@@ -10,6 +10,10 @@ from ray.air.examples.pytorch.torch_linear_example import (
 from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.tune import TuneError
 from ray.air.config import ScalingConfig
+from ray.train.torch import TorchConfig
+import ray.train as train
+from unittest.mock import patch
+from ray.cluster_utils import Cluster
 
 
 @pytest.fixture
@@ -18,6 +22,20 @@ def ray_start_4_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_4_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=8, num_gpus=4)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.mark.parametrize("num_workers", [1, 2])
@@ -109,6 +127,57 @@ def test_checkpoint_freq(ray_start_4_cpus):
     )
     with pytest.raises(TuneError):
         trainer.fit()
+
+
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_tune_torch_get_device_gpu(ray_2_node_4_gpu, num_gpus_per_worker):
+    """Tests if GPU ids are set correctly when running train concurrently in nested
+    actors (for example when used with Tune)."""
+    from ray.air.config import ScalingConfig
+    from ray.air import session
+    import time
+
+    num_samples = 2
+    num_workers = 2
+
+    @patch("torch.cuda.is_available", lambda: True)
+    def train_fn():
+        local_rank = session.get_local_rank()
+        if num_gpus_per_worker == 0.5:
+            assert train.torch.get_device().index == 0
+        else:
+            # if num_gpus_per_worker == 1:
+            # CUDA_VISIBLE_DEVICES=0,1, and device index will be 0, 1
+            # or CUDA_VISIBLE_DEVICES=2,3, and device index will still be 0, 1
+            # Thus, device_index equals local_rank
+            # if num_gpus_per_worker == 2:
+            # CUDA_VISIBLE_DEVICES=0,1,2,3 and device index will be 0, 2
+            # Thus, device_index equals twice the local_rank
+            assert train.torch.get_device().index == local_rank * num_gpus_per_worker
+
+    @ray.remote(num_gpus=2)
+    class TrialActor:
+        def __init__(self, warmup_steps):
+            # adding warmup_steps to the config to avoid the error of checkpoint name conflict
+            time.sleep(2 * warmup_steps)
+            trainer = TorchTrainer(
+                train_fn,
+                torch_config=TorchConfig(backend="gloo"),
+                scaling_config=ScalingConfig(
+                    num_workers=num_workers,
+                    use_gpu=True,
+                    resources_per_worker={"GPU": num_gpus_per_worker},
+                ),
+            )
+
+            self.trainer = trainer
+
+        def run(self):
+            ids = self.trainer.fit()
+            return ids
+
+    actors = [TrialActor.remote(_) for _ in range(num_samples)]
+    ray.get([actor.run.remote() for actor in actors])
 
 
 if __name__ == "__main__":
