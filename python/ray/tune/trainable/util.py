@@ -272,10 +272,11 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
         data = HugeDataset(download=True)
 
-        tune.run(
+        tuner = Tuner(
             tune.with_parameters(train, data=data),
             # ...
         )
+        tuner.fit()
 
     Class API example:
 
@@ -299,7 +300,7 @@ def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
 
         data = HugeDataset(download=True)
 
-        tune.run(
+        tuner = Tuner(
             tune.with_parameters(MyTrainable, data=data),
             # ...
         )
