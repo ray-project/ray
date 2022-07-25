@@ -11,8 +11,10 @@ computationally demanding example.
 
 import random
 
-from ray import tune
+from ray import air, tune
+from ray.rllib.algorithms.ppo import PPO
 from ray.tune.schedulers import PopulationBasedTraining
+
 
 if __name__ == "__main__":
 
@@ -42,14 +44,18 @@ if __name__ == "__main__":
         custom_explore_fn=explore,
     )
 
-    analysis = tune.run(
-        "PPO",
-        name="pbt_humanoid_test",
-        scheduler=pbt,
-        num_samples=8,
-        metric="episode_reward_mean",
-        mode="max",
-        config={
+    tuner = tune.Tuner(
+        PPO,
+        run_config=air.RunConfig(
+            name="pbt_humanoid_test",
+        ),
+        tune_config=tune.TuneConfig(
+            scheduler=pbt,
+            num_samples=8,
+            metric="episode_reward_mean",
+            mode="max",
+        ),
+        param_space={
             "env": "Humanoid-v1",
             "kl_coeff": 1.0,
             "num_workers": 8,
@@ -65,5 +71,6 @@ if __name__ == "__main__":
             "train_batch_size": tune.choice([10000, 20000, 40000]),
         },
     )
+    results = tuner.fit()
 
-    print("best hyperparameters: ", analysis.best_config)
+    print("best hyperparameters: ", results.get_best_result().config)
