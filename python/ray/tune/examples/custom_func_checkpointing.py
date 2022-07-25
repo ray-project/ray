@@ -30,10 +30,6 @@ def train_func(config):
         )
 
 
-# You can restore a single trial checkpoint by using
-# ``tune.run(restore=<checkpoint_dir>)`` By doing this, you can change
-# whatever experiments' configuration such as the experiment's name.
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
