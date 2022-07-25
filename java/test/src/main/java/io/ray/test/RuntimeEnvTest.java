@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.runtimeenv.RuntimeEnv;
-import io.ray.api.runtimeenv.RuntimeEnvName;
+import io.ray.api.runtimeenv.types.RuntimeEnvName;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -190,6 +190,75 @@ public class RuntimeEnvTest {
               .remote()
               .get();
       Assert.assertTrue(ret);
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  private static class Pip {
+    private String[] packages;
+    private Boolean pip_check;
+
+    public String[] getPackages() {
+      return packages;
+    }
+
+    public void setPackages(String[] packages) {
+      this.packages = packages;
+    }
+
+    public Boolean getPip_check() {
+      return pip_check;
+    }
+
+    public void setPip_check(Boolean pip_check) {
+      this.pip_check = pip_check;
+    }
+  }
+
+  public void testRuntimeEnvAPI() {
+    try {
+      Ray.init();
+      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
+      String workingDir = "https://path/to/working_dir.zip";
+      runtimeEnv.set("working_dir", workingDir);
+      String[] py_modules =
+          new String[] {"https://path/to/py_modules1.zip", "https://path/to/py_modules2.zip"};
+      runtimeEnv.set("py_modules", py_modules);
+      Pip pip = new Pip();
+      pip.setPackages(new String[] {"requests", "tensorflow"});
+      pip.setPip_check(true);
+      runtimeEnv.set("pip", pip);
+      String serializedRuntimeEnv = runtimeEnv.serialize();
+
+      RuntimeEnv runtimeEnv2 = RuntimeEnv.deserialize(serializedRuntimeEnv);
+      Assert.assertEquals(runtimeEnv2.get("working_dir", String.class), workingDir);
+      Assert.assertEquals(runtimeEnv2.get("py_modules", String[].class), py_modules);
+      Pip pip2 = runtimeEnv2.get("pip", Pip.class);
+      Assert.assertEquals(pip2.getPackages(), pip.getPackages());
+      Assert.assertEquals(pip2.getPip_check(), pip.getPip_check());
+
+      runtimeEnv2.remove("working_dir");
+      runtimeEnv2.remove("py_modules");
+      runtimeEnv2.remove("pip");
+      Assert.assertEquals(runtimeEnv2.get("working_dir", String.class), null);
+      Assert.assertEquals(runtimeEnv2.get("py_modules", String[].class), null);
+      Assert.assertEquals(runtimeEnv2.get("pip", Pip.class), null);
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
+  public void testRuntimeEnvJsonStringAPI() {
+    try {
+      Ray.init();
+      RuntimeEnv runtimeEnv = new RuntimeEnv.Builder().build();
+      String pipString = "{\"packages\":[\"requests\",\"tensorflow\"],\"pip_check\":false}";
+      runtimeEnv.setJsonStr("pip", pipString);
+      String serializedRuntimeEnv = runtimeEnv.serialize();
+
+      RuntimeEnv runtimeEnv2 = RuntimeEnv.deserialize(serializedRuntimeEnv);
+      Assert.assertEquals(runtimeEnv2.getJsonStr("pip"), pipString);
     } finally {
       Ray.shutdown();
     }

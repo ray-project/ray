@@ -75,7 +75,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private static ParallelActorContextImpl parallelActorContextImpl = new ParallelActorContextImpl();
 
-  private static ObjectMapper mapper = new ObjectMapper();
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -319,7 +319,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public RuntimeEnv deserializeRuntimeEnv(String serializedRuntimeEnv) throws RuntimeEnvException {
     RuntimeEnvImpl runtimeEnv = new RuntimeEnvImpl();
     try {
-      runtimeEnv.runtimeEnvs = (ObjectNode) mapper.readTree(serializedRuntimeEnv);
+      runtimeEnv.runtimeEnvs = (ObjectNode) MAPPER.readTree(serializedRuntimeEnv);
     } catch (JsonProcessingException e) {
       throw new RuntimeException(e);
     }

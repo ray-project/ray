@@ -200,7 +200,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
           group,
           bundleIndex,
           concurrencyGroups,
-          runtimeEnv != null ? runtimeEnv.serialize() : "",
+          runtimeEnv != null ? runtimeEnv.serializeToRuntimeEnvInfo() : "",
           namespace,
           maxPendingCalls);
     }

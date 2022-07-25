@@ -1,4 +1,4 @@
-package io.ray.api.runtimeenv;
+package io.ray.api.runtimeenv.types;
 
 public class RuntimeEnvName {
 

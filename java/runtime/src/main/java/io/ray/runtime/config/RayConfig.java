@@ -8,7 +8,7 @@ import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
 import io.ray.api.id.JobId;
 import io.ray.api.options.ActorLifetime;
-import io.ray.api.runtimeenv.RuntimeEnvName;
+import io.ray.api.runtimeenv.types.RuntimeEnvName;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.util.NetworkUtil;
