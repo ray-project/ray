@@ -123,11 +123,6 @@ class ScalingConfig:
         return dict(total_resource_map)
 
     @property
-    def num_cpus_for_driver(self):
-        """The number of CPUs to set for driver."""
-        return self._trainer_resources_not_none.get("CPU", 0)
-
-    @property
     def num_cpus_per_worker(self):
         """The number of CPUs to set per worker."""
         return self._resources_per_worker_not_none.get("CPU", 0)
