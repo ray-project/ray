@@ -544,6 +544,12 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             preprocessor = checkpoint.get_preprocessor()
             assert preprocessor.multiplier == 1
 
+    def testAttrPath(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Checkpoint.from_directory(tmpdir)
+            with self.assertRaises(TypeError):
+                os.path.exists(checkpoint)
+
 
 if __name__ == "__main__":
     import pytest

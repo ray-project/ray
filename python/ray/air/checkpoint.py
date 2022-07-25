@@ -627,6 +627,12 @@ class Checkpoint:
     def __setstate__(self, state):
         self.__dict__.update(state)
 
+    def __fspath__(self):
+        raise TypeError(
+            "You cannot use `air.Checkpoint` objects directly as paths. "
+            "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
+        )
+
     def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Return the saved preprocessor, if one exists."""
 
