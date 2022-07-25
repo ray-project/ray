@@ -276,6 +276,7 @@ class LogMonitor:
                     continue
                 raise e
 
+
             # If some new lines have been added to this file, try to reopen the
             # file.
             if file_size > file_info.size_when_last_opened:
