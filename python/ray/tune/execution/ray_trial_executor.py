@@ -422,7 +422,7 @@ class RayTrialExecutor:
                 if log_once("trial_executor_buffer_checkpoint"):
                     logger.warning(
                         "Disabling buffered training as you passed "
-                        "`checkpoint_at_end` to `tune.run()`."
+                        "`checkpoint_at_end` to `air.CheckpointConfig()`."
                     )
                 buffer_length = 1
 

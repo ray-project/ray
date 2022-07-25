@@ -26,7 +26,7 @@ def create_default_callbacks(
     sync_config: SyncConfig,
     metric: Optional[str] = None,
 ):
-    """Create default callbacks for `tune.run()`.
+    """Create default callbacks for `Tuner.fit()`.
 
     This function takes a list of existing callbacks and adds default
     callbacks to it.

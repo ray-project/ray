@@ -213,12 +213,12 @@ class Trial:
         trainable_name: Name of the trainable object to be executed.
         config: Provided configuration dictionary with evaluated params.
         trial_id: Unique identifier for the trial.
-        local_dir: ``local_dir`` as passed to ``tune.run`` joined
+        local_dir: ``local_dir`` as passed to ``air.RunConfig()`` joined
             with the name of the experiment.
         logdir: Directory where the trial logs are saved.
         relative_logdir: Same as ``logdir``, but relative to the parent of
             the ``local_dir`` (equal to ``local_dir`` argument passed
-            to ``tune.run``).
+            to ``air.RunConfig()``).
         evaluated_params: Evaluated parameters by search algorithm,
         experiment_tag: Identifying trial name to show in the console
         status: One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/

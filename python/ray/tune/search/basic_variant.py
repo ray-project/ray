@@ -71,13 +71,13 @@ class _TrialIterator:
     Args:
         uuid_prefix: Used in creating the trial name.
         num_samples: Number of samples from distribution
-             (same as tune.run).
+             (same as tune.TuneConfig).
         unresolved_spec: Experiment specification
             that might have unresolved distributions.
         constant_grid_search: Should random variables be sampled
             first before iterating over grid variants (True) or not (False).
         output_path: A specific output path within the local_dir.
-        points_to_evaluate: Same as tune.run.
+        points_to_evaluate: Configurations that will be tried out without sampling.
         lazy_eval: Whether variants should be generated
             lazily or eagerly. This is toggled depending
             on the size of the grid search.
@@ -222,13 +222,17 @@ class BasicVariantGenerator(SearchAlgorithm):
         from ray import tune
 
         # This will automatically use the `BasicVariantGenerator`
-        tune.run(
+        tuner = tune.Tuner(
             lambda config: config["a"] + config["b"],
-            config={
+            tune_config=tune.TuneConfig(
+                num_samples=4
+            ),
+            param_space={
                 "a": tune.grid_search([1, 2]),
                 "b": tune.randint(0, 3)
             },
-            num_samples=4)
+        )
+        tuner.fit()
 
     In the example above, 8 trials will be generated: For each sample
     (``4``), each of the grid search variants for ``a`` will be sampled
@@ -249,19 +253,22 @@ class BasicVariantGenerator(SearchAlgorithm):
         from ray import tune
         from ray.tune.search.basic_variant import BasicVariantGenerator
 
-
-        tune.run(
+        tuner = tune.Tuner(
             lambda config: config["a"] + config["b"],
-            config={
+            tune_config=tune.TuneConfig(
+                search_alg=BasicVariantGenerator(points_to_evaluate=[
+                    {"a": 2, "b": 2},
+                    {"a": 1},
+                    {"b": 2}
+                ]),
+                num_samples=4
+            ),
+            param_space={
                 "a": tune.grid_search([1, 2]),
                 "b": tune.randint(0, 3)
             },
-            search_alg=BasicVariantGenerator(points_to_evaluate=[
-                {"a": 2, "b": 2},
-                {"a": 1},
-                {"b": 2}
-            ]),
-            num_samples=4)
+        )
+        tuner.fit()
 
     The example above will produce six trials via four samples:
 

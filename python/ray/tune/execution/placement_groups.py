@@ -67,11 +67,15 @@ class PlacementGroupFactory:
 
         from ray import tune
 
-        tune.run(
-            train,
-            tune.PlacementGroupFactory([
-                {"CPU": 1, "GPU": 0.5, "custom_resource": 2}
-            ]))
+        tuner = tune.Tuner(
+            tune.with_resources(
+                train,
+                resources=tune.PlacementGroupFactory([
+                    {"CPU": 1, "GPU": 0.5, "custom_resource": 2}
+                ])
+            )
+        )
+        tuner.fit()
 
     If the trial itself schedules further remote workers, the resource
     requirements should be specified in additional bundles. You can also
@@ -82,13 +86,17 @@ class PlacementGroupFactory:
 
         from ray import tune
 
-        tune.run(
-            train,
-            resources_per_trial=tune.PlacementGroupFactory([
-                {"CPU": 1, "GPU": 0.5, "custom_resource": 2},
-                {"CPU": 2},
-                {"CPU": 2},
-            ], strategy="PACK"))
+        tuner = tune.Tuner(
+            tune.with_resources(
+                train,
+                resources=tune.PlacementGroupFactory([
+                    {"CPU": 1, "GPU": 0.5, "custom_resource": 2},
+                    {"CPU": 2},
+                    {"CPU": 2},
+                ], strategy="PACK")
+            )
+        )
+        tuner.fit()
 
     The example above will reserve 1 CPU, 0.5 GPUs and 2 custom_resources
     for the trainable itself, and reserve another 2 bundles of 2 CPUs each.
@@ -103,13 +111,17 @@ class PlacementGroupFactory:
 
         from ray import tune
 
-        tune.run(
-            train,
-            resources_per_trial=tune.PlacementGroupFactory([
-                {},
-                {"CPU": 2},
-                {"CPU": 2},
-            ], strategy="PACK"))
+        tuner = tune.Tuner(
+            tune.with_resources(
+                train,
+                resources=tune.PlacementGroupFactory([
+                    {},
+                    {"CPU": 2},
+                    {"CPU": 2},
+                ], strategy="PACK")
+            )
+        )
+        tuner.fit()
 
     Args:
         bundles(List[Dict]): A list of bundles which

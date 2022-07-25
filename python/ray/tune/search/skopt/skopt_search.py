@@ -101,7 +101,14 @@ class SkOptSearch(Searcher):
             mode="min",
             points_to_evaluate=current_best_params)
 
-        tune.run(my_trainable, config=config, search_alg=skopt_search)
+        tuner = tune.Tuner(
+            trainable_function,
+            tune_config=tune.TuneConfig(
+                search_alg=skopt_search
+            ),
+            param_space=config
+        )
+        tuner.fit()
 
     If you would like to pass the search space/optimizer manually,
     the code would look like this:
@@ -119,7 +126,13 @@ class SkOptSearch(Searcher):
             mode="min",
             points_to_evaluate=current_best_params)
 
-        tune.run(my_trainable, search_alg=skopt_search)
+        tuner = tune.Tuner(
+            trainable_function,
+            tune_config=tune.TuneConfig(
+                search_alg=skopt_search
+            ),
+        )
+        tuner.fit()
 
     """
 

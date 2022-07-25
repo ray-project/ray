@@ -81,7 +81,7 @@ def get_session():
         if log_once(stack_trace_str):
             logger.warning(
                 "Session not detected. You should not be calling `{}` "
-                "outside `tune.run` or while using the class API. ".format(
+                "outside `tuner.fit()` or while using the class API. ".format(
                     function_name
                 )
             )
@@ -218,7 +218,8 @@ def report(_metric=None, **kwargs):
                 time.sleep(1)
                 tune.report(hello="world", ray="tune")
 
-        analysis = tune.run(run_me)
+        tuner = Tuner(run_me)
+        results = tuner.fit()
 
     Args:
         _metric: Optional default anonymous metric for ``tune.report(value)``
