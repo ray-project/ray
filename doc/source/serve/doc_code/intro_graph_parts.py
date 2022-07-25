@@ -1,8 +1,8 @@
 # flake8: noqa
 
 # __deployments_start__
-import ray
 from ray import serve
+from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
 
 @serve.deployment
@@ -28,7 +28,6 @@ async def unpack_request(http_request) -> float:
 
 
 # __graph_start__
-
 # Bind class-based DeploymentNodes to their constructor's args and kwargs
 add_2 = AddCls.bind(2)
 add_3 = AddCls.bind(3)
@@ -40,5 +39,16 @@ with InputNode() as http_request:
     subtract_1_output = subtract_one_fn.bind(add_2_output)
     add_3_output = add_3.add.bind(subtract_1_output)
 
-serve.run(add_3_output)
-print("Finished run")
+# Bind graph root to an HTTP driver that accepts and forwards HTTP requests
+deployment_graph = DAGDriver.bind(request_number)
+
+# Run the graph
+serve.run(deployment_graph)
+# __graph_end__
+
+# __test_graph_start__
+import requests
+
+response = requests.post("http://localhost:8000/", json=5)
+print(response.json())
+# __test_graph_end__
