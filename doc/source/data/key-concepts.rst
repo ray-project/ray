@@ -19,8 +19,8 @@ Having multiple blocks in a dataset allows for parallel transformation and inges
 Informally, we refer to:
 
 * A Dataset with Arrow blocks as a *Tabular Dataset*,
-* A Tabular Dataset with one or more tensor-type columns as a *Tensor Dataset*, and
-* A Dataset with Python list blocks as a *Simple Dataset*.
+* A Dataset with Python list blocks as a *Simple Dataset*, and
+* A Tabular Dataset with one or more tensor-type columns as a *Tensor Dataset*.
 
 The following figure visualizes a tabular dataset with three blocks, each block holding 1000 rows each:
 
