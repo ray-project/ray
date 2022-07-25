@@ -434,6 +434,11 @@ def make_multi_agent(
     class MultiEnv(MultiAgentEnv):
         def __init__(self, config=None):
             MultiAgentEnv.__init__(self)
+            # Note(jungong) : explicitly check for None here, because config
+            # can have an empty dict but meaningful data fields (worker_index,
+            # vector_index) etc.
+            # TODO(jungong) : clean this up, so we are not mixing up dict fields
+            # with data fields.
             if config is None:
                 config = {}
             num = config.pop("num_agents", 1)

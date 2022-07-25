@@ -2153,7 +2153,7 @@ class Algorithm(Trainable):
         workers remain, an error is raised.
 
         Returns:
-            The number of remote workers recovered.
+            The number of remote workers recreated.
         """
         # @ray.remote RolloutWorker failure.
         if isinstance(error, RayError):
@@ -2353,7 +2353,7 @@ class Algorithm(Trainable):
         with TrainIterCtx(algo=self) as train_iter_ctx:
             # .. so we can query it whether we should stop the iteration loop (e.g.
             # when we have reached `min_time_s_per_iteration`).
-            num_recoverd = 0
+            num_recreated = 0
             while not train_iter_ctx.should_stop(results):
                 # Try to train one step.
                 try:
@@ -2364,13 +2364,13 @@ class Algorithm(Trainable):
                             results = next(self.train_exec_impl)
                 # In case of any failures, try to ignore/recover the failed workers.
                 except Exception as e:
-                    num_recoverd += self.try_recover_from_step_attempt(
+                    num_recreated += self.try_recover_from_step_attempt(
                         error=e,
                         worker_set=self.workers,
                         ignore=self.config["ignore_worker_failures"],
                         recreate=self.config["recreate_failed_workers"],
                     )
-            results["num_recovered_workers"] = num_recoverd
+            results["num_recreated_workers"] = num_recreated
 
         return results, train_iter_ctx
 
@@ -2389,7 +2389,7 @@ class Algorithm(Trainable):
             The results dict from the evaluation call.
         """
         eval_results = {"evaluation": {}}
-        num_recovered = 0
+        num_recreated = 0
         try:
             if self.config["evaluation_duration"] == "auto":
                 assert (
@@ -2411,7 +2411,7 @@ class Algorithm(Trainable):
                 eval_results = self.evaluate()
         # In case of any failures, try to ignore/recover the failed evaluation workers.
         except Exception as e:
-            num_recovered = self.try_recover_from_step_attempt(
+            num_recreated = self.try_recover_from_step_attempt(
                 error=e,
                 worker_set=self.evaluation_workers,
                 ignore=self.config["evaluation_config"].get("ignore_worker_failures"),
@@ -2426,7 +2426,7 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
-        eval_results["evaluation"]["num_recovered_workers"] = num_recovered
+        eval_results["evaluation"]["num_recovered_workers"] = num_recreated
 
         return eval_results
 
@@ -2527,8 +2527,8 @@ class Algorithm(Trainable):
         results.update(results["sampler_results"])
 
         results["num_healthy_workers"] = len(self.workers.remote_workers())
-        results["num_recovered_workers"] = iteration_results.get(
-            "num_recovered_workers", 0
+        results["num_recreated_workers"] = iteration_results.get(
+            "num_recreated_workers", 0
         )
 
         # Train-steps- and env/agent-steps this iteration.

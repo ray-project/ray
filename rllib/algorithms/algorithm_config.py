@@ -554,8 +554,8 @@ class AlgorithmConfig:
         synchronize_filter: Optional[bool] = None,
         compress_observations: Optional[bool] = None,
         enable_tf1_exec_eagerly: Optional[bool] = None,
-        sampler_perf_stats_use_ema: Optional[bool] = False,
-        sampler_perf_stats_ema_coeff: Optional[float] = 0.001,
+        sampler_perf_stats_use_ema: Optional[bool] = None,
+        sampler_perf_stats_ema_coeff: Optional[float] = None,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 

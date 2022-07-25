@@ -313,7 +313,7 @@ class TestWorkerFailure(unittest.TestCase):
 
             self.assertEqual(result["num_healthy_workers"], 2)
             # Workers are re-created.
-            self.assertEqual(result["num_recovered_workers"], 2)
+            self.assertEqual(result["num_recreated_workers"], 2)
             self.assertTrue(
                 all(
                     ray.get(
@@ -378,7 +378,7 @@ class TestWorkerFailure(unittest.TestCase):
 
             self.assertEqual(result["num_healthy_workers"], 2)
             # Nothing happens to worker. They are still not re-created.
-            self.assertEqual(result["num_recovered_workers"], 0)
+            self.assertEqual(result["num_recreated_workers"], 0)
             self.assertTrue(
                 not any(
                     ray.get(
@@ -389,7 +389,7 @@ class TestWorkerFailure(unittest.TestCase):
 
             self.assertEqual(result["evaluation"]["num_healthy_workers"], 2)
             # But all the eval workers are re-created.
-            self.assertEqual(result["evaluation"]["num_recovered_workers"], 2)
+            self.assertEqual(result["evaluation"]["num_recreated_workers"], 2)
             self.assertTrue(
                 all(
                     ray.get(
@@ -454,7 +454,7 @@ class TestWorkerFailure(unittest.TestCase):
 
             self.assertTrue(result["num_healthy_workers"] == 2)
             # Workers are re-created.
-            self.assertEqual(result["num_recovered_workers"], 2)
+            self.assertEqual(result["num_recreated_workers"], 2)
             self.assertTrue(
                 all(
                     ray.get(
@@ -466,7 +466,7 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertTrue(result["evaluation"]["num_healthy_workers"] == 2)
             # However eval worker is not, since we want to restart
             # individual env.
-            self.assertEqual(result["evaluation"]["num_recovered_workers"], 0)
+            self.assertEqual(result["evaluation"]["num_recreated_workers"], 0)
             self.assertTrue(
                 not any(
                     ray.get(
@@ -532,7 +532,7 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertTrue(result["num_healthy_workers"] == 2)
             self.assertEqual(result["num_faulty_episodes"], 0)
             self.assertTrue(result["evaluation"]["num_healthy_workers"] == 2)
-            self.assertEqual(result["evaluation"]["num_recovered_workers"], 0)
+            self.assertEqual(result["evaluation"]["num_recreated_workers"], 0)
             # There should be a faulty episode.
             self.assertEqual(result["evaluation"]["num_faulty_episodes"], 1)
 
@@ -542,7 +542,7 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertTrue(result["num_healthy_workers"] == 2)
             self.assertEqual(result["num_faulty_episodes"], 0)
             self.assertTrue(result["evaluation"]["num_healthy_workers"] == 2)
-            self.assertEqual(result["evaluation"]["num_recovered_workers"], 0)
+            self.assertEqual(result["evaluation"]["num_recreated_workers"], 0)
             # There shouldn't be any faulty episode anymore.
             self.assertEqual(result["evaluation"]["num_faulty_episodes"], 0)
 

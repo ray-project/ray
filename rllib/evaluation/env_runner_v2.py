@@ -55,12 +55,12 @@ _PolicyEvalData = namedtuple("_PolicyEvalData", ["env_id", "agent_id", "sample_b
 class _PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
 
-    def __init__(self, ema=False, coeff=0.001):
-        # EMA mode.
+    def __init__(self, ema=False, ema_coeff=0.001):
+        # Exponential Moving Average mode.
         # In general provides more responsive stats about sampler performance.
         # TODO(jungong) : make ema the default (only) mode if it works well.
         self.ema = ema
-        self.coeff = coeff
+        self.ema_coeff = ema_coeff
 
         self.iters = 0
         self.raw_obs_processing_time = 0.0
@@ -80,7 +80,7 @@ class _PerfStats:
             self.__dict__[field] += value
         else:
             self.__dict__[field] = (
-                (1.0 - self.coeff) * self.__dict__[field] + self.coeff * value
+                (1.0 - self.ema_coeff) * self.__dict__[field] + self.ema_coeff * value
             )
 
     def _get_avg(self):
@@ -100,7 +100,8 @@ class _PerfStats:
         }
 
     def _get_ema(self):
-        # In EMA mode, simply ms -> sec.
+        # In EMA mode, stats are already (exponentially) averaged,
+        # hence we only need to do the sec -> ms conversion here.
         return {
             # Raw observation preprocessing.
             "mean_raw_obs_processing_ms": self.raw_obs_processing_time * 1000,
