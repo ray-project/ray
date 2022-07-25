@@ -1,6 +1,5 @@
 import ray
 
-import uuid
 import io
 import sys
 
@@ -13,12 +12,22 @@ if sys.version_info < (3, 8):
 else:
     import pickle  # noqa: F401
 
-from typing import List, Dict, Any, TypeVar, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ray.dag.dag_node import DAGNode
+from typing import List, Dict, Any, TypeVar
+from ray.dag.base import DAGNodeBase
 
 T = TypeVar("T")
+
+# Used in deserialization hooks to reference scanner instances.
+_instances: Dict[int, "_PyObjScanner"] = {}
+
+
+def _get_node(instance_id: int, node_index: int) -> DAGNodeBase:
+    """Get the node instance.
+
+    Note: This function should be static and globally importable,
+    otherwise the serialization overhead would be very significant.
+    """
+    return _instances[instance_id]._replace_index(node_index)
 
 
 class _PyObjScanner(ray.cloudpickle.CloudPickler):
@@ -29,50 +38,26 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
     table and then replace the nodes via ``replace_nodes()``.
     """
 
-    # Used in deserialization hooks to reference scanner instances.
-    _instances: Dict[str, "_PyObjScanner"] = {}
-
     def __init__(self):
         # Buffer to keep intermediate serialized state.
         self._buf = io.BytesIO()
         # List of top-level DAGNodes found during the serialization pass.
         self._found = None
         # Replacement table to consult during deserialization.
-        self._replace_table: Dict["DAGNode", T] = None
-        # UUID of this scanner.
-        self._uuid = uuid.uuid4().hex
-        _PyObjScanner._instances[self._uuid] = self
-        # Register pickler override for DAGNode types.
-        from ray.dag.function_node import FunctionNode
-        from ray.dag.class_node import ClassNode, ClassMethodNode
-        from ray.dag.input_node import InputNode, InputAttributeNode
-        from ray.serve.deployment_node import DeploymentNode
-        from ray.serve.deployment_method_node import DeploymentMethodNode
-        from ray.serve.deployment_function_node import DeploymentFunctionNode
-        from ray.serve.deployment_executor_node import DeploymentExecutorNode
-        from ray.serve.deployment_method_executor_node import (
-            DeploymentMethodExecutorNode,
-        )
-        from ray.serve.deployment_function_executor_node import (
-            DeploymentFunctionExecutorNode,
-        )
-
-        self.dispatch_table[FunctionNode] = self._reduce_dag_node
-        self.dispatch_table[ClassNode] = self._reduce_dag_node
-        self.dispatch_table[ClassMethodNode] = self._reduce_dag_node
-        self.dispatch_table[InputNode] = self._reduce_dag_node
-        self.dispatch_table[InputAttributeNode] = self._reduce_dag_node
-        self.dispatch_table[DeploymentNode] = self._reduce_dag_node
-        self.dispatch_table[DeploymentMethodNode] = self._reduce_dag_node
-        self.dispatch_table[DeploymentFunctionNode] = self._reduce_dag_node
-
-        self.dispatch_table[DeploymentExecutorNode] = self._reduce_dag_node
-        self.dispatch_table[DeploymentMethodExecutorNode] = self._reduce_dag_node
-        self.dispatch_table[DeploymentFunctionExecutorNode] = self._reduce_dag_node
-
+        self._replace_table: Dict[DAGNodeBase, T] = None
+        _instances[id(self)] = self
         super().__init__(self._buf)
 
-    def find_nodes(self, obj: Any) -> List["DAGNode"]:
+    def reducer_override(self, obj):
+        """Hook for reducing objects."""
+        if isinstance(obj, DAGNodeBase):
+            index = len(self._found)
+            self._found.append(obj)
+            return _get_node, (id(self), index)
+
+        return super().reducer_override(obj)
+
+    def find_nodes(self, obj: Any) -> List[DAGNodeBase]:
         """Find top-level DAGNodes."""
         assert (
             self._found is None
@@ -81,22 +66,15 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler):
         self.dump(obj)
         return self._found
 
-    def replace_nodes(self, table: Dict["DAGNode", T]) -> Any:
+    def replace_nodes(self, table: Dict[DAGNodeBase, T]) -> Any:
         """Replace previously found DAGNodes per the given table."""
         assert self._found is not None, "find_nodes must be called first"
         self._replace_table = table
         self._buf.seek(0)
         return pickle.load(self._buf)
 
-    def _replace_index(self, i: int) -> "DAGNode":
+    def _replace_index(self, i: int) -> DAGNodeBase:
         return self._replace_table[self._found[i]]
 
-    def _reduce_dag_node(self, obj):
-        uuid = self._uuid
-        index = len(self._found)
-        res = (lambda i: _PyObjScanner._instances[uuid]._replace_index(i)), (index,)
-        self._found.append(obj)
-        return res
-
     def __del__(self):
-        del _PyObjScanner._instances[self._uuid]
+        del _instances[id(self)]
