@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import gym
 import numpy as np
+import pytest
 import ray
 from ray import tune
 from ray.air._internal.remote_storage import _ensure_directory
@@ -1409,6 +1410,88 @@ class TrainableFunctionApiTest(unittest.TestCase):
         assert sys.getsizeof(dumped) < 100 * 1024
 
 
+@pytest.fixture
+def ray_start_2_cpus_2_gpus():
+    address_info = ray.init(num_cpus=2, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_dict(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config):
+        return len(ray.get_gpu_ids())
+
+    [trial] = tune.run(
+        tune.with_resources(train_fn, resources={"gpu": num_gpus})
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_pgf(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config):
+        return len(ray.get_gpu_ids())
+
+    [trial] = tune.run(
+        tune.with_resources(
+            train_fn, resources=PlacementGroupFactory([{"GPU": num_gpus}])
+        )
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_fn(ray_start_2_cpus_2_gpus, num_gpus):
+    def train_fn(config):
+        return len(ray.get_gpu_ids())
+
+    [trial] = tune.run(
+        tune.with_resources(
+            train_fn,
+            resources=lambda config: PlacementGroupFactory(
+                [{"GPU": config["use_gpus"]}]
+            ),
+        ),
+        config={"use_gpus": num_gpus},
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
+@pytest.mark.parametrize("num_gpus", [1, 2])
+def test_with_resources_class_fn(ray_start_2_cpus_2_gpus, num_gpus):
+    class MyTrainable(tune.Trainable):
+        def step(self):
+            return {"_metric": len(ray.get_gpu_ids()), "done": True}
+
+        def save_checkpoint(self, checkpoint_dir: str):
+            pass
+
+        def load_checkpoint(self, checkpoint):
+            pass
+
+        @classmethod
+        def default_resource_request(cls, config):
+            # This will be overwritten by tune.with_trainables()
+            return PlacementGroupFactory([{"CPU": 2, "GPU": 0}])
+
+    [trial] = tune.run(
+        tune.with_resources(
+            MyTrainable,
+            resources=lambda config: PlacementGroupFactory(
+                [{"GPU": config["use_gpus"]}]
+            ),
+        ),
+        config={"use_gpus": num_gpus},
+    ).trials
+
+    assert trial.last_result["_metric"] == num_gpus
+
+
 class SerializabilityTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1821,6 +1904,4 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

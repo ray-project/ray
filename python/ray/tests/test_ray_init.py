@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import unittest.mock
+import subprocess
 
 import grpc
 import pytest
@@ -191,6 +192,7 @@ def test_ray_address(input, call_ray_start):
         res = ray.init(input)
         # Ensure this is not a client.connect()
         assert not isinstance(res, ClientContext)
+        assert res.address_info["gcs_address"] == address
         ray.shutdown()
 
     addr = "localhost:{}".format(address.split(":")[-1])
@@ -198,7 +200,66 @@ def test_ray_address(input, call_ray_start):
         res = ray.init(input)
         # Ensure this is not a client.connect()
         assert not isinstance(res, ClientContext)
+        assert res.address_info["gcs_address"] == address
         ray.shutdown()
+
+
+@pytest.mark.parametrize("address", [None, "auto"])
+def test_ray_init_no_local_instance(shutdown_only, address):
+    # Starts a new Ray instance.
+    if address is None:
+        ray.init(address=address)
+    else:
+        # Throws an error if we explicitly want to connect to an existing
+        # instance and none exists.
+        with pytest.raises(ConnectionError):
+            ray.init(address=address)
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="Flaky when run on windows CI",
+)
+@pytest.mark.parametrize("address", [None, "auto"])
+def test_ray_init_existing_instance(call_ray_start, address):
+    ray_address = call_ray_start
+    # If no address is specified, we will default to an existing cluster.
+    res = ray.init(address=address)
+    assert res.address_info["gcs_address"] == ray_address
+    ray.shutdown()
+
+    # Start a second local Ray instance.
+    try:
+        subprocess.check_output("ray start --head", shell=True)
+        # If there are multiple local instances, connect to the latest.
+        res = ray.init(address=address)
+        assert res.address_info["gcs_address"] != ray_address
+        ray.shutdown()
+
+        # If there are multiple local instances and we specify an address
+        # explicitly, it works.
+        with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": ray_address}):
+            res = ray.init(address=address)
+            assert res.address_info["gcs_address"] == ray_address
+    finally:
+        ray.shutdown()
+        subprocess.check_output("ray stop --force", shell=True)
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="Flaky when run on windows CI",
+)
+@pytest.mark.parametrize("address", [None, "auto"])
+def test_ray_init_existing_instance_crashed(address):
+    ray._private.utils.write_ray_address("localhost:6379")
+    try:
+        # If no address is specified, we will default to an existing cluster.
+        ray._private.node.NUM_REDIS_GET_RETRIES = 1
+        with pytest.raises(ConnectionError):
+            ray.init(address=address)
+    finally:
+        ray._private.utils.reset_ray_address()
 
 
 class Credentials(grpc.ChannelCredentials):
@@ -305,35 +366,10 @@ def test_ray_init_using_hostname(ray_start_cluster):
     assert node_table[0].get("NodeManagerHostname", "") == hostname
 
 
-def test_redis_connect_backoff():
-    import time
-
-    from ray._private import ray_constants
-
-    unreachable_address = "127.0.0.1:65535"
-    redis_ip, redis_port = unreachable_address.split(":")
-    wait_retries = ray_constants.START_REDIS_WAIT_RETRIES
-    ray_constants.START_REDIS_WAIT_RETRIES = 12
-    try:
-        start = time.time()
-        with pytest.raises(RuntimeError):
-            ray._private.services.wait_for_redis_to_start(redis_ip, int(redis_port))
-        end = time.time()
-        duration = end - start
-        assert duration > 2
-
-        start = time.time()
-        with pytest.raises(RuntimeError):
-            ray._private.services.create_redis_client(redis_address=unreachable_address)
-        end = time.time()
-        duration = end - start
-        assert duration > 2
-    finally:
-        ray_constants.START_REDIS_WAIT_RETRIES = wait_retries
-
-
 if __name__ == "__main__":
     import sys
+
+    import pytest
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

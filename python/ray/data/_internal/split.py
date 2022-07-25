@@ -1,10 +1,13 @@
+import itertools
 import logging
 from typing import Iterable, Tuple, List
 
 import ray
+from ray.data._internal.block_list import BlockList
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
     Block,
+    BlockPartition,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
@@ -15,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def _calculate_blocks_rows(
-    blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
+    blocks_with_metadata: BlockPartition,
 ) -> List[int]:
     """Calculate the number of rows for a list of blocks with metadata."""
     get_num_rows = cached_remote_fn(_get_num_rows)
@@ -24,6 +27,7 @@ def _calculate_blocks_rows(
         if metadata.num_rows is None:
             # Need to fetch number of rows.
             num_rows = ray.get(get_num_rows.remote(block))
+            metadata.num_rows = num_rows
         else:
             num_rows = metadata.num_rows
         block_rows.append(num_rows)
@@ -88,16 +92,15 @@ def _split_single_block(
     block_id: int,
     block: Block,
     meta: BlockMetadata,
-    block_row: int,
     split_indices: List[int],
-) -> Tuple[int, List[Tuple[ObjectRef[Block], BlockMetadata]]]:
+) -> Tuple[int, BlockPartition]:
     """Split the provided block at the given indices."""
     split_result = []
     block_accessor = BlockAccessor.for_block(block)
     prev_index = 0
     # append one more entry at the last so we don't
     # need handle empty edge case.
-    split_indices.append(block_row)
+    split_indices.append(meta.num_rows)
     for index in split_indices:
         logger.debug(f"slicing block {prev_index}:{index}")
         stats = BlockExecStats.builder()
@@ -115,23 +118,40 @@ def _split_single_block(
     return (block_id, split_result)
 
 
+def _drop_empty_block_split(block_split_indices: List[int], num_rows: int) -> List[int]:
+    """drop split indices that creates empty block split. This could happen when there
+    are duplicated indices, or index equal to 0 (start of the block) or num_block_rows
+    (end of the block).
+    """
+    prev_index = -1
+    optimized_indices = []
+    for index in block_split_indices:
+        if index == 0 or index == num_rows:
+            continue
+        if index == prev_index:
+            continue
+        optimized_indices.append(index)
+        prev_index = index
+    return optimized_indices
+
+
 def _split_all_blocks(
-    blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
-    block_rows: List[int],
+    block_list: BlockList,
     per_block_split_indices: List[List[int]],
-) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
+) -> Iterable[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Split all the input blocks based on the split indices"""
     split_single_block = cached_remote_fn(_split_single_block)
 
-    all_blocks_split_results: List[List[Tuple[ObjectRef[Block], BlockMetadata]]] = [
-        None
-    ] * len(blocks_with_metadata)
+    blocks_with_metadata = block_list.get_blocks_with_metadata()
+    all_blocks_split_results: List[BlockPartition] = [None] * len(blocks_with_metadata)
 
     split_single_block_futures = []
 
+    blocks_splitted = []
     for block_id, block_split_indices in enumerate(per_block_split_indices):
         (block_ref, meta) = blocks_with_metadata[block_id]
-        block_row = block_rows[block_id]
+        block_row = meta.num_rows
+        block_split_indices = _drop_empty_block_split(block_split_indices, block_row)
         if len(block_split_indices) == 0:
             # optimization: if no split is needed, we just need to add it to the
             # result
@@ -143,52 +163,58 @@ def _split_all_blocks(
                     block_id,
                     block_ref,
                     meta,
-                    block_row,
                     block_split_indices,
                 )
             )
+            blocks_splitted.append(block_ref)
     if split_single_block_futures:
         split_single_block_results = ray.get(split_single_block_futures)
         for block_id, block_split_result in split_single_block_results:
             all_blocks_split_results[block_id] = block_split_result
-    return all_blocks_split_results
+
+    # We make a copy for the blocks that have been splitted, so the input blocks
+    # can be cleared if they are owned by consumer (consumer-owned blocks will
+    # only be consumed by the owner).
+    if block_list._owned_by_consumer:
+        ray._private.internal_api.free(blocks_splitted, local_only=False)
+
+    return itertools.chain.from_iterable(all_blocks_split_results)
 
 
 def _generate_global_split_results(
-    all_blocks_split_results: List[List[Tuple[ObjectRef[Block], BlockMetadata]]],
+    all_blocks_split_results: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
+    global_split_sizes: List[int],
 ) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
     """Reassemble per block's split result into final split result."""
     result_blocks = []
     result_metas = []
+
     current_blocks = []
     current_meta = []
+    current_split_size = 0
+    current_split_id = 0
 
-    if len(all_blocks_split_results) == 0:
-        return ([], [])
+    while current_split_id < len(global_split_sizes):
+        if current_split_size >= global_split_sizes[current_split_id]:
+            assert current_split_size == global_split_sizes[current_split_id]
+            result_blocks.append(current_blocks)
+            result_metas.append(current_meta)
 
-    for single_block_split_result in all_blocks_split_results:
-        assert len(single_block_split_result) > 0
-        for i, (block, meta) in enumerate(single_block_split_result):
-            # we should create a new global split whenever
-            # we encountered a new local split in the per block
-            # split result.
-            if i != 0:
-                result_blocks.append(current_blocks)
-                result_metas.append(current_meta)
-                current_blocks = []
-                current_meta = []
-            current_blocks.append(block)
+            current_blocks = []
+            current_meta = []
+            current_split_size = 0
+            current_split_id += 1
+        else:
+            (block_ref, meta) = next(all_blocks_split_results)
+            current_blocks.append(block_ref)
             current_meta.append(meta)
-
-    assert len(current_blocks) > 0
-    result_blocks.append(current_blocks)
-    result_metas.append(current_meta)
+            current_split_size += meta.num_rows
 
     return result_blocks, result_metas
 
 
 def _split_at_indices(
-    blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
+    block_list: BlockList,
     indices: List[int],
 ) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
     """Split blocks at the provided indices.
@@ -201,11 +227,12 @@ def _split_at_indices(
         corresponding block split will be empty .
     """
 
+    blocks_with_metadata = block_list.get_blocks_with_metadata()
     # We implement the split in 3 phases.
     # phase 1: calculate the per block split indices.
     blocks_with_metadata = list(blocks_with_metadata)
     if len(blocks_with_metadata) == 0:
-        return ([] * (len(indices) + 1), [] * (len(indices) + 1))
+        return ([[]] * (len(indices) + 1), [[]] * (len(indices) + 1))
     block_rows: List[int] = _calculate_blocks_rows(blocks_with_metadata)
     valid_indices = _generate_valid_indices(block_rows, indices)
     per_block_split_indices: List[List[int]] = _generate_per_block_split_indices(
@@ -213,12 +240,17 @@ def _split_at_indices(
     )
 
     # phase 2: split each block based on the indices from previous step.
-    all_blocks_split_results: List[
-        List[Tuple[ObjectRef[Block], BlockMetadata]]
-    ] = _split_all_blocks(blocks_with_metadata, block_rows, per_block_split_indices)
+    all_blocks_split_results: Iterable[
+        Tuple[ObjectRef[Block], BlockMetadata]
+    ] = _split_all_blocks(block_list, per_block_split_indices)
 
     # phase 3: generate the final split.
-    return _generate_global_split_results(all_blocks_split_results)
+
+    # first calculate the size for each split.
+    helper = [0] + valid_indices + [sum(block_rows)]
+    split_sizes = [helper[i] - helper[i - 1] for i in range(1, len(helper))]
+
+    return _generate_global_split_results(all_blocks_split_results, split_sizes)
 
 
 def _get_num_rows(block: Block) -> int:
@@ -227,7 +259,7 @@ def _get_num_rows(block: Block) -> int:
 
 
 def _split_at_index(
-    blocks_with_metadata: Iterable[Tuple[ObjectRef[Block], BlockMetadata]],
+    block_list: BlockList,
     index: int,
     return_right_half: bool,
 ) -> Tuple[
@@ -245,5 +277,5 @@ def _split_at_index(
     Returns:
         The block split futures and their metadata for left and right of the index.
     """
-    blocks_splits, metadata_splits = _split_at_indices(blocks_with_metadata, [index])
+    blocks_splits, metadata_splits = _split_at_indices(block_list, [index])
     return blocks_splits[0], metadata_splits[0], blocks_splits[1], metadata_splits[1]

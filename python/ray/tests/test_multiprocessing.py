@@ -142,7 +142,7 @@ def test_connect_to_ray(monkeypatch, ray_start_cluster):
     ray._raylet.Config.initialize("")
 
     # Check that starting a pool still starts ray if RAY_ADDRESS not set.
-    pool = Pool(processes=init_cpus)
+    pool = Pool(processes=init_cpus, ray_address="local")
     assert ray.is_initialized()
     assert int(ray.cluster_resources()["CPU"]) == init_cpus
     check_pool_size(pool, init_cpus)
