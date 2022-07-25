@@ -83,6 +83,7 @@ def test_compatible_with_dataclasses():
             "pip_check": False,
             "pip_version": "==22.0.2;python_version=='3.8.11'",
         },
+        env_vars={"FOO": "BAR"},
         config=config,
     )
 
