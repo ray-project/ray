@@ -181,7 +181,7 @@ def main():
         if args.run == "DQN":
             trainer = dqn.DQN(config=config)
         else:
-            trainer = slateq.SlateQTrainer(config=config)
+            trainer = slateq.SlateQ(config=config)
         for i in range(10):
             result = trainer.train()
             print(pretty_print(result))
