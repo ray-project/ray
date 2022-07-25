@@ -202,11 +202,13 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                             )
                             break
                         actor_id = self.dead_actors_queue.popleft()
-                        actor = DataSource.actors.pop(actor_id)
-                        job_id = actor["jobId"]
-                        node_id = actor["address"]["rayletId"]
-                        del DataSource.node_actors[node_id][actor_id]
-                        del DataSource.job_actors[job_id][actor_id]
+                        if actor_id in DataSource.actors:
+                            actor = DataSource.actors.pop(actor_id)
+                            job_id = actor["jobId"]
+                            del DataSource.job_actors[job_id][actor_id]
+                            node_id = actor["address"].get("rayletId")
+                            if node_id:
+                                del DataSource.node_actors[node_id][actor_id]
                 await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)
             except Exception:
                 logger.exception("Error cleaning up actor info from GCS.")

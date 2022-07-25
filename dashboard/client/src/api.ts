@@ -303,7 +303,7 @@ export const getLogs = async (nodeIp: string, pid: number) => {
     },
   });
   // Substring to get rid of initial "1" or "0" that represents successful stream.
-  // TODO(sang): should we get rid of that?
+  // TODO(aguo): should we get rid of that?
   return result.data.substring(1).split("\n");
 };
 

@@ -353,6 +353,12 @@ def test_actor_cleanup(
         def do_task(self):
             return self.num
 
+    @ray.remote(num_gpus=1)
+    class InfeasibleActor:
+        pass
+
+    infeasible_actor = InfeasibleActor.remote()  # noqa
+
     foo_actors = [
         Foo.remote(1),
         Foo.remote(2),
@@ -376,9 +382,9 @@ def test_actor_cleanup(
             resp_json = resp.json()
             resp_data = resp_json["data"]
             actors = resp_data["actors"]
-            # Although max cache is 3, there should be 6 actors
+            # Although max cache is 3, there should be 7 actors
             # because they are all still alive.
-            assert len(actors) == 6
+            assert len(actors) == 7
 
             break
         except Exception as ex:
@@ -396,6 +402,7 @@ def test_actor_cleanup(
                 raise Exception(f"Timed out while testing, {ex_stack}")
 
     # kill
+    ray.kill(infeasible_actor)
     [ray.kill(foo_actor) for foo_actor in foo_actors]
     # Wait 5 seconds for cleanup to finish
     time.sleep(5)
