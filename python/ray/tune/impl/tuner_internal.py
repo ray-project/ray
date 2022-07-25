@@ -73,6 +73,11 @@ class TunerInternal:
     ):
         from ray.train.trainer import BaseTrainer
 
+        # If no run config was passed to Tuner directly, use the one from the Trainer,
+        # if available
+        if not run_config and isinstance(trainable, BaseTrainer):
+            run_config = trainable.run_config
+
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
@@ -128,11 +133,6 @@ class TunerInternal:
             raise TuneError("You need to provide a trainable to tune.")
 
         self._resume_config = None
-
-        # If no run config was passed to Tuner directly, use the one from the Trainer,
-        # if available
-        if not run_config and isinstance(trainable, BaseTrainer):
-            run_config = trainable.run_config
 
         self._is_restored = False
         self._trainable = trainable
