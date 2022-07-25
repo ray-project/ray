@@ -241,6 +241,14 @@ def get_marwil_tf_policy(name: str, base: type) -> type:
 
             return stats
 
+        def grad_stats_fn(
+            self, train_batch: SampleBatch, grads: ModelGradients
+        ) -> Dict[str, TensorType]:
+            del train_batch
+            return {
+                "grad_gnorm": tf.linalg.global_norm(grads),
+            }
+
         @override(base)
         def compute_gradients_fn(
             self, optimizer: LocalOptimizer, loss: TensorType
