@@ -276,7 +276,7 @@ class PB2(PopulationBasedTraining):
         ...     hyperparam_bounds={
         ...     "factor": [0.0, 20.0],
         ... })
-        >>> tuner = tune.Tuner(
+        >>> tuner = tune.Tuner(  # doctest: +SKIP
         ...     pbt_function,
         ...     tune_config=tune.TuneConfig(
         ...         scheduler=pb2,
