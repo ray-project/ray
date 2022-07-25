@@ -144,7 +144,7 @@ def is_recreated(w):
 class TestWorkerFailure(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)
+        ray.init()
 
         register_env("fault_env", lambda c: FaultInjectEnv(c))
         register_env(
