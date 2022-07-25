@@ -81,10 +81,8 @@ class TableBlockBuilder(BlockBuilder[T]):
         else:
             tables = []
         tables.extend(self._tables)
-        if len(tables) > 1:
+        if len(tables) > 0:
             return self._concat_tables(tables)
-        elif len(tables) > 0:
-            return tables[0]
         else:
             return self._empty_table()
 

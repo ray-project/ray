@@ -458,6 +458,29 @@ def test_range_table(ray_start_regular_shared):
     assert ds.take() == [{"value": i} for i in range(10)]
 
 
+def test_tensor_array_validation():
+    # Test unknown input type raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(object())
+
+    # Test ragged tensor raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object))
+
+    with pytest.raises(TypeError):
+        TensorArray([np.ones((2, 2)), np.ones((3, 3))])
+
+    with pytest.raises(TypeError):
+        TensorArray(pd.Series([np.ones((2, 2)), np.ones((3, 3))]))
+
+    # Test non-primitive element raises TypeError.
+    with pytest.raises(TypeError):
+        TensorArray(np.array([object(), object()]))
+
+    with pytest.raises(TypeError):
+        TensorArray([object(), object()])
+
+
 def test_tensor_array_block_slice():
     # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
@@ -604,7 +627,7 @@ def test_tensors_basic(ray_start_regular_shared):
     ds = ray.data.range_tensor(6, shape=tensor_shape, parallelism=6)
     assert str(ds) == (
         "Dataset(num_blocks=6, num_rows=6, "
-        "schema={__value__: <ArrowTensorType: shape=(3, 5), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(3, 5), dtype=int64)})"
     )
     assert ds.size_bytes() == 5 * 3 * 6 * 8
 
@@ -795,7 +818,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10).map(lambda _: np.ones((4, 4)))
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
     )
 
     # Test map_batches.
@@ -804,7 +827,7 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=4, num_rows=24, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
     )
 
     # Test flat_map.
@@ -813,8 +836,23 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
     )
     assert str(ds) == (
         "Dataset(num_blocks=10, num_rows=20, "
-        "schema={__value__: <ArrowTensorType: shape=(4, 4), dtype=double>})"
+        "schema={__value__: ArrowTensorType(shape=(4, 4), dtype=double)})"
     )
+
+    # Test map_batches ndarray column.
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: pd.DataFrame({"a": [np.ones((4, 4))] * 3}), batch_size=2
+    )
+    assert str(ds) == (
+        "Dataset(num_blocks=4, num_rows=24, "
+        "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
+    )
+
+    # Test map_batches ragged ndarray column falls back to opaque object-typed column.
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}), batch_size=2
+    )
+    assert str(ds) == ("Dataset(num_blocks=4, num_rows=16, schema={a: object})")
 
 
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
@@ -825,7 +863,7 @@ def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
     arr = np.arange(num_items).reshape(shape)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": list(arr)})
     # Cast column to tensor extension dtype.
-    df["two"] = df["two"].astype(TensorDtype())
+    df["two"] = df["two"].astype(TensorDtype(shape, np.int64))
     ds = ray.data.from_pandas([df])
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
@@ -904,7 +942,7 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
     # extension type.
     def deser_mapper(batch: pd.DataFrame):
         batch["two"] = [pickle.loads(a) for a in batch["two"]]
-        batch["two"] = batch["two"].astype(TensorDtype())
+        batch["two"] = batch["two"].astype(TensorDtype(shape, np.int64))
         return batch
 
     casted_ds = ds.map_batches(deser_mapper, batch_format="pandas")

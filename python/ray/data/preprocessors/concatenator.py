@@ -90,7 +90,11 @@ class Concatenator(Preprocessor):
         columns_to_concat = list(included_columns - set(self.excluded_columns))
         concatenated = df[columns_to_concat].to_numpy(dtype=self.dtype)
         df = df.drop(columns=columns_to_concat)
-        df[self.output_column_name] = TensorArray(concatenated)
+        try:
+            concatenated = TensorArray(concatenated)
+        except TypeError:
+            pass
+        df[self.output_column_name] = concatenated
         return df
 
     def __repr__(self):
