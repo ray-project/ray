@@ -9,9 +9,9 @@ Scheduling
 
 Datasets uses Ray core for execution, and hence is subject to the same scheduling considerations as normal Ray tasks and actors. Datasets uses the following custom scheduling settings by default for improved performance:
 
- * The ``SPREAD`` scheduling strategy is used to ensure data blocks are evenly balanced across the cluster.
- * Retries of application-level exceptions are enabled to handle transient errors from remote datasources.
- * Dataset tasks ignore placement groups by default, see :ref:`Datasets and Placement Groups <datasets_pg>`.
+* The ``SPREAD`` scheduling strategy is used to ensure data blocks are evenly balanced across the cluster.
+* Retries of application-level exceptions are enabled to handle transient errors from remote datasources.
+* Dataset tasks ignore placement groups by default, see :ref:`Datasets and Placement Groups <datasets_pg>`.
 
 .. _datasets_tune:
 
@@ -123,6 +123,6 @@ Object Store Memory
 
 Datasets uses the Ray object store to store data blocks, which means it inherits the memory management features of the Ray object store. This section discusses the relevant features:
 
- * Object Spilling: Since Datasets uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
- * Locality Scheduling: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
- * Reference Counting: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
+* Object Spilling: Since Datasets uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
+* Locality Scheduling: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
+* Reference Counting: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
