@@ -82,7 +82,13 @@ class ImageFolderDatasource(BinaryDatasource):
         Args:
             root: Path to the dataset root.
             size: The desired height and width of loaded images.
+
+        Raises:
+            ValueError: if ``size`` contains non-positive numbers.
         """
+        if size[0] < 0 or size[1] < 0:
+            raise ValueError("Expected `size` to contain positive integers, but got {size}.")
+
         self._check_import(module="imageio", package="imagio")
         self._check_import(module="skimage", package="scikit-image")
 
