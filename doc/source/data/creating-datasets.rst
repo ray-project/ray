@@ -527,6 +527,19 @@ converts it into a Ray Dataset directly.
     ray_datasets["train"].take(2)
     # [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
 
+.. _datasets_from_images:
+
+-------------------------------
+From Image Files (experimental)
+-------------------------------
+
+Load image data stored as individual files using ``ImageFolderDatasource()``:
+
+.. literalinclude:: ./doc_code/tensor.py
+    :language: python
+    :start-after: __create_images_begin__
+    :end-before: __create_images_end__
+
 .. _datasets_custom_datasource:
 
 ------------------
