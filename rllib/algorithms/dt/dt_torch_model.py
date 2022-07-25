@@ -169,12 +169,12 @@ class DTTorchModel(TorchModelV2, nn.Module):
         self, model_out: TensorType, input_dict: SampleBatch
     ) -> Dict[str, TensorType]:
         """Compute the target predictions for a given input_dict."""
-        targets = {SampleBatch.ACTIONS: input_dict[SampleBatch.ACTIONS]}
+        targets = {SampleBatch.ACTIONS: input_dict[SampleBatch.ACTIONS].detach()}
         if self.model_config["use_obs_output"]:
-            targets[SampleBatch.OBS] = model_out
+            targets[SampleBatch.OBS] = model_out.detach()
         if self.model_config["use_return_output"]:
             targets[SampleBatch.RETURNS_TO_GO] = input_dict[SampleBatch.RETURNS_TO_GO][
                 :, 1:, :
-            ]
+            ].detach()
 
         return targets

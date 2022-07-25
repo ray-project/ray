@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Type
+from typing import List, Optional, Type, Tuple
 
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
@@ -9,7 +9,6 @@ from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_st
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
-    NUM_TARGET_UPDATES,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SAMPLE_TIMER,
@@ -29,126 +28,83 @@ class DTConfig(AlgorithmConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-        # CRR-specific settings.
-        self.weight_type = "bin"
-        self.temperature = 1.0
-        self.max_weight = 20.0
-        self.advantage_type = "mean"
-        self.n_action_sample = 4
-        self.twin_q = True
-        self.train_batch_size = 128
+        # DT-specific settings.
+        # TODO(charlesjsun): what is sphinx_doc
+        self.train_batch_size = 1
+        self.shuffle_buffer_size = 32
+        self.max_seq_len = 20
+        self.lr = 1e-4
 
-        # target_network_update_freq by default is 100 * train_batch_size
-        # if target_network_update_freq is not set. See self.setup for code.
-        self.target_network_update_freq = None
         # __sphinx_doc_end__
         # fmt: on
-        self.actor_hiddens = [256, 256]
-        self.actor_hidden_activation = "relu"
-        self.critic_hiddens = [256, 256]
-        self.critic_hidden_activation = "relu"
-        self.critic_lr = 3e-4
-        self.actor_lr = 3e-4
-        self.tau = 5e-3
+        self.weight_decay = 1e-4
+        self.betas = (0.9, 0.95)
+
+        self.embed_dim = 128
+        self.num_layers = 3
+        self.num_heads = 1
+        self.embed_pdrop = 0.1
+        self.resid_pdrop = 0.1
+        self.attn_pdrop = 0.1
+        self.use_obs_output = False
+        self.use_return_output = False
 
         # overriding the trainer config default
         # If data ingestion/sample_time is slow, increase this
-        self.num_workers = 4
+        self.num_workers = 0
         self.offline_sampling = True
         self.min_iter_time_s = 10.0
 
     def training(
         self,
         *,
-        weight_type: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_weight: Optional[float] = None,
-        advantage_type: Optional[str] = None,
-        n_action_sample: Optional[int] = None,
-        twin_q: Optional[bool] = None,
-        target_network_update_freq: Optional[int] = None,
-        actor_hiddens: Optional[List[int]] = None,
-        actor_hidden_activation: Optional[str] = None,
-        critic_hiddens: Optional[List[int]] = None,
-        critic_hidden_activation: Optional[str] = None,
-        tau: Optional[float] = None,
+        weight_decay: Optional[float] = None,
+        betas: Optional[Tuple[float, float]] = None,
+        embed_dim: Optional[int] = None,
+        num_layers: Optional[int] = None,
+        num_heads: Optional[int] = None,
+        embed_pdrop: Optional[float] = None,
+        resid_pdrop: Optional[float] = None,
+        attn_pdrop: Optional[float] = None,
+        use_obs_output: Optional[bool] = None,
+        use_return_output: Optional[bool] = None,
         **kwargs,
     ) -> "CRRConfig":
 
         """
-        === CRR configs
+        === DT configs
 
         Args:
-            weight_type: weight type to use `bin` | `exp`.
-            temperature: the exponent temperature used in exp weight type.
-            max_weight: the max weight limit for exp weight type.
-            advantage_type: The way we reduce q values to v_t values
-            `max` | `mean` | `expectation`. `max` and `mean` work for both
-            discrete and continuous action spaces while `expectation` only
-            works for discrete action spaces.
-                `max`: Uses max over sampled actions to estimate the value.
-                .. math::
-                    A(s_t, a_t) = Q(s_t, a_t) - \max_{a^j} Q(s_t, a^j)
-                where :math:a^j is `n_action_sample` times sampled from the
-                policy :math:\pi(a | s_t)
-                `mean`: Uses mean over sampled actions to estimate the value.
-                .. math::
-                    A(s_t, a_t) = Q(s_t, a_t) - \frac{1}{m}\sum_{j=1}^{m}[Q
-                    (s_t, a^j)]
-                where :math:a^j is `n_action_sample` times sampled from the
-                policy :math:\pi(a | s_t)
-                `expectation`: This uses categorical distribution to evaluate
-                the expectation of the q values directly to estimate the value.
-                .. math::
-                    A(s_t, a_t) = Q(s_t, a_t) - E_{a^j\sim \pi(a|s_t)}[Q(s_t,
-                    a^j)]
-            n_action_sample: the number of actions to sample for v_t estimation.
-            twin_q: if True, uses pessimistic q estimation.
-            target_network_update_freq: The frequency at which we update the
-                target copy of the model in terms of the number of gradient updates
-                applied to the main model.
-            actor_hiddens: The number of hidden units in the actor's fc network.
-            actor_hidden_activation: The activation used in the actor's fc network.
-            critic_hiddens: The number of hidden units in the critic's fc network.
-            critic_hidden_activation: The activation used in the critic's fc network.
-            tau: Polyak averaging coefficient
-                (making it 1 is reduces it to a hard update).
             **kwargs: forward compatibility kwargs
+            weight_decay: weight decay for AdamW optimizer
 
         Returns:
             This updated CRRConfig object.
         """
         super().training(**kwargs)
 
-        if weight_type is not None:
-            self.weight_type = weight_type
-        if temperature is not None:
-            self.temperature = temperature
-        if max_weight is not None:
-            self.max_weight = max_weight
-        if advantage_type is not None:
-            self.advantage_type = advantage_type
-        if n_action_sample is not None:
-            self.n_action_sample = n_action_sample
-        if twin_q is not None:
-            self.twin_q = twin_q
-        if target_network_update_freq is not None:
-            self.target_network_update_freq = target_network_update_freq
-        if actor_hiddens is not None:
-            self.actor_hiddens = actor_hiddens
-        if actor_hidden_activation is not None:
-            self.actor_hidden_activation = actor_hidden_activation
-        if critic_hiddens is not None:
-            self.critic_hiddens = critic_hiddens
-        if critic_hidden_activation is not None:
-            self.critic_hidden_activation = critic_hidden_activation
-        if tau is not None:
-            self.tau = tau
+        if weight_decay is not None:
+            self.weight_decay = weight_decay
+        if betas is not None:
+            self.betas = betas
+        if embed_dim is not None:
+            self.embed_dim = embed_dim
+        if num_layers is not None:
+            self.num_layers = num_layers
+        if num_heads is not None:
+            self.num_heads = num_heads
+        if embed_pdrop is not None:
+            self.embed_pdrop = embed_pdrop
+        if resid_pdrop is not None:
+            self.resid_pdrop = resid_pdrop
+        if attn_pdrop is not None:
+            self.attn_pdrop = attn_pdrop
+        if use_obs_output is not None:
+            self.use_obs_output = use_obs_output
+        if use_return_output is not None:
+            self.use_return_output = use_return_output
 
         return self
-
-
-NUM_GRADIENT_UPDATES = "num_grad_updates"
 
 
 class DT(Algorithm):
@@ -159,14 +115,6 @@ class DT(Algorithm):
 
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
-        if self.config.get("target_network_update_freq", None) is None:
-            self.config["target_network_update_freq"] = (
-                self.config["train_batch_size"] * 100
-            )
-        # added a counter key for keeping track of number of gradient updates
-        self._counters[NUM_GRADIENT_UPDATES] = 0
-        # if I don't set this here to zero I won't see zero in the logs (defaultdict)
-        self._counters[NUM_TARGET_UPDATES] = 0
 
         # TODO(charlesjsun): add heuristics log2(dataset_size)
         self.buffer = SegmentationBuffer(self.config["shuffle_buffer_size"])
@@ -212,5 +160,4 @@ class DT(Algorithm):
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        self._counters[NUM_GRADIENT_UPDATES] += 1
         return train_results
