@@ -20,6 +20,5 @@ py_test_run_all_notebooks(
         "big_data_ingestion.ipynb",
     ],
     data = ["//doc/source/data/examples:data_examples"],
-    tags = ["exclusive", "team:ml"],
-    allow_empty = True
+    tags = ["exclusive", "team:ml"]
 )
