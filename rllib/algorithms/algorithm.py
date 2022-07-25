@@ -34,6 +34,7 @@ from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
@@ -2571,8 +2572,12 @@ class Algorithm(Trainable):
         Args:
             config: Algorithm config dict.
         """
-        record_extra_usage_tag(TagKey._RLLIB_FRAMEWORK, config["framework"])
-        record_extra_usage_tag(TagKey._RLLIB_ALGORITHM, self.__class__.__name__)
+        record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
+        alg = self.__class__.__name__
+        # We do not want to collect user defined algorithm names.
+        if alg not in ALL_ALGORITHMS:
+            alg = "USER_DEFINED"
+        record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
     @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
