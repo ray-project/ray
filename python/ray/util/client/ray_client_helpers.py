@@ -2,9 +2,12 @@ from contextlib import contextmanager
 import time
 
 import ray as real_ray
+from ray.job_config import JobConfig
 import ray.util.client.server.server as ray_client_server
 from ray.util.client import ray
 from ray._private.client_mode_hook import enable_client_mode, disable_client_hook
+
+from typing import Dict, Any
 
 
 @contextmanager
@@ -17,10 +20,28 @@ def ray_start_client_server(metadata=None, ray_connect_handler=None, **kwargs):
 
 
 @contextmanager
-def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwargs):
+def ray_start_client_server_pair(
+    metadata=None, ray_connect_handler=None, address=None, **kwargs
+):
     ray._inside_client_test = True
     with disable_client_hook():
         assert not ray.is_initialized()
+
+    if address is not None:
+        # Configure client server to start drivers with specific address
+        assert (
+            ray_connect_handler is None
+        ), "Only specify one of `address` and `ray_connect_handler`."
+
+        def ray_connect_handler(
+            job_config: JobConfig = None, **ray_init_kwargs: Dict[str, Any]
+        ):
+            with disable_client_hook():
+                if not ray.is_initialized():
+                    return ray.init(
+                        address=address, job_config=job_config, **ray_init_kwargs
+                    )
+
     server = ray_client_server.serve(
         "127.0.0.1:50051", ray_connect_handler=ray_connect_handler
     )
