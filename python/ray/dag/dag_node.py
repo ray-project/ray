@@ -1,4 +1,5 @@
 import ray
+from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
 
@@ -18,7 +19,7 @@ T = TypeVar("T")
 
 
 @DeveloperAPI
-class DAGNode:
+class DAGNode(DAGNodeBase):
     """Abstract class for a node in a Ray task graph.
 
     A node has a type (e.g., FunctionNode), data (e.g., function options and
