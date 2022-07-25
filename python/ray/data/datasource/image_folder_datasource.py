@@ -1,5 +1,6 @@
+import importlib
 import pathlib
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Tuple
 
 import numpy as np
 from ray.data.datasource.binary_datasource import BinaryDatasource
@@ -8,7 +9,6 @@ from ray.data.datasource.file_based_datasource import (
     _resolve_paths_and_filesystem,
     FileExtensionFilter,
 )
-from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -44,15 +44,14 @@ class ImageFolderDatasource(BinaryDatasource):
     Examples:
         >>> import ray
         >>> from ray.data.datasource import ImageFolderDatasource
-        >>>
         >>> ds = ray.data.read_datasource(  # doctest: +SKIP
         ...     ImageFolderDatasource(),
-        ...     paths=["/data/imagenet/train"]
+        ...     root="/data/imagenet/train",
+        ...     size=(224, 224)
         ... )
-        >>>
         >>> sample = ds.take(1)[0]  # doctest: +SKIP
         >>> sample["image"].to_numpy().shape  # doctest: +SKIP
-        (469, 387, 3)
+        (224, 224, 3)
         >>> sample["label"]  # doctest: +SKIP
         'n01443537'
 
@@ -61,15 +60,13 @@ class ImageFolderDatasource(BinaryDatasource):
 
         >>> import ray
         >>> from ray.data.preprocessors import OrdinalEncoder
-        >>>
         >>> ds = ray.data.read_datasource(  # doctest: +SKIP
         ...     ImageFolderDatasource(),
-        ...     paths=["/data/imagenet/train"]
+        ...     root="/data/imagenet/train",
+        ...     size=(224, 224)
         ... )
         >>> oe = OrdinalEncoder(columns=["label"])  # doctest: +SKIP
-        >>>
         >>> ds = oe.fit_transform(ds)  # doctest: +SKIP
-        >>>
         >>> sample = ds.take(1)[0]  # doctest: +SKIP
         >>> sample["label"]  # doctest: +SKIP
         71
@@ -77,54 +74,46 @@ class ImageFolderDatasource(BinaryDatasource):
 
     def create_reader(
         self,
-        paths: Union[str, List[str]],
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        partition_filter: PathPartitionFilter = None,
-        **kwargs,
+        root: str,
+        size: Tuple[int, int],
     ) -> "Reader[T]":
-        if len(paths) != 1:
-            raise ValueError(
-                "`ImageFolderDatasource` expects 1 path representing the dataset "
-                f"root, but it got {len(paths)} paths instead. To fix this "
-                "error, pass in a single-element list containing the dataset root "
-                '(for example, `paths=["s3://imagenet/train"]`)'
-            )
+        """Return a :py:class:`Reader` that reads images.
 
-        try:
-            import imageio  # noqa: F401
-        except ImportError:
-            raise ImportError(
-                "`ImageFolderDatasource` depends on 'imageio', but 'imageio' couldn't "
-                "be imported. You can install 'imageio' by running "
-                "`pip install imageio`."
-            )
-
-        if partition_filter is None:
-            partition_filter = FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS)
+        Args:
+            root: Path to the dataset root.
+            size: The desired height and width of loaded images.
+        """
+        self._check_import(module="imageio", package="imagio")
+        self._check_import(module="skimage", package="scikit-image")
 
         # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
         # in the same way as the paths passed to `_get_class_from_path`.
-        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        self.root = paths[0]
+        paths, _ = _resolve_paths_and_filesystem([root])
+        root = paths[0]
 
         return super().create_reader(
             paths=paths,
-            filesystem=filesystem,
-            partition_filter=partition_filter,
-            **kwargs,
+            partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
+            root=root,
+            size=size,
         )
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+    def _read_file(
+        self, f: "pyarrow.NativeFile", path: str, root: str, size: Tuple[int, int]
+    ):
         import imageio as iio
         import pandas as pd
         from ray.data.extensions import TensorArray
+        import skimage
 
         records = super()._read_file(f, path, include_paths=True)
         assert len(records) == 1
         path, data = records[0]
 
         image = iio.imread(data)
-        label = _get_class_from_path(path, self.root)
+        image = skimage.transform.resize(image, size)
+        image = skimage.util.img_as_ubyte(image)
+        label = _get_class_from_path(path, root)
 
         return pd.DataFrame(
             {
@@ -132,6 +121,25 @@ class ImageFolderDatasource(BinaryDatasource):
                 "label": [label],
             }
         )
+
+    def _check_import(self, *, module: str, package: str) -> None:
+        """Check if a required dependency is installed.
+
+        If `module` can't be imported, this function raises an `ImportError` instructing
+        the user to install `package` from PyPI.
+
+        Args:
+            module: The name of the module to import.
+            package: The name of the package on PyPI.
+        """
+        try:
+            importlib.import_module(module)
+        except ImportError:
+            raise ImportError(
+                f"`{self.__class__.__name__}` depends on '{package}', but '{package}' "
+                f"couldn't be imported. You can install '{package}' by running `pip "
+                f"install {package}`."
+            )
 
 
 def _get_class_from_path(path: str, root: str) -> str:

@@ -2775,7 +2775,7 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
 
 def test_image_folder_datasource(ray_start_regular_shared):
     root = os.path.join(os.path.dirname(__file__), "image-folder")
-    ds = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(32, 32))
 
     assert ds.count() == 3
 
@@ -2783,14 +2783,6 @@ def test_image_folder_datasource(ray_start_regular_shared):
     assert sorted(df["label"]) == ["cat", "cat", "dog"]
     assert type(df["image"].dtype) is TensorDtype
     assert all(tensor.to_numpy().shape == (32, 32, 3) for tensor in df["image"])
-
-
-def test_image_folder_datasource_raises_value_error(ray_start_regular_shared):
-    # `ImageFolderDatasource` should raise an error if more than one path is passed.
-    with pytest.raises(ValueError):
-        ray.data.read_datasource(
-            ImageFolderDatasource(), paths=["imagenet/train", "imagenet/test"]
-        )
 
 
 def test_image_folder_datasource_e2e(ray_start_regular_shared):
@@ -2802,7 +2794,9 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from torchvision.models import resnet18
 
     root = os.path.join(os.path.dirname(__file__), "image-folder")
-    dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
+    dataset = ray.data.read_datasource(
+        ImageFolderDatasource(), root=root, size=(32, 32)
+    )
 
     def preprocess(df):
         # We convert the `TensorArrayElement` to a NumPy array because `ToTensor`
