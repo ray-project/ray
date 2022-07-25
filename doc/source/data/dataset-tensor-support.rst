@@ -221,4 +221,4 @@ Limitations
 
 The following are current limitations of Tensor datasets.
 
- * All tensors in a tensor column must have the same shape; see GitHub issue `#18316 <https://github.com/ray-project/ray/issues/18316>`__.
+* All tensors in a tensor column must have the same shape; see GitHub issue `#18316 <https://github.com/ray-project/ray/issues/18316>`__.
