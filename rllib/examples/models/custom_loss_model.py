@@ -100,7 +100,7 @@ class TorchCustomLossModel(TorchModelV2, nn.Module):
         Args:
             policy_loss (List[TensorType]): The list of already calculated
                 policy losses (as many as there are optimizers).
-            loss_inputs (TensorStruct): Struct of np.ndarrays holding the
+            loss_inputs: Struct of np.ndarrays holding the
                 entire train batch.
 
         Returns:

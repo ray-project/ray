@@ -2,8 +2,24 @@
 
 .. _ray-k8s-deploy:
 
-Deploying on Kubernetes
-=======================
+The legacy Ray Kubernetes Operator
+==================================
+
+.. note::
+
+   This documentation describes deploying Ray on Kubernetes using the legacy Ray Operator hosted in
+   the Ray repo.
+   Going forward, the :ref:`preferred tool for deploying Ray on Kubernetes<kuberay-index>` will be the `KubeRay operator`_.
+   The legacy operator described on this page can still be used to deploy on Kubernetes. However, the legacy operator
+   will enter maintenance mode in a future Ray release.
+
+   To learn more about KubeRay, see the links below:
+
+   - :ref:`Ray's guides for deploying using KubeRay<kuberay-index>`.
+   - `The KubeRay documentation`_.
+   - `The KubeRay GitHub`_.
+   - :ref:`A comparison of KubeRay and the legacy Ray Operator<kuberay-vs-legacy>`.
+
 
 Overview
 --------
@@ -165,7 +181,7 @@ Then in a new shell, you can run a job using the CLI:
 
   $ export RAY_ADDRESS="http://127.0.0.1:8265"
 
-  $ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- "python script.py"
+  $ ray job submit --runtime-env-json='{"working_dir": "./", "pip": ["requests==2.26.0"]}' -- python script.py
   2021-12-01 23:04:52,672 INFO cli.py:25 -- Creating JobSubmissionClient at address: http://127.0.0.1:8265
   2021-12-01 23:04:52,809 INFO sdk.py:144 -- Uploading package gcs://_ray_pkg_bbcc8ca7e83b4dc0.zip.
   2021-12-01 23:04:52,810 INFO packaging.py:352 -- Creating a file package for local directory './'.
@@ -317,3 +333,6 @@ Questions or Issues?
 .. _`sample Ray program`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example_scripts/run_local_example.py
 .. _`official Ray images`: https://hub.docker.com/r/rayproject/ray
 .. _`Ray Docker Hub`: https://hub.docker.com/r/rayproject/ray
+.. _`KubeRay operator`: https://github.com/ray-project/kuberay
+.. _`The KubeRay GitHub`: https://github.com/ray-project/kuberay
+.. _`The KubeRay documentation`: https://ray-project.github.io/kuberay/

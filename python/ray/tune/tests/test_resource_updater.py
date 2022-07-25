@@ -1,12 +1,12 @@
 import ray
 from ray.tests.conftest import *  # noqa
-from ray.tune.utils.resource_updater import ResourceUpdater
+from ray.tune.utils.resource_updater import _ResourceUpdater
 
 
 def test_resource_updater(ray_start_cluster):
     cluster = ray_start_cluster
 
-    resource_updater = ResourceUpdater(refresh_period=100)
+    resource_updater = _ResourceUpdater(refresh_period=100)
     # Before intialization, all resources are 0.
     assert resource_updater.get_num_cpus() == 0
     assert resource_updater.get_num_gpus() == 0
@@ -26,7 +26,7 @@ def test_resource_updater(ray_start_cluster):
     assert resource_updater.get_num_cpus() == 1
     assert resource_updater.get_num_gpus() == 2
 
-    resource_updater = ResourceUpdater(refresh_period=0)
+    resource_updater = _ResourceUpdater(refresh_period=0)
     assert resource_updater.get_num_cpus() == 2
     assert resource_updater.get_num_gpus() == 3
 

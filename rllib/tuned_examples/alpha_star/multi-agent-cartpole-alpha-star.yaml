@@ -32,7 +32,7 @@ multi-agent-cartpole-alpha-star:
 
         # No league-building needed.
         league_builder_config:
-            type: ray.rllib.agents.alpha_star.league_builder.NoLeagueBuilder
+            type: ray.rllib.algorithms.alpha_star.league_builder.NoLeagueBuilder
 
         multiagent:
             policies: ["p0", "p1", "p2", "p3"]

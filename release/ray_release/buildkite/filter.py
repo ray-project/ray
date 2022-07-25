@@ -20,7 +20,7 @@ def filter_tests(
         # First, filter by string attributes
         attr_mismatch = False
         for attr, regex in test_attr_regex_filters.items():
-            if not re.match(regex, test[attr]):
+            if not re.fullmatch(regex, test[attr]):
                 attr_mismatch = True
                 break
         if attr_mismatch:

@@ -28,13 +28,15 @@ pendulum-ddpg:
             ou_theta: 0.15
             ou_sigma: 0.2
 
-        min_sample_timesteps_per_reporting: 600
+        min_sample_timesteps_per_iteration: 600
         target_network_update_freq: 0
         tau: 0.001
 
         # === Replay buffer ===
         replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
           capacity: 10000
+          worker_side_prioritization: false
         clip_rewards: False
 
         # === Optimization ===
@@ -49,4 +51,3 @@ pendulum-ddpg:
 
         # === Parallelism ===
         num_workers: 0
-        worker_side_prioritization: False

@@ -15,7 +15,6 @@ public class ExitActorTest2 extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.job.num-java-workers-per-process", "1");
     System.setProperty("ray.raylet.startup-token", "0");
   }
 

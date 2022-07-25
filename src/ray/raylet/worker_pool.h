@@ -115,7 +115,7 @@ class WorkerPoolInterface {
   /// \param filter_dead_workers whether or not if this method will filter dead workers
   /// that are still registered. \return A list containing all the workers.
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false) const = 0;
+      bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
   virtual ~WorkerPoolInterface(){};
 };
@@ -369,7 +369,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param filter_dead_workers whether or not if this method will filter dead workers
   /// that are still registered. \return A list containing all the workers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false) const;
+      bool filter_dead_workers = false, bool filter_io_workers = false) const;
 
   /// Get all the registered drivers.
   ///
@@ -473,10 +473,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Some basic information about the worker process.
   struct WorkerProcessInfo {
-    /// The number of workers in the worker process.
-    int num_workers;
-    /// The number of pending registration workers in the worker process.
-    int num_starting_workers;
+    /// Whether this worker is pending registration or is started.
+    bool is_pending_registration = true;
     /// The started workers which is alive.
     std::unordered_set<std::shared_ptr<WorkerInterface>> alive_started_workers;
     /// The type of the worker.
@@ -612,7 +610,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
   /// worker types (SPILL_WORKER and RESTORE_WORKER).
-  bool IsIOWorkerType(const rpc::WorkerType &worker_type);
+  bool IsIOWorkerType(const rpc::WorkerType &worker_type) const;
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
   /// different stack.
@@ -684,13 +682,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
   void AddWorkerProcess(State &state,
-                        const int workers_to_start,
                         const rpc::WorkerType worker_type,
                         const Process &proc,
                         const std::chrono::high_resolution_clock::time_point &start,
                         const rpc::RuntimeEnvInfo &runtime_env_info);
 
   void RemoveWorkerProcess(State &state, const StartupToken &proc_startup_token);
+
+  /// Increase worker OOM scores to avoid raylet crashes from heap memory
+  /// pressure.
+  void AdjustWorkerOomScore(pid_t pid) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

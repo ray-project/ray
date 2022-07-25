@@ -6,17 +6,17 @@ import pickle
 import unittest
 
 import ray
-from ray.rllib.agents.a3c import A2CTrainer
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.algorithms.a2c import A2C
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import convert_to_base_env
+from ray.rllib.env.tests.test_external_env import SimpleServing
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.evaluate import rollout
-from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import one_hot
@@ -363,7 +363,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError,
             "Subclasses of TorchModelV2 must also inherit from nn.Module",
-            lambda: PGTrainer(
+            lambda: PG(
                 env="CartPole-v0",
                 config={
                     "model": {
@@ -379,7 +379,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError,
             "State output is not a list",
-            lambda: PGTrainer(
+            lambda: PG(
                 env="CartPole-v0",
                 config={
                     "model": {
@@ -393,7 +393,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
     def do_test_nested_dict(self, make_env, test_lstm=False):
         ModelCatalog.register_custom_model("composite", DictSpyModel)
         register_env("nested", make_env)
-        pg = PGTrainer(
+        pg = PG(
             env="nested",
             config={
                 "num_workers": 0,
@@ -427,7 +427,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
     def do_test_nested_tuple(self, make_env):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
         register_env("nested2", make_env)
-        pg = PGTrainer(
+        pg = PG(
             env="nested2",
             config={
                 "num_workers": 0,
@@ -493,7 +493,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
         ModelCatalog.register_custom_model("tuple_spy", TupleSpyModel)
         register_env("nested_ma", lambda _: NestedMultiAgentEnv())
         act_space = spaces.Discrete(2)
-        pg = PGTrainer(
+        pg = PG(
             env="nested_ma",
             config={
                 "num_workers": 0,
@@ -552,13 +552,13 @@ class NestedObservationSpacesTest(unittest.TestCase):
 
     def test_rollout_dict_space(self):
         register_env("nested", lambda _: NestedDictEnv())
-        agent = PGTrainer(env="nested", config={"framework": "tf"})
+        agent = PG(env="nested", config={"framework": "tf"})
         agent.train()
         path = agent.save()
         agent.stop()
 
         # Test train works on restore
-        agent2 = PGTrainer(env="nested", config={"framework": "tf"})
+        agent2 = PG(env="nested", config={"framework": "tf"})
         agent2.restore(path)
         agent2.train()
 
@@ -568,7 +568,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
     def test_py_torch_model(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)
         register_env("nested", lambda _: NestedDictEnv())
-        a2c = A2CTrainer(
+        a2c = A2C(
             env="nested",
             config={
                 "num_workers": 0,
@@ -607,7 +607,7 @@ class NestedObservationSpacesTest(unittest.TestCase):
     def test_torch_repeated(self):
         ModelCatalog.register_custom_model("r1", TorchRepeatedSpyModel)
         register_env("repeat", lambda _: RepeatedSpaceEnv())
-        a2c = A2CTrainer(
+        a2c = A2C(
             env="repeat",
             config={
                 "num_workers": 0,

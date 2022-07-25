@@ -1,3 +1,5 @@
+import inspect
+
 from ray._private.utils import get_function_args
 from ray.tune.schedulers.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler
@@ -11,14 +13,17 @@ from ray.tune.schedulers.pbt import (
 from ray.tune.schedulers.resource_changing_scheduler import ResourceChangingScheduler
 
 
-def _pb2_importer(*args, **kwargs):
+def _pb2_importer():
     # PB2 introduces a GPy dependency which can be expensive, so we import
     # lazily.
     from ray.tune.schedulers.pb2 import PB2
 
-    return PB2(*args, **kwargs)
+    return PB2
 
 
+# Values in this dictionary will be one two kinds:
+#    class of the scheduler object to create
+#    wrapper function to support a lazy import of the scheduler class
 SCHEDULER_IMPORT = {
     "fifo": FIFOScheduler,
     "async_hyperband": AsyncHyperBandScheduler,
@@ -43,7 +48,7 @@ def create_scheduler(
     This is useful for swapping between different schedulers.
 
     Args:
-        scheduler (str): The scheduler to use.
+        scheduler: The scheduler to use.
         **kwargs: Scheduler parameters.
             These keyword arguments will be passed to the initialization
             function of the chosen scheduler.
@@ -64,6 +69,10 @@ def create_scheduler(
         )
 
     SchedulerClass = SCHEDULER_IMPORT[scheduler]
+
+    if inspect.isfunction(SchedulerClass):
+        # invoke the wrapper function to retrieve class
+        SchedulerClass = SchedulerClass()
 
     scheduler_args = get_function_args(SchedulerClass)
     trimmed_kwargs = {k: v for k, v in kwargs.items() if k in scheduler_args}

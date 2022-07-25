@@ -1,6 +1,6 @@
 import gym
 import logging
-from typing import Callable, Dict, List, Tuple, Type, Optional, Union, Set
+from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import (
@@ -30,7 +30,7 @@ class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
-    are not to be confused with RLlib Trainers, which are also sometimes
+    are not to be confused with RLlib Algorithms, which are also sometimes
     referred to as "agents" or "RL agents".
     """
 
@@ -132,7 +132,20 @@ class MultiAgentEnv(gym.Env):
                 self._check_if_space_maps_agent_id_to_sub_space()
             )
         if self._spaces_in_preferred_format:
-            return self.observation_space.contains(x)
+            for key, agent_obs in x.items():
+                if not self.observation_space[key].contains(agent_obs):
+                    return False
+            if not all(k in self.observation_space for k in x):
+                if log_once("possibly_bad_multi_agent_dict_missing_agent_observations"):
+                    logger.warning(
+                        "You environment returns observations that are "
+                        "MultiAgentDicts with incomplete information. "
+                        "Meaning that they only contain information on a subset of"
+                        " participating agents. Ignore this warning if this is "
+                        "intended, for example if your environment is a turn-based "
+                        "simulation."
+                    )
+            return True
 
         logger.warning("observation_space_contains() has not been implemented")
         return True
@@ -155,7 +168,7 @@ class MultiAgentEnv(gym.Env):
                 self._check_if_space_maps_agent_id_to_sub_space()
             )
         if self._spaces_in_preferred_format:
-            return self.action_space.contains(x)
+            return all([self.action_space[agent].contains(x[agent]) for agent in x])
 
         if log_once("action_space_contains"):
             logger.warning("action_space_contains() has not been implemented")
@@ -245,7 +258,6 @@ class MultiAgentEnv(gym.Env):
 
     # fmt: off
     # __grouping_doc_begin__
-    @ExperimentalAPI
     def with_agent_groups(
         self,
         groups: Dict[str, List[AgentID]],
@@ -265,16 +277,17 @@ class MultiAgentEnv(gym.Env):
 
         Agent grouping is required to leverage algorithms such as Q-Mix.
 
-        This API is experimental.
-
         Args:
             groups: Mapping from group id to a list of the agent ids
                 of group members. If an agent id is not present in any group
-                value, it will be left ungrouped.
+                value, it will be left ungrouped. The group id becomes a new agent ID
+                in the final environment.
             obs_space: Optional observation space for the grouped
-                env. Must be a tuple space.
+                env. Must be a tuple space. If not provided, will infer this to be a
+                Tuple of n individual agents spaces (n=num agents in a group).
             act_space: Optional action space for the grouped env.
-                Must be a tuple space.
+                Must be a tuple space. If not provided, will infer this to be a Tuple
+                of n individual agents spaces (n=num agents in a group).
 
         Examples:
             >>> from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -302,6 +315,7 @@ class MultiAgentEnv(gym.Env):
         num_envs: int = 1,
         remote_envs: bool = False,
         remote_env_batch_wait_ms: int = 0,
+        restart_failed_sub_environments: bool = False,
     ) -> "BaseEnv":
         """Converts an RLlib MultiAgentEnv into a BaseEnv object.
 
@@ -324,6 +338,10 @@ class MultiAgentEnv(gym.Env):
             remote_env_batch_wait_ms: The wait time (in ms) to poll remote
                 sub-environments for, if applicable. Only used if
                 `remote_envs` is True.
+            restart_failed_sub_environments: If True and any sub-environment (within
+                a vectorized env) throws any error during env stepping, we will try to
+                restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environments.
 
         Returns:
             The resulting BaseEnv object.
@@ -336,11 +354,15 @@ class MultiAgentEnv(gym.Env):
                 num_envs,
                 multiagent=True,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                restart_failed_sub_environments=restart_failed_sub_environments,
             )
         # Sub-environments are not ray.remote actors.
         else:
             env = MultiAgentEnvWrapper(
-                make_env=make_env, existing_envs=[self], num_envs=num_envs
+                make_env=make_env,
+                existing_envs=[self],
+                num_envs=num_envs,
+                restart_failed_sub_environments=restart_failed_sub_environments,
             )
 
         return env
@@ -362,6 +384,7 @@ class MultiAgentEnv(gym.Env):
         return obs_space_check and action_space_check
 
 
+@PublicAPI
 def make_multi_agent(
     env_name_or_creator: Union[str, EnvCreator],
 ) -> Type["MultiAgentEnv"]:
@@ -472,6 +495,7 @@ def make_multi_agent(
     return MultiEnv
 
 
+@PublicAPI
 class MultiAgentEnvWrapper(BaseEnv):
     """Internal adapter of MultiAgentEnv to BaseEnv.
 
@@ -483,6 +507,7 @@ class MultiAgentEnvWrapper(BaseEnv):
         make_env: Callable[[int], EnvType],
         existing_envs: List["MultiAgentEnv"],
         num_envs: int,
+        restart_failed_sub_environments: bool = False,
     ):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
@@ -494,16 +519,22 @@ class MultiAgentEnvWrapper(BaseEnv):
             num_envs: Desired num multiagent envs to have at the end in
                 total. This will include the given (already created)
                 `existing_envs`.
+            restart_failed_sub_environments: If True and any sub-environment (within
+                this vectorized env) throws any error during env stepping, we will try
+                to restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environments.
         """
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
+        self.restart_failed_sub_environments = restart_failed_sub_environments
+
         self.dones = set()
         while len(self.envs) < self.num_envs:
             self.envs.append(self.make_env(len(self.envs)))
         for env in self.envs:
             assert isinstance(env, MultiAgentEnv)
-        self.env_states = [_MultiAgentEnvState(env) for env in self.envs]
+        self._init_env_state(idx=None)
         self._unwrapped_env = self.envs[0].unwrapped
 
     @override(BaseEnv)
@@ -519,14 +550,27 @@ class MultiAgentEnvWrapper(BaseEnv):
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         for env_id, agent_dict in action_dict.items():
             if env_id in self.dones:
-                raise ValueError("Env {} is already done".format(env_id))
+                raise ValueError(
+                    f"Env {env_id} is already done and cannot accept new actions"
+                )
             env = self.envs[env_id]
-            obs, rewards, dones, infos = env.step(agent_dict)
-            assert isinstance(obs, dict), "Not a multi-agent obs"
-            assert isinstance(rewards, dict), "Not a multi-agent reward"
-            assert isinstance(dones, dict), "Not a multi-agent return"
-            assert isinstance(infos, dict), "Not a multi-agent info"
-            if set(infos).difference(set(obs)):
+            try:
+                obs, rewards, dones, infos = env.step(agent_dict)
+            except Exception as e:
+                if self.restart_failed_sub_environments:
+                    logger.exception(e.args[0])
+                    self.try_restart(env_id=env_id)
+                    obs, rewards, dones, infos = e, {}, {"__all__": True}, {}
+                else:
+                    raise e
+
+            assert isinstance(
+                obs, (dict, Exception)
+            ), "Not a multi-agent obs dict or an Exception!"
+            assert isinstance(rewards, dict), "Not a multi-agent reward dict!"
+            assert isinstance(dones, dict), "Not a multi-agent done dict!"
+            assert isinstance(infos, dict), "Not a multi-agent info dict!"
+            if isinstance(obs, dict) and set(infos).difference(set(obs)):
                 raise ValueError(
                     "Key set for infos must be a subset of obs: "
                     "{} vs {}".format(infos.keys(), obs.keys())
@@ -536,6 +580,7 @@ class MultiAgentEnvWrapper(BaseEnv):
                     "In multi-agent environments, '__all__': True|False must "
                     "be included in the 'done' dict: got {}.".format(dones)
                 )
+
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
@@ -549,16 +594,36 @@ class MultiAgentEnvWrapper(BaseEnv):
             env_id = list(range(len(self.envs)))
         for idx in env_id:
             obs = self.env_states[idx].reset()
-            assert isinstance(obs, dict), "Not a multi-agent obs"
+            if isinstance(obs, Exception):
+                if self.restart_failed_sub_environments:
+                    self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
+                else:
+                    raise obs
+            else:
+                assert isinstance(obs, dict), "Not a multi-agent obs dict!"
             if obs is not None and idx in self.dones:
                 self.dones.remove(idx)
             ret[idx] = obs
         return ret
 
     @override(BaseEnv)
-    def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
+    def try_restart(self, env_id: Optional[EnvID] = None) -> None:
+        if isinstance(env_id, int):
+            env_id = [env_id]
+        if env_id is None:
+            env_id = list(range(len(self.envs)))
+        for idx in env_id:
+            # Recreate the sub-env.
+            logger.warning(f"Trying to restart sub-environment at index {idx}.")
+            self.env_states[idx].env = self.envs[idx] = self.make_env(idx)
+            logger.warning(f"Sub-environment at index {idx} restarted successfully.")
+
+    @override(BaseEnv)
+    def get_sub_environments(
+        self, as_dict: bool = False
+    ) -> Union[Dict[str, EnvType], List[EnvType]]:
         if as_dict:
-            return {_id: env_state for _id, env_state in enumerate(self.env_states)}
+            return {_id: env_state.env for _id, env_state in enumerate(self.env_states)}
         return [state.env for state in self.env_states]
 
     @override(BaseEnv)
@@ -572,7 +637,7 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
-        self.envs[0].observation_space
+        return self.envs[0].observation_space
 
     @property
     @override(BaseEnv)
@@ -600,11 +665,32 @@ class MultiAgentEnvWrapper(BaseEnv):
     def get_agent_ids(self) -> Set[AgentID]:
         return self.envs[0].get_agent_ids()
 
+    def _init_env_state(self, idx: Optional[int] = None) -> None:
+        """Resets all or one particular sub-environment's state (by index).
+
+        Args:
+            idx: The index to reset at. If None, reset all the sub-environments' states.
+        """
+        # If index is None, reset all sub-envs' states:
+        if idx is None:
+            self.env_states = [
+                _MultiAgentEnvState(env, self.restart_failed_sub_environments)
+                for env in self.envs
+            ]
+        # Index provided, reset only the sub-env's state at the given index.
+        else:
+            assert isinstance(idx, int)
+            self.env_states[idx] = _MultiAgentEnvState(
+                self.envs[idx], self.restart_failed_sub_environments
+            )
+
 
 class _MultiAgentEnvState:
-    def __init__(self, env: MultiAgentEnv):
+    def __init__(self, env: MultiAgentEnv, return_error_as_obs: bool = False):
         assert isinstance(env, MultiAgentEnv)
         self.env = env
+        self.return_error_as_obs = return_error_as_obs
+
         self.initialized = False
         self.last_obs = {}
         self.last_rewards = {}
@@ -623,11 +709,13 @@ class _MultiAgentEnvState:
         dones = {"__all__": self.last_dones["__all__"]}
         infos = {}
 
-        # If episode is done, release everything we have.
-        if dones["__all__"]:
+        # If episode is done or we have an error, release everything we have.
+        if dones["__all__"] or isinstance(observations, Exception):
             rewards = self.last_rewards
             self.last_rewards = {}
             dones = self.last_dones
+            if isinstance(observations, Exception):
+                dones["__all__"] = True
             self.last_dones = {}
             self.last_obs = {}
             infos = self.last_infos
@@ -670,7 +758,14 @@ class _MultiAgentEnvState:
         self.last_infos = infos
 
     def reset(self) -> MultiAgentDict:
-        self.last_obs = self.env.reset()
+        try:
+            self.last_obs = self.env.reset()
+        except Exception as e:
+            if self.return_error_as_obs:
+                logger.exception(e.args[0])
+                self.last_obs = e
+            else:
+                raise e
         self.last_rewards = {}
         self.last_dones = {"__all__": False}
         self.last_infos = {}

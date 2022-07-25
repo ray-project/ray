@@ -11,8 +11,6 @@ from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
 from ray_release.config import (
     Test,
-    load_test_cluster_env,
-    load_test_cluster_compute,
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
@@ -21,6 +19,7 @@ from ray_release.config import (
     DEFAULT_AUTOSUSPEND_MINS,
     validate_test,
 )
+from ray_release.template import load_test_cluster_env, load_test_cluster_compute
 from ray_release.exception import (
     ReleaseTestConfigError,
     ReleaseTestSetupError,
@@ -90,6 +89,7 @@ def run_release_test(
 
     result.wheels_url = ray_wheels_url
     result.stable = test.get("stable", True)
+    result.smoke_test = smoke_test
 
     buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
     if buildkite_url:
@@ -128,7 +128,9 @@ def run_release_test(
 
     # Instantiate managers and command runner
     try:
-        cluster_manager = cluster_manager_cls(test["name"], anyscale_project)
+        cluster_manager = cluster_manager_cls(
+            test["name"], anyscale_project, smoke_test=smoke_test
+        )
         file_manager = file_manager_cls(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(cluster_manager, file_manager, working_dir)
     except Exception as e:

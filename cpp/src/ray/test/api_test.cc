@@ -18,6 +18,7 @@
 #include <future>
 #include <thread>
 
+#include "../config_internal.h"
 #include "boost/filesystem.hpp"
 #include "ray/util/logging.h"
 
@@ -337,4 +338,26 @@ TEST(RayApiTest, CreateAndRemovePlacementGroup) {
   EXPECT_TRUE(first_placement_group.Wait(10));
 
   ray::RemovePlacementGroup(first_placement_group.GetID());
+}
+
+TEST(RayApiTest, DefaultActorLifetimeTest) {
+  ray::RayConfig config;
+  ray::internal::ConfigInternal::Instance().Init(config, 0, nullptr);
+  EXPECT_EQ(ray::rpc::JobConfig_ActorLifetime_NON_DETACHED,
+            ray::internal::ConfigInternal::Instance().default_actor_lifetime);
+  config.default_actor_lifetime = ray::ActorLifetime::DETACHED;
+  ray::internal::ConfigInternal::Instance().Init(config, 0, nullptr);
+  EXPECT_EQ(ray::rpc::JobConfig_ActorLifetime_DETACHED,
+            ray::internal::ConfigInternal::Instance().default_actor_lifetime);
+  std::string str = "--ray_default_actor_lifetime=NON_DETACHED";
+  char exec_name[] = {' '};
+  char *args[] = {exec_name, const_cast<char *>(str.c_str())};
+  ray::internal::ConfigInternal::Instance().Init(config, 2, args);
+  EXPECT_EQ(ray::rpc::JobConfig_ActorLifetime_NON_DETACHED,
+            ray::internal::ConfigInternal::Instance().default_actor_lifetime);
+  std::string str2 = "--ray_default_actor_lifetime=detached";
+  char *args2[] = {exec_name, const_cast<char *>(str2.c_str())};
+  ray::internal::ConfigInternal::Instance().Init(config, 2, args2);
+  EXPECT_EQ(ray::rpc::JobConfig_ActorLifetime_DETACHED,
+            ray::internal::ConfigInternal::Instance().default_actor_lifetime);
 }

@@ -2,16 +2,20 @@ package io.ray.test;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.ActorHandle;
+import io.ray.api.CppActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.exception.CrossLanguageException;
+import io.ray.api.exception.RayException;
+import io.ray.api.function.CppActorClass;
+import io.ray.api.function.CppActorMethod;
+import io.ray.api.function.CppFunction;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.runtime.actor.NativeActorHandle;
-import io.ray.runtime.exception.CrossLanguageException;
-import io.ray.runtime.exception.RayException;
-import io.ray.runtime.generated.Common.Language;
+import io.ray.runtime.serializer.RayExceptionSerializer;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,6 +32,7 @@ import org.testng.annotations.Test;
 public class CrossLanguageInvocationTest extends BaseTest {
 
   private static final String PYTHON_MODULE = "test_cross_language_invocation";
+  private static final String[] CPP_LIBRARYS = {"counter", "plus"};
 
   @BeforeClass
   public void beforeClass() {
@@ -40,12 +45,26 @@ public class CrossLanguageInvocationTest extends BaseTest {
 
     // Write the test Python file to the temp dir.
     InputStream in =
-        CrossLanguageInvocationTest.class.getResourceAsStream("/" + PYTHON_MODULE + ".py");
+        CrossLanguageInvocationTest.class.getResourceAsStream(
+            File.separator + PYTHON_MODULE + ".py");
     File pythonFile = new File(tempDir.getAbsolutePath() + File.separator + PYTHON_MODULE + ".py");
     try {
       FileUtils.copyInputStreamToFile(in, pythonFile);
     } catch (IOException e) {
       throw new RuntimeException(e);
+    }
+
+    // Write the test Cpp files to the temp dir.
+    for (String lib : CPP_LIBRARYS) {
+      in =
+          CrossLanguageInvocationTest.class.getResourceAsStream(
+              File.separator + "cpp" + File.separator + lib + ".so");
+      File cppFile = new File(tempDir.getAbsolutePath() + File.separator + lib + ".so");
+      try {
+        FileUtils.copyInputStreamToFile(in, cppFile);
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
     }
 
     System.setProperty(
@@ -154,6 +173,34 @@ public class CrossLanguageInvocationTest extends BaseTest {
   }
 
   @Test
+  public void testCallingCppFunction() {
+    // Test calling a simple C++ function.
+    ObjectRef<Integer> res = Ray.task(CppFunction.of("Plus", Integer.class), 1, 2).remote();
+    Assert.assertEquals(res.get(), Integer.valueOf(3));
+    // Test calling a C++ function that returns a large object.
+    ObjectRef<int[]> res1 =
+        Ray.task(CppFunction.of("ReturnLargeArray", int[].class), new int[100000]).remote();
+    Assert.assertEquals(res1.get().length, 100000);
+    // Test calling a C++ function with String type input/output.
+    ObjectRef<String> res2 = Ray.task(CppFunction.of("Echo", String.class), "CallCpp").remote();
+    Assert.assertEquals(res2.get(), "CallCpp");
+    // Test calling a C++ function that throws an exception.
+    Assert.expectThrows(
+        Exception.class,
+        () -> {
+          ObjectRef<Object> res3 = Ray.task(CppFunction.of("ThrowTask")).remote();
+          res3.get();
+        });
+  }
+
+  @Test
+  public void testCallingCppActor() {
+    CppActorHandle actor = Ray.actor(CppActorClass.of("CreateCounter", "Counter")).remote();
+    ObjectRef<Integer> res = actor.task(CppActorMethod.of("Plus1", Integer.class)).remote();
+    Assert.assertEquals(res.get(), Integer.valueOf(1));
+  }
+
+  @Test
   public void testPythonCallJavaActor() {
     ObjectRef<byte[]> res =
         Ray.task(
@@ -204,7 +251,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
       String formattedException =
           org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(e);
       io.ray.runtime.generated.Common.RayException exception =
-          io.ray.runtime.generated.Common.RayException.parseFrom(e.toBytes());
+          io.ray.runtime.generated.Common.RayException.parseFrom(RayExceptionSerializer.toBytes(e));
       Assert.assertEquals(exception.getFormattedExceptionString(), formattedException);
     }
   }
@@ -220,7 +267,6 @@ public class CrossLanguageInvocationTest extends BaseTest {
       // ex is a Python exception(py_func_python_raise_exception) with no cause.
       Assert.assertTrue(ex instanceof CrossLanguageException);
       CrossLanguageException e = (CrossLanguageException) ex;
-      Assert.assertEquals(e.getLanguage(), Language.PYTHON);
       // ex.cause is null.
       Assert.assertNull(ex.getCause());
       Assert.assertTrue(
@@ -278,7 +324,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
       Assert.assertTrue(message.contains("py_func_nest_java_throw_exception"), message);
       Assert.assertEquals(
           org.apache.commons.lang3.StringUtils.countMatches(
-              message, "io.ray.runtime.exception.RayTaskException"),
+              message, "io.ray.api.exception.RayTaskException"),
           2);
       Assert.assertTrue(message.contains("py_func_java_throw_exception"), message);
       Assert.assertTrue(message.contains("java.lang.ArithmeticException: / by zero"), message);
@@ -375,26 +421,6 @@ public class CrossLanguageInvocationTest extends BaseTest {
         Ray.task(PyFunction.of(PYTHON_MODULE, "py_func_python_raise_exception", Object.class))
             .remote();
     return res.get();
-  }
-
-  public static class TestActor {
-
-    public TestActor(byte[] v) {
-      value = v;
-    }
-
-    public byte[] concat(byte[] v) {
-      byte[] c = new byte[value.length + v.length];
-      System.arraycopy(value, 0, c, 0, value.length);
-      System.arraycopy(v, 0, c, value.length, v.length);
-      return c;
-    }
-
-    public byte[] getValue() {
-      return value;
-    }
-
-    private byte[] value;
   }
 
   public void testPyCallJavaOeveridedMethodWithDefault() {

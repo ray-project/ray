@@ -8,13 +8,14 @@ import psutil  # noqa E402
 
 from ray.rllib.execution.segment_tree import SumSegmentTree, MinSegmentTree
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override, ExperimentalAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.typing import SampleBatchType
+from ray.util.annotations import DeveloperAPI
 
 
-@ExperimentalAPI
+@DeveloperAPI
 class PrioritizedReplayBuffer(ReplayBuffer):
     """This buffer implements Prioritized Experience Replay
 
@@ -23,7 +24,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     the full paper.
     """
 
-    @ExperimentalAPI
     def __init__(
         self,
         capacity: int = 10000,
@@ -41,7 +41,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                 'episodes'. Specifies how experiences are stored.
             alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         ReplayBuffer.__init__(self, capacity, storage_unit, **kwargs)
 
@@ -58,7 +58,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._max_priority = 1.0
         self._prio_change_stats = WindowStat("reprio", 1000)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def _add_single_batch(self, item: SampleBatchType, **kwargs) -> None:
         """Add a batch of experiences to self._storage with weight.
@@ -69,7 +69,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         Args:
             item: The item to be added.
-            **kwargs: Forward compatibility kwargs.
+            ``**kwargs``: Forward compatibility kwargs.
         """
         weight = kwargs.get("weight", None)
 
@@ -90,7 +90,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             res.append(idx)
         return res
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def sample(
         self, num_items: int, beta: float, **kwargs
@@ -114,9 +114,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         Args:
             num_items: Number of items to sample from this buffer.
-            beta: To what degree to use importance weights
-                (0 - no corrections, 1 - full correction).
-            **kwargs: Forward compatibility kwargs.
+            beta: To what degree to use importance weights (0 - no corrections,
+            1 - full correction).
+            ``**kwargs``: Forward compatibility kwargs.
 
         Returns:
             Concatenated SampleBatch of items including "weights" and
@@ -124,6 +124,9 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             transition and original idxes in buffer of sampled experiences.
         """
         assert beta >= 0.0
+
+        if len(self) == 0:
+            raise ValueError("Trying to sample from an empty buffer.")
 
         idxes = self._sample_proportional(num_items)
 
@@ -157,7 +160,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         return batch
 
-    @ExperimentalAPI
+    @DeveloperAPI
     def update_priorities(self, idxes: List[int], priorities: List[float]) -> None:
         """Update priorities of items at given indices.
 
@@ -166,8 +169,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         Args:
             idxes: List of indices of items
-            priorities: List of updated priorities corresponding to
-                items at the idxes denoted by variable `idxes`.
+            priorities: List of updated priorities corresponding to items at the
+            idxes denoted by variable `idxes`.
         """
         # Making sure we don't pass in e.g. a torch tensor.
         assert isinstance(
@@ -186,14 +189,13 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
             self._max_priority = max(self._max_priority, priority)
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def stats(self, debug: bool = False) -> Dict:
         """Returns the stats of this buffer.
 
         Args:
-            debug: If true, adds sample eviction statistics to the
-                returned stats dict.
+            debug: If true, adds sample eviction statistics to the returned stats dict.
 
         Returns:
             A dictionary of stats about this buffer.
@@ -203,7 +205,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             parent.update(self._prio_change_stats.stats())
         return parent
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
         """Returns all local state.
@@ -223,14 +225,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         )
         return state
 
-    @ExperimentalAPI
+    @DeveloperAPI
     @override(ReplayBuffer)
     def set_state(self, state: Dict[str, Any]) -> None:
         """Restores all local state to the provided `state`.
 
         Args:
-            state: The new state to set this buffer. Can be obtained by
-                calling `self.get_state()`.
+            state: The new state to set this buffer. Can be obtained by calling
+            `self.get_state()`.
         """
         super().set_state(state)
         self._it_sum.set_state(state["sum_segment_tree"])

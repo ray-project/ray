@@ -8,8 +8,8 @@ Examples
 
 .. _tune-recipes:
 
-Practical How-To Guides
------------------------
+ML Framework Examples
+---------------------
 
 Ray Tune integrates with many popular machine learning frameworks.
 Here you find a few practical examples showing you how to tune your models.
@@ -119,16 +119,6 @@ At the end of these guides you will often find links to even more examples.
         :text: A Guide To Tuning Huggingface Transformers With Tune
         :classes: btn-link btn-block stretched-link
 
-
-    ---
-    :img-top: /images/wandb_logo.png
-
-    +++
-    .. link-button:: tune-wandb-ref
-        :type: ref
-        :text: Tracking Your Experiment Process Weights & Biases
-        :classes: btn-link btn-block stretched-link
-
     ---
     :img-top: /images/mlflow.png
 
@@ -137,6 +127,20 @@ At the end of these guides you will often find links to even more examples.
         :type: ref
         :text: Using MLflow Tracking & AutoLogging with Tune
         :classes: btn-link btn-block stretched-link
+
+
+Experiment Tracking Examples
+----------------------------
+
+Ray Tune integrates with some popular Experiment tracking and management tools,
+such as CometML, or Weights & Biases. If you're interested in learning how
+to use Ray Tune with Tensorboard, you can find more information in our
+:ref:`Guide to logging and outputs <tune-logging>`.
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
 
     ---
     :img-top: /images/comet_logo_full.png
@@ -147,9 +151,22 @@ At the end of these guides you will often find links to even more examples.
         :text: Using Comet with Ray Tune For Experiment Management
         :classes: btn-link btn-block stretched-link
 
+    ---
+    :img-top: /images/wandb_logo.png
 
-Search Algorithm Examples
--------------------------
+    +++
+    .. link-button:: tune-wandb-ref
+        :type: ref
+        :text: Tracking Your Experiment Process Weights & Biases
+        :classes: btn-link btn-block stretched-link
+
+
+Hyperparameter Optimization Framework Examples
+----------------------------------------------
+
+Tune integrates with a wide variety of hyperparameter optimization frameworks
+and their respective search algorithms. Here you can find detailed examples
+on each of our integrations:
 
 .. panels::
     :container: container pb-4
@@ -264,21 +281,6 @@ Search Algorithm Examples
         :text: How To Use Tune With HEBO
         :classes: btn-link btn-block stretched-link
 
-API docs:
-
-- :ref:`AxSearch <tune-ax>` [`Ax website <https://ax.dev/>`__]
-- :ref:`DragonflySearch <Dragonfly>` [`Dragonfly website <https://dragonfly-opt.readthedocs.io/>`__]
-- :ref:`SkoptSearch <skopt>` [`Scikit-Optimize website <https://scikit-optimize.github.io>`__]
-- :ref:`HyperOptSearch <tune-hyperopt>` [`HyperOpt website <http://hyperopt.github.io/hyperopt>`__] including a conditional search space.
-- :ref:`BayesOptSearch <bayesopt>` [`BayesianOptimization website <https://github.com/fmfn/BayesianOptimization>`__]
-- :ref:`BlendSearch <BlendSearch>` [`BlendSearch website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__] and :ref:`CFO <CFO>` [`CFO website <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-- :ref:`TuneBOHB <suggest-TuneBOHB>` [`BOHB website <https://github.com/automl/HpBandSter>`__]
-- :ref:`NevergradSearch <nevergrad>` [`Nevergrad website <https://github.com/facebookresearch/nevergrad>`__]
-- :ref:`OptunaSearch <tune-optuna>` [`Optuna website <https://optuna.org/>`__]
-- :ref:`ZOOptSearch <zoopt>` [`ZOOpt website <https://github.com/polixir/ZOOpt>`__]
-- :ref:`SigOptSearch <sigopt>` [`SigOpt website <https://sigopt.com/>`__] including support for prior beliefs and the multi-objective case.
-- :ref:`HEBOSearch <tune-hebo>` [`HEBO website <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-
 
 .. _tune-general-examples:
 
@@ -295,7 +297,7 @@ Other Examples
   Example of using the function API with a PopulationBasedTraining scheduler.
 - :doc:`/tune/examples/includes/pb2_example`: Example of using the Population-based Bandits (PB2) scheduler.
 - :doc:`/tune/examples/includes/logging_example`: Example of custom loggers and custom trial directory naming.
-- :doc:`/tune/examples/includes/genetic_example`: Optimizing the michalewicz function using the contributed
+- :doc:`/tune/examples/includes/genetic_example`: Optimizing the Michalewicz function using the contributed
   GeneticSearch algorithm with AsyncHyperBandScheduler.
 
 
@@ -364,5 +366,6 @@ Learn how to use Tune in your browser with the following Colab-based exercises.
         </td>
       </tr>
     </table>
+
 
 Tutorial source files `can be found here <https://github.com/ray-project/tutorial>`_.

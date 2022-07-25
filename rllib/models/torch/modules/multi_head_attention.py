@@ -18,10 +18,10 @@ class MultiHeadAttention(nn.Module):
         self, in_dim: int, out_dim: int, num_heads: int, head_dim: int, **kwargs
     ):
         """
-        in_dim (int): Dimension of input
-        out_dim (int): Dimension of output
-        num_heads (int): Number of attention heads
-        head_dim (int): Output dimension of each attention head
+        in_dim: Dimension of input
+        out_dim: Dimension of output
+        num_heads: Number of attention heads
+        head_dim: Output dimension of each attention head
         """
         super().__init__(**kwargs)
 

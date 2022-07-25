@@ -167,6 +167,11 @@ Here are some examples of CLI commands from the Quick Start example and their ou
     {'raysubmit_AYhLMgDJ6XBQFvFP': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908622, end_time=1645908623, metadata={}, runtime_env={}),
     'raysubmit_su9UcdUviUZ86b1t': JobInfo(status='SUCCEEDED', message='Job finished successfully.', error_type=None, start_time=1645908669, end_time=1645908670, metadata={}, runtime_env={})}
 
+.. warning::
+
+    When using the CLI, do not wrap the entrypoint command in quotes.  For example, use 
+    ``ray job submit --working_dir="." -- python script.py`` instead of ``ray job submit --working_dir="." -- "python script.py"``.
+    Otherwise you may encounter the error ``/bin/sh: 1: python script.py: not found``.
 
 Using the CLI on a remote cluster
 """""""""""""""""""""""""""""""""

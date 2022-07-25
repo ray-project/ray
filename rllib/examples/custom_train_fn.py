@@ -10,7 +10,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -25,7 +25,7 @@ def my_train_fn(config, reporter):
     iterations = config.pop("train-iterations", 10)
 
     # Train for n iterations with high LR
-    agent1 = PPOTrainer(env="CartPole-v0", config=config)
+    agent1 = PPO(env="CartPole-v0", config=config)
     for _ in range(iterations):
         result = agent1.train()
         result["phase"] = 1
@@ -36,7 +36,7 @@ def my_train_fn(config, reporter):
 
     # Train for n iterations with low LR
     config["lr"] = 0.0001
-    agent2 = PPOTrainer(env="CartPole-v0", config=config)
+    agent2 = PPO(env="CartPole-v0", config=config)
     agent2.restore(state)
     for _ in range(iterations):
         result = agent2.train()
@@ -58,5 +58,5 @@ if __name__ == "__main__":
         "num_workers": 0,
         "framework": args.framework,
     }
-    resources = PPOTrainer.default_resource_request(config)
+    resources = PPO.default_resource_request(config)
     tune.run(my_train_fn, resources_per_trial=resources, config=config)

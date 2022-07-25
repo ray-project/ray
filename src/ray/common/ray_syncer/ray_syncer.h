@@ -29,14 +29,14 @@ namespace syncer {
 
 using ray::rpc::syncer::DummyRequest;
 using ray::rpc::syncer::DummyResponse;
-using ray::rpc::syncer::RayComponentId;
+using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
 using ray::rpc::syncer::RaySyncMessages;
 using ray::rpc::syncer::StartSyncRequest;
 using ray::rpc::syncer::StartSyncResponse;
 
 static constexpr size_t kComponentArraySize =
-    static_cast<size_t>(ray::rpc::syncer::RayComponentId_ARRAYSIZE);
+    static_cast<size_t>(ray::rpc::syncer::MessageType_ARRAYSIZE);
 
 /// The interface for a reporter. Reporter is defined to be a local module which would
 /// like to let the other nodes know its state. For example, local cluster resource
@@ -49,13 +49,13 @@ struct ReporterInterface {
   ///
   /// \param version_after Request message with version after `version_after`. If the
   /// reporter doesn't have the qualified one, just return std::nullopt
-  /// \param component_id The component id asked for.
+  /// \param message_type The message type asked for.
   ///
   /// \return std::nullopt if the reporter doesn't have such component or the current
   /// snapshot of the component is not newer the asked one. Otherwise, return the
   /// actual message.
   virtual std::optional<RaySyncMessage> CreateSyncMessage(
-      int64_t version_after, RayComponentId component_id) const = 0;
+      int64_t version_after, MessageType message_type) const = 0;
   virtual ~ReporterInterface() {}
 };
 
@@ -114,14 +114,14 @@ class RaySyncer {
   /// it'll have a global view of the cluster.
   ///
   ///
-  /// \param component_id The component to sync.
+  /// \param message_type The message type of the component.
   /// \param reporter The local component to be broadcasted.
   /// \param receiver The consumer of the sync message sent by the other nodes in the
   /// cluster.
   /// \param pull_from_reporter_interval_ms The frequence to pull a message. 0 means
   /// never pull a message in syncer.
   /// from reporter and push it to sending queue.
-  bool Register(RayComponentId component_id,
+  bool Register(MessageType message_type,
                 const ReporterInterface *reporter,
                 ReceiverInterface *receiver,
                 int64_t pull_from_reporter_interval_ms = 100);
@@ -132,10 +132,10 @@ class RaySyncer {
   /// Request trigger a broadcasting for a specific component immediately instead of
   /// waiting for ray syncer to poll the message.
   ///
-  /// \param component_id The component to check.
+  /// \param message_type The component to check.
   /// \return true if a message is generated. If the component doesn't have a new
   /// version of message, false will be returned.
-  bool OnDemandBroadcasting(RayComponentId component_id);
+  bool OnDemandBroadcasting(MessageType message_type);
 
  private:
   /// Get the io_context used by RaySyncer.

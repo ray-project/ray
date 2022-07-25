@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <boost/asio.hpp>
 #include <memory>
 #include <string>
@@ -31,7 +33,6 @@
 #include "ray/util/logging.h"
 
 namespace ray {
-
 namespace gcs {
 
 /// \class GcsClientOptions
@@ -69,11 +70,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   ///
   /// \param options Options for client.
   /// \param get_gcs_server_address_func Function to get GCS server address.
-  explicit GcsClient(const GcsClientOptions &options,
-                     std::function<bool(std::pair<std::string, int> *)>
-                         get_gcs_server_address_func = nullptr);
+  explicit GcsClient(const GcsClientOptions &options);
 
-  virtual ~GcsClient() = default;
+  virtual ~GcsClient() { Disconnect(); };
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
@@ -84,10 +83,17 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect();
 
-  virtual std::pair<std::string, int> GetGcsServerAddress();
+  virtual std::pair<std::string, int> GetGcsServerAddress() const;
 
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
+
+  /// Resubscribe to GCS to recover from a GCS failure.
+  void AsyncResubscribe() {
+    if (resubscribe_func_ != nullptr) {
+      resubscribe_func_();
+    }
+  }
 
   /// Get the sub-interface for accessing actor information in GCS.
   /// This function is thread safe.
@@ -156,9 +162,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
  protected:
   GcsClientOptions options_;
 
-  /// Whether this client is connected to GCS.
-  std::atomic<bool> is_connected_{false};
-
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
@@ -170,21 +173,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
 
  private:
-  /// Checks whether GCS at the specified address is healthy.
-  bool CheckHealth(const std::string &ip, int port, int64_t timeout_ms);
-
-  /// Fires a periodic timer to check if the connection to GCS is healthy.
-  void PeriodicallyCheckGcsConnection();
-
-  /// This function is used to redo subscription and reconnect to GCS RPC server when gcs
-  /// service failure is detected.
-  ///
-  /// \param type The type of GCS service failure.
-  void GcsServiceFailureDetected(rpc::GcsServiceFailureType type);
-
-  /// Reconnect to GCS RPC server.
-  void ReconnectGcsServer();
-
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
 
   std::unique_ptr<GcsSubscriber> gcs_subscriber_;
@@ -192,19 +180,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // Gcs rpc client
   std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-  std::atomic<bool> disconnected_ = false;
-
-  // The runner to run function periodically.
-  std::unique_ptr<PeriodicalRunner> periodical_runner_;
-  std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
   std::function<void()> resubscribe_func_;
-  std::pair<std::string, int> current_gcs_server_address_;
-  int64_t last_reconnect_timestamp_ms_;
-  std::pair<std::string, int> last_reconnect_address_;
-  std::optional<rpc::GcsServiceFailureType> current_connection_failure_;
-
-  /// Retry interval to reconnect to a GCS server.
-  const int64_t kGCSReconnectionRetryIntervalMs = 1000;
 };
 
 }  // namespace gcs

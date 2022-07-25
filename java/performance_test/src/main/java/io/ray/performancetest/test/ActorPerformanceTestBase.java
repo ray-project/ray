@@ -23,10 +23,7 @@ public class ActorPerformanceTestBase {
       boolean hasReturn,
       boolean ignoreReturn,
       int argSize,
-      boolean useDirectByteBuffer,
-      int numJavaWorkerPerProcess) {
-    System.setProperty(
-        "ray.job.num-java-workers-per-process", String.valueOf(numJavaWorkerPerProcess));
+      boolean useDirectByteBuffer) {
     System.setProperty("ray.raylet.startup-token", "0");
     Ray.init();
     try {

@@ -61,20 +61,6 @@ Status GcsPublisher::PublishNodeInfo(const NodeID &id,
   return Status::OK();
 }
 
-Status GcsPublisher::PublishNodeResource(const NodeID &id,
-                                         const rpc::NodeResourceChange &message,
-                                         const StatusCallback &done) {
-  rpc::PubMessage msg;
-  msg.set_channel_type(rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL);
-  msg.set_key_id(id.Binary());
-  *msg.mutable_node_resource_message() = message;
-  publisher_->Publish(msg);
-  if (done != nullptr) {
-    done(Status::OK());
-  }
-  return Status::OK();
-}
-
 Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
                                           const rpc::WorkerDeltaData &message,
                                           const StatusCallback &done) {
@@ -190,33 +176,6 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
       std::make_unique<rpc::SubMessage>(),
       rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
       gcs_address_,
-      [done](Status status) {
-        if (done != nullptr) {
-          done(status);
-        }
-      },
-      std::move(subscribe_item_callback),
-      std::move(subscription_failure_callback)));
-  return Status::OK();
-}
-
-Status GcsSubscriber::SubscribeAllNodeResources(
-    const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
-  // GCS subscriber.
-  auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
-    RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL);
-    subscribe(msg.node_resource_message());
-  };
-  auto subscription_failure_callback = [](const std::string &, const Status &status) {
-    RAY_LOG(WARNING) << "Subscription to NodeResource channel failed: "
-                     << status.ToString();
-  };
-  // Ignore if the subscription already exists, because the resubscription is intentional.
-  RAY_UNUSED(subscriber_->SubscribeChannel(
-      std::make_unique<rpc::SubMessage>(),
-      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
-      gcs_address_,
-
       [done](Status status) {
         if (done != nullptr) {
           done(status);

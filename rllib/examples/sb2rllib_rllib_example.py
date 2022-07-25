@@ -7,7 +7,7 @@ Run example: python sb2rllib_rllib_example.py
 """
 import gym
 import ray
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 
 # settings used for both stable baselines and rllib
 env_name = "CartPole-v1"
@@ -30,7 +30,7 @@ checkpoint_path = analysis.get_best_checkpoint(trial=analysis.get_best_trial())
 print(f"Trained model saved at {checkpoint_path}")
 
 # load and restore model
-agent = ppo.PPOTrainer(env=env_name)
+agent = ppo.PPO(env=env_name)
 agent.restore(checkpoint_path)
 print(f"Agent loaded from saved model at {checkpoint_path}")
 

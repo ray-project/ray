@@ -1,22 +1,22 @@
 import json
+import os
 import pathlib
 from pprint import pformat
-import os
 from unittest.mock import MagicMock
 
 import pytest
 
 import ray
-from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
-from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray.util.metrics import Counter, Histogram, Gauge
+from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
-    wait_for_condition,
     SignalActor,
     fetch_prometheus,
     get_log_batch,
+    wait_for_condition,
 )
+from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
+from ray.util.metrics import Counter, Gauge, Histogram
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -44,7 +44,6 @@ _METRICS = [
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
-    "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
@@ -71,9 +70,11 @@ _METRICS = [
     "ray_gcs_placement_group_creation_latency_ms_sum",
     "ray_gcs_placement_group_scheduling_latency_ms_sum",
     "ray_gcs_placement_group_count",
-    "ray_gcs_new_resource_creation_latency_ms_sum",
     "ray_gcs_actors_count",
 ]
+
+if not ray._raylet.Config.use_ray_syncer():
+    _METRICS.append("ray_outbound_heartbeat_size_kb_sum")
 
 # This list of metrics should be kept in sync with
 # ray/python/ray/autoscaler/_private/prom_metrics.py
@@ -297,7 +298,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
 
 def test_prome_file_discovery_run_by_dashboard(shutdown_only):
     ray.init(num_cpus=0)
-    global_node = ray.worker._global_node
+    global_node = ray._private.worker._global_node
     temp_dir = global_node.get_temp_dir_path()
 
     def is_service_discovery_exist():
@@ -397,6 +398,15 @@ def test_custom_metrics_edge_cases(metric_mock):
     with pytest.raises(TypeError):
         Counter("name", tag_keys=("a"))
 
+    with pytest.raises(ValueError):
+        Histogram("hist", boundaries=[-1, 1, 2])
+
+    with pytest.raises(ValueError):
+        Histogram("hist", boundaries=[0, 1, 2])
+
+    with pytest.raises(ValueError):
+        Histogram("hist", boundaries=[-1, -0.5, -0.1])
+
 
 def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
     # https://github.com/ray-project/ray/issues/12859
@@ -489,4 +499,7 @@ if __name__ == "__main__":
     import sys
 
     # Test suite is timing out. Disable on windows for now.
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

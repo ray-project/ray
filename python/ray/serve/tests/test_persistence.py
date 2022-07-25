@@ -1,6 +1,6 @@
 import ray
-from ray._private.test_utils import run_string_as_driver
 from ray import serve
+from ray._private.test_utils import run_string_as_driver
 
 
 def test_new_driver(serve_instance):
@@ -14,9 +14,9 @@ from ray import serve
 def driver():
     return "OK!"
 
-driver.deploy()
+serve.run(driver.bind())
 """.format(
-        ray.worker._global_node.address
+        ray._private.worker._global_node.address
     )
     run_string_as_driver(script)
 
@@ -26,6 +26,7 @@ driver.deploy()
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", "-s", __file__]))

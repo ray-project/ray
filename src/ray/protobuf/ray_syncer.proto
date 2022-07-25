@@ -16,16 +16,16 @@ syntax = "proto3";
 option cc_enable_arenas = true;
 package ray.rpc.syncer;
 
-enum RayComponentId {
-  RESOURCE_MANAGER = 0;
-  SCHEDULER = 1;
+enum MessageType {
+  RESOURCE_VIEW = 0;
+  COMMANDS = 1;
 }
 
 message RaySyncMessage {
   // The version of the message. -1 means the version is not set.
   int64 version = 1;
-  // The component this message is for.
-  RayComponentId component_id = 2;
+  // The type of this message.
+  MessageType message_type = 2;
   // The actual payload.
   bytes sync_message = 3;
   // The node id which initially sent this message.

@@ -14,11 +14,11 @@ from ray_release.buildkite.step import get_step
 from ray_release.config import (
     read_and_validate_release_test_collection,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
+    parse_python_version,
 )
 from ray_release.exception import ReleaseTestCLIError
 from ray_release.logger import logger
-from ray_release.wheels import find_and_wait_for_ray_wheels_url
-
+from ray_release.wheels import find_and_wait_for_ray_wheels_url, find_ray_wheels_url
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 
@@ -131,11 +131,20 @@ def main(test_collection_file: Optional[str] = None):
         tests = grouped_tests[group]
         group_steps = []
         for test, smoke_test in tests:
+            # If the python version is defined, we need a different Ray wheels URL
+            if "python" in test:
+                python_version = parse_python_version(test["python"])
+                this_ray_wheels_url = find_ray_wheels_url(
+                    ray_wheels, python_version=python_version
+                )
+            else:
+                this_ray_wheels_url = ray_wheels_url
+
             step = get_step(
                 test,
                 report=report,
                 smoke_test=smoke_test,
-                ray_wheels=ray_wheels_url,
+                ray_wheels=this_ray_wheels_url,
                 env=env,
                 priority_val=priority.value,
             )

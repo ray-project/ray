@@ -1,51 +1,45 @@
-import logging
-from concurrent import futures
-import gc
-import grpc
 import base64
-from collections import defaultdict
 import functools
-import math
-import queue
-import pickle
-
-import threading
-from typing import Any
-from typing import Dict
-from typing import Set
-from typing import Optional
-from typing import Callable
-from typing import Union
-from ray import cloudpickle
-from ray.job_config import JobConfig
-import ray
-import ray.state
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
-import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-import time
+import gc
 import inspect
 import json
+import logging
+import math
+import pickle
+import queue
+import threading
+import time
+from collections import defaultdict
+from concurrent import futures
+from typing import Any, Callable, Dict, List, Optional, Set, Union
+
+import grpc
+
+import ray
+import ray._private.state
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray import cloudpickle
+from ray._private import ray_constants
+from ray._private.client_mode_hook import disable_client_hook
+from ray._private.gcs_utils import GcsClient
+from ray._private.ray_constants import env_integer
+from ray._private.ray_logging import setup_logger
+from ray._private.services import canonicalize_bootstrap_address_or_die
+from ray._private.tls_utils import add_port_to_grpc_server
+from ray.job_config import JobConfig
 from ray.util.client.common import (
-    ClientServerHandle,
-    GRPC_OPTIONS,
     CLIENT_SERVER_MAX_THREADS,
+    GRPC_OPTIONS,
     OBJECT_TRANSFER_CHUNK_SIZE,
+    ClientServerHandle,
     ResponseCache,
 )
-from ray import ray_constants
-from ray.util.client.server.proxier import serve_proxier
-from ray.util.client.server.server_pickler import convert_from_arg
-from ray.util.client.server.server_pickler import dumps_from_server
-from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
+from ray.util.client.server.proxier import serve_proxier
+from ray.util.client.server.server_pickler import dumps_from_server, loads_from_client
 from ray.util.client.server.server_stubs import current_server
-from ray.ray_constants import env_integer
-from ray._private.client_mode_hook import disable_client_hook
-from ray._private.ray_logging import setup_logger
-from ray._private.services import canonicalize_bootstrap_address
-from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.gcs_utils import GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +98,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         """Construct a raylet service
 
         Args:
-           ray_connect_handler (Callable): Function to connect to ray cluster
+           ray_connect_handler: Function to connect to ray cluster
         """
         # Stores client_id -> (ref_id -> ObjectRef)
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(dict)
@@ -130,7 +124,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         current_job_config = None
         with disable_client_hook():
             if ray.is_initialized():
-                worker = ray.worker.global_worker
+                worker = ray._private.worker.global_worker
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
@@ -153,18 +147,22 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
-        if (
-            current_job_config
-            and set(job_config.runtime_env_info.uris)
-            != set(current_job_config.runtime_env_info.uris)
-            and len(job_config.runtime_env_info.uris) > 0
-        ):
-            return ray_client_pb2.InitResponse(
-                ok=False,
-                msg="Runtime environment doesn't match "
-                f"request one {job_config.runtime_env_info.uris} "
-                f"current one {current_job_config.runtime_env_info.uris}",
+        if current_job_config:
+            job_uris = set(job_config.runtime_env_info.uris.working_dir_uri)
+            job_uris.update(job_config.runtime_env_info.uris.py_modules_uris)
+            current_job_uris = set(
+                current_job_config.runtime_env_info.uris.working_dir_uri
             )
+            current_job_uris.update(
+                current_job_config.runtime_env_info.uris.py_modules_uris
+            )
+            if job_uris != current_job_uris and len(job_uris) > 0:
+                return ray_client_pb2.InitResponse(
+                    ok=False,
+                    msg="Runtime environment doesn't match "
+                    f"request one {job_config.runtime_env_info.uris} "
+                    f"current one {current_job_config.runtime_env_info.uris}",
+                )
         return ray_client_pb2.InitResponse(ok=True)
 
     @_use_response_cache
@@ -548,9 +546,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             remaining_object_ids=remaining_object_ids,
         )
 
-    @_use_response_cache
     def Schedule(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         logger.debug(
             "schedule: %s %s"
@@ -559,11 +560,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         try:
             with disable_client_hook():
                 if task.type == ray_client_pb2.ClientTask.FUNCTION:
-                    result = self._schedule_function(task, context)
+                    result = self._schedule_function(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.ACTOR:
-                    result = self._schedule_actor(task, context)
+                    result = self._schedule_actor(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.METHOD:
-                    result = self._schedule_method(task, context)
+                    result = self._schedule_method(task, arglist, kwargs, context)
                 elif task.type == ray_client_pb2.ClientTask.NAMED_ACTOR:
                     result = self._schedule_named_actor(task, context)
                 else:
@@ -580,12 +581,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             )
 
     def _schedule_method(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception("Can't run an actor the server doesn't have a handle for")
-        arglist, kwargs = self._convert_args(task.args, task.kwargs)
         method = getattr(actor_handle, task.name)
         opts = decode_options(task.options)
         if opts is not None:
@@ -595,13 +599,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.ClientTaskTicket(return_ids=ids)
 
     def _schedule_actor(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         remote_class = self.lookup_or_register_actor(
             task.payload_id, task.client_id, decode_options(task.baseline_options)
         )
-
-        arglist, kwargs = self._convert_args(task.args, task.kwargs)
         opts = decode_options(task.options)
         if opts is not None:
             remote_class = remote_class.options(**opts)
@@ -612,12 +618,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.ClientTaskTicket(return_ids=[actor._actor_id.binary()])
 
     def _schedule_function(
-        self, task: ray_client_pb2.ClientTask, context=None
+        self,
+        task: ray_client_pb2.ClientTask,
+        arglist: List[Any],
+        kwargs: Dict[str, Any],
+        context=None,
     ) -> ray_client_pb2.ClientTaskTicket:
         remote_func = self.lookup_or_register_func(
             task.payload_id, task.client_id, decode_options(task.baseline_options)
         )
-        arglist, kwargs = self._convert_args(task.args, task.kwargs)
         opts = decode_options(task.options)
         if opts is not None:
             remote_func = remote_func.options(**opts)
@@ -637,16 +646,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.actor_owners[task.client_id].add(bin_actor_id)
         self.named_actors.add(bin_actor_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=[actor._actor_id.binary()])
-
-    def _convert_args(self, arg_list, kwarg_map):
-        argout = []
-        for arg in arg_list:
-            t = convert_from_arg(arg, self)
-            argout.append(t)
-        kwargout = {}
-        for k in kwarg_map:
-            kwargout[k] = convert_from_arg(kwarg_map[k], self)
-        return argout, kwargout
 
     def lookup_or_register_func(
         self, id: bytes, client_id: str, options: Optional[Dict]
@@ -800,7 +799,7 @@ def try_create_gcs_client(
     Try to create a gcs client based on the the command line args or by
     autodetecting a running Ray cluster.
     """
-    address = canonicalize_bootstrap_address(address)
+    address = canonicalize_bootstrap_address_or_die(address)
     return GcsClient(address=address)
 
 

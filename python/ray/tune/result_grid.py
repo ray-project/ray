@@ -1,14 +1,15 @@
 import os
+from pathlib import Path
 from typing import Optional, Union
 
+import pandas as pd
+
+from ray.air.result import Result
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.result import Result
-from ray.tune import ExperimentAnalysis
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
-from ray.tune.trial import Trial
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 
 
@@ -40,7 +41,10 @@ class ResultGrid:
     seen by Tune will be provided.
     """
 
-    def __init__(self, experiment_analysis: ExperimentAnalysis):
+    def __init__(
+        self,
+        experiment_analysis: ExperimentAnalysis,
+    ):
         self._experiment_analysis = experiment_analysis
 
     def get_best_result(
@@ -71,21 +75,112 @@ class ResultGrid:
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
-        return self._trial_to_result(
-            self._experiment_analysis.get_best_trial(
-                metric=metric,
-                mode=mode,
-                scope=scope,
-                filter_nan_and_inf=filter_nan_and_inf,
+        if not metric and not self._experiment_analysis.default_metric:
+            raise ValueError(
+                "No metric is provided. Either pass in a `metric` arg to "
+                "`get_best_result` or specify a metric in the "
+                "`TuneConfig` of your `Tuner`."
             )
+        if not mode and not self._experiment_analysis.default_mode:
+            raise ValueError(
+                "No mode is provided. Either pass in a `mode` arg to "
+                "`get_best_result` or specify a mode in the "
+                "`TuneConfig` of your `Tuner`."
+            )
+
+        best_trial = self._experiment_analysis.get_best_trial(
+            metric=metric,
+            mode=mode,
+            scope=scope,
+            filter_nan_and_inf=filter_nan_and_inf,
+        )
+        if not best_trial:
+            error_msg = (
+                "No best trial found for the given metric: "
+                f"{metric or self._experiment_analysis.default_metric}. "
+                "This means that no trial has reported this metric"
+            )
+            error_msg += (
+                ", or all values reported for this metric are NaN. To not ignore NaN "
+                "values, you can set the `filter_nan_and_inf` arg to False."
+                if filter_nan_and_inf
+                else "."
+            )
+            raise RuntimeError(error_msg)
+
+        return self._trial_to_result(best_trial)
+
+    def get_dataframe(
+        self,
+        filter_metric: Optional[str] = None,
+        filter_mode: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """Return dataframe of all trials with their configs and reported results.
+
+        Per default, this returns the last reported results for each trial.
+
+        If ``filter_metric`` and ``filter_mode`` are set, the results from each
+        trial are filtered for this metric and mode. For example, if
+        ``filter_metric="some_metric"`` and ``filter_mode="max"``, for each trial,
+        every received result is checked, and the one where ``some_metric`` is
+        maximal is returned.
+
+
+        Example:
+
+            .. code-block:: python
+
+                result_grid = Tuner.fit(...)
+
+                # Get last reported results per trial
+                df = result_grid.get_dataframe()
+
+                # Get best ever reported accuracy per trial
+                df = result_grid.get_dataframe(metric="accuracy", mode="max")
+
+        Args:
+            filter_metric: Metric to filter best result for.
+            filter_mode: If ``filter_metric`` is given, one of ``["min", "max"]``
+                to specify if we should find the minimum or maximum result.
+
+        Returns:
+            Pandas DataFrame with each trial as a row and their results as columns.
+        """
+        return self._experiment_analysis.dataframe(
+            metric=filter_metric, mode=filter_mode
         )
 
     def __len__(self) -> int:
         return len(self._experiment_analysis.trials)
 
-    def __getitem__(self, i) -> Result:
+    def __getitem__(self, i: int) -> Result:
         """Returns the i'th result in the grid."""
-        return self._trial_to_result(self._experiment_analysis.trials[i])
+        return self._trial_to_result(
+            self._experiment_analysis.trials[i],
+        )
+
+    @property
+    def errors(self):
+        """Returns the exceptions of errored trials."""
+        return [result.error for result in self if result.error]
+
+    @property
+    def num_errors(self):
+        """Returns the number of errored trials."""
+        return len(
+            [t for t in self._experiment_analysis.trials if t.status == Trial.ERROR]
+        )
+
+    @property
+    def num_terminated(self):
+        """Returns the number of terminated (but not errored) trials."""
+        return len(
+            [
+                t
+                for t in self._experiment_analysis.trials
+                if t.status == Trial.TERMINATED
+            ]
+        )
 
     @staticmethod
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
@@ -99,15 +194,22 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        if trial.checkpoint.value:
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(trial.checkpoint.value)
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
-        else:
-            checkpoint = None
+        checkpoint = trial.checkpoint.to_air_checkpoint()
+        best_checkpoints = [
+            (checkpoint.to_air_checkpoint(), checkpoint.metrics)
+            for checkpoint in trial.get_trial_checkpoints()
+        ]
 
         result = Result(
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
+            log_dir=Path(trial.logdir) if trial.logdir else None,
+            metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
+                trial.logdir
+            )
+            if self._experiment_analysis
+            else None,
+            best_checkpoints=best_checkpoints,
         )
         return result

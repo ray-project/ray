@@ -1,19 +1,17 @@
 import logging
 import uuid
 from functools import partial
-
 from types import FunctionType
-from typing import Optional, Type, Union
+from typing import Callable, Optional, Type, Union
 
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
     _internal_kv_get,
+    _internal_kv_initialized,
     _internal_kv_put,
 )
 from ray.tune.error import TuneError
-from typing import Callable
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -21,6 +19,7 @@ RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
 RLLIB_ACTION_DIST = "rllib_action_dist"
 RLLIB_INPUT = "rllib_input"
+RLLIB_CONNECTOR = "rllib_connector"
 TEST = "__test__"
 KNOWN_CATEGORIES = [
     TRAINABLE_CLASS,
@@ -29,6 +28,7 @@ KNOWN_CATEGORIES = [
     RLLIB_PREPROCESSOR,
     RLLIB_ACTION_DIST,
     RLLIB_INPUT,
+    RLLIB_CONNECTOR,
     TEST,
 ]
 
@@ -79,8 +79,8 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
             automatically converted into a class during registration.
     """
 
+    from ray.tune.trainable import wrap_function
     from ray.tune.trainable import Trainable
-    from ray.tune.function_runner import wrap_function
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")
@@ -206,7 +206,7 @@ class _Registry:
 
 
 _global_registry = _Registry(prefix="global")
-ray.worker._post_init_hooks.append(_global_registry.flush_values)
+ray._private.worker._post_init_hooks.append(_global_registry.flush_values)
 
 
 class _ParameterRegistry:

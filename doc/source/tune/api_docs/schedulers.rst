@@ -12,7 +12,9 @@ Trainable and is maximized or minimized according to ``mode``.
 
 .. code-block:: python
 
-    tune.run( ... , scheduler=Scheduler(metric="accuracy", mode="max"))
+    from ray import tune
+    tuner = tune.Tuner( ... , tune_config=tune.TuneConfig(scheduler=Scheduler(metric="accuracy", mode="max")))
+    results = tuner.fit()
 
 
 .. _tune-scheduler-hyperband:
@@ -21,10 +23,11 @@ ASHA (tune.schedulers.ASHAScheduler)
 ------------------------------------
 
 The `ASHA <https://openreview.net/forum?id=S1Y7OOlRZ>`__ scheduler can be used by
-setting the ``scheduler`` parameter of ``tune.run``, e.g.
+setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by ``Tuner``, e.g.
 
 .. code-block:: python
 
+    from ray import tune
     asha_scheduler = ASHAScheduler(
         time_attr='training_iteration',
         metric='episode_reward_mean',
@@ -33,7 +36,8 @@ setting the ``scheduler`` parameter of ``tune.run``, e.g.
         grace_period=10,
         reduction_factor=3,
         brackets=1)
-    tune.run( ... , scheduler=asha_scheduler)
+    tuner = tune.Tuner( ... , tune_config=tune.TuneConfig(scheduler=asha_scheduler))
+    results = tuner.fit()
 
 Compared to the original version of HyperBand, this implementation provides better
 parallelism and avoids straggler issues during eliminations.
@@ -64,7 +68,7 @@ HyperBand Implementation Details
 
 Implementation details may deviate slightly from theory but are focused on increasing usability.
 Note: ``R``, ``s_max``, and ``eta`` are parameters of HyperBand given by the paper.
-See `this post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ for context.
+See `this post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`_ for context.
 
 1. Both ``s_max`` (representing the ``number of brackets - 1``) and ``eta``, representing the downsampling rate, are fixed.
     In many practical settings, ``R``, which represents some resource unit and often the number of training iterations,
@@ -82,7 +86,7 @@ HyperBand configurations that are not very intuitive:
 The implementation takes the same configuration as the example given in the paper
 and exposes ``max_t``, which is not a parameter in the paper.
 
-2. The example in the `post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ to calculate ``n_0``
+2. The example in the `post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`_ to calculate ``n_0``
     is actually a little different than the algorithm given in the paper.
     In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
 
@@ -109,7 +113,7 @@ Population Based Training (tune.schedulers.PopulationBasedTraining)
 -------------------------------------------------------------------
 
 Tune includes a distributed implementation of `Population Based Training (PBT) <https://www.deepmind.com/blog/population-based-training-of-neural-networks>`__.
-This can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.
+This can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig``, which is taken in by ``Tuner``, e.g.
 
 .. code-block:: python
 
@@ -123,7 +127,8 @@ This can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.
                 "alpha": lambda: random.uniform(0.0, 1.0),
             ...
             })
-    tune.run( ... , scheduler=pbt_scheduler)
+    tuner = tune.Tuner( ... , tune_config=tune.TuneConfig(scheduler=pbt_scheduler))
+    tuner.fit()
 
 When the PBT scheduler is enabled, each trial variant is treated as a member of the population.
 Periodically, top-performing trials are checkpointed
@@ -157,9 +162,11 @@ config according to the obtained schedule.
     replay = PopulationBasedTrainingReplay(
         experiment_dir="~/ray_results/pbt_experiment/",
         trial_id="XXXXX_00001")
-    tune.run(
+    tuner = tune.Tuner(
         ...,
-        scheduler=replay)
+        tune_config=tune.TuneConfig(scheduler=replay)
+        )
+    results = tuner.fit()
 
 See :ref:`here for an example <tune-advanced-tutorial-pbt-replay>` on how to use the
 replay utility in practice.
@@ -183,7 +190,7 @@ The Tune implementation of PB2 requires GPy and sklearn to be installed:
     pip install GPy sklearn
 
 
-PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.:
+PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.TuneConfig`` which is taken in by ``Tuner``, e.g.:
 
 .. code-block:: python
 
@@ -199,7 +206,8 @@ PB2 can be enabled by setting the ``scheduler`` parameter of ``tune.run``, e.g.:
                 "alpha": [0.0, 1.0],
             ...
             })
-    tune.run( ... , scheduler=pb2_scheduler)
+    tuner = tune.Tuner( ... , tune_config=tune.TuneConfig(scheduler=pb2_scheduler))
+    results = tuner.fit()
 
 
 When the PB2 scheduler is enabled, each trial variant is treated as a member of the population.

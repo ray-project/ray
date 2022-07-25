@@ -1,14 +1,12 @@
-import os
 import asyncio
 import logging
+import os
 import random
 from concurrent.futures import ThreadPoolExecutor
 
 import ray
-
-import ray.dashboard.utils as dashboard_utils
 import ray._private.usage.usage_lib as ray_usage_lib
-
+import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -18,10 +16,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self.usage_stats_enabled = ray_usage_lib.usage_stats_enabled()
-        self.cluster_metadata = ray_usage_lib.get_cluster_metadata(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client(),
-            num_retries=20,
-        )
+        self.usage_stats_prompt_enabled = ray_usage_lib.usage_stats_prompt_enabled()
         self.cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
             os.path.expanduser("~/ray_bootstrap_config.yaml")
         )
@@ -44,7 +39,8 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             return ray.dashboard.optional_utils.rest_response(
                 success=True,
                 message="Fetched usage stats enabled",
-                enabled=self.usage_stats_enabled,
+                usage_stats_enabled=self.usage_stats_enabled,
+                usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
             )
 
     def _report_usage_sync(self):
@@ -59,11 +55,11 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
         try:
             data = ray_usage_lib.generate_report_data(
-                self.cluster_metadata,
                 self.cluster_config_to_report,
                 self.total_success,
                 self.total_failed,
                 self.seq_no,
+                self._dashboard_head.gcs_client.address,
             )
 
             error = None
@@ -92,7 +88,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
-            await loop.run_in_executor(executor, self._report_usage_sync)
+            await loop.run_in_executor(executor, lambda: self._report_usage_sync())
 
     @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())
     async def periodically_report_usage(self):

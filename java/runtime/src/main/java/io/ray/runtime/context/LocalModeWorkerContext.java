@@ -48,31 +48,21 @@ public class LocalModeWorkerContext implements WorkerContext {
   @Override
   public ActorId getCurrentActorId() {
     TaskSpec taskSpec = currentTask.get();
-    if (taskSpec == null) {
-      return ActorId.NIL;
-    }
+    checkTaskSpecNotNull(taskSpec);
     return LocalModeTaskSubmitter.getActorId(taskSpec);
   }
 
   @Override
-  public ClassLoader getCurrentClassLoader() {
-    return null;
-  }
-
-  @Override
-  public void setCurrentClassLoader(ClassLoader currentClassLoader) {}
-
-  @Override
   public TaskType getCurrentTaskType() {
     TaskSpec taskSpec = currentTask.get();
-    Preconditions.checkNotNull(taskSpec, "Current task is not set.");
+    checkTaskSpecNotNull(taskSpec);
     return taskSpec.getType();
   }
 
   @Override
   public TaskId getCurrentTaskId() {
     TaskSpec taskSpec = currentTask.get();
-    Preconditions.checkState(taskSpec != null);
+    checkTaskSpecNotNull(taskSpec);
     return TaskId.fromBytes(taskSpec.getTaskId().toByteArray());
   }
 
@@ -85,7 +75,9 @@ public class LocalModeWorkerContext implements WorkerContext {
     currentTask.set(taskSpec);
   }
 
-  public TaskSpec getCurrentTask() {
-    return currentTask.get();
+  private static void checkTaskSpecNotNull(TaskSpec taskSpec) {
+    Preconditions.checkNotNull(
+        taskSpec,
+        "Current task is not set. Maybe you invoked this API in a user-created thread not managed by Ray. Invoking this API in a user-created thread is not supported yet in local mode. You can switch to cluster mode.");
   }
 }

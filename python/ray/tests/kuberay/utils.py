@@ -6,9 +6,11 @@ import contextlib
 import logging
 import pathlib
 import subprocess
+import tempfile
 import time
 from typing import Any, Dict, Generator, List, Optional
 import yaml
+import os
 
 import ray
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -17,22 +19,117 @@ from ray.job_submission import JobStatus, JobSubmissionClient
 logger = logging.getLogger(__name__)
 
 SCRIPTS_DIR = pathlib.Path(__file__).resolve().parent / "scripts"
+TEST_CR_PATH = (
+    pathlib.Path(__file__).resolve().parent / "setup" / "raycluster_test.yaml"
+)
+TEST_CLUSTER_NAME = "raycluster-test"
+
+# Parent directory of Ray repository
+RAY_PARENT = str(pathlib.Path(__file__).resolve().parents[5])
+
+RAYCLUSTERS_QUALIFIED = "rayclusters.ray.io"
+
+LOG_FORMAT = "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
 
 
-def wait_for_crd(crd_name: str, tries=60, backoff_s=5):
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format=LOG_FORMAT,
+    )
+
+
+def switch_to_ray_parent_dir():
+    # Switch to parent of Ray repo, because that's what the doc examples do.
+    logger.info("Switching to parent of Ray directory.")
+    os.chdir(RAY_PARENT)
+
+
+def setup_kuberay_operator():
+    """Set up KubeRay operator and Ray autoscaler RBAC."""
+    switch_to_ray_parent_dir()
+    logger.info("Cloning KubeRay and setting up KubeRay configuration.")
+    # For faster run-time when triggering the test locally, don't run the init
+    # script if it has already been run.
+    subprocess.check_call(
+        [
+            "bash",
+            "-c",
+            (
+                "ls ray/python/ray/autoscaler/kuberay/config ||"
+                " ./ray/python/ray/autoscaler/kuberay/init-config.sh"
+            ),
+        ]
+    )
+    logger.info("Creating KubeRay operator.")
+    subprocess.check_call(
+        [
+            "kubectl",
+            "create",
+            "-k",
+            "ray/python/ray/autoscaler/kuberay/config/default",
+        ]
+    )
+
+
+def teardown_kuberay_operator():
+    logger.info("Switching to parent of Ray directory.")
+    os.chdir(RAY_PARENT)
+
+    logger.info("Deleting operator.")
+    subprocess.check_call(
+        [
+            "kubectl",
+            "delete",
+            "--ignore-not-found",
+            "-k",
+            "ray/python/ray/autoscaler/kuberay/config/default",
+        ]
+    )
+
+    logger.info("Double-checking no pods left over in namespace ray-system.")
+    wait_for_pods(goal_num_pods=0, namespace="ray-system")
+
+
+def wait_for_raycluster_crd(tries=60, backoff_s=5):
     """CRD creation can take a bit of time after the client request.
     This function waits until the crd with the provided name is registered.
     """
+    switch_to_ray_parent_dir()
+    logger.info("Making sure RayCluster CRD has been registered.")
     for i in range(tries):
         get_crd_output = subprocess.check_output(["kubectl", "get", "crd"]).decode()
-        if crd_name in get_crd_output:
-            logger.info(f"Confirmed existence of CRD {crd_name}.")
-            return
+        if RAYCLUSTERS_QUALIFIED in get_crd_output:
+            logger.info("Confirmed existence of RayCluster CRD.")
+            break
         elif i < tries - 1:
-            logger.info(f"Still waiting to register CRD {crd_name}")
+            logger.info("Still waiting to register RayCluster CRD.")
             time.sleep(backoff_s)
         else:
-            raise Exception(f"Failed to register CRD {crd_name}")
+            raise Exception("Failed to register RayCluster CRD.")
+
+    # Create a test RayCluster CR to make sure that the CRD is fully registered.
+    for i in range(tries):
+        try:
+            subprocess.check_call(["kubectl", "apply", "-f", TEST_CR_PATH])
+            break
+        except subprocess.CalledProcessError as e:
+            logger.info("Can't create RayCluster CR.")
+            if i < tries - 1:
+                logger.info("Retrying.")
+                time.sleep(backoff_s)
+            else:
+                logger.info("Giving up.")
+                raise e from None
+
+    # Confirm the test RayCluster exists.
+    out = subprocess.check_output(["kubectl", "get", RAYCLUSTERS_QUALIFIED]).decode()
+    assert TEST_CLUSTER_NAME in out, out
+
+    # Delete the test RayCluster.
+    subprocess.check_call(["kubectl", "delete", "-f", TEST_CR_PATH])
+    # Make sure the associated resources are gone before proceeding.
+    wait_for_pods(goal_num_pods=0, namespace="default")
 
 
 def wait_for_pods(goal_num_pods: int, namespace: str, tries=60, backoff_s=5) -> None:
@@ -200,6 +297,21 @@ def kubectl_exec(
     out = subprocess.check_output(kubectl_exec_command).decode().strip()
     # Print for debugging convenience.
     print(out)
+    return out
+
+
+def kubectl_logs(
+    pod: str,
+    namespace: str,
+    container: Optional[str] = None,
+) -> str:
+    """Wrapper for kubectl logs.
+
+    Returns the logs as a string.
+    """
+    container_option = ["-c", container] if container else []
+    kubectl_logs_command = ["kubectl", "logs", pod] + container_option
+    out = subprocess.check_output(kubectl_logs_command).decode().strip()
     return out
 
 
@@ -397,3 +509,60 @@ def ray_job_submit(
 
         assert status == JobStatus.SUCCEEDED
         return client.get_job_logs(job_id)
+
+
+def kubectl_patch(
+    kind: str,
+    name: str,
+    namespace: str,
+    patch: Dict[str, Any],
+    patch_type: str = "strategic",
+):
+    """Wrapper for kubectl patch.
+
+    Args:
+        kind: Kind of the K8s resource (e.g. pod)
+        name: Name of the K8s resource.
+        namespace: Namespace of the K8s resource.
+        patch: The patch to apply, as a dict.
+        patch_type: json, merge, or strategic
+    """
+    with tempfile.NamedTemporaryFile("w") as patch_file:
+        yaml.dump(patch, patch_file)
+        patch_file.flush()
+        subprocess.check_call(
+            [
+                "kubectl",
+                "-n",
+                f"{namespace}",
+                "patch",
+                f"{kind}",
+                f"{name}",
+                "--patch-file",
+                f"{patch_file.name}",
+                "--type",
+                f"{patch_type}",
+            ]
+        )
+
+
+def kubectl_delete(kind: str, name: str, namespace: str, wait: bool = True):
+    """Wrapper for kubectl delete.
+
+    Args:
+        kind: Kind of the K8s resource (e.g. pod)
+        name: Name of the K8s resource.
+        namespace: Namespace of the K8s resource.
+    """
+    wait_str = "true" if wait else "false"
+    subprocess.check_output(
+        [
+            "kubectl",
+            "-n",
+            f"{namespace}",
+            "delete",
+            f"{kind}",
+            f"{name}",
+            f"--wait={wait_str}",
+        ]
+    )

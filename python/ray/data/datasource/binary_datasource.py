@@ -5,8 +5,10 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI
 class BinaryDatasource(FileBasedDatasource):
     """Binary datasource, for reading and writing binary files.
 

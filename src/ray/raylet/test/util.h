@@ -26,138 +26,144 @@ class MockWorker : public WorkerInterface {
         is_detached_actor_(false),
         runtime_env_hash_(runtime_env_hash) {}
 
-  WorkerID WorkerId() const { return worker_id_; }
+  WorkerID WorkerId() const override { return worker_id_; }
 
-  rpc::WorkerType GetWorkerType() const { return rpc::WorkerType::WORKER; }
+  rpc::WorkerType GetWorkerType() const override { return rpc::WorkerType::WORKER; }
 
-  int Port() const { return port_; }
+  int Port() const override { return port_; }
 
-  void SetOwnerAddress(const rpc::Address &address) { address_ = address; }
+  void SetOwnerAddress(const rpc::Address &address) override { address_ = address; }
 
-  void AssignTaskId(const TaskID &task_id) {}
+  void AssignTaskId(const TaskID &task_id) override {}
 
-  void SetAssignedTask(const RayTask &assigned_task) { task_ = assigned_task; }
+  void SetAssignedTask(const RayTask &assigned_task) override { task_ = assigned_task; }
 
-  const std::string IpAddress() const { return address_.ip_address(); }
+  const std::string IpAddress() const override { return address_.ip_address(); }
+
+  void AsyncNotifyGCSRestart() override {}
 
   void SetAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
     allocated_instances_ = allocated_instances;
   }
 
   void SetLifetimeAllocatedInstances(
-      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {
     lifetime_allocated_instances_ = allocated_instances;
   }
 
-  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() {
+  std::shared_ptr<TaskResourceInstances> GetAllocatedInstances() override {
     return allocated_instances_;
   }
-  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
+  std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() override {
     return lifetime_allocated_instances_;
   }
 
-  void MarkDead() { RAY_CHECK(false) << "Method unused"; }
-  bool IsDead() const {
+  void MarkDead() override { RAY_CHECK(false) << "Method unused"; }
+  bool IsDead() const override {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
-  void MarkBlocked() { blocked_ = true; }
-  void MarkUnblocked() { blocked_ = false; }
-  bool IsBlocked() const { return blocked_; }
+  void MarkBlocked() override { blocked_ = true; }
+  void MarkUnblocked() override { blocked_ = false; }
+  bool IsBlocked() const override { return blocked_; }
 
-  Process GetProcess() const { return Process::CreateNewDummy(); }
-  StartupToken GetStartupToken() const { return 0; }
-  void SetProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
+  Process GetProcess() const override { return Process::CreateNewDummy(); }
+  StartupToken GetStartupToken() const override { return 0; }
+  void SetProcess(Process proc) override { RAY_CHECK(false) << "Method unused"; }
 
-  Language GetLanguage() const {
+  Language GetLanguage() const override {
     RAY_CHECK(false) << "Method unused";
     return Language::PYTHON;
   }
 
-  void Connect(int port) { RAY_CHECK(false) << "Method unused"; }
+  void Connect(int port) override { RAY_CHECK(false) << "Method unused"; }
 
-  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) {
+  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override {
     RAY_CHECK(false) << "Method unused";
   }
 
-  int AssignedPort() const {
+  int AssignedPort() const override {
     RAY_CHECK(false) << "Method unused";
     return -1;
   }
-  void SetAssignedPort(int port) { RAY_CHECK(false) << "Method unused"; }
-  const TaskID &GetAssignedTaskId() const {
+  void SetAssignedPort(int port) override { RAY_CHECK(false) << "Method unused"; }
+  const TaskID &GetAssignedTaskId() const override {
     RAY_CHECK(false) << "Method unused";
     return TaskID::Nil();
   }
-  bool AddBlockedTaskId(const TaskID &task_id) {
+  bool AddBlockedTaskId(const TaskID &task_id) override {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
-  bool RemoveBlockedTaskId(const TaskID &task_id) {
+  bool RemoveBlockedTaskId(const TaskID &task_id) override {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const {
+  const std::unordered_set<TaskID> &GetBlockedTaskIds() const override {
     RAY_CHECK(false) << "Method unused";
     auto *t = new std::unordered_set<TaskID>();
     return *t;
   }
-  const JobID &GetAssignedJobId() const {
+  const JobID &GetAssignedJobId() const override {
     RAY_CHECK(false) << "Method unused";
     return JobID::Nil();
   }
-  int GetRuntimeEnvHash() const { return runtime_env_hash_; }
-  void AssignActorId(const ActorID &actor_id) { RAY_CHECK(false) << "Method unused"; }
-  const ActorID &GetActorId() const {
+  int GetRuntimeEnvHash() const override { return runtime_env_hash_; }
+  void AssignActorId(const ActorID &actor_id) override {
+    RAY_CHECK(false) << "Method unused";
+  }
+  const ActorID &GetActorId() const override {
     RAY_CHECK(false) << "Method unused";
     return ActorID::Nil();
   }
-  void MarkDetachedActor() { is_detached_actor_ = true; }
-  bool IsDetachedActor() const { return is_detached_actor_; }
-  const std::shared_ptr<ClientConnection> Connection() const {
+  void MarkDetachedActor() override { is_detached_actor_ = true; }
+  bool IsDetachedActor() const override { return is_detached_actor_; }
+  const std::shared_ptr<ClientConnection> Connection() const override {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
-  const rpc::Address &GetOwnerAddress() const {
+  const rpc::Address &GetOwnerAddress() const override {
     RAY_CHECK(false) << "Method unused";
     return address_;
   }
 
-  void DirectActorCallArgWaitComplete(int64_t tag) {
+  void DirectActorCallArgWaitComplete(int64_t tag) override {
     RAY_CHECK(false) << "Method unused";
   }
 
-  void ClearAllocatedInstances() { allocated_instances_ = nullptr; }
+  void ClearAllocatedInstances() override { allocated_instances_ = nullptr; }
 
-  void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; }
+  void ClearLifetimeAllocatedInstances() override {
+    lifetime_allocated_instances_ = nullptr;
+  }
 
-  const BundleID &GetBundleId() const {
+  const BundleID &GetBundleId() const override {
     RAY_CHECK(false) << "Method unused";
     return bundle_id_;
   }
 
-  void SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
+  void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
 
-  RayTask &GetAssignedTask() { return task_; }
+  RayTask &GetAssignedTask() override { return task_; }
 
-  bool IsRegistered() {
+  bool IsRegistered() override {
     RAY_CHECK(false) << "Method unused";
     return false;
   }
 
-  rpc::CoreWorkerClientInterface *rpc_client() {
+  rpc::CoreWorkerClientInterface *rpc_client() override {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
 
-  bool IsAvailableForScheduling() const {
+  bool IsAvailableForScheduling() const override {
     RAY_CHECK(false) << "Method unused";
     return true;
   }
 
  protected:
-  void SetStartupToken(StartupToken startup_token) {
+  void SetStartupToken(StartupToken startup_token) override {
     RAY_CHECK(false) << "Method unused";
   };
 

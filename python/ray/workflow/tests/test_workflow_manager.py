@@ -1,5 +1,3 @@
-import time
-
 import pytest
 import ray
 from ray import workflow
@@ -7,8 +5,10 @@ from filelock import FileLock
 
 
 def test_workflow_manager_simple(workflow_start_regular):
+    from ray.workflow.exceptions import WorkflowNotFoundError
+
     assert [] == workflow.list_all()
-    with pytest.raises(workflow.common.WorkflowNotFoundError):
+    with pytest.raises(WorkflowNotFoundError):
         workflow.get_status("X")
 
 
@@ -34,8 +34,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
         return 100
 
     outputs = [
-        workflow.create(long_running.bind(i)).run_async(workflow_id=str(i))
-        for i in range(100)
+        workflow.run_async(long_running.bind(i), workflow_id=str(i)) for i in range(100)
     ]
     # Test list all, it should list all jobs running
     all_tasks = workflow.list_all()
@@ -79,7 +78,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     assert workflow.get_status("0") == "FAILED"
     assert workflow.get_status("1") == "SUCCESSFUL"
     lock.acquire()
-    r = workflow.resume("0")
+    r = workflow.resume_async("0")
     assert workflow.get_status("0") == workflow.RUNNING
     flag_file.unlink()
     lock.release()
@@ -88,7 +87,7 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
 
     # Test cancel
     lock.acquire()
-    workflow.resume("2")
+    workflow.resume_async("2")
     assert workflow.get_status("2") == workflow.RUNNING
     workflow.cancel("2")
     assert workflow.get_status("2") == workflow.CANCELED
@@ -98,55 +97,6 @@ def test_workflow_manager(workflow_start_regular, tmp_path):
     assert len(resumed) == 48
     lock.release()
     assert [ray.get(o) for (_, o) in resumed] == [100] * 48
-
-
-@pytest.mark.parametrize("workflow_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_actor_manager(workflow_start_regular, tmp_path):
-    lock_file = tmp_path / "lock"
-
-    @workflow.virtual_actor
-    class LockCounter:
-        def __init__(self, lck):
-            self.counter = 0
-            self.lck = lck
-
-        @workflow.virtual_actor.readonly
-        def val(self):
-            with FileLock(self.lck):
-                return self.counter
-
-        def incr(self):
-            with FileLock(self.lck):
-                self.counter += 1
-                return self.counter
-
-        def __getstate__(self):
-            return (self.lck, self.counter)
-
-        def __setstate__(self, state):
-            self.lck, self.counter = state
-
-    actor = LockCounter.get_or_create("counter", str(lock_file))
-    ray.get(actor.ready())
-
-    lock = FileLock(lock_file)
-    lock.acquire()
-
-    assert [("counter", workflow.SUCCESSFUL)] == workflow.list_all()
-
-    v = actor.val.run_async()
-    # Readonly function won't make the workflow running
-    assert [("counter", workflow.SUCCESSFUL)] == workflow.list_all()
-    lock.release()
-    assert ray.get(v) == 0
-
-    # Writer function would make the workflow running
-    lock.acquire()
-    v = actor.incr.run_async()
-    time.sleep(2)
-    assert [("counter", workflow.RUNNING)] == workflow.list_all()
-    lock.release()
-    assert ray.get(v) == 1
 
 
 if __name__ == "__main__":

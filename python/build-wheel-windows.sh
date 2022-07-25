@@ -5,7 +5,10 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=($(python -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" python_versions "${ROOT_DIR}"/setup.py | tr -d "\r"))
+PY_VERSIONS=("3.7"
+             "3.8"
+             "3.9"
+             "3.10")
 
 bazel_preclean() {
   "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"

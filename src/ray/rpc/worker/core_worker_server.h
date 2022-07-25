@@ -30,6 +30,7 @@ namespace rpc {
 #define RAY_CORE_WORKER_RPC_HANDLERS                                         \
   RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, -1)                       \
   RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete, -1) \
+  RPC_SERVICE_HANDLER(CoreWorkerService, RayletNotifyGCSRestart, -1)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, -1)                \
   RPC_SERVICE_HANDLER(CoreWorkerService, WaitForActorOutOfScope, -1)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, PubsubLongPolling, -1)              \
@@ -51,6 +52,7 @@ namespace rpc {
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RayletNotifyGCSRestart)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubLongPolling)              \

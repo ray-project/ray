@@ -8,19 +8,19 @@ import numpy as np
 import pytest
 
 import ray
-from ray.experimental.internal_kv import _internal_kv_get
-from ray.ray_constants import DEBUG_AUTOSCALING_ERROR
+import ray._private.ray_constants as ray_constants
 import ray._private.utils
-import ray.ray_constants as ray_constants
-from ray.cluster_utils import cluster_not_supported
+from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR
 from ray._private.test_utils import (
-    init_error_pubsub,
+    Semaphore,
     get_error_message,
     get_log_batch,
-    Semaphore,
-    wait_for_condition,
+    init_error_pubsub,
     run_string_as_driver_nonblocking,
+    wait_for_condition,
 )
+from ray.cluster_utils import cluster_not_supported
+from ray.experimental.internal_kv import _internal_kv_get
 
 
 def test_warning_for_too_many_actors(shutdown_only):
@@ -136,7 +136,7 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes, error_pubsub):
 )
 def test_warning_for_dead_autoscaler(ray_start_regular, error_pubsub):
     # Terminate the autoscaler process.
-    from ray.worker import _global_node
+    from ray._private.worker import _global_node
 
     autoscaler_process = _global_node.all_processes[ray_constants.PROCESS_TYPE_MONITOR][
         0
@@ -158,10 +158,10 @@ def test_raylet_crash_when_get(ray_start_regular):
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.
         time.sleep(2)
-        ray.worker._global_node.kill_raylet()
+        ray._private.worker._global_node.kill_raylet()
 
     object_ref = ray.put(np.zeros(200 * 1024, dtype=np.uint8))
-    ray.internal.free(object_ref)
+    ray._private.internal_api.free(object_ref)
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
@@ -192,7 +192,7 @@ def test_eviction(ray_start_cluster):
     obj = large_object.remote()
     assert isinstance(ray.get(obj), np.ndarray)
     # Evict the object.
-    ray.internal.free([obj])
+    ray._private.internal_api.free([obj])
     # ray.get throws an exception.
     with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(obj)
@@ -418,4 +418,7 @@ time.sleep(60)
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

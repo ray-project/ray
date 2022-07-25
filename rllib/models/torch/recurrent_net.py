@@ -95,9 +95,9 @@ class RecurrentNetwork(TorchModelV2):
         """Call the model with the given input tensors and state.
 
         Args:
-            inputs (dict): Observation tensor with shape [B, T, obs_size].
-            state (list): List of state tensors, each with shape [B, size].
-            seq_lens (Tensor): 1D tensor holding input sequence lengths.
+            inputs: Observation tensor with shape [B, T, obs_size].
+            state: List of state tensors, each with shape [B, size].
+            seq_lens: 1D tensor holding input sequence lengths.
                 Note: len(seq_lens) == B.
 
         Returns:

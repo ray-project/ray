@@ -3,6 +3,7 @@ import logging
 from typing import Optional, Union
 
 from ray.util import log_once
+from ray.util.annotations import _mark_annotated
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,7 @@ def Deprecated(old=None, *, new=None, help=None, error):
                 return obj_init(*args, **kwargs)
 
             obj.__init__ = patched_init
+            _mark_annotated(obj)
             # Return the patched class (with the warning/error when
             # instantiated).
             return obj

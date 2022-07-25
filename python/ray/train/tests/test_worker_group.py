@@ -1,8 +1,9 @@
-import pytest
 import time
 
+import pytest
+
 import ray
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.worker_group import WorkerGroup
 
 
 @pytest.fixture
@@ -38,7 +39,7 @@ def test_worker_shutdown(ray_start_2_cpus):
     wg = WorkerGroup(num_workers=2)
     time.sleep(1)
     assert "CPU" not in ray.available_resources()
-    assert len(ray.state.actors()) == 2
+    assert len(ray._private.state.actors()) == 2
     wg.shutdown()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2
@@ -121,7 +122,8 @@ def test_placement_group(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

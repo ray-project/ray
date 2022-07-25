@@ -6,49 +6,45 @@ import base64
 import json
 import logging
 import os
+import tempfile
 import threading
 import time
 import uuid
 import warnings
 from collections import defaultdict
 from concurrent.futures import Future
-import tempfile
-from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
 
-from ray.job_config import JobConfig
+import ray._private.utils
 import ray.cloudpickle as cloudpickle
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray._private.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 # Use cloudpickle's version of pickle for UnpicklingError
 from ray.cloudpickle.compat import pickle
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
-import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.exceptions import GetTimeoutError
-from ray.ray_constants import DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD
-from ray.util.client.client_pickler import (
-    convert_to_arg,
-    dumps_from_client,
-    loads_from_server,
-)
+from ray.job_config import JobConfig
+from ray.util.client.client_pickler import dumps_from_client, loads_from_server
 from ray.util.client.common import (
+    GRPC_OPTIONS,
+    GRPC_UNRECOVERABLE_ERRORS,
+    INT32_MAX,
+    OBJECT_TRANSFER_WARNING_SIZE,
     ClientActorClass,
     ClientActorHandle,
     ClientActorRef,
     ClientObjectRef,
     ClientRemoteFunc,
     ClientStub,
-    GRPC_OPTIONS,
-    GRPC_UNRECOVERABLE_ERRORS,
-    INT32_MAX,
-    OBJECT_TRANSFER_WARNING_SIZE,
 )
 from ray.util.client.dataclient import DataClient
 from ray.util.client.logsclient import LogstreamClient
 from ray.util.debug import log_once
-import ray._private.utils
-from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -547,11 +543,8 @@ class Worker:
 
     def call_remote(self, instance, *args, **kwargs) -> List[Future]:
         task = instance._prepare_client_task()
-        for arg in args:
-            pb_arg = convert_to_arg(arg, self._client_id)
-            task.args.append(pb_arg)
-        for k, v in kwargs.items():
-            task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
+        # data is serialized tuple of (args, kwargs)
+        task.data = dumps_from_client((args, kwargs), self._client_id)
         return self._call_schedule_for_task(task, instance._num_returns())
 
     def _call_schedule_for_task(
@@ -653,6 +646,8 @@ class Worker:
         task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
         task.name = name
         task.namespace = namespace or ""
+        # Populate task.data with empty args and kwargs
+        task.data = dumps_from_client(([], {}), self._client_id)
         futures = self._call_schedule_for_task(task, 1)
         assert len(futures) == 1
         handle = ClientActorHandle(ClientActorRef(futures[0]))
@@ -740,6 +735,12 @@ class Worker:
     def internal_kv_list(self, prefix: bytes) -> bytes:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
         return self._call_stub("KVList", req, metadata=self.metadata).keys
+
+    def pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
+        req = ray_client_pb2.ClientPinRuntimeEnvURIRequest(
+            uri=uri, expiration_s=expiration_s
+        )
+        self._call_stub("PinRuntimeEnvURI", req, metadata=self.metadata)
 
     def list_named_actors(self, all_namespaces: bool) -> List[Dict[str, str]]:
         req = ray_client_pb2.ClientListNamedActorsRequest(all_namespaces=all_namespaces)

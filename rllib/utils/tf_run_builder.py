@@ -9,7 +9,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class TFRunBuilder:
+class _TFRunBuilder:
     """Used to incrementally build up a TensorFlow run.
 
     This is particularly useful for batching ops from multiple different
@@ -39,7 +39,7 @@ class TFRunBuilder:
     def get(self, to_fetch):
         if self._executed is None:
             try:
-                self._executed = run_timeline(
+                self._executed = _run_timeline(
                     self.session,
                     self.fetches,
                     self.debug_name,
@@ -66,7 +66,7 @@ class TFRunBuilder:
 _count = 0
 
 
-def run_timeline(sess, ops, debug_name, feed_dict=None, timeline_dir=None):
+def _run_timeline(sess, ops, debug_name, feed_dict=None, timeline_dir=None):
     if feed_dict is None:
         feed_dict = {}
 

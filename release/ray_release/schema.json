@@ -15,11 +15,23 @@
 				"working_dir": {
 					"type": "string"
 				},
+                "env": {
+					"type": "string"
+				},
 				"legacy": {
 					"$ref": "#/definitions/Legacy"
 				},
 				"stable": {
 					"type": "boolean"
+				},
+                "python": {
+					"type": "string",
+					"enum": [
+						"3.6",
+						"3.7",
+						"3.8",
+						"3.9"
+                    ]
 				},
 				"frequency": {
 					"type": "string",
@@ -172,6 +184,9 @@
 			"title": "SmokeTest",
 			"properties": {
 				"working_dir": {
+					"type": "string"
+				},
+                "env": {
 					"type": "string"
 				},
                 "driver_setup": {

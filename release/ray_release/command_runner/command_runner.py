@@ -42,8 +42,8 @@ class CommandRunner(abc.ABC):
         """Wait for cluster nodes to be up.
 
         Args:
-            num_nodes (int): Number of nodes to wait for.
-            timeout (float): Timeout in seconds to wait for nodes before
+            num_nodes: Number of nodes to wait for.
+            timeout: Timeout in seconds to wait for nodes before
              raising a ``PrepareCommandTimeoutError``.
 
         Returns:

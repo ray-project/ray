@@ -9,7 +9,7 @@ This tutorial will walk you through the process of setting up a Tune experiment.
 We'll start with a PyTorch model and show you how to leverage Ray Tune to optimize the hyperparameters of this model.
 Specifically, we'll leverage early stopping and Bayesian Optimization via HyperOpt to do so.
 
-.. tip:: If you have sugges tions as to how to improve this tutorial,
+.. tip:: If you have suggestions on how to improve this tutorial,
     please `let us know <https://github.com/ray-project/ray/issues/new/choose>`_!
 
 To run this example, you will need to install the following:
@@ -63,7 +63,7 @@ Below, we define a function that trains the Pytorch model for multiple epochs.
 This function will be executed on a separate :ref:`Ray Actor (process) <actor-guide>` underneath the hood,
 so we need to communicate the performance of the model back to Tune (which is on the main Python process).
 
-To do this, we call :ref:`tune.report <tune-function-docstring>` in our training function,
+To do this, we call :ref:`session.report <tune-function-docstring>` in our training function,
 which sends the performance value back to Tune. Since the function is executed on the separate process,
 make sure that the function is :ref:`serializable by Ray <serialization-guide>`.
 
@@ -72,7 +72,7 @@ make sure that the function is :ref:`serializable by Ray <serialization-guide>`.
    :start-after: __train_func_begin__
    :end-before: __train_func_end__
 
-Let's run one trial by calling :ref:`tune.run <tune-run-ref>` and :ref:`randomly sample <tune-sample-docs>`
+Let's run one trial by calling :ref:`Tuner.fit <tune-run-ref>` and :ref:`randomly sample <tune-sample-docs>`
 from a uniform distribution for learning rate and momentum.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
@@ -80,7 +80,7 @@ from a uniform distribution for learning rate and momentum.
    :start-after: __eval_func_begin__
    :end-before: __eval_func_end__
 
-``tune.run`` returns an :ref:`ExperimentAnalysis object <tune-analysis-docs>`.
+``Tuner.fit`` returns an :ref:`ResultGrid object <tune-analysis-docs>`.
 You can use this to plot the performance of this trial.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
@@ -89,8 +89,7 @@ You can use this to plot the performance of this trial.
    :end-before: __plot_end__
 
 .. note:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster.
-    To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``.
-    If you're using a Search Algorithm like Bayesian Optimization, you'll want to use the :ref:`ConcurrencyLimiter <limiter>`.
+    To limit the number of concurrent trials, use the :ref:`ConcurrencyLimiter <limiter>`.
 
 
 Early Stopping with ASHA
