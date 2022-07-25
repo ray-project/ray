@@ -78,6 +78,17 @@ This is a common pattern useful for loading and sharding data between distribute
   :start-after: __split_begin__
   :end-before: __split_end__
 
+Random Access Datasets (Experimental)
+=====================================
+
+Datasets can be converted to a format that supports efficient random access with
+:meth:`ds.to_random_access_dataset() API <ray.data.Dataset.to_random_access_dataset>`,
+which partitions the dataset on a sort key and provides random access via distributed
+binary search.
+
+See the :ref:`random access feature guide <datasets_random_access>` for more
+information.
+
 .. _saving_datasets:
 
 ===============
@@ -116,15 +127,3 @@ to repartition the Dataset before writing out.
     :language: python
     :start-after: __write_numpy_begin__
     :end-before: __write_numpy_end__
-
-=====================================
-Random Access Datasets (Experimental)
-=====================================
-
-Datasets can be converted to a format that supports efficient random access with
-:meth:`ds.to_random_access_dataset() API <ray.data.Dataset.to_random_access_dataset>`,
-which partitions the dataset on a sort key and provides random access via distributed
-binary search.
-
-See the :ref:`random access feature guide <datasets_random_access>` for more
-information.
