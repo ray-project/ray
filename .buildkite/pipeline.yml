@@ -345,7 +345,7 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TEST_EXTERNAL_REDIS=1 ./ci/ci.sh test_large
+    - . ./ci/ci.sh test_large --test_env=TEST_EXTERNAL_REDIS=1
 - label: ":redis: (External Redis) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
