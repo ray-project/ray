@@ -10,7 +10,7 @@ import numpy as np
 from typing import Dict, Optional
 
 
-from ray.rllib.algorithms.dreamer.utils import FreezeParameters
+from ray.rllib.algorithms.dreamer.utils import FreezeParameters, batchify_states
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy
@@ -224,18 +224,24 @@ class DreamerTorchPolicy(TorchPolicyV2):
         to incentivize exploration.
         """
         obs = obs_batch["obs"]
+        bsize = obs.shape[0]
 
         # Custom Exploration
         if timestep <= policy.config["prefill_timesteps"]:
             logp = None
             # Random action in space [-1.0, 1.0]
-            action = 2.0 * torch.rand(1, model.action_space.shape[0]) - 1.0
+            eps = torch.rand(1, model.action_space.shape[0], device=obs.device)
+            action = 2.0 * eps - 1.0
             state_batches = model.get_initial_state()
+            # batchify the intial states to match the batch size of the obs tensor
+            state_batches = batchify_states(state_batches, bsize, device=obs.device)
         else:
             # Weird RLlib Handling, this happens when env rests
             if len(state_batches[0].size()) == 3:
                 # Very hacky, but works on all envs
-                state_batches = model.get_initial_state()
+                state_batches = model.get_initial_state().to(device=obs.device)
+                # batchify the intial states to match the batch size of the obs tensor
+                state_batches = batchify_states(state_batches, bsize, device=obs.device)
             action, logp, state_batches = model.policy(obs, state_batches, explore)
             action = td.Normal(action, policy.config["explore_noise"]).sample()
             action = torch.clamp(action, min=-1.0, max=1.0)
