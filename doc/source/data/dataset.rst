@@ -97,7 +97,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
 
     Learn how to :ref:`create datasets<creating_datasets>`, :ref:`save
     datasets<saving_datasets>`, :ref:`transform datasets<transforming_datasets>`,
-    :ref:`access and exchange datasets<accessing_datasets>`, :ref:`pipeline
+    :ref:`access and exchange datasets<consuming_datasets>`, :ref:`pipeline
     transformations<pipelining_datasets>`, :ref:`load and process data for ML<datasets-ml-preprocessing>`,
     work with :ref:`tensor data<datasets_tensor_support>`, or :ref:`use pipelines<data_pipeline_usage>`.
 

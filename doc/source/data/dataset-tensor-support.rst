@@ -1,7 +1,7 @@
 .. _datasets_tensor_support:
 
-Working with Tensors
-====================
+ML Tensor Support
+=================
 
 Tables with tensor columns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

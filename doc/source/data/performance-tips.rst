@@ -7,14 +7,7 @@ Debugging Statistics
 ~~~~~~~~~~~~~~~~~~~~
 
 You can view debug stats for your Dataset and DatasetPipeline executions via ``ds.stats()``.
-These stats can be used to understand the performance of your Datasets workload and can help you debug problematic bottlenecks.
-
-At a high level, execution stats for tasks (e.g., CPU time) are attached to block metadata objects.
-Datasets have stats objects that hold references to these stats and parent dataset stats (this avoids stats holding references to parent datasets, allowing them to be garbage collected).
-Similarly, DatasetPipelines hold stats from recently computed datasets.
-In addition, we also collect statistics about iterator timings (time spent waiting / processing / in user code).
-Here's a sample output of getting stats in one of the most advanced use cases,
-namely iterating over a split of a dataset pipeline in a remote task:
+These stats can be used to understand the performance of your Dataset workload and can help you debug problematic bottlenecks. Note that both execution and iterator statistics are available:
 
 .. code-block:: python
 
@@ -117,38 +110,10 @@ By default, Datasets automatically selects the read parallelism based on the cur
 However, the number of read tasks can also be increased manually via the ``parallelism`` parameter.
 For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
 
-Tuning Max Block Size
-~~~~~~~~~~~~~~~~~~~~~
-
-Block splitting is off by default. To enable block splitting (beta), run ``ray.data.context.DatasetContext.get_current().block_splitting_enabled = True``.
-
-Once enabled, the max target block size can be adjusted via the Dataset context API.
-For example, to configure a max target block size of 8GiB, run ``ray.data.context.DatasetContext.get_current().target_max_block_size = 8192 * 1024 * 1024`` prior to creating the Dataset.
-Lower block sizes reduce the max amount of object store and Python heap memory required during execution.
-However, having too many blocks may introduce task scheduling overheads.
-
-We do not recommend adjusting this value for most workloads.
-However, if shuffling a large amount of data, increasing the block size limit reduces the number of intermediate blocks (as a rule of thumb, shuffle creates ``O(num_blocks**2)`` intermediate blocks).
-Alternatively, you can ``.repartition()`` the dataset to reduce the number of blocks prior to shuffle/groupby operations.
-If you're seeing out of memory errors during map tasks, reducing the max block size may also be worth trying.
-
-Note that the number of blocks a Dataset created from ``ray.data.read_*`` contains is not fully known until all read tasks are fully executed.
-The number of blocks printed in the Dataset's string representation is initially set to the number of read tasks generated.
-To view the actual number of blocks created after block splitting, use ``len(ds.get_internal_block_refs())``, which will block until all data has been read.
-
-Datasets and Placement Groups
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-By default, Datasets configures its tasks and actors to use the cluster-default scheduling strategy ("DEFAULT"). You can inspect this configuration variable here:
-``ray.data.context.DatasetContext.get_current().scheduling_strategy``. This scheduling strategy will schedule these tasks and actors outside any present
-placement group. If you want to force Datasets to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Datasets), you can set ``ray.data.context.DatasetContext.get_current().scheduling_strategy = None``.
-
-This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Datasets run outside placement groups as documented in the :ref:`Datasets and Other Libraries <datasets_tune>` section.
-
 .. _shuffle_performance_tips:
 
-Improving shuffle performance
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Enabling Push-Based Shuffle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
 These operations include ``Dataset.random_shuffle``, ``Dataset.sort`` and ``Dataset.groupby``.
