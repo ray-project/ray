@@ -46,7 +46,7 @@ class NodeFailureTests(unittest.TestCase):
         ray.shutdown()
 
     def test_fail_on_node_failure(self):
-        # We tolerate failing workers and don't stop training
+        # We do not tolerate failing workers and stop training
         config = (
             PPOConfig()
             .rollouts(
@@ -80,7 +80,7 @@ class NodeFailureTests(unittest.TestCase):
         raise ValueError("Expected algorithm to not step here")
 
     def test_continue_training_on_failure(self):
-        # We tolerate failing workers and don't stop training
+        # We tolerate failing workers and don't pause training
         config = (
             PPOConfig()
             .rollouts(
@@ -114,7 +114,7 @@ class NodeFailureTests(unittest.TestCase):
         self.assertEqual(len(ppo.workers._remote_workers), 4)
 
     def test_recreate_workers_on_next_iter(self):
-        # We tolerate failing workers and don't stop training
+        # We tolerate failing workers and pause training
         config = (
             PPOConfig()
             .rollouts(
@@ -159,7 +159,7 @@ class NodeFailureTests(unittest.TestCase):
         self.assertEqual(len(ppo.workers._remote_workers), 6)
 
     def test_wait_for_nodes_on_failure(self):
-        # We tolerate failing workers and don't stop training
+        # We tolerate failing workers and pause training
         config = (
             PPOConfig()
             .rollouts(
