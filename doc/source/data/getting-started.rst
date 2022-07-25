@@ -82,8 +82,8 @@ setup is expensive.
 See the :ref:`Transforming Datasets guide <transforming_datasets>` for an in-depth guide
 on transforming datasets.
 
-Passing and accessing datasets
-------------------------------
+Accessing and exchanging datasets
+---------------------------------
 
 Datasets can be passed to Ray tasks or actors and accessed with
 :meth:`.iter_batches() <ray.data.Dataset.iter_batches>` or
@@ -108,5 +108,5 @@ training actors:
    :start-after: __dataset_split_begin__
    :end-before: __dataset_split_end__
 
-See the :ref:`Accessing Datasets guide <accessing_datasets>` for an in-depth guide
+See the :ref:`Consuming Datasets guide <consuming_datasets>` for an in-depth guide
 on accessing and exchanging datasets.
