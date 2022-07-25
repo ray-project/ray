@@ -49,8 +49,13 @@ public class ReplicaSet {
 
   public ReplicaSet(String deploymentName) {
     this.inFlightQueries = new ConcurrentHashMap<>();
-    Deployment deployment = Serve.getDeployment(deploymentName);
-    this.language = deployment.getConfig().getDeploymentLanguage();
+    try {
+      Deployment deployment = Serve.getDeployment(deploymentName);
+      this.language = deployment.getConfig().getDeploymentLanguage();
+    } catch (Exception e) {
+      LOGGER.warn("can not get language from controller");
+      this.language = DeploymentLanguage.JAVA;
+    }
     RayServeMetrics.execute(
         () ->
             this.numQueuedQueriesGauge =
