@@ -1582,6 +1582,9 @@ cc_test(
         ":ray_common",
         "@com_google_googletest//:gtest_main",
     ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ]
 )
 
 cc_test(
