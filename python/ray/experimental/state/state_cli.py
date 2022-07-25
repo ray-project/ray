@@ -473,7 +473,12 @@ def list(
     )
 
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.
-    data = client.list(resource, options=options, _explain=_should_explain(format))
+    data = client.list(
+        resource,
+        options=options,
+        raise_on_missing_output=False,
+        _explain=_should_explain(format),
+    )
 
     # If --detail is given, the default formatting is yaml.
     if detail and format == AvailableFormat.DEFAULT:
@@ -505,6 +510,7 @@ def task_summary(ctx, timeout: float, address: str):
             summarize_tasks(
                 address=address,
                 timeout=timeout,
+                raise_on_missing_output=False,
                 _explain=True,
             ),
             resource=StateResource.TASKS,
@@ -522,6 +528,7 @@ def actor_summary(ctx, timeout: float, address: str):
             summarize_actors(
                 address=address,
                 timeout=timeout,
+                raise_on_missing_output=False,
                 _explain=True,
             ),
             resource=StateResource.ACTORS,
@@ -539,6 +546,7 @@ def object_summary(ctx, timeout: float, address: str):
             summarize_objects(
                 address=address,
                 timeout=timeout,
+                raise_on_missing_output=False,
                 _explain=True,
             ),
         )
