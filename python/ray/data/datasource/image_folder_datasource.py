@@ -1,8 +1,8 @@
-import importlib
 import pathlib
 from typing import TYPE_CHECKING, Tuple
 
 import numpy as np
+from ray.data._internal.util import _check_import
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
@@ -87,10 +87,12 @@ class ImageFolderDatasource(BinaryDatasource):
             ValueError: if ``size`` contains non-positive numbers.
         """
         if size[0] < 0 or size[1] < 0:
-            raise ValueError("Expected `size` to contain positive integers, but got {size}.")
+            raise ValueError(
+                "Expected `size` to contain positive integers, but got {size}."
+            )
 
-        self._check_import(module="imageio", package="imagio")
-        self._check_import(module="skimage", package="scikit-image")
+        _check_import(self, module="imageio", package="imagio")
+        _check_import(self, module="skimage", package="scikit-image")
 
         # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
         # in the same way as the paths passed to `_get_class_from_path`.
@@ -127,25 +129,6 @@ class ImageFolderDatasource(BinaryDatasource):
                 "label": [label],
             }
         )
-
-    def _check_import(self, *, module: str, package: str) -> None:
-        """Check if a required dependency is installed.
-
-        If `module` can't be imported, this function raises an `ImportError` instructing
-        the user to install `package` from PyPI.
-
-        Args:
-            module: The name of the module to import.
-            package: The name of the package on PyPI.
-        """
-        try:
-            importlib.import_module(module)
-        except ImportError:
-            raise ImportError(
-                f"`{self.__class__.__name__}` depends on '{package}', but '{package}' "
-                f"couldn't be imported. You can install '{package}' by running `pip "
-                f"install {package}`."
-            )
 
 
 def _get_class_from_path(path: str, root: str) -> str:
