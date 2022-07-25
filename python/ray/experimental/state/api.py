@@ -218,7 +218,7 @@ class StateApiClient(SubmissionClient):
                 f"Error: {response['msg']}"
             )
 
-        # Dictionary of `ListApiResponse`
+        # Dictionary of `ListApiResponse` or `SummaryApiResponse`
         return response["data"]["result"]
 
     def get(
@@ -311,24 +311,28 @@ class StateApiClient(SubmissionClient):
         assert len(result) == 1
         return result[0]
 
-    def _print_list_api_warning(self, resource: StateResource, list_api_response: dict):
+    def _print_api_warning(self, resource: StateResource, api_response: dict):
         """Print the API warnings.
+
+        We print warnings for users:
+            1. when some data sources are not available
+            2. when results were truncated at the data source
+            3. when results were limited
+            4. when callsites not enabled for listing objects
 
         Args:
             resource: Resource names, i.e. 'jobs', 'actors', 'nodes',
                 see `StateResource` for details.
-            list_api_response: The dictionarified `ListApiResponse`.
+            api_response: The dictionarified `ListApiResponse` or `SummaryApiResponse`.
         """
         # Print warnings if anything was given.
-        warning_msgs = list_api_response.get("partial_failure_warning", None)
+        warning_msgs = api_response.get("partial_failure_warning", None)
         if warning_msgs:
             warnings.warn(warning_msgs)
 
-        data = list_api_response["result"]
-
         # Print warnings if data is truncated at the data source.
-        num_after_truncation = list_api_response["num_after_truncation"]
-        total = list_api_response["total"]
+        num_after_truncation = api_response["num_after_truncation"]
+        total = api_response["total"]
         if total > num_after_truncation:
             # NOTE(rickyyx): For now, there's not much users could do (neither can we),
             # with hard truncation. Unless we allow users to set a higher
@@ -346,7 +350,8 @@ class StateApiClient(SubmissionClient):
 
         # Print warnings if return data is limited at the API server due to
         # limit enforced at the server side
-        num_filtered = list_api_response["num_filtered"]
+        num_filtered = api_response["num_filtered"]
+        data = api_response["result"]
         if num_filtered > len(data):
             warnings.warn(
                 (
@@ -356,15 +361,54 @@ class StateApiClient(SubmissionClient):
                 ),
             )
 
+        # Print the additional warnings.
+        warnings_to_print = api_response.get("warnings", [])
+        if warnings_to_print:
+            for warning_to_print in warnings_to_print:
+                warnings.warn(warning_to_print)
+
+    def _raise_on_missing_output(self, resource: StateResource, api_response: dict):
+        """Raise an exception when the API resopnse contains a missing output.
+
+        Output can be missing if (1) Failures on some of data source queries (e.g.,
+        `ray list tasks` queries all raylets, and if some of quries fail, it will
+        contain missing output. If all quries fail, it will just fail). (2) Data
+        is truncated because the output is too large.
+
+        Args:
+            resource: Resource names, i.e. 'jobs', 'actors', 'nodes',
+                see `StateResource` for details.
+            api_response: The dictionarified `ListApiResponse` or `SummaryApiResponse`.
+        """
+        warning_msgs = api_response.get("partial_failure_warning", None)
+        # TODO(sang) raise an exception on truncation after
+        # https://github.com/ray-project/ray/pull/26801.
+        if warning_msgs:
+            raise RayStateApiException(
+                f"Failed to retrieve all {resource.value} from the cluster. "
+                f"It can happen when some of {resource.value} information is not "
+                "reachable or the returned data is truncated because it is too large. "
+                "To allow having missing output, set `raise_on_missing_output=False`. "
+            )
+
     def list(
-        self, resource: StateResource, options: ListApiOptions, _explain: bool = False
-    ) -> Union[Dict, List]:
+        self,
+        resource: StateResource,
+        options: ListApiOptions,
+        raise_on_missing_output: bool,
+        _explain: bool = False,
+    ) -> List[Dict]:
         """List resources states
 
         Args:
             resource: Resource names, i.e. 'jobs', 'actors', 'nodes',
                 see `StateResource` for details.
             options: List options. See `ListApiOptions` for details.
+            raise_on_missing_output: When True, raise an exception if the output
+                is incomplete. Output can be incomplete if
+                (1) there's a partial network failure when the source is distributed.
+                (2) data is truncated because it is too large.
+                Set it to False to avoid throwing an exception on missing data.
             _explain: Print the API information such as API
                 latency or failed query information.
 
@@ -385,8 +429,10 @@ class StateApiClient(SubmissionClient):
             timeout=options.timeout,
             _explain=_explain,
         )
+        if raise_on_missing_output:
+            self._raise_on_missing_output(resource, list_api_response)
         if _explain:
-            self._print_list_api_warning(resource, list_api_response)
+            self._print_api_warning(resource, list_api_response)
         return list_api_response["result"]
 
     def summary(
@@ -394,6 +440,7 @@ class StateApiClient(SubmissionClient):
         resource: SummaryResource,
         *,
         options: SummaryApiOptions,
+        raise_on_missing_output: bool,
         _explain: bool = False,
     ) -> Dict:
         """Summarize resources states
@@ -403,6 +450,12 @@ class StateApiClient(SubmissionClient):
                 see `SummaryResource` for details.
             options: summary options. See `SummaryApiOptions` for details.
             A dictionary of queried result from `SummaryApiResponse`,
+            raise_on_missing_output: Raise an exception if the output has missing data.
+                Output can have missing data if (1) there's a partial network failure
+                when the source is distributed. (2) data is truncated
+                because it is too large.
+            _explain: Print the API information such as API
+                latency or failed query information.
 
         Raises:
             This doesn't catch any exceptions raised when the underlying request
@@ -411,14 +464,17 @@ class StateApiClient(SubmissionClient):
         """
         params = {"timeout": options.timeout}
         endpoint = f"/api/v0/{resource.value}/summarize"
-        list_api_response = self._make_http_get_request(
+        summary_api_response = self._make_http_get_request(
             endpoint=endpoint,
             params=params,
             timeout=options.timeout,
             _explain=_explain,
         )
-        result = list_api_response["result"]
-        return result["node_id_to_summary"]
+        if raise_on_missing_output:
+            self._raise_on_missing_output(resource, summary_api_response)
+        # TODO(sang): Add warning after
+        # # https://github.com/ray-project/ray/pull/26801 is merged.
+        return summary_api_response["result"]["node_id_to_summary"]
 
 
 """
@@ -537,13 +593,18 @@ def list_actors(
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     detail: bool = False,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).list(
         StateResource.ACTORS,
         options=ListApiOptions(
-            limit=limit, timeout=timeout, filters=filters, detail=detail
+            limit=limit,
+            timeout=timeout,
+            filters=filters,
+            detail=detail,
         ),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -554,6 +615,7 @@ def list_placement_groups(
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     detail: bool = False,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).list(
@@ -561,6 +623,7 @@ def list_placement_groups(
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -571,6 +634,7 @@ def list_nodes(
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     detail: bool = False,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).list(
@@ -578,6 +642,7 @@ def list_nodes(
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -588,6 +653,7 @@ def list_jobs(
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     detail: bool = False,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).list(
@@ -595,6 +661,7 @@ def list_jobs(
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -605,6 +672,7 @@ def list_workers(
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     detail: bool = False,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).list(
@@ -612,6 +680,7 @@ def list_workers(
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -622,6 +691,7 @@ def list_tasks(
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     detail: bool = False,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).list(
@@ -629,6 +699,7 @@ def list_tasks(
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -639,6 +710,7 @@ def list_objects(
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     detail: bool = False,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).list(
@@ -646,6 +718,7 @@ def list_objects(
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -656,6 +729,7 @@ def list_runtime_envs(
     limit: int = DEFAULT_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     detail: bool = False,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).list(
@@ -663,6 +737,7 @@ def list_runtime_envs(
         options=ListApiOptions(
             limit=limit, timeout=timeout, filters=filters, detail=detail
         ),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -778,11 +853,13 @@ Summary APIs
 def summarize_tasks(
     address: str = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).summary(
         SummaryResource.TASKS,
         options=SummaryApiOptions(timeout=timeout),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -790,11 +867,13 @@ def summarize_tasks(
 def summarize_actors(
     address: str = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).summary(
         SummaryResource.ACTORS,
         options=SummaryApiOptions(timeout=timeout),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
 
@@ -802,10 +881,12 @@ def summarize_actors(
 def summarize_objects(
     address: str = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
+    raise_on_missing_output: bool = True,
     _explain: bool = False,
 ):
     return StateApiClient(address=address).summary(
         SummaryResource.OBJECTS,
         options=SummaryApiOptions(timeout=timeout),
+        raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )

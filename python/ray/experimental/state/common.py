@@ -315,14 +315,13 @@ class JobState(JobInfo, StateSchema):
 @dataclass(init=True)
 class WorkerState(StateSchema):
     worker_id: str = state_column(filterable=True)
-    is_alive: str = state_column(filterable=True)
+    is_alive: bool = state_column(filterable=True)
     worker_type: str = state_column(filterable=True)
     exit_type: str = state_column(filterable=True)
     node_id: str = state_column(filterable=True)
     ip: str = state_column(filterable=True)
     pid: str = state_column(filterable=True)
     exit_detail: str = state_column(detail=True, filterable=False)
-    worker_info: dict = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
@@ -405,6 +404,8 @@ class ListApiResponse:
     # availability of data because ray's state information is
     # not replicated.
     partial_failure_warning: str = ""
+    # A list of warnings to print.
+    warnings: Optional[List[str]] = None
 
 
 """
@@ -626,7 +627,7 @@ class ObjectSummaries:
 @dataclass(init=True)
 class StateSummary:
     # Node ID -> summary per node
-    # If the data is not required to be orgnized per node, it will contain
+    # If the data is not required to be organized per node, it will contain
     # a single key, "cluster".
     node_id_to_summary: Dict[str, Union[TaskSummaries, ActorSummaries, ObjectSummaries]]
 
@@ -641,3 +642,5 @@ class SummaryApiResponse:
     num_after_truncation: int
     result: StateSummary = None
     partial_failure_warning: str = ""
+    # A list of warnings to print.
+    warnings: Optional[List[str]] = None

@@ -5,6 +5,8 @@ from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
 
+from ray._private.ray_constants import env_integer
+
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.utils import binary_to_hex
@@ -162,7 +164,9 @@ class StateAPIManager:
                         f"Supported filter columns: {filterable_columns}"
                     )
 
-                if filter_predicate == "=":
+                if filter_column not in datum:
+                    match = False
+                elif filter_predicate == "=":
                     match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":
                     match = datum[filter_column] != filter_value
@@ -194,7 +198,9 @@ class StateAPIManager:
 
         result = []
         for message in reply.actor_table_data:
-            data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
+            data = self._message_to_dict(
+                message=message, fields_to_decode=["actor_id", "owner_id"]
+            )
             result.append(data)
         num_after_truncation = len(result)
         result = self._filter(result, option.filters, ActorState, option.detail)
@@ -476,6 +482,18 @@ class StateAPIManager:
             data["ip"] = data["node_ip_address"]
             del data["node_ip_address"]
             result.append(data)
+
+        # Add callsite warnings if it is not configured.
+        callsite_warning = []
+        callsite_enabled = env_integer("RAY_record_ref_creation_sites", 0)
+        if not callsite_enabled:
+            callsite_warning.append(
+                "Callsite is not being recorded. "
+                "To record callsite information for each ObjectRef created, set "
+                "env variable RAY_record_ref_creation_sites=1 during `ray start` "
+                "and `ray.init`."
+            )
+
         num_after_truncation = len(result)
         result = self._filter(result, option.filters, ObjectState, option.detail)
         num_filtered = len(result)
@@ -488,6 +506,7 @@ class StateAPIManager:
             total=total_objects,
             num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
+            warnings=callsite_warning,
         )
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -582,9 +601,10 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
+            total=result.total,
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
-            total=result.total,
+            warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
         )
 
@@ -601,9 +621,10 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
+            total=result.total,
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
-            total=result.total,
+            warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
         )
 
@@ -620,9 +641,10 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
+            total=result.total,
             result=summary,
             partial_failure_warning=result.partial_failure_warning,
-            total=result.total,
+            warnings=result.warnings,
             num_after_truncation=result.num_after_truncation,
         )
 
