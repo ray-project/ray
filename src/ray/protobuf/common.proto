@@ -195,6 +195,8 @@ enum ErrorType {
   ACTOR_UNSCHEDULABLE_ERROR = 19;
   // We use this error for object fetches that failed due to out of disk.
   OUT_OF_DISK_ERROR = 20;
+  // We use this error for task or actor failing due to running of of memory.
+  OUT_OF_MEMORY_ERROR = 21;
 }
 
 /// The information per ray error type.

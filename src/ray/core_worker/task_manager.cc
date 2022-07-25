@@ -392,6 +392,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     retry_task_callback_(spec, /*delay=*/true);
     return true;
   } else {
+    std::ostringstream stream;
+    stream << "No retries left for task " << spec.TaskId()
+           << ", not going to resubmit.";
+    RAY_LOG(INFO) << stream.str();
     return false;
   }
 }

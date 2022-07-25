@@ -162,6 +162,7 @@ class BlockExecStats:
         # Max memory usage. May be an overestimate since we do not
         # differentiate from previous tasks on the same worker.
         self.max_rss_bytes: int = 0
+        self.end_uss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -173,6 +174,8 @@ class BlockExecStats:
                 "wall_time_s": self.wall_time_s,
                 "cpu_time_s": self.cpu_time_s,
                 "node_id": self.node_id,
+                "max_rss_bytes": self.max_rss_bytes,
+                "end_uss_bytes": self.end_uss_bytes,
             }
         )
 
@@ -192,16 +195,17 @@ class _BlockExecStatsBuilder:
         stats = BlockExecStats()
         stats.wall_time_s = time.perf_counter() - self.start_time
         stats.cpu_time_s = time.process_time() - self.start_cpu
+        process = psutil.Process(os.getpid())
         if resource is None:
             # NOTE(swang): resource package is not supported on Windows. This
             # is only the memory usage at the end of the task, not the peak
             # memory.
-            process = psutil.Process(os.getpid())
             stats.max_rss_bytes = int(process.memory_info().rss)
         else:
             stats.max_rss_bytes = int(
                 resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
             )
+        stats.end_uss_bytes = int(process.memory_full_info().uss)
         return stats
 
 
