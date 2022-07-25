@@ -2791,6 +2791,7 @@ def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
     with pytest.raises(ValueError):
         ray.data.read_datasource(ImageFolderDatasource(), root=root, size=size)
 
+
 def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from ray.air.util.tensor_extensions.pandas import TensorArray
     from ray.train.torch import TorchCheckpoint, TorchPredictor
