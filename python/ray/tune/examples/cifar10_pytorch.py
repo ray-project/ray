@@ -230,7 +230,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         # If using Ray Client, we want to make sure checkpoint access
         # happens on the server. So we wrap `test_best_model` in a Ray task.
         # We have to make sure it gets executed on the same node that
-        # ``tune.run`` is called on.
+        # ``tuner.fit()`` is called on.
         from ray.util.ml_utils.node import force_on_current_node
         remote_fn = force_on_current_node(ray.remote(test_best_model))
         ray.get(remote_fn.remote(best_result.config, best_result.checkpoint))

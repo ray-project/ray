@@ -5,7 +5,7 @@ import argparse
 import random
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune.schedulers import PopulationBasedTraining
 
 
@@ -118,25 +118,32 @@ if __name__ == "__main__":
         },
     )
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         PBTBenchmarkExample,
-        name="pbt_test",
-        scheduler=pbt,
-        metric="mean_accuracy",
-        mode="max",
-        reuse_actors=True,
-        checkpoint_freq=20,
-        verbose=False,
-        stop={
-            "training_iteration": 200,
-        },
-        num_samples=8,
-        config={
+        run_config=air.RunConfig(
+            name="pbt_test",
+            stop={
+                "training_iteration": 200,
+            },
+            verbose=0,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=20,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            scheduler=pbt,
+            metric="mean_accuracy",
+            mode="max",
+            reuse_actors=True,
+            num_samples=8,
+        ),
+        param_space={
             "lr": 0.0001,
             # note: this parameter is perturbed but has no effect on
             # the model training in this example
             "some_other_factor": 1,
         },
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)
