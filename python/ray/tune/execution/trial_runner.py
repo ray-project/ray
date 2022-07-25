@@ -649,7 +649,7 @@ class TrialRunner:
                     "`resume=None`. If you expected an experiment to "
                     "already exist, check if you supplied the correct "
                     "`upload_dir` to the `tune.SyncConfig` passed to "
-                    "`Tuner()`."
+                    "`tune.Tuner()`."
                 ) from e
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):

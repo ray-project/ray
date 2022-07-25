@@ -72,7 +72,7 @@ def wandb_mixin(func: Callable):
 
 
     Wandb configuration is done by passing a ``wandb`` key to
-    the ``param_space`` parameter of ``Tuner()`` (see example below).
+    the ``param_space`` parameter of ``tune.Tuner()`` (see example below).
 
     The content of the ``wandb`` config entry is passed to ``wandb.init()``
     as keyword arguments. The exception are the following settings, which

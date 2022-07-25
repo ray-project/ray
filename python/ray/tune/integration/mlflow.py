@@ -72,7 +72,7 @@ def mlflow_mixin(func: Callable):
             xgboost_results = xgb.train(config, ...)
 
     The MlFlow configuration is done by passing a ``mlflow`` key to
-    the ``config`` parameter of ``Tuner()`` (see example below).
+    the ``config`` parameter of ``tune.Tuner()`` (see example below).
 
     The content of the ``mlflow`` config entry is used to
     configure MlFlow. Here are the keys you can pass in to this config entry:
@@ -82,12 +82,12 @@ def mlflow_mixin(func: Callable):
             Tune in a multi-node setting, make sure to use a remote server for
             tracking.
         experiment_id: The id of an already created MLflow experiment.
-            All logs from all trials in ``Tuner()`` will be reported to this
+            All logs from all trials in ``tune.Tuner()`` will be reported to this
             experiment. If this is not provided or the experiment with this
             id does not exist, you must provide an``experiment_name``. This
             parameter takes precedence over ``experiment_name``.
         experiment_name: The name of an already existing MLflow
-            experiment. All logs from all trials in ``Tuner()`` will be
+            experiment. All logs from all trials in ``tune.Tuner()`` will be
             reported to this experiment. If this is not provided, you must
             provide a valid ``experiment_id``.
         token: A token to use for HTTP authentication when
