@@ -8,11 +8,10 @@ import torch
 import torch.optim as optim
 from ray.tune.examples.mnist_pytorch import train, test, ConvNet, get_data_loaders
 
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.experiment.trial import ExportFormat
 
 # __tutorial_imports_end__
 
@@ -66,9 +65,9 @@ def train_convnet(config):
 # __train_end__
 
 
-def test_best_model(analysis):
+def test_best_model(results: tune.ResultGrid):
     """Test the best model given output of tuner.fit()."""
-    with analysis.best_checkpoint.as_directory() as best_checkpoint_path:
+    with results.get_best_result().checkpoint.as_directory() as best_checkpoint_path:
         best_model = ConvNet()
         best_checkpoint = torch.load(
             os.path.join(best_checkpoint_path, "checkpoint.pt")
@@ -129,33 +128,39 @@ if __name__ == "__main__":
 
     stopper = CustomStopper()
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         train_convnet,
-        name="pbt_test",
-        scheduler=scheduler,
-        metric="mean_accuracy",
-        mode="max",
-        verbose=1,
-        stop=stopper,
-        export_formats=[ExportFormat.MODEL],
-        checkpoint_score_attr="mean_accuracy",
-        keep_checkpoints_num=4,
-        num_samples=4,
-        config={
+        run_config=air.RunConfig(
+            name="pbt_test",
+            stop=stopper,
+            verbose=1,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_score_attribute="mean_accuracy",
+                num_to_keep=4,
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            scheduler=scheduler,
+            metric="mean_accuracy",
+            mode="max",
+            num_samples=4,
+        ),
+        param_space={
             "lr": tune.uniform(0.001, 1),
             "momentum": tune.uniform(0.001, 1),
         },
     )
+    results = tuner.fit()
     # __tune_end__
 
     if args.server_address:
         # If using Ray Client, we want to make sure checkpoint access
         # happens on the server. So we wrap `test_best_model` in a Ray task.
         # We have to make sure it gets executed on the same node that
-        # ``tune.run`` is called on.
+        # ``tuner.fit()`` is called on.
         from ray.util.ml_utils.node import force_on_current_node
 
         remote_fn = force_on_current_node(ray.remote(test_best_model))
-        ray.get(remote_fn.remote(analysis))
+        ray.get(remote_fn.remote(results))
     else:
-        test_best_model(analysis)
+        test_best_model(results)
