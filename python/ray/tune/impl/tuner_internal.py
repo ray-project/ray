@@ -84,6 +84,16 @@ class TunerInternal:
             )
             experiment_checkpoint_path = Path(experiment_checkpoint_dir)
 
+            if (
+                not (experiment_checkpoint_path / _TRAINABLE_PKL).exists()
+                or not (experiment_checkpoint_path / _TUNER_PKL).exists()
+            ):
+                raise RuntimeError(
+                    f"Could not find Tuner state in restore directory. Did you pass"
+                    f"the correct path (including experiment directory?) Got: "
+                    f"{restore_path}"
+                )
+
             # Load trainable and tuner state
             with open(experiment_checkpoint_path / _TRAINABLE_PKL, "rb") as fp:
                 trainable = pickle.load(fp)
