@@ -340,24 +340,27 @@ class BaseTrainer(abc.ABC):
         def train_func(config, checkpoint_dir=None):
             # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
             #  longer experimental.
-            if self.datasets and not self.scaling_config._max_cpu_fraction_per_node:
-                if (
+            if (
+                self.datasets
+                and not self.scaling_config._max_cpu_fraction_per_node
+                and (
                     ray.available_resources().get("CPU", 0)
                     / ray.cluster_resources().get("CPU", 0)
                     < 0.2
-                ):
-                    warnings.warn(
-                        "Instantiating this Trainer has reserved more than 80% of CPUs "
-                        "on this cluster which may cause resource contention or slower "
-                        "performance during data processing. Consider reserving at "
-                        "least 20% of node CPUs for Dataset execution by setting "
-                        "`_max_cpu_fraction_per_node = 0.8` in the Trainer "
-                        "`scaling_config`. See "
-                        "https://docs.ray.io/en/master/data/key-concepts.html"
-                        "#example-datasets-in-tune for more info. You can ignore this "
-                        "message if your cluster is expected scale up.",
-                        stacklevel=2,
-                    )
+                )
+            ):
+                warnings.warn(
+                    "Instantiating this Trainer leaves less than 20% of CPUs in "
+                    "this cluster for Dataset execution. To avoid this, it is "
+                    "recommended to explicitly reserve at least 20% of node CPUs "
+                    "for Dataset execution by "
+                    "setting _max_cpu_fraction_per_node = 0.8 in the Trainer "
+                    "scaling_config. Not doing so can lead to resource contention "
+                    "or hangs. See "
+                    "https://docs.ray.io/en/master/data/key-concepts.html"
+                    "#example-datasets-in-tune for more info.",
+                    stacklevel=2,
+                )
 
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
