@@ -3,7 +3,7 @@
 ML Tensor Support
 =================
 
-Tensor data (multi-dimensional arrays) are ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support Tensor data types. To bridge this gap, Datasets provides a unified Tensor data type that can be used to represent and store Tensor data:
+Tensors (multi-dimensional arrays) are ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support Tensor data types. To bridge this gap, Datasets provides a unified Tensor data type that can be used to represent and store Tensor data:
 
 * For Pandas, the Datasets Pandas extension :class:`TensorDtype <ray.data.extensions.tensor_extension.TensorDtype>` and :class:`TensorArray <ray.data.extensions.tensor_extension.TensorArray>` enable Pandas-native manipulation of tensor data columns.
 * For Parquet, the Datasets Arrow extension :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>` and :class:`ArrowTensorArray <ray.data.extensions.tensor_extension.ArrowTensorArray>` allow Tensors to be loaded and stored in Parquet format.
