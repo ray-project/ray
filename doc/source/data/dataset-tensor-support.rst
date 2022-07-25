@@ -209,7 +209,7 @@ Because Tensor datasets rely on Dataset-specific extension types, they can only 
 Example: Working with the Pandas extension type
 -----------------------------------------------
 
-This example shows how to work with the Pandas extension type directly.
+This example shows how to work with the Pandas extension type directly. You may find this useful when writing UDFs involving the Pandas tensor type.
 
 .. literalinclude:: ./doc_code/tensor.py
   :language: python
