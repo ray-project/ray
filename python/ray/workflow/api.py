@@ -743,7 +743,6 @@ class options:
             "name",
             "metadata",
             "catch_exceptions",
-            "allow_inplace",
             "checkpoint",
         }
         invalid_keywords = set(workflow_options.keys()) - valid_options

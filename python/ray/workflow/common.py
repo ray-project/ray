@@ -158,10 +158,10 @@ class WorkflowStepRuntimeOptions:
     step_type: "StepType"
     # Whether the user want to handle the exception manually.
     catch_exceptions: bool
-    # The num of retry for application exception.
+    # Whether application-level errors should be retried.
+    retry_exceptions: bool
+    # The num of retry for application exceptions & system failures.
     max_retries: int
-    # Run the workflow step inplace.
-    allow_inplace: bool
     # Checkpoint mode.
     checkpoint: CheckpointModeType
     # ray_remote options
@@ -172,7 +172,7 @@ class WorkflowStepRuntimeOptions:
             "step_type": self.step_type,
             "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
-            "allow_inplace": self.allow_inplace,
+            "retry_exceptions": self.retry_exceptions,
             "checkpoint": self.checkpoint,
             "ray_options": self.ray_options,
         }
@@ -183,7 +183,7 @@ class WorkflowStepRuntimeOptions:
             step_type=StepType[value["step_type"]],
             max_retries=value["max_retries"],
             catch_exceptions=value["catch_exceptions"],
-            allow_inplace=value["allow_inplace"],
+            retry_exceptions=value["retry_exceptions"],
             checkpoint=value["checkpoint"],
             ray_options=value["ray_options"],
         )

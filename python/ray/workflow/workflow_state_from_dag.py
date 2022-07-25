@@ -95,16 +95,6 @@ def workflow_state_from_dag(
             # should be passed recursively.
             catch_exceptions = workflow_options.get("catch_exceptions", None)
             if catch_exceptions is None:
-                # TODO(suquark): should we also handle exceptions from a "leaf node"
-                #   in the continuation? For example, we have a workflow
-                #   > @ray.remote
-                #   > def A(): pass
-                #   > @ray.remote
-                #   > def B(x): return x
-                #   > @ray.remote
-                #   > def C(x): return workflow.continuation(B.bind(A.bind()))
-                #   > dag = C.options(**workflow.options(catch_exceptions=True)).bind()
-                #   Should C catches exceptions of A?
                 if node.get_stable_uuid() == dag_node.get_stable_uuid():
                     # 'catch_exception' context should be passed down to
                     # its direct continuation task.
@@ -115,17 +105,16 @@ def workflow_state_from_dag(
                 else:
                     catch_exceptions = False
 
+            # We do not need to check the validness of bound options, because
+            # Ray option has already checked them for us.
             max_retries = bound_options.get("max_retries", 3)
-            if not isinstance(max_retries, int) or max_retries < -1:
-                raise ValueError(
-                    "'max_retries' only accepts 0, -1 or a positive integer."
-                )
+            retry_exceptions = bound_options.get("retry_exceptions", False)
 
             step_options = WorkflowStepRuntimeOptions(
                 step_type=StepType.FUNCTION,
                 catch_exceptions=catch_exceptions,
+                retry_exceptions=retry_exceptions,
                 max_retries=max_retries,
-                allow_inplace=False,
                 checkpoint=checkpoint,
                 ray_options=bound_options,
             )
