@@ -200,9 +200,9 @@ class TestViewRequirementConnector(unittest.TestCase):
     def test_vr_connector_respects_training_or_inference_vr_flags(self):
         """Tests that the connector respects the flags within view_requirements (i.e.
         used_for_training, used_for_compute_actions) under different is_training modes.
-        For inference,
+        is_training = False
             the returned data should be state -> obs
-        For training,
+        is_training = True
             the returned data should be the data itself. The higher level policy
             collector in env_runner will construct the proper data structure.
         """
@@ -229,10 +229,9 @@ class TestViewRequirementConnector(unittest.TestCase):
         ctx = ConnectorContext(
             view_requirements=view_rq_dict,
             config=config,
-            model_initial_states=[np.zeros(10)],
+            # model_initial_states=[np.zeros(8)], # simualte RNN policy with state_dim=8
         )
 
-        # TODO @jun What is the expected behavior of this test?
         for_action_expected_list = [
             # is_training = False
             SampleBatch({"both": obs_arr, "only_inference": obs_arr}),
@@ -264,7 +263,6 @@ class TestViewRequirementConnector(unittest.TestCase):
             print("for training:")
             print(for_training)
 
-            # TODO @jun is for_training expected to always be equal to data?
             check(for_training, for_training_expected)
             check(for_action, for_action_expected)
 
@@ -280,22 +278,25 @@ class TestViewRequirementConnector(unittest.TestCase):
         }
 
         obs_arrs = np.arange(10)[:, None] + 1
-        ctx = ConnectorContext(view_requirements=view_rq_dict)
+        config = PPOConfig().to_dict()
+        ctx = ConnectorContext(view_requirements=view_rq_dict, config=config)
         c = ViewRequirementAgentConnector(ctx)
 
-        for is_training in [True, False]:
-            c.is_training(is_training)
-            for i, obs_arr in enumerate(obs_arrs):
-                data = AgentConnectorDataType(0, 1, dict(obs=obs_arr))
-                processed = c([data])
-                for_action = processed[0].data.for_action
+        # for is_training in [True, False]:
+        #     c.is_training(is_training)
+        for t, obs_arr in enumerate(obs_arrs):
+            # note: initial state starts at t=-1.
+            data = AgentConnectorDataType(0, 1, dict(obs=obs_arr, t=t-1))
+            processed = c([data])
+            for_action = processed[0].data.for_action
+            breakpoint()
 
-                self.assertTrue("next_state" not in for_action)
-                check(for_action["state"], obs_arrs[i])
-                if i == 0:
-                    check(for_action["prev_state"], np.array([0]))
-                else:
-                    check(for_action["prev_state"], obs_arrs[i - 1])
+            self.assertTrue("next_state" not in for_action)
+            check(for_action["state"], obs_arrs[t])
+            if t == 0:
+                check(for_action["prev_state"], obs_arrs[0])
+            else:
+                check(for_action["prev_state"], obs_arrs[t - 1])
 
     def test_vr_connector_causal_slice(self):
         """Test that the ViewRequirementConnector can handle slice shifts correctly.

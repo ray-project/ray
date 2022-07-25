@@ -36,7 +36,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         super().__init__(ctx)
 
         self._view_requirements = ctx.view_requirements
-        self._agent_data = defaultdict(lambda: defaultdict(SampleBatch))
+        # self._agent_data = defaultdict(lambda: defaultdict(SampleBatch))
 
         # a dict of env_id to a dict of agent_id to a list of agent_collector objects
         env_default = defaultdict(
@@ -44,7 +44,7 @@ class ViewRequirementAgentConnector(AgentConnector):
                 self._view_requirements,
                 max_seq_len=ctx.config["model"]["max_seq_len"],
                 intial_states=ctx.initial_states,
-                disable_action_flattening=ctx.config["_disable_action_flattening"],
+                disable_action_flattening=ctx.config.get("_disable_action_flattening", False),
             )
         )
         self.agent_collectors = defaultdict(lambda: env_default)
@@ -100,7 +100,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         # This is used by both training and inference.
         # agent_batch = self._agent_data[env_id][agent_id]
 
-        # TODO: Ask @jun: what is eps_id, agent_id, env_id? and how are they different?
+        # TODO: Ask @jun: what are we not using eps_id here?
         agent_collector = self.agent_collectors[env_id][agent_id]
 
         if agent_collector.is_empty():
@@ -114,7 +114,6 @@ class ViewRequirementAgentConnector(AgentConnector):
         else:
             agent_collector.add_action_reward_next_obs(d)
 
-        breakpoint()
         sample_batch = agent_collector.build_for_inference()
 
         # for col, req in vr.items():

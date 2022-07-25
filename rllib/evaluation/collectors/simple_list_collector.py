@@ -212,6 +212,10 @@ class _AgentCollector:
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
 
+            # if this view is not for inference, skip it.
+            if not view_req.used_for_compute_actions:
+                continue
+
             # Some columns don't exist yet
             # (get created during postprocessing or depend on state_out).
             if data_col not in self.buffers:
@@ -251,6 +255,9 @@ class _AgentCollector:
                     if index < len(d):
                         element_at_t.append(d[index])
                     else:
+                        if view_req.used_for_compute_actions:
+                            breakpoint()
+                            raise ValueError(f"During inference the agent can only use past observations to respect causality. However, view_col = {view_col} seem to depend on future index {index}, while the used_for_compute_actions flag is set to True. Please fix the discrepancy. Hint: If you are using a custom model make sure the view_requirements are initialized properly.")
                         element_at_t.append(
                             np.zeros(
                                 shape=view_req.space.shape,
@@ -272,9 +279,11 @@ class _AgentCollector:
                         self.buffer_structs[data_col], data
                     )
 
-        batch = self._get_sample_batch(batch_data)
+        batch = self._get_sample_batch(batch_data, is_training=False)
         return batch
 
+    # TODO: @kouorsh we don't really need view_requirements anymore since it's already 
+    # and atribtue of the class
     def build_for_training(
         self, view_requirements: ViewRequirementsDict
     ) -> SampleBatch:
@@ -402,7 +411,7 @@ class _AgentCollector:
                         self.buffer_structs[data_col], data
                     )
 
-        batch = self._get_sample_batch(batch_data)
+        batch = self._get_sample_batch(batch_data, is_training=True)
 
         # This trajectory is continuing -> Copy data at the end (in the size of
         # self.shift_before) to the beginning of buffers and erase everything
@@ -423,6 +432,7 @@ class _AgentCollector:
         self.unroll_id = None
 
         return batch
+
 
     def _build_buffers(self, single_row: Dict[str, TensorType]) -> None:
         """Builds the buffers for sample collection, given an example data row.
@@ -467,11 +477,11 @@ class _AgentCollector:
                 # each data col.
                 self.buffer_structs[col] = data
 
-    def _get_sample_batch(self, batch_data: Dict[str, TensorType]) -> SampleBatch:
+    def _get_sample_batch(self, batch_data: Dict[str, TensorType], is_training: bool = False) -> SampleBatch:
 
         # Due to possible batch-repeats > 1, columns in the resulting batch
         # may not all have the same batch size.
-        batch = SampleBatch(batch_data)
+        batch = SampleBatch(batch_data, is_training=is_training)
 
         # Adjust the seq-lens array depending on the incoming agent sequences.
         if self.is_policy_recurrent:
@@ -683,13 +693,14 @@ class SimpleListCollector(SampleCollector):
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
         # TODO: determine exact shift-before based on the view-req shifts.
+
         self.agent_collectors[agent_key] = _AgentCollector(
             policy.view_requirements,
             max_seq_len=policy.config["model"].get("max_seq_len"),
-            is_policy_recurrent=policy.is_recurrent(),
             disable_action_flattening=policy.config.get(
                 "_disable_action_flattening", False
             ),
+            intial_states=policy.get_initial_state(),
         )
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
