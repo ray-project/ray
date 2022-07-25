@@ -5,6 +5,8 @@ from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
 
+from ray._private.ray_constants import env_integer
+
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.utils import binary_to_hex
@@ -196,7 +198,9 @@ class StateAPIManager:
 
         result = []
         for message in reply.actor_table_data:
-            data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
+            data = self._message_to_dict(
+                message=message, fields_to_decode=["actor_id", "owner_id"]
+            )
             result.append(data)
 
         result = self._filter(result, option.filters, ActorState, option.detail)
@@ -456,6 +460,17 @@ class StateAPIManager:
             del data["node_ip_address"]
             result.append(data)
 
+        # Add callsite warnings if it is not configured.
+        callsite_warning = []
+        callsite_enabled = env_integer("RAY_record_ref_creation_sites", 0)
+        if not callsite_enabled:
+            callsite_warning.append(
+                "Callsite is not being recorded. "
+                "To record callsite information for each ObjectRef created, set "
+                "env variable RAY_record_ref_creation_sites=1 during `ray start` "
+                "and `ray.init`."
+            )
+
         result = self._filter(result, option.filters, ObjectState, option.detail)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
@@ -464,6 +479,7 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_objects,
+            warnings=callsite_warning,
         )
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -553,7 +569,10 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
-            result=summary, partial_failure_warning=result.partial_failure_warning
+            total=result.total,
+            result=summary,
+            partial_failure_warning=result.partial_failure_warning,
+            warnings=result.warnings,
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -567,7 +586,10 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
-            result=summary, partial_failure_warning=result.partial_failure_warning
+            total=result.total,
+            result=summary,
+            partial_failure_warning=result.partial_failure_warning,
+            warnings=result.warnings,
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
@@ -581,7 +603,10 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
-            result=summary, partial_failure_warning=result.partial_failure_warning
+            total=result.total,
+            result=summary,
+            partial_failure_warning=result.partial_failure_warning,
+            warnings=result.warnings,
         )
 
     def _message_to_dict(
