@@ -132,24 +132,20 @@ class A2C(A3C):
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
+        # if this variable isn't set (microbatch_size == None) then by default
+        # we should make the number of microbatches that gradients are
+        # computed on 1.
+        if not self.config.get("microbatch_size", None):
+            self.config["microbatch_size"] = self.config["train_batch_size"]
+
         # Create a microbatch variable for collecting gradients on microbatches'.
         # These gradients will be accumulated on-the-fly and applied at once (once train
         # batch size has been collected) to the model.
-        if (
-            self.config["_disable_execution_plan_api"] is True
-            and self.config["microbatch_size"]
-        ):
-            self._microbatches_grads = None
-            self._microbatches_counts = self._num_microbatches = 0
+        self._microbatches_grads = None
+        self._microbatches_counts = self._num_microbatches = 0
 
     @override(A3C)
     def training_step(self) -> ResultDict:
-        # W/o microbatching: Identical to Algorithm's default implementation.
-        # Only difference to a default Algorithm being the value function loss term
-        # and its value computations alongside each action.
-        if self.config["microbatch_size"] is None:
-            return Algorithm.training_step(self)
-
         # In microbatch mode, we want to compute gradients on experience
         # microbatches, average a number of these microbatches, and then
         # apply the averaged gradient in one SGD step. This conserves GPU
