@@ -400,7 +400,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
-
  protected:
   void update_worker_startup_token_counter();
 

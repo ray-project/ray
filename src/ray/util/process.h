@@ -103,8 +103,6 @@ class Process {
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
   int Wait() const;
-  /// Snapshots the USS, i.e. the private memory allocated to this process.
-  uint64_t UssBytes() const;
 };
 
 // Get the Process ID of the parent process. If the parent process exits, the PID

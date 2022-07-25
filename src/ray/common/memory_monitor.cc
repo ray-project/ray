@@ -30,7 +30,6 @@ MemoryMonitor::MemoryMonitor(float capacity_threshold,
     monitor_callback_(monitor_callback),
     io_context_(),
     monitor_thread_([this] {
-      /// The asio work to keep io_contex_ alive.
       boost::asio::io_service::work io_service_work_(io_context_);
       io_context_.run();
     }),
@@ -48,12 +47,8 @@ MemoryMonitor::MemoryMonitor(float capacity_threshold,
   }
 }
 
-// bool MemoryMonitor::UsageAboveThreshold() const { return usage_above_threshold.load(); }
-
 
 bool MemoryMonitor::IsUsageAboveThreshold() {
-    // uint64_t available_memory_bytes;
-    // uint64_t total_memory_bytes;
   auto [available_memory_bytes, total_memory_bytes]
           = GetNodeAvailableMemoryBytes();
   auto used = total_memory_bytes - available_memory_bytes;

@@ -138,7 +138,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
         [this] { TryKillingIdleWorkers(); },
         RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
-  } 
+  }
 }
 
 WorkerPool::~WorkerPool() {
@@ -969,7 +969,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     return;
   }
 
-InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
+  InvokePopWorkerCallbackForProcess(state.starting_workers_to_tasks,
                                     worker->GetStartupToken(),
                                     worker,
                                     PopWorkerStatus::OK,
@@ -1139,13 +1139,6 @@ void WorkerPool::TryKillingIdleWorkers() {
 
   idle_of_all_languages_ = std::move(new_idle_of_all_languages);
   RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
-}
-
-void WorkerPool::CollectWorkerStats() {
-  for (const auto &worker : GetAllRegisteredWorkers()) {
-    auto uss = worker->GetProcess().UssBytes();
-    RAY_LOG(DEBUG) << "PID uss " << uss;
-  }
 }
 
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,

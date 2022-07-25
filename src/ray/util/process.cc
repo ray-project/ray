@@ -528,10 +528,6 @@ void Process::Kill() {
   }
 }
 
-uint64_t Process::UssBytes() const {
-  return 0;
-}
-
 #ifdef _WIN32
 #ifndef STATUS_BUFFER_OVERFLOW
 #define STATUS_BUFFER_OVERFLOW ((NTSTATUS)0x80000005L)

@@ -770,7 +770,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Throttler for global gc
   Throttler global_gc_throttler_;
 
+  /// Target being evicted or null if no target
   std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
+  /// Time the eviction of the target began
   std::chrono::high_resolution_clock::time_point high_memory_eviction_start_time_;
 
   /// Seconds to initialize a local gc
