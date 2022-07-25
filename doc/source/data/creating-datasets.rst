@@ -4,48 +4,11 @@
 Creating Datasets
 =================
 
-A :class:`Dataset <ray.data.Dataset>` can be created from:
+Ray :class:`Datasets <ray.data.Dataset>` can be created from:
 
 * generated synthetic data,
 * local and distributed in-memory data, and
 * local and external storage systems (local disk, cloud storage, HDFS, etc.).
-
-Creation from existing in-memory data is enabled via Datasets' integrations
-with familiar single-node data libraries (`Pandas <https://pandas.pydata.org/>`__,
-`NumPy <https://numpy.org/>`__, `Arrow <https://arrow.apache.org/>`__) and distributed
-data processing frameworks (:ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
-:ref:`Modin <modin-on-ray>`, :ref:`Mars <mars-on-ray>`). Creating datasets from
-persistent storage is enabled by Datasets' support for reading many common file
-formats (Parquet, CSV, JSON, NPY, text, binary).
-
-A :class:`Dataset <ray.data.Dataset>` can hold plain Python objects (simple datasets),
-Arrow records (Arrow datasets), or Pandas records (Pandas datasets). These records are
-grouped into one or more data **blocks**, and these blocks can be spread across
-multiple Ray nodes. Simple datasets are represented by simple blocks (lists of Python
-objects), Arrow datasets are represented by Arrow blocks (
-`Arrow Tables <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-), and Pandas
-datasets are represented by Pandas blocks (
-`Pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-).
-
-The method of
-creating the dataset will determine the format of its internal block representation.
-
-.. dropdown:: See more about Datasets' internal block representation
-
-  The following details the block representation for each creation method:
-
-  * Reading tabular files (Parquet, CSV, JSON) and converting directly from Arrow produces Arrow datasets.
-  * Converting from Pandas, Dask, Modin, and Mars produces Pandas datasets.
-  * Reading NumPy files or converting from NumPy ndarrays produces Arrow datasets.
-  * Reading text and raw binary files produces simple datasets.
-
-  The following figure visualizes a ``Dataset`` that has three
-  `Arrow Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  blocks, each block holding 1000 rows:
-
-  .. image:: images/dataset-arch.svg
 
 This guide surveys the many ways to create a ``Dataset``. If none of these meet your
 needs, please reach out on `Discourse <https://discuss.ray.io/>`__ or open a feature
@@ -58,12 +21,6 @@ if you're interested in rolling your own integration!
 -------------------------
 Generating Synthetic Data
 -------------------------
-
-Using Datasets with small, generated data is a great way to test out some of Datasets'
-features. Each of these synthetic data generators will generate data in Ray tasks that
-will execute in parallel and will be load-balanced across your Ray cluster; the
-``Dataset`` will hold a set of futures representing the return values of those tasks,
-serving as pointers to a collection of distributed data blocks.
 
 .. tabbed:: Int Range
 
@@ -260,11 +217,6 @@ are supported for each of these storage systems.
   `S3FileSystem <https://arrow.apache.org/docs/python/filesystems.html#s3>`__ instance
   to :func:`read_parquet() <ray.data.read_parquet>`.
 
-  .. note::
-
-    This example is not runnable as-is; to run it on your own private S3 data, add in a
-    path to your private bucket and specify your S3 credentials.
-
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
     :start-after: __read_parquet_s3_with_fs_begin__
@@ -289,11 +241,6 @@ are supported for each of these storage systems.
   ticket, etc.), you can pass in an `HDFSFileSystem
   <https://arrow.apache.org/docs/python/filesystems.html#hadoop-distributed-file-system-hdfs>`__
   instance to :func:`read_parquet() <ray.data.read_parquet>`.
-
-  .. note::
-
-    This example is not runnable as-is; you'll need to point it at your HDFS
-    cluster/data.
 
   .. literalinclude:: ./doc_code/creating_datasets.py
     :language: python
@@ -341,8 +288,8 @@ distributed frameworks (:ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
 
 .. _dataset_from_in_memory_data_single_node:
 
-Integration with Single-Node Data Libraries
-===========================================
+From Single-Node Data Libraries
+===============================
 
 In this section, we demonstrate creating a ``Dataset`` from single-node in-memory data.
 
@@ -415,8 +362,8 @@ In this section, we demonstrate creating a ``Dataset`` from single-node in-memor
 
 .. _dataset_from_in_memory_data_distributed:
 
-Integration with Distributed Data Processing Frameworks
-=======================================================
+From Distributed Data Processing Frameworks
+===========================================
 
 In addition to working with single-node in-memory data, Datasets can be constructed from
 distributed (multi-node) in-memory data, interoperating with popular distributed
@@ -609,10 +556,10 @@ Read Parallelism
 
 Datasets automatically selects the read ``parallelism`` according to the following procedure:
 
- 1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
- 2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
- 3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
- 4. The parallelism is truncated to ``min(num_files, parallelism)``.
+1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
+2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
+3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
+4. The parallelism is truncated to ``min(num_files, parallelism)``.
 
 To perform the read, ``parallelism`` parallel read tasks will be
 launched, each reading one or more files and each creating a single block of data.

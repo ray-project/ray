@@ -126,3 +126,18 @@ Datasets uses the Ray object store to store data blocks, which means it inherits
 * Object Spilling: Since Datasets uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
 * Locality Scheduling: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
 * Reference Counting: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
+
+Block Data Formats
+~~~~~~~~~~~~~~~~~~
+
+In order to optimize conversion costs, Datasets can hold tabular data in-memory
+as either `Arrow Tables <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
+or `Pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
+
+Different ways of creating Datasets leads to a different starting internal format:
+* Reading tabular files (Parquet, CSV, JSON) creates Arrow blocks initially.
+* Converting from Pandas, Dask, Modin, and Mars creates Pandas blocks initially.
+* Reading NumPy files or converting from NumPy ndarrays creaates Arrow blocks.
+
+However, this internal format is not exposed to the user. Datasets converts between formats
+as needed internally depending on the specified ``batch_format`` of transformations.
