@@ -19,7 +19,7 @@ class TestDR(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-        regenerate_data = True
+        regenerate_data = False
         num_workers = 4 if regenerate_data else 0
         checkpoint_dir = "/tmp/cartpole/"
         num_episodes = 100
@@ -46,42 +46,50 @@ class TestDR(unittest.TestCase):
             cls.generate_data(cls.algo, checkpoint_dir, "random", 20, num_episodes)
             print("Generated random dataset")
         cls.random_path = os.path.join(checkpoint_dir, "checkpoint", "random")
-        cls.random_batch, cls.random_reward, random_std = cls.get_batch_and_mean_ret(
+        (
+            cls.random_batch,
+            cls.random_reward,
+            cls.random_std,
+        ) = cls.get_batch_and_mean_ret(
             os.path.join(checkpoint_dir, "data", "random"),
             cls.gamma,
             num_episodes,
         )
         print(
             f"Collected random batch of {cls.random_batch.count} steps "
-            f"with return {cls.random_reward} stddev {random_std}"
+            f"with return {cls.random_reward} stddev {cls.random_std}"
         )
 
         if regenerate_data:
             cls.generate_data(cls.algo, checkpoint_dir, "mixed", 120, num_episodes)
             print("Generated mixed dataset")
         cls.mixed_path = os.path.join(checkpoint_dir, "checkpoint", "mixed")
-        cls.mixed_batch, cls.mixed_reward, mixed_std = cls.get_batch_and_mean_ret(
+        cls.mixed_batch, cls.mixed_reward, cls.mixed_std = cls.get_batch_and_mean_ret(
             os.path.join(checkpoint_dir, "data", "mixed"),
             cls.gamma,
             num_episodes,
         )
         print(
             f"Collected mixed batch of {cls.mixed_batch.count} steps "
-            f"with return {cls.mixed_reward} stddev {mixed_std}"
+            f"with return {cls.mixed_reward} stddev {cls.mixed_std}"
         )
 
         if regenerate_data:
             cls.generate_data(cls.algo, checkpoint_dir, "expert", 200, num_episodes)
             print("Generated expert dataset")
         cls.expert_path = os.path.join(checkpoint_dir, "checkpoint", "expert")
-        cls.expert_batch, cls.expert_reward, expert_std = cls.get_batch_and_mean_ret(
+        (
+            cls.expert_batch,
+            cls.expert_reward,
+            cls.expert_std,
+        ) = cls.get_batch_and_mean_ret(
             os.path.join(checkpoint_dir, "data", "expert"),
             cls.gamma,
             num_episodes,
         )
         print(
             f"Collected expert batch of {cls.expert_batch.count} steps "
-            f"with return {cls.expert_reward} stddev {expert_std}"
+            f"with return {cls.expert_reward} stddev {cls.expert_std}"
         )
 
     @classmethod
@@ -148,6 +156,7 @@ class TestDR(unittest.TestCase):
         checkpoint: str,
         batch: SampleBatch,
         mean_ret: float,
+        std_ret: float,
         q_model_config: Dict,
     ):
         algo.load_checkpoint(checkpoint)
@@ -162,11 +171,15 @@ class TestDR(unittest.TestCase):
         estimates = estimator.estimate(batch)
         est_mean = estimates["v_target"]
         est_std = estimates["v_target_std"]
-        print(f"{est_mean:.2f}, {est_std:.2f}, {mean_ret:.2f}, {loss:.2f}")
+        print(
+            f"{est_mean:.2f}, {est_std:.2f}, {mean_ret:.2f}, {std_ret:.2f}, {loss:.2f}"
+        )
+        # Assert that the two mean +- stddev intervals overlap
         assert (
-            est_mean - est_std <= mean_ret <= est_mean + est_std
-        ), f"DR estimate {est_mean:.2f} with stddev {est_std:.2f}"
-        f"does not converge to true estimate {mean_ret:.2f}!"
+            est_mean - est_std <= mean_ret + std_ret
+            and mean_ret - std_ret <= est_mean + est_std
+        ), f"DR estimate {est_mean:.2f} with stddev {est_std:.2f} does not "
+        f"converge to true estimate {mean_ret:.2f} with stddev {std_ret:.2f}!"
 
     def test_random_random_data(self):
         print("Test random policy on random dataset")
@@ -175,28 +188,31 @@ class TestDR(unittest.TestCase):
             self.random_path,
             self.random_batch,
             self.random_reward,
+            self.random_std,
             self.q_model_config,
         )
 
-    # def test_random_mixed_data(self):
-    #     print("Test random policy on mixed dataset")
-    #     self.check(
-    #         self.algo,
-    #         self.random_path,
-    #         self.mixed_batch,
-    #         self.random_reward,
-    #         self.q_model_config,
-    #     )
+    def test_random_mixed_data(self):
+        print("Test random policy on mixed dataset")
+        self.check(
+            self.algo,
+            self.random_path,
+            self.mixed_batch,
+            self.random_reward,
+            self.random_std,
+            self.q_model_config,
+        )
 
-    # def test_random_expert_data(self):
-    #     print("Test random policy on expert dataset")
-    #     self.check(
-    #         self.algo,
-    #         self.random_path,
-    #         self.expert_batch,
-    #         self.random_reward,
-    #         self.q_model_config,
-    #     )
+    def test_random_expert_data(self):
+        print("Test random policy on expert dataset")
+        self.check(
+            self.algo,
+            self.random_path,
+            self.expert_batch,
+            self.random_reward,
+            self.random_std,
+            self.q_model_config,
+        )
 
     def test_mixed_random_data(self):
         print("Test mixed policy on random dataset")
@@ -205,6 +221,7 @@ class TestDR(unittest.TestCase):
             self.mixed_path,
             self.random_batch,
             self.mixed_reward,
+            self.mixed_std,
             self.q_model_config,
         )
 
@@ -215,6 +232,7 @@ class TestDR(unittest.TestCase):
             self.mixed_path,
             self.mixed_batch,
             self.mixed_reward,
+            self.mixed_std,
             self.q_model_config,
         )
 
@@ -225,18 +243,20 @@ class TestDR(unittest.TestCase):
             self.mixed_path,
             self.expert_batch,
             self.mixed_reward,
+            self.mixed_std,
             self.q_model_config,
         )
 
-    # def test_expert_random_data(self):
-    #     print("Test expert policy on random dataset")
-    #     self.check(
-    #         self.algo,
-    #         self.expert_path,
-    #         self.random_batch,
-    #         self.expert_reward,
-    #         self.q_model_config,
-    #     )
+    def test_expert_random_data(self):
+        print("Test expert policy on random dataset")
+        self.check(
+            self.algo,
+            self.expert_path,
+            self.random_batch,
+            self.expert_reward,
+            self.expert_std,
+            self.q_model_config,
+        )
 
     def test_expert_mixed_data(self):
         print("Test expert policy on mixed dataset")
@@ -245,6 +265,7 @@ class TestDR(unittest.TestCase):
             self.expert_path,
             self.mixed_batch,
             self.expert_reward,
+            self.expert_std,
             self.q_model_config,
         )
 
@@ -255,6 +276,7 @@ class TestDR(unittest.TestCase):
             self.expert_path,
             self.expert_batch,
             self.expert_reward,
+            self.expert_std,
             self.q_model_config,
         )
 
