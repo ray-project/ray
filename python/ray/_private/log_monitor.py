@@ -78,7 +78,6 @@ class LogFileInfo:
         if open_inode != new_inode:
             self.file_handle = open(self.filename, "rb")
 
-
     def __repr__(self):
         return (
             "FileInfo(\n"
@@ -275,7 +274,6 @@ class LogMonitor:
                     self.log_filenames.remove(file_info.filename)
                     continue
                 raise e
-
 
             # If some new lines have been added to this file, try to reopen the
             # file.
