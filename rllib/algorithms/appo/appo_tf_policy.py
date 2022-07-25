@@ -32,6 +32,7 @@ from ray.rllib.policy.tf_mixins import (
     LearningRateSchedule,
     KLCoeffMixin,
     ValueNetworkMixin,
+    GradStatsMixin,
 )
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -78,9 +79,6 @@ class TargetNetworkMixin:
             self._target_model_vars = self.target_model.variables()
         return self._target_model_vars
 
-    def variables(self):
-        return self.model_vars + self.target_model_vars
-
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
@@ -102,6 +100,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
         EntropyCoeffSchedule,
         ValueNetworkMixin,
         TargetNetworkMixin,
+        GradStatsMixin,
         base,
     ):
         def __init__(
@@ -140,6 +139,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             )
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
+            GradStatsMixin.__init__(self)
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.

@@ -16,7 +16,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.sklearn import SklearnPredictor, to_air_checkpoint
+from ray.train.sklearn import SklearnCheckpoint, SklearnPredictor
 
 
 @pytest.fixture
@@ -57,7 +57,10 @@ def test_init():
         checkpoint_predictor.estimator.feature_importances_,
         predictor.estimator.feature_importances_,
     )
-    assert checkpoint_predictor.preprocessor.attr == predictor.preprocessor.attr
+    assert (
+        checkpoint_predictor.get_preprocessor().attr
+        == predictor.get_preprocessor().attr
+    )
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
@@ -70,7 +73,7 @@ def test_predict(batch_type):
     predictions = predictor.predict(data_batch)
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_set_cpus(ray_start_4_cpus):
@@ -81,7 +84,7 @@ def test_predict_set_cpus(ray_start_4_cpus):
     predictions = predictor.predict(data_batch, num_estimator_cpus=2)
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
     assert predictor.estimator.n_jobs == 2
 
 
@@ -93,7 +96,7 @@ def test_predict_feature_columns():
     predictions = predictor.predict(data_batch, feature_columns=[0, 1])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_feature_columns_pandas():
@@ -110,7 +113,7 @@ def test_predict_feature_columns_pandas():
     predictions = predictor.predict(data_batch, feature_columns=["A", "B"])
 
     assert len(predictions) == 3
-    assert hasattr(predictor.preprocessor, "_batch_transformed")
+    assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
 
 def test_predict_no_preprocessor():
@@ -146,7 +149,7 @@ def test_batch_prediction_with_set_cpus(ray_start_4_cpus):
 
 def test_sklearn_predictor_no_training():
     with tempfile.TemporaryDirectory() as tmpdir:
-        checkpoint = to_air_checkpoint(estimator=model, path=tmpdir)
+        checkpoint = SklearnCheckpoint.from_estimator(estimator=model, path=tmpdir)
         batch_predictor = BatchPredictor.from_checkpoint(checkpoint, SklearnPredictor)
         test_dataset = ray.data.from_pandas(
             pd.DataFrame(dummy_data, columns=["A", "B"])
