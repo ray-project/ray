@@ -11,7 +11,7 @@ from ray.rllib.examples.models.trajectory_view_utilizing_models import (
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
+from ray import air, tune
 
 tf1, tf, tfv = try_import_tf()
 
@@ -81,9 +81,15 @@ if __name__ == "__main__":
         "timesteps_total": args.stop_timesteps,
         "episode_reward_mean": args.stop_reward,
     }
-    results = tune.run(
-        args.run, config=config, stop=stop, verbose=2, checkpoint_at_end=True
-    )
+    results = tune.Tuner(
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=2,
+            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
+        ),
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
