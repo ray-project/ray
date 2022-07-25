@@ -7,6 +7,7 @@ from ray import tune
 from ray.air import RunConfig, Checkpoint, session, FailureConfig
 from ray.air._internal.remote_storage import download_from_uri
 from ray.tune import Callback
+from ray.tune.execution.trial_runner import find_newest_experiment_checkpoint
 from ray.tune.experiment import Trial
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -321,15 +322,30 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir):
     assert "tuner.pkl" in remote_contents
     assert "trainable.pkl" in remote_contents
 
+    prev_cp = find_newest_experiment_checkpoint(str(check_path / "exp_dir"))
+    prev_lstat = os.lstat(prev_cp)
+
     (tmpdir / "ray_results").remove(ignore_errors=True)
 
     tuner2 = Tuner.restore("memory:///test/restore/exp_dir")
     results = tuner2.fit()
 
     assert results[0].metrics["_metric"] == 1
-    local_contents = os.listdir(tmpdir / "ray_results/exp_dir")
+    local_contents = os.listdir(tmpdir / "ray_results" / "exp_dir")
     assert "tuner.pkl" in local_contents
     assert "trainable.pkl" in local_contents
+
+    after_cp = find_newest_experiment_checkpoint(
+        str(tmpdir / "ray_results" / "exp_dir")
+    )
+    after_lstat = os.lstat(after_cp)
+
+    # Experiment checkpoint was updated
+    assert os.path.basename(prev_cp) != os.path.basename(after_cp)
+    # Old experiment checkpoint still exists in dir
+    assert os.path.basename(prev_cp) in local_contents
+    # Contents changed
+    assert prev_lstat.st_size != after_lstat.st_size
 
 
 if __name__ == "__main__":
