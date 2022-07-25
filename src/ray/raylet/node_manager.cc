@@ -610,26 +610,26 @@ ray::Status NodeManager::RegisterGcs() {
 void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force) {
   if (force) {
     worker->GetProcess().Kill();
-  } else {
+    return;
+  }
 #ifdef _WIN32
 // TODO(mehrdadn): implement graceful process termination mechanism
 #else
-    // If we're just cleaning up a single worker, allow it some time to clean
-    // up its state before force killing. The client socket will be closed
-    // and the worker struct will be freed after the timeout.
-    kill(worker->GetProcess().GetId(), SIGTERM);
+  // If we're just cleaning up a single worker, allow it some time to clean
+  // up its state before force killing. The client socket will be closed
+  // and the worker struct will be freed after the timeout.
+  kill(worker->GetProcess().GetId(), SIGTERM);
 #endif
 
-    auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-    auto retry_duration = boost::posix_time::milliseconds(
-        RayConfig::instance().kill_worker_timeout_milliseconds());
-    retry_timer->expires_from_now(retry_duration);
-    retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
-      RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
-      // Force kill worker
-      worker->GetProcess().Kill();
-    });
-  }
+  auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+  auto retry_duration = boost::posix_time::milliseconds(
+      RayConfig::instance().kill_worker_timeout_milliseconds());
+  retry_timer->expires_from_now(retry_duration);
+  retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
+    RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->GetProcess().GetId();
+    // Force kill worker
+    worker->GetProcess().Kill();
+  });
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
@@ -2787,7 +2787,6 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
   TriggerGlobalGC();
 }
 
-
 bool NodeManager::TryLocalGC() {
   // If plasma store is under high pressure, we should try to schedule a global gc.
   bool plasma_high_pressure =
@@ -2812,7 +2811,6 @@ bool NodeManager::TryLocalGC() {
     DoLocalGC(triggered_by_global_gc);
     should_local_gc_ = false;
   }
-
   return triggered_by_global_gc;
 }
 
