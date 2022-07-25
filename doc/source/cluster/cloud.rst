@@ -45,10 +45,15 @@ Ray with cloud providers
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
+    .. note::
+
+        See :ref:`aws-cluster` for additional AWS integrations and optimizations.
+
+        Refer to the `ray/python/ray/autoscaler/aws/example-gpu-docker.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-gpu-docker.yaml>`__ cluster config file to setup a GPU cluster on AWS.
 
     AWS Node Provider Maintainers (GitHub handles): pdames, Zyiqin-Miranda, DmitriGekhtman, wuisawesome
 
-    See :ref:`aws-cluster` for recipes on customizing AWS clusters.
+
 .. tabbed:: Azure
 
     First, install the Azure CLI (``pip install azure-cli azure-identity``) then login using (``az login``).

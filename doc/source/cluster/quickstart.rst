@@ -168,6 +168,11 @@ A minimal sample cluster configuration file looks as follows:
             type: aws
             region: us-west-2
 
+.. note::
+
+    See :ref:`cluster-cloud` for advanced AWS cluster configurations and :ref:`aws-cluster` for additional AWS integrations and optimizations.
+
+
 .. tabbed:: Azure
 
     .. code-block:: yaml

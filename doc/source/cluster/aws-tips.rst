@@ -5,39 +5,61 @@
 AWS Configurations
 -------------------
 
-.. _aws-cluster-efs:
+.. _aws-cluster-ec2:
 
-Using Amazon EFS
-~~~~~~~~~~~~~~~~
+Amazon EC2
+~~~~~~~~~~
 
-To use Amazon EFS, install some utilities and mount the EFS in ``setup_commands``. Note that these instructions only work if you are using the AWS Autoscaler.
+CPUs and GPUs
+=============
+
+Deploy Ray clusters on AWS using any combination of CPUs and GPUs.  
+
+
+.. code-block:: text
+
+	available_node_types:
+	    # CPU head
+	    ray.head.cpu:
+	        node_config:
+	            InstanceType: m5.large
+	            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+
+	    # GPU workers
+	    ray.worker.default:
+	        node_config:
+	            InstanceType: p3.2xlarge
+	            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+
 
 .. note::
 
-  You need to replace the ``{{FileSystemId}}`` to your own EFS ID before using the config. You may also need to set correct ``SecurityGroupIds`` for the instances in the config file.
+	Refer to the `ray/python/ray/autoscaler/aws/example-gpu-docker.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-gpu-docker.yaml>`__ cluster config file to setup a GPU cluster on AWS.
 
-.. code-block:: yaml
+Spot Instances
+==============
 
-    setup_commands:
-        - sudo kill -9 `sudo lsof /var/lib/dpkg/lock-frontend | awk '{print $2}' | tail -n 1`;
-            sudo pkill -9 apt-get;
-            sudo pkill -9 dpkg;
-            sudo dpkg --configure -a;
-            sudo apt-get -y install binutils;
-            cd $HOME;
-            git clone https://github.com/aws/efs-utils;
-            cd $HOME/efs-utils;
-            ./build-deb.sh;
-            sudo apt-get -y install ./build/amazon-efs-utils*deb;
-            cd $HOME;
-            mkdir efs;
-            sudo mount -t efs {{FileSystemId}}:/ efs;
-            sudo chmod 777 efs;
+.. code-block:: text
+
+	available_node_types:
+	    ray.worker.default:
+	        node_config:
+	            InstanceType: p3.2xlarge
+	            ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
+	            InstanceMarketOptions:
+	                MarketType: spot
+	                   SpotOptions: # Additional options in the AWS docs
+	                       MaxPrice: MAX_HOURLY_PRICE
+
+.. note::
+
+	Refer to the `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file to setup a cluster with Spot Instances on AWS.
+
 
 .. _aws-cluster-s3:
 
-Configure worker nodes to access Amazon S3
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Amazon S3
+~~~~~~~~~
 
 In various scenarios, worker nodes may need write access to the S3 bucket.
 E.g. Ray Tune has the option that worker nodes write distributed checkpoints to S3 instead of syncing back to the driver using rsync.
@@ -73,10 +95,199 @@ You should see something like
 Please refer to `this discussion <https://github.com/ray-project/ray/issues/9327>`__ for more details.
 
 
+.. _aws-cluster-efs:
+
+Amazon EFS
+~~~~~~~~~~
+
+To use Amazon EFS, install some utilities and mount the EFS in ``setup_commands``. Note that these instructions only work if you are using the AWS Autoscaler.
+
+.. note::
+
+  You need to replace the ``{{FileSystemId}}`` to your own EFS ID before using the config. You may also need to set correct ``SecurityGroupIds`` for the instances in the config file.
+
+.. code-block:: yaml
+
+    setup_commands:
+        - sudo kill -9 `sudo lsof /var/lib/dpkg/lock-frontend | awk '{print $2}' | tail -n 1`;
+            sudo pkill -9 apt-get;
+            sudo pkill -9 dpkg;
+            sudo dpkg --configure -a;
+            sudo apt-get -y install binutils;
+            cd $HOME;
+            git clone https://github.com/aws/efs-utils;
+            cd $HOME/efs-utils;
+            ./build-deb.sh;
+            sudo apt-get -y install ./build/amazon-efs-utils*deb;
+            cd $HOME;
+            mkdir efs;
+            sudo mount -t efs {{FileSystemId}}:/ efs;
+            sudo chmod 777 efs;
+
+
+.. _aws-cluster-emr:
+
+Amazon EMR
+~~~~~~~~~~
+
+To use Ray with Amazon EMR, use the following bootstrap action script: 
+
+.. code-block:: bash 
+
+	#!/bin/sh
+	
+	# First, if we're on a worker node, just run our pip installs
+	# They might get overwritten - we'll need to validate later
+	if grep isMaster /mnt/var/lib/info/instance.json | grep false; then
+	    sudo python3 -m pip install -U ray[all]
+	
+	    RAY_HEAD_IP=$(grep "\"masterHost\":" /emr/instance-controller/lib/info/extraInstanceData.json | cut -f2 -d: | cut -f2 -d\")
+	
+	    sudo mkdir -p /tmp/ray/
+	    sudo chmod a+rwx -R /tmp/ray/
+	
+	    # Wait for ray to be available on the leader node in the background
+	    cat >/tmp/start_ray.sh <<EOF
+	#!/bin/sh
+	echo -n "Waiting for Ray leader node..."
+	while ( ! nc -z -v $RAY_HEAD_IP 6379); do echo -n "."; sleep 5; done
+	echo -e "\nRay available...starting!"
+	ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076 --disable-usage-stats
+	EOF
+	
+	    chmod +x /tmp/start_ray.sh
+	    nohup /tmp/start_ray.sh &
+	    exit 0
+	fi
+	
+	# Create a script that can execute in the background.
+	# Otherwise, the bootstrap will wait too long and fail the cluster startup.
+	cat >/tmp/install_ray.sh <<EOF
+	#!/bin/sh
+	# Wait for EMR to finish provisioning
+	NODEPROVISIONSTATE="waiting"
+	echo -n "Waiting for EMR to provision..."
+	while [ ! "\$NODEPROVISIONSTATE" == "SUCCESSFUL" ]; do
+	    echo -n "."
+	    sleep 10
+	    NODEPROVISIONSTATE=\`sed -n '/localInstance [{]/,/[}]/{
+	    /nodeProvisionCheckinRecord [{]/,/[}]/ {
+	    /status: / { p }
+	    /[}]/a
+	    }
+	    /[}]/a
+	    }' /emr/instance-controller/lib/info/job-flow-state.txt | awk ' { print \$2 }'\`
+	done
+	    
+	echo "EMR provisioned! Continuing with installation..."
+	# Update notebook env to use python 3.7.10 and install libs
+	sudo /emr/notebook-env/bin/conda install --name base -y python==3.7.10
+	sudo /emr/notebook-env/bin/conda install -y python==3.7.10
+	sudo /emr/notebook-env/bin/pip install -U ray[all]  # torch transformers pandas datasets accelerate scikit-learn mlflow ray[all]
+	sudo pip3 install -U ray[all] # torch transformers pandas datasets accelerate scikit-learn mlflow ray[all]
+	sudo mkdir -p /tmp/ray/
+	sudo chmod a+rwx -R /tmp/ray/
+	ray start --head --port=6379 --object-manager-port=8076 --disable-usage-stats
+	EOF
+	
+	# Execute the script in the background
+	chmod +x /tmp/install_ray.sh
+	nohup /tmp/install_ray.sh &
+
+
+.. note::
+
+	Refer to `aws-samples-for-ray <https://github.com/aws-samples/aws-samples-for-ray/>`_ for more examples.
+
+.. _aws-cluster-sagemaker:
+
+Amazon SageMaker 
+~~~~~~~~~~~~~~~~
+
+To use Ray with Amazon SageMaker, use the following helper Python utility:
+
+.. code-block:: python 
+
+	import subprocess
+	import os
+	import time
+	import ray
+	import socket
+	import json
+	import sys
+	
+	class RayHelper():
+	    def __init__(self, ray_port:str="9339", redis_pass:str="redis_password"):
+	        
+	        self.ray_port = ray_port
+	        self.redis_pass = redis_pass
+	        self.resource_config = self.get_resource_config()
+	        self.master_host = self.resource_config["hosts"][0]
+	        self.n_hosts = len(self.resource_config["hosts"])
+	        
+	    @staticmethod
+	    def get_resource_config():
+	   
+	        return dict(current_host = os.environ.get("SM_CURRENT_HOST"),
+		            hosts = json.loads(os.environ.get("SM_HOSTS")) )
+	    
+	    def _get_ip_from_host(self):
+	        ip_wait_time = 200
+	        counter = 0
+	        ip = ""
+	
+	        while counter < ip_wait_time and ip == "":
+	            try:
+	                ip = socket.gethostbyname(self.master_host)
+	                break
+	            except:
+	                counter += 1
+	                time.sleep(1)
+	
+	        if counter == ip_wait_time and ip == "":
+	            raise Exception(
+	                "Exceeded max wait time of {}s for hostname resolution".format(ip_wait_time)
+	            )
+	        return ip 
+	    
+	    def start_ray(self):
+	        
+	        master_ip = self._get_ip_from_host()
+	    
+	        if self.resource_config["current_host"] == self.master_host:
+	            output = subprocess.run(['ray', 'start', '--head', '-vvv', '--port', self.ray_port, '--redis-password', self.redis_pass, '--include-dashboard', 'false'], stdout=subprocess.PIPE)
+	            print(output.stdout.decode("utf-8"))
+	            ray.init(address="auto", include_dashboard=False)
+	            self._wait_for_workers()
+	            print("All workers present and accounted for")
+	            print(ray.cluster_resources())
+	
+	        else:
+	            time.sleep(10)
+	            subprocess.run(['ray', 'start', f"--address={master_ip}:{self.ray_port}", '--redis-password', self.redis_pass, "--block"], stdout=subprocess.PIPE)
+	            sys.exit(0)
+	    
+	    
+	    def _wait_for_workers(self, timeout=60):
+	        
+	        print(f"Waiting {timeout} seconds for {self.n_hosts} nodes to join")
+	        
+	        while len(ray.nodes()) < self.n_hosts:
+	            print(f"{len(ray.nodes())} nodes connected to cluster")
+	            time.sleep(5)
+	            timeout-=5
+	            if timeout==0:
+	                raise Exception("Max timeout for nodes to join exceeded")	
+
+.. note::
+
+	Refer to `aws-samples-for-ray <https://github.com/aws-samples/aws-samples-for-ray/>`_ for more examples.
+
+	
 .. _aws-cluster-cloudwatch:
 
-Using Amazon CloudWatch
------------------------
+Amazon CloudWatch
+~~~~~~~~~~~~~~~~~
 
 Amazon CloudWatch is a monitoring and observability service that provides data and actionable insights to monitor your applications, respond to system-wide performance changes, and optimize resource utilization.
 CloudWatch integration with Ray requires an AMI (or Docker image) with the Unified CloudWatch Agent pre-installed.
@@ -113,11 +324,10 @@ The table below lists AMIs with the Unified CloudWatch Agent pre-installed in ea
 
     Using Amazon CloudWatch will incur charges, please refer to `CloudWatch pricing <https://aws.amazon.com/cloudwatch/pricing/>`_ for details.
 
-Getting started
-~~~~~~~~~~~~~~~
+Create Basic Example
+====================
 
-1. Create a minimal cluster config YAML named ``cloudwatch-basic.yaml`` with the following contents:
-====================================================================================================
+Create a minimal cluster config YAML named ``cloudwatch-basic.yaml`` with the following contents:
 
 .. code-block:: yaml
 
@@ -154,10 +364,13 @@ Getting started
             resources: {}
             min_workers: 0
 
-2. Download CloudWatch Agent and Dashboard config.
-==================================================
+Download Pre-built Example 
+=============================
+
+Download the CloudWatch Agent and Dashboard config.
 
 First, create a ``cloudwatch`` directory in the same directory as ``cloudwatch-basic.yaml``.
+
 Then, download the example `CloudWatch Agent <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-agent-config.json>`_ and `CloudWatch Dashboard <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-dashboard-config.json>`_ config files to the ``cloudwatch`` directory.
 
 .. code-block:: console
@@ -167,14 +380,22 @@ Then, download the example `CloudWatch Agent <https://github.com/ray-project/ray
     $ wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-agent-config.json
     $ wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-dashboard-config.json
 
-3. Run ``ray up cloudwatch-basic.yaml`` to start your Ray Cluster.
-==================================================================
+.. note::
+
+	Refer to `example-cloudwatch.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-cloudwatch.yaml>`_ for a complete example.
+
+Start Cluster
+=============
+
+Run ``ray up cloudwatch-basic.yaml`` to start your Ray Cluster.
 
 This will launch your Ray cluster in ``us-west-2`` by default. When launching a cluster for a different region, you'll need to change your cluster config YAML file's ``region`` AND ``ImageId``.
 See the "Unified CloudWatch Agent Images" table above for available AMIs by region.
 
-4. Check out your Ray cluster's logs, metrics, and dashboard in the `CloudWatch Console <https://console.aws.amazon.com/cloudwatch/>`_!
-=======================================================================================================================================
+View Dashboard
+==============
+
+Check out your Ray cluster's logs, metrics, and dashboard in the `CloudWatch Console <https://console.aws.amazon.com/cloudwatch/>`_!
 
 A tail can be acquired on all logs written to a CloudWatch log group by ensuring that you have the `AWS CLI V2+ installed <https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html>`_ and then running:
 
@@ -182,13 +403,11 @@ A tail can be acquired on all logs written to a CloudWatch log group by ensuring
 
     aws logs tail $log_group_name --follow
 
-Advanced Setup
-~~~~~~~~~~~~~~
 
-Refer to `example-cloudwatch.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-cloudwatch.yaml>`_ for a complete example.
+Pre-configured AMI
+==================
 
-1. Choose an AMI with the Unified CloudWatch Agent pre-installed.
-=================================================================
+Choose an AMI with the Unified CloudWatch Agent pre-installed.
 
 Ensure that you're launching your Ray EC2 cluster in the same region as the AMI,
 then specify the ``ImageId`` to use with your cluster's head and worker nodes in your cluster config YAML file.
@@ -216,8 +435,11 @@ To build your own AMI with the Unified CloudWatch Agent installed:
 1. Follow the `CloudWatch Agent Installation <https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/install-CloudWatch-Agent-on-EC2-Instance.html>`_ user guide to install the Unified CloudWatch Agent on an EC2 instance.
 2. Follow the `EC2 AMI Creation <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AMIs.html#creating-an-ami>`_ user guide to create an AMI from this EC2 instance.
 
-2. Define your own CloudWatch Agent, Dashboard, and Alarm JSON config files.
-============================================================================
+
+Custom Configuration
+====================
+
+Define your own CloudWatch Agent, Dashboard, and Alarm JSON config files.
 
 You can start by using the example `CloudWatch Agent <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-agent-config.json>`_, `CloudWatch Dashboard <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-dashboard-config.json>`_ and `CloudWatch Alarm <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-alarm-config.json>`_ config files.
 
@@ -255,8 +477,7 @@ See CloudWatch Agent `Configuration File Details <https://docs.aws.amazon.com/Am
          "TODO: Add alarm actions! See https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/AlarmThatSendsEmail.html"
       ]
 
-3. Reference your CloudWatch JSON config files in your cluster config YAML.
-===========================================================================
+Reference your CloudWatch JSON config files in your cluster config YAML.
 
 Specify the file path to your CloudWatch JSON config files relative to the working directory that you will run ``ray up`` from:
 
@@ -268,8 +489,10 @@ Specify the file path to your CloudWatch JSON config files relative to the worki
                 config: "cloudwatch/example-cloudwatch-agent-config.json"
 
 
-4. Set your IAM Role and EC2 Instance Profile.
-==============================================
+Configure IAM
+=============
+
+Set your IAM Role and EC2 Instance Profiles.
 
 By default the ``ray-autoscaler-cloudwatch-v1`` IAM role and EC2 instance profile is created at Ray cluster launch time.
 This role contains all additional permissions required to integrate CloudWatch with Ray, namely the ``CloudWatchAgentAdminPolicy``, ``AmazonSSMManagedInstanceCore``, ``ssm:SendCommand``, ``ssm:ListCommandInvocations``, and ``iam:PassRole`` managed policies.
@@ -284,8 +507,9 @@ Ensure that all worker nodes are configured to use the ``ray-autoscaler-cloudwat
             IamInstanceProfile:
                 Name: ray-autoscaler-cloudwatch-v1
 
-5. Export Ray system metrics to CloudWatch.
-===========================================
+
+Export Prometheus Metrics
+=========================
 
 To export Ray's Prometheus system metrics to CloudWatch, first ensure that your cluster has the
 Ray Dashboard installed, then uncomment the ``head_setup_commands`` section in `example-cloudwatch.yaml file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-cloudwatch.yaml>`_ file.
@@ -308,9 +532,11 @@ You can find Ray Prometheus metrics in the ``{cluster_name}-ray-prometheus`` met
     `cat ~/ray_bootstrap_config.yaml | jq '.cluster_name'`
     >> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.out' 2>> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.err'" &
 
-6. Update CloudWatch Agent, Dashboard and Alarm config files.
-=============================================================
+
+Update Configuration
+====================
 
 You can apply changes to the CloudWatch Logs, Metrics, Dashboard, and Alarms for your cluster by simply modifying the CloudWatch config files referenced by your Ray cluster config YAML and re-running ``ray up example-cloudwatch.yaml``.
+
 The Unified CloudWatch Agent will be automatically restarted on all cluster nodes, and your config changes will be applied.
 
