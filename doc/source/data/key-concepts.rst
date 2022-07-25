@@ -14,7 +14,7 @@ A Dataset consists of a list of Ray object references to *blocks*.
 Each block holds a set of items in either `Arrow table format <https://arrow.apache.org/docs/python/data.html#tables>`__
 or a Python list (for non-tabular data).
 For ML use cases, Datasets also natively supports :ref:`Tensor data <datasets_tensor_support>`.
-Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
+Having multiple blocks in a dataset allows for parallel transformation and ingest.
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
@@ -76,8 +76,8 @@ Datasets relies on :ref:`task-based fault tolerance <task-fault-tolerance>` in R
 
 There are a few cases that are not currently supported:
 
- * If the original worker process that created the Dataset dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
- * When ``compute=ActorPoolStrategy()`` is specified for transformations.
+* If the original worker process that created the Dataset dies. This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
+* When ``compute=ActorPoolStrategy()`` is specified for transformations.
 
 .. _dataset_pipeline_concept:
 

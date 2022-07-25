@@ -370,13 +370,10 @@ distributed (multi-node) in-memory data, interoperating with popular distributed
 data processing frameworks such as :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`,
 :ref:`Modin <modin-on-ray>`, and :ref:`Mars <mars-on-ray>`.
 
-The common paradigm used by
-these conversions is to send out Ray tasks converting each Dask/Spark/Modin/Mars
-data partition to a format that Datasets can understand (if needed), and using the
+These conversions work by running Ray tasks converting each Dask/Spark/Modin/Mars
+data partition to a block format supported by Datasets (copying data if needed), and using the
 futures representing the return value of those conversion tasks as the ``Dataset`` block
-futures. If the upstream framework's data partitions are already in a format that
-Datasets understands (e.g. Arrow or Pandas), Datasets will elide the conversion task and
-will instead reinterpret those data partitions directly as its blocks.
+futures.
 
 .. note::
 
