@@ -76,15 +76,15 @@ class TunerInternal:
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
 
-        # Restored from Tuner checkpoint.
+        # Restore from Tuner checkpoint.
         if restore_path:
             # Sync down from cloud storage if needed
-            synced, experiment_checkpoint_dir = self._maybe_sync_down_trainable_state(
+            synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
                 restore_path
             )
             experiment_checkpoint_path = Path(experiment_checkpoint_dir)
 
-            # Load trainer state
+            # Load trainable and tuner state
             with open(experiment_checkpoint_path / _TRAINABLE_PKL, "rb") as fp:
                 trainable = pickle.load(fp)
 
@@ -148,7 +148,7 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
             pickle.dump(self._trainable, fp)
 
-    def _maybe_sync_down_trainable_state(self, restore_path: str) -> Tuple[bool, str]:
+    def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.
 
         Returns:
