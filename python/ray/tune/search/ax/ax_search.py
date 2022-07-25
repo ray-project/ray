@@ -100,10 +100,14 @@ class AxSearch(Searcher):
                 tune.report(score=intermediate_result)
 
         ax_search = AxSearch(metric="score")
-        tune.run(
-            config=config,
+        tuner = tune.Tuner(
             easy_objective,
-            search_alg=ax_search)
+            tune_config=tune.TuneConfig(
+                search_alg=ax_search,
+            ),
+            param_space=config,
+        )
+        tuner.fit()
 
     If you would like to pass the search space manually, the code would
     look like this:
@@ -124,7 +128,13 @@ class AxSearch(Searcher):
                 tune.report(score=intermediate_result)
 
         ax_search = AxSearch(space=parameters, metric="score")
-        tune.run(easy_objective, search_alg=ax_search)
+        tuner = tune.Tuner(
+            easy_objective,
+            tune_config=tune.TuneConfig(
+                search_alg=ax_search,
+            ),
+        )
+        tuner.fit()
 
     """
 
@@ -196,12 +206,12 @@ class AxSearch(Searcher):
                     "You have to create an Ax experiment by calling "
                     "`AxClient.create_experiment()`, or you should pass an "
                     "Ax search space as the `space` parameter to `AxSearch`, "
-                    "or pass a `config` dict to `tune.run()`."
+                    "or pass a `param_space` dict to `tune.Tuner()`."
                 )
             if self._mode not in ["min", "max"]:
                 raise ValueError(
                     "Please specify the `mode` argument when initializing "
-                    "the `AxSearch` object or pass it to `tune.run()`."
+                    "the `AxSearch` object or pass it to `tune.TuneConfig()`."
                 )
             self._ax.create_experiment(
                 parameters=self._space,

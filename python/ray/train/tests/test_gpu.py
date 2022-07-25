@@ -477,6 +477,33 @@ def test_auto_transfer_data_from_host_to_device(
         assert compute_average_runtime(host_to_device) >= with_auto_transfer
 
 
+def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
+    """Tests that auto_transfer uses the right device for the cuda stream."""
+    import nvidia_smi
+
+    nvidia_smi.nvmlInit()
+
+    def get_gpu_used_mem(i):
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
+        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        return info.used
+
+    start_gpu_memory = get_gpu_used_mem(1)
+
+    device = torch.device("cuda:1")
+    small_dataloader = [(torch.randn((1024 * 4, 1024 * 4)),) for _ in range(10)]
+    wrapped_dataloader = (  # noqa: F841
+        ray.train.torch.train_loop_utils._WrappedDataLoader(
+            small_dataloader, device, True
+        )
+    )
+
+    end_gpu_memory = get_gpu_used_mem(1)
+
+    # Verify GPU memory usage increases on the right cuda device
+    assert end_gpu_memory > start_gpu_memory
+
+
 if __name__ == "__main__":
     import sys
 

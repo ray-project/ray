@@ -84,7 +84,7 @@ See :ref:`the documentation <ray-up-doc>` for ``ray up``.
 Running shell commands on the cluster (``ray exec``)
 ----------------------------------------------------
 
-You can use ``ray exec`` to conveniently run commands on clusters. Note that python scripts that you want to scale should connect to Ray via ``ray.init(address="auto")``. See :ref:`the documentation <ray-exec-doc>` for ``ray exec``.
+You can use ``ray exec`` to conveniently run commands on clusters. See :ref:`the documentation <ray-exec-doc>` for ``ray exec``.
 
 
 .. code-block:: shell

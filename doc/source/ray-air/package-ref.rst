@@ -1,7 +1,7 @@
 .. _air-api-ref:
 
-Ray AIR API
-===========
+API Reference
+=============
 
 .. contents::
     :local:
@@ -64,8 +64,6 @@ Trainer Configs
 
 .. automodule:: ray.air.config
     :members:
-
-.. autoclass:: ray.air.config.CheckpointConfig
 
 Checkpoint
 ~~~~~~~~~~
