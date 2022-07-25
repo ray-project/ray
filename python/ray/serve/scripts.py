@@ -18,7 +18,6 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
 from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
@@ -133,20 +132,7 @@ def cli():
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP servers. Defaults to HeadOnly.",
 )
-@click.option(
-    "--checkpoint-path",
-    default=DEFAULT_CHECKPOINT_PATH,
-    required=False,
-    type=str,
-    hidden=True,
-)
-def start(
-    address,
-    http_host,
-    http_port,
-    http_location,
-    checkpoint_path,
-):
+def start(address, http_host, http_port, http_location):
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -158,7 +144,6 @@ def start(
             port=http_port,
             location=http_location,
         ),
-        _checkpoint_path=checkpoint_path,
     )
 
 
