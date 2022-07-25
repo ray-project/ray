@@ -336,7 +336,7 @@ class LogMonitor:
             assert not file_info.file_handle.closed
             file_info.reopen_if_necessary()
 
-            max_num_lines_to_read = 100
+            max_num_lines_to_read = ray_constants.LOG_MONITOR_NUM_LINES_TO_READ
             for _ in range(max_num_lines_to_read):
                 try:
                     next_line = file_info.file_handle.readline()
