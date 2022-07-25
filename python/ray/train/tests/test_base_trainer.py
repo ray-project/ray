@@ -2,6 +2,7 @@ import io
 import logging
 import os
 import time
+import warnings
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
@@ -197,45 +198,40 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
     def train_loop(self):
         pass
 
-    class MockLogger:
-        def __init__(self):
-            self.warnings = []
-
-        def warning(self, msg):
-            self.warnings.append(msg)
-
-        def info(self, msg):
-            print(msg)
-
-    try:
-        old = base_trainer.logger
-        base_trainer.logger = MockLogger()
-
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         # Fraction correctly specified.
         DummyTrainer(
             train_loop,
-            scaling_config=ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9),
+            scaling_config=ScalingConfig(num_workers=3, _max_cpu_fraction_per_node=0.9),
             datasets={"train": ray.data.range(10)},
         )
-        assert not base_trainer.logger.warnings
 
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         # No datasets, no fraction.
         DummyTrainer(
             train_loop,
+            scaling_config=ScalingConfig(num_workers=3),
+        )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        # Has datasets, no fraction, but CPU less than 80%
+        DummyTrainer(
+            train_loop,
             scaling_config=ScalingConfig(num_workers=1),
         )
         assert not base_trainer.logger.warnings
 
-        # Should warn.
+    # Should warn.
+    with pytest.warns(UserWarning) as record:
         DummyTrainer(
             train_loop,
-            scaling_config=ScalingConfig(num_workers=1),
+            scaling_config=ScalingConfig(num_workers=3),
             datasets={"train": ray.data.range(10)},
         )
-        assert len(base_trainer.logger.warnings) == 1, base_trainer.logger.warnings
-        assert "_max_cpu_fraction_per_node" in base_trainer.logger.warnings[0]
-    finally:
-        base_trainer.logger = old
+        assert "_max_cpu_fraction_per_node" in record[0].message
 
 
 def test_setup(ray_start_4_cpus):
