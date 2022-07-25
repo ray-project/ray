@@ -1543,6 +1543,12 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
+py_test(
+    name = "evaluation/tests/test_agent_collector",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_agent_collector.py"]
+)
 
 py_test(
     name = "evaluation/tests/test_envs_that_crash",
