@@ -524,7 +524,7 @@ converts it into a Ray Dataset directly.
 From Image Files (experimental)
 -------------------------------
 
-Load image data stored as individual files using ``ImageFolderDatasource()``:
+Load image data stored as individual files using :py:class:`~ray.data.datasource.ImageFolderDatasource`:
 
 .. literalinclude:: ./doc_code/tensor.py
     :language: python
