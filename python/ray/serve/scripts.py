@@ -138,7 +138,7 @@ def start(address, http_host, http_port, http_location):
         address=address,
         namespace=SERVE_NAMESPACE,
     )
-    _private_api.serve_start(
+    serve.start(
         detached=True,
         http_options=dict(
             host=http_host,
@@ -303,7 +303,7 @@ def run(
         if is_config:
             client.deploy_app(config)
         else:
-            serve.run(node, http_options={"host": host, "port": port})
+            serve.run(node, host=host, port=port)
         cli_logger.success("Deployed successfully.")
 
         if blocking:

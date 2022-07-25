@@ -17,7 +17,6 @@ from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve.constants import (
-    CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
@@ -94,9 +93,7 @@ def start(
           Serve controller actor.  Defaults to False.
     """
 
-    return _private_api.serve_start(
-        detached, http_options, dedicated_cpu, _checkpoint_path, **kwargs
-    )
+    return _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
 
 @PublicAPI
@@ -416,7 +413,8 @@ def list_deployments() -> Dict[str, Deployment]:
 def run(
     target: Union[ClassNode, FunctionNode],
     _blocking: bool = True,
-    http_options: Optional[Union[dict, HTTPOptions]] = None,
+    host: str = DEFAULT_HTTP_HOST,
+    port: int = DEFAULT_HTTP_PORT,
 ) -> Optional[RayServeHandle]:
     """Run a Serve application and return a ServeHandle to the ingress.
 
@@ -436,10 +434,10 @@ def run(
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
-    if http_options is None:
-        http_options = {"host": DEFAULT_HTTP_HOST, "port": DEFAULT_HTTP_PORT}
 
-    client = _private_api.serve_start(detached=True, http_options=http_options)
+    client = _private_api.serve_start(
+        detached=True, http_options={"host": host, "port": port}
+    )
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
