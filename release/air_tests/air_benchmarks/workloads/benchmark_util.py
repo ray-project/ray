@@ -16,7 +16,7 @@ def _schedule_remote_fn_on_node(node_ip: str, remote_fn, *args, **kwargs):
     )
 
 
-def _schedule_remote_fn_on_all_nodes(
+def schedule_remote_fn_on_all_nodes(
     remote_fn, exclude_head: bool = False, *args, **kwargs
 ):
     head_ip = ray.util.get_node_ip_address()
@@ -50,7 +50,7 @@ def upload_file_to_all_nodes(path: str):
     with open(path, "rb") as f:
         stream = f.read()
 
-    futures = _schedule_remote_fn_on_all_nodes(
+    futures = schedule_remote_fn_on_all_nodes(
         _write, exclude_head=True, stream=stream, path=path
     )
     return ray.get(futures)
@@ -62,7 +62,7 @@ def _run_command(cmd: str):
 
 
 def run_command_on_all_nodes(cmd: List[str]):
-    futures = _schedule_remote_fn_on_all_nodes(_run_command, cmd=cmd)
+    futures = schedule_remote_fn_on_all_nodes(_run_command, cmd=cmd)
     return ray.get(futures)
 
 

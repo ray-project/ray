@@ -1,16 +1,19 @@
 import copy
 import os
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray.cloudpickle as pickle
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
+from ray.tune.execution.trial_runner import _ResumeConfig
+from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
 
+if TYPE_CHECKING:
+    from ray.train.trainer import BaseTrainer
 
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
@@ -36,6 +39,7 @@ class TunerInternal:
     Args:
         restore_path: The path from where the Tuner can be restored. If provided, None
             of the rest args are needed.
+        resume_config: Resume config to configure which trials to continue.
         trainable: The trainable to be tuned.
         param_space: Search space of the tuning job.
             One thing to note is that both preprocessor and dataset can be tuned here.
@@ -49,12 +53,13 @@ class TunerInternal:
     def __init__(
         self,
         restore_path: str = None,
+        resume_config: Optional[_ResumeConfig] = None,
         trainable: Optional[
             Union[
                 str,
                 Callable,
                 Type[Trainable],
-                BaseTrainer,
+                "BaseTrainer",
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
@@ -62,6 +67,8 @@ class TunerInternal:
         run_config: Optional[RunConfig] = None,
         _tuner_kwargs: Optional[Dict] = None,
     ):
+        from ray.train.trainer import BaseTrainer
+
         # Restored from Tuner checkpoint.
         if restore_path:
             trainable_ckpt = os.path.join(restore_path, _TRAINABLE_PKL)
@@ -76,11 +83,14 @@ class TunerInternal:
             self._is_restored = True
             self._trainable = trainable
             self._experiment_checkpoint_dir = restore_path
+            self._resume_config = resume_config
             return
 
         # Start from fresh
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
+
+        self._resume_config = None
 
         # If no run config was passed to Tuner directly, use the one from the Trainer,
         # if available
@@ -146,6 +156,8 @@ class TunerInternal:
 
     @staticmethod
     def _convert_trainable(trainable: Any) -> Type[Trainable]:
+        from ray.train.trainer import BaseTrainer
+
         if isinstance(trainable, BaseTrainer):
             trainable = trainable.as_trainable()
         else:
@@ -163,9 +175,60 @@ class TunerInternal:
 
         return ResultGrid(analysis)
 
-    def _get_tune_run_arguments(self) -> Dict[str, Any]:
+    def _get_tune_run_arguments(self, trainable) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
+        checkpoint_freq = self._run_config.checkpoint_config.checkpoint_frequency
+        checkpoint_at_end = self._run_config.checkpoint_config.checkpoint_at_end
+
+        if checkpoint_freq:
+            # Function trainables (and thus most of our trainers) usually don't handle
+            # this argument.
+            handle_checkpoint_freq = getattr(
+                trainable, "_handles_checkpoint_freq", None
+            )
+            if handle_checkpoint_freq is False:
+                # If we specifically know this trainable doesn't support the
+                # argument, raise an error
+                raise ValueError(
+                    f"You passed `checkpoint_freq={checkpoint_freq}` to your "
+                    f"CheckpointConfig, but this trainer does not support "
+                    f"this argument. If the trainer takes in a training loop, "
+                    f"you will need to trigger checkpointing yourself using "
+                    f"`ray.air.session.report(metrics=..., checkpoint=...)`."
+                )
+            elif handle_checkpoint_freq is True:
+                # If we specifically support it, it's handled in the training loop,
+                # so we disable tune's bookkeeping.
+                checkpoint_freq = 0
+            # Otherwise, this is a non-trainer trainable and we just keep the
+            # user-supplied value.
+
+        if checkpoint_at_end is not None:
+            # Again, function trainables usually don't handle this argument.
+            handle_cp_at_end = getattr(trainable, "_handles_checkpoint_at_end", None)
+            if handle_cp_at_end is False:
+                # If we specifically know we don't support it, raise an error.
+                raise ValueError(
+                    f"You passed `checkpoint_at_end={checkpoint_at_end}` to your "
+                    f"CheckpointConfig, but this trainer does not support "
+                    f"this argument. If the trainer takes in a training loop, "
+                    f"you will need to trigger checkpointing yourself using "
+                    f"`ray.air.session.report(metrics=..., checkpoint=...)`. "
+                )
+            elif handle_cp_at_end is True:
+                # If we specifically support it, it's handled in the training loop,
+                # so we disable tune's internal bookkeeping.
+                checkpoint_at_end = False
+            # If this is a user-defined trainable, just keep the value
+        else:
+            # Set default to False for function trainables and True for everything else
+            if is_function_trainable(trainable):
+                checkpoint_at_end = False
+            else:
+                checkpoint_at_end = True
+
         return dict(
+            local_dir=self._run_config.local_dir,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
@@ -176,12 +239,14 @@ class TunerInternal:
             checkpoint_score_attr=(
                 self._run_config.checkpoint_config._tune_legacy_checkpoint_score_attr
             ),
+            checkpoint_freq=checkpoint_freq,
+            checkpoint_at_end=checkpoint_at_end,
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),
             progress_reporter=self._run_config.progress_reporter,
             verbose=self._run_config.verbose,
-            reuse_actors=self._run_config.reuse_actors,
+            reuse_actors=self._tune_config.reuse_actors,
             max_concurrent_trials=self._tune_config.max_concurrent_trials,
             time_budget_s=self._tune_config.time_budget_s,
         )
@@ -189,7 +254,7 @@ class TunerInternal:
     def _fit_internal(self, trainable, param_space) -> ExperimentAnalysis:
         """Fitting for a fresh Tuner."""
         args = {
-            **self._get_tune_run_arguments(),
+            **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
                 config={**param_space},
@@ -208,11 +273,25 @@ class TunerInternal:
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
+        resume = "AUTO"
+
+        if self._resume_config:
+            if not self._resume_config.resume_unfinished:
+                if self._resume_config.resume_errored:
+                    resume += "+ERRORED_ONLY"
+                elif self._resume_config.restart_errored:
+                    resume += "+RESTART_ERRORED_ONLY"
+            else:
+                if self._resume_config.resume_errored:
+                    resume += "+ERRORED"
+                elif self._resume_config.restart_errored:
+                    resume += "+RESTART_ERRORED"
+
         args = {
-            **self._get_tune_run_arguments(),
+            **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
-                resume=True,
+                resume=resume,
             ),
             **self._tuner_kwargs,
         }

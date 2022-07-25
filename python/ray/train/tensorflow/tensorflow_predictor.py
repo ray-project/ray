@@ -8,8 +8,9 @@ from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.air.checkpoint import Checkpoint
-from ray.train.data_parallel_trainer import _load_checkpoint
+from ray.air._internal.tensorflow_utils import convert_ndarray_batch_to_tf_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
+from ray.train.tensorflow.tensorflow_checkpoint import TensorflowCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -41,7 +42,6 @@ class TensorflowPredictor(DLPredictor):
     ):
         self.model_definition = model_definition
         self.model_weights = model_weights
-        self.preprocessor = preprocessor
 
         self.use_gpu = use_gpu
         # TensorFlow model objects cannot be pickled, therefore we use
@@ -73,6 +73,7 @@ class TensorflowPredictor(DLPredictor):
 
         if model_weights is not None:
             self._model.set_weights(model_weights)
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(
@@ -92,9 +93,9 @@ class TensorflowPredictor(DLPredictor):
             model_definition: A callable that returns a TensorFlow Keras model
                 to use. Model weights will be loaded from the checkpoint.
         """
-        # Cannot use TensorFlow load_checkpoint here
-        # due to instantiated models not being pickleable
-        model_weights, preprocessor = _load_checkpoint(checkpoint, "TensorflowTrainer")
+        checkpoint = TensorflowCheckpoint.from_checkpoint(checkpoint)
+        model_weights = checkpoint.get_model_weights()
+        preprocessor = checkpoint.get_preprocessor()
         return cls(
             model_definition=model_definition,
             model_weights=model_weights,
@@ -102,17 +103,12 @@ class TensorflowPredictor(DLPredictor):
             use_gpu=use_gpu,
         )
 
-    def _array_to_tensor(
-        self, numpy_array: np.ndarray, dtype: tf.dtypes.DType
-    ) -> tf.Tensor:
-        tf_tensor = tf.convert_to_tensor(numpy_array, dtype=dtype)
-
-        # Off-the-shelf Keras Modules expect the input size to have at least 2
-        # dimensions (batch_size, feature_size). If the tensor for the column
-        # is flattened, then we unqueeze it to add an extra dimension.
-        if len(tf_tensor.shape) == 1:
-            tf_tensor = tf.expand_dims(tf_tensor, axis=1)
-        return tf_tensor
+    def _arrays_to_tensors(
+        self,
+        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
+        dtypes: Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]],
+    ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+        return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtypes)
 
     def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
         return tensor.numpy()
