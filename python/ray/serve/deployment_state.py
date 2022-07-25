@@ -743,6 +743,10 @@ class DeploymentReplica(VersionedReplica):
         available = {
             k: v for k, v in self._actor.available_resources.items() if k in required
         }
+
+        # Use json.dumps() instead of str() here to avoid double-quoting keys
+        # when dumping these dictionaries. See
+        # https://github.com/ray-project/ray/issues/26210 for the issue.
         return json.dumps(required), json.dumps(available)
 
 
