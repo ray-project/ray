@@ -74,7 +74,10 @@ class FaultInjectEnv(gym.Env):
         self.observation_space = self.env.observation_space
         self.config = config
         # External counter service.
-        self.counter = config["counter"] if "counter" in config else None
+        if "counter" in config:
+            self.counter = ray.get_actor(config["counter"])
+        else:
+            self.counter = None
 
         if config.get("init_delay", 0) > 0.0:
             # Simulate an initialization delay.
@@ -144,7 +147,7 @@ def is_recreated(w):
 class TestWorkerFailure(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)  ###### DO NOT SUBMIT
 
         register_env("fault_env", lambda c: FaultInjectEnv(c))
         register_env(
@@ -180,7 +183,7 @@ class TestWorkerFailure(unittest.TestCase):
             result = algo.train()
 
             # Both rollout workers are healthy.
-            self.assertTrue(result["num_healthy_workers"] == 2)
+            self.assertTrue(result["num_healthy_workers"] == 1)
             if fail_eval:
                 # One of the eval workers failed.
                 self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
@@ -324,7 +327,8 @@ class TestWorkerFailure(unittest.TestCase):
 
     def test_eval_workers_fault_but_recover(self):
         # Counter that will survive restarts.
-        counter = Counter.remote()
+        COUNTER_NAME = "test_eval_workers_fault_but_recover"
+        counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = {
             "num_workers": 2,
@@ -343,7 +347,7 @@ class TestWorkerFailure(unittest.TestCase):
                     # Env throws error between steps 10 and 12.
                     "failure_start_count": 10,
                     "failure_stop_count": 12,
-                    "counter": counter,
+                    "counter": COUNTER_NAME,
                 }
             },
         }
@@ -403,7 +407,8 @@ class TestWorkerFailure(unittest.TestCase):
 
     def test_eval_workers_fault_but_restore_env(self):
         # Counter that will survive restarts.
-        counter = Counter.remote()
+        COUNTER_NAME = "test_eval_workers_fault_but_restore_env"
+        counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = {
             "num_workers": 2,
@@ -416,7 +421,7 @@ class TestWorkerFailure(unittest.TestCase):
                 "bad_indices": [1, 2],
                 # Env throws error before step 2.
                 "failure_stop_count": 2,
-                "counter": counter,
+                "counter": COUNTER_NAME,
             },
             # 2 eval workers.
             "evaluation_num_workers": 2,
@@ -488,7 +493,8 @@ class TestWorkerFailure(unittest.TestCase):
 
     def test_multi_agent_env_eval_workers_fault_but_restore_env(self):
         # Counter that will survive restarts.
-        counter = Counter.remote()
+        COUNTER_NAME = "test_multi_agent_env_eval_workers_fault_but_restore_env"
+        counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = {
             "num_workers": 2,
@@ -513,7 +519,7 @@ class TestWorkerFailure(unittest.TestCase):
                     "evaluation": True,
                     # Make eval worker (index 1) fail.
                     "bad_indices": [1],
-                    "counter": counter,
+                    "counter": COUNTER_NAME,
                     "failure_start_count": 10,
                     "failure_stop_count": 12,
                 },
@@ -550,7 +556,8 @@ class TestWorkerFailure(unittest.TestCase):
 
     def test_long_failure_period_restore_env(self):
         # Counter that will survive restarts.
-        counter = Counter.remote()
+        COUNTER_NAME = "test_multi_agent_env_eval_workers_fault_but_restore_env"
+        counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = {
             "num_workers": 2,
@@ -564,7 +571,7 @@ class TestWorkerFailure(unittest.TestCase):
                 # Env throws error between steps 1000 and 2000.
                 "failure_start_count": 1000,
                 "failure_stop_count": 2000,
-                "counter": counter,
+                "counter": COUNTER_NAME,
             },
             # 2 eval workers.
             "evaluation_num_workers": 2,
@@ -646,7 +653,8 @@ class TestWorkerFailure(unittest.TestCase):
 
     def test_env_wait_time_workers_restore_env(self):
         # Counter that will survive restarts.
-        counter = Counter.remote()
+        COUNTER_NAME = "test_env_wait_time_workers_restore_env"
+        counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = {
             "num_workers": 1,
@@ -665,7 +673,7 @@ class TestWorkerFailure(unittest.TestCase):
                 # Env throws error between steps 100 and 102.
                 "failure_start_count": 7,
                 "failure_stop_count": 8,
-                "counter": counter,
+                "counter": COUNTER_NAME,
             },
             # Use EMA PerfStat.
             "sampler_perf_stats_use_ema": True,

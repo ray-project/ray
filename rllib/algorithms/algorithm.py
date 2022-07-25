@@ -2426,7 +2426,7 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
-        eval_results["evaluation"]["num_recovered_workers"] = num_recreated
+        eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
