@@ -21,7 +21,6 @@ from ray.serve.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve.constants import (
     CONTROLLER_MAX_CONCURRENCY,
-    DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     HTTP_PROXY_TIMEOUT,
@@ -52,6 +51,8 @@ from ray.serve.utils import (
     install_serve_encoders_to_fastapi,
 )
 
+from ray.serve._private import api as _private_api
+
 logger = logging.getLogger(__file__)
 
 
@@ -60,7 +61,6 @@ def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
-    _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -121,7 +121,7 @@ def start(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
         )
 
-        _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
+        _check_http_options(client, http_options)
         return client
     except RayServeException:
         pass
@@ -154,7 +154,6 @@ def start(
     ).remote(
         controller_name,
         http_config=http_options,
-        checkpoint_path=_checkpoint_path,
         head_node_id=head_node_id,
         detached=detached,
     )
@@ -483,26 +482,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
-    try:
-        (
-            deployment_info,
-            route_prefix,
-        ) = get_global_client().get_deployment_info(name)
-    except KeyError:
-        raise KeyError(
-            f"Deployment {name} was not found. Did you call Deployment.deploy()?"
-        )
-    return Deployment(
-        deployment_info.replica_config.deployment_def,
-        name,
-        deployment_info.deployment_config,
-        version=deployment_info.version,
-        init_args=deployment_info.replica_config.init_args,
-        init_kwargs=deployment_info.replica_config.init_kwargs,
-        route_prefix=route_prefix,
-        ray_actor_options=deployment_info.replica_config.ray_actor_options,
-        _internal=True,
-    )
+    return _private_api.get_deployment(name)
 
 
 @deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
@@ -512,23 +492,8 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments()
 
-    deployments = {}
-    for name, (deployment_info, route_prefix) in infos.items():
-        deployments[name] = Deployment(
-            deployment_info.replica_config.deployment_def,
-            name,
-            deployment_info.deployment_config,
-            version=deployment_info.version,
-            init_args=deployment_info.replica_config.init_args,
-            init_kwargs=deployment_info.replica_config.init_kwargs,
-            route_prefix=route_prefix,
-            ray_actor_options=deployment_info.replica_config.ray_actor_options,
-            _internal=True,
-        )
-
-    return deployments
+    return _private_api.list_deployments()
 
 
 @PublicAPI(stability="alpha")
@@ -611,7 +576,7 @@ def run(
     )
 
     if ingress is not None:
-        return ingress.get_handle()
+        return ingress._get_handle()
 
 
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
@@ -642,18 +607,9 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     return Application(pipeline_build(target))
 
 
-def _check_http_and_checkpoint_options(
-    client: ServeControllerClient,
-    http_options: Union[dict, HTTPOptions],
-    checkpoint_path: str,
+def _check_http_options(
+    client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
 ) -> None:
-    if checkpoint_path and checkpoint_path != client.checkpoint_path:
-        logger.warning(
-            f"The new client checkpoint path '{checkpoint_path}' "
-            f"is different from the existing one '{client.checkpoint_path}'. "
-            "The new checkpoint path is ignored."
-        )
-
     if http_options:
         client_http_options = client.http_config
         new_http_options = (

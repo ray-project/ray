@@ -8,7 +8,7 @@ import torch
 import torch.optim as optim
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune.schedulers import ASHAScheduler
 from ray.tune.examples.mnist_pytorch import train, test, get_data_loaders, ConvNet
 
@@ -63,24 +63,30 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(address=args.ray_address, num_cpus=6 if args.smoke_test else None)
     sched = ASHAScheduler()
-    analysis = tune.run(
-        TrainMNIST,
-        metric="mean_accuracy",
-        mode="max",
-        scheduler=sched,
-        stop={
-            "mean_accuracy": 0.95,
-            "training_iteration": 3 if args.smoke_test else 20,
-        },
-        resources_per_trial={"cpu": 3, "gpu": int(args.use_gpu)},
-        num_samples=1 if args.smoke_test else 20,
-        checkpoint_at_end=True,
-        checkpoint_freq=3,
-        config={
+
+    tuner = tune.Tuner(
+        tune.with_resources(TrainMNIST, resources={"cpu": 3, "gpu": int(args.use_gpu)}),
+        run_config=air.RunConfig(
+            stop={
+                "mean_accuracy": 0.95,
+                "training_iteration": 3 if args.smoke_test else 20,
+            },
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=True, checkpoint_frequency=3
+            ),
+        ),
+        tune_config=tune.TuneConfig(
+            metric="mean_accuracy",
+            mode="max",
+            scheduler=sched,
+            num_samples=1 if args.smoke_test else 20,
+        ),
+        param_space={
             "args": args,
             "lr": tune.uniform(0.001, 0.1),
             "momentum": tune.uniform(0.1, 0.9),
         },
     )
+    results = tuner.fit()
 
-    print("Best config is:", analysis.best_config)
+    print("Best config is:", results.get_best_result().config)

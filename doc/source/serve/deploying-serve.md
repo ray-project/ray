@@ -19,8 +19,8 @@ Ray Serve instances run on top of Ray clusters and are started using {mod}`serve
 Once {mod}`serve.start <ray.serve.start>` has been called, further API calls can be used to create and update the deployments that will be used to serve your Python code (including ML models).
 The Serve instance will be torn down when the script exits.
 
-When running on a long-lived Ray cluster (e.g., one started using `ray start` and connected
-to using `ray.init(address="auto")`, you can also deploy a Ray Serve instance as a long-running
+When running on a long-lived Ray cluster (e.g., one started using `ray start`),
+you can also deploy a Ray Serve instance as a long-running
 service using `serve.start(detached=True)`. In this case, the Serve instance will continue to
 run on the Ray cluster even after the script that calls it exits. If you want to run another script
 to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
@@ -254,44 +254,15 @@ failure recovery solutions. Although Ray is not currently highly available (HA),
 the long term roadmap and being actively worked on.
 :::
 
-Ray Serve added an experimental feature to help recovering the state.
-This features enables Serve to write all your deployment configuration and code into a storage location.
+Ray Serve provides the feature to help recovering the state.
+This feature enables Serve to write all your deployment configuration and code into Global Control Store
+(GCS).
 Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state.
 
-Here is how to use it:
 
-:::{warning}
-The API is experimental and subject to change. We welcome you to test it out
-and leave us feedback through github issues or discussion forum!
-:::
+In Kubernetes environment, we recommend using KubeRay (a Kubernetes operator for Ray Serve) to help deploy your Serve applications with Kubernetes, and help you recover the node crash from Customized Resource.
 
-You can use both the start argument and the CLI to specify it:
-
-```python
-serve.start(_checkpoint_path=...)
-```
-
-or
-
-```shell
-serve start --checkpoint-path ...
-```
-
-The checkpoint path argument accepts the following format:
-
-- `file://local_file_path`
-- `s3://bucket/path`
-- `gs://bucket/path`
-- `custom://importable.custom_python.Class/path`
-
-While we have native support for on disk, AWS S3, and Google Cloud Storage (GCS), there is no reason we cannot support more.
-
-In Kubernetes environment, we recommend using [Persistent Volumes] to create a disk and mount it into the Ray head node.
-For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s [Persistent Volumes] API.
-Alternatively, you can also directly write to object store like S3.
-
-You can easily try to plug into your own implementation using the `custom://` path and inherit the [KVStoreBase] class.
-Feel free to open new github issues and contribute more storage backends!
+Feel free to open new github issues if you hit any problems from Failure Recovery.
 
 [ingress]: https://kubernetes.io/docs/concepts/services-networking/ingress/
 [kubernetes default config]: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/example-full.yaml

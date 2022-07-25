@@ -40,7 +40,7 @@ Ray with cloud providers
 
         # Get a remote screen on the head node.
         $ ray attach ray/python/ray/autoscaler/aws/example-full.yaml
-        $ # Try running a Ray program with 'ray.init(address="auto")'.
+        $ # Try running a Ray program.
 
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
@@ -68,7 +68,7 @@ Ray with cloud providers
         # Get a remote screen on the head node.
         $ ray attach ray/python/ray/autoscaler/azure/example-full.yaml
         # test ray setup
-        $ python -c 'import ray; ray.init(address="auto")'
+        $ python -c 'import ray; ray.init()'
         $ exit
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/azure/example-full.yaml
@@ -89,7 +89,7 @@ Ray with cloud providers
     .. code-block:: python
 
         import ray
-        ray.init(address='auto')
+        ray.init()
 
     Note that on each node the `azure-init.sh <https://github.com/ray-project/ray/blob/master/doc/azure/azure-init.sh>`_ script is executed and performs the following actions:
 
@@ -117,7 +117,7 @@ Ray with cloud providers
 
         # Get a remote screen on the head node.
         $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
-        $ # Try running a Ray program with 'ray.init(address="auto")'.
+        $ # Try running a Ray program with 'ray.init()'.
 
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
@@ -142,7 +142,7 @@ Ray with cloud providers
 
         # Get a remote screen on the head node.
         $ ray attach ray/python/ray/autoscaler/aliyun/example-full.yaml
-        $ # Try running a Ray program with 'ray.init(address="auto")'.
+        $ # Try running a Ray program with 'ray.init()'.
 
         # Tear down the cluster.
         $ ray down ray/python/ray/autoscaler/aliyun/example-full.yaml
@@ -203,7 +203,7 @@ There are two ways of running private clusters:
 
         # Get a remote screen on the head node.
         $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
-        $ # Try running a Ray program with 'ray.init(address="auto")'.
+        $ # Try running a Ray program with 'ray.init()'.
 
         # Tear down the cluster
         $ ray down ray/python/ray/autoscaler/local/example-full.yaml
@@ -237,7 +237,7 @@ There are two ways of running private clusters:
 
         # Get a remote screen on the head node.
         $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
-        $ # Try running a Ray program with 'ray.init(address="auto")'.
+        $ # Try running a Ray program with 'ray.init()'.
 
         # Tear down the cluster
         $ ray down ray/python/ray/autoscaler/local/example-full.yaml
@@ -313,7 +313,7 @@ firewall settings preventing access).
 
 If you see ``Ray runtime started.``, then the node successfully connected to
 the head node at the ``--address``. You should now be able to connect to the
-cluster with ``ray.init(address='auto')``.
+cluster with ``ray.init()``.
 
 .. code-block:: bash
 
@@ -375,11 +375,13 @@ To run a distributed Ray program, you'll need to execute your program on the sam
 
 .. tabbed:: Python
 
-    Within your program/script, you must call ``ray.init`` and add the ``address`` parameter to ``ray.init`` (like ``ray.init(address=...)``). This causes your script to connect to the existing Ray runtime on the cluster. For example:
+    Within your program/script, ``ray.init()`` will now automatically find and connect to the latest Ray cluster.
+    For example:
 
     .. code-block:: python
 
-        ray.init(address="auto")
+        ray.init()
+        # Connecting to existing Ray cluster at address: <IP address>...
 
 .. tabbed:: Java
 
