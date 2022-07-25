@@ -324,6 +324,26 @@ class ValueNetworkMixin:
         return self._cached_extra_action_fetches
 
 
+class GradStatsMixin:
+    def __init__(self):
+        pass
+
+    def grad_stats_fn(
+        self, train_batch: SampleBatch, grads: ModelGradients
+    ) -> Dict[str, TensorType]:
+        # We have support for more than one loss (list of lists of grads).
+        if self.config.get("_tf_policy_handles_more_than_one_loss"):
+            grad_gnorm = [tf.linalg.global_norm(g) for g in grads]
+        # Old case: We have a single list of grads (only one loss term and
+        # optimizer).
+        else:
+            grad_gnorm = tf.linalg.global_norm(grads)
+
+        return {
+            "grad_gnorm": grad_gnorm,
+        }
+
+
 # TODO: find a better place for this util, since it's not technically MixIns.
 @DeveloperAPI
 def compute_gradients(
