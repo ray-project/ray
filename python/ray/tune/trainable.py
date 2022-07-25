@@ -429,7 +429,9 @@ class Trainable:
             "ray_version": ray.__version__,
         }
 
-    def save(self, checkpoint_dir: Optional[str] = None, prevent_upload: bool = False) -> str:
+    def save(
+        self, checkpoint_dir: Optional[str] = None, prevent_upload: bool = False
+    ) -> str:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -440,7 +442,7 @@ class Trainable:
 
         Args:
             checkpoint_dir: Optional dir to place the checkpoint.
-            prevent_upload: bool flag to stop tmp folders from uploading
+            prevent_upload: If True, will not upload the saved checkpoint to cloud.
 
         Returns:
             str: path that points to xxx.pkl file.
@@ -488,7 +490,8 @@ class Trainable:
         """Saves the current model state to a Python object.
 
         It also saves to disk but does not return the checkpoint path.
-        It doesn't save to cloud.
+        It does not save the checkpoint to cloud storage.
+
         Returns:
             Object holding checkpoint data.
         """
@@ -543,7 +546,7 @@ class Trainable:
                 pass
             else:
                 checkpoint_exists = True
-        
+
         if checkpoint_exists:
             pass
         elif self.uses_cloud_checkpointing:

@@ -1,12 +1,17 @@
 # coding: utf-8
+import json
 import os
 import pickle
+from typing import Union, Dict
+
+import pytest
 import shutil
 import tempfile
 import unittest
 
 import ray
 from ray import tune
+from ray.ml.utils.remote_storage import download_from_uri
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.utils import validate_save_restore
@@ -178,8 +183,79 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         validate_save_restore(MockTrainable, use_object_store=True)
 
 
+class SavingTrainable(tune.Trainable):
+    def __init__(self, return_type: str, *args, **kwargs):
+        self.return_type = return_type
+        super(SavingTrainable, self).__init__(*args, **kwargs)
+
+    def save_checkpoint(self, tmp_checkpoint_dir: str):
+        checkpoint_data = {"data": 1}
+
+        if self.return_type == "object":
+            return checkpoint_data
+
+        subdir = os.path.join(tmp_checkpoint_dir, "subdir")
+        os.makedirs(subdir, exist_ok=True)
+        checkpoint_file = os.path.join(subdir, "checkpoint.pkl")
+        with open(checkpoint_file, "w") as f:
+            f.write(json.dumps(checkpoint_data))
+
+        if self.return_type == "root":
+            return tmp_checkpoint_dir
+        elif self.return_type == "subdir":
+            return subdir
+        elif self.return_type == "checkpoint":
+            return checkpoint_file
+
+    def load_checkpoint(self, checkpoint: Union[Dict, str]):
+        if self.return_type == "object":
+            assert isinstance(checkpoint, dict)
+            checkpoint_data = checkpoint
+            checkpoint_file = None
+        elif self.return_type == "root":
+            assert "subdir" not in checkpoint
+            checkpoint_file = os.path.join(checkpoint, "subdir", "checkpoint.pkl")
+        elif self.return_type == "subdir":
+            assert "subdir" in checkpoint
+            assert "checkpoint.pkl" not in checkpoint
+            checkpoint_file = os.path.join(checkpoint, "checkpoint.pkl")
+        else:  # self.return_type == "checkpoint"
+            assert checkpoint.endswith("subdir/checkpoint.pkl")
+            checkpoint_file = checkpoint
+
+        if checkpoint_file:
+            with open(checkpoint_file, "rb") as f:
+                checkpoint_data = json.load(f)
+
+        assert checkpoint_data == {"data": 1}, checkpoint_data
+
+
+# Note: In Ray 2.0, this test lives in test_trainable.py
+def test_checkpoint_object_no_sync(tmpdir):
+    """Asserts that save_to_object() and restore_from_object() do not sync up/down"""
+    trainable = SavingTrainable(
+        "object", remote_checkpoint_dir="memory:///test/location"
+    )
+
+    # Save checkpoint
+    trainable.save()
+
+    check_dir = tmpdir / "check_save"
+    download_from_uri(uri="memory:///test/location", local_path=str(check_dir))
+    assert os.listdir(str(check_dir)) == ["checkpoint_000000"]
+
+    # Save to object
+    obj = trainable.save_to_object()
+
+    check_dir = tmpdir / "check_save_obj"
+    download_from_uri(uri="memory:///test/location", local_path=str(check_dir))
+    assert os.listdir(str(check_dir)) == ["checkpoint_000000"]
+
+    # Restore from object
+    trainable.restore_from_object(obj)
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
