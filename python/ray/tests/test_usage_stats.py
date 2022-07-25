@@ -101,7 +101,8 @@ def reset_usage_stats():
         ray._private.utils.get_ray_temp_dir()
     ).delete_lib_usages()
     ray.experimental.internal_kv._internal_kv_reset()
-    ray_usage_lib.reset()
+    ray_usage_lib._recorded_library_usages.clear()
+    ray_usage_lib._recorded_extra_usage_tags.clear()
 
 
 @pytest.fixture
@@ -113,7 +114,10 @@ def reset_ray_version_commit():
     ray.__commit__ = saved_ray_commit
 
 
-def test_get_extra_usage_tags_to_report(monkeypatch, shutdown_only, reset_usage_stats):
+@pytest.mark.parametrize("ray_client", [True, False])
+def test_get_extra_usage_tags_to_report(
+    monkeypatch, call_ray_start, reset_usage_stats, ray_client
+):
     with monkeypatch.context() as m:
         # Test a normal case.
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val;key2=val2")
@@ -151,10 +155,20 @@ def test_get_extra_usage_tags_to_report(monkeypatch, shutdown_only, reset_usage_
         )
         assert result == {}
 
+        address = call_ray_start
+        ray.init(address=address)
         m.setenv("RAY_USAGE_STATS_EXTRA_TAGS", "key=val")
-        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "val1")
-        ray.init()
-        ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
+        driver = """
+import ray
+import ray._private.usage.usage_lib as ray_usage_lib
+
+ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "val1")
+ray.init(address="{}")
+ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST2, "val2")
+""".format(
+            "ray://127.0.0.1:10001" if ray_client else address
+        )
+        run_string_as_driver(driver)
         result = ray_usage_lib.get_extra_usage_tags_to_report(
             ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
@@ -486,7 +500,9 @@ def test_usage_lib_cluster_metadata_generation(
         )
 
 
-def test_usage_stats_enabled_endpoint(monkeypatch, ray_start_cluster, reset_usage_stats):
+def test_usage_stats_enabled_endpoint(
+    monkeypatch, ray_start_cluster, reset_usage_stats
+):
     if os.environ.get("RAY_MINIMAL") == "1":
         # Doesn't work with minimal installation
         # since we need http server.
@@ -510,21 +526,34 @@ def test_usage_stats_enabled_endpoint(monkeypatch, ray_start_cluster, reset_usag
         assert response.json()["data"]["usageStatsPromptEnabled"] is False
 
 
-def test_library_usages(shutdown_only, reset_usage_stats):
+@pytest.mark.parametrize("ray_client", [True, False])
+def test_library_usages(call_ray_start, reset_usage_stats, ray_client):
     if os.environ.get("RAY_MINIMAL") == "1":
         # Doesn't work with minimal installation
         # since we import serve.
         return
 
-    ray_usage_lib.record_library_usage("pre_init")
-    ray.init()
+    address = call_ray_start
+    ray.init(address=address)
 
-    ray_usage_lib.record_library_usage("post_init")
-    ray.workflow.init()
-    ray.data.range(10)
-    from ray import serve
+    driver = """
+import ray
+import ray._private.usage.usage_lib as ray_usage_lib
 
-    serve.start()
+ray_usage_lib.record_library_usage("pre_init")
+ray.init(address="{}")
+
+ray_usage_lib.record_library_usage("post_init")
+ray.workflow.init()
+ray.data.range(10)
+from ray import serve
+
+serve.start()
+serve.shutdown()
+""".format(
+        "ray://127.0.0.1:10001" if ray_client else address
+    )
+    run_string_as_driver(driver)
     library_usages = ray_usage_lib.get_library_usages_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
     )
@@ -540,9 +569,8 @@ def test_library_usages(shutdown_only, reset_usage_stats):
         "serve",
     }
     assert set(library_usages) == expected
-    assert set(lib_usages_from_home_folder) == expected
-
-    serve.shutdown()
+    if not ray_client:
+        assert set(lib_usages_from_home_folder) == expected
 
 
 def test_usage_lib_cluster_metadata_generation_usage_disabled(
@@ -617,7 +645,9 @@ def test_usage_lib_get_cluster_status_to_report(shutdown_only, reset_usage_stats
     assert cluster_status_to_report.total_object_store_memory_gb == 1.0
 
 
-def test_usage_lib_get_cluster_config_to_report(monkeypatch, tmp_path, reset_usage_stats):
+def test_usage_lib_get_cluster_config_to_report(
+    monkeypatch, tmp_path, reset_usage_stats
+):
     cluster_config_file_path = tmp_path / "ray_bootstrap_config.yaml"
     """ Test minimal cluster config"""
     cluster_config_file_path.write_text(
@@ -1247,7 +1277,9 @@ def test_usage_stats_tags(monkeypatch, ray_start_cluster, reset_usage_stats):
         wait_for_condition(verify)
 
 
-def test_usage_stats_gcs_query_failure(monkeypatch, ray_start_cluster, reset_usage_stats):
+def test_usage_stats_gcs_query_failure(
+    monkeypatch, ray_start_cluster, reset_usage_stats
+):
     """Test None data is reported when the GCS query is failed."""
     with monkeypatch.context() as m:
         m.setenv(

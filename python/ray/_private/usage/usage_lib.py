@@ -173,13 +173,6 @@ _recorded_extra_usage_tags = dict()
 _recorded_extra_usage_tags_lock = threading.Lock()
 
 
-def reset():
-    # Reset to make sure different drivers / clients running in the same process
-    # won't interfere with each other.
-    _recorded_library_usages.clear()
-    _recorded_extra_usage_tags.clear()
-
-
 # NOTE: Do not change the write / read protocol. That will cause
 # version incompatibility issues.
 class LibUsageRecorder:
@@ -335,8 +328,12 @@ def _put_pre_init_extra_usage_tags():
         _put_extra_usage_tag(k, v)
 
 
-ray._private.worker._post_init_hooks.append(_put_pre_init_library_usages)
-ray._private.worker._post_init_hooks.append(_put_pre_init_extra_usage_tags)
+def put_pre_init_usage_stats():
+    _put_pre_init_library_usages()
+    _put_pre_init_extra_usage_tags()
+
+
+ray._private.worker._post_init_hooks.append(put_pre_init_usage_stats)
 
 
 def _usage_stats_report_url():

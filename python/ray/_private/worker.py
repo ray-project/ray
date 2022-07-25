@@ -1216,7 +1216,11 @@ def init(
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
         builder._init_args(**passed_kwargs)
-        return builder.connect()
+        ctx = builder.connect()
+        from ray._private.usage import usage_lib
+
+        usage_lib.put_pre_init_usage_stats()
+        return ctx
 
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
@@ -1506,9 +1510,6 @@ def shutdown(_exiting_interpreter: bool = False):
     if hasattr(global_worker, "gcs_client"):
         del global_worker.gcs_client
     _internal_kv_reset()
-
-    from ray._private.usage import usage_lib
-    usage_lib.reset()
 
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
