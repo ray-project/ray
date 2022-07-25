@@ -1,5 +1,5 @@
 import asyncio
-import dataclasses
+from datetime import datetime
 import fnmatch
 import functools
 import io
@@ -1385,22 +1385,10 @@ def wandb_setup_api_key_hook():
     return "abcd"
 
 
-@dataclasses.dataclass
-class TestRayActivityResponse:
-    """
-    Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
-    used in test_component_activities_hook to mimic typical
-    usage of redefining or extending response type.
-    """
-
-    is_active: str
-    reason: Optional[str] = None
-    timestamp: Optional[float] = None
-
-
 # Global counter to test different return values
 # for external_ray_cluster_activity_hook1.
 ray_cluster_activity_hook_counter = 0
+ray_cluster_activity_hook_5_counter = 0
 
 
 def external_ray_cluster_activity_hook1():
@@ -1412,10 +1400,25 @@ def external_ray_cluster_activity_hook1():
     """
     global ray_cluster_activity_hook_counter
     ray_cluster_activity_hook_counter += 1
+
+    from pydantic import BaseModel, Extra
+
+    class TestRayActivityResponse(BaseModel, extra=Extra.allow):
+        """
+        Redefinition of dashboard.modules.snapshot.snapshot_head.RayActivityResponse
+        used in test_component_activities_hook to mimic typical
+        usage of redefining or extending response type.
+        """
+
+        is_active: str
+        reason: Optional[str] = None
+        timestamp: float
+
     return {
         "test_component1": TestRayActivityResponse(
             is_active="ACTIVE",
             reason=f"Counter: {ray_cluster_activity_hook_counter}",
+            timestamp=datetime.now().timestamp(),
         )
     }
 
@@ -1447,3 +1450,21 @@ def external_ray_cluster_activity_hook4():
     Errors during execution.
     """
     raise Exception("Error in external cluster activity hook")
+
+
+def external_ray_cluster_activity_hook5():
+    """
+    Example external hook for test_component_activities_hook.
+
+    Returns valid response and increments counter in `reason`
+    field on each call.
+    """
+    global ray_cluster_activity_hook_5_counter
+    ray_cluster_activity_hook_5_counter += 1
+    return {
+        "test_component5": {
+            "is_active": "ACTIVE",
+            "reason": f"Counter: {ray_cluster_activity_hook_5_counter}",
+            "timestamp": datetime.now().timestamp(),
+        }
+    }

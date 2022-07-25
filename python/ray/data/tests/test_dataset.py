@@ -41,7 +41,7 @@ def maybe_pipeline(ds, enabled):
 
 def maybe_lazy(ds, enabled):
     if enabled:
-        return ds.experimental_lazy()
+        return ds.lazy()
     else:
         return ds
 
@@ -1392,7 +1392,7 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     blocks = ray.get(ds4.get_internal_block_refs())
     assert all(isinstance(block, list) for block in blocks), blocks
     assert ds4.sum() == 190
-    assert ds4._block_num_rows() == [0, 1] * 20
+    assert ds4._block_num_rows() == [1] * 20 + [0] * 20
 
     ds5 = ray.data.range(22).repartition(4)
     assert ds5.num_blocks() == 4
@@ -1531,17 +1531,17 @@ def test_iter_batches_basic(ray_start_regular_shared):
     ds = ray.data.from_pandas(dfs)
 
     # Default.
-    for batch, df in zip(ds.iter_batches(batch_format="pandas"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pandas"), dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
     # pyarrow.Table format.
-    for batch, df in zip(ds.iter_batches(batch_format="pyarrow"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pyarrow"), dfs):
         assert isinstance(batch, pa.Table)
         assert batch.equals(pa.Table.from_pandas(df))
 
     # NumPy format.
-    for batch, df in zip(ds.iter_batches(batch_format="numpy"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="numpy"), dfs):
         assert isinstance(batch, dict)
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
@@ -1549,14 +1549,14 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Test NumPy format on Arrow blocks.
     ds2 = ds.map_batches(lambda b: b, batch_size=None, batch_format="pyarrow")
-    for batch, df in zip(ds2.iter_batches(batch_format="numpy"), dfs):
+    for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
         assert isinstance(batch, dict)
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
     # Native format.
-    for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
+    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="native"), dfs):
         assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
@@ -1616,7 +1616,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
     )
 
     # Prefetch.
-    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
+    batches = list(
+        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+    )
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
@@ -1635,7 +1637,11 @@ def test_iter_batches_basic(ray_start_regular_shared):
     )
 
     # Prefetch more than number of blocks.
-    batches = list(ds.iter_batches(prefetch_blocks=len(dfs), batch_format="pandas"))
+    batches = list(
+        ds.iter_batches(
+            prefetch_blocks=len(dfs), batch_size=None, batch_format="pandas"
+        )
+    )
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
@@ -1644,7 +1650,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
     # Prefetch with ray.wait.
     context = DatasetContext.get_current()
     context.actor_prefetcher_enabled = False
-    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
+    batches = list(
+        ds.iter_batches(prefetch_blocks=1, batch_size=None, batch_format="pandas")
+    )
     assert len(batches) == len(dfs)
     for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
@@ -1657,12 +1665,10 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
     # Input validation.
     # Batch size must be given for local shuffle.
     with pytest.raises(ValueError):
-        list(ray.data.range(100).iter_batches(local_shuffle_buffer_size=10))
-
-    # Shuffle buffer min size must be at least as large as batch size.
-    with pytest.raises(ValueError):
         list(
-            ray.data.range(100).iter_batches(batch_size=10, local_shuffle_buffer_size=5)
+            ray.data.range(100).iter_batches(
+                batch_size=None, local_shuffle_buffer_size=10
+            )
         )
 
     def range(n, parallelism=200):
@@ -1952,7 +1958,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
 def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
     ds = ray.data.range(32, parallelism=8)
     expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
-    for _, expected in zip(ds.iter_batches(), expected_num_blocks):
+    for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
         assert ds._plan.execute()._num_computed() == expected
 
 
@@ -2240,7 +2246,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
     fn_constructor_args = (ray.put(1),)
     fn_constructor_kwargs = {"b": ray.put(2)}
     ds2 = (
-        ds.experimental_lazy()
+        ds.lazy()
         .map_batches(
             CallableFn,
             batch_size=1,
@@ -2270,7 +2276,7 @@ def test_map_batches_extra_args(ray_start_regular_shared, tmp_path):
     fn_constructor_args = (ray.put(1),)
     fn_constructor_kwargs = {"b": ray.put(2)}
     ds2 = (
-        ds.experimental_lazy()
+        ds.lazy()
         .map_batches(
             lambda df, a, b=None: b * df + a,
             batch_size=1,
@@ -2401,7 +2407,48 @@ def test_to_tf(ray_start_regular_shared, pipelined):
     for batch in tfd.as_numpy_iterator():
         iterations.append(np.concatenate((batch[0], batch[1].reshape(-1, 1)), axis=1))
     combined_iterations = np.concatenate(iterations)
-    assert np.array_equal(df.values, combined_iterations)
+    np.testing.assert_array_equal(df.values, combined_iterations)
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_iter_tf_batches(ray_start_regular_shared, pipelined):
+    df1 = pd.DataFrame(
+        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
+    )
+    df2 = pd.DataFrame(
+        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
+    )
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.data.from_pandas([df1, df2, df3])
+    ds = maybe_pipeline(ds, pipelined)
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_tf_batches(batch_size=3):
+            iterations.append(
+                np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
+            )
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_iter_tf_batches_tensor_ds(ray_start_regular_shared, pipelined):
+    arr1 = np.arange(12).reshape((3, 2, 2))
+    arr2 = np.arange(12, 24).reshape((3, 2, 2))
+    arr = np.concatenate((arr1, arr2))
+    ds = ray.data.from_numpy([arr1, arr2])
+    ds = maybe_pipeline(ds, pipelined)
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_tf_batches(batch_size=2):
+            iterations.append(batch)
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(arr, combined_iterations)
 
 
 def test_to_tf_feature_columns_list(ray_start_regular_shared):
@@ -2447,10 +2494,10 @@ def test_to_tf_feature_columns_list_with_label(ray_start_regular_shared):
     assert len(batches) == math.ceil(len(df) / batch_size)
     # Each batch should be a two-tuple corresponding to (features, labels).
     assert all(len(batch) == 2 for batch in batches)
-    assert np.array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
-    assert np.array_equal(batches[0][1], np.array([7, 8]))
-    assert np.array_equal(batches[1][0], np.array([[3, 6]]))
-    assert np.array_equal(batches[1][1], np.array([9]))
+    np.testing.assert_array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
+    np.testing.assert_array_equal(batches[0][1], np.array([7, 8]))
+    np.testing.assert_array_equal(batches[1][0], np.array([[3, 6]]))
+    np.testing.assert_array_equal(batches[1][1], np.array([9]))
 
 
 def test_to_tf_feature_columns_nested_list(ray_start_regular_shared):
@@ -2474,10 +2521,10 @@ def test_to_tf_feature_columns_nested_list(ray_start_regular_shared):
     batches = list(dataset.as_numpy_iterator())
     assert len(batches) == math.ceil(len(df) / batch_size)
     assert all(len(batch) == len(feature_columns) for batch in batches)
-    assert np.array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
-    assert np.array_equal(batches[0][1], np.array([[7], [8]]))
-    assert np.array_equal(batches[1][0], np.array([[3, 6]]))
-    assert np.array_equal(batches[1][1], np.array([[9]]))
+    np.testing.assert_array_equal(batches[0][0], np.array([[1, 4], [2, 5]]))
+    np.testing.assert_array_equal(batches[0][1], np.array([[7], [8]]))
+    np.testing.assert_array_equal(batches[1][0], np.array([[3, 6]]))
+    np.testing.assert_array_equal(batches[1][1], np.array([[9]]))
 
 
 def test_to_tf_feature_columns_dict(ray_start_regular_shared):
@@ -2499,10 +2546,10 @@ def test_to_tf_feature_columns_dict(ray_start_regular_shared):
     batches = list(dataset.as_numpy_iterator())
     assert len(batches) == math.ceil(len(df) / batch_size)
     assert all(batch.keys() == feature_columns.keys() for batch in batches)
-    assert np.array_equal(batches[0]["A"], np.array([[1, 4], [2, 5]]))
-    assert np.array_equal(batches[0]["B"], np.array([[7], [8]]))
-    assert np.array_equal(batches[1]["A"], np.array([[3, 6]]))
-    assert np.array_equal(batches[1]["B"], np.array([[9]]))
+    np.testing.assert_array_equal(batches[0]["A"], np.array([[1, 4], [2, 5]]))
+    np.testing.assert_array_equal(batches[0]["B"], np.array([[7], [8]]))
+    np.testing.assert_array_equal(batches[1]["A"], np.array([[3, 6]]))
+    np.testing.assert_array_equal(batches[1]["B"], np.array([[9]]))
 
 
 def test_to_tf_feature_columns_dict_with_label(ray_start_regular_shared):
@@ -2533,12 +2580,12 @@ def test_to_tf_feature_columns_dict_with_label(ray_start_regular_shared):
     assert all(features.keys() == feature_columns.keys() for features, _ in batches)
 
     features0, labels0 = batches[0]
-    assert np.array_equal(features0["A"], np.array([[1, 4], [2, 5]]))
-    assert np.array_equal(labels0, np.array([7, 8]))
+    np.testing.assert_array_equal(features0["A"], np.array([[1, 4], [2, 5]]))
+    np.testing.assert_array_equal(labels0, np.array([7, 8]))
 
     features1, labels1 = batches[1]
-    assert np.array_equal(features1["A"], np.array([[3, 6]]))
-    assert np.array_equal(labels1, np.array([9]))
+    np.testing.assert_array_equal(features1["A"], np.array([[3, 6]]))
+    np.testing.assert_array_equal(labels1, np.array([9]))
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -2563,7 +2610,53 @@ def test_to_torch(ray_start_regular_shared, pipelined):
         for batch in iter(torchd):
             iterations.append(torch.cat((batch[0], batch[1]), dim=1).numpy())
         combined_iterations = np.concatenate(iterations)
-        assert np.array_equal(np.sort(df.values), np.sort(combined_iterations))
+        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_iter_torch_batches(ray_start_regular_shared, pipelined):
+    import torch
+
+    df1 = pd.DataFrame(
+        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
+    )
+    df2 = pd.DataFrame(
+        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
+    )
+    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
+    df = pd.concat([df1, df2, df3])
+    ds = ray.data.from_pandas([df1, df2, df3])
+    ds = maybe_pipeline(ds, pipelined)
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_torch_batches(batch_size=3):
+            iterations.append(
+                torch.stack(
+                    (batch["one"], batch["two"], batch["label"]),
+                    dim=1,
+                ).numpy()
+            )
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+
+
+@pytest.mark.parametrize("pipelined", [False, True])
+def test_iter_torch_batches_tensor_ds(ray_start_regular_shared, pipelined):
+    arr1 = np.arange(12).reshape((3, 2, 2))
+    arr2 = np.arange(12, 24).reshape((3, 2, 2))
+    arr = np.concatenate((arr1, arr2))
+    ds = ray.data.from_numpy([arr1, arr2])
+    ds = maybe_pipeline(ds, pipelined)
+
+    num_epochs = 1 if pipelined else 2
+    for _ in range(num_epochs):
+        iterations = []
+        for batch in ds.iter_torch_batches(batch_size=2):
+            iterations.append(batch.numpy())
+        combined_iterations = np.concatenate(iterations)
+        np.testing.assert_array_equal(arr, combined_iterations)
 
 
 @pytest.mark.parametrize("input", ["single", "list", "dict"])
@@ -2664,7 +2757,7 @@ def test_to_torch_feature_columns(
     combined_iterations = np.concatenate(iterations)
     if not label_type:
         df.drop("label", axis=1, inplace=True)
-    assert np.array_equal(df.values, combined_iterations)
+    np.testing.assert_array_equal(df.values, combined_iterations)
 
 
 def test_block_builder_for_block(ray_start_regular_shared):
@@ -2852,22 +2945,33 @@ def test_groupby_tabular_sum(
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.sum("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "sum(B)": None},
-        {"A": 1, "sum(B)": 1617},
-        {"A": 2, "sum(B)": 1650},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "sum(B)": [None, 1617, 1650],
+            }
+        ),
+        check_dtype=False,
+    )
     # Test all nans
     ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
         num_parts
     )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
     nan_agg_ds = ds.groupby("A").sum("B")
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "sum(B)": None},
-        {"A": 1, "sum(B)": None},
-        {"A": 2, "sum(B)": None},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "sum(B)": [None, None, None],
+            }
+        ),
+    )
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -2955,11 +3059,16 @@ def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.min("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "min(B)": None},
-        {"A": 1, "min(B)": 1},
-        {"A": 2, "min(B)": 2},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "min(B)": [None, 1, 2],
+            }
+        ),
+        check_dtype=False,
+    )
     # Test all nans
     ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
         num_parts
@@ -2968,11 +3077,16 @@ def test_groupby_tabular_min(ray_start_regular_shared, ds_format, num_parts):
         ds = _to_pandas(ds)
     nan_agg_ds = ds.groupby("A").min("B")
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "min(B)": None},
-        {"A": 1, "min(B)": None},
-        {"A": 2, "min(B)": None},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "min(B)": [None, None, None],
+            }
+        ),
+        check_dtype=False,
+    )
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3060,11 +3174,16 @@ def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.max("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "max(B)": None},
-        {"A": 1, "max(B)": 97},
-        {"A": 2, "max(B)": 98},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "max(B)": [None, 97, 98],
+            }
+        ),
+        check_dtype=False,
+    )
     # Test all nans
     ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
         num_parts
@@ -3073,11 +3192,16 @@ def test_groupby_tabular_max(ray_start_regular_shared, ds_format, num_parts):
         ds = _to_pandas(ds)
     nan_agg_ds = ds.groupby("A").max("B")
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "max(B)": None},
-        {"A": 1, "max(B)": None},
-        {"A": 2, "max(B)": None},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "max(B)": [None, None, None],
+            }
+        ),
+        check_dtype=False,
+    )
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -3148,7 +3272,7 @@ def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
         {"A": 2, "mean(B)": 50.0},
     ]
 
-    # Test built-in min aggregation with nans
+    # Test built-in mean aggregation with nans
     ds = ray.data.from_items(
         [{"A": (x % 3), "B": x} for x in xs] + [{"A": 0, "B": None}]
     ).repartition(num_parts)
@@ -3165,11 +3289,16 @@ def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
     # Test ignore_nulls=False
     nan_agg_ds = nan_grouped_ds.mean("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "mean(B)": None},
-        {"A": 1, "mean(B)": 49.0},
-        {"A": 2, "mean(B)": 50.0},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "mean(B)": [None, 49.0, 50.0],
+            }
+        ),
+        check_dtype=False,
+    )
     # Test all nans
     ds = ray.data.from_items([{"A": (x % 3), "B": None} for x in xs]).repartition(
         num_parts
@@ -3178,11 +3307,16 @@ def test_groupby_tabular_mean(ray_start_regular_shared, ds_format, num_parts):
         ds = _to_pandas(ds)
     nan_agg_ds = ds.groupby("A").mean("B")
     assert nan_agg_ds.count() == 3
-    assert [row.as_pydict() for row in nan_agg_ds.sort("A").iter_rows()] == [
-        {"A": 0, "mean(B)": None},
-        {"A": 1, "mean(B)": None},
-        {"A": 2, "mean(B)": None},
-    ]
+    pd.testing.assert_frame_equal(
+        nan_agg_ds.sort("A").to_pandas(),
+        pd.DataFrame(
+            {
+                "A": [0, 1, 2],
+                "mean(B)": [None, None, None],
+            }
+        ),
+        check_dtype=False,
+    )
 
 
 @pytest.mark.parametrize("num_parts", [1, 30])
@@ -4427,6 +4561,30 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         ).take()
 
 
+def test_split_is_not_disruptive(ray_start_regular):
+    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x).lazy()
+
+    def verify_integrity(splits):
+        for dss in splits:
+            for batch in dss.iter_batches():
+                pass
+        for batch in ds.iter_batches():
+            pass
+
+    # No block splitting invovled: split 10 even blocks into 2 groups.
+    verify_integrity(ds.split(2, equal=True))
+    # Block splitting invovled: split 10 even blocks into 3 groups.
+    verify_integrity(ds.split(3, equal=True))
+
+    # Same as above but having tranforms post converting to lazy.
+    verify_integrity(ds.map_batches(lambda x: x).split(2, equal=True))
+    verify_integrity(ds.map_batches(lambda x: x).split(3, equal=True))
+
+    # Same as above but having in-place tranforms post converting to lazy.
+    verify_integrity(ds.randomize_block_order().split(2, equal=True))
+    verify_integrity(ds.randomize_block_order().split(3, equal=True))
+
+
 def test_datasource(ray_start_regular):
     source = ray.data.datasource.RandomIntRowDatasource()
     assert len(ray.data.read_datasource(source, n=10, num_columns=2).take()) == 10
@@ -4466,7 +4624,11 @@ def test_polars_lazy_import(shutdown_only):
                 pd.DataFrame({"a": a[i * partition_size : (i + 1) * partition_size]})
             )
         # At least one worker should have imported polars.
-        _ = ray.data.from_pandas(dfs).sort(key="a")
+        _ = (
+            ray.data.from_pandas(dfs)
+            .map_batches(lambda t: t, batch_format="pyarrow", batch_size=None)
+            .sort(key="a")
+        )
         assert any(ray.get([f.remote(True) for _ in range(parallelism)]))
 
     finally:

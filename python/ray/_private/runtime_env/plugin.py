@@ -180,7 +180,12 @@ class RuntimeEnvPluginManager:
         used_plugins = []
         for name, config in inputs:
             if name not in self.plugins:
-                raise RuntimeError(f"Runtime env plugin {name} not found.")
+                default_logger.error(
+                    f"runtime_env field {name} is not recognized by "
+                    "Ray and will be ignored.  In the future, unrecognized "
+                    "fields in the runtime_env will raise an exception."
+                )
+                continue
             used_plugins.append(
                 (
                     name,
