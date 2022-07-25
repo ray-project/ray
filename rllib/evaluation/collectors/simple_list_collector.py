@@ -15,6 +15,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import zeros_like
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.typing import (
     AgentID,
@@ -42,24 +43,6 @@ def _to_float_np_array(v: List[Any]) -> np.ndarray:
     if arr.dtype == np.float64:
         return arr.astype(np.float32)  # save some memory
     return arr
-
-
-def zeros_like(object: Union[np.ndarray, Dict, List, Tuple]):
-    """Returns a copy of the object with all zeros."""
-
-    if isinstance(object, (int, float)):
-        return object.__class__(0)
-    if isinstance(object, np.ndarray):
-        return np.zeros_like(object)
-    elif isinstance(object, dict):
-        return {k: zeros_like(v) for k, v in object.items()}
-    elif isinstance(object, (list, tuple)):
-        return object.__class__([zeros_like(v) for v in object])
-    else:
-        raise ValueError(
-            f"Zero padding only works on containers of np.ndarray or float or int, got"
-            f"container of type {type(object)}"
-        )
 
 
 class _AgentCollector:
