@@ -1,0 +1,65 @@
+apiVersion: v1
+data:
+  cortex-config.yaml: |
+    auth_enabled: false
+
+    server:
+      http_listen_port: 9300
+      grpc_listen_port: 9301
+
+      # Configure the server to allow messages up to 100MB.
+      grpc_server_max_recv_msg_size: 104857600
+      grpc_server_max_send_msg_size: 104857600
+      grpc_server_max_concurrent_streams: 1000
+
+    distributor:
+      shard_by_all_labels: true
+      pool:
+        health_check_ingesters: true
+
+    ingester_client:
+      grpc_client_config:
+        # Configure the client to allow messages up to 100MB.
+        max_recv_msg_size: 104857600
+        max_send_msg_size: 104857600
+        grpc_compression: gzip
+
+    ingester:
+      lifecycler:
+        # The address to advertise for this ingester.  Will be autodiscovered by
+        # looking up address on eth0 or en0; can be specified if this fails.
+        # address: 127.0.0.1
+
+        # We want to start immediately and flush on shutdown.
+        join_after: 0
+        min_ready_duration: 0s
+        final_sleep: 0s
+        num_tokens: 512
+
+        # Use an in memory ring store, so we don't need to launch a Consul.
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+
+    storage:
+      engine: blocks
+
+    blocks_storage:
+      s3:
+        bucket_name: anyscale-dev-internal-cortex
+        region: us-west-2
+        endpoint: s3.us-west-2.amazonaws.com
+
+    compactor:
+      sharding_ring:
+        kvstore:
+          store: inmemory
+
+    frontend_worker:
+      match_max_concurrent: true
+
+kind: ConfigMap
+metadata:
+  name: cortex-config
+  namespace: cortex
