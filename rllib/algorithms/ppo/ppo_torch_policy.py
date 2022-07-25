@@ -24,6 +24,7 @@ from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
     explained_variance,
     sequence_mask,
+    warn_if_infinite_kl_divergence,
 )
 from ray.rllib.utils.typing import TensorType
 
@@ -119,17 +120,9 @@ class PPOTorchPolicy(
         if self.config["kl_coeff"] > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = reduce_mean_valid(action_kl)
-            if self.loss_initialized() and mean_kl_loss.isinf():
-                logger.warning(
-                    "KL divergence is non-finite, this will likely destabilize your"
-                    " model and the training process. Action(s) in a specific state"
-                    " have near-zero probability. This can happen naturally in"
-                    " deterministic environments where the optimal policy has zero mass"
-                    " for a specific action. To fix this issue, consider setting"
-                    " 'kl_coeff' to zero or increasing 'entropy_coeff'."
-                )
-                # TODO smorad: should we do anything besides warn? Could discard KL term
-                # for this update
+            # TODO smorad: should we do anything besides warn? Could discard KL term
+            # for this update
+            warn_if_infinite_kl_divergence(self, mean_kl_loss)
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 

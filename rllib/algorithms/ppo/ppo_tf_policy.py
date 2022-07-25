@@ -23,7 +23,7 @@ from ray.rllib.policy.tf_mixins import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import explained_variance
+from ray.rllib.utils.tf_utils import explained_variance, warn_if_infinite_kl_divergence
 from ray.rllib.utils.typing import AlgorithmConfigDict, TensorType, TFPolicyV2Type
 
 tf1, tf, tfv = try_import_tf()
@@ -160,15 +160,7 @@ def get_ppo_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             if self.config["kl_coeff"] > 0.0:
                 action_kl = prev_action_dist.kl(curr_action_dist)
                 mean_kl_loss = reduce_mean_valid(action_kl)
-                # Warn on infinite KL
-                if self.loss_initialized():
-                    # TODO smorad: should we do anything besides warn? Could discard KL term
-                    # for this update
-                    tf.cond(
-                        tf.math.is_inf(mean_kl_loss),
-                        false_fn=lambda: mean_kl_loss,
-                        true_fn=lambda: warn_kl_loss(mean_kl_loss),
-                    )
+                warn_if_infinite_kl_divergence(self, mean_kl_loss)
             else:
                 mean_kl_loss = tf.constant(0.0)
 
