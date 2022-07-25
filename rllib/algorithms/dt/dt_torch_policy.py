@@ -162,21 +162,31 @@ class DTTorchPolicy(TorchPolicyV2):
 
         # action losses
         if isinstance(self.action_space, Discrete):
-            action_loss = self._masked_cross_entropy_loss(preds[SampleBatch.ACTIONS], targets[SampleBatch.ACTIONS], masks)
+            action_loss = self._masked_cross_entropy_loss(
+                preds[SampleBatch.ACTIONS], targets[SampleBatch.ACTIONS], masks
+            )
         elif isinstance(self.action_space, Box):
-            action_loss = self._masked_mse_loss(preds[SampleBatch.ACTIONS], targets[SampleBatch.ACTIONS], masks)
+            action_loss = self._masked_mse_loss(
+                preds[SampleBatch.ACTIONS], targets[SampleBatch.ACTIONS], masks
+            )
         else:
             raise NotImplementedError
         losses.append(action_loss)
         self.log(f"action_loss", action_loss)
 
         if preds.get(SampleBatch.OBS) is not None:
-            obs_loss = self._masked_mse_loss(preds[SampleBatch.OBS], targets[SampleBatch.OBS], masks)
+            obs_loss = self._masked_mse_loss(
+                preds[SampleBatch.OBS], targets[SampleBatch.OBS], masks
+            )
             losses.append(obs_loss)
             self.log(f"obs_loss", obs_loss)
 
         if preds.get(SampleBatch.RETURNS_TO_GO) is not None:
-            rtg_loss = self._masked_mse_loss(preds[SampleBatch.RETURNS_TO_GO], targets[SampleBatch.RETURNS_TO_GO], masks)
+            rtg_loss = self._masked_mse_loss(
+                preds[SampleBatch.RETURNS_TO_GO],
+                targets[SampleBatch.RETURNS_TO_GO],
+                masks,
+            )
             losses.append(rtg_loss)
             self.log(f"rtg_loss", rtg_loss)
 
@@ -189,7 +199,9 @@ class DTTorchPolicy(TorchPolicyV2):
         targets: TensorType,
         masks: TensorType,
     ) -> TensorType:
-        losses = F.cross_entropy(preds.reshape(-1, preds.shape[-1]), targets.reshape(-1), reduction="none")
+        losses = F.cross_entropy(
+            preds.reshape(-1, preds.shape[-1]), targets.reshape(-1), reduction="none"
+        )
         losses = losses * masks.reshape(-1)
         return losses.mean()
 
@@ -199,7 +211,9 @@ class DTTorchPolicy(TorchPolicyV2):
         targets: TensorType,
         masks: TensorType,
     ) -> TensorType:
-        losses = F.mse_loss(preds.reshape(-1, preds.shape[-1]), targets.reshape(-1), reduction="none")
+        losses = F.mse_loss(
+            preds.reshape(-1, preds.shape[-1]), targets.reshape(-1), reduction="none"
+        )
         losses = losses * masks.reshape(-1)
         return losses.mean()
 
