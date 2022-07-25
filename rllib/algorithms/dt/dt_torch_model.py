@@ -1,7 +1,7 @@
 import gym
 from gym.spaces import Discrete, Box
 import numpy as np
-from typing import Union, List, Dict
+from typing import Dict
 
 from ray.rllib import SampleBatch
 from ray.rllib.models.torch.mingpt import (
@@ -13,7 +13,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import (
     ModelConfigDict,
     TensorType,
-    ModelInputDict,
 )
 
 torch, nn = try_import_torch()
@@ -46,7 +45,7 @@ class DTTorchModel(TorchModelV2, nn.Module):
         self.embed_dim = self.model_config["embed_dim"]
         self.max_seq_len = self.model_config["max_seq_len"]
         self.max_ep_len = self.model_config["max_ep_len"]
-        self.block_size = self.model_config["max_seq_len"] * 3 - 1
+        self.block_size = self.model_config["max_seq_len"] * 3
 
         # Build all the nn modules
         self.transformer = self.build_transformer()
@@ -87,7 +86,7 @@ class DTTorchModel(TorchModelV2, nn.Module):
         return nn.Linear(self.obs_dim, self.embed_dim)
 
     def build_return_encoder(self):
-        return nn.Linear(self.embed_dim, 1)
+        return nn.Linear(1, self.embed_dim)
 
     def build_action_head(self):
         return nn.Linear(self.embed_dim, self.action_dim)
@@ -107,9 +106,73 @@ class DTTorchModel(TorchModelV2, nn.Module):
         model_out: TensorType,
         input_dict: SampleBatch,
     ) -> Dict[str, TensorType]:
-        """ """
-        pass
+        """Computes the output of a forward pass of the decision transformer.
 
-    def get_target(self, input_dict: SampleBatch) -> Dict[str, TensorType]:
-        """ """
-        pass
+        Args:
+            model_out: output observation tensor from the base model, [B x T x obs_dim]
+            input_dict: a SampleBatch containing
+                RETURNS_TO_GO: [B x T x 1] of returns to go values
+                ACTIONS: [B x T x action_dim] of actions
+                T: [B x T x 1] of timesteps
+                ATTENTION_MASKS: [B x T] of attention masks
+
+        Returns:
+            A dictionary with keys and values:
+                ACTIONS: [B x T x action_dim] of predicted actions
+                if model_config["use_obs_output"]
+                    OBS: [B x T x obs_dim] of predicted observations
+                if model_config["use_return_output"]
+                    RETURNS_to_GO: [B x T x 1] of predicted returns to go
+        """
+        B, T, _ = model_out.shape
+
+        obs_embeds = self.obs_encoder(model_out)
+        actions_embeds = self.action_encoder(input_dict[SampleBatch.ACTIONS])
+        # Note: rtg might have an extra element at the end for targets
+        returns_embeds = self.return_encoder(input_dict[SampleBatch.RETURNS_TO_GO][:, :T, :])
+        timestep_embeds = self.position_encoder(input_dict[SampleBatch.T])
+
+        obs_embeds = obs_embeds + timestep_embeds
+        actions_embeds = actions_embeds + timestep_embeds
+        returns_embeds = returns_embeds + timestep_embeds
+
+        # TODO(charlesjsun): check this
+        # This makes the sequence look like (R_1, s_1, a_1, R_2, s_2, a_2, ...)
+        stacked_inputs = torch.stack(
+            (returns_embeds, obs_embeds, actions_embeds), dim=2
+        ).reshape(B, 3 * T, self.embed_dim)
+
+        attention_masks = input_dict[SampleBatch.ATTENTION_MASKS]
+        stacked_attention_masks = torch.stack(
+            (attention_masks, attention_masks, attention_masks), dim=2
+        ).reshape(B, 3 * T)
+
+        # forward the transformer model
+        output_embeds = self.transformer(stacked_inputs, attention_masks=stacked_attention_masks)
+
+        # compute output heads
+        outputs = {
+            SampleBatch.ACTIONS: self.action_head(output_embeds[:, 1::3, :])
+        }
+        if self.model_config["use_obs_output"]:
+            outputs[SampleBatch.OBS] = self.obs_head(output_embeds[:, 0::3, :])
+        if self.model_config["use_return_output"]:
+            outputs[SampleBatch.RETURNS_TO_GO] = self.return_head(output_embeds[:, 2::3, :])
+
+        return outputs
+
+    def get_target(
+        self,
+        model_out: TensorType,
+        input_dict: SampleBatch
+    ) -> Dict[str, TensorType]:
+        """Compute the target predictions for a given input_dict."""
+        targets = {
+            SampleBatch.ACTIONS: input_dict[SampleBatch.ACTIONS]
+        }
+        if self.model_config["use_obs_output"]:
+            targets[SampleBatch.OBS] = model_out
+        if self.model_config["use_return_output"]:
+            targets[SampleBatch.RETURNS_TO_GO] = input_dict[SampleBatch.RETURNS_TO_GO][:, 1:, :]
+
+        return targets

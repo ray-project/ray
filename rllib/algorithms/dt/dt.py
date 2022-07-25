@@ -1,17 +1,15 @@
 import logging
 from typing import List, Optional, Type
 
+from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
+from ray.rllib.algorithms.dt.segmentation_buffer import SegmentationBuffer
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
-    LAST_TARGET_UPDATE_TS,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
-    TARGET_NET_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SAMPLE_TIMER,
@@ -170,6 +168,9 @@ class DT(Algorithm):
         # if I don't set this here to zero I won't see zero in the logs (defaultdict)
         self._counters[NUM_TARGET_UPDATES] = 0
 
+        # TODO(charlesjsun): add heuristics log2(dataset_size)
+        self.buffer = SegmentationBuffer(self.config["shuffle_buffer_size"])
+
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfigDict:
@@ -188,9 +189,16 @@ class DT(Algorithm):
     def training_step(self) -> ResultDict:
         with self._timers[SAMPLE_TIMER]:
             train_batch = synchronous_parallel_sample(worker_set=self.workers)
-        train_batch = train_batch.as_multi_agent()
+        # TODO(charlesjsun): Fix multiagent later
+        # train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+
+        # TODO(charlesjsun): better control over batch sizes
+        batch_size = train_batch[SampleBatch.OBS].shape[0]
+
+        self.buffer.add(train_batch)
+        train_batch = self.buffer.sample(batch_size)
 
         # Postprocess batch before we learn on it.
         post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
