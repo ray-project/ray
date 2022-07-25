@@ -11,7 +11,6 @@ import pytest
 import ray
 from ray import tune
 from ray.data.preprocessor import Preprocessor
-from ray.train import base_trainer
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
@@ -201,36 +200,39 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         # Fraction correctly specified.
-        DummyTrainer(
+        trainer = DummyTrainer(
             train_loop,
             scaling_config=ScalingConfig(num_workers=3, _max_cpu_fraction_per_node=0.9),
             datasets={"train": ray.data.range(10)},
         )
+        trainer.fit()
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         # No datasets, no fraction.
-        DummyTrainer(
+        trainer = DummyTrainer(
             train_loop,
             scaling_config=ScalingConfig(num_workers=3),
         )
+        trainer.fit()
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         # Has datasets, no fraction, but CPU less than 80%
-        DummyTrainer(
+        trainer = DummyTrainer(
             train_loop,
             scaling_config=ScalingConfig(num_workers=1),
         )
-        assert not base_trainer.logger.warnings
+        trainer.fit()
 
     # Should warn.
     with pytest.warns(UserWarning) as record:
-        DummyTrainer(
+        trainer = DummyTrainer(
             train_loop,
             scaling_config=ScalingConfig(num_workers=3),
             datasets={"train": ray.data.range(10)},
         )
+        trainer.fit()
         assert "_max_cpu_fraction_per_node" in record[0].message
 
 
