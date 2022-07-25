@@ -21,7 +21,6 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwar
     ray._inside_client_test = True
     with disable_client_hook():
         assert not ray.is_initialized()
-
     server = ray_client_server.serve(
         "127.0.0.1:50051", ray_connect_handler=ray_connect_handler
     )
