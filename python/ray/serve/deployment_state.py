@@ -738,12 +738,12 @@ class DeploymentReplica(VersionedReplica):
         required = {
             k: v
             for k, v in self._actor.actor_resources.items()
-            if v is not None and isinstance(v, int) and v > 0
+            if v is not None and v > 0
         }
         available = {
             k: v for k, v in self._actor.available_resources.items() if k in required
         }
-        return str(required), str(available)
+        return json.dumps(required), json.dumps(available)
 
 
 class ReplicaStateContainer:
@@ -1463,7 +1463,7 @@ class DeploymentState:
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
                 message = (
-                    f"Deployment {self._name} has "
+                    f'Deployment "{self._name}" has '
                     f"{len(pending_allocation)} replicas that have taken "
                     f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
                     f"This may be caused by waiting for the cluster to "
