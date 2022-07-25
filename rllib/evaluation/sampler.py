@@ -227,7 +227,10 @@ class SyncSampler(SamplerInput):
         self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
         self.extra_batches = queue.Queue()
-        self.perf_stats = _PerfStats()
+        self.perf_stats = _PerfStats(
+            ema=worker.policy_config.get("sampler_perf_stats_use_ema"),
+            coeff=worker.policy_config.get("sampler_perf_stats_ema_coeff")
+        )
         if not sample_collector_class:
             sample_collector_class = SimpleListCollector
         self.sample_collector = sample_collector_class(
@@ -419,7 +422,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.blackhole_outputs = blackhole_outputs
         self.soft_horizon = soft_horizon
         self.no_done_at_end = no_done_at_end
-        self.perf_stats = _PerfStats()
+        self.perf_stats = _PerfStats(
+            ema=worker.policy_config.get("sampler_perf_stats_use_ema"),
+            coeff=worker.policy_config.get("sampler_perf_stats_ema_coeff")
+        )
         self.shutdown = False
         self.observation_fn = observation_fn
         self.render = render
@@ -661,12 +667,13 @@ def _env_runner(
     active_episodes: Dict[EnvID, Episode] = _NewEpisodeDefaultDict(new_episode)
 
     while True:
-        perf_stats.iters += 1
+        perf_stats.incr("iters", 1)
+
         t0 = time.time()
         # Get observations from all ready agents.
         # types: MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, ...
         unfiltered_obs, rewards, dones, infos, off_policy_actions = base_env.poll()
-        perf_stats.env_wait_time += time.time() - t0
+        env_poll_time = time.time() - t0
 
         if log_once("env_returns"):
             logger.info("Raw obs from env: {}".format(summarize(unfiltered_obs)))
@@ -692,7 +699,7 @@ def _env_runner(
             observation_fn=observation_fn,
             sample_collector=sample_collector,
         )
-        perf_stats.raw_obs_processing_time += time.time() - t1
+        perf_stats.incr("raw_obs_processing_time", time.time() - t1)
         for o in outputs:
             yield o
 
@@ -705,7 +712,7 @@ def _env_runner(
             sample_collector=sample_collector,
             active_episodes=active_episodes,
         )
-        perf_stats.inference_time += time.time() - t2
+        perf_stats.incr("inference_time", time.time() - t2)
 
         # Process results and update episode state.
         t3 = time.time()
@@ -721,13 +728,13 @@ def _env_runner(
             normalize_actions=normalize_actions,
             clip_actions=clip_actions,
         )
-        perf_stats.action_processing_time += time.time() - t3
+        perf_stats.incr("action_processing_time", time.time() - t3)
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
         t4 = time.time()
         base_env.send_actions(actions_to_send)
-        perf_stats.env_wait_time += time.time() - t4
+        perf_stats.incr("env_wait_time", env_poll_time + time.time() - t4)
 
         # Try to render the env, if required.
         if render:
@@ -758,7 +765,7 @@ def _env_runner(
                     "uint8/w x h x 3 (RGB) image or handle rendering in a "
                     "window and then return `True`."
                 )
-            perf_stats.env_render_time += time.time() - t5
+            perf_stats.incr("env_render_time", time.time() - t5)
 
 
 def _process_observations(

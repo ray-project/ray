@@ -1,6 +1,8 @@
 from collections import defaultdict
+from random import Random
 import gym
 import numpy as np
+import time
 import unittest
 
 import ray
@@ -65,13 +67,18 @@ class FaultInjectEnv(gym.Env):
     """
 
     def __init__(self, config):
-        self.env = gym.make("CartPole-v0")
+        # Use RandomEnv to control episode length if needed.
+        self.env = RandomEnv(config)
         self._skip_env_checking = True
         self.action_space = self.env.action_space
         self.observation_space = self.env.observation_space
         self.config = config
         # External counter service.
         self.counter = config["counter"] if "counter" in config else None
+
+        if config.get("init_delay", 0) > 0.0:
+            # Simulate an initialization delay.
+            time.sleep(config.get("init_delay"))
 
     def _increment_count(self):
         if self.counter:
@@ -137,7 +144,7 @@ def is_recreated(w):
 class TestWorkerFailure(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)
 
         register_env("fault_env", lambda c: FaultInjectEnv(c))
         register_env(
@@ -636,6 +643,55 @@ class TestWorkerFailure(unittest.TestCase):
                     )
                 )
             )
+
+    def test_env_wait_time_workers_restore_env(self):
+        # Counter that will survive restarts.
+        counter = Counter.remote()
+
+        config = {
+            "num_workers": 1,
+            # Worker fault tolerance.
+            "ignore_worker_failures": False,  # Do not ignore
+            "recreate_failed_workers": True,  # But recover.
+            "restart_failed_sub_environments": True,
+            "model": {"fcnet_hiddens": [4]},
+            "rollout_fragment_length": 10,
+            "train_batch_size": 10,
+            "env_config": {
+                "max_episode_len": 5,
+                "init_delay": 5,  # 5 sec init delay.
+                # Make both worker idx=1 and 2 fail.
+                "bad_indices": [1],
+                # Env throws error between steps 100 and 102.
+                "failure_start_count": 7,
+                "failure_stop_count": 8,
+                "counter": counter,
+            },
+            # Use EMA PerfStat.
+            "sampler_perf_stats_use_ema": True,
+            # Really large coeff to show the difference in env_wait_time_ms.
+            # Pretty much consider the last 2 data points.
+            "sampler_perf_stats_ema_coeff": 0.5,
+        }
+
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+            # Reset interaciton counter.
+            ray.wait([counter.reset.remote()])
+
+            a = PG(config=config, env="fault_env")
+
+            # Had to restore env during this iteration.
+            result = a.train()
+            self.assertEqual(result["num_faulty_episodes"], 1)
+            time_with_restore = result["sampler_perf"]["mean_env_wait_ms"]
+
+            # Doesn't have to restore env during this iteration.
+            result = a.train()
+            # Still only 1 faulty episode.
+            self.assertEqual(result["num_faulty_episodes"], 1)
+            time_without_restore = result["sampler_perf"]["mean_env_wait_ms"]
+
+            self.assertGreater(time_with_restore, time_without_restore)
 
     def test_eval_workers_on_infinite_episodes(self):
         """Tests whether eval workers warn appropriately after some episode timeout."""

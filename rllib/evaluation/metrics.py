@@ -165,9 +165,6 @@ def summarize_episodes(
     num_faulty_episodes = 0
 
     for episode in episodes:
-        if episode.episode_faulty:
-            num_faulty_episodes += 1
-            continue
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
         for k, v in episode.custom_metrics.items():
@@ -181,6 +178,8 @@ def summarize_episodes(
             hist_stats[k] += v
         for k, v in episode.media.items():
             episode_media[k].append(v)
+        if episode.episode_faulty:
+            num_faulty_episodes += 1
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)

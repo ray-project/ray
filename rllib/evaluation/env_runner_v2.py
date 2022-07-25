@@ -55,7 +55,13 @@ _PolicyEvalData = namedtuple("_PolicyEvalData", ["env_id", "agent_id", "sample_b
 class _PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
 
-    def __init__(self):
+    def __init__(self, ema=False, coeff=0.001):
+        # EMA mode.
+        # In general provides more responsive stats about sampler performance.
+        # TODO(jungong) : make ema the default (only) mode if it works well.
+        self.ema = ema
+        self.coeff = coeff
+
         self.iters = 0
         self.raw_obs_processing_time = 0.0
         self.inference_time = 0.0
@@ -63,7 +69,21 @@ class _PerfStats:
         self.env_wait_time = 0.0
         self.env_render_time = 0.0
 
-    def get(self):
+    def incr(self, field: str, value: Union[int, float]):
+        if field == "iters":
+            self.iters += value
+            return
+
+        # All the other fields support either global average or ema mode.
+        if not self.ema:
+            # Global average.
+            self.__dict__[field] += value
+        else:
+            self.__dict__[field] = (
+                (1.0 - self.coeff) * self.__dict__[field] + self.coeff * value
+            )
+
+    def _get_avg(self):
         # Mean multiplicator (1000 = ms -> sec).
         factor = 1000 / self.iters
         return {
@@ -78,6 +98,27 @@ class _PerfStats:
             # Environment rendering (False by default).
             "mean_env_render_ms": self.env_render_time * factor,
         }
+
+    def _get_ema(self):
+        # In EMA mode, simply ms -> sec.
+        return {
+            # Raw observation preprocessing.
+            "mean_raw_obs_processing_ms": self.raw_obs_processing_time * 1000,
+            # Computing actions through policy.
+            "mean_inference_ms": self.inference_time * 1000,
+            # Processing actions (to be sent to env, e.g. clipping).
+            "mean_action_processing_ms": self.action_processing_time * 1000,
+            # Waiting for environment (during poll).
+            "mean_env_wait_ms": self.env_wait_time * 1000,
+            # Environment rendering (False by default).
+            "mean_env_render_ms": self.env_render_time * 1000,
+        }
+
+    def get(self):
+        if self.ema:
+            return self._get_ema()
+        else:
+            return self._get_avg()
 
 
 class _NewDefaultDict(defaultdict):
@@ -350,7 +391,7 @@ class EnvRunnerV2:
             and other fields as dictated by `policy`.
         """
         while True:
-            self._perf_stats.iters += 1
+            self._perf_stats.incr("iters", 1)
 
             t0 = time.time()
             # Get observations from all ready agents.
@@ -362,7 +403,7 @@ class EnvRunnerV2:
                 infos,
                 off_policy_actions,
             ) = self._base_env.poll()
-            self._perf_stats.env_wait_time += time.time() - t0
+            env_poll_time = time.time() - t0
 
             # Process observations and prepare for policy evaluation.
             t1 = time.time()
@@ -374,7 +415,7 @@ class EnvRunnerV2:
                 dones=dones,
                 infos=infos,
             )
-            self._perf_stats.raw_obs_processing_time += time.time() - t1
+            self._perf_stats.incr("raw_obs_processing_time", time.time() - t1)
 
             for o in outputs:
                 yield o
@@ -383,7 +424,7 @@ class EnvRunnerV2:
             t2 = time.time()
             # types: Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]
             eval_results = self._do_policy_eval(to_eval=to_eval)
-            self._perf_stats.inference_time += time.time() - t2
+            self._perf_stats.incr("inference_time", time.time() - t2)
 
             # Process results and update episode state.
             t3 = time.time()
@@ -394,13 +435,13 @@ class EnvRunnerV2:
                 eval_results=eval_results,
                 off_policy_actions=off_policy_actions,
             )
-            self._perf_stats.action_processing_time += time.time() - t3
+            self._perf_stats.incr("action_processing_time", time.time() - t3)
 
             # Return computed actions to ready envs. We also send to envs that have
             # taken off-policy actions; those envs are free to ignore the action.
             t4 = time.time()
             self._base_env.send_actions(actions_to_send)
-            self._perf_stats.env_wait_time += time.time() - t4
+            self._perf_stats.incr("env_wait_time", env_poll_time + time.time() - t4)
 
             self._maybe_render()
 
@@ -1031,7 +1072,7 @@ class EnvRunnerV2:
                 "window and then return `True`."
             )
 
-        self._perf_stats.env_render_time += time.time() - t5
+        self._perf_stats.incr("env_render_time", time.time() - t5)
 
 
 def _fetch_atari_metrics(base_env: BaseEnv) -> List[RolloutMetrics]:
