@@ -285,7 +285,7 @@ def get_preset_variants(
             raise ValueError(
                 f"Pre-set config key `{'/'.join(path)}` does not correspond "
                 f"to a valid key in the search space definition. Please add "
-                f"this path to the `config` variable passed to `tune.run()`."
+                f"this path to the `param_space` variable passed to `tune.Tuner()`."
             ) from exc
 
         if domain:
