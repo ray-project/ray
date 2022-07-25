@@ -414,6 +414,30 @@
 
   alert: default
 
+- name: air_benchmark_tune_torch_mnist_large_gpu
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: weekly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_8_g4_12xl.yaml
+
+  run:
+    timeout: 3600
+    script: python workloads/tune_torch_benchmark.py --num-runs 2 --num-trials 4 --num-workers 8 --use-gpu
+
+    wait_for_nodes:
+      num_nodes: 8
+
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 
 # Ray AIR distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_cpu_4x1
@@ -566,6 +590,9 @@
   run:
     timeout: 10800
     script: python workloads/pytorch_training_e2e.py --data-size-gb=100 --num-workers=16
+
+    wait_for_nodes:
+      num_nodes: 4
 
     type: sdk_command
     file_manager: job
@@ -3386,7 +3413,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 
 - name: microbenchmark_staging
@@ -3404,7 +3431,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 
 - name: microbenchmark_38
@@ -3421,7 +3448,7 @@
 
   run:
     timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS= python run_microbenchmark.py
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 - name: dask_on_ray_10gb_sort
   group: core-daily-test
