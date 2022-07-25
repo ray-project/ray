@@ -5,27 +5,19 @@
   "patternProperties": {
     "[0-9a-f]*": {
       "type": "object",
-      "properties":{
+      "properties": {
         "is_active": {
           "type": "string",
           "enum": ["ACTIVE", "INACTIVE", "ERROR"]
         },
         "reason": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "timestamp": {
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": ["number"]
         }
       },
-      "required": [
-        "is_active"
-      ]
+      "required": ["is_active"]
     }
   }
 }

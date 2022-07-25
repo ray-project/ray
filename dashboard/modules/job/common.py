@@ -93,7 +93,7 @@ class JobInfoStorageClient:
     Interface to put and get job data from the Internal KV store.
     """
 
-    JOB_DATA_KEY_PREFIX = "_ray_internal_job_info_"
+    JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
     def __init__(self):
