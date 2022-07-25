@@ -961,7 +961,9 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
 
     with pytest.raises(ServerUnavailable):
         client = StateApiClient(address=DEFAULT_DASHBOARD_ADDRESS)
-        response = client.list(StateResource.NODES, options=ListApiOptions())
+        response = client.list(
+            StateResource.NODES, options=ListApiOptions(), raise_on_missing_output=False
+        )
 
     # Response should not be populated
     assert response is None
