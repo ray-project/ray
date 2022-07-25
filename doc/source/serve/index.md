@@ -161,7 +161,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
 
     **User Guides**
     ^^^
-    Learn best practices for common patterns like :doc:`managing deployments<managing-deployments>`, how to call deployments :ref:`via HTTP<serve-http>` or :ref:`from Python<serve-handle-explainer>`.
+    Learn best practices for common patterns like :doc:`configuring deployments<configuring-serve-deployments>`, how to call deployments :ref:`via HTTP<serve-http>` or :ref:`from Python<serve-handle-explainer>`.
     Learn how to serve multiple ML models with :ref:`Model Ensemble<serve-model-ensemble>`, and how to :ref:`monitor your Serve applications<serve-monitoring>`.
 
     +++

@@ -1,4 +1,6 @@
-# Managing Deployments
+(serve-configuring-serve-deployments)=
+
+# Configuring Serve Deployments
 
 This section should help you:
 
@@ -6,14 +8,13 @@ This section should help you:
 - configure resources of your deployments
 - specify different Python dependencies across different deployment using Runtime Environments
 
-:::{tip}
-Get in touch with us if you're using or considering using [Ray Serve](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU).
-:::
 
 ```{contents}
 ```
 
-## Updating a Deployment
+## Configurations
+
+### Updating a Deployment
 
 Often you want to be able to update your code or configuration options for a deployment over time.
 Deployments can be updated simply by updating the code or configuration options and calling `deploy()` again.
@@ -47,7 +48,7 @@ When a redeployment happens, Serve will perform a rolling update, bringing down 
 
 (configuring-a-deployment)=
 
-## Configuring a Deployment
+### Configuring a Deployment
 
 There are a number of things you'll likely want to do with your serving application including
 scaling out or configuring the maximum number of in-flight requests for a deployment.
@@ -55,7 +56,7 @@ All of these options can be specified either in {mod}`@serve.deployment <ray.ser
 
 To update the config options for a running deployment, simply redeploy it with the new options set.
 
-### Scaling Out
+## Scaling Out
 
 To scale out a deployment to many processes, simply configure the number of replicas.
 
@@ -74,9 +75,10 @@ func.options(num_replicas=10).deploy()
 func.options(num_replicas=1).deploy()
 ```
 
-#### Autoscaling
 
-Serve also has the support for a demand-based replica autoscaler.
+## Autoscaling
+
+Ray Serve has support for a demand-based replica autoscaler.
 It reacts to traffic spikes via observing queue sizes and making scaling decisions.
 To configure it, you can set the `autoscaling` field in deployment options.
 
@@ -113,9 +115,10 @@ If the Ray Autoscaler determines there aren't enough available CPUs to place the
 Similarly, when Ray Serve scales down and terminates some replica actors, it may result in some nodes being empty, at which point the Ray autoscaler will remove those nodes.
 :::
 
+
 (serve-cpus-gpus)=
 
-### Resource Management (CPUs, GPUs)
+## Resource Management (CPUs, GPUs)
 
 To assign hardware resources per replica, you can pass resource requirements to
 `ray_actor_options`.
@@ -176,11 +179,46 @@ For example, if you're using OpenCV, you'll need to manually set the number of t
 You can check the configuration using `cv2.getNumThreads()` and `cv2.getNumberOfCPUs()`.
 :::
 
+(managing-deployments-handling-dependencies)=
+
+## Handling Dependencies
+
+Ray Serve supports serving deployments with different (possibly conflicting)
+Python dependencies.  For example, you can simultaneously serve one deployment
+that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
+
+This is supported on Mac OS and Linux using Ray's {ref}`runtime-environments` feature.
+As with all other Ray actor options, pass the runtime environment in via `ray_actor_options` in
+your deployment.  Be sure to first run `pip install "ray[default]"` to ensure the
+Runtime Environments feature is installed.
+
+Example:
+
+```{literalinclude} ../../../python/ray/serve/examples/doc/conda_env.py
+```
+
+:::{tip}
+Avoid dynamically installing packages that install from source: these can be slow and
+use up all resources while installing, leading to problems with the Ray cluster.  Consider
+precompiling such packages in a private repository or Docker image.
+:::
+
+The dependencies required in the deployment may be different than
+the dependencies installed in the driver program (the one running Serve API
+calls). In this case, you should use a delayed import within the class to avoid
+importing unavailable packages in the driver.  This applies even when not
+using runtime environments.
+
+Example:
+
+```{literalinclude} ../../../python/ray/serve/examples/doc/delayed_import.py
+```
+
 (managing-deployments-user-configuration)=
 
-### User Configuration (Experimental)
+## User Configuration
 
-Suppose you want to update a parameter in your model without needing to restart
+Suppose you want to update a parameter in your model without needing to restart all
 the replicas in your deployment.  You can do this by writing a `reconfigure` method
 for the class underlying your deployment.  At runtime, you can then pass in your
 new parameters by setting the `user_config` option.
