@@ -26,6 +26,10 @@
 #include "ray/common/asio/periodical_runner.h"
 
 namespace ray {
+/// Callback that runs at each monitoring interval.
+///
+/// \param is_usage_above_threshold true if memory usage is above the usage
+/// threshold at this instant.
 using MemoryUsageRefreshCallback =
     std::function<void(bool is_usage_above_threshold)>;
 
@@ -55,6 +59,7 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroAlwaysAboveThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestThresholdOneAlwaysBelowThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive);
+
   const double usage_threshold_;
   const MemoryUsageRefreshCallback monitor_callback_;
   instrumented_io_context io_context_;
