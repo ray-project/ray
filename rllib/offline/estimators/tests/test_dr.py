@@ -3,6 +3,7 @@ import shutil
 import unittest
 from typing import Dict
 
+import gym
 import numpy as np
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.algorithms.dqn import DQNConfig
@@ -11,39 +12,59 @@ from ray.rllib.offline import JsonReader, JsonWriter
 from ray.rllib.offline.estimators.doubly_robust import DoublyRobust
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.framework import try_import_torch
 
 import ray
+
+_, nn = try_import_torch()
 
 
 class TestDR(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
         regenerate_data = True
-        num_workers = 4 if regenerate_data else 0
-        checkpoint_dir = "/tmp/cartpole/"
+        num_workers = 0 if regenerate_data else 0
+        checkpoint_dir = "/tmp/cliffwalking/"
         num_episodes = 20
         cls.gamma = 0.99
 
         config = (
             DQNConfig()
-            .environment(env="CartPole-v0")
+            .environment(env="CliffWalking-v0")
             .framework("torch")
             .rollouts(
                 num_rollout_workers=num_workers,
                 batch_mode="complete_episodes",
             )
-            .exploration(exploration_config={"type": "SoftQ", "temperature": 0.1})
+            .exploration(exploration_config={"type": "SoftQ", "temperature": 0.5})
+            .training(
+                model={
+                    "fcnet_hiddens": [48],
+                    "fcnet_activation": "linear",
+                    "vf_share_layers": True,
+                },
+                gamma=cls.gamma,
+            )
         )
         cls.algo = config.build()
-        cls.q_model_config = {"n_iters": 600, "minibatch_size": 128, "tau": 1.0}
+        cls.q_model_config = {
+            "model": {
+                "fcnet_hiddens": [48],
+                "fcnet_activation": "linear",
+                "vf_share_layers": True,
+            },
+            "n_iters": 160,
+            "minibatch_size": 32,
+            "tau": 1.0,
+        }
 
         if regenerate_data:
             shutil.rmtree(checkpoint_dir, ignore_errors=True)
             os.makedirs(checkpoint_dir, exist_ok=True)
 
         if regenerate_data:
-            cls.generate_data(cls.algo, checkpoint_dir, "random", 20, num_episodes)
+            cls.generate_data(cls.algo, checkpoint_dir, "random", -500, num_episodes)
             print("Generated random dataset")
         cls.random_path = os.path.join(checkpoint_dir, "checkpoint", "random")
         (
@@ -61,7 +82,7 @@ class TestDR(unittest.TestCase):
         )
 
         if regenerate_data:
-            cls.generate_data(cls.algo, checkpoint_dir, "mixed", 100, num_episodes)
+            cls.generate_data(cls.algo, checkpoint_dir, "mixed", -100, num_episodes)
             print("Generated mixed dataset")
         cls.mixed_path = os.path.join(checkpoint_dir, "checkpoint", "mixed")
         cls.mixed_batch, cls.mixed_reward, cls.mixed_std = cls.get_batch_and_mean_ret(
@@ -75,7 +96,7 @@ class TestDR(unittest.TestCase):
         )
 
         if regenerate_data:
-            cls.generate_data(cls.algo, checkpoint_dir, "expert", 180, num_episodes)
+            cls.generate_data(cls.algo, checkpoint_dir, "expert", -20, num_episodes)
             print("Generated expert dataset")
         cls.expert_path = os.path.join(checkpoint_dir, "checkpoint", "expert")
         (
@@ -115,6 +136,7 @@ class TestDR(unittest.TestCase):
         while results["episode_reward_mean"] < stop_reward:
             results = algo.train()
 
+        breakpoint()
         checkpoint = algo.save_checkpoint(checkpoint_dir)
         checkpoint_path = os.path.join(checkpoint_dir, "checkpoint", name)
         os.renames(checkpoint, checkpoint_path)
