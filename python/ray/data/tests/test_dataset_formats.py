@@ -2775,14 +2775,14 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
 
 def test_image_folder_datasource(ray_start_regular_shared):
     root = os.path.join(os.path.dirname(__file__), "image-folder")
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(32, 32))
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
 
     assert ds.count() == 3
 
     df = ds.to_pandas()
     assert sorted(df["label"]) == ["cat", "cat", "dog"]
     assert type(df["image"].dtype) is TensorDtype
-    assert all(tensor.to_numpy().shape == (32, 32, 3) for tensor in df["image"])
+    assert all(tensor.to_numpy().shape == (64, 64, 3) for tensor in df["image"])
 
 
 def test_image_folder_datasource_e2e(ray_start_regular_shared):
