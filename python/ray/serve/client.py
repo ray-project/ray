@@ -51,7 +51,6 @@ class ServeControllerClient:
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
-        self._checkpoint_path = ray.get(controller.get_checkpoint_path.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = dict()
@@ -74,10 +73,6 @@ class ServeControllerClient:
     @property
     def http_config(self):
         return self._http_config
-
-    @property
-    def checkpoint_path(self):
-        return self._checkpoint_path
 
     def __del__(self):
         if not self._detached:

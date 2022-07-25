@@ -23,7 +23,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class RouterTest extends BaseTest {
-
   @Test
   public void test() {
     init();
@@ -41,7 +40,7 @@ public class RouterTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Replica
       DeploymentConfig deploymentConfig =

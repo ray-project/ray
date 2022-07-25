@@ -32,7 +32,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ServeControllerClient {
-
   private static final Logger LOGGER = LoggerFactory.getLogger(ServeControllerClient.class);
 
   private static long CLIENT_POLLING_INTERVAL_S = 1;
@@ -49,8 +48,6 @@ public class ServeControllerClient {
 
   private String rootUrl;
 
-  private String checkpointPath;
-
   @SuppressWarnings("unchecked")
   public ServeControllerClient(
       BaseActorHandle controller, String controllerName, boolean detached) {
@@ -65,17 +62,6 @@ public class ServeControllerClient {
                 .task(ServeController::getRootUrl)
                 .remote()
                 .get();
-    this.checkpointPath =
-        controller instanceof PyActorHandle
-            ? (String)
-                ((PyActorHandle) controller)
-                    .task(PyActorMethod.of("get_checkpoint_path"))
-                    .remote()
-                    .get()
-            : ((ActorHandle<ServeController>) controller)
-                .task(ServeController::getCheckpointPath)
-                .remote()
-                .get();
   }
 
   /**
@@ -87,7 +73,6 @@ public class ServeControllerClient {
    */
   @SuppressWarnings("unchecked")
   public RayServeHandle getHandle(String deploymentName, boolean missingOk) {
-
     String cacheKey = deploymentName + "#" + missingOk;
     if (handleCache.containsKey(cacheKey)) {
       return handleCache.get(cacheKey);
@@ -132,7 +117,6 @@ public class ServeControllerClient {
       String routePrefix,
       String url,
       Boolean blocking) {
-
     if (deploymentConfig == null) {
       deploymentConfig = new DeploymentConfig();
     }
@@ -202,7 +186,6 @@ public class ServeControllerClient {
     long start = System.currentTimeMillis();
     boolean isTimeout = true;
     while (timeoutS == null || System.currentTimeMillis() - start < timeoutS * 1000) {
-
       DeploymentStatusInfo status = getDeploymentStatus(name);
       if (status == null) {
         throw new RayServeException(
@@ -311,10 +294,6 @@ public class ServeControllerClient {
     return rootUrl;
   }
 
-  public String getCheckpointPath() {
-    return checkpointPath;
-  }
-
   public DeploymentRoute getDeploymentInfo(String name) {
     return DeploymentRoute.fromProtoBytes(
         (byte[])
@@ -325,7 +304,6 @@ public class ServeControllerClient {
   }
 
   public Map<String, DeploymentRoute> listDeployments() {
-
     DeploymentRouteList deploymentRouteList =
         ServeProtoUtil.bytesToProto(
             (byte[])

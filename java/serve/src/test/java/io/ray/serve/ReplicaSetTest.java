@@ -21,7 +21,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class ReplicaSetTest extends BaseTest {
-
   private String deploymentName = "ReplicaSetTest";
 
   @Test
@@ -48,7 +47,7 @@ public class ReplicaSetTest extends BaseTest {
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "", "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Replica
       DeploymentConfig deploymentConfig =

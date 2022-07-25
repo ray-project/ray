@@ -21,7 +21,6 @@ from ray.serve.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve.constants import (
     CONTROLLER_MAX_CONCURRENCY,
-    DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     HTTP_PROXY_TIMEOUT,
@@ -62,7 +61,6 @@ def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
-    _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -123,7 +121,7 @@ def start(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
         )
 
-        _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
+        _check_http_options(client, http_options)
         return client
     except RayServeException:
         pass
@@ -156,7 +154,6 @@ def start(
     ).remote(
         controller_name,
         http_config=http_options,
-        checkpoint_path=_checkpoint_path,
         head_node_id=head_node_id,
         detached=detached,
     )
@@ -610,18 +607,9 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     return Application(pipeline_build(target))
 
 
-def _check_http_and_checkpoint_options(
-    client: ServeControllerClient,
-    http_options: Union[dict, HTTPOptions],
-    checkpoint_path: str,
+def _check_http_options(
+    client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
 ) -> None:
-    if checkpoint_path and checkpoint_path != client.checkpoint_path:
-        logger.warning(
-            f"The new client checkpoint path '{checkpoint_path}' "
-            f"is different from the existing one '{client.checkpoint_path}'. "
-            "The new checkpoint path is ignored."
-        )
-
     if http_options:
         client_http_options = client.http_config
         new_http_options = (
