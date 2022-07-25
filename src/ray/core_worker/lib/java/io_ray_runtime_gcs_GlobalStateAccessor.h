@@ -78,17 +78,6 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *,
 
 /*
  * Class:     io_ray_runtime_gcs_GlobalStateAccessor
- * Method:    nativeGetNodeResourceInfo
- * Signature: (J[B)[B
- */
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeResourceInfo(JNIEnv *,
-                                                                      jobject,
-                                                                      jlong,
-                                                                      jbyteArray);
-
-/*
- * Class:     io_ray_runtime_gcs_GlobalStateAccessor
  * Method:    nativeGetAllActorInfo
  * Signature: (J)Ljava/util/List;
  */
