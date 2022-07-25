@@ -303,7 +303,7 @@ def run(
         if is_config:
             client.deploy_app(config)
         else:
-            serve.run(node, host=host, port=port)
+            serve.run(node, http_options={"host": host, "port": port})
         cli_logger.success("Deployed successfully.")
 
         if blocking:
