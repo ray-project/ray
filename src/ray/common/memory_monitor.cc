@@ -35,13 +35,17 @@ MemoryMonitor::MemoryMonitor(float capacity_threshold,
     }),
     runner_(io_context_) {
   if (monitor_interval_ms > 0) {
-    runner_.RunFnPeriodically([this] { 
-      bool is_usage_above_threshold = IsUsageAboveThreshold();
-      monitor_callback_(is_usage_above_threshold);
-    },
-    monitor_interval_ms,
-    "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
-    RAY_LOG(INFO) << "MemoryMonitor running periodically";
+    #ifdef __linux__
+      runner_.RunFnPeriodically([this] { 
+          bool is_usage_above_threshold = IsUsageAboveThreshold();
+          monitor_callback_(is_usage_above_threshold);
+        },
+        monitor_interval_ms,
+        "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
+      RAY_LOG(INFO) << "MemoryMonitor initialized";
+    #else
+      RAY_LOG(WARNING) << "Not running MemoryMonitor. It is currently supported on Linux.";
+    #endif    
   } else {
     RAY_LOG(INFO) << "MemoryMonitor disabled";
   }

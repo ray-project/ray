@@ -36,7 +36,7 @@ class MockWorker : public WorkerInterface {
 
   void AssignTaskId(const TaskID &task_id) override {}
 
-  void SetAssignedTask(const RayTask &assigned_task) {
+  void SetAssignedTask(const RayTask &assigned_task) override {
     task_ = assigned_task;
     task_time_ = std::chrono::high_resolution_clock::now();
   };

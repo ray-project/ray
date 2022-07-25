@@ -212,7 +212,8 @@ class Worker : public WorkerInterface {
     assigned_task_time_ = std::chrono::high_resolution_clock::now();
   };
 
-  const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime() const { return assigned_task_time_; };
+  const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime()
+      const override { return assigned_task_time_; };
 
   bool IsRegistered() { return rpc_client_ != nullptr; }
 
