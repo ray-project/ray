@@ -26,6 +26,12 @@ def unix_socket_delete(unix_socket):
 
 def test_tempdir(shutdown_only):
     shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
+    if os.path.exists(ray._private.utils.get_ray_temp_dir()):
+        # sometimes even after delete, it's still there.
+        # delete it again to make sure it's cleaned up
+        shutil.rmtree(ray._private.utils.get_ray_temp_dir(), ignore_errors=True)
+        assert not os.path.exists(ray._private.utils.get_ray_temp_dir())
+
     ray.init(
         _temp_dir=os.path.join(
             ray._private.utils.get_user_temp_dir(), "i_am_a_temp_dir"
