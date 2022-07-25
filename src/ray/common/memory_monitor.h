@@ -24,7 +24,12 @@ namespace ray {
 ///
 /// \param is_usage_above_threshold true if memory usage is above the usage
 /// threshold at this instant.
+<<<<<<< HEAD
 using MemoryUsageRefreshCallback = std::function<void(bool is_usage_above_threshold)>;
+=======
+using MemoryUsageRefreshCallback =
+    std::function<void(bool is_usage_above_threshold)>;
+>>>>>>> fix
 
 /// Monitors the memory usage of the node.
 /// It checks the memory usage p
