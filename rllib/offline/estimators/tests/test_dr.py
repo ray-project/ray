@@ -19,10 +19,10 @@ class TestDR(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-        regenerate_data = False
+        regenerate_data = True
         num_workers = 4 if regenerate_data else 0
         checkpoint_dir = "/tmp/cartpole/"
-        num_episodes = 100
+        num_episodes = 20
         cls.gamma = 0.99
 
         config = (
@@ -61,7 +61,7 @@ class TestDR(unittest.TestCase):
         )
 
         if regenerate_data:
-            cls.generate_data(cls.algo, checkpoint_dir, "mixed", 120, num_episodes)
+            cls.generate_data(cls.algo, checkpoint_dir, "mixed", 100, num_episodes)
             print("Generated mixed dataset")
         cls.mixed_path = os.path.join(checkpoint_dir, "checkpoint", "mixed")
         cls.mixed_batch, cls.mixed_reward, cls.mixed_std = cls.get_batch_and_mean_ret(
@@ -75,7 +75,7 @@ class TestDR(unittest.TestCase):
         )
 
         if regenerate_data:
-            cls.generate_data(cls.algo, checkpoint_dir, "expert", 200, num_episodes)
+            cls.generate_data(cls.algo, checkpoint_dir, "expert", 180, num_episodes)
             print("Generated expert dataset")
         cls.expert_path = os.path.join(checkpoint_dir, "checkpoint", "expert")
         (
