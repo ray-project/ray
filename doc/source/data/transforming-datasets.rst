@@ -129,7 +129,7 @@ Here is an overview of the available batch formats:
     This may incur a conversion cost if the underlying Dataset block is not
     zero-copy convertible from an Arrow table.
 
-  * **Tensor Datasets** (single-column): Each batch will be a single
+  * **Tensor Datasets** (single column): Each batch will be a single
     `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
     containing the single tensor column for this batch.
 
@@ -144,7 +144,7 @@ Here is an overview of the available batch formats:
 
   The ``"pandas"`` batch format presents batches in
   `pandas.DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__
-  format. If converting a simple dataset to Pandas DataFrame batches, a single-column
+  format. If converting a simple dataset to Pandas DataFrame batches, a single column
   dataframe with the column ``"__value__"`` will be created.
 
   .. literalinclude:: ./doc_code/transforming_datasets.py
@@ -156,7 +156,7 @@ Here is an overview of the available batch formats:
 
   The ``"pyarrow"`` batch format presents batches in
   `pyarrow.Table <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-  format. If converting a simple dataset to Arrow Table batches, a single-column table
+  format. If converting a simple dataset to Arrow Table batches, a single column table
   with the column ``"__value__"`` will be created.
 
   .. literalinclude:: ./doc_code/transforming_datasets.py
@@ -174,9 +174,9 @@ Here is an overview of the available batch formats:
     ndarrays (``Dict[str, np.ndarray]``), with each key-value pair representing a column
     in the table.
 
-  * **Tensor Datasets** (single-column): Each batch will be a single
+  * **Tensor Datasets** (single column): Each batch will be a single
     `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-    containing the single-tensor-column for this batch.
+    containing the single tensor column for this batch.
 
   * **Simple Datasets**: Each batch will be a single NumPy ndarray, where Datasets will
     attempt to convert each list-batch to an ndarray.
@@ -223,7 +223,7 @@ how they are interpreted to create the transformation result:
 
 .. tabbed:: np.ndarray
 
-  Returning ``np.ndarray`` creates a single-column Tensor dataset as the transformation result:
+  Returning ``np.ndarray`` creates a single column Tensor dataset as the transformation result:
 
   .. literalinclude:: ./doc_code/transforming_datasets.py
     :language: python
@@ -274,7 +274,7 @@ The following output types are allowed for per-row UDFs (e.g.,
 
 .. tabbed:: np.ndarray
 
-  Returning ``np.ndarray`` creates a single-column Tensor dataset as the transformation result:
+  Returning ``np.ndarray`` creates a single column Tensor dataset as the transformation result:
 
   .. literalinclude:: ./doc_code/transforming_datasets.py
     :language: python
