@@ -44,7 +44,7 @@ def test_merge_dict():
         assert True
     dict2 = None
     merge = merge_dict(dict1, dict2)
-    assert len(merge) == 0
+    assert merge is None
 
 
 def test_bytes_encoder():

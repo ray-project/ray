@@ -251,6 +251,8 @@ def msgpack_deserialize(data):
 
 
 def merge_dict(dict1, dict2):
+    if dict1 is None and dict2 is None:
+        return None
     if dict1 is None:
         dict1 = dict()
     if dict2 is None:
