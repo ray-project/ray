@@ -1,6 +1,5 @@
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessors.chain import Chain
-from ray.data.preprocessors.custom_stateful import CustomStatefulPreprocessor
 from ray.data.preprocessors.encoder import (
     Categorizer,
     LabelEncoder,
@@ -27,7 +26,6 @@ __all__ = [
     "Categorizer",
     "CountVectorizer",
     "Chain",
-    "CustomStatefulPreprocessor",
     "FeatureHasher",
     "HashingVectorizer",
     "LabelEncoder",
