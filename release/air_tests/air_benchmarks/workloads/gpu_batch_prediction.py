@@ -38,7 +38,9 @@ def main(data_size_gb: int):
     data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
     print(f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}")
     start = time.time()
-    dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[data_url])
+    dataset = ray.data.read_datasource(
+        ImageFolderDatasource(), root=data_url, size=(256, 256)
+    )
 
     model = resnet18(pretrained=True)
 
