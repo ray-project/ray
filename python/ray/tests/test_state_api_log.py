@@ -585,25 +585,27 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
 
 def test_log_list(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0)
+    num_nodes = 5
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
 
     def verify():
-        head_node = list_nodes()[0]
-        # When glob filter is not provided, it should provide all logs
-        logs = list_logs(node_id=head_node["node_id"])
-        assert "raylet" in logs
-        assert "gcs_server" in logs
-        assert "dashboard" in logs
-        assert "agent" in logs
-        assert "internal" in logs
-        assert "driver" in logs
-        assert "autoscaler" in logs
+        for node in list_nodes():
+            # When glob filter is not provided, it should provide all logs
+            logs = list_logs(node_id=node["node_id"])
+            assert "raylet" in logs
+            assert "gcs_server" in logs
+            assert "dashboard" in logs
+            assert "agent" in logs
+            assert "internal" in logs
+            assert "driver" in logs
+            assert "autoscaler" in logs
 
-        # Test glob works.
-        logs = list_logs(node_id=head_node["node_id"], glob_filter="raylet*")
-        assert len(logs) == 1
-        return True
+            # Test glob works.
+            logs = list_logs(node_id=node["node_id"], glob_filter="raylet*")
+            assert len(logs) == 1
+            return True
 
     wait_for_condition(verify)
 
@@ -682,7 +684,7 @@ def test_log_cli(shutdown_only):
 
     # Test the head node is chosen by default.
     def verify():
-        result = runner.invoke(scripts.logs)
+        result = runner.invoke(scripts.ray_logs)
         print(result.output)
         assert result.exit_code == 0
         assert "raylet.out" in result.output
@@ -695,7 +697,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's only 1 match, it prints logs.
     def verify():
-        result = runner.invoke(scripts.logs, ["raylet.out"])
+        result = runner.invoke(scripts.ray_logs, ["raylet.out"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" not in result.output
@@ -710,7 +712,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
-        result = runner.invoke(scripts.logs, ["raylet.*"])
+        result = runner.invoke(scripts.ray_logs, ["raylet.*"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" in result.output
