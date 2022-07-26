@@ -3,7 +3,7 @@ import os
 import time
 
 import ray
-from ray.util.ray_lightning.simple_example import main
+from ray.tests.ray_lightning.simple_example import main
 
 if __name__ == "__main__":
     start = time.time()

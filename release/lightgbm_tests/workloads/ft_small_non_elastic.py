@@ -20,7 +20,7 @@ import ray
 from lightgbm_ray import RayParams
 
 
-from ray.util.lightgbm.release_test_util import (
+from release_test_util import (
     train_ray,
     FailureState,
     FailureInjection,

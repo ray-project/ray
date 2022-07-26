@@ -19,7 +19,7 @@ from ray import tune
 
 from lightgbm_ray import RayParams
 
-from ray.util.lightgbm.release_test_util import train_ray
+from release_test_util import train_ray
 
 
 def train_wrapper(config, ray_params):
