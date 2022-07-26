@@ -88,7 +88,9 @@ The `import_path` is the deployment graph's import path. When you deploy your co
 `host` and `port` are HTTP options. They determine the host IP address and the port for your Serve application's HTTP proxies. These are optional settings and can be omitted. By default, the `host` will be set to `0.0.0.0` to expose your deployments publicly, and the port will be set to `8000`. If you're using Kubernetes, check out [the documentation on deploying Serve on Kubernetes](deploying-serve-on-kubernetes) to see how these parameters affect your setup.
 
 :::{warning}
-Once your Serve application is running, its `host` and `port` cannot be changed. The following CLI commands automatically start a Serve application on your Ray cluster if one isn't already running:
+Once your Serve application is running, its `host` and `port` cannot be changed. Running `serve deploy` on a config file with different `host` and `port` options will fail, without making any changes to the running Serve application.
+
+The following CLI commands automatically start a Serve application on your Ray cluster if one isn't already running:
 
 * `serve deploy`
 * `serve config`
