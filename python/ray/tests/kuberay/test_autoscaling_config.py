@@ -42,9 +42,11 @@ def _get_basic_autoscaling_config() -> dict:
     return {
         "cluster_name": "raycluster-complete",
         "provider": {
-            "disable_launch_config_check": True,
             "disable_node_updaters": True,
+            "disable_launch_config_check": True,
             "foreground_node_launch": True,
+            "worker_liveness_check": False,
+            "worker_rpc_drain": False,
             "namespace": "default",
             "type": "kuberay",
         },
