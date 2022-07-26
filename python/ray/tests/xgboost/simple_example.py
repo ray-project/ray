@@ -1,7 +1,7 @@
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
-from ray.util.xgboost import RayDMatrix, RayParams, train
+from xgboost_ray import RayDMatrix, RayParams, train
 
 
 # __xgboost_begin__

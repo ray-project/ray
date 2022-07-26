@@ -13,7 +13,7 @@ import time
 import ray
 from xgboost_ray import RayParams
 
-from ray.util.xgboost.release_test_util import train_ray
+from release_test_util import train_ray
 
 if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")

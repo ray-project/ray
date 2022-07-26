@@ -2,7 +2,7 @@ from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.util.xgboost import RayDMatrix, RayParams, train
+from xgboost_ray import RayDMatrix, RayParams, train
 
 # __train_begin__
 num_cpus_per_actor = 1

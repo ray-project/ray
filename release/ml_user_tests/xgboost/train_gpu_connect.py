@@ -36,7 +36,7 @@ if __name__ == "__main__":
         ray.init(address="auto", runtime_env=runtime_env)
 
     from xgboost_ray import RayParams
-    from ray.util.xgboost.release_test_util import train_ray, get_parquet_files
+    from release_test_util import train_ray, get_parquet_files
 
     ray_params = RayParams(
         elastic_training=False,

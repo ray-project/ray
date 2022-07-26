@@ -26,7 +26,7 @@ import time
 import ray
 from xgboost_ray import RayParams
 
-from ray.util.xgboost.release_test_util import train_ray
+from release_test_util import train_ray
 
 if __name__ == "__main__":
     # Manually set NCCL_SOCKET_IFNAME to "ens3" so NCCL training works on
