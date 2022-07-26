@@ -337,11 +337,18 @@ def test_shortcut(workflow_start_regular):
             return 100
 
     assert workflow.run(recursive_chain.bind(0), workflow_id="shortcut") == 100
+
+    from ray._private.client_mode_hook import client_mode_wrap
+
     # the shortcut points to the step with output checkpoint
-    store = workflow_storage.get_workflow_storage("shortcut")
-    task_id = store.get_entrypoint_step_id()
-    output_step_id = store.inspect_step(task_id).output_step_id
-    assert store.inspect_step(output_step_id).output_object_valid
+    @client_mode_wrap
+    def check():
+        store = workflow_storage.WorkflowStorage("shortcut")
+        task_id = store.get_entrypoint_step_id()
+        output_step_id = store.inspect_step(task_id).output_step_id
+        return store.inspect_step(output_step_id).output_object_valid
+
+    assert check()
 
 
 def test_resume_different_storage(shutdown_only, tmp_path):

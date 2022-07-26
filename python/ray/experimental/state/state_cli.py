@@ -537,6 +537,10 @@ def ray_list(
         _explain=_should_explain(format),
     )
 
+    # If --detail is given, the default formatting is yaml.
+    if detail and format == AvailableFormat.DEFAULT:
+        format = AvailableFormat.YAML
+
     # Print data to console.
     print(
         format_list_api_output(
