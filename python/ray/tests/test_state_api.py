@@ -91,8 +91,8 @@ from ray.experimental.state.state_cli import (
     format_list_api_output,
     _parse_filter,
 )
-from ray.experimental.state.state_cli import get as cli_get
-from ray.experimental.state.state_cli import list as cli_list
+from ray.experimental.state.state_cli import ray_get 
+from ray.experimental.state.state_cli import ray_list 
 from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
@@ -1459,29 +1459,29 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         return exit_code_correct and substring_matched
 
     wait_for_condition(
-        lambda: verify_output(cli_list, ["actors"], ["Stats:", "Table:", "ACTOR_ID"])
+        lambda: verify_output(ray_list, ["actors"], ["Stats:", "Table:", "ACTOR_ID"])
     )
     wait_for_condition(
-        lambda: verify_output(cli_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
+        lambda: verify_output(ray_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
     )
     wait_for_condition(
-        lambda: verify_output(cli_list, ["nodes"], ["Stats:", "Table:", "NODE_ID"])
+        lambda: verify_output(ray_list, ["nodes"], ["Stats:", "Table:", "NODE_ID"])
     )
     wait_for_condition(
         lambda: verify_output(
-            cli_list, ["placement-groups"], ["Stats:", "Table:", "PLACEMENT_GROUP_ID"]
+            ray_list, ["placement-groups"], ["Stats:", "Table:", "PLACEMENT_GROUP_ID"]
         )
     )
-    wait_for_condition(lambda: verify_output(cli_list, ["jobs"], ["raysubmit"]))
+    wait_for_condition(lambda: verify_output(ray_list, ["jobs"], ["raysubmit"]))
     wait_for_condition(
-        lambda: verify_output(cli_list, ["tasks"], ["Stats:", "Table:", "TASK_ID"])
+        lambda: verify_output(ray_list, ["tasks"], ["Stats:", "Table:", "TASK_ID"])
     )
     wait_for_condition(
-        lambda: verify_output(cli_list, ["objects"], ["Stats:", "Table:", "OBJECT_ID"])
+        lambda: verify_output(ray_list, ["objects"], ["Stats:", "Table:", "OBJECT_ID"])
     )
     wait_for_condition(
         lambda: verify_output(
-            cli_list, ["runtime-envs"], ["Stats:", "Table:", "RUNTIME_ENV"]
+            ray_list, ["runtime-envs"], ["Stats:", "Table:", "RUNTIME_ENV"]
         )
     )
 
@@ -1489,7 +1489,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     nodes = ray.nodes()
     wait_for_condition(
         lambda: verify_output(
-            cli_get, ["nodes", nodes[0]["NodeID"]], ["node_id", nodes[0]["NodeID"]]
+            ray_get, ["nodes", nodes[0]["NodeID"]], ["node_id", nodes[0]["NodeID"]]
         )
     )
     # Test get workers by id
@@ -1497,13 +1497,13 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     assert len(workers) > 0
     worker_id = list(workers.keys())[0]
     wait_for_condition(
-        lambda: verify_output(cli_get, ["workers", worker_id], ["worker_id", worker_id])
+        lambda: verify_output(ray_get, ["workers", worker_id], ["worker_id", worker_id])
     )
 
     # Test get actors by id
     wait_for_condition(
         lambda: verify_output(
-            cli_get,
+            ray_get,
             ["actors", actor._actor_id.hex()],
             ["actor_id", actor._actor_id.hex()],
         )
@@ -1512,7 +1512,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     # Test get placement groups by id
     wait_for_condition(
         lambda: verify_output(
-            cli_get,
+            ray_get,
             ["placement-groups", pg.id.hex()],
             ["placement_group_id", pg.id.hex()],
         )
@@ -1520,7 +1520,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
 
     # Test get objects by id
     wait_for_condition(
-        lambda: verify_output(cli_get, ["objects", obj.hex()], ["object_id", obj.hex()])
+        lambda: verify_output(ray_get, ["objects", obj.hex()], ["object_id", obj.hex()])
     )
 
     # TODO(rickyyx:alpha-obs):
@@ -2093,12 +2093,12 @@ def test_filter(shutdown_only):
     dead_actor_id = list_actors(filters=[("state", "=", "DEAD")])[0]["actor_id"]
     alive_actor_id = list_actors(filters=[("state", "=", "ALIVE")])[0]["actor_id"]
     runner = CliRunner()
-    result = runner.invoke(cli_list, ["actors", "--filter", "state=DEAD"])
+    result = runner.invoke(ray_list, ["actors", "--filter", "state=DEAD"])
     assert result.exit_code == 0
     assert dead_actor_id in result.output
     assert alive_actor_id not in result.output
 
-    result = runner.invoke(cli_list, ["actors", "--filter", "state!=DEAD"])
+    result = runner.invoke(ray_list, ["actors", "--filter", "state!=DEAD"])
     assert result.exit_code == 0
     assert dead_actor_id not in result.output
     assert alive_actor_id in result.output
@@ -2115,7 +2115,7 @@ def test_data_truncate(shutdown_only):
     ]
     runner = CliRunner()
     with pytest.warns(UserWarning) as record:
-        result = runner.invoke(cli_list, ["placement-groups"])
+        result = runner.invoke(ray_list, ["placement-groups"])
     assert (
         f"{DEFAULT_LIMIT} ({MAX_LIMIT + 1} total) placement_groups are returned. "
         f"{MAX_LIMIT + 1 - DEFAULT_LIMIT} entries have been truncated."
@@ -2137,7 +2137,7 @@ def test_data_truncate(shutdown_only):
     ray.get(a.ready.remote())
 
     with pytest.warns(None) as record:
-        result = runner.invoke(cli_list, ["actors"])
+        result = runner.invoke(ray_list, ["actors"])
     assert len(record) == 0
 
 
@@ -2162,7 +2162,7 @@ def test_detail(shutdown_only):
     Test CLI
     """
     runner = CliRunner()
-    result = runner.invoke(cli_list, ["actors", "--detail"])
+    result = runner.invoke(ray_list, ["actors", "--detail"])
     print(result.output)
     assert result.exit_code == 0
     # The column for --detail should be in the output.
@@ -2459,7 +2459,7 @@ def test_callsite_warning(callsite_enabled, monkeypatch, shutdown_only):
         wait_for_condition(lambda: len(list_objects()) > 0)
 
         with pytest.warns(None) as record:
-            result = runner.invoke(cli_list, ["objects"])
+            result = runner.invoke(ray_list, ["objects"])
             assert result.exit_code == 0
 
         if callsite_enabled:
@@ -2525,7 +2525,7 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
 
         # Verify when CLI is used, exceptions are not raised.
         with pytest.warns(None) as record:
-            result = runner.invoke(cli_list, ["tasks", "--timeout=3"])
+            result = runner.invoke(ray_list, ["tasks", "--timeout=3"])
         assert len(record) == 1
         assert result.exit_code == 0
 
@@ -2548,7 +2548,7 @@ def test_get_id_not_found(shutdown_only):
     """
     ray.init()
     runner = CliRunner()
-    result = runner.invoke(cli_get, ["actors", "1234"])
+    result = runner.invoke(ray_get, ["actors", "1234"])
     assert result.exit_code == 0
     assert "Resource with id=1234 not found in the cluster." in result.output
 

@@ -49,8 +49,8 @@ from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
-    get as state_cli_get,
-    list as state_cli_list,
+    ray_get,
+    ray_list,
     get_api_server_url,
     output_with_format,
     summary_state_cli_group,
@@ -2557,8 +2557,8 @@ cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
 add_command_alias(ray_logs, name="logs", hidden=False)
-cli.add_command(state_cli_list)
-cli.add_command(state_cli_get)
+cli.add_command(ray_list)
+cli.add_command(ray_get)
 add_command_alias(summary_state_cli_group, name="summary", hidden=False)
 
 try:

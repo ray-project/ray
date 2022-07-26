@@ -271,8 +271,11 @@ def format_get_api_output(
     id: str,
     format: AvailableFormat = AvailableFormat.DEFAULT,
 ) -> str:
-    if not state_data or len(state_data) == 0:
+    if not state_data:
         return f"Resource with id={id} not found in the cluster."
+
+    if not isinstance(state_data, list):
+        state_data = [state_data]
 
     return output_with_format(state_data, format)
 
@@ -328,7 +331,7 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
-def get(
+def ray_get(
     resource: str,
     id: str,
     address: Optional[str],
@@ -441,7 +444,7 @@ def get(
 )
 @timeout_option
 @address_option
-def list(
+def ray_list(
     resource: str,
     format: str,
     filter: List[str],
