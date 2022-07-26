@@ -296,6 +296,19 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return v
 
+    @staticmethod
+    def get_empty_schema() -> Dict:
+        """Returns an empty app schema.
+
+        Schema can be used as a representation of an empty Serve config.
+        """
+
+        return {
+            "import_path": "",
+            "runtime_env": {},
+            "deployments": [],
+        }
+
 
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
     app_status: ApplicationStatusInfo = Field(

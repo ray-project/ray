@@ -46,12 +46,17 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.get("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployments(self, req: Request) -> Response:
-        from ray.serve.context import get_global_client
+        from ray.serve.schema import ServeApplicationSchema
 
-        client = get_global_client()
+        client = self.get_serve_client()
+
+        if client is None:
+            config = ServeApplicationSchema.get_empty_schema()
+        else:
+            config = client.get_app_config()
 
         return Response(
-            text=json.dumps(client.get_app_config()),
+            text=json.dumps(config),
             content_type="application/json",
         )
 
@@ -92,6 +97,22 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         client.deploy_app(config)
 
         return Response()
+
+    def get_serve_client(self):
+        """Gets the ServeControllerClient to the this cluster's Serve app.
+
+        return: If Serve is running on this Ray cluster, returns a client to
+            the Serve controller. If Serve is not running, returns None.
+        """
+
+        from ray.serve.context import get_global_client
+        from ray.serve.exceptions import RayServeException
+
+        try:
+            return get_global_client(_health_check_controller=True)
+        except RayServeException:
+            logger.debug("There's no Serve app running on this Ray cluster.")
+            return None
 
     async def run(self, server):
         pass
