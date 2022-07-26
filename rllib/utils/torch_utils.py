@@ -531,7 +531,8 @@ def sequence_mask(
 
 
 def warn_if_infinite_kl_divergence(
-    policy: "TorchPolicy", kl_divergence: torch.Tensor
+    policy: "TorchPolicy",
+    kl_divergence: TensorType,
 ) -> None:
     if policy.loss_initialized() and kl_divergence.isinf():
         logger.warning(
