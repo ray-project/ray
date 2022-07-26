@@ -194,7 +194,7 @@ def test_reserved_cpus(ray_start_4_cpus):
 
 
 def test_reserved_cpu_warnings(ray_start_4_cpus):
-    def train_loop(self):
+    def train_loop(config):
         pass
 
     class MockLogger:
@@ -243,13 +243,20 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
         ), tuner_internal.warnings.warnings
         assert "_max_cpu_fraction_per_node" in tuner_internal.warnings.warnings[0]
 
-        # Should warn.
+        # Warn if num_samples is configured
         trainer = DummyTrainer(
             train_loop,
             scaling_config=ScalingConfig(num_workers=1),
             datasets={"train": ray.data.range(10)},
         )
         tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
+        tuner.fit()
+        assert (
+            len(tuner_internal.warnings.warnings) == 2
+        ), tuner_internal.warnings.warnings
+
+        # Don't warn if Trainer is not used
+        tuner = tune.Tuner(train_loop, tune_config=tune.TuneConfig(num_samples=3))
         tuner.fit()
         assert (
             len(tuner_internal.warnings.warnings) == 2

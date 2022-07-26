@@ -139,40 +139,37 @@ class TunerInternal:
         actual_concurrency = min(
             (cpus_total // cpus_per_trial, num_samples, concurrent_trials)
         )
-        return (actual_concurrency * cpus_per_trial) / cpus_total
+        return (actual_concurrency * cpus_per_trial) / (cpus_total + 0.001)
 
     def _maybe_warn_resource_contention(self):
         trainable = self._convert_trainable(self._trainable)
 
         # This may not be precise, but we don't have a great way of
-        # accessing the scaling config.
+        # accessing the actual scaling config if it is being tuned.
         scaling_config = None
         get_scaling_config = getattr(trainable, "base_scaling_config", None)
         if callable(get_scaling_config):
             scaling_config = get_scaling_config()
 
-        if not isinstance(scaling_config, ScalingConfig) or getattr(
-            scaling_config, "_max_cpu_fraction_per_node"
-        ):
+        if scaling_config is None or scaling_config._max_cpu_fraction_per_node:
             return
 
         has_dataset = getattr(trainable, "has_dataset", False)
 
         cpus_per_trial = scaling_config.total_resources.get("CPU", 0)
-        cpus_left = ray.available_resources().get("CPU", 0) + 0.001  # avoid div by 0
+        cpus_left = ray.available_resources().get("CPU", 0)  # avoid div by 0
         # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
-        #  longer experimental.
+        # longer experimental.
         if has_dataset and self._expected_utilization(cpus_per_trial, cpus_left) > 0.8:
             warnings.warn(
                 "Executing `.fit()` may leave less than 20% of CPUs in "
                 "this cluster for Dataset execution, which can lead to "
-                "resource contention or hangs. To avoid this, explicitly "
-                "reserve at least 20% of node CPUs "
-                "for Dataset execution by "
-                "setting _max_cpu_fraction_per_node = 0.8 in the Trainer "
-                "scaling_config. Not doing so can  See "
-                "https://docs.ray.io/en/master/data/key-concepts.html"
-                "#example-datasets-in-tune for more info.",
+                "resource contention or hangs. To avoid this, "
+                "reserve at least 20% of node CPUs for Dataset execution by "
+                "setting `_max_cpu_fraction_per_node = 0.8` in the Trainer "
+                "scaling_config. See "
+                "https://docs.ray.io/en/master/data/dataset-internals.html"
+                "#datasets-and-tune for more info.",
                 stacklevel=2,
             )
 
