@@ -1,8 +1,10 @@
 import logging
 import os
+from pathlib import Path
 import tempfile
 import asyncio
 import time
+import json
 from typing import List
 
 import pytest
@@ -50,7 +52,7 @@ class MyPlugin(RuntimeEnvPlugin):
 @pytest.mark.parametrize(
     "set_runtime_env_plugins",
     [
-        MY_PLUGIN_CLASS_PATH,
+        '[{"class":"' + MY_PLUGIN_CLASS_PATH + '"}]',
     ],
     indirect=True,
 )
@@ -133,7 +135,7 @@ class MyPluginForHang(RuntimeEnvPlugin):
 @pytest.mark.parametrize(
     "set_runtime_env_plugins",
     [
-        MY_PLUGIN_FOR_HANG_CLASS_PATH,
+        '[{"class":"' + MY_PLUGIN_FOR_HANG_CLASS_PATH + '"}]',
     ],
     indirect=True,
 )
@@ -214,9 +216,9 @@ class DiasbleTimeoutPlugin(DummyPlugin):
 @pytest.mark.parametrize(
     "set_runtime_env_plugins",
     [
-        f"{DUMMY_PLUGIN_CLASS_PATH},"
-        f"{HANG_PLUGIN_CLASS_PATH},"
-        f"{DISABLE_TIMEOUT_PLUGIN_CLASS_PATH}",
+        '[{"class":"' + DUMMY_PLUGIN_CLASS_PATH + '"},'
+        '{"class":"' + HANG_PLUGIN_CLASS_PATH + '"},'
+        '{"class":"' + DISABLE_TIMEOUT_PLUGIN_CLASS_PATH + '"}]',
     ],
     indirect=True,
 )
@@ -257,6 +259,159 @@ def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
         return bad_fun_num == 1 and good_fun_num == 2
 
     wait_for_condition(condition, timeout=60)
+
+
+PRIORITY_TEST_PLUGIN1_CLASS_PATH = (
+    "ray.tests.test_runtime_env_plugin.PriorityTestPlugin1"
+)
+PRIORITY_TEST_PLUGIN1_NAME = "PriorityTestPlugin1"
+PRIORITY_TEST_PLUGIN2_CLASS_PATH = (
+    "ray.tests.test_runtime_env_plugin.PriorityTestPlugin2"
+)
+PRIORITY_TEST_PLUGIN2_NAME = "PriorityTestPlugin2"
+PRIORITY_TEST_ENV_VAR_NAME = "PriorityTestEnv"
+
+
+class PriorityTestPlugin1(RuntimeEnvPlugin):
+    name = PRIORITY_TEST_PLUGIN1_NAME
+    priority = 11
+    env_value = " world"
+
+    @staticmethod
+    def validate(runtime_env_dict: dict) -> str:
+        return None
+
+    def modify_context(
+        self,
+        uris: List[str],
+        plugin_config_dict: dict,
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> None:
+        if PRIORITY_TEST_ENV_VAR_NAME in ctx.env_vars:
+            ctx.env_vars[PRIORITY_TEST_ENV_VAR_NAME] += PriorityTestPlugin1.env_value
+        else:
+            ctx.env_vars[PRIORITY_TEST_ENV_VAR_NAME] = PriorityTestPlugin1.env_value
+
+
+class PriorityTestPlugin2(RuntimeEnvPlugin):
+    name = PRIORITY_TEST_PLUGIN2_NAME
+    priority = 10
+    env_value = "hello"
+
+    @staticmethod
+    def validate(runtime_env_dict: dict) -> str:
+        return None
+
+    def modify_context(
+        self,
+        uris: List[str],
+        plugin_config_dict: dict,
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,
+    ) -> None:
+        if PRIORITY_TEST_ENV_VAR_NAME in ctx.env_vars:
+            raise RuntimeError(
+                f"Env var {PRIORITY_TEST_ENV_VAR_NAME} has been set to "
+                f"{ctx.env_vars[PRIORITY_TEST_ENV_VAR_NAME]}."
+            )
+        ctx.env_vars[PRIORITY_TEST_ENV_VAR_NAME] = PriorityTestPlugin2.env_value
+
+
+priority_test_plugin_config_without_priority = [
+    {
+        "class": PRIORITY_TEST_PLUGIN1_CLASS_PATH,
+    },
+    {
+        "class": PRIORITY_TEST_PLUGIN2_CLASS_PATH,
+    },
+]
+
+
+priority_test_plugin_config = [
+    {
+        "class": PRIORITY_TEST_PLUGIN1_CLASS_PATH,
+        "priority": 1,
+    },
+    {
+        "class": PRIORITY_TEST_PLUGIN2_CLASS_PATH,
+        "priority": 0,
+    },
+]
+
+priority_test_plugin_bad_config = [
+    {
+        "class": PRIORITY_TEST_PLUGIN1_CLASS_PATH,
+        "priority": 0,
+        # Only used to distinguish the bad config in test body.
+        "tag": "bad",
+    },
+    {
+        "class": PRIORITY_TEST_PLUGIN2_CLASS_PATH,
+        "priority": 1,
+    },
+]
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        json.dumps(priority_test_plugin_config_without_priority),
+        json.dumps(priority_test_plugin_config),
+        json.dumps(priority_test_plugin_bad_config),
+    ],
+    indirect=True,
+)
+def test_plugin_priority(set_runtime_env_plugins, ray_start_regular):
+    config = set_runtime_env_plugins
+    _, tmp_file_path = tempfile.mkstemp()
+
+    @ray.remote
+    def f():
+        import os
+
+        return os.environ.get(PRIORITY_TEST_ENV_VAR_NAME)
+
+    if "bad" in config:
+        with pytest.raises(RuntimeEnvSetupError, match="has been set"):
+            value = ray.get(
+                f.options(
+                    runtime_env={
+                        PRIORITY_TEST_PLUGIN1_NAME: {},
+                        PRIORITY_TEST_PLUGIN2_NAME: {},
+                    }
+                ).remote()
+            )
+    else:
+        value = ray.get(
+            f.options(
+                runtime_env={
+                    PRIORITY_TEST_PLUGIN1_NAME: {},
+                    PRIORITY_TEST_PLUGIN2_NAME: {},
+                }
+            ).remote()
+        )
+        assert value is not None
+        assert value == "hello world"
+
+
+def test_unexpected_field_warning(shutdown_only):
+    """Test that an unexpected runtime_env field doesn't error."""
+    ray.init(runtime_env={"unexpected_field": "value"})
+
+    @ray.remote
+    def f():
+        return True
+
+    # Run a task to trigger runtime_env creation.
+    assert ray.get(f.remote())
+
+    # Check that the warning is logged.
+    session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
+    dashboard_agent_log_path = Path(session_dir) / "logs" / "dashboard_agent.log"
+    wait_for_condition(lambda: dashboard_agent_log_path.exists())
+    with open(dashboard_agent_log_path, "r") as f:
+        wait_for_condition(lambda: "unexpected_field is not recognized" in f.read())
 
 
 if __name__ == "__main__":

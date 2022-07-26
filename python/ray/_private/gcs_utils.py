@@ -1,6 +1,7 @@
 import enum
 import logging
 import time
+import traceback
 import inspect
 import asyncio
 from functools import wraps
@@ -98,13 +99,15 @@ def create_gcs_channel(address: str, aio=False):
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
-def check_health(address: str, timeout=2) -> bool:
+def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     """Checks Ray cluster health, before / without actually connecting to the
     cluster via ray.init().
 
     Args:
         address: Ray cluster / GCS address string, e.g. ip:port.
         timeout: request timeout.
+        skip_version_check: If True, will skip comparision of GCS Ray version with local
+            Ray version. If False (default), will raise exception on mismatch.
     Returns:
         Returns True if the cluster is running and has matching Ray version.
         Returns False if no service is running.
@@ -116,9 +119,14 @@ def check_health(address: str, timeout=2) -> bool:
         stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
         resp = stub.CheckAlive(req, timeout=timeout)
     except grpc.RpcError:
+        traceback.print_exc()
         return False
     if resp.status.code != GcsCode.OK:
         raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
+
+    if skip_version_check:
+        return True
+    # Otherwise, continue to check for Ray version match.
     if resp.ray_version is None:
         resp.ray_version = "<= 1.12"
     if resp.ray_version != ray.__version__:
@@ -241,6 +249,12 @@ class GcsClient:
         self._runtime_env_stub = gcs_service_pb2_grpc.RuntimeEnvGcsServiceStub(
             self._channel.channel()
         )
+        self._node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
+            self._channel.channel()
+        )
+        self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
+            self._channel.channel()
+        )
 
     @property
     def address(self):
@@ -355,6 +369,22 @@ class GcsClient:
                 f"Failed to pin URI reference for {uri} "
                 f"due to unexpected error {reply.status.message}."
             )
+
+    @_auto_reconnect
+    def get_all_node_info(
+        self, timeout: Optional[float] = None
+    ) -> gcs_service_pb2.GetAllNodeInfoReply:
+        req = gcs_service_pb2.GetAllNodeInfoRequest()
+        reply = self._node_info_stub.GetAllNodeInfo(req, timeout=timeout)
+        return reply
+
+    @_auto_reconnect
+    def get_all_job_info(
+        self, timeout: Optional[float] = None
+    ) -> gcs_service_pb2.GetAllJobInfoReply:
+        req = gcs_service_pb2.GetAllJobInfoRequest()
+        reply = self._job_info_stub.GetAllJobInfo(req, timeout=timeout)
+        return reply
 
 
 class GcsAioClient:

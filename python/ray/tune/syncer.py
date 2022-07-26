@@ -8,6 +8,7 @@ from typing import (
     TYPE_CHECKING,
     Union,
     Optional,
+    Tuple,
 )
 
 import logging
@@ -301,11 +302,11 @@ class Syncer(abc.ABC):
         pass
 
 
-class _DefaultSyncer(Syncer):
-    """Default syncer between local storage and remote URI."""
+class _BackgroundSyncer(Syncer):
+    """Syncer using a background process for asynchronous file transfer."""
 
     def __init__(self, sync_period: float = 300.0):
-        super(_DefaultSyncer, self).__init__(sync_period=sync_period)
+        super(_BackgroundSyncer, self).__init__(sync_period=sync_period)
         self._sync_process = None
         self._current_cmd = None
 
@@ -324,13 +325,17 @@ class _DefaultSyncer(Syncer):
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = (
-            upload_to_uri,
-            dict(local_path=local_dir, uri=remote_dir, exclude=exclude),
+        self._current_cmd = self._sync_up_command(
+            local_path=local_dir, uri=remote_dir, exclude=exclude
         )
         self.retry()
 
         return True
+
+    def _sync_up_command(
+        self, local_path: str, uri: str, exclude: Optional[List] = None
+    ) -> Tuple[Callable, Dict]:
+        raise NotImplementedError
 
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
@@ -347,13 +352,15 @@ class _DefaultSyncer(Syncer):
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = (
-            download_from_uri,
-            dict(uri=remote_dir, local_path=local_dir),
+        self._current_cmd = self._sync_down_command(
+            uri=remote_dir, local_path=local_dir
         )
         self.retry()
 
         return True
+
+    def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
+        raise NotImplementedError
 
     def delete(self, remote_dir: str) -> bool:
         if self._sync_process and self._sync_process.is_running:
@@ -362,10 +369,13 @@ class _DefaultSyncer(Syncer):
             )
             return False
 
-        self._current_cmd = (delete_at_uri, dict(uri=remote_dir))
+        self._current_cmd = self._delete_command(uri=remote_dir)
         self.retry()
 
         return True
+
+    def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
+        raise NotImplementedError
 
     def wait(self):
         if self._sync_process:
@@ -382,6 +392,27 @@ class _DefaultSyncer(Syncer):
         cmd, kwargs = self._current_cmd
         self._sync_process = _BackgroundProcess(cmd)
         self._sync_process.start(**kwargs)
+
+
+class _DefaultSyncer(_BackgroundSyncer):
+    """Default syncer between local storage and remote URI."""
+
+    def _sync_up_command(
+        self, local_path: str, uri: str, exclude: Optional[List] = None
+    ) -> Tuple[Callable, Dict]:
+        return (
+            upload_to_uri,
+            dict(local_path=local_path, uri=uri, exclude=exclude),
+        )
+
+    def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
+        return (
+            download_from_uri,
+            dict(uri=uri, local_path=local_path),
+        )
+
+    def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
+        return delete_at_uri, dict(uri=uri)
 
 
 @DeveloperAPI

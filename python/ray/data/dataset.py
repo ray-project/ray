@@ -32,6 +32,7 @@ from ray.data._internal.compute import (
     TaskPoolStrategy,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _estimate_available_parallelism
@@ -109,15 +110,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Whether we have warned of Datasets containing multiple epochs of data.
-_epoch_warned = False
-
-# Whether we have warned about using slow Dataset transforms.
-_slow_warned = False
-
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
+
+TorchTensorBatchType = Union["torch.Tensor", Dict[str, "torch.Tensor"]]
+TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 
 
 @PublicAPI
@@ -146,6 +144,10 @@ class Dataset(Generic[T]):
         >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
         >>> # Save dataset back to external storage system.
         >>> ds.write_csv("s3//bucket/output") # doctest: +SKIP
+
+    Datasets has two kinds of operations: tranformation, which takes in Datasets and
+    outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption, which
+    produces values (not Dataset) as output (e.g. :py:meth:`.iter_batches()`).
 
     Datasets supports parallel processing at scale: transformations such as
     :py:meth:`.map_batches()`, aggregations such as
@@ -204,7 +206,7 @@ class Dataset(Generic[T]):
 
     def map(
         self,
-        fn: RowUDF,
+        fn: RowUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -270,7 +272,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
-        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -353,8 +355,10 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
-            batch_size: Request a specific batch size, or None to use entire
-                blocks as batches. Defaults to a system-chosen batch size.
+            batch_size: The number of rows in each batch, or None to use entire blocks
+                as batches (blocks may contain different number of rows).
+                The final batch may include fewer than ``batch_size`` rows.
+                Defaults to 4096.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling actor pool. If wanting to
                 configure the min or max size of the autoscaling actor pool, you can
@@ -575,7 +579,7 @@ class Dataset(Generic[T]):
 
     def flat_map(
         self,
-        fn: RowUDF,
+        fn: RowUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -621,7 +625,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
-        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             output_buffer = BlockOutputBuffer(None, context.target_max_block_size)
             block = BlockAccessor.for_block(block)
@@ -641,7 +645,7 @@ class Dataset(Generic[T]):
 
     def filter(
         self,
-        fn: RowUDF,
+        fn: RowUDF[T, U],
         *,
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
@@ -687,7 +691,7 @@ class Dataset(Generic[T]):
         self._warn_slow()
         context = DatasetContext.get_current()
 
-        def transform(block: Block, fn: RowUDF) -> Iterable[Block]:
+        def transform(block: Block, fn: RowUDF[T, U]) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = block.builder()
@@ -902,182 +906,29 @@ class Dataset(Generic[T]):
                 )
 
         blocks = self._plan.execute()
+        owned_by_consumer = blocks._owned_by_consumer
         stats = self._plan.stats()
-
-        def _partition_splits(
-            splits: List[Dataset[T]], part_size: int, counts_cache: Dict[str, int]
-        ):
-            """Partition splits into two sets: splits that are smaller than the
-            target size and splits that are larger than the target size.
-            """
-            splits = sorted(splits, key=lambda s: counts_cache[s._get_uuid()])
-            idx = next(
-                i
-                for i, split in enumerate(splits)
-                if counts_cache[split._get_uuid()] >= part_size
-            )
-            return splits[:idx], splits[idx:]
-
-        def _equalize_larger_splits(
-            splits: List[Dataset[T]],
-            target_size: int,
-            counts_cache: Dict[str, int],
-            num_splits_required: int,
-        ):
-            """Split each split into one or more subsplits that are each the
-            target size, with at most one leftover split that's smaller
-            than the target size.
-
-            This assume that the given splits are sorted in ascending order.
-            """
-            if target_size == 0:
-                return splits, []
-            new_splits = []
-            leftovers = []
-            for split in splits:
-                size = counts_cache[split._get_uuid()]
-                if size == target_size:
-                    new_splits.append(split)
-                    continue
-                split_indices = list(range(target_size, size, target_size))
-                split_splits = split.split_at_indices(split_indices)
-                last_split_size = split_splits[-1].count()
-                if last_split_size < target_size:
-                    # Last split is smaller than the target size, save it for
-                    # our unioning of small splits.
-                    leftover = split_splits.pop()
-                    leftovers.append(leftover)
-                    counts_cache[leftover._get_uuid()] = leftover.count()
-                if len(new_splits) + len(split_splits) >= num_splits_required:
-                    # Short-circuit if the new splits will make us reach the
-                    # desired number of splits.
-                    new_splits.extend(
-                        split_splits[: num_splits_required - len(new_splits)]
-                    )
-                    break
-                new_splits.extend(split_splits)
-            return new_splits, leftovers
-
-        def _equalize_smaller_splits(
-            splits: List[Dataset[T]],
-            target_size: int,
-            counts_cache: Dict[str, int],
-            num_splits_required: int,
-        ):
-            """Union small splits up to the target split size.
-
-            This assume that the given splits are sorted in ascending order.
-            """
-            new_splits = []
-            union_buffer = []
-            union_buffer_size = 0
-            low = 0
-            high = len(splits) - 1
-            while low <= high:
-                # Union small splits up to the target split size.
-                low_split = splits[low]
-                low_count = counts_cache[low_split._get_uuid()]
-                high_split = splits[high]
-                high_count = counts_cache[high_split._get_uuid()]
-                if union_buffer_size + high_count <= target_size:
-                    # Try to add the larger split to the union buffer first.
-                    union_buffer.append(high_split)
-                    union_buffer_size += high_count
-                    high -= 1
-                elif union_buffer_size + low_count <= target_size:
-                    union_buffer.append(low_split)
-                    union_buffer_size += low_count
-                    low += 1
-                else:
-                    # Neither the larger nor smaller split fit in the union
-                    # buffer, so we split the smaller split into a subsplit
-                    # that will fit into the union buffer and a leftover
-                    # subsplit that we add back into the candidate split list.
-                    diff = target_size - union_buffer_size
-                    diff_split, new_low_split = low_split.split_at_indices([diff])
-                    union_buffer.append(diff_split)
-                    union_buffer_size += diff
-                    # We overwrite the old low split and don't advance the low
-                    # pointer since (1) the old low split can be discarded,
-                    # (2) the leftover subsplit is guaranteed to be smaller
-                    # than the old low split, and (3) the low split should be
-                    # the smallest split in the candidate split list, which is
-                    # this subsplit.
-                    splits[low] = new_low_split
-                    counts_cache[new_low_split._get_uuid()] = low_count - diff
-                if union_buffer_size == target_size:
-                    # Once the union buffer is full, we union together the
-                    # splits.
-                    assert len(union_buffer) > 1, union_buffer
-                    first_ds = union_buffer[0]
-                    new_split = first_ds.union(*union_buffer[1:])
-                    new_splits.append(new_split)
-                    # Clear the union buffer.
-                    union_buffer = []
-                    union_buffer_size = 0
-                    if len(new_splits) == num_splits_required:
-                        # Short-circuit if we've reached the desired number of
-                        # splits.
-                        break
-            return new_splits
-
-        def equalize(splits: List[Dataset[T]], num_splits: int) -> List[Dataset[T]]:
-            if not equal:
-                return splits
-            counts = {s._get_uuid(): s.count() for s in splits}
-            total_rows = sum(counts.values())
-            # Number of rows for each split.
-            target_size = total_rows // num_splits
-
-            # Partition splits.
-            smaller_splits, larger_splits = _partition_splits(
-                splits, target_size, counts
-            )
-            if len(smaller_splits) == 0 and num_splits < len(splits):
-                # All splits are already equal.
-                return splits
-
-            # Split larger splits.
-            new_splits, leftovers = _equalize_larger_splits(
-                larger_splits, target_size, counts, num_splits
-            )
-            # Short-circuit if we've already reached the desired number of
-            # splits.
-            if len(new_splits) == num_splits:
-                return new_splits
-            # Add leftovers to small splits and re-sort.
-            smaller_splits += leftovers
-            smaller_splits = sorted(smaller_splits, key=lambda s: counts[s._get_uuid()])
-
-            # Union smaller splits.
-            new_splits_small = _equalize_smaller_splits(
-                smaller_splits, target_size, counts, num_splits - len(new_splits)
-            )
-            new_splits.extend(new_splits_small)
-            return new_splits
-
         block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
-        metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         if locality_hints is None:
-            ds = equalize(
-                [
-                    Dataset(
-                        ExecutionPlan(
-                            BlockList(
-                                list(blocks), [metadata_mapping[b] for b in blocks]
-                            ),
-                            stats,
+            blocks = np.array_split(block_refs, n)
+            meta = np.array_split(metadata, n)
+            return [
+                Dataset(
+                    ExecutionPlan(
+                        BlockList(
+                            b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
                         ),
-                        self._epoch,
-                        self._lazy,
-                    )
-                    for blocks in np.array_split(block_refs, n)
-                ],
-                n,
-            )
-            assert len(ds) == n, (ds, n)
-            return ds
+                        stats,
+                        run_by_consumer=owned_by_consumer,
+                    ),
+                    self._epoch,
+                    self._lazy,
+                )
+                for b, m in zip(blocks, meta)
+            ]
+
+        metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -1171,23 +1022,31 @@ class Dataset(Generic[T]):
 
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
-        return equalize(
-            [
-                Dataset(
-                    ExecutionPlan(
-                        BlockList(
-                            allocation_per_actor[actor],
-                            [metadata_mapping[b] for b in allocation_per_actor[actor]],
-                        ),
-                        stats,
-                    ),
-                    self._epoch,
-                    self._lazy,
-                )
-                for actor in locality_hints
-            ],
-            n,
-        )
+        per_split_block_lists = [
+            BlockList(
+                allocation_per_actor[actor],
+                [metadata_mapping[b] for b in allocation_per_actor[actor]],
+                owned_by_consumer=owned_by_consumer,
+            )
+            for actor in locality_hints
+        ]
+
+        if equal:
+            # equalize the splits
+            per_split_block_lists = _equalize(per_split_block_lists, owned_by_consumer)
+
+        return [
+            Dataset(
+                ExecutionPlan(
+                    block_split,
+                    stats,
+                    run_by_consumer=owned_by_consumer,
+                ),
+                self._epoch,
+                self._lazy,
+            )
+            for block_split in per_split_block_lists
+        ]
 
     def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
         """Split the dataset at the given indices (like np.split).
@@ -1223,8 +1082,8 @@ class Dataset(Generic[T]):
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        blocks_with_metadata = self._plan.execute().get_blocks_with_metadata()
-        blocks, metadata = _split_at_indices(blocks_with_metadata, indices)
+        block_list = self._plan.execute()
+        blocks, metadata = _split_at_indices(block_list, indices)
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
         splits = []
@@ -1234,8 +1093,11 @@ class Dataset(Generic[T]):
             splits.append(
                 Dataset(
                     ExecutionPlan(
-                        BlockList(bs, ms),
+                        BlockList(
+                            bs, ms, owned_by_consumer=block_list._owned_by_consumer
+                        ),
                         stats,
+                        run_by_consumer=block_list._owned_by_consumer,
                     ),
                     self._epoch,
                     self._lazy,
@@ -1329,6 +1191,7 @@ class Dataset(Generic[T]):
 
         start_time = time.perf_counter()
 
+        owned_by_consumer = self._plan.execute()._owned_by_consumer
         datasets = [self] + list(other)
         bls = []
         has_nonlazy = False
@@ -1347,7 +1210,7 @@ class Dataset(Generic[T]):
                     bs, ms = bl._blocks, bl._metadata
                 blocks.extend(bs)
                 metadata.extend(ms)
-            blocklist = BlockList(blocks, metadata)
+            blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1357,28 +1220,29 @@ class Dataset(Generic[T]):
                 block_partition_refs.extend(bl._block_partition_refs)
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             blocklist = LazyBlockList(
-                tasks, block_partition_refs, block_partition_meta_refs
+                tasks,
+                block_partition_refs,
+                block_partition_meta_refs,
+                owned_by_consumer=owned_by_consumer,
             )
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
         if len(set(epochs)) > 1:
-            global _epoch_warned
-            if not _epoch_warned:
+            if ray.util.log_once("datasets_epoch_warned"):
                 logger.warning(
                     "Dataset contains data from multiple epochs: {}, "
                     "likely due to a `rewindow()` call. The higher epoch "
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch)
                 )
-                _epoch_warned = True
         dataset_stats = DatasetStats(
             stages={"union": []},
             parent=[d._plan.stats() for d in datasets],
         )
         dataset_stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(blocklist, dataset_stats),
+            ExecutionPlan(blocklist, dataset_stats, run_by_consumer=owned_by_consumer),
             max_epoch,
             self._lazy,
         )
@@ -2320,7 +2184,7 @@ class Dataset(Generic[T]):
                 else "native"
             )
         for batch in self.iter_batches(
-            prefetch_blocks=prefetch_blocks, batch_format=batch_format
+            batch_size=None, prefetch_blocks=prefetch_blocks, batch_format=batch_format
         ):
             batch = BlockAccessor.for_block(batch)
             for row in batch.iter_rows():
@@ -2330,7 +2194,7 @@ class Dataset(Generic[T]):
         self,
         *,
         prefetch_blocks: int = 0,
-        batch_size: Optional[int] = None,
+        batch_size: Optional[int] = 256,
         batch_format: str = "native",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -2348,7 +2212,10 @@ class Dataset(Generic[T]):
         Args:
             prefetch_blocks: The number of blocks to prefetch ahead of the
                 current block during the scan.
-            batch_size: Record batch size, or None to let the system pick.
+            batch_size: The number of rows in each batch, or None to use entire blocks
+                as batches (blocks may contain different number of rows).
+                The final batch may include fewer than ``batch_size`` rows if
+                ``drop_last`` is ``False``. Defaults to 256.
             batch_format: The format in which to return each batch.
                 Specify "native" to use the native block format (promoting
                 tables to Pandas and tensors to NumPy), "pandas" to select
@@ -2359,19 +2226,8 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                When there are no more rows to be added to the buffer, the number of
-                rows in the buffer *will* decrease below this value while yielding
-                the remaining batches, and the final batch may have less than
-                ``batch_size`` rows. Increasing this will improve the randomness of
-                the shuffle but will increase CPU memory utilization and the latency
-                to the first batch. The CPU memory utilization ceiling is the max of
-                the prefetch buffer size (controlled by ``prefetch_blocks``) and
-                this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -2394,6 +2250,148 @@ class Dataset(Generic[T]):
         )
 
         stats.iter_total_s.add(time.perf_counter() - time_start)
+
+    def iter_torch_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = 256,
+        dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
+        device: Optional[str] = None,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[TorchTensorBatchType]:
+        """Return a local batched iterator of Torch Tensors over the dataset.
+
+        This iterator will yield single-tensor batches if the underlying dataset
+        consists of a single column; otherwise, it will yield a dictionary of
+        column-tensors. If looking for more flexibility in the tensor conversion (e.g.
+        casting dtypes) or the batch format, try use `.iter_batches` directly, which is
+        a lower-level API.
+
+        Examples:
+            >>> import ray
+            >>> for batch in ray.data.range( # doctest: +SKIP
+            ...     12,
+            ... ).iter_torch_batches(batch_size=4):
+            ...     print(batch.shape) # doctest: +SKIP
+            torch.Size([4, 1])
+            torch.Size([4, 1])
+            torch.Size([4, 1])
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+            batch_size: The number of rows in each batch, or None to use entire blocks
+                as batches (blocks may contain different number of rows).
+                The final batch may include fewer than ``batch_size`` rows if
+                ``drop_last`` is ``False``. Defaults to 256.
+            dtypes: The Torch dtype(s) for the created tensor(s); if None, the dtype
+                will be inferred from the tensor data.
+            device: The device on which the tensor should be placed; if None, the Torch
+                tensor will be constructed on the CPU.
+            drop_last: Whether to drop the last batch if it's incomplete.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
+
+        Returns:
+            An iterator over Torch Tensor batches.
+        """
+        from ray.air._internal.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
+
+        for batch in self.iter_batches(
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            batch_format="numpy",
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        ):
+            yield convert_ndarray_batch_to_torch_tensor_batch(
+                batch,
+                dtypes=dtypes,
+                device=device,
+            )
+
+    def iter_tf_batches(
+        self,
+        *,
+        prefetch_blocks: int = 0,
+        batch_size: Optional[int] = 256,
+        dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+    ) -> Iterator[TensorFlowTensorBatchType]:
+        """Return a local batched iterator of TensorFlow Tensors over the dataset.
+
+        This iterator will yield single-tensor batches of the underlying dataset
+        consists of a single column; otherwise, it will yield a dictionary of
+        column-tensors. If looking for more flexibility in the tensor conversion (e.g.
+        casting dtypes) or the batch format, try using `.to_tf`, which has a
+        declarative API for tensor casting and batch formatting, or use `.iter_batches`
+        directly, which is a lower-level API.
+
+        Examples:
+            >>> import ray
+            >>> for batch in ray.data.range( # doctest: +SKIP
+            ...     12,
+            ... ).iter_torch_batches(batch_size=4):
+            ...     print(batch.shape) # doctest: +SKIP
+            (4, 1)
+            (4, 1)
+            (4, 1)
+
+        Time complexity: O(1)
+
+        Args:
+            prefetch_blocks: The number of blocks to prefetch ahead of the
+                current block during the scan.
+            batch_size: The number of rows in each batch, or None to use entire blocks
+                as batches (blocks may contain different number of rows).
+                The final batch may include fewer than ``batch_size`` rows if
+                ``drop_last`` is ``False``. Defaults to 256.
+            dtypes: The TensorFlow dtype(s) for the created tensor(s); if None, the
+                dtype will be inferred from the tensor data.
+            drop_last: Whether to drop the last batch if it's incomplete.
+            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                using a local in-memory shuffle buffer, and this value will serve as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
+
+        Returns:
+            An iterator over TensorFlow Tensor batches.
+        """
+        from ray.air._internal.tensorflow_utils import (
+            convert_ndarray_batch_to_tf_tensor_batch,
+        )
+
+        for batch in self.iter_batches(
+            prefetch_blocks=prefetch_blocks,
+            batch_size=batch_size,
+            batch_format="numpy",
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+        ):
+            yield convert_ndarray_batch_to_tf_tensor_batch(batch, dtypes=dtypes)
 
     def to_torch(
         self,
@@ -2482,15 +2480,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                Increasing this will improve the randomness of the shuffle but will
-                increase CPU memory utilization and the latency to the first batch. The
-                CPU memory utilization ceiling is the max of the prefetch buffer size
-                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
             unsqueeze_label_tensor: If set to True, the label tensor
                 will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
@@ -2663,15 +2657,11 @@ class Dataset(Generic[T]):
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
-                buffer in order to yield a batch. This is a light-weight alternative to
-                the global `.random_shuffle()` operation; this shuffle will be less
-                random but will be faster and less resource-intensive. This buffer size
-                must be greater than or equal to ``batch_size``, and therefore
-                ``batch_size`` must also be specified when using local shuffling.
-                Increasing this will improve the randomness of the shuffle but will
-                increase CPU memory utilization and the latency to the first batch. The
-                CPU memory utilization ceiling is the max of the prefetch buffer size
-                (controlled by ``prefetch_blocks``) and this shuffle buffer size.
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer will be drained. This
+                buffer size must be greater than or equal to ``batch_size``, and
+                therefore ``batch_size`` must also be specified when using local
+                shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -3037,7 +3027,9 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats, dataset_uuid=uuid),
+                        ExecutionPlan(
+                            blocks, outer_stats, dataset_uuid=uuid, run_by_consumer=True
+                        ),
                         epoch,
                         lazy=False,
                     )
@@ -3151,7 +3143,9 @@ class Dataset(Generic[T]):
 
                 def gen():
                     ds = Dataset(
-                        ExecutionPlan(blocks, outer_stats), self._epoch, lazy=True
+                        ExecutionPlan(blocks, outer_stats, run_by_consumer=True),
+                        self._epoch,
+                        lazy=True,
                     )
                     return ds
 
@@ -3293,8 +3287,8 @@ class Dataset(Generic[T]):
         """
         return self._plan.execute().get_blocks()
 
-    def experimental_lazy(self) -> "Dataset[T]":
-        """EXPERIMENTAL: Enable lazy evaluation.
+    def lazy(self) -> "Dataset[T]":
+        """Enable lazy evaluation.
 
         The returned dataset is a lazy dataset, where all subsequent operations on the
         dataset won't be executed until the dataset is consumed (e.g. ``.take()``,
@@ -3304,6 +3298,9 @@ class Dataset(Generic[T]):
         ds = Dataset(self._plan, self._epoch, lazy=True)
         ds._set_uuid(self._get_uuid())
         return ds
+
+    def experimental_lazy(self) -> "Dataset[T]":
+        raise DeprecationWarning("Use self.lazy().")
 
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
@@ -3400,9 +3397,9 @@ class Dataset(Generic[T]):
         self, index: int, return_right_half: bool
     ) -> ("Dataset[T]", "Dataset[T]"):
         start_time = time.perf_counter()
-        blocks_with_metadata = self._plan.execute().get_blocks_with_metadata()
+        block_list = self._plan.execute()
         left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
-            blocks_with_metadata,
+            block_list,
             index,
             return_right_half,
         )
@@ -3424,8 +3421,13 @@ class Dataset(Generic[T]):
         left_dataset_stats.time_total_s = split_duration
         left = Dataset(
             ExecutionPlan(
-                BlockList(left_blocks, left_metadata),
+                BlockList(
+                    left_blocks,
+                    left_metadata,
+                    owned_by_consumer=block_list._owned_by_consumer,
+                ),
                 left_dataset_stats,
+                run_by_consumer=block_list._owned_by_consumer,
             ),
             self._epoch,
             self._lazy,
@@ -3448,8 +3450,13 @@ class Dataset(Generic[T]):
             right_dataset_stats.time_total_s = split_duration
             right = Dataset(
                 ExecutionPlan(
-                    BlockList(right_blocks, right_metadata),
+                    BlockList(
+                        right_blocks,
+                        right_metadata,
+                        owned_by_consumer=block_list._owned_by_consumer,
+                    ),
                     right_dataset_stats,
+                    run_by_consumer=block_list._owned_by_consumer,
                 ),
                 self._epoch,
                 self._lazy,
@@ -3459,10 +3466,21 @@ class Dataset(Generic[T]):
         return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
-        left, right = self._plan.execute().divide(block_idx)
-        l_ds = Dataset(ExecutionPlan(left, self._plan.stats()), self._epoch, self._lazy)
+        block_list = self._plan.execute()
+        left, right = block_list.divide(block_idx)
+        l_ds = Dataset(
+            ExecutionPlan(
+                left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+            ),
+            self._epoch,
+            self._lazy,
+        )
         r_ds = Dataset(
-            ExecutionPlan(right, self._plan.stats()), self._epoch, self._lazy
+            ExecutionPlan(
+                right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
+            ),
+            self._epoch,
+            self._lazy,
         )
         return l_ds, r_ds
 
@@ -3564,7 +3582,7 @@ class Dataset(Generic[T]):
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
                     t = t.__name__
-                schema_str.append("{}: {}".format(n, t))
+                schema_str.append(f"{n}: {t}")
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
@@ -3612,9 +3630,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
 
     def _warn_slow(self):
-        global _slow_warned
-        if not _slow_warned:
-            _slow_warned = True
+        if ray.util.log_once("datasets_slow_warned"):
             logger.warning(
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
                 "can be very slow. Consider using `.map_batches()` instead."

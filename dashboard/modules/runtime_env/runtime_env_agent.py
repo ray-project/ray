@@ -299,7 +299,34 @@ class RuntimeEnvAgent(
                     runtime_env, context, logger=per_job_logger
                 )
 
-            # XXX(architkulkarni): Ensure we get a RuntimeError for bad plugin name
+            # XXX(architkulkarni): Ensure we get a warning for bad plugin name
+            def setup_plugins():
+                # Run setup function from all the plugins
+                if runtime_env.plugins():
+                    for (
+                        setup_context
+                    ) in self._runtime_env_plugin_manager.sorted_plugin_setup_contexts(
+                        runtime_env.plugins()
+                    ):
+                        per_job_logger.debug(
+                            f"Setting up runtime env plugin {setup_context.name}"
+                        )
+                        # TODO(architkulkarni): implement uri support
+                        setup_context.class_instance.validate(runtime_env)
+                        setup_context.class_instance.create(
+                            "uri not implemented", setup_context.config, context
+                        )
+                        setup_context.class_instance.modify_context(
+                            "uri not implemented",
+                            setup_context.config,
+                            context,
+                            per_job_logger,
+                        )
+
+            loop = asyncio.get_event_loop()
+            # Plugins setup method is sync process, running in other threads
+            # is to avoid blocking asyncio loop
+            await loop.run_in_executor(None, setup_plugins)
 
             return context
 
