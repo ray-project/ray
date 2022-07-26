@@ -415,7 +415,10 @@ class APPOTorchPolicy(
 
         return apply_grad_clipping(self, optimizer, loss,
                                    total_timer=self.torch_timers["grad_clip_total"],
-                                   clip_timer=self.torch_timers["grad_clip_torch_fn"])
+                                   gpu_clip_timer=self.torch_timers[
+                                       "grad_clip_gpu"],
+                                   cpu_clip_timer=self.torch_timers[
+                                       "grad_clip_cpu"])
 
     @override(TorchPolicyV2)
     def get_batch_divisibility_req(self) -> int:

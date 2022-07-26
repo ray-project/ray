@@ -8,7 +8,7 @@ import tree  # pip install dm_tree
 from gym.spaces import Discrete, MultiDiscrete
 
 import ray
-from ray.util.timer import _Timer
+from collections import defaultdict
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -36,7 +36,7 @@ FLOAT_MAX = 3.4e38
 @PublicAPI
 def apply_grad_clipping(
     policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType, total_timer =
-    None, clip_timer = None
+    None, gpu_clip_timer = None, cpu_clip_timer = None
 ) -> Dict[str, TensorType]:
     """Applies gradient clipping to already computed grads inside `optimizer`.
 
@@ -55,14 +55,30 @@ def apply_grad_clipping(
             for param_group in optimizer.param_groups:
                 # Make sure we only pass params with grad != None into torch
                 # clip_grad_norm_. Would fail otherwise.
-                params = list(filter(lambda p: p.grad.to() is not None, param_group[
+                params = list(filter(lambda p: p.grad is not None, param_group[
                     "params"]))
+                device_param_map = defaultdict(list)
+                for param in params:
+                    if param.is_cuda:
+                        _device = params.device
+                    else:
+                        _device = "cpu"
+                    device_param_map[_device].append(param)
+                this_device = get_device(policy.config)
                 if params:
                     # PyTorch clips gradients inplace and returns the norm before clipping
                     # We therefore need to compute grad_gnorm further down (fixes #4965)
                     clip_value = policy.config["grad_clip"]
-                    with clip_timer or None:
-                        global_norm = nn.utils.clip_grad_norm_(params, clip_value)
+                    global_norm = 0
+                    for _device_name, device_params in device_param_map.items():
+                        if _device_name.find("cuda") != -1:
+                            _device_timer = gpu_clip_timer
+                        elif _device_name == "cpu":
+                            _device_timer = cpu_clip_timer
+                        else:
+                            raise ValueError("Bad clip device name")
+                        with _device_timer:
+                            global_norm += nn.utils.clip_grad_norm_(device_params, clip_value)
 
                     if isinstance(global_norm, torch.Tensor):
                         global_norm = global_norm.cpu().numpy()
