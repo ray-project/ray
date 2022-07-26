@@ -13,8 +13,8 @@ from ray.tune.experiment import Trial
 from ray.tune.utils.util import (
     flatten_dict,
     merge_dicts,
-    atomic_save,
-    load_newest_checkpoint,
+    _atomic_save,
+    _load_newest_checkpoint,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -159,7 +159,7 @@ class SearchGenerator(SearchAlgorithm):
         self._experiment = state["experiment"]
 
     def has_checkpoint(self, dirpath: str):
-        return bool(load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*")))
+        return bool(_load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*")))
 
     def save_to_dir(self, dirpath: str, session_str: str):
         """Saves self + searcher to dir.
@@ -190,7 +190,7 @@ class SearchGenerator(SearchAlgorithm):
         # We save the base searcher separately for users to easily
         # separate the searcher.
         base_searcher.save_to_dir(dirpath, session_str)
-        atomic_save(
+        _atomic_save(
             state=search_alg_state,
             checkpoint_dir=dirpath,
             file_name=self.CKPT_FILE_TMPL.format(session_str),
@@ -201,7 +201,7 @@ class SearchGenerator(SearchAlgorithm):
         """Restores self + searcher + search wrappers from dirpath."""
 
         searcher = self.searcher
-        search_alg_state = load_newest_checkpoint(
+        search_alg_state = _load_newest_checkpoint(
             dirpath, self.CKPT_FILE_TMPL.format("*")
         )
         if not search_alg_state:

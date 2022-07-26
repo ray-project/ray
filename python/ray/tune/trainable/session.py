@@ -89,7 +89,7 @@ def get_session():
     return _session
 
 
-def init(reporter, ignore_reinit_error=True):
+def _init(reporter, ignore_reinit_error=True):
     """Initializes the global trial context for this process."""
     global _session
     global _session_v2
@@ -122,8 +122,8 @@ def init(reporter, ignore_reinit_error=True):
     from ray import actor, remote_function
 
     if "TUNE_DISABLE_RESOURCE_CHECKS" not in os.environ:
-        actor._actor_launch_hook = tune_task_and_actor_launch_hook
-        remote_function._task_launch_hook = tune_task_and_actor_launch_hook
+        actor._actor_launch_hook = _tune_task_and_actor_launch_hook
+        remote_function._task_launch_hook = _tune_task_and_actor_launch_hook
 
     _session = reporter
     _session_v2 = _TuneSessionImpl(status_reporter=reporter)
@@ -133,7 +133,7 @@ def init(reporter, ignore_reinit_error=True):
 _checked_resources: Set[frozenset] = set()
 
 
-def tune_task_and_actor_launch_hook(
+def _tune_task_and_actor_launch_hook(
     fn, resources: Dict[str, float], strategy: Optional[SchedulingStrategyT]
 ):
     """Launch hook to catch nested tasks that can't fit in the placement group.
@@ -197,7 +197,7 @@ def tune_task_and_actor_launch_hook(
     )
 
 
-def shutdown():
+def _shutdown():
     """Cleans up the trial and removes it from the global context."""
 
     global _session

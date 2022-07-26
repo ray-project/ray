@@ -347,7 +347,7 @@ class FunctionTrainable(Trainable):
         )
         self._last_result = {}
 
-        session.init(self._status_reporter)
+        session._init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
@@ -551,7 +551,7 @@ class FunctionTrainable(Trainable):
 
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
-        session.shutdown()
+        session._shutdown()
 
         if self.temp_checkpoint_dir is not None and os.path.exists(
             self.temp_checkpoint_dir

@@ -13,7 +13,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
-def generate_variants(
+def _generate_variants(
     unresolved_spec: Dict,
     constant_grid_search: bool = False,
     random_state: "RandomState" = None,
@@ -48,7 +48,7 @@ def generate_variants(
     Yields:
         (Dict of resolved variables, Spec object)
     """
-    for resolved_vars, spec in _generate_variants(
+    for resolved_vars, spec in _generate_variants_internal(
         unresolved_spec,
         constant_grid_search=constant_grid_search,
         random_state=random_state,
@@ -166,7 +166,7 @@ def parse_spec_vars(
     return resolved_vars, domain_vars, grid_vars
 
 
-def count_spec_samples(spec: Dict, num_samples=1) -> int:
+def _count_spec_samples(spec: Dict, num_samples=1) -> int:
     """Count samples for a specific spec"""
     _, domain_vars, grid_vars = parse_spec_vars(spec)
     grid_count = 1
@@ -175,7 +175,7 @@ def count_spec_samples(spec: Dict, num_samples=1) -> int:
     return num_samples * grid_count
 
 
-def count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
+def _count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
     # Helper function: Deep update dictionary
     def deep_update(d, u):
         for k, v in u.items():
@@ -192,16 +192,16 @@ def count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
     for preset in presets:
         preset_spec = copy.deepcopy(spec)
         deep_update(preset_spec["config"], preset)
-        total_samples += count_spec_samples(preset_spec, 1)
+        total_samples += _count_spec_samples(preset_spec, 1)
         total_num_samples -= 1
 
     # Add the remaining samples
     if total_num_samples > 0:
-        total_samples += count_spec_samples(spec, total_num_samples)
+        total_samples += _count_spec_samples(spec, total_num_samples)
     return total_samples
 
 
-def _generate_variants(
+def _generate_variants_internal(
     spec: Dict, constant_grid_search: bool = False, random_state: "RandomState" = None
 ) -> Tuple[Dict, Dict]:
     spec = copy.deepcopy(spec)
@@ -234,7 +234,7 @@ def _generate_variants(
                 resolved_spec, to_resolve, random_state=random_state
             )
 
-        for resolved, spec in _generate_variants(
+        for resolved, spec in _generate_variants_internal(
             resolved_spec,
             constant_grid_search=constant_grid_search,
             random_state=random_state,
@@ -307,11 +307,12 @@ def _get_preset_variants(
                     )
         assign_value(spec["config"], path, val)
 
-    return _generate_variants(
+    return _generate_variants_internal(
         spec, constant_grid_search=constant_grid_search, random_state=random_state
     )
 
 
+@DeveloperAPI
 def assign_value(spec: Dict, path: Tuple, value: Any):
     for k in path[:-1]:
         spec = spec[k]

@@ -47,7 +47,7 @@ from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import (
     Tee,
     _delete_external_checkpoint,
-    get_checkpoint_from_remote_node,
+    _get_checkpoint_from_remote_node,
     retry_fn,
 )
 from ray.util.annotations import PublicAPI
@@ -607,7 +607,7 @@ class Trainable:
             # And the source IP is different to the current IP
             and checkpoint_node_ip != ray.util.get_node_ip_address()
         ):
-            checkpoint = get_checkpoint_from_remote_node(
+            checkpoint = _get_checkpoint_from_remote_node(
                 checkpoint_path, checkpoint_node_ip
             )
             if checkpoint:

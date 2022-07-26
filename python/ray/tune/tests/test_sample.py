@@ -15,7 +15,7 @@ import ray.tune.search.sample
 from ray import tune
 from ray.tune import Experiment
 from ray.tune.search.util import logger
-from ray.tune.search.variant_generator import generate_variants
+from ray.tune.search.variant_generator import _generate_variants
 
 
 def _mock_objective(config):
@@ -159,7 +159,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         def config_generator():
             for i in range(1000):
-                for _, generated in generate_variants({"config": config}):
+                for _, generated in _generate_variants({"config": config}):
                     yield generated["config"]
 
         self._testTuneSampleAPI(config_generator())
@@ -171,7 +171,7 @@ class SearchSpaceTest(unittest.TestCase):
         def config_generator(random_state):
             if random_state is None:
                 np.random.seed(1000)
-            for _, generated in generate_variants(
+            for _, generated in _generate_variants(
                 {"config": config},
                 random_state=ray.tune.search.sample._BackwardsCompatibleNumpyRng(
                     random_state

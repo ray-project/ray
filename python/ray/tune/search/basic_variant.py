@@ -11,15 +11,15 @@ from ray.tune.error import TuneError
 from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
 from ray.tune.search.sample import np_random_generator, _BackwardsCompatibleNumpyRng
 from ray.tune.search.variant_generator import (
-    count_variants,
-    count_spec_samples,
-    generate_variants,
+    _count_variants,
+    _count_spec_samples,
+    _generate_variants,
     format_vars,
     _flatten_resolved_vars,
     _get_preset_variants,
 )
 from ray.tune.search.search_algorithm import SearchAlgorithm
-from ray.tune.utils.util import atomic_save, load_newest_checkpoint
+from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
@@ -170,7 +170,7 @@ class _TrialIterator:
             return self.create_trial(resolved_vars, spec)
         elif self.num_samples_left > 0:
             self.variants = _VariantIterator(
-                generate_variants(
+                _generate_variants(
                     self.unresolved_spec,
                     constant_grid_search=self.constant_grid_search,
                     random_state=self.random_state,
@@ -320,12 +320,12 @@ class BasicVariantGenerator(SearchAlgorithm):
         Arguments:
             experiments: Experiments to run.
         """
-        from ray.tune.experiment import convert_to_experiment_list
+        from ray.tune.experiment import _convert_to_experiment_list
 
-        experiment_list = convert_to_experiment_list(experiments)
+        experiment_list = _convert_to_experiment_list(experiments)
 
         for experiment in experiment_list:
-            grid_vals = count_spec_samples(experiment.spec, num_samples=1)
+            grid_vals = _count_spec_samples(experiment.spec, num_samples=1)
             lazy_eval = grid_vals > SERIALIZATION_THRESHOLD
             if lazy_eval:
                 warnings.warn(
@@ -338,7 +338,7 @@ class BasicVariantGenerator(SearchAlgorithm):
 
             previous_samples = self._total_samples
             points_to_evaluate = copy.deepcopy(self._points_to_evaluate)
-            self._total_samples += count_variants(experiment.spec, points_to_evaluate)
+            self._total_samples += _count_variants(experiment.spec, points_to_evaluate)
             iterator = _TrialIterator(
                 uuid_prefix=self._uuid_prefix,
                 num_samples=experiment.spec.get("num_samples", 1),
@@ -397,7 +397,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         if any(iterator.lazy_eval for iterator in self._iterators):
             return False
         state_dict = self.get_state()
-        atomic_save(
+        _atomic_save(
             state=state_dict,
             checkpoint_dir=dirpath,
             file_name=self.CKPT_FILE_TMPL.format(session_str),
@@ -410,7 +410,7 @@ class BasicVariantGenerator(SearchAlgorithm):
 
     def restore_from_dir(self, dirpath: str):
         """Restores self + searcher + search wrappers from dirpath."""
-        state_dict = load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*"))
+        state_dict = _load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*"))
         if not state_dict:
             raise RuntimeError("Unable to find checkpoint in {}.".format(dirpath))
         self.set_state(state_dict)
