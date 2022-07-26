@@ -80,12 +80,12 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def put_all_deployments(self, req: Request) -> Response:
-        from ray import serve
+        from ray.serve._private.api import serve_start
         from ray.serve.schema import ServeApplicationSchema
 
         config = ServeApplicationSchema.parse_obj(await req.json())
 
-        client = serve.start(
+        client = serve_start(
             detached=True,
             http_options={
                 "host": config.host,

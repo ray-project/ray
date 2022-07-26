@@ -273,9 +273,9 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                         raise e from None
 
                 if connect_to_serve:
-                    from ray import serve
+                    from ray.serve._private.api import serve_start
 
-                    serve.start(
+                    serve_start(
                         detached=True,
                         http_options={"host": "0.0.0.0", "location": "EveryNode"},
                     )
