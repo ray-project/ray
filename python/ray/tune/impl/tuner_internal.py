@@ -142,6 +142,9 @@ class TunerInternal:
         return (actual_concurrency * cpus_per_trial) / (cpus_total + 0.001)
 
     def _maybe_warn_resource_contention(self):
+        if not ray.is_initialized():
+            return
+
         trainable = self._convert_trainable(self._trainable)
 
         # This may not be precise, but we don't have a great way of
