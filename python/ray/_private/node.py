@@ -1072,7 +1072,7 @@ class Node:
             include_dashboard = False
             raise_on_api_server_failure = False
         else:
-            assert include_dashboard == True
+            assert include_dashboard is True
             include_dashboard = True
             raise_on_api_server_failure = True
 

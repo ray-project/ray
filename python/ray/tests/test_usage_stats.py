@@ -1156,15 +1156,6 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_lib_usage):
         wait_for_condition(verify)
 
 
-def test_usages_stats_available_when_dashboard_not_included(
-    monkeypatch, ray_start_cluster, reset_lib_usage
-):
-    """
-    Test library usage is correctly reported when they are imported from
-    workers.
-    """
-
-
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1",
     reason="Test depends on library that's not downloaded from a minimal install.",
