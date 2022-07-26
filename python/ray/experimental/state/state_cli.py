@@ -312,9 +312,6 @@ address_option = click.option(
 )
 
 
-# TODO(rickyyx): Once we have other APIs stablized, we should refactor them to
-# reuse some of the options, e.g. `--address`.
-# list/get/summary could all go under a single command group for options sharing.
 @click.command()
 @click.argument(
     "resource",
@@ -361,7 +358,7 @@ def ray_get(
         ```
 
     The API queries one or more components from the cluster to obtain the data.
-    The returned state snanpshot could be stale, and it is not guaranteed to return
+    The returned state snapshot could be stale, and it is not guaranteed to return
     the live data.
 
     Args:
@@ -488,7 +485,7 @@ def ray_list(
         ray list actors --format yaml
         ```
 
-        List actors with details. When --detail is specifed, it might query
+        List actors with details. When --detail is specified, it might query
         more data sources to obtain data in details.
 
         ```
@@ -496,13 +493,13 @@ def ray_list(
         ```
 
     The API queries one or more components from the cluster to obtain the data.
-    The returned state snanpshot could be stale, and it is not guaranteed to return
+    The returned state snapshot could be stale, and it is not guaranteed to return
     the live data.
 
     The API can return partial or missing output upon the following scenarios.
 
     - When the API queries more than 1 component, if some of them fail,
-      the API will return the partial result (with a suppressable warning).
+      the API will return the partial result (with a suppressible warning).
     - When the API returns too many entries, the API
       will truncate the output. Currently, truncated data cannot be
       selected by users.
