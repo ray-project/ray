@@ -1,18 +1,15 @@
 # fmt: off
-import ray
 # __doc_import_begin__
 from ray import serve
 
 import os
 import tempfile
 import numpy as np
-import requests
 # __doc_import_end__
 # fmt: on
 
 # __doc_train_model_begin__
 TRAINED_MODEL_PATH = os.path.join(tempfile.gettempdir(), "mnist_model.h5")
-
 
 def train_and_save_model():
     import tensorflow as tf
@@ -67,23 +64,8 @@ class TFMnistModel:
 
         # Step 3: tensorflow output -> web output
         return {"prediction": prediction.numpy().tolist(), "file": self.model_path}
-
-
 # __doc_define_servable_end__
 
-ray.init(num_cpus=8)
 # __doc_deploy_begin__
-serve.start()
-TFMnistModel.deploy(TRAINED_MODEL_PATH)
+app = TFMnistModel.bind(TRAINED_MODEL_PATH)
 # __doc_deploy_end__
-
-# __doc_query_begin__
-resp = requests.get(
-    "http://localhost:8000/mnist", json={"array": np.random.randn(28 * 28).tolist()}
-)
-print(resp.json())
-# {
-#  "prediction": [[-1.504277229309082, ..., -6.793371200561523]],
-#  "file": "/tmp/mnist_model.h5"
-# }
-# __doc_query_end__
