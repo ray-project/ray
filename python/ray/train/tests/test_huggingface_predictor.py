@@ -1,10 +1,12 @@
 import os
+import re
 import tempfile
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.train.predictor import TYPE_TO_ENUM
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
@@ -39,6 +41,16 @@ class DummyPreprocessor(Preprocessor):
     def transform_batch(self, df):
         self._batch_transformed = True
         return df
+
+
+def test_repr(tmpdir):
+    predictor = HuggingFacePredictor()
+
+    representation = repr(predictor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile("^HuggingFacePredictor\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
