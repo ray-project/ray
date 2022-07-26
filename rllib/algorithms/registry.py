@@ -1,5 +1,6 @@
 """Registry of algorithm names for `rllib train --run=<alg_name>`"""
 
+import importlib
 import traceback
 
 from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
@@ -282,3 +283,40 @@ def _get_algorithm_class(alg: str, return_config=False) -> type:
     if return_config:
         return class_, config
     return class_
+
+
+# Mapping from policy name to where it is located, relative to rllib.algorithms.
+POLICIES = {
+    "APPOTF1Policy": "appo.appo_tf_policy",
+    "APPOTF2Policy": "appo.appo_tf_policy",
+    "APPOTorchPolicy": "appo.appo_torch_policy",
+
+    "ImpalaTF1Policy": "impala.impala_tf_policy",
+    "ImpalaTF2Policy": "impala.impala_tf_policy",
+    "ImpalaTorchPolicy": "impala.impala_torch_policy",
+
+    "PPOTF1Policy": "ppo.ppo_tf_policy",
+    "PPOTF2Policy": "ppo.ppo_tf_policy",
+    "PPOTorchPolicy": "ppo.ppo_torch_policy",
+
+    # TODO(jungong) : finish this.
+}
+
+
+def get_policy_class_name(policy_class: type):
+    if policy_class.__name__ in POLICIES:
+        return policy_class.__name__
+    return None
+
+
+def get_policy_class(name: str):
+    if name not in POLICIES:
+        return None
+
+    path = POLICIES[name]
+    module = importlib.import_module("ray.rllib.algorithms." + path)
+
+    if not hasattr(module, name):
+        return None
+
+    return getattr(module, name)
