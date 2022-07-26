@@ -3,6 +3,7 @@ from gym.spaces import Space
 import logging
 import math
 import numpy as np
+from pyparsing import Optional
 import tree  # pip install dm_tree
 from typing import Any, Dict, List, Tuple, TYPE_CHECKING, Union
 
@@ -58,13 +59,22 @@ class _AgentCollector:
     # TODO: @kourosh add different types of padding. e.g. zeros vs. same
     def __init__(
         self,
-        view_reqs,
+        view_reqs: ViewRequirementsDict,
         *,
-        max_seq_len=1,
-        disable_action_flattening=True,
-        intial_states=None,
-        is_policy_recurrent=False,
+        max_seq_len: int = 1,
+        disable_action_flattening: bool = True,
+        intial_states: Optional[List[TensorType]] = None,
+        is_policy_recurrent: bool = False,
     ):
+        """Initialize an AgentCollector.
+
+        Args:
+            view_reqs: A dict of view requirements for the agent.
+            max_seq_len: The maximum sequence length to store.
+            disable_action_flattening: If True, don't flatten the action.
+            intial_states: The initial states from the policy.get_initial_states()
+            is_policy_recurrent: If True, the policy is recurrent.
+        """
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
         self.view_requirements = view_reqs
@@ -105,7 +115,8 @@ class _AgentCollector:
         # each time a (non-initial!) observation is added.
         self.agent_steps = 0
 
-    def is_empty(self):
+    def is_empty(self) -> bool:
+        """Returns True if this collector has no data."""
         return not self.buffers or all(len(item) == 0 for item in self.buffers.values())
 
     def add_init_obs(
@@ -162,8 +173,8 @@ class _AgentCollector:
         """Adds the given dictionary (row) of values to the Agent's trajectory.
 
         Args:
-            values (Dict[str, TensorType]): Data dict (interpreted as a single
-                row) to be added to buffer. Must contain keys:
+            values: Data dict (interpreted as a single row) to be added to buffer.
+            Must contain keys:
                 SampleBatch.ACTIONS, REWARDS, DONES, and NEXT_OBS.
         """
         if self.unroll_id is None:
@@ -205,9 +216,11 @@ class _AgentCollector:
         self.agent_steps += 1
 
     def build_for_inference(self) -> SampleBatch:
-        """
-        During inference we will a samplebatch with a batch size of 1.
+        """During inference we will a samplebatch with a batch size of 1.
         This data will only include the data for the last recorded timestep.
+
+        Returns:
+            A SampleBatch with a batch size of 1.
         """
 
         batch_data = {}
@@ -306,14 +319,13 @@ class _AgentCollector:
         by a Policy.
 
         Args:
-            view_requirements: The view
-                requirements dict needed to build the SampleBatch from the raw
-                buffers (which may have data shifts as well as mappings from
-                view-col to data-col in them).
+            view_requirements: The viewrequirements dict needed to build the
+            SampleBatch from the raw buffers (which may have data shifts as well as
+            mappings from view-col to data-col in them).
 
         Returns:
             SampleBatch: The built SampleBatch for this agent, ready to go into
-                postprocessing.
+            postprocessing.
         """
 
         batch_data = {}
@@ -491,6 +503,8 @@ class _AgentCollector:
     def _get_sample_batch(
         self, batch_data: Dict[str, TensorType], is_training: bool = False
     ) -> SampleBatch:
+        """Returns a SampleBatch from the given data dictionary. Also updates the
+        sequence information based on the max_seq_len."""
 
         # Due to possible batch-repeats > 1, columns in the resulting batch
         # may not all have the same batch size.

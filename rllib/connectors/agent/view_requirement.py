@@ -36,7 +36,6 @@ class ViewRequirementAgentConnector(AgentConnector):
         super().__init__(ctx)
 
         self._view_requirements = ctx.view_requirements
-        # self._agent_data = defaultdict(lambda: defaultdict(SampleBatch))
 
         # a dict of env_id to a dict of agent_id to a list of agent_collector objects
         env_default = defaultdict(
@@ -79,7 +78,7 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         env_id = ac_data.env_id
         agent_id = ac_data.agent_id
-        # use env_id as episode_id ?
+        # TODO: we don't keep episode_id around so use env_id as episode_id ?
         episode_id = env_id if SampleBatch.EPS_ID not in d else d[SampleBatch.EPS_ID]
 
         assert env_id is not None and agent_id is not None, (
@@ -98,20 +97,17 @@ class ViewRequirementAgentConnector(AgentConnector):
             # iew_requirement.used_for_training is False.
             training_dict = d
 
-        # Agent batch is our buffer of necessary history for computing
-        # a SampleBatch for policy forward pass.
-        # This is used by both training and inference.
-        # agent_batch = self._agent_data[env_id][agent_id]
-
-        # TODO: Ask @jun: what are we not using eps_id here?
         agent_collector = self.agent_collectors[env_id][agent_id]
+
+        if SampleBatch.NEXT_OBS not in d:
+            raise ValueError(f"connector data {d} should contain next_obs.")
 
         if agent_collector.is_empty():
             agent_collector.add_init_obs(
                 episode_id=episode_id,
                 agent_index=agent_id,
                 env_id=env_id,
-                t=-1,  # not sure about this?
+                t=-1,
                 init_obs=d[SampleBatch.NEXT_OBS],
             )
         else:
