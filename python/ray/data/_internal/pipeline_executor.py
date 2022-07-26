@@ -82,6 +82,13 @@ class PipelineExecutor:
                 "complete or when the driver exits"
             )
 
+    def __reduce__(self):
+        if self._pool is not None:
+            raise RuntimeError(
+                "PipelineExecutor is not serializable once it has started."
+            )
+        return (self.__class__, (self._pipeline,))
+
     def _create_thread_pool(self):
         if self._pool is None:
             self._pool = concurrent.futures.ThreadPoolExecutor(

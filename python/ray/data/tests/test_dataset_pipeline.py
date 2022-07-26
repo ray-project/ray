@@ -704,6 +704,22 @@ def test_in_place_transformation_split_doesnt_clear_objects(ray_start_regular_sh
     )
 
 
+def test_pipeline_executor_cannot_serialize_once_started(ray_start_regular_shared):
+    class Iterable:
+        def __init__(self, iter):
+            self._iter = iter
+
+        def __next__(self):
+            ds = next(self._iter)
+            return lambda: ds
+
+    p1 = ray.data.range(10).repeat()
+    p2 = DatasetPipeline.from_iterable(Iterable(p1.iter_datasets()))
+    with pytest.raises(RuntimeError) as error:
+        p2.split(2)
+    assert "PipelineExecutor is not serializable once it has started" in str(error)
+
+
 def test_if_blocks_owned_by_consumer(ray_start_regular_shared):
     ds = ray.data.from_items([1, 2, 3, 4, 5, 6], parallelism=3)
     assert not ds._plan.execute()._owned_by_consumer
