@@ -127,10 +127,10 @@ class CountVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        non_default_arguments = [f"columns={self.columns}"]
-        if self.tokenization_fn != simple_split_tokenizer:
-            fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
-            non_default_arguments.append(f"tokenization_fn={fn_name}")
-        if self.max_features is not None:
-            non_default_arguments.append(f"max_features={self.max_features}")
-        return f"CountVectorizer({', '.join(non_default_arguments)})"
+        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        return (
+            f"CountVectorizer("
+            f"columns={self.columns}, "
+            f"tokenization_fn={fn_name}, "
+            f"max_features={self.max_features})"
+        )

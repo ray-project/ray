@@ -48,10 +48,7 @@ class StandardScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        if self.ddof != 0:
-            return f"StandardScaler(columns={self.columns}, ddof={self.ddof})"
-        else:
-            return f"StandardScaler(columns={self.columns})"
+        return f"StandardScaler(columns={self.columns}, ddof={self.ddof})"
 
 
 class MinMaxScaler(Preprocessor):

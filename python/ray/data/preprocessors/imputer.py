@@ -73,11 +73,6 @@ class SimpleImputer(Preprocessor):
         return df
 
     def __repr__(self):
-        non_default_arguments = [f"columns={self.columns}"]
-        if self.strategy != "mean":
-            non_default_arguments.append(f"strategy='{self.strategy}'")
-        if self.fill_value is not None:
-            non_default_arguments.append(f"fill_value={repr(self.fill_value)}")
         return (
             f"SimpleImputer(columns={self.columns}, "
             f"strategy={self.strategy}, "
