@@ -16,3 +16,4 @@ API References
     ../cluster/reference.rst
     ../cluster/jobs-package-ref.rst
     ../cluster/usage-stats-data-ref.rst
+    ../ray-observability/state/ray-state-api-reference.rst

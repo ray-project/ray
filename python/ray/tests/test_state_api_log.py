@@ -684,7 +684,7 @@ def test_log_cli(shutdown_only):
 
     # Test the head node is chosen by default.
     def verify():
-        result = runner.invoke(scripts.logs)
+        result = runner.invoke(scripts.ray_logs)
         print(result.output)
         assert result.exit_code == 0
         assert "raylet.out" in result.output
@@ -697,7 +697,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's only 1 match, it prints logs.
     def verify():
-        result = runner.invoke(scripts.logs, ["raylet.out"])
+        result = runner.invoke(scripts.ray_logs, ["raylet.out"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" not in result.output
@@ -712,7 +712,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
-        result = runner.invoke(scripts.logs, ["raylet.*"])
+        result = runner.invoke(scripts.ray_logs, ["raylet.*"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" in result.output
