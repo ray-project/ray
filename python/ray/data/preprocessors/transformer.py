@@ -69,7 +69,4 @@ class PowerTransformer(Preprocessor):
         return df
 
     def __repr__(self):
-        if self.method != "yeo-johnson":
-            return f"PowerTransformer(columns={self.columns}, power={self.power}, method={self.method})"
-        else:
-            return f"PowerTransformer(columns={self.columns}, power={self.power})"
+        return f"PowerTransformer(columns={self.columns}, power={self.power}, method={self.method})"

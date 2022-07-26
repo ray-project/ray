@@ -78,7 +78,11 @@ class SimpleImputer(Preprocessor):
             non_default_arguments.append(f"strategy='{self.strategy}'")
         if self.fill_value is not None:
             non_default_arguments.append(f"fill_value={repr(self.fill_value)}")
-        return f"SimpleImputer({', '.join(non_default_arguments)})"
+        return (
+            f"SimpleImputer(columns={self.columns}, "
+            f"strategy={self.strategy}, "
+            f"fill_value={self.fill_value})"
+        )
 
 
 def _get_most_frequent_values(

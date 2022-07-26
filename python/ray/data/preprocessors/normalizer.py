@@ -45,7 +45,4 @@ class Normalizer(Preprocessor):
         return df
 
     def __repr__(self):
-        if self.norm != "l2":
-            return f"Normalizer(columns={self.columns}, norm='{self.norm}')"
-        else:
-            return f"Normalizer(columns={self.columns})"
+        return f"Normalizer(columns={self.columns}, norm='{self.norm}')"

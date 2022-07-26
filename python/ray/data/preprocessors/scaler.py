@@ -213,7 +213,4 @@ class RobustScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        if self.quantile_range != (0.25, 0.75):
-            return f"RobustScaler(columns={self.columns}, quantile_range={self.quantile_range})"
-        else:
-            return f"RobustScaler(columns={self.columns})"
+        return f"RobustScaler(columns={self.columns}, quantile_range={self.quantile_range})"

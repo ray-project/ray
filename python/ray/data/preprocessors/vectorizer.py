@@ -53,11 +53,8 @@ class HashingVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        if self.tokenization_fn != simple_split_tokenizer:
-            fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
-            return f"HasingVectorizer(columns={self.columns}, num_features={self.num_features}, tokenization_fn={fn_name})"
-        else:
-            return f"HasingVectorizer(columns={self.columns}, num_features={self.num_features})"
+        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+        return f"HasingVectorizer(columns={self.columns}, num_features={self.num_features}, tokenization_fn={fn_name})"
 
 
 class CountVectorizer(Preprocessor):

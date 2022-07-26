@@ -101,10 +101,9 @@ class OrdinalEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        if self.encode_lists:
-            return f"OrdinalEncoder(columns={self.columns})"
-        else:
-            return f"OrdinalEncoder(columns={self.columns}, encode_lists=False)"
+        return (
+            f"OrdinalEncoder(columns={self.columns}, encode_lists={self.encode_lists})"
+        )
 
 
 class OneHotEncoder(Preprocessor):
@@ -185,10 +184,7 @@ class OneHotEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        if self.limit is not None:
-            return f"OneHotEncoder(columns={self.columns}, limit={self.limit})"
-        else:
-            return f"OneHotEncoder(columns={self.columns})"
+        return f"OneHotEncoder(columns={self.columns}, limit={self.limit})"
 
 
 class MultiHotEncoder(Preprocessor):
@@ -271,10 +267,7 @@ class MultiHotEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        if self.limit is not None:
-            return f"MultiHotEncoder(columns={self.columns}, limit={self.limit})"
-        else:
-            return f"MultiHotEncoder(columns={self.columns})"
+        return f"MultiHotEncoder(columns={self.columns}, limit={self.limit})"
 
 
 class LabelEncoder(Preprocessor):

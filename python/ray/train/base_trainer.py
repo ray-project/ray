@@ -181,7 +181,9 @@ class BaseTrainer(abc.ABC):
         if self.preprocessor is not None:
             non_default_arguments.append(f"preprocessor={self.preprocessor}")
         if self.resume_from_checkpoint is not None:
-            non_default_arguments.append(f"resume_from_checkpoint={self.resume_from_checkpoint}")
+            non_default_arguments.append(
+                f"resume_from_checkpoint={self.resume_from_checkpoint}"
+            )
         return f"<{self.__class__.__name__} {' '.join(non_default_arguments)}>"
 
     def __new__(cls, *args, **kwargs):
