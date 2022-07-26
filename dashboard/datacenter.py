@@ -48,9 +48,9 @@ class DataSource:
     core_worker_stats = Dict()
     # {job id hex(str): {event id(str): event dict}}
     events = Dict()
-    # {node ip (str): log entries by pid
-    # (dict from pid to list of latest log entries)}
-    ip_and_pid_to_logs = Dict()
+    # {node ip (str): log counts by pid
+    # (dict from pid to count of logs for that pid)}
+    ip_and_pid_to_log_counts = Dict()
     # {node ip (str): error entries by pid
     # (dict from pid to list of latest err entries)}
     ip_and_pid_to_errors = Dict()
@@ -103,7 +103,7 @@ class DataOrganizer:
     async def get_node_workers(cls, node_id):
         workers = []
         node_ip = DataSource.node_id_to_ip[node_id]
-        node_logs = DataSource.ip_and_pid_to_logs.get(node_ip, {})
+        node_log_counts = DataSource.ip_and_pid_to_log_counts.get(node_ip, {})
         node_errs = DataSource.ip_and_pid_to_errors.get(node_ip, {})
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         node_stats = DataSource.node_stats.get(node_id, {})
@@ -120,15 +120,15 @@ class DataOrganizer:
             pid_to_job_id[pid] = core_worker_stats["jobId"]
 
         # Clean up logs from a dead pid.
-        dead_pids = set(node_logs.keys()) - pids_on_node
+        dead_pids = set(node_log_counts.keys()) - pids_on_node
         for dead_pid in dead_pids:
-            if dead_pid in node_logs:
-                node_logs.mutable().pop(dead_pid)
+            if dead_pid in node_log_counts:
+                node_log_counts.mutable().pop(dead_pid)
 
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
-            worker["logCount"] = len(node_logs.get(str(pid), []))
+            worker["logCount"] = node_log_counts.get(str(pid), 0)
             worker["errorCount"] = len(node_errs.get(str(pid), []))
             worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, [])
             worker["language"] = pid_to_language.get(
@@ -148,10 +148,10 @@ class DataOrganizer:
         node = DataSource.nodes.get(node_id, {})
         node_ip = DataSource.node_id_to_ip.get(node_id)
         # Merge node log count information into the payload
-        log_info = DataSource.ip_and_pid_to_logs.get(node_ip, {})
+        log_counts = DataSource.ip_and_pid_to_log_counts.get(node_ip, {})
         node_log_count = 0
-        for entries in log_info.values():
-            node_log_count += len(entries)
+        for entries in log_counts.values():
+            node_log_count += entries
         error_info = DataSource.ip_and_pid_to_errors.get(node_ip, {})
         node_err_count = 0
         for entries in error_info.values():

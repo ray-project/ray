@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from dataclasses import asdict
 from typing import Callable, Optional
@@ -17,6 +18,7 @@ from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.utils import Change
 from ray.experimental.state.common import (
+    RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
     GetLogOptions,
     SummaryApiOptions,
@@ -165,6 +167,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             if req.query.get("limit") is not None
             else DEFAULT_LIMIT
         )
+
+        if limit > RAY_MAX_LIMIT_FROM_API_SERVER:
+            raise ValueError(
+                f"Given limit {limit} exceeds the supported "
+                f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit."
+            )
+
         timeout = int(req.query.get("timeout"))
         filter_keys = req.query.getall("filter_keys", [])
         filter_predicates = req.query.getall("filter_predicates", [])
@@ -411,6 +420,18 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @RateLimitedModule.enforce_max_concurrent_calls
     async def summarize_objects(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self._handle_summary_api(self._state_api.summarize_objects, req)
+
+    @routes.get("/api/v0/delay/{delay_s}")
+    async def delayed_response(self, req: aiohttp.web.Request):
+        """Testing only. Response after a specified delay."""
+        delay = int(req.match_info.get("delay_s", 10))
+        await asyncio.sleep(delay)
+        return self._reply(
+            success=True,
+            error_message="",
+            result={},
+            partial_failure_warning=None,
+        )
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

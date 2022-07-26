@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -11,7 +12,7 @@ from transformers.pipelines import pipeline
 
 import ray
 from ray.data.preprocessor import Preprocessor
-from ray.train.huggingface import HuggingFacePredictor
+from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
 
 prompts = pd.DataFrame(
     ["Complete me", "And me", "Please complete"], columns=["sentences"]
@@ -66,10 +67,30 @@ def test_predict(tmpdir, ray_start_runtime_env, batch_type):
 
         assert len(predictions) == 3
         if preprocessor:
-            assert hasattr(predictor.preprocessor, "_batch_transformed")
+            assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
 
     ray.get(test.remote(use_preprocessor=True))
     ray.get(test.remote(use_preprocessor=False))
+
+
+def test_predict_no_preprocessor_no_training(ray_start_runtime_env):
+    @ray.remote
+    def test():
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_config = AutoConfig.from_pretrained(model_checkpoint)
+            model = AutoModelForCausalLM.from_config(model_config)
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+            checkpoint = HuggingFaceCheckpoint.from_model(model, tokenizer, path=tmpdir)
+            predictor = HuggingFacePredictor.from_checkpoint(
+                checkpoint,
+                task="text-generation",
+            )
+
+            predictions = predictor.predict(prompts)
+
+            assert len(predictions) == 3
+
+    ray.get(test.remote())
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.train.lightgbm.utils import load_checkpoint
+from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
@@ -28,7 +28,7 @@ class LightGBMPredictor(Predictor):
         self, model: lightgbm.Booster, preprocessor: Optional["Preprocessor"] = None
     ):
         self.model = model
-        self.preprocessor = preprocessor
+        super().__init__(preprocessor)
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "LightGBMPredictor":
@@ -42,8 +42,10 @@ class LightGBMPredictor(Predictor):
                 ``LightGBMTrainer`` run.
 
         """
-        bst, preprocessor = load_checkpoint(checkpoint)
-        return LightGBMPredictor(model=bst, preprocessor=preprocessor)
+        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
+        model = checkpoint.get_model()
+        preprocessor = checkpoint.get_preprocessor()
+        return cls(model=model, preprocessor=preprocessor)
 
     def _predict_pandas(
         self,

@@ -1,6 +1,5 @@
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessors.chain import Chain
-from ray.data.preprocessors.custom_stateful import CustomStatefulPreprocessor
 from ray.data.preprocessors.encoder import (
     Categorizer,
     LabelEncoder,
@@ -17,6 +16,7 @@ from ray.data.preprocessors.scaler import (
     MaxAbsScaler,
     RobustScaler,
 )
+from ray.data.preprocessors.concatenator import Concatenator
 from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
@@ -26,7 +26,6 @@ __all__ = [
     "Categorizer",
     "CountVectorizer",
     "Chain",
-    "CustomStatefulPreprocessor",
     "FeatureHasher",
     "HashingVectorizer",
     "LabelEncoder",
@@ -40,5 +39,6 @@ __all__ = [
     "RobustScaler",
     "SimpleImputer",
     "StandardScaler",
+    "Concatenator",
     "Tokenizer",
 ]

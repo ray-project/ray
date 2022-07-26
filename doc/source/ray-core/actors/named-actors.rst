@@ -155,10 +155,9 @@ created with the specified arguments.
 Actor Lifetimes
 ---------------
 
-.. tabbed:: Python
+Separately, actor lifetimes can be decoupled from the job, allowing an actor to persist even after the driver process of the job exits.
 
-    Separately, actor lifetimes can be decoupled from the job, allowing an actor to
-    persist even after the driver process of the job exits.
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -179,7 +178,22 @@ Actor Lifetimes
 
 .. tabbed:: Java
 
-    Customizing lifetime of an actor hasn't been implemented in Java yet.
+    .. code-block:: java
+
+        System.setProperty("ray.job.namespace", "lifetime");
+        Ray.init();
+        ActorHandle<Counter> counter = Ray.actor(Counter::new).setName("some_name").setLifetime(ActorLifetime.DETACHED).remote();
+    
+    The CounterActor will be kept alive even after the driver running above process
+    exits. Therefore it is possible to run the following code in a different
+    driver:
+
+    .. code-block:: java
+
+        System.setProperty("ray.job.namespace", "lifetime");
+        Ray.init();
+        Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name");
+        Assert.assertTrue(counter.isPresent());
 
 .. tabbed:: C++
 
