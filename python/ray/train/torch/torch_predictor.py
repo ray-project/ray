@@ -86,31 +86,15 @@ class TorchPredictor(DLPredictor):
         preprocessor = checkpoint.get_preprocessor()
         return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
-    def _array_to_tensor(
-        self, numpy_array: np.ndarray, dtype: torch.dtype
-    ) -> torch.Tensor:
-        torch_tensor = torch.from_numpy(numpy_array).to(dtype)
-        if self.use_gpu:
-            torch_tensor = torch_tensor.to(device="cuda")
-
-        # Off-the-shelf torch Modules expect the input size to have at least 2
-        # dimensions (batch_size, feature_size). If the tensor for the column
-        # is flattened, then we unqueeze it to add an extra dimension.
-        if len(torch_tensor.size()) == 1:
-            torch_tensor = torch_tensor.unsqueeze(dim=1)
-
-        return torch_tensor
-
-    def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
-        return tensor.cpu().detach().numpy()
-
-    @DeveloperAPI
-    def _model_predict(
+    def call_model(
         self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
     ) -> Union[
         torch.Tensor, Dict[str, torch.Tensor], List[torch.Tensor], Tuple[torch.Tensor]
     ]:
-        """Predict on a single batch of data.
+        """Runs inference on a single batch of tensor data.
+
+        This method is called by `TorchPredictor.predict` after converting the
+        original data batch to torch tensors.
 
         Override this method to add custom logic for processing the model input or
         output.
@@ -191,3 +175,22 @@ class TorchPredictor(DLPredictor):
                 input type.
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
+
+
+    def _array_to_tensor(
+        self, numpy_array: np.ndarray, dtype: torch.dtype
+    ) -> torch.Tensor:
+        torch_tensor = torch.from_numpy(numpy_array).to(dtype)
+        if self.use_gpu:
+            torch_tensor = torch_tensor.to(device="cuda")
+
+        # Off-the-shelf torch Modules expect the input size to have at least 2
+        # dimensions (batch_size, feature_size). If the tensor for the column
+        # is flattened, then we unqueeze it to add an extra dimension.
+        if len(torch_tensor.size()) == 1:
+            torch_tensor = torch_tensor.unsqueeze(dim=1)
+
+        return torch_tensor
+
+    def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
+        return tensor.cpu().detach().numpy()

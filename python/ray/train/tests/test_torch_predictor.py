@@ -35,6 +35,14 @@ class DummyModelMultiOutput(torch.nn.Module):
         return [input_tensor, input_tensor]
 
 
+class DummyCustomModel(torch.nn.Module):
+    """A custom model that takes in an iterator as input and returns a list of dicts."""
+    def forward(self, iterator):
+        output_list = []
+        for item in iterator:
+            output_list.append({"x": item})
+
+
 @pytest.fixture
 def model():
     return DummyModelSingleTensor()
@@ -198,6 +206,9 @@ def test_multi_modal_real_model(use_gpu):
         assert not next(
             predictor.model.parameters()
         ).is_cuda, "Model should not be on GPU if use_gpu is False"
+
+
+def custom_model
 
 
 if __name__ == "__main__":

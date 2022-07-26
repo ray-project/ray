@@ -102,24 +102,25 @@ class TensorflowPredictor(DLPredictor):
             use_gpu=use_gpu,
         )
 
-    def _array_to_tensor(
-        self, numpy_array: np.ndarray, dtype: tf.dtypes.DType
-    ) -> tf.Tensor:
-        tf_tensor = tf.convert_to_tensor(numpy_array, dtype=dtype)
-
-        # Off-the-shelf Keras Modules expect the input size to have at least 2
-        # dimensions (batch_size, feature_size). If the tensor for the column
-        # is flattened, then we unqueeze it to add an extra dimension.
-        if len(tf_tensor.shape) == 1:
-            tf_tensor = tf.expand_dims(tf_tensor, axis=1)
-        return tf_tensor
-
-    def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
-        return tensor.numpy()
-
-    def _model_predict(
+    def call_model(
         self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]
     ) -> Union[tf.Tensor, Dict[str, tf.Tensor], List[tf.Tensor], Tuple[tf.Tensor]]:
+        """Runs inference on a single batch of tensor data.
+
+        This method is called by `TorchPredictor.predict` after converting the
+        original data batch to torch tensors.
+
+        Override this method to add custom logic for processing the model input or
+        output.
+
+        Args:
+            tensor: A batch of data to predict on, represented as either a single
+                PyTorch tensor or for multi-input models, a dictionary of tensors.
+
+        Returns:
+            The model outputs, either as a single tensor or a collection of tensors.
+
+        """
         if self.use_gpu:
             with tf.device("GPU:0"):
                 return self._model(tensor)
@@ -194,3 +195,18 @@ class TensorflowPredictor(DLPredictor):
                 input type.
         """
         return super(TensorflowPredictor, self).predict(data=data, dtype=dtype)
+
+    def _array_to_tensor(
+        self, numpy_array: np.ndarray, dtype: tf.dtypes.DType
+    ) -> tf.Tensor:
+        tf_tensor = tf.convert_to_tensor(numpy_array, dtype=dtype)
+
+        # Off-the-shelf Keras Modules expect the input size to have at least 2
+        # dimensions (batch_size, feature_size). If the tensor for the column
+        # is flattened, then we unqueeze it to add an extra dimension.
+        if len(tf_tensor.shape) == 1:
+            tf_tensor = tf.expand_dims(tf_tensor, axis=1)
+        return tf_tensor
+
+    def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
+        return tensor.numpy()

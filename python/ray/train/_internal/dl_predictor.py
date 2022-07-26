@@ -42,7 +42,7 @@ class DLPredictor(Predictor):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _model_predict(
+    def call_model(
         self, tensor: Union[TensorType, Dict[str, TensorType]]
     ) -> Union[TensorType, Dict[str, TensorType], List[TensorType], Tuple[TensorType]]:
         """Inputs the tensor to the model for this Predictor and returns the result.
@@ -75,7 +75,7 @@ class DLPredictor(Predictor):
                 for k, v in tensors.items()
             }
 
-        output = self._model_predict(model_input)
+        output = self.call_model(model_input)
 
         # Handle model multi-output. For example if model outputs 2 images.
         if isinstance(output, dict):
