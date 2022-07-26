@@ -10,11 +10,7 @@ import ray
 import threading
 from datetime import datetime, timedelta
 from ray.cluster_utils import Cluster
-from ray.dashboard.modules.node.node_consts import (
-    LOG_PRUNE_THREASHOLD,
-    MAX_LOGS_TO_CACHE,
-    UPDATE_NODES_INTERVAL_SECONDS,
-)
+from ray.dashboard.modules.node.node_consts import UPDATE_NODES_INTERVAL_SECONDS
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (
     format_web_url,
