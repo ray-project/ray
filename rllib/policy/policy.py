@@ -1214,32 +1214,6 @@ class Policy(metaclass=ABCMeta):
                 else:
                     ret[view_col] = [view_req.space for _ in range(batch_size)]
 
-                # TODO: @kourosh remove these comments after this is tested
-                foo = None
-                if view_req.shift_from is not None:
-                    foo = get_dummy_batch_for_space(
-                        view_req.space,
-                        batch_size=batch_size,
-                        time_size=view_req.shift_to - view_req.shift_from + 1,
-                    )
-                # Sequence of (probably non-consecutive) indices.
-                elif isinstance(view_req.shift, (list, tuple)):
-                    foo = get_dummy_batch_for_space(
-                        view_req.space,
-                        batch_size=batch_size,
-                        time_size=len(view_req.shift),
-                    )
-                # Single shift int value.
-                else:
-                    if isinstance(view_req.space, gym.spaces.Space):
-                        foo = get_dummy_batch_for_space(
-                            view_req.space, batch_size=batch_size, fill_value=0.0
-                        )
-                    else:
-                        foo = [view_req.space for _ in range(batch_size)]
-
-                check(foo, ret[view_col])
-
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
         return SampleBatch(ret)
