@@ -427,8 +427,13 @@ class DatasetPipeline(Generic[T]):
         else:
             length = None
 
+        # The newly created DatasetPipeline will contain a PipelineExecutor (because
+        # this will execute the pipeline so far to iter the datasets). In order to
+        # make this new DatasetPipeline serializable, we need to make sure the
+        # PipelineExecutor has not been iterated. So this uses
+        # _iter_datasets_without_peek() instead of iter_datasets().
         return DatasetPipeline(
-            WindowIterable(self.iter_datasets()),
+            WindowIterable(self._iter_datasets_without_peek()),
             length=length,
         )
 
@@ -1040,6 +1045,16 @@ class DatasetPipeline(Generic[T]):
             unsqueeze_label_tensor=unsqueeze_label_tensor,
             unsqueeze_feature_tensors=unsqueeze_feature_tensors,
         )
+
+    def _iter_datasets_without_peek(self):
+        """This is similar to iter_datasets(), but without peeking PipelineExecutor."""
+        if self._executed[0]:
+            raise RuntimeError("Pipeline cannot be read multiple times.")
+        self._executed[0] = True
+        if self._first_dataset:
+            raise RuntimeError("The pipeline has been peeked.")
+        self._optimize_stages()
+        return PipelineExecutor(self)
 
     @DeveloperAPI
     def iter_datasets(self) -> Iterator[Dataset[T]]:
