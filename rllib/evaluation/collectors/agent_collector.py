@@ -1,4 +1,3 @@
-from cmath import e
 from gym.spaces import Space
 import math
 import numpy as np
@@ -315,8 +314,8 @@ class AgentCollector:
             if data_col not in self.buffers:
                 is_state = self._fill_buffer_with_initial_values(data_col, view_req)
 
-                # we need to skip this view_col if it does not exist in the buffers and 
-                # is not an RNN state because it could be the special keys that gets 
+                # we need to skip this view_col if it does not exist in the buffers and
+                # is not an RNN state because it could be the special keys that gets
                 # added by policy's postprocessing function for trianing.
                 if not is_state:
                     continue
@@ -501,11 +500,12 @@ class AgentCollector:
         for dat_col starting with `state_out`, use the initial states of the policy,
         but for other data columns, create a dummy value based on the view requirement
         space.
-        
+
         Args:
             data_col: The data column to fill the buffer with.
-            view_requirement: The view requirement for the view_col. Normally the view 
-                requirement for the data column is used and if it does not exist for some reason the view requirement for view column is used instead.
+            view_requirement: The view requirement for the view_col. Normally the view
+                requirement for the data column is used and if it does not exist for 
+                some reason the view requirement for view column is used instead.
 
         returns:
             is_state: True if the data_col is an RNN state, False otherwise.
