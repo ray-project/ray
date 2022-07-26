@@ -97,7 +97,7 @@ The following CLI commands automatically start a Serve application on your Ray c
 * `serve status`
 * `serve delete` (however, this command will also delete the application)
 
-All these commands, except `serve delete`, will start Serve with default `host` and `port` options. If you want non-default `host` and `port` options, make sure to first deploy a config with these options specified using `serve deploy`.
+All these commands, except `serve deploy`, will start Serve with default `host` and `port` options. If you want non-default `host` and `port` options, make sure to first deploy a config with these options specified using `serve deploy`.
 
 Alternatively, you can delete your running Serve application with `serve delete` and restart it with `serve deploy` to change your `host` and `port`. Keep in mind that this will delete all your running Serve deployment as well!
 :::
