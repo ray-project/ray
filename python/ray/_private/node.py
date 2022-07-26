@@ -859,12 +859,12 @@ class Node:
         """Start the dashboard.
 
         Args:
-            include_dashboard: If true, this will load all modules of the
-                api server to start dashboard. Otherwise, it will only
+            include_dashboard: If true, this will load all dashboard-related modules
+                when starting the API server. Otherwise, it will only
                 start the modules that are not relevant to the dashboard.
             raise_on_failure: If true, this will raise an exception
-                if we fail to start the dashboard. Otherwise it will print
-                a warning if we fail to start the dashboard.
+                if we fail to start the API server. Otherwise it will print
+                a warning if we fail to start the API server.
         """
         self._webui_url, process_info = ray._private.services.start_api_server(
             include_dashboard,
@@ -1072,7 +1072,7 @@ class Node:
             include_dashboard = False
             raise_on_api_server_failure = False
         else:
-            # include_dashboard == True
+            assert include_dashboard == True
             include_dashboard = True
             raise_on_api_server_failure = True
 

@@ -181,6 +181,11 @@ if __name__ == "__main__":
             backup_count=args.logging_rotate_backup_count,
         )
 
+        if args.modules_to_load:
+            modules_to_load = set(args.modules_to_load.strip(" ,").split(","))
+        else:
+            modules_to_load = set()
+
         dashboard = Dashboard(
             args.host,
             args.port,
@@ -190,7 +195,7 @@ if __name__ == "__main__":
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             minimal=args.minimal,
-            modules_to_load=set(args.modules_to_load.strip().split(",")),
+            modules_to_load=modules_to_load,
         )
         loop = asyncio.get_event_loop()
 

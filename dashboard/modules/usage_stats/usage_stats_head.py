@@ -95,8 +95,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
     async def run(self, server):
         self.cluster_metadata = ray_usage_lib.get_cluster_metadata(
-            ray.experimental.internal_kv.internal_kv_get_gcs_client(),
-            num_retries=20,
+            ray.experimental.internal_kv.internal_kv_get_gcs_client()
         )
         self.cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
             os.path.expanduser("~/ray_bootstrap_config.yaml")

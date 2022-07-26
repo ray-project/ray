@@ -1199,15 +1199,15 @@ def start_api_server(
     backup_count: int = 0,
     redirect_logging: bool = True,
 ):
-    """Start a dashboard process.
+    """Start a API server process.
 
     Args:
-        include_dashboard: If true, this will load all modules of the
-            api server to start dashboard. Otherwise, it will only
+        include_dashboard: If true, this will load all dashboard-related modules
+            when starting the API server. Otherwise, it will only
             start the modules that are not relevant to the dashboard.
         raise_on_failure: If true, this will raise an exception
-            if we fail to start the dashboard. Otherwise it will print
-            a warning if we fail to start the dashboard.
+            if we fail to start the API server. Otherwise it will print
+            a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
         temp_dir: The temporary directory used for log files and
@@ -1337,6 +1337,7 @@ def start_api_server(
                 if dashboard_returncode is not None
                 else ""
             )
+            # TODO(sang): Change it to the API server.
             err_msg = "Failed to start the dashboard" + returncode_str
             if logdir:
                 dashboard_log = os.path.join(logdir, "dashboard.log")
@@ -1371,6 +1372,7 @@ def start_api_server(
         if raise_on_failure:
             raise e from e
         else:
+            # TODO(sang): Change it to the API server.
             logger.error(f"Failed to start the dashboard: {e}")
             logger.exception(e)
             return None, None

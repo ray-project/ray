@@ -974,7 +974,7 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
 
 
 def test_dashboard_module_load(tmpdir):
-    """Verify if the head module can load only a selected modules."""
+    """Verify if the head module can load only selected modules."""
     head = DashboardHead(
         "127.0.0.1",
         8265,
