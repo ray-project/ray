@@ -258,7 +258,9 @@ class AgentCollector:
             # Some columns don't exist yet
             # (get created during postprocessing or depend on state_out).
             if data_col not in self.buffers:
-                self._fill_buffer_with_initial_values(data_col, view_req)
+                self._fill_buffer_with_initial_values(
+                    data_col, view_req, build_for_inference=True
+                )
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
@@ -312,7 +314,9 @@ class AgentCollector:
             data_col = view_req.data_col or view_col
 
             if data_col not in self.buffers:
-                is_state = self._fill_buffer_with_initial_values(data_col, view_req)
+                is_state = self._fill_buffer_with_initial_values(
+                    data_col, view_req, build_for_inference=False
+                )
 
                 # we need to skip this view_col if it does not exist in the buffers and
                 # is not an RNN state because it could be the special keys that gets
@@ -494,7 +498,10 @@ class AgentCollector:
         return tree.unflatten_as(self.buffer_structs[key], data)
 
     def _fill_buffer_with_initial_values(
-        self, data_col: str, view_requirement: ViewRequirement
+        self,
+        data_col: str,
+        view_requirement: ViewRequirement,
+        build_for_inference: bool = False,
     ) -> bool:
         """Fills the buffer with the initial values for the given data column.
         for dat_col starting with `state_out`, use the initial states of the policy,
@@ -506,6 +513,7 @@ class AgentCollector:
             view_requirement: The view requirement for the view_col. Normally the view
                 requirement for the data column is used and if it does not exist for
                 some reason the view requirement for view column is used instead.
+            build_for_inference: Whether this is getting called for inference or not.
 
         returns:
             is_state: True if the data_col is an RNN state, False otherwise.
@@ -531,7 +539,7 @@ class AgentCollector:
         else:
             is_state = False
             # only create dummy data during inference
-            if not self.training:
+            if build_for_inference:
                 if isinstance(space, Space):
                     fill_value = get_dummy_batch_for_space(
                         space,
