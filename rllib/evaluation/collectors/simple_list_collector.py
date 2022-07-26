@@ -238,7 +238,7 @@ class _AgentCollector:
                     space = self.view_requirements[data_col].space
                 except KeyError:
                     space = view_req.space
-                    
+
                 # special treatment for state_out_<i>
                 # add them to the buffer in case they don't exist yet
                 if data_col.startswith("state_out"):
@@ -271,14 +271,15 @@ class _AgentCollector:
 
             data = []
             for d in np_data[data_col]:
-                # if shift_arr = [0] the data will be just the last time step (len(d) - 1), if shift_arr = [-1] the data will be just the timestep before the last one (len(d) - 2) and so on.
+                # if shift_arr = [0] the data will be just the last time step
+                # (len(d) - 1), if shift_arr = [-1] the data will be just the timestep
+                # before the last one (len(d) - 2) and so on.
                 element_at_t = d[view_req.shift_arr + len(d) - 1]
                 if element_at_t.shape[0] == 1:
-                        # squeeze to remove the T dimension if it is 1.
-                        element_at_t = element_at_t.squeeze(0)
+                    # squeeze to remove the T dimension if it is 1.
+                    element_at_t = element_at_t.squeeze(0)
                 # add the batch dimension with [None]
                 data.append(element_at_t[None])
-
 
             if len(data) > 0:
                 if data_col not in self.buffer_structs:

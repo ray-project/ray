@@ -76,7 +76,7 @@ class ConnectorContext:
             observation_space=policy.observation_space,
             action_space=policy.action_space,
             view_requirements=policy.view_requirements,
-            is_policy_recurrent=policy.is_recurrent()
+            is_policy_recurrent=policy.is_recurrent(),
         )
 
 

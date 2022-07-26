@@ -1,10 +1,8 @@
-from pprint import pprint
 import gym
 import numpy as np
 import unittest
-import pytest
-from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
+from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
@@ -14,13 +12,12 @@ from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConn
 from ray.rllib.connectors.connector import ConnectorContext, get_connector
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.typing import (
     ActionConnectorDataType,
     AgentConnectorDataType,
     AgentConnectorsOutput,
 )
-
-from ray.rllib.utils.test_utils import check
 
 
 class TestAgentConnector(unittest.TestCase):
@@ -197,7 +194,6 @@ class TestAgentConnector(unittest.TestCase):
         self.assertTrue("prev_actions" in processed[0].data.for_action)
 
 
-# @pytest.mark.skip(reason="activate when view_requirement is fully implemented.")
 class TestViewRequirementConnector(unittest.TestCase):
     def test_vr_connector_respects_training_or_inference_vr_flags(self):
         """Tests that the connector respects the flags within view_requirements (i.e.
@@ -234,11 +230,13 @@ class TestViewRequirementConnector(unittest.TestCase):
             is_policy_recurrent=True,
         )
 
-        for_action_expected = SampleBatch({
-            "both": obs_arr[None], 
-            "only_inference": obs_arr[None],
-            "seq_lens": np.array([1])
-        })
+        for_action_expected = SampleBatch(
+            {
+                "both": obs_arr[None],
+                "only_inference": obs_arr[None],
+                "seq_lens": np.array([1]),
+            }
+        )
 
         for_training_expected_list = [
             # is_training = False
@@ -280,26 +278,27 @@ class TestViewRequirementConnector(unittest.TestCase):
         obs_arrs = np.arange(10)[:, None] + 1
         config = PPOConfig().to_dict()
         ctx = ConnectorContext(
-            view_requirements=view_rq_dict, config=config, is_policy_recurrent=True)
+            view_requirements=view_rq_dict, config=config, is_policy_recurrent=True
+        )
         c = ViewRequirementAgentConnector(ctx)
 
         # keep a running list of observations
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(0, 1, 
-                {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t-1})
-            processed = c([data]) # env.reset() for t == -1 else env.step()
+            data = AgentConnectorDataType(
+                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
+            )
+            processed = c([data])  # env.reset() for t == -1 else env.step()
             for_action = processed[0].data.for_action
             # add cur obs to the list
             obs_list.append(obs)
 
             if t == 0:
-                check(for_action['prev_state'], for_action['state'])
+                check(for_action["prev_state"], for_action["state"])
             else:
                 # prev state should be equal to the prev time step obs
-                check(for_action['prev_state'], obs_list[-2][None])
-
+                check(for_action["prev_state"], obs_list[-2][None])
 
     def test_vr_connector_causal_slice(self):
         """Test that the ViewRequirementConnector can handle slice shifts correctly."""
@@ -316,18 +315,20 @@ class TestViewRequirementConnector(unittest.TestCase):
         obs_arrs = np.arange(10)[:, None] + 1
         config = PPOConfig().to_dict()
         ctx = ConnectorContext(
-            view_requirements=view_rq_dict, config=config, is_policy_recurrent=True)
+            view_requirements=view_rq_dict, config=config, is_policy_recurrent=True
+        )
         c = ViewRequirementAgentConnector(ctx)
 
         # keep a queue of observations
         obs_list = []
         for t, obs in enumerate(obs_arrs):
             # t=0 is the next state of t=-1
-            data = AgentConnectorDataType(0, 1, 
-                {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t-1})
+            data = AgentConnectorDataType(
+                0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
+            )
             processed = c([data])
             for_action = processed[0].data.for_action
-            
+
             if t == 0:
                 obs_list.extend([obs for _ in range(5)])
             else:
@@ -340,19 +341,19 @@ class TestViewRequirementConnector(unittest.TestCase):
 
             # check prev_states
             check(
-                for_action["prev_states"], 
-                np.stack(obs_list)[np.array([-3, -2, -1])][None]
+                for_action["prev_states"],
+                np.stack(obs_list)[np.array([-3, -2, -1])][None],
             )
 
             # check prev_strided_states_even
             check(
-                for_action["prev_strided_states_even"], 
-                np.stack(obs_list)[np.array([-5, -3, -1])][None]
+                for_action["prev_strided_states_even"],
+                np.stack(obs_list)[np.array([-5, -3, -1])][None],
             )
 
             check(
-                for_action["prev_strided_states_odd"], 
-                np.stack(obs_list)[np.array([-4, -2])][None]
+                for_action["prev_strided_states_odd"],
+                np.stack(obs_list)[np.array([-4, -2])][None],
             )
 
     def test_vr_connector_with_multiple_buffers(self):
@@ -365,10 +366,13 @@ class TestViewRequirementConnector(unittest.TestCase):
             # obs[t-context_len+1:t]
             "context_obs": ViewRequirement("obs", shift=f"-{context_len-1}:0"),
             # next_obs[t-context_len+1:t]
-            "context_next_obs": ViewRequirement("obs", shift=f"-{context_len}:1", used_for_compute_actions=False),
+            "context_next_obs": ViewRequirement(
+                "obs", shift=f"-{context_len}:1", used_for_compute_actions=False
+            ),
             # act[t-context_len+1:t]
-            "context_act": ViewRequirement(SampleBatch.ACTIONS, 
-            shift=f"-{context_len-1}:-1"),
+            "context_act": ViewRequirement(
+                SampleBatch.ACTIONS, shift=f"-{context_len-1}:-1"
+            ),
         }
 
         obs_arrs = np.arange(10)[:, None] + 1
@@ -376,9 +380,10 @@ class TestViewRequirementConnector(unittest.TestCase):
         n_steps = obs_arrs.shape[0]
         config = PPOConfig().to_dict()
         ctx = ConnectorContext(
-            view_requirements=view_rq_dict, config=config, is_policy_recurrent=True)
+            view_requirements=view_rq_dict, config=config, is_policy_recurrent=True
+        )
         c = ViewRequirementAgentConnector(ctx)
-        
+
         # keep a queue of length ctx_len of observations
         obs_list, act_list = [], []
         for t in range(n_steps):
@@ -386,9 +391,9 @@ class TestViewRequirementConnector(unittest.TestCase):
             timestep_data = {
                 SampleBatch.NEXT_OBS: obs_arrs[t],
                 SampleBatch.ACTIONS: (
-                    np.zeros_like(act_arrs[0]) if t == 0 else act_arrs[t-1]
+                    np.zeros_like(act_arrs[0]) if t == 0 else act_arrs[t - 1]
                 ),
-                SampleBatch.T: t-1,
+                SampleBatch.T: t - 1,
             }
             data = AgentConnectorDataType(0, 1, timestep_data)
             processed = c([data])
@@ -403,7 +408,7 @@ class TestViewRequirementConnector(unittest.TestCase):
                 obs_list.pop(0)
                 act_list.pop(0)
                 obs_list.append(obs_arrs[t])
-                act_list.append(act_arrs[t-1])
+                act_list.append(act_arrs[t - 1])
 
             self.assertTrue("context_next_obs" not in for_action)
             check(for_action["context_obs"], np.stack(obs_list)[None])
@@ -412,7 +417,6 @@ class TestViewRequirementConnector(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
-
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

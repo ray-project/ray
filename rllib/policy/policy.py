@@ -1213,7 +1213,7 @@ class Policy(metaclass=ABCMeta):
                     )
                 else:
                     ret[view_col] = [view_req.space for _ in range(batch_size)]
-                
+
                 # TODO: @kourosh remove these comments after this is tested
                 foo = None
                 if view_req.shift_from is not None:
@@ -1240,7 +1240,6 @@ class Policy(metaclass=ABCMeta):
 
                 check(foo, ret[view_col])
 
-                    
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
         return SampleBatch(ret)
