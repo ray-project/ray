@@ -307,6 +307,7 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
             "python.ray.workflow.tests.test_basic_workflows_2."
             "test_get_named_step_default.locals.factorial"
         )
+
         if i != 0:
             step_name += "_" + str(i)
         # All outputs will be 120
@@ -327,18 +328,6 @@ def test_get_named_step_duplicate(workflow_start_regular):
     # The inner will be checkpointed after the outer. And there is a duplicate
     # for the name. suffix _1 is added automatically
     assert workflow.get_output("duplicate", name="f_1") == 20
-
-
-def test_no_init_run(shutdown_only):
-    @ray.remote
-    def f():
-        pass
-
-    workflow.run(f.bind())
-
-
-def test_no_init_api(shutdown_only):
-    workflow.list_all()
 
 
 if __name__ == "__main__":

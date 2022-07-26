@@ -14,6 +14,7 @@ from ray.workflow.exceptions import (
     WorkflowCancellationError,
     WorkflowNotFoundError,
     WorkflowNotResumableError,
+    WorkflowStillActiveError,
 )
 from ray.workflow.workflow_executor import WorkflowExecutor
 from ray.workflow.workflow_state import WorkflowExecutionState
@@ -283,8 +284,35 @@ class WorkflowManagementActor:
             workflow_ref = await executor.get_task_output_async(task_id)
             task_id, ref = workflow_ref.task_id, workflow_ref.ref
         if ref is None:
-            ref = load_step_output_from_storage.remote(workflow_id, task_id)
+            wf_store = workflow_storage.WorkflowStorage(workflow_id)
+            tid = wf_store.inspect_output(task_id)
+            if tid is not None:
+                ref = load_step_output_from_storage.remote(workflow_id, task_id)
+            elif task_id is not None:
+                raise ValueError(
+                    f"Cannot load output from task id '{task_id}' in workflow "
+                    f"'{workflow_id}'"
+                )
+            else:
+                raise ValueError(f"Cannot load output from workflow '{workflow_id}'")
         return SelfResolvingObject(ref)
+
+    def delete_workflow(self, workflow_id: str) -> None:
+        """Delete a workflow, its checkpoints, and other information it may have
+           persisted to storage.
+
+        Args:
+            workflow_id: The workflow to delete.
+
+        Raises:
+            WorkflowStillActiveError: The workflow is still active.
+            WorkflowNotFoundError: The workflow does not exist.
+        """
+        if self.is_workflow_non_terminating(workflow_id):
+            raise WorkflowStillActiveError("DELETE", workflow_id)
+        wf_storage = workflow_storage.WorkflowStorage(workflow_id)
+        wf_storage.delete_workflow()
+        self._executed_workflows.discard(workflow_id)
 
     def ready(self) -> None:
         """A no-op to make sure the actor is ready."""
