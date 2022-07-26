@@ -56,6 +56,7 @@ def test_repr(model):
     pattern = re.compile("^TorchPredictor\\((.*)\\)$")
     assert pattern.match(representation)
 
+
 def test_init(model, preprocessor):
     predictor = TorchPredictor(model=model, preprocessor=preprocessor)
 
