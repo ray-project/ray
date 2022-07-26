@@ -29,6 +29,11 @@ class XGBoostPredictor(Predictor):
         self.model = model
         super().__init__(preprocessor)
 
+    def __repr__(self):
+        return (
+            f"XGBoostPredictor(model={self.model}, preprocessor={self._preprocessor})"
+        )
+
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "XGBoostPredictor":
         """Instantiate the predictor from a Checkpoint.

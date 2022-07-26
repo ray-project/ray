@@ -35,6 +35,9 @@ class SklearnPredictor(Predictor):
         self.estimator = estimator
         super().__init__(preprocessor)
 
+    def __repr__(self):
+        return f"SklearnPredictor(estimator={self.estimator}, preprocessor={self._preprocessor})"
+
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "SklearnPredictor":
         """Instantiate the predictor from a Checkpoint.
