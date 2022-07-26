@@ -13,10 +13,9 @@ from ray.workflow.tests import utils
 
 
 @contextmanager
-def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
-    assert use_ray_client in {"no_ray_client", "ray_client"}
+def _init_cluster(storage_url, **params):
     init_kwargs = get_default_fixture_ray_kwargs()
-    init_kwargs.update(kwargs)
+    init_kwargs.update(**params)
     init_kwargs["storage"] = storage_url
 
     # Sometimes pytest does not cleanup all global variables.
@@ -27,21 +26,26 @@ def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
     subprocess.check_call(["ray", "stop", "--force"])
     init_kwargs["ray_client_server_port"] = 10001
     cluster = Cluster()
-    namespace = init_kwargs.pop("namespace")
+    init_kwargs.pop("namespace")  # we do not need namespace in workflow tests
     cluster.add_node(**init_kwargs)
-
-    if use_ray_client == "ray_client":
-        address_info = ray.init(
-            address=f"ray://{cluster.address.split(':')[0]}:10001", namespace=namespace
-        )
-    else:
-        address_info = ray.init(address=cluster.address, namespace=namespace)
-
     utils.clear_marks()
-    yield address_info
-    # The code after the yield will run as teardown code.
+    yield cluster
     ray.shutdown()
     cluster.shutdown()
+
+
+@contextmanager
+def _workflow_start(storage_url, shared, use_ray_client, **kwargs):
+    assert use_ray_client in {"no_ray_client", "ray_client"}
+    with _init_cluster(storage_url, **kwargs) as cluster:
+        if use_ray_client == "ray_client":
+            address_info = ray.init(
+                address=f"ray://{cluster.address.split(':')[0]}:10001"
+            )
+        else:
+            address_info = ray.init(address=cluster.address)
+
+        yield address_info
 
 
 @pytest.fixture(scope="function")
@@ -78,22 +82,10 @@ def _start_cluster_and_get_address(parameter: str) -> str:
 @pytest.fixture(scope="function")
 def workflow_start_cluster(storage_type, request):
     # This code follows the design of "call_ray_start" fixture.
+    param = getattr(request, "param", {})
     with simulate_storage(storage_type) as storage_url:
-        utils.clear_marks()
-        parameter = getattr(
-            request,
-            "param",
-            "ray start --head --num-cpus=1 --min-worker-port=0 "
-            "--max-worker-port=0 --port 0 --storage=" + storage_url,
-        )
-        address = _start_cluster_and_get_address(parameter)
-
-        yield address, storage_url
-
-        # Disconnect from the Ray cluster.
-        ray.shutdown()
-        # Kill the Ray cluster.
-        subprocess.check_call(["ray", "stop"])
+        with _init_cluster(storage_url, **param) as cluster:
+            yield cluster.address, storage_url
 
 
 def pytest_generate_tests(metafunc):
