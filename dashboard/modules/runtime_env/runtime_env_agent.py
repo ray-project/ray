@@ -286,21 +286,15 @@ class RuntimeEnvAgent(
                         "fields in the runtime_env will raise an exception."
                     )
 
-            def setup_plugins():
                 """Run setup for each plugin unless it has already been cached."""
-                for (
-                    plugin_setup_context
-                ) in self._plugin_manager.sorted_plugin_setup_contexts():
-                    plugin = plugin_setup_context.class_instance
-                    uri_cache = plugin_setup_context.uri_cache
-                    create_for_plugin_if_needed(
-                        runtime_env, plugin, uri_cache, context, per_job_logger
-                    )
-
-            loop = asyncio.get_event_loop()
-            # Plugins setup method is sync process, running in other threads
-            # is to avoid blocking asyncio loop
-            await loop.run_in_executor(None, setup_plugins)
+            for (
+                plugin_setup_context
+            ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                plugin = plugin_setup_context.class_instance
+                uri_cache = plugin_setup_context.uri_cache
+                await create_for_plugin_if_needed(
+                    runtime_env, plugin, uri_cache, context, per_job_logger
+                )
 
             return context
 

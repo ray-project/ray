@@ -2,7 +2,7 @@ import logging
 import os
 import json
 from abc import ABC
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Type
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
@@ -41,7 +41,7 @@ class RuntimeEnvPlugin(ABC):
     def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         return []
 
-    def create(
+    async def create(
         self,
         uri: Optional[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
@@ -122,7 +122,7 @@ class RuntimeEnvPluginManager:
             plugin_configs = json.loads(plugin_config_str)
             self.load_plugins(plugin_configs)
 
-    def validate_plugin_class(self, plugin_class: type) -> None:
+    def validate_plugin_class(self, plugin_class: Type[RuntimeEnvPlugin]) -> None:
         if not issubclass(plugin_class, RuntimeEnvPlugin):
             raise RuntimeError(
                 f"Invalid runtime env plugin class {plugin_class}. "
@@ -223,7 +223,7 @@ class RuntimeEnvPluginManager:
         return sorted(self.plugins.values(), key=lambda x: x.priority)
 
 
-def create_for_plugin_if_needed(
+async def create_for_plugin_if_needed(
     runtime_env,
     plugin: RuntimeEnvPlugin,
     uri_cache: URICache,
@@ -243,12 +243,12 @@ def create_for_plugin_if_needed(
             f"No URIs for runtime env plugin {plugin.name}; "
             "create always without checking the cache."
         )
-        plugin.create(None, runtime_env, context, logger=logger)
+        await plugin.create(None, runtime_env, context, logger=logger)
 
     for uri in uris:
         if uri not in uri_cache:
             logger.debug(f"Cache miss for URI {uri}.")
-            size_bytes = plugin.create(uri, runtime_env, context, logger=logger)
+            size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)
             uri_cache.add(uri, size_bytes, logger=logger)
         else:
             logger.debug(f"Cache hit for URI {uri}.")

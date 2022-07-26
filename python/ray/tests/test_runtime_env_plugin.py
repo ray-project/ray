@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -105,7 +106,7 @@ class MyPluginForHang(RuntimeEnvPlugin):
     def validate(runtime_env_dict: dict) -> str:
         return "True"
 
-    def create(
+    async def create(
         self,
         uri: str,
         runtime_env: dict,
@@ -118,7 +119,7 @@ class MyPluginForHang(RuntimeEnvPlugin):
         # first setup
         if my_plugin_setup_times == 1:
             # sleep forever
-            time.sleep(3600)
+            await asyncio.sleep(3600)
 
     def modify_context(
         self,
@@ -185,14 +186,14 @@ class DummyPlugin(RuntimeEnvPlugin):
 class HangPlugin(DummyPlugin):
     name = HANG_PLUGIN_NAME
 
-    def create(
+    async def create(
         self,
         uri: str,
         runtime_env: "RuntimeEnv",
         ctx: RuntimeEnvContext,
         logger: logging.Logger,  # noqa: F821
     ) -> float:
-        time.sleep(3600)
+        await asyncio.sleep(3600)
 
 
 @pytest.mark.parametrize(
