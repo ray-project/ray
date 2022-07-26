@@ -43,9 +43,18 @@ Run any workload. In this example, you will use the following script that runs 2
 
 Now, let's see the summarized states of tasks. If it doesn't return the output immediately, retry the command.
 
-.. code-block:: bash
+.. tabbed:: CLI
 
-    ray summary tasks
+    .. code-block:: bash
+
+        ray summary tasks
+
+.. tabbed:: Python SDK
+
+    .. code-block:: python
+
+        import ray
+        ray.experimental.state.api.summary_tasks()
 
 .. code-block:: text
 
