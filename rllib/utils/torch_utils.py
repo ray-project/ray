@@ -71,7 +71,7 @@ def apply_grad_clipping(
                     clip_value = policy.config["grad_clip"]
                     global_norm = 0
                     for _device_name, device_params in device_param_map.items():
-                        if _device_name.find("cuda") != -1:
+                        if str(_device_name).find("cuda") != -1:
                             _device_timer = gpu_clip_timer
                         elif _device_name == "cpu":
                             _device_timer = cpu_clip_timer
