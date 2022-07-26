@@ -177,7 +177,6 @@ class MARWIL(Algorithm):
         # Call super's validation method.
         super().validate_config(config)
 
-        # TODO: Move this to super()?
         if config["beta"] < 0.0 or config["beta"] > 1.0:
             raise ValueError("`beta` must be within 0.0 and 1.0!")
 
