@@ -44,7 +44,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         )
 
     @routes.get("/api/serve/deployments/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployments(self, req: Request) -> Response:
         from ray.serve.context import get_global_client
 
@@ -56,7 +56,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         )
 
     @routes.get("/api/serve/deployments/status")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployment_statuses(self, req: Request) -> Response:
         from ray.serve.context import get_global_client
         from ray.serve.schema import serve_status_to_schema
@@ -70,7 +70,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         )
 
     @routes.delete("/api/serve/deployments/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def delete_serve_application(self, req: Request) -> Response:
         from ray import serve
 
@@ -78,7 +78,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         return Response()
 
     @routes.put("/api/serve/deployments/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve.context import get_global_client
         from ray.serve.schema import ServeApplicationSchema
@@ -94,3 +94,9 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @staticmethod
     def is_minimal_module():
         return False
+
+
+# serve.start(
+#     detached=True,
+#     http_options={"host": "0.0.0.0", "location": "EveryNode"},
+# )
