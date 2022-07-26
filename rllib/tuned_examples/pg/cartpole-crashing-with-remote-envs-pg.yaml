@@ -22,10 +22,5 @@ cartpole-crashing-with-remote-envs-pg:
         # Use parallel remote envs.
         remote_worker_envs: true
 
-        # Disable env checking. Otherwise, RolloutWorkers will crash during
-        # initialization, which is not covered by the
-        # `restart_failed_sub_environments=True` failure tolerance mode.
-        disable_env_checking: true
-
         # Switch on resiliency for failed sub environments (within a vectorized stack).
         restart_failed_sub_environments: true
