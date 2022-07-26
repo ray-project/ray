@@ -57,6 +57,14 @@ RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
 RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
+
+/// If GCS restarts, before the first heatbeat is sent,
+/// gcs_failover_worker_reconnect_timeout is used for the threshold
+/// of the raylet. This is very useful given that raylet might need
+/// a while to reconnect to the GCS, for example, when GCS is available
+/// but not reachable to raylet.
+RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
+
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
@@ -509,6 +517,10 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
+
+/// The core worker heartbeat interval. During heartbeat, it'll
+/// report the loads to raylet.
+RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000);
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
