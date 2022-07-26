@@ -100,12 +100,13 @@ class ImageFolderDatasource(BinaryDatasource):
 
         # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
         # in the same way as the paths passed to `_get_class_from_path`.
-        paths, _ = _resolve_paths_and_filesystem([root])
+        paths, filesystem = _resolve_paths_and_filesystem([root])
         root = paths[0]
 
         return super().create_reader(
             paths=paths,
             partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
+            filesystem=filesystem,
             root=root,
             size=size,
         )
