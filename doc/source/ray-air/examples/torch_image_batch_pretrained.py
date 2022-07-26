@@ -30,7 +30,9 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
 
 data_url = "s3://anonymous@air-example-data-2/1G-image-data-synthetic-raw"
 print(f"Running GPU batch prediction with 1GB data from {data_url}")
-dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[data_url])
+dataset = ray.data.read_datasource(
+    ImageFolderDatasource(), root=data_url, size=(256, 256)
+)
 
 model = resnet18(pretrained=True)
 

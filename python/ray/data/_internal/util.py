@@ -1,3 +1,4 @@
+import importlib
 import logging
 from typing import Union, Optional, TYPE_CHECKING
 from types import ModuleType
@@ -159,3 +160,24 @@ def _estimate_available_parallelism() -> int:
     If we are currently in a placement group, take that into account."""
     cur_pg = ray.util.get_current_placement_group()
     return _estimate_avail_cpus(cur_pg)
+
+
+def _check_import(obj, *, module: str, package: str) -> None:
+    """Check if a required dependency is installed.
+
+    If `module` can't be imported, this function raises an `ImportError` instructing
+    the user to install `package` from PyPI.
+
+    Args:
+        obj: The object that has a dependency.
+        module: The name of the module to import.
+        package: The name of the package on PyPI.
+    """
+    try:
+        importlib.import_module(module)
+    except ImportError:
+        raise ImportError(
+            f"`{obj.__class__.__name__}` depends on '{package}', but '{package}' "
+            f"couldn't be imported. You can install '{package}' by running `pip "
+            f"install {package}`."
+        )
