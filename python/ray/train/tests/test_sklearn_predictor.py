@@ -46,11 +46,11 @@ def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     preprocessor.attr = 1
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, MODEL_KEY), "wb") as f:
-            cpickle.dump(model, f)
-        save_preprocessor_to_dir(preprocessor, tmpdir)
-
-        checkpoint = Checkpoint.from_dict(Checkpoint.from_directory(tmpdir).to_dict())
+        checkpoint = SklearnCheckpoint.from_estimator(
+            estimator=model, path=tmpdir, preprocessor=preprocessor
+        )
+        # Serialize to dict so we can remove the temporary directory
+        checkpoint = SklearnCheckpoint.from_dict(checkpoint.to_dict())
 
     return checkpoint, preprocessor
 

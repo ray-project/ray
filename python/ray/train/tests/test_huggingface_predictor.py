@@ -100,6 +100,7 @@ def create_checkpoint():
         model = AutoModelForCausalLM.from_config(model_config)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
         checkpoint = HuggingFaceCheckpoint.from_model(model, tokenizer, path=tmpdir)
+        # Serialize to dict so we can remove the temporary directory
         return HuggingFaceCheckpoint.from_dict(checkpoint.to_dict())
 
 

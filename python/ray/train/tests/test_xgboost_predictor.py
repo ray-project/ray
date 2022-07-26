@@ -41,15 +41,11 @@ def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     preprocessor.attr = 1
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # This somewhat convoluted procedure is the same as in the
-        # Trainers. The reason for saving model to disk instead
-        # of directly to the dict as bytes is due to all callbacks
-        # following save to disk logic. GBDT models are small
-        # enough that IO should not be an issue.
-        model.save_model(os.path.join(tmpdir, MODEL_KEY))
-        save_preprocessor_to_dir(preprocessor, tmpdir)
-
-        checkpoint = Checkpoint.from_dict(Checkpoint.from_directory(tmpdir).to_dict())
+        checkpoint = XGBoostCheckpoint.from_model(
+            booster=model, path=tmpdir, preprocessor=preprocessor
+        )
+        # Serialize to dict so we can remove the temporary directory
+        checkpoint = XGBoostCheckpoint.from_dict(checkpoint.to_dict())
 
     return checkpoint, preprocessor
 
