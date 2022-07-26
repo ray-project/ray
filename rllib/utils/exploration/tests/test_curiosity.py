@@ -267,7 +267,7 @@ class TestCuriosity(unittest.TestCase):
                 run_config=air.RunConfig(stop=stop, verbose=1),
             ).fit()
             check_learning_achieved(results, min_reward)
-            iters = results.trials[0].last_result["training_iteration"]
+            iters = results.get_best_result().metrics["training_iteration"]
             print("Reached in {} iterations.".format(iters))
 
             # config_wo = config.copy()

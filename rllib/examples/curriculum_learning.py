@@ -121,7 +121,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    tuner = tune.Tunre(
+    tuner = tune.Tuner(
         args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
     )
     results = tuner.fit()

@@ -485,7 +485,7 @@ def check_learning_achieved(
         (
             row["episode_reward_mean"]
             if not evaluation
-            else row["evaluation"]["episode_reward_mean"]
+            else row["evaluation/episode_reward_mean"]
         )
         for _, row in tune_results.get_dataframe().iterrows()
     ]
