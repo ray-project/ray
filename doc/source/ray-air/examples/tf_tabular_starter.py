@@ -5,16 +5,10 @@
 import ray
 from ray.data.preprocessors import StandardScaler
 from ray.air import train_test_split
+from ray.air.config import ScalingConfig
 
-# Load data.
-import pandas as pd
 
-bc_df = pd.read_csv(
-    "https://air-example-data.s3.us-east-2.amazonaws.com/breast_cancer.csv"
-)
-dataset = ray.data.from_pandas(bc_df)
-# Optionally, read directly from s3
-# dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
+dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
 train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
@@ -51,10 +45,11 @@ from tensorflow.keras import layers
 
 from ray import train
 from ray.air import session
+from ray.air.config import ScalingConfig
 from ray.air.callbacks.keras import Callback as KerasCallback
 from ray.train.tensorflow import (
     TensorflowTrainer,
-    to_air_checkpoint,
+    TensorflowCheckpoint,
     prepare_dataset_shard,
 )
 
@@ -137,12 +132,11 @@ trainer = TensorflowTrainer(
         "num_features": num_features,
         "lr": 0.0001,
     },
-    scaling_config={
-        "num_workers": 2,  # Number of data parallel training workers
-        "use_gpu": False,
-        # trainer_resources=0 so that the example works on Colab.
-        "trainer_resources": {"CPU": 0},
-    },
+    scaling_config=ScalingConfig(
+        num_workers=2,  # Number of data parallel training workers
+        use_gpu=False,
+        trainer_resources={"CPU": 0},  # so that the example works on Colab.
+    ),
     datasets={"train": train_dataset},
     preprocessor=preprocessor,
 )
@@ -180,7 +174,7 @@ print("Best Result:", best_result)
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import TensorflowPredictor
 
-# You can also create a checkpoint from a trained model using `to_air_checkpoint`.
+# You can also create a checkpoint from a trained model using `TensorflowCheckpoint`.
 checkpoint = best_result.checkpoint
 
 batch_predictor = BatchPredictor.from_checkpoint(

@@ -1,7 +1,7 @@
 .. _air-api-ref:
 
-Ray AIR API
-===========
+API Reference
+=============
 
 .. contents::
     :local:
@@ -45,6 +45,8 @@ Abstract Classes
     :members:
     :show-inheritance:
 
+.. _air-results-ref:
+
 Training Result
 ###############
 
@@ -62,8 +64,6 @@ Trainer Configs
 
 .. automodule:: ray.air.config
     :members:
-
-.. autoclass:: ray.air.config.CheckpointConfig
 
 Checkpoint
 ~~~~~~~~~~
@@ -112,8 +112,6 @@ Serving
 .. autoclass:: ray.serve.air_integrations.PredictorDeployment
 
 .. autoclass:: ray.serve.air_integrations.PredictorWrapper
-
-.. _air-results-ref:
 
 Trainer and Predictor Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

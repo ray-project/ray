@@ -2,7 +2,7 @@
 # isort: skip_file
 
 # __checkpoint_quick_start__
-from ray.train.tensorflow import to_air_checkpoint
+from ray.train.tensorflow import TensorflowCheckpoint
 import tensorflow as tf
 
 # This can be a trained model.
@@ -18,29 +18,24 @@ def build_model() -> tf.keras.Model:
 
 model = build_model()
 
-checkpoint = to_air_checkpoint(model)
+checkpoint = TensorflowCheckpoint.from_model(model)
 # __checkpoint_quick_end__
 
 
 # __use_trainer_checkpoint_start__
-import pandas as pd
 import ray
 from ray.air import train_test_split
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 
 
-bc_df = pd.read_csv(
-    "https://air-example-data.s3.us-east-2.amazonaws.com/breast_cancer.csv"
-)
-dataset = ray.data.from_pandas(bc_df)
-# Optionally, read directly from s3
-# dataset = ray.data.read_csv("s3://air-example-data/breast_cancer.csv")
+dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
 train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
 
 trainer = XGBoostTrainer(
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     label_column="target",
     params={
         "objective": "binary:logistic",
@@ -59,9 +54,7 @@ from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostPredictor
 
 # Create a test dataset by dropping the target column.
-test_dataset = valid_dataset.map_batches(
-    lambda df: df.drop("target", axis=1), batch_format="pandas"
-)
+test_dataset = valid_dataset.drop_columns(["target"])
 
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
 
