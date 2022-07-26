@@ -2,7 +2,7 @@ cartpole-crashing-pg:
     env: ray.rllib.examples.env.cartpole_crashing.CartPoleCrashing
     run: PG
     stop:
-        evaluation/episode_reward_mean: 180.0
+        evaluation/episode_reward_mean: 100.0
         num_env_steps_sampled: 150000
     config:
         # Works for both torch and tf.
@@ -23,11 +23,6 @@ cartpole-crashing-pg:
         num_envs_per_worker: 5
         # Switch on resiliency for failed sub environments (within a vectorized stack).
         restart_failed_sub_environments: true
-
-        # Disable env checking. Otherwise, RolloutWorkers will crash during
-        # initialization, which is not covered by the
-        # `restart_failed_sub_environments=True` failure tolerance mode.
-        disable_env_checking: true
 
         evaluation_num_workers: 2
         evaluation_interval: 1
