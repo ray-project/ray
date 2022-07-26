@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+import shutil
 
 import pytest
 import pandas as pd
@@ -11,6 +12,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
+from ray.tune.tests.tune_test_util import create_tune_experiment_checkpoint
 from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
@@ -31,7 +33,6 @@ def test_result_grid(ray_start_2_cpus):
                 f.write(json.dumps({"step": 0}))
 
     analysis = tune.run(f, config={"a": 1})
-    analysis._legacy_checkpoint = False
     result_grid = ResultGrid(analysis)
     result = result_grid[0]
     assert isinstance(result.checkpoint, Checkpoint)
@@ -98,7 +99,6 @@ def test_result_grid_no_checkpoint(ray_start_2_cpus):
         pass
 
     analysis = tune.run(f)
-    analysis._legacy_checkpoint = False
     result_grid = ResultGrid(analysis)
     result = result_grid[0]
     assert result.checkpoint is None
@@ -190,6 +190,22 @@ def test_best_result_no_report(ray_start_2_cpus):
         result_grid.get_best_result(metric="x", mode="max")
 
 
+def test_result_repr(ray_start_2_cpus):
+    def f(config):
+        from ray.air import session
+
+        session.report({"loss": 1})
+
+    tuner = tune.Tuner(f, param_space={"x": tune.grid_search([1, 2])})
+    result_grid = tuner.fit()
+    result = result_grid[0]
+
+    from ray.tune.result import AUTO_RESULT_KEYS
+
+    representation = result.__repr__()
+    assert not any(key in representation for key in AUTO_RESULT_KEYS)
+
+
 def test_no_metric_mode(ray_start_2_cpus):
     def f(config):
         tune.report(x=1)
@@ -213,7 +229,6 @@ def test_result_grid_df(ray_start_2_cpus):
         tune.report(metric=config["nested"]["param"] * 3)
 
     analysis = tune.run(f, config={"nested": {"param": tune.grid_search([1, 2])}})
-    analysis._legacy_checkpoint = False
     result_grid = ResultGrid(analysis)
 
     assert len(result_grid) == 2
@@ -231,6 +246,31 @@ def test_result_grid_df(ray_start_2_cpus):
     assert sorted(df["metric"]) == [1, 2]
 
     assert sorted(df["config/nested/param"]) == [1, 2]
+
+
+def test_num_errors_terminated(tmpdir):
+    error_file = tmpdir / "error.txt"
+    with open(error_file, "w") as fp:
+        fp.write("Test error\n")
+
+    trials = [Trial("foo", stub=True) for i in range(10)]
+    trials[4].status = Trial.ERROR
+    trials[6].status = Trial.ERROR
+    trials[8].status = Trial.ERROR
+
+    trials[4].error_file = error_file
+    trials[6].error_file = error_file
+    trials[8].error_file = error_file
+
+    trials[3].status = Trial.TERMINATED
+    trials[5].status = Trial.TERMINATED
+
+    experiment_dir = create_tune_experiment_checkpoint(trials)
+    result_grid = ResultGrid(tune.ExperimentAnalysis(experiment_dir))
+    assert len(result_grid.errors) == 3
+    assert result_grid.num_errors == 3
+    assert result_grid.num_terminated == 2
+    shutil.rmtree(experiment_dir)
 
 
 if __name__ == "__main__":

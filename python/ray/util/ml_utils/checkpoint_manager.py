@@ -6,20 +6,18 @@ import logging
 import numbers
 import os
 import shutil
-import tempfile
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray.air import Checkpoint
-from ray.tune.result import NODE_IP
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.air import Checkpoint, CheckpointConfig
+from ray.air.config import MAX
+from ray.util import log_once
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.ml_utils.util import is_nan
 
-MAX = "max"
-MIN = "min"
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +63,8 @@ class _TrackedCheckpoint:
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
     ):
+        from ray.tune.result import NODE_IP
+
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
         self.storage_mode = storage_mode
@@ -130,16 +130,23 @@ class _TrackedCheckpoint:
             checkpoint_data = ray.get(checkpoint_data)
 
         if isinstance(checkpoint_data, str):
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            try:
+                checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            except FileNotFoundError:
+                if log_once("checkpoint_not_available"):
+                    logger.error(
+                        f"The requested checkpoint is not available on this node, "
+                        f"most likely because you are using Ray client or disabled "
+                        f"checkpoint synchronization. To avoid this, enable checkpoint "
+                        f"synchronization to cloud storage by specifying a "
+                        f"`SyncConfig`. The checkpoint may be available on a different "
+                        f"node - please check this location on worker nodes: "
+                        f"{checkpoint_data}"
+                    )
+                return None
             checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                TrainableUtil.create_from_pickle(checkpoint_data, tmpdir)
-                # Double wrap in checkpoint so we hold the data in memory and
-                # can remove the temp directory
-                checkpoint = Checkpoint.from_dict(
-                    Checkpoint.from_directory(tmpdir).to_dict()
-                )
+            checkpoint = Checkpoint.from_bytes(checkpoint_data)
         elif isinstance(checkpoint_data, dict):
             checkpoint = Checkpoint.from_dict(checkpoint_data)
         else:
@@ -184,67 +191,6 @@ class _HeapCheckpointWrapper:
 
     def __repr__(self):
         return f"_HeapCheckpoint({repr(self.tracked_checkpoint)})"
-
-
-# Move to ray.air.config when ml_utils is deprecated.
-# Doing it now causes a circular import.
-@dataclass
-@PublicAPI(stability="alpha")
-class CheckpointConfig:
-    """Configurable parameters for defining the checkpointing strategy.
-
-    Default behavior is to persist all checkpoints to disk. If
-    ``num_to_keep`` is set, the default retention policy is to keep the
-    checkpoints with maximum timestamp, i.e. the most recent checkpoints.
-
-    Args:
-        num_to_keep: The number of checkpoints to keep
-            on disk for this run. If a checkpoint is persisted to disk after
-            there are already this many checkpoints, then an existing
-            checkpoint will be deleted. If this is ``None`` then checkpoints
-            will not be deleted. If this is ``0`` then no checkpoints will be
-            persisted to disk.
-        checkpoint_score_attribute: The attribute that will be used to
-            score checkpoints to determine which checkpoints should be kept
-            on disk when there are greater than ``num_to_keep`` checkpoints.
-            This attribute must be a key from the checkpoint
-            dictionary which has a numerical value. Per default, the last
-            checkpoints will be kept.
-        checkpoint_score_order: Either "max" or "min".
-            If "max", then checkpoints with highest values of
-            ``checkpoint_score_attribute`` will be kept.
-            If "min", then checkpoints with lowest values of
-            ``checkpoint_score_attribute`` will be kept.
-    """
-
-    num_to_keep: Optional[int] = None
-    checkpoint_score_attribute: Optional[str] = None
-    checkpoint_score_order: str = MAX
-
-    def __post_init__(self):
-        if self.num_to_keep is not None and self.num_to_keep < 0:
-            raise ValueError(
-                f"Received invalid num_to_keep: "
-                f"{self.num_to_keep}. "
-                f"Must be None or non-negative integer."
-            )
-        if self.checkpoint_score_order not in (MAX, MIN):
-            raise ValueError(
-                f"checkpoint_score_order must be either " f'"{MAX}" or "{MIN}".'
-            )
-
-    @property
-    def _tune_legacy_checkpoint_score_attr(self) -> Optional[str]:
-        """Same as ``checkpoint_score_attr`` in ``tune.run``.
-
-        Only used for Legacy API compatibility.
-        """
-        if self.checkpoint_score_attribute is None:
-            return self.checkpoint_score_attribute
-        prefix = ""
-        if self.checkpoint_score_order == MIN:
-            prefix = "min-"
-        return f"{prefix}{self.checkpoint_score_attribute}"
 
 
 # Alias for backwards compatibility

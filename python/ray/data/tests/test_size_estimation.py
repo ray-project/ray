@@ -161,7 +161,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
         ray.data.range(200000, parallelism=1).map(
             lambda _: uuid.uuid4().hex
         ).write_parquet(path)
-        return ray.data.read_parquet(path)
+        return ray.data.read_parquet(path, parallelism=200)
 
     # 20MiB
     ctx.target_max_block_size = 20_000_000

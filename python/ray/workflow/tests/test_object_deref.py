@@ -12,6 +12,11 @@ from ray import workflow
 
 
 def test_objectref_inputs(workflow_start_regular_shared):
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # TODO(suquark): Fix workflow with ObjectRefs as inputs under client mode.
+    skip_client_mode_test()
+
     @ray.remote
     def nested_workflow(n: int):
         if n <= 0:
@@ -33,14 +38,14 @@ def test_objectref_inputs(workflow_start_regular_shared):
         except Exception as e:
             return False, str(e)
 
-    output, s = workflow.create(
+    output, s = workflow.run(
         deref_check.bind(
             ray.put(42),
             nested_workflow.bind(10),
             [nested_workflow.bind(9)],
             [{"output": nested_workflow.bind(7)}],
         )
-    ).run()
+    )
     assert output is True, s
 
 
@@ -57,10 +62,10 @@ def test_objectref_outputs(workflow_start_regular_shared):
     def return_objectrefs() -> List[ObjectRef]:
         return [ray.put(x) for x in range(5)]
 
-    single = workflow.create(nested_ref_workflow.bind()).run()
+    single = workflow.run(nested_ref_workflow.bind())
     assert ray.get(ray.get(single)) == 42
 
-    multi = workflow.create(return_objectrefs.bind()).run()
+    multi = workflow.run(return_objectrefs.bind())
     assert ray.get(multi) == list(range(5))
 
 
@@ -77,7 +82,7 @@ def test_object_deref(workflow_start_regular_shared):
 
     @ray.remote
     def return_workflow():
-        return workflow.create(empty_list.bind())
+        return empty_list.bind()
 
     @ray.remote
     def return_data() -> ray.ObjectRef:
@@ -88,7 +93,7 @@ def test_object_deref(workflow_start_regular_shared):
         return ray.get(data)
 
     # test we are forbidden from directly passing workflow to Ray.
-    x = workflow.create(empty_list.bind())
+    x = empty_list.bind()
     with pytest.raises(ValueError):
         ray.put(x)
     with pytest.raises(ValueError):
@@ -98,7 +103,7 @@ def test_object_deref(workflow_start_regular_shared):
 
     # test return object ref
     obj = return_data.bind()
-    arr: np.ndarray = workflow.create(receive_data.bind(obj)).run()
+    arr: np.ndarray = workflow.run(receive_data.bind(obj))
     assert np.array_equal(arr, np.ones(4096))
 
 

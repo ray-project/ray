@@ -458,10 +458,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
-  /// \param[in] serialized_retry_exception_allowlist A serialized exception list
-  /// that serves as an allowlist of frontend-language exceptions/errors that should be
-  /// retried. Default is an empty string, which will be treated as an allow-all in the
-  /// language worker.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
@@ -470,8 +466,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       int max_retries,
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_allowlist = "");
+      const std::string &debugger_breakpoint);
 
   /// Create an actor.
   ///
@@ -824,8 +819,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
-  static rpc::RuntimeEnv OverrideRuntimeEnv(
-      const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent);
+  static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -939,7 +933,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs,
-                     bool *is_retryable_error);
+                     bool *is_application_level_error);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,
@@ -1258,7 +1252,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::unique_ptr<rpc::JobConfig> job_config_;
 
-  std::shared_ptr<rpc::RuntimeEnv> job_runtime_env_;
+  std::shared_ptr<json> job_runtime_env_;
+
+  std::shared_ptr<rpc::RuntimeEnvInfo> job_runtime_env_info_;
 
   /// Simple container for per function task counters. The counters will be
   /// keyed by the function name in task spec.

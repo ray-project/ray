@@ -58,4 +58,4 @@ def download_all(urls: List[str]) -> None:
 
 if __name__ == "__main__":
     res = download_all.bind(FILES_TO_PROCESS)
-    workflow.create(res).run()
+    workflow.run(res)

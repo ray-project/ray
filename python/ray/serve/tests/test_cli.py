@@ -16,6 +16,8 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.serve.scripts import remove_ansi_escape_sequences
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -44,13 +46,6 @@ def assert_deployments_live(names: List[str]):
     assert all_deployments_live, f'"{nonliving_deployment}" deployment is not live.'
 
 
-@pytest.fixture
-def ray_start_stop():
-    subprocess.check_output(["ray", "start", "--head"])
-    yield
-    subprocess.check_output(["ray", "stop", "--force"])
-
-
 def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "start"])
     subprocess.check_output(["serve", "shutdown", "-y"])
@@ -59,7 +54,6 @@ def test_start_shutdown(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
@@ -107,7 +101,7 @@ def test_deploy(ray_start_stop):
 
         print("Deploying arithmetic config.")
         deploy_response = subprocess.check_output(
-            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:8265/"]
+            ["serve", "deploy", arithmetic_file_name, "-a", "http://localhost:52365/"]
         )
         assert success_message_fragment in deploy_response
         print("Deploy request sent successfully.")
@@ -170,7 +164,7 @@ def test_status(ray_start_stop):
 
     wait_for_condition(lambda: num_live_deployments() == 5, timeout=15)
     status_response = subprocess.check_output(
-        ["serve", "status", "-a", "http://localhost:8265/"]
+        ["serve", "status", "-a", "http://localhost:52365/"]
     )
     serve_status = yaml.safe_load(status_response)
 
@@ -192,6 +186,34 @@ def test_status(ray_start_stop):
         lambda: time.time() > serve_status["app_status"]["deployment_timestamp"],
         timeout=2,
     )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_error_msg_format(ray_start_stop):
+    """Deploys a faulty config file and checks its status."""
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "deployment_fail.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    status_response = subprocess.check_output(
+        ["serve", "status", "-a", "http://localhost:52365/"]
+    )
+    serve_status = yaml.safe_load(status_response)
+    print("serve_status", serve_status)
+
+    def check_for_failed_deployment():
+        app_status = ServeSubmissionClient("http://localhost:52365").get_status()
+        return (
+            len(serve_status["deployment_statuses"]) == 0
+            and serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and remove_ansi_escape_sequences(app_status["app_status"]["message"])
+            in serve_status["app_status"]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment, timeout=2)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -420,7 +442,6 @@ def test_build(ray_start_stop, node):
 @pytest.mark.parametrize("use_command", [True, False])
 def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     """Check that CLI is idempotent even if controller dies."""
-
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )

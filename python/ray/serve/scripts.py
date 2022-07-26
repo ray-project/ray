@@ -7,6 +7,7 @@ from typing import Optional, Union
 
 import click
 import yaml
+import re
 
 import ray
 from ray import serve
@@ -17,7 +18,6 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
 from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
@@ -25,6 +25,7 @@ from ray.serve.constants import (
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
+from ray.serve._private import api as _private_api
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -37,10 +38,64 @@ RAY_INIT_ADDRESS_HELP_STR = (
     "using the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard (defaults to "
-    "http://localhost:8265). Can also be specified using the "
-    "RAY_ADDRESS environment variable."
+    "Address to use to query the Ray dashboard agent (defaults to "
+    "http://localhost:52365). Can also be specified using the "
+    "RAY_AGENT_ADDRESS environment variable."
 )
+
+
+# See https://stackoverflow.com/a/33300001/11162437
+def str_presenter(dumper: yaml.Dumper, data):
+    """
+    A custom representer to write multi-line strings in block notation using a literal
+    style.
+
+    Ensures strings with newline characters print correctly.
+    """
+
+    if len(data.splitlines()) > 1:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+# See https://stackoverflow.com/a/14693789/11162437
+def remove_ansi_escape_sequences(input: str):
+    """Removes ANSI escape sequences in a string"""
+    ansi_escape = re.compile(
+        r"""
+        \x1B  # ESC
+        (?:   # 7-bit C1 Fe (except CSI)
+            [@-Z\\-_]
+        |     # or [ for CSI, followed by a control sequence
+            \[
+            [0-?]*  # Parameter bytes
+            [ -/]*  # Intermediate bytes
+            [@-~]   # Final byte
+        )
+    """,
+        re.VERBOSE,
+    )
+
+    return ansi_escape.sub("", input)
+
+
+def process_dict_for_yaml_dump(data):
+    """
+    Removes ANSI escape sequences recursively for all strings in dict.
+
+    We often need to use yaml.dump() to print dictionaries that contain exception
+    tracebacks, which can contain ANSI escape sequences that color printed text. However
+    yaml.dump() will format the tracebacks incorrectly if ANSI escape sequences are
+    present, so we need to remove them before dumping.
+    """
+
+    for k, v in data.items():
+        if isinstance(v, dict):
+            data[k] = process_dict_for_yaml_dump(v)
+        elif isinstance(v, str):
+            data[k] = remove_ansi_escape_sequences(v)
+
+    return data
 
 
 @click.group(help="CLI for managing Serve instances on a Ray cluster.")
@@ -78,20 +133,7 @@ def cli():
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP servers. Defaults to HeadOnly.",
 )
-@click.option(
-    "--checkpoint-path",
-    default=DEFAULT_CHECKPOINT_PATH,
-    required=False,
-    type=str,
-    hidden=True,
-)
-def start(
-    address,
-    http_host,
-    http_port,
-    http_location,
-    checkpoint_path,
-):
+def start(address, http_host, http_port, http_location):
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -103,7 +145,6 @@ def start(
             port=http_port,
             location=http_location,
         ),
-        _checkpoint_path=checkpoint_path,
     )
 
 
@@ -122,7 +163,7 @@ def start(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -256,7 +297,7 @@ def run(
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-    client = serve.start(detached=True)
+    client = _private_api.serve_start(detached=True)
 
     try:
         if is_config:
@@ -280,7 +321,7 @@ def run(
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -307,7 +348,7 @@ def config(address: str):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -315,7 +356,16 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
-        print(yaml.safe_dump(app_status, default_flow_style=False, sort_keys=False))
+        # Ensure multi-line strings in app_status is dumped/printed correctly
+        yaml.SafeDumper.add_representer(str, str_presenter)
+        print(
+            yaml.safe_dump(
+                # Ensure exception tracebacks in app_status are printed correctly
+                process_dict_for_yaml_dump(app_status),
+                default_flow_style=False,
+                sort_keys=False,
+            )
+        )
 
 
 @cli.command(
@@ -324,7 +374,7 @@ def status(address: str):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,

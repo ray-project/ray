@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Optional, Union
 
 import pandas as pd
@@ -6,7 +7,7 @@ import pandas as pd
 from ray.air.result import Result
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
-from ray.tune import ExperimentAnalysis
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI
@@ -158,6 +159,29 @@ class ResultGrid:
             self._experiment_analysis.trials[i],
         )
 
+    @property
+    def errors(self):
+        """Returns the exceptions of errored trials."""
+        return [result.error for result in self if result.error]
+
+    @property
+    def num_errors(self):
+        """Returns the number of errored trials."""
+        return len(
+            [t for t in self._experiment_analysis.trials if t.status == Trial.ERROR]
+        )
+
+    @property
+    def num_terminated(self):
+        """Returns the number of terminated (but not errored) trials."""
+        return len(
+            [
+                t
+                for t in self._experiment_analysis.trials
+                if t.status == Trial.TERMINATED
+            ]
+        )
+
     @staticmethod
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
         if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):
@@ -180,6 +204,7 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
+            log_dir=Path(trial.logdir) if trial.logdir else None,
             metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
                 trial.logdir
             )
