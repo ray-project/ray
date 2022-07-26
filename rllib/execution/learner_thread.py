@@ -59,7 +59,12 @@ class LearnerThread(threading.Thread):
         self.queue_timer = _Timer()
         self.grad_timer = _Timer()
         self.load_timer = _Timer()
+        self.learner_info_timer = _Timer()
+        self.learn_on_batch_timer = _Timer()
+        self.add_learn_on_batch_results_timer = _Timer()
+        self.add_learn_on_batch_results_timer = _Timer()
         self.load_wait_timer = _Timer()
+        self.finalize_timer = _Timer()
         self.daemon = True
         self.weights_updated = False
         self.learner_info = {}
@@ -85,11 +90,15 @@ class LearnerThread(threading.Thread):
             # This makes sure results dicts always have the same structure
             # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
             # tf vs torch).
-            learner_info_builder = LearnerInfoBuilder(num_devices=1)
-            multi_agent_results = self.local_worker.learn_on_batch(batch)
-            for pid, results in multi_agent_results.items():
-                learner_info_builder.add_learn_on_batch_results(results, pid)
-            self.learner_info = learner_info_builder.finalize()
+            with self.learner_info_timer:
+                learner_info_builder = LearnerInfoBuilder(num_devices=1)
+            with self.learn_on_batch_timer:
+                multi_agent_results = self.local_worker.learn_on_batch(batch)
+            with self.add_learn_on_batch_results_timer:
+                for pid, results in multi_agent_results.items():
+                    learner_info_builder.add_learn_on_batch_results(results, pid)
+            with self.finalize_timer:
+                self.learner_info = learner_info_builder.finalize()
             self.weights_updated = True
 
         self.num_steps += 1
@@ -128,4 +137,11 @@ class LearnerThread(threading.Thread):
                     },
                 }
             )
+        result["info"]["timing_breakdown"].update(
+            {
+                "learner_info_timer_ms": timer_to_ms(self.learner_info_timer),
+                "learn_on_batch_timer_ms": timer_to_ms(self.learn_on_batch_timer),
+                "add_learn_on_batch_results_timer_ms": timer_to_ms(self.add_learn_on_batch_results_timer),
+                "finalize_timer_ms": timer_to_ms(self.finalize_timer),
+            })
         return result
