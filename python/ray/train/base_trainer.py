@@ -170,6 +170,20 @@ class BaseTrainer(abc.ABC):
                 "#example-datasets-in-tune for more info."
             )
 
+    def __repr__(self):
+        non_default_arguments = []
+        if self.scaling_config != ScalingConfig():
+            non_default_arguments.append(f"scaling_config={self.scaling_config}")
+        if self.run_config != RunConfig():
+            non_default_arguments.append(f"run_config={self.run_config}")
+        if self.datasets != {}:
+            non_default_arguments.append(f"datasets={self.datasets}")
+        if self.preprocessor is not None:
+            non_default_arguments.append(f"preprocessor={self.preprocessor}")
+        if self.resume_from_checkpoint is not None:
+            non_default_arguments.append(f"resume_from_checkpoint={self.resume_from_checkpoint}")
+        return f"<{self.__class__.__name__} {' '.join(non_default_arguments)}>"
+
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
         trainer = super(BaseTrainer, cls).__new__(cls)
