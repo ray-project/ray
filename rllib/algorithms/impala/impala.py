@@ -617,7 +617,8 @@ class Impala(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # Get references to sampled SampleBatches from our workers.
-        unprocessed_sample_batches_refs = self.get_samples_from_workers()
+        with self._timers["get_samples_from_workers"]:
+            unprocessed_sample_batches_refs = self.get_samples_from_workers()
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
         self.workers_that_need_updates |= unprocessed_sample_batches_refs.keys()
@@ -629,7 +630,8 @@ class Impala(Algorithm):
             )
         # Resolve collected batches here on local process (using the mixin buffer).
         else:
-            batches = self.process_experiences_directly(unprocessed_sample_batches_refs)
+            with self._timers["process_experiences_directly"]:
+                batches = self.process_experiences_directly(unprocessed_sample_batches_refs)
 
         # Increase sampling counters now that we have the actual SampleBatches on
         # the local process (and can measure their sizes).
@@ -638,11 +640,14 @@ class Impala(Algorithm):
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
 
         # Concatenate single batches into batches of size `train_batch_size`.
-        self.concatenate_batches_and_pre_queue(batches)
+        with self._timers["concatenate_batches_and_pre_queue"]:
+            self.concatenate_batches_and_pre_queue(batches)
         # Move train batches (of size `train_batch_size`) onto learner queue.
-        self.place_processed_samples_on_learner_queue()
+        with self._timers["place_processed_samples_on_learner_queue"]:
+            self.place_processed_samples_on_learner_queue()
         # Extract most recent train results from learner thread.
-        train_results = self.process_trained_results()
+        with self._timers["process_trained_results"]:
+            train_results = self.process_trained_results()
 
         # Sync worker weights.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:

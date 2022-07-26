@@ -229,43 +229,44 @@ class APPO(Impala):
             train_results: The results dict collected during the most recent
                 training step.
         """
-        cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
-        ]
-        last_update = self._counters[LAST_TARGET_UPDATE_TS]
-        target_update_freq = (
-            self.config["num_sgd_iter"] * self.config["minibatch_buffer_size"]
-        )
-        if cur_ts - last_update > target_update_freq:
-            self._counters[NUM_TARGET_UPDATES] += 1
-            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
-
-            # Update our target network.
-            self.workers.local_worker().foreach_policy_to_train(
-                lambda p, _: p.update_target()
+        with self._timers["after_train_step"]:
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+            ]
+            last_update = self._counters[LAST_TARGET_UPDATE_TS]
+            target_update_freq = (
+                self.config["num_sgd_iter"] * self.config["minibatch_buffer_size"]
             )
+            if cur_ts - last_update > target_update_freq:
+                self._counters[NUM_TARGET_UPDATES] += 1
+                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-            # Also update the KL-coefficient for the APPO loss, if necessary.
-            if self.config["use_kl_loss"]:
+                # Update our target network.
+                self.workers.local_worker().foreach_policy_to_train(
+                    lambda p, _: p.update_target()
+                )
 
-                def update(pi, pi_id):
-                    assert LEARNER_STATS_KEY not in train_results, (
-                        "{} should be nested under policy id key".format(
-                            LEARNER_STATS_KEY
-                        ),
-                        train_results,
-                    )
-                    if pi_id in train_results:
-                        kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
-                        assert kl is not None, (train_results, pi_id)
-                        # Make the actual `Policy.update_kl()` call.
-                        pi.update_kl(kl)
-                    else:
-                        logger.warning("No data for {}, not updating kl".format(pi_id))
+                # Also update the KL-coefficient for the APPO loss, if necessary.
+                if self.config["use_kl_loss"]:
 
-                # Update KL on all trainable policies within the local (trainer)
-                # Worker.
-                self.workers.local_worker().foreach_policy_to_train(update)
+                    def update(pi, pi_id):
+                        assert LEARNER_STATS_KEY not in train_results, (
+                            "{} should be nested under policy id key".format(
+                                LEARNER_STATS_KEY
+                            ),
+                            train_results,
+                        )
+                        if pi_id in train_results:
+                            kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
+                            assert kl is not None, (train_results, pi_id)
+                            # Make the actual `Policy.update_kl()` call.
+                            pi.update_kl(kl)
+                        else:
+                            logger.warning("No data for {}, not updating kl".format(pi_id))
+
+                    # Update KL on all trainable policies within the local (trainer)
+                    # Worker.
+                    self.workers.local_worker().foreach_policy_to_train(update)
 
     @override(Impala)
     def training_step(self) -> ResultDict:
