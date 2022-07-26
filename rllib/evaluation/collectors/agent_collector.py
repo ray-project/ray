@@ -1,10 +1,10 @@
 from gym.spaces import Space
 import math
 import numpy as np
-from ray.rllib.policy.view_requirement import ViewRequirement
 import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional
 
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
@@ -14,6 +14,8 @@ from ray.rllib.utils.typing import (
     TensorType,
     ViewRequirementsDict,
 )
+
+from ray.util.annotations import PublicAPI
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -28,6 +30,7 @@ def _to_float_np_array(v: List[Any]) -> np.ndarray:
     return arr
 
 
+@PublicAPI
 class AgentCollector:
     """Collects samples for one agent in one trajectory (episode).
 
