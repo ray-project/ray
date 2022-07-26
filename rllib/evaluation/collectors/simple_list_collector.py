@@ -1,10 +1,9 @@
 import collections
 from gym.spaces import Space
 import logging
-import math
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Tuple, TYPE_CHECKING, Union, Optional
+from typing import Dict, List, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -34,6 +33,7 @@ if TYPE_CHECKING:
     from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 logger = logging.getLogger(__name__)
+
 
 class _PolicyCollector:
     """Collects already postprocessed (single agent) samples for one policy.
