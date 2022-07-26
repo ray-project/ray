@@ -828,23 +828,22 @@ def test_categorizer(predefined_dtypes):
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
+    columns = ["B", "C"]
     if predefined_dtypes:
         expected_dtypes = {
             "B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True),
             "C": pd.CategoricalDtype([1, 5, 10]),
         }
-        columns = {
-            "B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True),
-            "C": None,
-        }
+        dtypes = {"B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True)}
     else:
         expected_dtypes = {
             "B": pd.CategoricalDtype(["cold", "hot", "warm"]),
             "C": pd.CategoricalDtype([1, 5, 10]),
         }
         columns = ["B", "C"]
+        dtypes = None
 
-    encoder = Categorizer(columns)
+    encoder = Categorizer(columns, dtypes)
 
     # Transform with unfitted preprocessor.
     with pytest.raises(PreprocessorNotFittedException):
