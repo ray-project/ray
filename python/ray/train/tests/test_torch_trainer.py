@@ -25,7 +25,7 @@ def ray_start_4_cpus():
 
 
 @pytest.fixture
-def ray_2_node_4_gpu():
+def ray_2_node_2_gpu():
     cluster = Cluster()
     for _ in range(2):
         cluster.add_node(num_cpus=8, num_gpus=4)
@@ -130,7 +130,7 @@ def test_checkpoint_freq(ray_start_4_cpus):
 
 
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
-def test_tune_torch_get_device_gpu(ray_2_node_4_gpu, num_gpus_per_worker):
+def test_tune_torch_get_device_gpu(ray_2_node_2_gpu, num_gpus_per_worker):
     """Tests if GPU ids are set correctly when running train concurrently in nested
     actors (for example when used with Tune)."""
     from ray.air.config import ScalingConfig
@@ -138,7 +138,7 @@ def test_tune_torch_get_device_gpu(ray_2_node_4_gpu, num_gpus_per_worker):
     import time
 
     num_samples = 2
-    num_workers = 2
+    num_workers = int(2 // num_gpus_per_worker)
 
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
