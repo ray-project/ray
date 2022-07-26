@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import tempfile
+from typing import Dict, Any
 import unittest
 import urllib
 from unittest.mock import MagicMock, Mock, patch
@@ -18,6 +19,7 @@ from ray._private import ray_constants
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
 )
+from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
 from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
@@ -89,6 +91,14 @@ worker_setup_commands: []
 """  # noqa E501
 
 
+def fake_fillout_available_node_types_resources(config : Dict[str, Any]) -> None:
+    """ A cheap way to fill out the resources field (the same way a node
+    provider would autodetect them) as far as schema validation is concerned."""
+    available_node_types = config.get("available_node_types", {})
+    for label, value in available_node_types.items():
+        value["resources"] = value.get("resources", {"filler": 1})
+
+
 class AutoscalingConfigTest(unittest.TestCase):
     def testValidateDefaultConfig(self):
         for config_path in CONFIG_PATHS:
@@ -112,6 +122,8 @@ class AutoscalingConfigTest(unittest.TestCase):
                     KubernetesNodeProvider.fillout_available_node_types_resources(
                         config
                     )
+                if config["provider"]["type"] == "aws":
+                    fake_fillout_available_node_types_resources(config)
                 validate_config(config)
             except Exception:
                 logging.exception("")
@@ -467,57 +479,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             fill_node_type_min_max_workers(config_copy)
             assert config_copy == prepare_config(config)
 
-    @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
-    def testLegacyYaml(self):
-        # Test correct default-merging behavior for legacy yamls.
-        providers = ["aws", "azure"]
-        for provider in providers:
-            path = os.path.join(
-                RAY_PATH, "autoscaler", provider, "example-full-legacy.yaml"
-            )
-            legacy_config = yaml.safe_load(open(path).read())
-            # custom head and workers
-            legacy_config["head_node"] = {"blahblah": 0}
-            legacy_config["worker_nodes"] = {"halbhalhb": 0}
-            legacy_config_copy = copy.deepcopy(legacy_config)
-            prepared_legacy = prepare_config(legacy_config_copy)
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_HEAD][
-                    "max_workers"
-                ]
-                == 0
-            )
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_HEAD][
-                    "min_workers"
-                ]
-                == 0
-            )
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_HEAD][
-                    "node_config"
-                ]
-                == legacy_config["head_node"]
-            )
-
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                    "max_workers"
-                ]
-                == 2
-            )
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                    "min_workers"
-                ]
-                == 0
-            )
-            assert (
-                prepared_legacy["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                    "node_config"
-                ]
-                == legacy_config["worker_nodes"]
-            )
 
     @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
     def testAzureKeyPair(self):
