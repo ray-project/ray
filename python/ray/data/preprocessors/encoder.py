@@ -191,7 +191,8 @@ class OneHotEncoder(Preprocessor):
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, limit={self.limit!r})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"max_categories={self.limit!r})"
         )
 
 
@@ -278,7 +279,8 @@ class MultiHotEncoder(Preprocessor):
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, limit={self.limit!r})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"max_categories={self.max_categories!r})"
         )
 
 
