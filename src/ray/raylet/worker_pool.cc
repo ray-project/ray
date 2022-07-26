@@ -983,6 +983,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     int64_t now = get_time_();
     idle_of_all_languages_.emplace_back(worker, now);
     idle_of_all_languages_map_[worker] = now;
+    TryKillingIdleWorkers();
   }
 }
 
