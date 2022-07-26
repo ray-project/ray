@@ -157,7 +157,10 @@ class TunerInternal:
         cpus_left = ray.available_resources().get("CPU", 0)  # avoid div by 0
         # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
         # longer experimental.
-        if has_base_dataset and self._expected_utilization(cpus_per_trial, cpus_left) > 0.8:
+        if (
+            has_base_dataset
+            and self._expected_utilization(cpus_per_trial, cpus_left) > 0.8
+        ):
             warnings.warn(
                 "Executing `.fit()` may leave less than 20% of CPUs in "
                 "this cluster for Dataset execution, which can lead to "
