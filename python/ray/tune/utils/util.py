@@ -18,7 +18,7 @@ import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.remote_storage import delete_at_uri
 from ray.air._internal.json import SafeFallbackEncoder  # noqa
-from ray.util.ml_utils.util import (  # noqa: F401
+from ray.air._internal.util import (  # noqa: F401
     is_nan,
     is_nan_or_inf,
 )

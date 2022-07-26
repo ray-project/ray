@@ -12,9 +12,9 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune, train
+from ray.air.tests.resnet import ResNet18
 from ray.train import Trainer
-from ray.util.ml_utils.node import force_on_current_node
-from ray.util.ml_utils.resnet import ResNet18
+from ray.tune.utils.node import force_on_current_node
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
 

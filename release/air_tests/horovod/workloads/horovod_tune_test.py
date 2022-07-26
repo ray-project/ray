@@ -14,9 +14,9 @@ import torchvision.transforms as transforms
 import ray
 from ray import tune
 from ray.air.checkpoint import Checkpoint
+from ray.air.tests.resnet import ResNet18
 from ray.tune.schedulers import create_scheduler
 
-from ray.util.ml_utils.resnet import ResNet18
 
 from ray.tune.utils.release_test_util import ProgressCallback
 

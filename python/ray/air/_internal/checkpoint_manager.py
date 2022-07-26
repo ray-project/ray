@@ -14,9 +14,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import ray
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
+from ray.air._internal.util import is_nan
 from ray.util import log_once
 from ray.util.annotations import Deprecated
-from ray.util.ml_utils.util import is_nan
 
 
 logger = logging.getLogger(__name__)

@@ -13,11 +13,11 @@ import ray
 import ray.train as train
 from ray import tune
 from ray.air.config import FailureConfig, RunConfig, ScalingConfig
+from ray.air.tests.resnet import ResNet18
 from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
-from ray.util.ml_utils.resnet import ResNet18
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
