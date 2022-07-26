@@ -7,6 +7,16 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskType
 from ray.dashboard.modules.job.common import JobInfo
+from ray.experimental.state.custom_types import (
+    TypeActorStatus,
+    TypeNodeStatus,
+    TypePlacementGroupStatus,
+    TypeReferenceType,
+    TypeTaskStatus,
+    TypeTaskType,
+    TypeWorkerExitType,
+    TypeWorkerType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +39,8 @@ STATE_OBS_ALPHA_FEEDBACK_MSG = [
     "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
     "State Observability APIs is currently in Alpha-Preview. ",
     "If you have any feedback, you could do so at either way as below:",
-    "  1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
-    "  2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
+    "    1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
+    "    2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
     "https://tinyurl.com/2pm26m4a",
     "==========================================================",
 ]
@@ -117,7 +127,7 @@ class SummaryApiOptions:
     timeout: int = DEFAULT_RPC_TIMEOUT
 
 
-def state_column(*, filterable, detail=False, **kwargs):
+def state_column(*, filterable: bool, detail: bool = False, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
 
     The metadata is used to define detail / filterable option of
@@ -165,7 +175,7 @@ class StateSchema(ABC):
 
     @classmethod
     def columns(cls) -> Set[str]:
-        """Return a list of all columns"""
+        """Return a list of all columns."""
         cols = set()
         for f in fields(cls):
             cols.add(f.name)
@@ -186,9 +196,21 @@ class StateSchema(ABC):
 
         Base columns mean columns to return when detail == False.
         """
-        detail = set()
+        base = set()
         for f in fields(cls):
             if not f.metadata.get("detail", False):
+                base.add(f.name)
+        return base
+
+    @classmethod
+    def detail_columns(cls) -> Set[str]:
+        """Return a list of detail columns.
+
+        Detail columns mean columns to return when detail == True.
+        """
+        detail = set()
+        for f in fields(cls):
+            if f.metadata.get("detail", False):
                 detail.add(f.name)
         return detail
 
@@ -276,37 +298,91 @@ class GetLogOptions:
 # TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
 @dataclass(init=True)
 class ActorState(StateSchema):
+    """Actor State"""
+
+    #: The id of the actor.
     actor_id: str = state_column(filterable=True)
-    state: str = state_column(filterable=True)
+    #: The state of the actor.
+    #:
+    #: - DEPENDENCIES_UNREADY: Actor is waiting for dependency to be ready.
+    #:   E.g., a new actor is waiting for object ref that's created from
+    #:   other remote task.
+    #: - PENDING_CREATION: Actor's dependency is ready, but it is not created yet.
+    #:   It could be because there are not enough resources, too many actor
+    #:   entries in the scheduler queue, or the actor creation is slow
+    #:   (e.g., slow runtime environment creation,
+    #:   slow worker startup, or etc.).
+    #: - ALIVE: The actor is created, and it is alive.
+    #: - RESTARTING: The actor is dead, and it is restarting.
+    #:   It is equivalent to `PENDING_CREATION`,
+    #:   but means the actor was dead more than once.
+    #: - DEAD: The actor is permanatly dead.
+    state: TypeActorStatus = state_column(filterable=True)
+    #: The class name of the actor.
     class_name: str = state_column(filterable=True)
-    name: str = state_column(filterable=True)
+    #: The name of the actor given by the `name` argument.
+    name: Optional[str] = state_column(filterable=True)
+    #: The pid of the actor. 0 if it is not created yet.
     pid: int = state_column(filterable=True)
+    #: The runtime environment information of the actor.
     serialized_runtime_env: str = state_column(filterable=False, detail=True)
+    #: The resource requirement of the actor.
     resource_mapping: dict = state_column(filterable=False, detail=True)
-    death_cause: dict = state_column(filterable=False, detail=True)
+    #: Actor's death information in detail. None if the actor is not dead yet.
+    death_cause: Optional[dict] = state_column(filterable=False, detail=True)
+    #: True if the actor is detached. False otherwise.
     is_detached: bool = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)
 class PlacementGroupState(StateSchema):
+    """PlacementGroup State"""
+
+    #: The id of the placement group.
     placement_group_id: str = state_column(filterable=True)
-    state: str = state_column(filterable=True)
+    #: The state of the placement group.
+    #:
+    #: - PENDING: The placement group creation is pending scheduling.
+    #:   It could be because there's not enough resources, some of creation
+    #:   stage has failed (e.g., failed to commit placement gropus because
+    #:   the node is dead).
+    #: - CREATED: The placement group is created.
+    #: - REMOVED: The placement group is removed.
+    #: - RESCHEDULING: The placement group is rescheduling because some of
+    #:   bundles are dead because they were on dead nodes.
+    state: TypePlacementGroupStatus = state_column(filterable=True)
+    #: The name of the placement group if it is given by the name argument.
     name: str = state_column(filterable=True)
+    #: The bundle specification of the placement group.
     bundles: dict = state_column(filterable=False, detail=True)
+    #: True if the placement group is detached. False otherwise.
     is_detached: bool = state_column(filterable=True, detail=True)
+    #: The scheduling stats of the placement group.
     stats: dict = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)
 class NodeState(StateSchema):
+    """Node State"""
+
+    #: The id of the node.
     node_id: str = state_column(filterable=True)
+    #: The ip address of the node.
     node_ip: str = state_column(filterable=True)
-    state: str = state_column(filterable=True)
+    #: The state of the node.
+    #:
+    #: ALIVE: The node is alive.
+    #: DEAD: The node is dead.
+    state: TypeNodeStatus = state_column(filterable=True)
+    #: The name of the node if it is given by the name argument.
     node_name: str = state_column(filterable=True)
+    #: The total resources of the node.
     resources_total: dict = state_column(filterable=False)
 
 
 class JobState(JobInfo, StateSchema):
+    """The state of the job that's submitted by Ray's Job APIs"""
+
     @classmethod
     def filterable_columns(cls) -> Set[str]:
         return {"status", "entrypoint", "error_type"}
@@ -314,48 +390,192 @@ class JobState(JobInfo, StateSchema):
 
 @dataclass(init=True)
 class WorkerState(StateSchema):
+    """Worker State"""
+
+    #: The id of the worker.
     worker_id: str = state_column(filterable=True)
+    #: Whether or not if the worker is alive.
     is_alive: bool = state_column(filterable=True)
-    worker_type: str = state_column(filterable=True)
-    exit_type: str = state_column(filterable=True)
+    #: The type of the worker.
+    #:
+    #: - WORKER: The regular Ray worker process that executes tasks or
+    #    instantiates an actor.
+    #: - DRIVER: The driver (Python script that calls `ray.init`).
+    #: - SPILL_WORKER: The worker that spills objects.
+    #: - RESTORE_WORKER: The worker that restores objects.
+    worker_type: TypeWorkerType = state_column(filterable=True)
+    #: The exit type of the worker if the worker is dead.
+    #:
+    #: - SYSTEM_ERROR: Worker exit due to system level failures (i.e. worker crash).
+    #: - INTENDED_SYSTEM_EXIT: System-level exit that is intended. E.g.,
+    #:   Workers are killed because they are idle for a long time.
+    #: - USER_ERROR: Worker exits because of user error.
+    #:   E.g., execptions from the actor initialization.
+    #: - INTENDED_USER_EXIT: Intended exit from users (e.g., users exit
+    #:   workers with exit code 0 or exit initated by Ray API such as ray.kill).
+    exit_type: Optional[TypeWorkerExitType] = state_column(filterable=True)
+    #: The node id of the worker.
     node_id: str = state_column(filterable=True)
+    #: The ip address of the worker.
     ip: str = state_column(filterable=True)
+    #: The pid of the worker.
     pid: str = state_column(filterable=True)
-    exit_detail: str = state_column(detail=True, filterable=False)
+    #: The exit detail of the worker if the worker is dead.
+    exit_detail: Optional[str] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
 class TaskState(StateSchema):
+    """Task State"""
+
+    #: The id of the task.
     task_id: str = state_column(filterable=True)
+    #: The name of the task if it is given by the name argument.
     name: str = state_column(filterable=True)
-    scheduling_state: str = state_column(filterable=True)
-    type: str = state_column(filterable=True)
+    #: The state of the task.
+    #:
+    #: - NIL: We don't have a status for this task because we are not the owner or the
+    #:   task metadata has already been deleted.
+    #: - WAITING_FOR_DEPENDENCIES: The task is waiting for its dependencies
+    #:   to be created.
+    #: - SCHEDULED: All dependencies have been created and the task is
+    #:   scheduled to execute.
+    #:   It could be because the task is waiting for resources,
+    #:   runtime environmenet creation, fetching dependencies to the
+    #:   local node, and etc..
+    #: - FINISHED: The task finished successfully.
+    #: - WAITING_FOR_EXECUTION: The task is scheduled properly and
+    #:   waiting for execution. It includes time to deliver the task
+    #:   to the remote worker + queueing time from the execution side.
+    #: - RUNNING: The task that is running.
+    scheduling_state: TypeTaskStatus = state_column(filterable=True)
+    #: The type of the task.
+    #:
+    #: - NORMAL_TASK: Tasks created by `func.remote()``
+    #: - ACTOR_CREATION_TASK: Actors created by `class.remote()`
+    #: - ACTOR_TASK: Actor tasks submitted by `actor.method.remote()`
+    #: - DRIVER_TASK: Driver (A script that calls `ray.init`).
+    type: TypeTaskType = state_column(filterable=True)
+    #: The name of the task. If is the name of the function
+    #: if the type is a task or an actor task.
+    #: It is the name of the class if it is a actor scheduling task.
     func_or_class_name: str = state_column(filterable=True)
+    #: The language of the task. E.g., Python, Java, or Cpp.
     language: str = state_column(detail=True, filterable=True)
+    #: The required resources to execute the task.
     required_resources: dict = state_column(detail=True, filterable=False)
+    #: The runtime environment information for the task.
     runtime_env_info: str = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
 class ObjectState(StateSchema):
+    """Object State"""
+
+    #: The id of the object.
     object_id: str = state_column(filterable=True)
+    #: The pid of the owner.
     pid: int = state_column(filterable=True)
+    #: The ip address of the owner.
     ip: str = state_column(filterable=True)
+    #: The size of the object in mb.
     object_size: int = state_column(filterable=True)
-    reference_type: str = state_column(filterable=True)
+    #: The callsite of the object.
     call_site: str = state_column(filterable=True)
-    task_status: str = state_column(filterable=True)
-    type: str = state_column(filterable=True)
+    #: The status of the task that creates the object.
+    #:
+    #: - NIL: We don't have a status for this task because we are not the owner or the
+    #:   task metadata has already been deleted.
+    #: - WAITING_FOR_DEPENDENCIES: The task is waiting for its dependencies
+    #:   to be created.
+    #: - SCHEDULED: All dependencies have been created and the task is
+    #:   scheduled to execute.
+    #:   It could be because the task is waiting for resources,
+    #:   runtime environmenet creation, fetching dependencies to the
+    #:   local node, and etc..
+    #: - FINISHED: The task finished successfully.
+    #: - WAITING_FOR_EXECUTION: The task is scheduled properly and
+    #:   waiting for execution. It includes time to deliver the task
+    #:   to the remote worker + queueing time from the execution side.
+    #: - RUNNING: The task that is running.
+    task_status: TypeTaskStatus = state_column(filterable=True)
+    #: The worker type that creates the object.
+    #:
+    #: - WORKER: The regular Ray worker process that executes tasks or
+    #:   instantiates an actor.
+    #: - DRIVER: The driver (Python script that calls `ray.init`).
+    #: - SPILL_WORKER: The worker that spills objects.
+    #: - RESTORE_WORKER: The worker that restores objects.
+    type: TypeWorkerType = state_column(filterable=True)
+    #: The reference type of the object.
+    #: See :ref:`Debugging with Ray Memory <debug-with-ray-memory>` for more details.
+    #:
+    #: - ACTOR_HANDLE: The reference is an actor handle.
+    #: - PINNED_IN_MEMORY: The object is pinned in memory, meaning there's
+    #:   in-flight `ray.get` on this reference.
+    #: - LOCAL_REFERENCE: There's a local reference (e.g., Python reference)
+    #:   to this object reference. The object won't be GC'ed until all of them is gone.
+    #: - USED_BY_PENDING_TASK: The object reference is passed to other tasks. E.g.,
+    #:   `a = ray.put()` -> `task.remote(a)`. In this case, a is used by a
+    #:   pending task `task`.
+    #: - CAPTURED_IN_OBJECT: The object is serialized by other objects. E.g.,
+    #:   `a = ray.put(1)` -> `b = ray.put([a])`. a is serialized within a list.
+    #: - UNKNOWN_STATUS: The object ref status is unkonwn.
+    reference_type: TypeReferenceType = state_column(filterable=True)
 
 
 @dataclass(init=True)
 class RuntimeEnvState(StateSchema):
+    """Runtime Environment State"""
+
+    #: The runtime environment spec.
     runtime_env: str = state_column(filterable=True)
+    #: Whether or not the runtime env creation has succeeded.
     success: bool = state_column(filterable=True)
+    #: The node id of this runtime environment.
     node_id: str = state_column(filterable=True)
-    creation_time_ms: float = state_column(filterable=False)
+    #: The latency of creating the runtime environment.
+    #: Available if the runtime env is successfully created.
+    creation_time_ms: Optional[float] = state_column(filterable=False)
+    #: The number of actors and tasks that use this runtime environment.
     ref_cnt: int = state_column(detail=True, filterable=False)
-    error: str = state_column(detail=True, filterable=True)
+    #: The error message if the runtime environment creation has failed.
+    #: Available if the runtime env is failed to be created.
+    error: Optional[str] = state_column(detail=True, filterable=True)
+
+
+AVAILABLE_STATES = [
+    ActorState,
+    PlacementGroupState,
+    NodeState,
+    WorkerState,
+    JobState,
+    TaskState,
+    ObjectState,
+    RuntimeEnvState,
+]
+
+
+for state in AVAILABLE_STATES:
+    if len(state.filterable_columns()) > 0:
+        filterable_cols = "\n\n    ".join(state.filterable_columns())
+        state.__doc__ += f"""
+\nBelow columns can be used for the `--filter` option.
+\n
+    {filterable_cols}
+\n
+"""
+
+    if len(state.detail_columns()) > 0:
+        detail_cols = "\n\n    ".join(state.detail_columns())
+        state.__doc__ += f"""
+\nBelow columns are available only when `get` API is used,
+\n`--detail` is specified through CLI, or `detail=True` is given to Python APIs.
+\n
+\n
+    {detail_cols}
+\n
+"""
 
 
 @dataclass(init=True)
@@ -390,7 +610,7 @@ class ListApiResponse:
             ActorState,
             PlacementGroupState,
             NodeState,
-            JobInfo,
+            JobState,
             WorkerState,
             TaskState,
             ObjectState,
@@ -415,36 +635,34 @@ Summary API schema
 
 @dataclass(init=True)
 class TaskSummaryPerFuncOrClassName:
-    # The function or class name of this task.
+    #: The function or class name of this task.
     func_or_class_name: str
-    # The type of the class. Equivalent to protobuf TaskType.
+    #: The type of the class. Equivalent to protobuf TaskType.
     type: str
-    # State name to the count dict. State name is equivalent to
-    # the protobuf TaskStatus.
-    state_counts: Dict[str, int] = field(default_factory=dict)
+    #: State name to the count dict. State name is equivalent to
+    #: the protobuf TaskStatus.
+    state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
 
 
 @dataclass
 class TaskSummaries:
-    # Group key -> summary
-    # Right now, we only have func_class_name as a key.
+    #: Group key -> summary.
+    #: Right now, we only have func_class_name as a key.
     # TODO(sang): Support the task group abstraction.
     summary: Dict[str, TaskSummaryPerFuncOrClassName]
-    # Total Ray tasks
+    #: Total Ray tasks.
     total_tasks: int
-    # Total actor tasks
+    #: Total actor tasks.
     total_actor_tasks: int
-    # Total scheduling actors
+    #: Total scheduled actors.
     total_actor_scheduled: int
     summary_by: str = "func_name"
 
     @classmethod
     def to_summary(cls, *, tasks: List[Dict]):
-        """
-        NOTE: The argument tasks contains a list of dictionary
-        that have the same k/v as TaskState.
-        TODO(sang): Refactor this to use real dataclass.
-        """
+        # NOTE: The argument tasks contains a list of dictionary
+        # that have the same k/v as TaskState.
+        # TODO(sang): Refactor this to use real dataclass.
         summary = {}
         total_tasks = 0
         total_actor_tasks = 0
@@ -482,28 +700,26 @@ class TaskSummaries:
 
 @dataclass(init=True)
 class ActorSummaryPerClass:
-    # The class name of the actor.
+    #: The class name of the actor.
     class_name: str
-    # State name to the count dict. State name is equivalent to
-    # the protobuf ActorState.
-    state_counts: Dict[str, int] = field(default_factory=dict)
+    #: State name to the count dict. State name is equivalent to
+    #: the protobuf ActorState.
+    state_counts: Dict[TypeActorStatus, int] = field(default_factory=dict)
 
 
 @dataclass
 class ActorSummaries:
-    # Group key (actor class name) -> summary
+    #: Group key (actor class name) -> summary
     summary: Dict[str, ActorSummaryPerClass]
-    # Total number of actors
+    #: Total number of actors
     total_actors: int
     summary_by: str = "class"
 
     @classmethod
     def to_summary(cls, *, actors: List[Dict]):
-        """
-        NOTE: The argument tasks contains a list of dictionary
-        that have the same k/v as ActorState.
-        TODO(sang): Refactor this to use real dataclass.
-        """
+        # NOTE: The argument tasks contains a list of dictionary
+        # that have the same k/v as ActorState.
+        # TODO(sang): Refactor this to use real dataclass.
         summary = {}
         total_actors = 0
 
@@ -530,41 +746,39 @@ class ActorSummaries:
 
 @dataclass(init=True)
 class ObjectSummaryPerKey:
-    # Total number of objects of the type.
+    #: Total number of objects of the type.
     total_objects: int
-    # Total size in mb.
+    #: Total size in mb.
     total_size_mb: float
-    # Total number of workers that reference the type of objects.
+    #: Total number of workers that reference the type of objects.
     total_num_workers: int
-    # Total number of nodes that reference the type of objects.
+    #: Total number of nodes that reference the type of objects.
     total_num_nodes: int
-    # State name to the count dict. State name is equivalent to
-    # ObjectState.
-    task_state_counts: Dict[str, int] = field(default_factory=dict)
-    # Ref count type to the count dict. State name is equivalent to
-    # ObjectState.
-    ref_type_counts: Dict[str, int] = field(default_factory=dict)
+    #: State name to the count dict. State name is equivalent to
+    #: ObjectState.
+    task_state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
+    #: Ref count type to the count dict. State name is equivalent to
+    #: ObjectState.
+    ref_type_counts: Dict[TypeReferenceType, int] = field(default_factory=dict)
 
 
 @dataclass
 class ObjectSummaries:
-    # Group key (actor class name) -> summary
+    #: Group key (actor class name) -> summary
     summary: Dict[str, ObjectSummaryPerKey]
-    # Total number of referenced objects in the cluster.
+    #: Total number of referenced objects in the cluster.
     total_objects: int
-    # Total size of referenced objects in the cluster in MB.
+    #: Total size of referenced objects in the cluster in MB.
     total_size_mb: float
-    # Whether or not the callsite collection is enabled.
+    #: Whether or not the callsite collection is enabled.
     callsite_enabled: bool
     summary_by: str = "callsite"
 
     @classmethod
     def to_summary(cls, *, objects: List[Dict]):
-        """
-        NOTE: The argument tasks contains a list of dictionary
-        that have the same k/v as ObjectState.
-        TODO(sang): Refactor this to use real dataclass.
-        """
+        # NOTE: The argument tasks contains a list of dictionary
+        # that have the same k/v as ObjectState.
+        # TODO(sang): Refactor this to use real dataclass.
         summary = {}
         total_objects = 0
         total_size_mb = 0
@@ -626,9 +840,9 @@ class ObjectSummaries:
 
 @dataclass(init=True)
 class StateSummary:
-    # Node ID -> summary per node
-    # If the data is not required to be organized per node, it will contain
-    # a single key, "cluster".
+    #: Node ID -> summary per node
+    #: If the data is not required to be orgnized per node, it will contain
+    #: a single key, "cluster".
     node_id_to_summary: Dict[str, Union[TaskSummaries, ActorSummaries, ObjectSummaries]]
 
 
