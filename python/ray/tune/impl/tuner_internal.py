@@ -1,17 +1,19 @@
 import copy
 import os
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray.cloudpickle as pickle
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train.trainer import BaseTrainer
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
+from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
 
+if TYPE_CHECKING:
+    from ray.train.trainer import BaseTrainer
 
 _TRAINABLE_PKL = "trainable.pkl"
 _TUNER_PKL = "tuner.pkl"
@@ -37,6 +39,7 @@ class TunerInternal:
     Args:
         restore_path: The path from where the Tuner can be restored. If provided, None
             of the rest args are needed.
+        resume_config: Resume config to configure which trials to continue.
         trainable: The trainable to be tuned.
         param_space: Search space of the tuning job.
             One thing to note is that both preprocessor and dataset can be tuned here.
@@ -50,12 +53,13 @@ class TunerInternal:
     def __init__(
         self,
         restore_path: str = None,
+        resume_config: Optional[_ResumeConfig] = None,
         trainable: Optional[
             Union[
                 str,
                 Callable,
                 Type[Trainable],
-                BaseTrainer,
+                "BaseTrainer",
             ]
         ] = None,
         param_space: Optional[Dict[str, Any]] = None,
@@ -63,6 +67,8 @@ class TunerInternal:
         run_config: Optional[RunConfig] = None,
         _tuner_kwargs: Optional[Dict] = None,
     ):
+        from ray.train.trainer import BaseTrainer
+
         # Restored from Tuner checkpoint.
         if restore_path:
             trainable_ckpt = os.path.join(restore_path, _TRAINABLE_PKL)
@@ -77,11 +83,14 @@ class TunerInternal:
             self._is_restored = True
             self._trainable = trainable
             self._experiment_checkpoint_dir = restore_path
+            self._resume_config = resume_config
             return
 
         # Start from fresh
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
+
+        self._resume_config = None
 
         # If no run config was passed to Tuner directly, use the one from the Trainer,
         # if available
@@ -147,6 +156,8 @@ class TunerInternal:
 
     @staticmethod
     def _convert_trainable(trainable: Any) -> Type[Trainable]:
+        from ray.train.trainer import BaseTrainer
+
         if isinstance(trainable, BaseTrainer):
             trainable = trainable.as_trainable()
         else:
@@ -217,6 +228,7 @@ class TunerInternal:
                 checkpoint_at_end = True
 
         return dict(
+            local_dir=self._run_config.local_dir,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
@@ -234,7 +246,7 @@ class TunerInternal:
             fail_fast=(self._run_config.failure_config.fail_fast),
             progress_reporter=self._run_config.progress_reporter,
             verbose=self._run_config.verbose,
-            reuse_actors=self._run_config.reuse_actors,
+            reuse_actors=self._tune_config.reuse_actors,
             max_concurrent_trials=self._tune_config.max_concurrent_trials,
             time_budget_s=self._tune_config.time_budget_s,
         )
@@ -261,11 +273,25 @@ class TunerInternal:
 
     def _fit_resume(self, trainable) -> ExperimentAnalysis:
         """Fitting for a restored Tuner."""
+        resume = "AUTO"
+
+        if self._resume_config:
+            if not self._resume_config.resume_unfinished:
+                if self._resume_config.resume_errored:
+                    resume += "+ERRORED_ONLY"
+                elif self._resume_config.restart_errored:
+                    resume += "+RESTART_ERRORED_ONLY"
+            else:
+                if self._resume_config.resume_errored:
+                    resume += "+ERRORED"
+                elif self._resume_config.restart_errored:
+                    resume += "+RESTART_ERRORED"
+
         args = {
             **self._get_tune_run_arguments(trainable),
             **dict(
                 run_or_experiment=trainable,
-                resume=True,
+                resume=resume,
             ),
             **self._tuner_kwargs,
         }

@@ -1,7 +1,6 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.gson.Gson;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.exception.RayIntentionalSystemExitException;
 import io.ray.api.id.ActorId;
@@ -18,7 +17,6 @@ import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
-import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnvInfo;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
@@ -26,7 +24,6 @@ import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -111,23 +108,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
-        RuntimeEnvInfo.Builder runtimeEnvInfoBuilder = RuntimeEnvInfo.newBuilder();
-        if (rayConfig.runtimeEnvImpl != null) {
-          Map<String, Object> runtimeEnvMap = new HashMap<>();
-          if (!rayConfig.runtimeEnvImpl.getEnvVars().isEmpty()) {
-            runtimeEnvMap.put("env_vars", rayConfig.runtimeEnvImpl.getEnvVars());
-          }
-
-          final List<String> jarUrls = rayConfig.runtimeEnvImpl.getJars();
-          if (jarUrls != null && !jarUrls.isEmpty()) {
-            runtimeEnvMap.put("java_jars", jarUrls);
-          }
-          runtimeEnvInfoBuilder.setSerializedRuntimeEnv(new Gson().toJson(runtimeEnvMap));
-
-        } else {
-          runtimeEnvInfoBuilder.setSerializedRuntimeEnv("{}");
-        }
-        jobConfigBuilder.setRuntimeEnvInfo(runtimeEnvInfoBuilder.build());
+        jobConfigBuilder.setRuntimeEnvInfo(rayConfig.runtimeEnvImpl.GenerateRuntimeEnvInfo());
         jobConfigBuilder.setDefaultActorLifetime(
             rayConfig.defaultActorLifetime == ActorLifetime.DETACHED
                 ? JobConfig.ActorLifetime.DETACHED
