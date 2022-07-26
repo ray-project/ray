@@ -60,7 +60,7 @@ def apply_grad_clipping(
                 device_param_map = defaultdict(list)
                 for param in params:
                     if param.is_cuda:
-                        _device = params.device
+                        _device = param.device
                     else:
                         _device = "cpu"
                     device_param_map[_device].append(param)
