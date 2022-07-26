@@ -23,6 +23,8 @@ from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
     LOG_PRUNE_THREASHOLD,
     MAX_LOGS_TO_CACHE,
+    FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
+    FREQUENT_UPDATE_TIMEOUT_SECONDS,
 )
 from ray.dashboard.utils import async_loop_forever
 
@@ -96,6 +98,15 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
+    def get_internal_states(self):
+        return {
+            "head_node_registration_time_s": self._head_node_registration_time_s,
+            "registered_nodes": len(DataSource.nodes),
+            "registered_agents": len(DataSource.agents),
+            "node_update_count": self._node_update_cnt,
+            "module_lifetime_s": time.time() - self._module_start_time,
+        }
+
     async def _get_nodes(self):
         """Read the client table.
 
@@ -162,15 +173,30 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 logger.exception("Error updating nodes.")
             finally:
                 self._node_update_cnt += 1
+                # _head_node_registration_time_s == None if head node is not
+                # registered.
+                head_node_not_registered = not self._head_node_registration_time_s
                 # Until the head node is registered, we update the
                 # node status more frequently.
                 # If the head node is not updated after 10 seconds, it just stops
                 # doing frequent update to avoid unexpected edge case.
                 if (
-                    not self._head_node_registration_time_s
-                ) and self._node_update_cnt < 100:
-                    await asyncio.sleep(0.1)
+                    head_node_not_registered
+                    and self._node_update_cnt * FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS
+                    < FREQUENT_UPDATE_TIMEOUT_SECONDS
+                ):
+                    logger.info("SANG-TODO a")
+                    await asyncio.sleep(FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS)
                 else:
+                    logger.info("SANG-TODO b")
+                    if head_node_not_registered:
+                        logger.warning(
+                            "Head node is not registered even after "
+                            f"{FREQUENT_UPDATE_TIMEOUT_SECONDS} seconds. "
+                            "The API server might not work correctly. Please "
+                            "report a Github issue. Internal states :"
+                            f"{self.get_internal_states()}"
+                        )
                     await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
 
     @routes.get("/internal/node_module")
@@ -178,13 +204,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         return dashboard_optional_utils.rest_response(
             success=True,
             message="",
-            **{
-                "head_node_registration_time_s": self._head_node_registration_time_s,
-                "registered_nodes": len(DataSource.nodes),
-                "registered_agents": len(DataSource.agents),
-                "node_update_count": self._node_update_cnt,
-                "module_lifetime_s": time.time() - self._module_start_time,
-            },
+            **self.get_internal_states(),
         )
 
     @routes.get("/nodes")
