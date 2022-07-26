@@ -170,7 +170,8 @@ def serve_start(
     try:
         client = get_global_client(_health_check_controller=True)
         logger.info(
-            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
+            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".',
+            " New http options will not be applied.",
         )
 
         _check_http_options(client, http_options)
