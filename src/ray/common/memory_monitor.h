@@ -15,6 +15,7 @@
 #pragma once
 
 #include <gtest/gtest_prod.h>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 
@@ -23,8 +24,7 @@ namespace ray {
 ///
 /// \param is_usage_above_threshold true if memory usage is above the usage
 /// threshold at this instant.
-using MemoryUsageRefreshCallback =
-    std::function<void(bool is_usage_above_threshold)>;
+using MemoryUsageRefreshCallback = std::function<void(bool is_usage_above_threshold)>;
 
 /// Monitors the memory usage of the node.
 /// This class is thread safe.
@@ -37,8 +37,8 @@ class MemoryMonitor {
   /// the monitor and callbacks own't fire.
   /// \param monitor_callback function to execute when usage is refreshed.
   MemoryMonitor(float usage_threshold,
-      uint64_t monitor_interval_ms,
-      MemoryUsageRefreshCallback monitor_callback);
+                uint64_t monitor_interval_ms,
+                MemoryUsageRefreshCallback monitor_callback);
 
   ~MemoryMonitor();
 
@@ -48,7 +48,7 @@ class MemoryMonitor {
 
   /// Returns the used and total node memory in bytes for linux OS.
   std::tuple<uint64_t, uint64_t> GetLinuxNodeMemoryBytes();
-  
+
  private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroAlwaysAboveThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestThresholdOneAlwaysBelowThreshold);
