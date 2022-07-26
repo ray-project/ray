@@ -28,7 +28,6 @@ from ray.serve.common import EndpointInfo, EndpointTag
 from ray.serve.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.logging_utils import access_log_msg, configure_component_logger
-from ray.serve.utils import node_id_to_ip_addr
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -290,6 +289,11 @@ class HTTPProxy:
                 scope, receive, send
             )
 
+        if route_path == "/-/healthz":
+            return await starlette.responses.PlainTextResponse("success")(
+                scope, receive, send
+            )
+
         route_prefix, handle = self.prefix_router.match_route(route_path)
         if route_prefix is None:
             self.request_error_counter.inc(
@@ -333,11 +337,11 @@ class HTTPProxyActor:
         port: int,
         root_path: str,
         controller_name: str,
-        node_id: str,
+        node_ip_address: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
         configure_component_logger(
-            component_name="http_proxy", component_id=node_id_to_ip_addr(node_id)
+            component_name="http_proxy", component_id=node_ip_address
         )
 
         if http_middlewares is None:

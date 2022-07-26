@@ -51,7 +51,6 @@ class ServeControllerClient:
         self._shutdown = False
         self._http_config: HTTPOptions = ray.get(controller.get_http_config.remote())
         self._root_url = ray.get(controller.get_root_url.remote())
-        self._checkpoint_path = ray.get(controller.get_checkpoint_path.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
         self.handle_cache = dict()
@@ -74,10 +73,6 @@ class ServeControllerClient:
     @property
     def http_config(self):
         return self._http_config
-
-    @property
-    def checkpoint_path(self):
-        return self._checkpoint_path
 
     def __del__(self):
         if not self._detached:
@@ -218,7 +213,6 @@ class ServeControllerClient:
         ray_actor_options: Optional[Dict] = None,
         config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
         version: Optional[str] = None,
-        prev_version: Optional[str] = None,
         route_prefix: Optional[str] = None,
         url: Optional[str] = None,
         _blocking: Optional[bool] = True,
@@ -232,7 +226,6 @@ class ServeControllerClient:
             ray_actor_options=ray_actor_options,
             config=config,
             version=version,
-            prev_version=prev_version,
             route_prefix=route_prefix,
         )
 
@@ -262,7 +255,6 @@ class ServeControllerClient:
                     ray_actor_options=deployment["ray_actor_options"],
                     config=deployment["config"],
                     version=deployment["version"],
-                    prev_version=deployment["prev_version"],
                     route_prefix=deployment["route_prefix"],
                 )
             )
@@ -444,7 +436,6 @@ class ServeControllerClient:
         ray_actor_options: Optional[Dict] = None,
         config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
         version: Optional[str] = None,
-        prev_version: Optional[str] = None,
         route_prefix: Optional[str] = None,
     ) -> Dict:
         """
@@ -482,7 +473,6 @@ class ServeControllerClient:
             raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
         deployment_config.version = version
-        deployment_config.prev_version = prev_version
 
         if (
             deployment_config.autoscaling_config is not None

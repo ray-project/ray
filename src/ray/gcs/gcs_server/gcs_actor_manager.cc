@@ -205,7 +205,6 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
     std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
         run_delayed,
     const rpc::ClientFactoryFn &worker_client_factory)
@@ -214,7 +213,6 @@ GcsActorManager::GcsActorManager(
       gcs_publisher_(std::move(gcs_publisher)),
       worker_client_factory_(worker_client_factory),
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
-      get_job_config_(get_job_config),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
       run_delayed_(run_delayed),
@@ -303,14 +301,30 @@ void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request
 void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                                             rpc::GetAllActorInfoReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  auto limit = request.has_limit() ? request.limit() : -1;
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
+
   if (request.show_dead_jobs() == false) {
+    auto total_actors = registered_actors_.size() + destroyed_actors_.size();
+    reply->set_total(total_actors);
+
+    auto count = 0;
     for (const auto &iter : registered_actors_) {
+      if (limit != -1 && count >= limit) {
+        break;
+      }
+      count += 1;
+
       reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
           const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
     }
     for (const auto &iter : destroyed_actors_) {
+      if (limit != -1 && count >= limit) {
+        break;
+      }
+      count += 1;
+
       reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
           const_cast<rpc::ActorTableData *>(iter.second->GetMutableActorTableData()));
     }
@@ -323,9 +337,18 @@ void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &r
   // We don't maintain an in-memory cache of all actors which belong to dead
   // jobs, so fetch it from redis.
   Status status = gcs_table_storage_->ActorTable().GetAll(
-      [reply, send_reply_callback](
+      [reply, send_reply_callback, limit](
           const absl::flat_hash_map<ActorID, rpc::ActorTableData> &result) {
+        auto total_actors = result.size();
+        reply->set_total(total_actors);
+
+        auto count = 0;
         for (const auto &pair : result) {
+          if (limit != -1 && count >= limit) {
+            break;
+          }
+          count += 1;
+
           // TODO yic: Fix const cast
           reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
               const_cast<rpc::ActorTableData *>(&pair.second));
@@ -438,9 +461,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   // Use the namespace in task options by default. Otherwise use the
   // namespace from the job.
   std::string ray_namespace = actor_creation_task_spec.ray_namespace();
-  if (ray_namespace.empty()) {
-    ray_namespace = get_job_config_(job_id)->ray_namespace();
-  }
+  RAY_CHECK(!ray_namespace.empty())
+      << "`ray_namespace` should be set when creating actor in core worker.";
   auto actor = std::make_shared<GcsActor>(request.task_spec(), ray_namespace);
   if (!actor->GetName().empty()) {
     auto &actors_in_namespace = named_actors_[actor->GetRayNamespace()];
@@ -582,12 +604,10 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   }
 
   // Remove the actor from the unresolved actor map.
-  const auto job_id = JobID::FromBinary(request.task_spec().job_id());
   const auto &actor_namespace = iter->second->GetRayNamespace();
-  auto actor = std::make_shared<GcsActor>(request.task_spec(),
-                                          actor_namespace.empty()
-                                              ? get_job_config_(job_id)->ray_namespace()
-                                              : actor_namespace);
+  RAY_CHECK(!actor_namespace.empty())
+      << "`ray_namespace` should be set when creating actor in core worker.";
+  auto actor = std::make_shared<GcsActor>(request.task_spec(), actor_namespace);
   actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   // Pub this state for dashboard showing.

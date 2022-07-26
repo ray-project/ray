@@ -1,4 +1,5 @@
-from collections import deque, OrderedDict
+from collections import OrderedDict, deque
+
 import numpy as np
 
 from ray.rllib.utils import force_list

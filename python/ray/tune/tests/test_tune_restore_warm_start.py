@@ -14,19 +14,19 @@ from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tune.suggest import ConcurrencyLimiter
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.suggest.dragonfly import DragonflySearch
-from ray.tune.suggest.bayesopt import BayesOptSearch
-from ray.tune.suggest.flaml import CFO, BlendSearch
-from ray.tune.suggest.skopt import SkOptSearch
-from ray.tune.suggest.nevergrad import NevergradSearch
-from ray.tune.suggest.optuna import OptunaSearch
-from ray.tune.suggest.sigopt import SigOptSearch
-from ray.tune.suggest.zoopt import ZOOptSearch
-from ray.tune.suggest.hebo import HEBOSearch
-from ray.tune.suggest.ax import AxSearch
-from ray.tune.suggest.bohb import TuneBOHB
+from ray.tune.search import ConcurrencyLimiter
+from ray.tune.search.hyperopt import HyperOptSearch
+from ray.tune.search.dragonfly import DragonflySearch
+from ray.tune.search.bayesopt import BayesOptSearch
+from ray.tune.search.flaml import CFO, BlendSearch
+from ray.tune.search.skopt import SkOptSearch
+from ray.tune.search.nevergrad import NevergradSearch
+from ray.tune.search.optuna import OptunaSearch
+from ray.tune.search.sigopt import SigOptSearch
+from ray.tune.search.zoopt import ZOOptSearch
+from ray.tune.search.hebo import HEBOSearch
+from ray.tune.search.ax import AxSearch
+from ray.tune.search.bohb import TuneBOHB
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 
 

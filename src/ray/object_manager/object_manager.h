@@ -173,7 +173,7 @@ class ObjectManager : public ObjectManagerInterface,
       AddObjectCallback add_object_callback,
       DeleteObjectCallback delete_object_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      const std::function<void(const ObjectID &)> fail_pull_request);
+      const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request);
 
   ~ObjectManager();
 

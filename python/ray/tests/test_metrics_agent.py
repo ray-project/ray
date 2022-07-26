@@ -70,7 +70,6 @@ _METRICS = [
     "ray_gcs_placement_group_creation_latency_ms_sum",
     "ray_gcs_placement_group_scheduling_latency_ms_sum",
     "ray_gcs_placement_group_count",
-    "ray_gcs_new_resource_creation_latency_ms_sum",
     "ray_gcs_actors_count",
 ]
 
@@ -398,6 +397,15 @@ def test_custom_metrics_edge_cases(metric_mock):
     # The tag keys must be a tuple type.
     with pytest.raises(TypeError):
         Counter("name", tag_keys=("a"))
+
+    with pytest.raises(ValueError):
+        Histogram("hist", boundaries=[-1, 1, 2])
+
+    with pytest.raises(ValueError):
+        Histogram("hist", boundaries=[0, 1, 2])
+
+    with pytest.raises(ValueError):
+        Histogram("hist", boundaries=[-1, -0.5, -0.1])
 
 
 def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):

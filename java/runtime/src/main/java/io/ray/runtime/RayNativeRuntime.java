@@ -1,9 +1,6 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.protobuf.util.JsonFormat;
-import com.google.protobuf.util.JsonFormat.Printer;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.exception.RayIntentionalSystemExitException;
 import io.ray.api.id.ActorId;
@@ -20,8 +17,6 @@ import io.ray.runtime.gcs.GcsClientOptions;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
-import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnv;
-import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnvInfo;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
@@ -113,27 +108,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
-        RuntimeEnvInfo.Builder runtimeEnvInfoBuilder = RuntimeEnvInfo.newBuilder();
-        if (rayConfig.runtimeEnvImpl != null) {
-          RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
-          if (!rayConfig.runtimeEnvImpl.getEnvVars().isEmpty()) {
-            runtimeEnvBuilder.putAllEnvVars(rayConfig.runtimeEnvImpl.getEnvVars());
-          }
-
-          final List<String> jarUrls = rayConfig.runtimeEnvImpl.getJars();
-          if (jarUrls != null && !jarUrls.isEmpty()) {
-            runtimeEnvBuilder.getJavaRuntimeEnvBuilder().addAllDependentJars(jarUrls);
-          }
-          Printer printer = JsonFormat.printer();
-          try {
-            runtimeEnvInfoBuilder.setSerializedRuntimeEnv(printer.print(runtimeEnvBuilder));
-          } catch (InvalidProtocolBufferException e) {
-            throw new RuntimeException(e);
-          }
-        } else {
-          runtimeEnvInfoBuilder.setSerializedRuntimeEnv("{}");
-        }
-        jobConfigBuilder.setRuntimeEnvInfo(runtimeEnvInfoBuilder.build());
+        jobConfigBuilder.setRuntimeEnvInfo(rayConfig.runtimeEnvImpl.GenerateRuntimeEnvInfo());
         jobConfigBuilder.setDefaultActorLifetime(
             rayConfig.defaultActorLifetime == ActorLifetime.DETACHED
                 ? JobConfig.ActorLifetime.DETACHED
@@ -266,6 +241,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     return nativeGetNamespace();
   }
 
+  @Override
+  public UniqueId getCurrentNodeId() {
+    return UniqueId.fromBytes(nativeGetCurrentNodeId());
+  }
+
   private static native void nativeInitialize(
       int workerMode,
       String ndoeIpAddress,
@@ -294,14 +274,5 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native List<byte[]> nativeGetCurrentReturnIds(int numReturns, byte[] actorId);
 
-  static class AsyncContext {
-
-    public final UniqueId workerId;
-    public final ClassLoader currentClassLoader;
-
-    AsyncContext(UniqueId workerId, ClassLoader currentClassLoader) {
-      this.workerId = workerId;
-      this.currentClassLoader = currentClassLoader;
-    }
-  }
+  private static native byte[] nativeGetCurrentNodeId();
 }

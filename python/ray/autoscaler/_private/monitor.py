@@ -142,9 +142,9 @@ class Monitor:
         stop_event: Optional[Event] = None,
         retry_on_failure: bool = True,
     ):
-        gcs_address = address
+        self.gcs_address = address
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        gcs_channel = ray._private.utils.init_grpc_channel(gcs_address, options)
+        gcs_channel = ray._private.utils.init_grpc_channel(self.gcs_address, options)
         # TODO: Use gcs client for this
         self.gcs_node_resources_stub = (
             gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
@@ -156,7 +156,7 @@ class Monitor:
             logger.warning("redis_password has been deprecated.")
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray._private.worker.global_worker
-        gcs_client = GcsClient(address=gcs_address)
+        gcs_client = GcsClient(address=self.gcs_address)
 
         if monitor_ip:
             monitor_addr = f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}"
@@ -170,7 +170,7 @@ class Monitor:
                 b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
             )
         worker.mode = 0
-        head_node_ip = gcs_address.split(":")[0]
+        head_node_ip = self.gcs_address.split(":")[0]
 
         self.load_metrics = LoadMetrics()
         self.last_avail_resources = None
@@ -452,7 +452,7 @@ class Monitor:
             _internal_kv_put(
                 ray_constants.DEBUG_AUTOSCALING_ERROR, message, overwrite=True
             )
-        gcs_publisher = GcsPublisher(address=args.gcs_address)
+        gcs_publisher = GcsPublisher(address=self.gcs_address)
         from ray._private.utils import publish_error_to_driver
 
         publish_error_to_driver(

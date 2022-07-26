@@ -1,8 +1,11 @@
 import abc
 import logging
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 from ray.air.checkpoint import Checkpoint
+
+if TYPE_CHECKING:
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
@@ -67,14 +70,14 @@ class Session(abc.ABC):
         raise NotImplementedError
 
     @property
-    def trial_resources(self) -> Dict[str, float]:
+    def trial_resources(self) -> "PlacementGroupFactory":
         """Trial resources for the corresponding trial."""
         raise NotImplementedError
 
 
 def _get_session() -> Optional[Session]:
     from ray.train._internal.session import _session_v2 as train_session
-    from ray.tune.session import _session_v2 as tune_session
+    from ray.tune.trainable.session import _session_v2 as tune_session
 
     if train_session and tune_session:
         logger.warning(

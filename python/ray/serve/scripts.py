@@ -7,6 +7,7 @@ from typing import Optional, Union
 
 import click
 import yaml
+import re
 
 import ray
 from ray import serve
@@ -17,7 +18,6 @@ from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
 from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
@@ -37,13 +37,67 @@ RAY_INIT_ADDRESS_HELP_STR = (
     "using the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard (defaults to "
-    "http://localhost:8265). Can also be specified using the "
-    "RAY_ADDRESS environment variable."
+    "Address to use to query the Ray dashboard agent (defaults to "
+    "http://localhost:52365). Can also be specified using the "
+    "RAY_AGENT_ADDRESS environment variable."
 )
 
 
-@click.group(help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
+# See https://stackoverflow.com/a/33300001/11162437
+def str_presenter(dumper: yaml.Dumper, data):
+    """
+    A custom representer to write multi-line strings in block notation using a literal
+    style.
+
+    Ensures strings with newline characters print correctly.
+    """
+
+    if len(data.splitlines()) > 1:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+# See https://stackoverflow.com/a/14693789/11162437
+def remove_ansi_escape_sequences(input: str):
+    """Removes ANSI escape sequences in a string"""
+    ansi_escape = re.compile(
+        r"""
+        \x1B  # ESC
+        (?:   # 7-bit C1 Fe (except CSI)
+            [@-Z\\-_]
+        |     # or [ for CSI, followed by a control sequence
+            \[
+            [0-?]*  # Parameter bytes
+            [ -/]*  # Intermediate bytes
+            [@-~]   # Final byte
+        )
+    """,
+        re.VERBOSE,
+    )
+
+    return ansi_escape.sub("", input)
+
+
+def process_dict_for_yaml_dump(data):
+    """
+    Removes ANSI escape sequences recursively for all strings in dict.
+
+    We often need to use yaml.dump() to print dictionaries that contain exception
+    tracebacks, which can contain ANSI escape sequences that color printed text. However
+    yaml.dump() will format the tracebacks incorrectly if ANSI escape sequences are
+    present, so we need to remove them before dumping.
+    """
+
+    for k, v in data.items():
+        if isinstance(v, dict):
+            data[k] = process_dict_for_yaml_dump(v)
+        elif isinstance(v, str):
+            data[k] = remove_ansi_escape_sequences(v)
+
+    return data
+
+
+@click.group(help="CLI for managing Serve instances on a Ray cluster.")
 def cli():
     pass
 
@@ -78,20 +132,7 @@ def cli():
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP servers. Defaults to HeadOnly.",
 )
-@click.option(
-    "--checkpoint-path",
-    default=DEFAULT_CHECKPOINT_PATH,
-    required=False,
-    type=str,
-    hidden=True,
-)
-def start(
-    address,
-    http_host,
-    http_port,
-    http_location,
-    checkpoint_path,
-):
+def start(address, http_host, http_port, http_location):
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -103,7 +144,6 @@ def start(
             port=http_port,
             location=http_location,
         ),
-        _checkpoint_path=checkpoint_path,
     )
 
 
@@ -117,13 +157,12 @@ def start(
         "Use `serve config` to fetch the current config and `serve status` to "
         "check the status of the deployments after deploying."
     ),
-    hidden=True,
 )
 @click.argument("config_file_name")
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -277,14 +316,11 @@ def run(
         sys.exit()
 
 
-@cli.command(
-    help="Get the current config of the running Serve app.",
-    hidden=True,
-)
+@cli.command(help="Get the current config of the running Serve app.")
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -311,7 +347,7 @@ def config(address: str):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -319,17 +355,25 @@ def config(address: str):
 def status(address: str):
     app_status = ServeSubmissionClient(address).get_status()
     if app_status is not None:
-        print(yaml.safe_dump(app_status, default_flow_style=False, sort_keys=False))
+        # Ensure multi-line strings in app_status is dumped/printed correctly
+        yaml.SafeDumper.add_representer(str, str_presenter)
+        print(
+            yaml.safe_dump(
+                # Ensure exception tracebacks in app_status are printed correctly
+                process_dict_for_yaml_dump(app_status),
+                default_flow_style=False,
+                sort_keys=False,
+            )
+        )
 
 
 @cli.command(
     help="Deletes the Serve app.",
-    hidden=True,
 )
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_ADDRESS", "http://localhost:8265"),
+    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -352,13 +396,12 @@ def shutdown(address: str, yes: bool):
 
 
 @cli.command(
-    short_help="Writes a Pipeline's config file.",
+    short_help="Writes a Serve Deployment Graph's config file.",
     help=(
         "Imports the ClassNode or FunctionNode at IMPORT_PATH "
         "and generates a structured config for it that can be used by "
         "`serve deploy` or the REST API. "
     ),
-    hidden=True,
 )
 @click.argument("import_path")
 @click.option(
@@ -395,11 +438,43 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
     ).dict()
     config["import_path"] = import_path
 
-    if output_path is not None:
-        if not output_path.endswith(".yaml"):
-            raise ValueError("FILE_PATH must end with '.yaml'.")
+    config_str = (
+        "# This file was generated using the `serve build` command "
+        f"on Ray v{ray.__version__}.\n\n"
+    )
+    config_str += yaml.dump(
+        config, Dumper=ServeBuildDumper, default_flow_style=False, sort_keys=False
+    )
 
-        with open(output_path, "w") as f:
-            yaml.safe_dump(config, stream=f, default_flow_style=False, sort_keys=False)
-    else:
-        print(yaml.safe_dump(config, default_flow_style=False, sort_keys=False), end="")
+    with open(output_path, "w") if output_path else sys.stdout as f:
+        f.write(config_str)
+
+
+class ServeBuildDumper(yaml.SafeDumper):
+    """YAML dumper object with custom formatting for `serve build` command.
+
+    Reformat config to follow this spacing:
+    ---------------------------------------
+
+    import_path: example.path
+
+    runtime_env: {}
+
+    deployments:
+
+    - name: val1
+        ...
+
+    - name: val2
+        ...
+    """
+
+    def write_line_break(self, data=None):
+        # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
+        super().write_line_break(data)
+
+        # Indents must be less than 3 to ensure that only the top 2 levels of
+        # the config file have line breaks between them. The top 2 levels include
+        # import_path, runtime_env, deployments, and all entries of deployments.
+        if len(self.indents) < 3:
+            super().write_line_break()

@@ -1,14 +1,12 @@
-import os
 import asyncio
 import logging
+import os
 import random
 from concurrent.futures import ThreadPoolExecutor
 
 import ray
-
-import ray.dashboard.utils as dashboard_utils
 import ray._private.usage.usage_lib as ray_usage_lib
-
+import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -56,11 +54,11 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
         try:
             data = ray_usage_lib.generate_report_data(
-                self.cluster_metadata,
                 self.cluster_config_to_report,
                 self.total_success,
                 self.total_failed,
                 self.seq_no,
+                self._dashboard_head.gcs_client.address,
             )
 
             error = None
@@ -89,7 +87,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
-            await loop.run_in_executor(executor, self._report_usage_sync)
+            await loop.run_in_executor(executor, lambda: self._report_usage_sync())
 
     @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())
     async def periodically_report_usage(self):

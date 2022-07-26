@@ -1,7 +1,7 @@
 .. _air-preprocessors:
 
-Preprocessing Data
-==================
+Using Preprocessors
+===================
 
 This page describes how to perform data preprocessing in Ray AIR.
 
@@ -92,7 +92,7 @@ the ``Preprocessor`` and the fitting and transformation logic will occur once pe
 Checkpoint
 ~~~~~~~~~~
 
-``Trainer.fit()`` returns a ``Results`` object which contains a ``Checkpoint``.
+``Trainer.fit()`` returns a ``Result`` object which contains a ``Checkpoint``.
 If a ``Preprocessor`` was passed into the ``Trainer``, then it will be saved in the ``Checkpoint`` along with any fitted state.
 
 As a sanity check, let's confirm the ``Preprocessor`` is available in the ``Checkpoint``. In practice you should not need to do this.
@@ -135,6 +135,7 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
 .. tabbed:: Tabular
 
     #. :class:`Categorizer <ray.data.preprocessors.Categorizer>`
+    #. :class:`Concatenator <ray.data.preprocessors.Concatenator>`
     #. :class:`FeatureHasher <ray.data.preprocessors.FeatureHasher>`
     #. :class:`LabelEncoder <ray.data.preprocessors.LabelEncoder>`
     #. :class:`MaxAbsScaler <ray.data.preprocessors.MaxAbsScaler>`
@@ -146,7 +147,6 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
     #. :class:`RobustScaler <ray.data.preprocessors.RobustScaler>`
     #. :class:`SimpleImputer <ray.data.preprocessors.SimpleImputer>`
     #. :class:`StandardScaler <ray.data.preprocessors.StandardScaler>`
-    #. :class:`SimpleImputer <ray.data.preprocessors.SimpleImputer>`
 
 .. tabbed:: Text
 

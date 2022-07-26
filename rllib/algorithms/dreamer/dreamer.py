@@ -16,6 +16,10 @@ from ray.rllib.execution.rollout_ops import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
@@ -383,10 +387,11 @@ class Dreamer(Algorithm):
         # Number of sub-iterations for Dreamer
         dreamer_train_iters = self.config["dreamer_train_iters"]
         batch_size = self.config["batch_size"]
-        action_repeat = self.config["action_repeat"]
 
         # Collect SampleBatches from rollout workers.
         batch = synchronous_parallel_sample(worker_set=self.workers)
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
 
         fetches = {}
 
@@ -398,24 +403,15 @@ class Dreamer(Algorithm):
             fetches = local_worker.learn_on_batch(batch)
 
         if fetches:
-            # Custom Logging
+            # Custom logging.
             policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
             if "log_gif" in policy_fetches:
                 gif = policy_fetches["log_gif"]
                 policy_fetches["log_gif"] = self._postprocess_gif(gif)
 
-        self._counters[STEPS_SAMPLED_COUNTER] = (
-            self.local_replay_buffer.timesteps * action_repeat
-        )
-
         self.local_replay_buffer.add(batch)
 
         return fetches
-
-    def _compile_iteration_results(self, *args, **kwargs):
-        results = super()._compile_iteration_results(*args, **kwargs)
-        results["timesteps_total"] = self._counters[STEPS_SAMPLED_COUNTER]
-        return results
 
 
 # Deprecated: Use ray.rllib.algorithms.dreamer.DreamerConfig instead!

@@ -10,8 +10,8 @@ from ray.experimental.state.api import list_workers
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
-def get_worker_by_pid(pid):
-    for w in list_workers():
+def get_worker_by_pid(pid, detail=True):
+    for w in list_workers(detail=detail):
         if w["pid"] == pid:
             return w
     assert False
@@ -111,7 +111,7 @@ ray.shutdown()
         address=cluster.address
     )
     a = run_string_as_driver(driver)
-    driver_pid = int(a.strip("\n"))
+    driver_pid = int(a.strip().split("\n")[-1].strip())
 
     def verify_worker_exit_by_shutdown():
         worker = get_worker_by_pid(driver_pid)

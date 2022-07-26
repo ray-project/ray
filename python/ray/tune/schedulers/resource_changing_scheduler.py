@@ -7,11 +7,11 @@ import pickle
 import warnings
 
 from ray.util.annotations import PublicAPI
-from ray.tune import trial_runner
+from ray.tune.execution import trial_runner
 from ray.tune.resources import Resources
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.trial import Trial
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.experiment import Trial
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
@@ -537,7 +537,7 @@ class DistributeResourcesToTopJob(DistributeResources):
             raise ValueError(
                 "The metric parameter cannot be None. The parameter can be set in "
                 "either `DistributeResourcesToTopJob`, the base scheduler or in "
-                "`tune.run` (highest to lowest priority)."
+                "`tune.TuneConfig()` (highest to lowest priority)."
             )
 
         free_cpus = total_available_cpus - used_cpus
@@ -608,7 +608,7 @@ class ResourceChangingScheduler(TrialScheduler):
     If the Trainable (class) API is used, you can obtain the current trial
     resources through the ``Trainable.trial_resources`` property.
 
-    Cannot be used if ``reuse_actors`` is True in ``tune.run``. A ValueError
+    Cannot be used if ``reuse_actors`` is True in ``tune.TuneConfig()``. A ValueError
     will be raised in that case.
 
     Args:
@@ -771,7 +771,7 @@ class ResourceChangingScheduler(TrialScheduler):
             raise ValueError(
                 "ResourceChangingScheduler cannot be used with "
                 "`reuse_actors=True`. FIX THIS by setting "
-                "`reuse_actors=False` in `tune.run`."
+                "`reuse_actors=False` in `tune.TuneConfig()`."
             )
 
         any_resources_changed = False
