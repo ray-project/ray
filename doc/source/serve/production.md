@@ -87,6 +87,19 @@ The `import_path` is the deployment graph's import path. When you deploy your co
 
 `host` and `port` are HTTP options. They determine the host IP address and the port for your Serve application's HTTP proxies. These are optional settings and can be omitted. By default, the `host` will be set to `0.0.0.0` to expose your deployments publicly, and the port will be set to `8000`. If you're using Kubernetes, check out [the documentation on deploying Serve on Kubernetes](deploying-serve-on-kubernetes) to see how these parameters affect your setup.
 
+:::{warning}
+Once your Serve application is running, its `host` and `port` cannot be changed. The following CLI commands automatically start a Serve application on your Ray cluster if one isn't already running:
+
+* `serve deploy`
+* `serve config`
+* `serve status`
+* `serve delete` (however, this command will also delete the application)
+
+All these commands, except `serve delete`, will start Serve with default `host` and `port` options. If you want non-default `host` and `port` options, make sure to first deploy a config with these options specified using `serve deploy`.
+
+Alternatively, you can delete your running Serve application with `serve delete` and restart it with `serve deploy` to change your `host` and `port`. Keep in mind that this will delete all your running Serve deployment as well!
+:::
+
 The `deployments` section is optional. If it's omitted, Serve will launch the deployment graph (and all its deployments). The graph will run with any deployment settings specified in the `@serve.deployment` decorators from the graph's code. If you want to override these decorator settings from the code, you can include a `deployments` section in the file. You can add an entry of deployment settings to the `deployments` list. The only required setting in each list entry is the deployment `name`, which must match one of the deployments from the graph's code. You can include any settings from the `@serve.deployment` decorator inside the entry, **except** `init_args` and `init_kwargs`, which must be set in the graph's code itself.
 
 For example, let's take the `FruitStand` deployment graph from the [previous section](serve-in-production-testing). An equivalent config would be:
