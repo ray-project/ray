@@ -8,24 +8,17 @@ from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
 from ray.util.annotations import PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.usage import usage_lib
 from ray._private.utils import deprecated
 
 from ray.serve.application import Application
 from ray.serve.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve.constants import (
-    CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    HTTP_PROXY_TIMEOUT,
-    SERVE_CONTROLLER_NAME,
-    SERVE_NAMESPACE,
 )
 from ray.serve.context import (
     ReplicaContext,
@@ -33,7 +26,6 @@ from ray.serve.context import (
     get_internal_replica_context,
     set_global_client,
 )
-from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.deployment_graph_build import build as pipeline_build
@@ -45,8 +37,6 @@ from ray.serve.logging_utils import LoggingContext
 from ray.serve.utils import (
     DEFAULT,
     ensure_serialization_context,
-    format_actor_name,
-    get_random_letters,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
 )
@@ -56,6 +46,7 @@ from ray.serve._private import api as _private_api
 logger = logging.getLogger(__file__)
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI(stability="beta")
 def start(
     detached: bool = False,
@@ -101,86 +92,8 @@ def start(
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
-    usage_lib.record_library_usage("serve")
 
-    http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
-    for key in http_deprecated_args:
-        if key in kwargs:
-            raise ValueError(
-                f"{key} is deprecated, please use serve.start(http_options="
-                f'{{"{key}": {kwargs[key]}}}) instead.'
-            )
-    # Initialize ray if needed.
-    ray._private.worker.global_worker.filter_logs_by_job = False
-    if not ray.is_initialized():
-        ray.init(namespace=SERVE_NAMESPACE)
-
-    try:
-        client = get_global_client(_health_check_controller=True)
-        logger.info(
-            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
-        )
-
-        _check_http_options(client, http_options)
-        return client
-    except RayServeException:
-        pass
-
-    if detached:
-        controller_name = SERVE_CONTROLLER_NAME
-    else:
-        controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
-
-    if isinstance(http_options, dict):
-        http_options = HTTPOptions.parse_obj(http_options)
-    if http_options is None:
-        http_options = HTTPOptions()
-
-    # Used for scheduling things to the head node explicitly.
-    # Assumes that `serve.start` runs on the head node.
-    head_node_id = ray.get_runtime_context().node_id.hex()
-    controller = ServeController.options(
-        num_cpus=1 if dedicated_cpu else 0,
-        name=controller_name,
-        lifetime="detached" if detached else None,
-        max_restarts=-1,
-        max_task_retries=-1,
-        # Schedule the controller on the head node with a soft constraint. This
-        # prefers it to run on the head node in most cases, but allows it to be
-        # restarted on other nodes in an HA cluster.
-        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
-        namespace=SERVE_NAMESPACE,
-        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-    ).remote(
-        controller_name,
-        http_config=http_options,
-        head_node_id=head_node_id,
-        detached=detached,
-    )
-
-    proxy_handles = ray.get(controller.get_http_proxies.remote())
-    if len(proxy_handles) > 0:
-        try:
-            ray.get(
-                [handle.ready.remote() for handle in proxy_handles.values()],
-                timeout=HTTP_PROXY_TIMEOUT,
-            )
-        except ray.exceptions.GetTimeoutError:
-            raise TimeoutError(
-                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
-            )
-
-    client = ServeControllerClient(
-        controller,
-        controller_name,
-        detached=detached,
-    )
-    set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f'namespace "{SERVE_NAMESPACE}".'
-    )
-    return client
+    return _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
 
 @PublicAPI
@@ -500,7 +413,6 @@ def list_deployments() -> Dict[str, Deployment]:
 def run(
     target: Union[ClassNode, FunctionNode],
     _blocking: bool = True,
-    *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
 ) -> Optional[RayServeHandle]:
@@ -523,7 +435,9 @@ def run(
             to execute the serve DAG.
     """
 
-    client = start(detached=True, http_options={"host": host, "port": port})
+    client = _private_api.serve_start(
+        detached=True, http_options={"host": host, "port": port}
+    )
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
@@ -605,27 +519,3 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
     return Application(pipeline_build(target))
-
-
-def _check_http_options(
-    client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
-) -> None:
-    if http_options:
-        client_http_options = client.http_config
-        new_http_options = (
-            http_options
-            if isinstance(http_options, HTTPOptions)
-            else HTTPOptions.parse_obj(http_options)
-        )
-        different_fields = []
-        all_http_option_fields = new_http_options.__dict__
-        for field in all_http_option_fields:
-            if getattr(new_http_options, field) != getattr(client_http_options, field):
-                different_fields.append(field)
-
-        if len(different_fields):
-            logger.warning(
-                "The new client HTTP config differs from the existing one "
-                f"in the following fields: {different_fields}. "
-                "The new HTTP config is ignored."
-            )

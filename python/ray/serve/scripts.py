@@ -25,6 +25,7 @@ from ray.serve.constants import (
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
+from ray.serve._private import api as _private_api
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -296,7 +297,7 @@ def run(
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-    client = serve.start(detached=True)
+    client = _private_api.serve_start(detached=True)
 
     try:
         if is_config:
