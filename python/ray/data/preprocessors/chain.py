@@ -71,4 +71,4 @@ class Chain(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"Chain(preprocessors={self.preprocessors})"
+        return f"Chain({', '.join(repr(preprocessor) for preprocessor in self.preprocessors)})"

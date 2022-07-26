@@ -6,6 +6,7 @@ import pandas as pd
 from ray.data import Dataset
 from ray.data.aggregate import Mean, Std, Min, Max, AbsMax
 from ray.data.preprocessor import Preprocessor
+from torch import quantile
 
 
 class StandardScaler(Preprocessor):
@@ -47,10 +48,10 @@ class StandardScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return (
-            f"StandardScaler(columns={self.columns}, ddof={self.ddof}, stats={stats})"
-        )
+        if self.ddof != 0:
+            return f"StandardScaler(columns={self.columns}, ddof={self.ddof})"
+        else:
+            return f"StandardScaler(columns={self.columns})"
 
 
 class MinMaxScaler(Preprocessor):
@@ -94,8 +95,7 @@ class MinMaxScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"MixMaxScaler(columns={self.columns}, stats={stats})"
+        return f"MixMaxScaler(columns={self.columns})"
 
 
 class MaxAbsScaler(Preprocessor):
@@ -136,8 +136,7 @@ class MaxAbsScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"MaxAbsScaler(columns={self.columns}, stats={stats})"
+        return f"MaxAbsScaler(columns={self.columns})"
 
 
 class RobustScaler(Preprocessor):
@@ -214,10 +213,7 @@ class RobustScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return (
-            f"RobustScaler("
-            f"columns={self.columns}, "
-            f"quantile_range={self.quantile_range}, "
-            f"stats={stats})>"
-        )
+        if self.quantile_range != (0.25, 0.75):
+            return f"RobustScaler(columns={self.columns}, quantile_range={self.quantile_range})"
+        else:
+            return f"RobustScaler(columns={self.columns})"

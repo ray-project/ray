@@ -1,4 +1,5 @@
 from typing import List, Optional
+from xml.etree.ElementInclude import include
 import numpy as np
 import pandas as pd
 
@@ -98,9 +99,15 @@ class Concatenator(Preprocessor):
         return df
 
     def __repr__(self):
-        return (
-            f"Concatenator(output_column_name={self.output_column_name}, "
-            f"include={self.included_columns}, "
-            f"exclude={self.excluded_columns}, "
-            f"dtype={self.dtype})"
-        )
+        non_default_arguments = []
+        if self.output_column_name != "concat_out":
+            non_default_arguments.append(f"output_column_name='{self.output_column_name}'")
+        if self.included_columns is not None:
+            non_default_arguments.append(f"include={self.included_columns}")
+        if self.excluded_columns != []:
+            non_default_arguments.append(f"exclude={self.excluded_columns}")
+        if self.dtype is not None:
+            non_default_arguments.append(f"dtype={self.dtype}")
+        if self.raise_if_missing:
+            non_default_arguments.append(f"raise_if_missing=True")
+        return f"Concatenator({', '.join(non_default_arguments)})"

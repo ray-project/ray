@@ -73,14 +73,12 @@ class SimpleImputer(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return (
-            f"SimpleImputer("
-            f"columns={self.columns}, "
-            f"strategy={self.strategy}, "
-            f"fill_value={self.fill_value}, "
-            f"stats={stats})"
-        )
+        non_default_arguments = [f"columns={self.columns}"]
+        if self.strategy != "mean":
+            non_default_arguments.append(f"strategy='{self.strategy}'")
+        if self.fill_value is not None:
+            non_default_arguments.append(f"fill_value={repr(self.fill_value)}")
+        return f"SimpleImputer({', '.join(non_default_arguments)})"
 
 
 def _get_most_frequent_values(

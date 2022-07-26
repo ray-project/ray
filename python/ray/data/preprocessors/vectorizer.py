@@ -53,13 +53,11 @@ class HashingVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
-        return (
-            f"HashingVectorizer("
-            f"Columns={self.columns}, "
-            f"num_features={self.num_features}, "
-            f"tokenization_fn={fn_name})"
-        )
+        if self.tokenization_fn != simple_split_tokenizer:
+            fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+            return f"HasingVectorizer(columns={self.columns}, num_features={self.num_features}, tokenization_fn={fn_name})"
+        else:
+            return f"HasingVectorizer(columns={self.columns}, num_features={self.num_features})"
 
 
 class CountVectorizer(Preprocessor):
@@ -132,10 +130,10 @@ class CountVectorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
-        return (
-            f"CountVectorizer("
-            f"columns={self.columns}, "
-            f"tokenization_fn={fn_name}, "
-            f"max_features={self.max_features})"
-        )
+        non_default_arguments = [f"columns={self.columns}"]
+        if self.tokenization_fn != simple_split_tokenizer:
+            fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
+            non_default_arguments.append(f"tokenization_fn={fn_name}")
+        if self.max_features is not None:
+            non_default_arguments.append(f"max_features={self.max_features}")
+        return f"CountVectorizer({', '.join(non_default_arguments)})"
