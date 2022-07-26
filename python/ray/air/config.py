@@ -78,7 +78,7 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 
     string = f"{obj.__class__.__name__}("
     string += ", ".join(
-        f"{name}={repr(value)}" for name, value in non_default_values.items()
+        f"{name}={value!r}" for name, value in non_default_values.items()
     )
     string += ")"
 
