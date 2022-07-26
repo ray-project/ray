@@ -165,12 +165,20 @@ def summarize_episodes(
     num_faulty_episodes = 0
 
     for episode in episodes:
+        # Faulty episodes may still carry perf_stats data.
+        for k, v in episode.perf_stats.items():
+            perf_stats[k].append(v)
+
+        # Continue if this is a faulty episode.
+        # There should be other meaningful stats to be collected.
+        if episode.episode_faulty:
+            num_faulty_episodes += 1
+            continue
+
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
         for k, v in episode.custom_metrics.items():
             custom_metrics[k].append(v)
-        for k, v in episode.perf_stats.items():
-            perf_stats[k].append(v)
         for (_, policy_id), reward in episode.agent_rewards.items():
             if policy_id != DEFAULT_POLICY_ID:
                 policy_rewards[policy_id].append(reward)
@@ -178,8 +186,7 @@ def summarize_episodes(
             hist_stats[k] += v
         for k, v in episode.media.items():
             episode_media[k].append(v)
-        if episode.episode_faulty:
-            num_faulty_episodes += 1
+
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
