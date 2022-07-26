@@ -309,7 +309,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
           task_id, error_type, &status, &error_info);
     }
-    if(!wait_for_death_info_tasks.empty()) {
+    if (!wait_for_death_info_tasks.empty()) {
       RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
                      << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
       for (auto &net_err_task : wait_for_death_info_tasks) {
@@ -526,9 +526,10 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       // No retry == actor is dead.
       // If actor is not dead yet, wait for the grace period until we mark the
       // return object as failed.
-      if(RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+      if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
         int64_t death_info_grace_period_ms =
-            current_time_ms() + RayConfig::instance().timeout_ms_task_wait_for_death_info();
+            current_time_ms() +
+            RayConfig::instance().timeout_ms_task_wait_for_death_info();
         absl::MutexLock lock(&mu_);
         auto queue_pair = client_queues_.find(actor_id);
         RAY_CHECK(queue_pair != client_queues_.end());

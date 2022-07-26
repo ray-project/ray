@@ -505,8 +505,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       100);
 
-  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
-                                       RayConfig::instance().core_worker_internal_heartbeat_ms());
+  periodical_runner_.RunFnPeriodically(
+      [this] { InternalHeartbeat(); },
+      RayConfig::instance().core_worker_internal_heartbeat_ms());
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like
