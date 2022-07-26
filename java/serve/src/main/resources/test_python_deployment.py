@@ -2,6 +2,7 @@
 # invocation.
 from ray import serve
 
+
 def echo_server(v):
     return v
 
