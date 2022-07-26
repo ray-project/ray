@@ -10,21 +10,6 @@ from ray.rllib.utils.test_utils import check
 from ray.rllib.evaluation.collectors.simple_list_collector import _AgentCollector
 
 
-# TODO: @kourosh remove it once we have removed the dependency _agent_collector to
-# policy
-class FakeRNNPolicy:
-    def __init__(self, max_seq_len=1) -> None:
-        self.config = {
-            "_disable_action_flattening": True,
-            "model": {
-                "max_seq_len": max_seq_len,
-            },
-        }
-
-    def is_recurrent(self):
-        return True
-
-
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -331,6 +316,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         obses = self._simulate_env_steps(ac, n_steps=10)
 
         sample_batch = ac.build_for_training(view_reqs)
+
         # exclude the last one since these are the next_obses
         expected_obses = np.stack(obses[:-1])
 

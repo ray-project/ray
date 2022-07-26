@@ -1,6 +1,5 @@
 import asyncio
 import concurrent.futures
-import dataclasses
 from datetime import datetime
 import enum
 import logging
@@ -10,6 +9,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp.web
+from pydantic import BaseModel, Extra, Field, validator
 
 import ray
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
@@ -39,20 +39,38 @@ class RayActivityStatus(str, enum.Enum):
     ERROR = "ERROR"
 
 
-@dataclasses.dataclass
-class RayActivityResponse:
+class RayActivityResponse(BaseModel, extra=Extra.allow):
     """
-    Dataclass used to inform if a particular Ray component can be considered
+    Pydantic model used to inform if a particular Ray component can be considered
     active, and metadata about observation.
     """
 
-    # Whether the corresponding Ray component is considered active or inactive,
-    # or if there was an error while collecting this observation.
-    is_active: RayActivityStatus
-    # Reason if Ray component is considered active or errored.
-    reason: Optional[str] = None
-    # Timestamp of when this observation about the Ray component was made.
-    timestamp: Optional[float] = None
+    is_active: RayActivityStatus = Field(
+        ...,
+        description=(
+            "Whether the corresponding Ray component is considered active or inactive, "
+            "or if there was an error while collecting this observation."
+        ),
+    )
+    reason: Optional[str] = Field(
+        None, description="Reason if Ray component is considered active or errored."
+    )
+    timestamp: float = Field(
+        ...,
+        description=(
+            "Timestamp of when this observation about the Ray component was made. "
+            "This is in the format of seconds since unix epoch."
+        ),
+    )
+
+    @validator("reason", always=True)
+    def reason_required(cls, v, values, **kwargs):
+        if "is_active" in values and values["is_active"] != RayActivityStatus.INACTIVE:
+            if v is None:
+                raise ValueError(
+                    'Reason is required if is_active is "active" or "error"'
+                )
+        return v
 
 
 class APIHead(dashboard_utils.DashboardHeadModule):
@@ -131,7 +149,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         # Get activity information for driver
         driver_activity_info = await self._get_job_activity_info(timeout=timeout)
-        resp = {"driver": dataclasses.asdict(driver_activity_info)}
+        resp = {"driver": dict(driver_activity_info)}
 
         if RAY_CLUSTER_ACTIVITY_HOOK in os.environ:
             try:
@@ -149,17 +167,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                         component_activity_output = external_activity_output[
                             component_type
                         ]
-                        # Cast output to type RayActivityResponse
+                        # Parse and validate output to type RayActivityResponse
                         component_activity_output = RayActivityResponse(
-                            **dataclasses.asdict(component_activity_output)
+                            **dict(component_activity_output)
                         )
-                        # Validate is_active field is of type RayActivityStatus
-                        component_activity_output.is_active = RayActivityStatus[
-                            component_activity_output.is_active
-                        ]
-                        resp[component_type] = dataclasses.asdict(
-                            component_activity_output
-                        )
+                        resp[component_type] = dict(component_activity_output)
                     except Exception as e:
                         logger.exception(
                             f"Failed to get activity status of {component_type} "
@@ -189,8 +201,10 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     async def _get_job_activity_info(self, timeout: int) -> RayActivityResponse:
         # Returns if there is Ray activity from drivers (job).
-        # Drivers in namespaces that start with _ray_internal_job_info_ are not
+        # Drivers in namespaces that start with _ray_internal_ are not
         # considered activity.
+        # This includes the _ray_internal_dashboard job that gets automatically
+        # created with every cluster
         try:
             request = gcs_service_pb2.GetAllJobInfoRequest()
             reply = await self._gcs_job_info_stub.GetAllJobInfo(
@@ -201,7 +215,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             for job_table_entry in reply.job_info_list:
                 is_dead = bool(job_table_entry.is_dead)
                 in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
-                    JobInfoStorageClient.JOB_DATA_KEY_PREFIX
+                    "_ray_internal_"
                 )
                 if not is_dead and not in_internal_namespace:
                     num_active_drivers += 1

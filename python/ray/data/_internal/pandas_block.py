@@ -1,3 +1,4 @@
+import logging
 from typing import (
     Callable,
     Dict,
@@ -15,6 +16,7 @@ import collections
 import heapq
 import numpy as np
 
+import ray
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -40,6 +42,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 _pandas = None
+logger = logging.getLogger(__name__)
 
 
 def lazy_import_pandas():
@@ -95,7 +98,32 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
 
     def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
-        return pandas.concat(tables, ignore_index=True)
+        from ray.data.extensions.tensor_extension import TensorArray
+
+        if len(tables) > 1:
+            df = pandas.concat(tables, ignore_index=True)
+        else:
+            df = tables[0]
+        # Try to convert any ndarray columns to TensorArray columns.
+        # TODO(Clark): Once Pandas supports registering extension types for type
+        # inference on construction, implement as much for NumPy ndarrays and remove
+        # this. See https://github.com/pandas-dev/pandas/issues/41848
+        for col_name, col in df.items():
+            if (
+                col.dtype.type is np.object_
+                and not col.empty
+                and isinstance(col.iloc[0], np.ndarray)
+            ):
+                try:
+                    df.loc[:, col_name] = TensorArray(col)
+                except Exception as e:
+                    if ray.util.log_once("datasets_tensor_array_cast_warning"):
+                        logger.warning(
+                            f"Tried to transparently convert column {col_name} to a "
+                            "TensorArray but the conversion failed, leaving column "
+                            f"as-is: {e}"
+                        )
+        return df
 
     @staticmethod
     def _empty_table() -> "pandas.DataFrame":

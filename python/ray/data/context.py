@@ -65,6 +65,9 @@ DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
 
+# Whether to estimate in-memory decoding data size for data source.
+DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
+
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
 
@@ -97,6 +100,7 @@ class DatasetContext:
         pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
         use_polars: bool,
+        decoding_size_estimation: bool,
         min_parallelism: bool,
     ):
         """Private constructor (use get_current() instead)."""
@@ -117,6 +121,7 @@ class DatasetContext:
         )
         self.scheduling_strategy = scheduling_strategy
         self.use_polars = use_polars
+        self.decoding_size_estimation = decoding_size_estimation
         self.min_parallelism = min_parallelism
 
     @staticmethod
@@ -150,6 +155,7 @@ class DatasetContext:
                     pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
                     use_polars=DEFAULT_USE_POLARS,
+                    decoding_size_estimation=DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED,
                     min_parallelism=DEFAULT_MIN_PARALLELISM,
                 )
 

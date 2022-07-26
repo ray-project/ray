@@ -442,6 +442,14 @@ py_test(
 )
 
 py_test(
+    name = "test_tuner_restore",
+    size = "medium",
+    srcs = ["tests/test_tuner_restore.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
     name = "test_utils",
     size = "small",
     srcs = ["tests/test_utils.py"],

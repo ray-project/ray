@@ -23,7 +23,7 @@ public abstract class BaseServeTest {
     Map<String, String> config = Maps.newHashMap();
     // The default port 8000 is occupied by other processes on the ci platform
     config.put(RayServeConfig.PROXY_HTTP_PORT, "8341");
-    client = Serve.start(true, false, null, config);
+    client = Serve.start(true, false, config);
   }
 
   @AfterMethod(alwaysRun = true)
