@@ -269,13 +269,10 @@ Table (group by {summary_by})
 def format_get_api_output(
     state_data: Optional[Dict],
     id: str,
-    format: AvailableFormat = AvailableFormat.DEFAULT,
+    format: AvailableFormat = AvailableFormat.YAML,
 ) -> str:
-    if not state_data:
+    if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
-
-    if not isinstance(state_data, list):
-        state_data = [state_data]
 
     return output_with_format(state_data, format)
 
