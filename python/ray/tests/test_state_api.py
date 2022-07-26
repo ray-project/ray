@@ -67,6 +67,7 @@ from ray.experimental.state.api import (
     list_runtime_envs,
     list_tasks,
     list_workers,
+    summarize_tasks,
     StateApiClient,
 )
 from ray.experimental.state.common import (
@@ -165,6 +166,7 @@ def generate_worker_data(id, pid=1234):
         timestamp=1234,
         worker_type=WorkerType.WORKER,
         pid=pid,
+        exit_type=None,
     )
 
 
@@ -992,6 +994,27 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
         result = await state_api_manager.list_runtime_envs(
             option=create_api_options(limit=1)
         )
+
+
+@pytest.mark.asyncio
+async def test_filter_non_existent_column(state_api_manager):
+    """Test when the non existent column is given, it handles that properly.
+
+    Related: https://github.com/ray-project/ray/issues/26811
+    """
+    data_source_client = state_api_manager.data_source_client
+    id = b"1234"
+    data_source_client.get_all_worker_info.return_value = GetAllWorkerInfoReply(
+        worker_table_data=[
+            generate_worker_data(id, pid=1),
+            generate_worker_data(b"12345", pid=2),
+        ],
+        total=2,
+    )
+    result = await state_api_manager.list_workers(
+        option=create_api_options(filters=[("exit_type", "=", "INTENDED_SYSTEM_EXIT")])
+    )
+    assert len(result.result) == 0
 
 
 def test_type_conversion():
@@ -1918,11 +1941,11 @@ def test_network_partial_failures(ray_start_cluster):
     cluster.remove_node(n, allow_graceful=False)
 
     with pytest.warns(UserWarning):
-        list_tasks(_explain=True)
+        list_tasks(raise_on_missing_output=False, _explain=True)
 
     # Make sure when _explain == False, warning is not printed.
     with pytest.warns(None) as record:
-        list_tasks(_explain=False)
+        list_tasks(raise_on_missing_output=False, _explain=False)
     assert len(record) == 0
 
 
@@ -1950,7 +1973,7 @@ def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
 
     def verify():
         with pytest.warns(None) as record:
-            list_tasks(_explain=True, timeout=5)
+            list_tasks(raise_on_missing_output=False, _explain=True, timeout=5)
         return len(record) == 1
 
     wait_for_condition(verify)
@@ -2425,6 +2448,113 @@ def test_state_api_server_enforce_concurrent_http_requests(
             return True
 
         wait_for_condition(verify)
+
+
+@pytest.mark.parametrize("callsite_enabled", [True, False])
+def test_callsite_warning(callsite_enabled, monkeypatch, shutdown_only):
+    # Set environment
+    with monkeypatch.context() as m:
+        m.setenv("RAY_record_ref_creation_sites", str(int(callsite_enabled)))
+        ray.init()
+
+        a = ray.put(1)  # noqa
+
+        runner = CliRunner()
+        wait_for_condition(lambda: len(list_objects()) > 0)
+
+        with pytest.warns(None) as record:
+            result = runner.invoke(cli_list, ["objects"])
+            assert result.exit_code == 0
+
+        if callsite_enabled:
+            assert len(record) == 0
+        else:
+            assert len(record) == 1
+            assert "RAY_record_ref_creation_sites=1" in str(record[0].message)
+
+
+def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster):
+    """
+    Verify when there are network partial failures,
+    state API raises an exception when `raise_on_missing_output=True`.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000",
+        )
+        cluster.add_node(num_cpus=2)
+
+    @ray.remote
+    def f():
+        import time
+
+        time.sleep(30)
+
+    a = [f.remote() for _ in range(4)]  # noqa
+
+    runner = CliRunner()
+
+    # Verify
+    def verify():
+        # Verify when raise_on_missing_output=True, it raises an exception.
+        try:
+            list_tasks(_explain=True, timeout=3)
+        except RayStateApiException as e:
+            assert "Failed to retrieve all tasks from the cluster." in str(e)
+        else:
+            assert False
+
+        try:
+            summarize_tasks(_explain=True, timeout=3)
+        except RayStateApiException as e:
+            assert "Failed to retrieve all tasks from the cluster." in str(e)
+        else:
+            assert False
+
+        # Verify when raise_on_missing_output=False, it prints warnings.
+        with pytest.warns(None) as record:
+            list_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+        assert len(record) == 1
+
+        # TODO(sang): Add warning after https://github.com/ray-project/ray/pull/26801
+        # is merged.
+        # with pytest.warns(None) as record:
+        #     summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+        # assert len(record) == 1
+
+        # Verify when CLI is used, exceptions are not raised.
+        with pytest.warns(None) as record:
+            result = runner.invoke(cli_list, ["tasks", "--timeout=3"])
+        assert len(record) == 1
+        assert result.exit_code == 0
+
+        # TODO(sang): Add warning after https://github.com/ray-project/ray/pull/26801
+        # is merged.
+        # Verify summary CLI also doesn't raise an exception.
+        # with pytest.warns(None) as record:
+        #     result = runner.invoke(task_summary, ["--timeout=3"])
+        # assert result.exit_code == 0
+        # assert len(record) == 1
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_get_id_not_found(shutdown_only):
+    """Test get API CLI fails correctly when there's no corresponding id
+
+    Related: https://github.com/ray-project/ray/issues/26808
+    """
+    ray.init()
+    runner = CliRunner()
+    result = runner.invoke(cli_get, ["actors", "1234"])
+    assert result.exit_code == 0
+    assert "Resource with id=1234 not found in the cluster." in result.output
 
 
 if __name__ == "__main__":

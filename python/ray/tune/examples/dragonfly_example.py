@@ -11,7 +11,7 @@ from __future__ import print_function
 import numpy as np
 import time
 
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
@@ -79,20 +79,25 @@ if __name__ == "__main__":
     df_search = ConcurrencyLimiter(df_search, max_concurrent=4)
 
     scheduler = AsyncHyperBandScheduler()
-    analysis = tune.run(
+    tuner = tune.Tuner(
         objective,
-        metric="objective",
-        mode="max",
-        name="dragonfly_search",
-        search_alg=df_search,
-        scheduler=scheduler,
-        num_samples=10 if args.smoke_test else 50,
-        config={
+        tune_config=tune.TuneConfig(
+            metric="objective",
+            mode="max",
+            search_alg=df_search,
+            scheduler=scheduler,
+            num_samples=10 if args.smoke_test else 50,
+        ),
+        run_config=air.RunConfig(
+            name="dragonfly_search",
+        ),
+        param_space={
             "iterations": 100,
             "LiNO3_vol": tune.uniform(0, 7),
             "Li2SO4_vol": tune.uniform(0, 7),
             "NaClO4_vol": tune.uniform(0, 7),
         },
     )
+    results = tuner.fit()
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ", results.get_best_result().config)

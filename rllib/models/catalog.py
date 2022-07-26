@@ -948,7 +948,7 @@ class ModelCatalog:
                 not isinstance(orig_space, (Dict, Tuple))
                 or not any(
                     isinstance(s, Box) and len(s.shape) >= 2
-                    for s in tree.flatten(orig_space.spaces)
+                    for s in flatten_space(orig_space)
                 )
             )
         ):

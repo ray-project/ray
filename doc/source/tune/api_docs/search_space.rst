@@ -69,7 +69,8 @@ For a high-level overview, see this example:
         "func": tune.sample_from(lambda spec: spec.config.uniform * 0.01),
 
         # Do a grid search over these values. Every value will be sampled
-        # `num_samples` times (`num_samples` is the parameter you pass to `tune.run()`)
+        # ``num_samples`` times (``num_samples`` is the parameter you pass to ``tune.TuneConfig``,
+        # which is taken in by ``Tuner``)
         "grid": tune.grid_search([32, 64, 128])
     }
 
