@@ -1,4 +1,3 @@
-import asyncio
 import sys
 
 import pytest
@@ -9,7 +8,7 @@ from ray._private.client_mode_hook import enable_client_mode, client_mode_should
 
 
 @pytest.mark.skip(reason="KV store is not working properly.")
-def test_rllib_integration(ray_start_regular_shared):
+def test_rllib_integration(ray_start_regular):
     with ray_start_client_server():
         import ray.rllib.algorithms.dqn as dqn
 
@@ -35,7 +34,7 @@ def test_rllib_integration(ray_start_regular_shared):
                 trainer.train()
 
 
-def test_rllib_integration_tune(ray_start_regular_shared):
+def test_rllib_integration_tune(ray_start_regular):
     with ray_start_client_server():
         # Confirming the behavior of this context manager.
         # (Client mode hook not yet enabled.)
@@ -49,12 +48,8 @@ def test_rllib_integration_tune(ray_start_regular_shared):
             )
 
 
-def test_serve_handle(ray_start_regular_shared):
-    event_loop = asyncio.get_event_loop()
-
-    async def get_result(ref):
-        return await ref
-
+@pytest.mark.asyncio
+async def test_serve_handle(ray_start_regular):
     with ray_start_client_server() as ray:
         from ray import serve
 
@@ -68,7 +63,7 @@ def test_serve_handle(ray_start_regular_shared):
             hello.deploy()
             handle = hello.get_handle()
             assert ray.get(handle.remote()) == "hello"
-            assert event_loop.run_until_complete(get_result(handle.remote())) == "hello"
+            assert await handle.remote() == "hello"
 
 
 if __name__ == "__main__":
