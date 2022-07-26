@@ -314,6 +314,12 @@ class StateApiClient(SubmissionClient):
     def _print_api_warning(self, resource: StateResource, api_response: dict):
         """Print the API warnings.
 
+        We print warnings for users:
+            1. when some data sources are not available
+            2. when results were truncated at the data source
+            3. when results were limited
+            4. when callsites not enabled for listing objects
+
         Args:
             resource: Resource names, i.e. 'jobs', 'actors', 'nodes',
                 see `StateResource` for details.
@@ -324,16 +330,34 @@ class StateApiClient(SubmissionClient):
         if warning_msgs:
             warnings.warn(warning_msgs)
 
-        # Print warnings if data is truncated.
-        data = api_response["result"]
+        # Print warnings if data is truncated at the data source.
+        num_after_truncation = api_response["num_after_truncation"]
         total = api_response["total"]
-        if total > len(data):
+        if total > num_after_truncation:
+            # NOTE(rickyyx): For now, there's not much users could do (neither can we),
+            # with hard truncation. Unless we allow users to set a higher
+            # `RAY_MAX_LIMIT_FROM_DATA_SOURCE`, the data will always be truncated at the
+            # data source.
             warnings.warn(
                 (
-                    f"{len(data)} ({total} total) {resource.value} "
-                    f"are returned. {total - len(data)} entries have been truncated. "
-                    "Use `--filter` to reduce the amount of data to return "
-                    "or increase the limit by specifying`--limit`."
+                    f"{num_after_truncation} ({total} total) {resource.value} "
+                    "are retrieved from the data source. "
+                    f"{total - num_after_truncation} entries have been truncated. "
+                    f"Max of {num_after_truncation} entries are retrieved from data "
+                    "source to prevent over-sized payloads."
+                ),
+            )
+
+        # Print warnings if return data is limited at the API server due to
+        # limit enforced at the server side
+        num_filtered = api_response["num_filtered"]
+        data = api_response["result"]
+        if num_filtered > len(data):
+            warnings.warn(
+                (
+                    f"{len(data)}/{num_filtered} {resource.value} returned. "
+                    "Use `--filter` to reduce the amount of data to return or "
+                    "setting a higher limit with `--limit` to see all data. "
                 ),
             )
 
@@ -425,13 +449,15 @@ class StateApiClient(SubmissionClient):
             resource_name: Resource names,
                 see `SummaryResource` for details.
             options: summary options. See `SummaryApiOptions` for details.
-            A dictionary of queried result from `SummaryApiResponse`,
             raise_on_missing_output: Raise an exception if the output has missing data.
                 Output can have missing data if (1) there's a partial network failure
                 when the source is distributed. (2) data is truncated
                 because it is too large.
             _explain: Print the API information such as API
                 latency or failed query information.
+
+        Returns:
+            A dictionary of queried result from `SummaryApiResponse`.
 
         Raises:
             This doesn't catch any exceptions raised when the underlying request
