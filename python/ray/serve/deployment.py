@@ -9,6 +9,7 @@ from typing import (
     Tuple,
     Union,
 )
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 from ray.serve.context import get_global_client
 from ray.dag.class_node import ClassNode
@@ -213,6 +214,7 @@ class Deployment:
             init_kwargs: kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
+        record_extra_usage_tag(TagKey.SERVE_USING_V1_API, "")
         self._deploy(*init_args, _blocking=_blocking, **init_kwargs)
 
     # TODO(Sihan) Promote the _deploy to deploy after we fully deprecate the API
@@ -276,7 +278,7 @@ class Deployment:
         Returns:
             ServeHandle
         """
-
+        record_extra_usage_tag(TagKey.SERVE_USING_V1_API, "")
         return self._get_handle(sync)
 
     # TODO(Sihan) Promote the _get_handle to get_handle after we fully deprecate the API

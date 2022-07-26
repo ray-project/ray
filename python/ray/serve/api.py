@@ -4,6 +4,7 @@ import logging
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -92,8 +93,12 @@ def start(
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
+    client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
-    return _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_USING_V1_API, "")
+
+    return client
 
 
 @PublicAPI
@@ -395,6 +400,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
+    record_extra_usage_tag(TagKey.SERVE_USING_V1_API, "")
     return _private_api.get_deployment(name)
 
 
@@ -405,7 +411,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-
+    record_extra_usage_tag(TagKey.SERVE_USING_V1_API, "")
     return _private_api.list_deployments()
 
 
@@ -434,10 +440,12 @@ def run(
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
-
     client = _private_api.serve_start(
         detached=True, http_options={"host": host, "port": port}
     )
+
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_USING_V2_API, "")
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
@@ -508,7 +516,6 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     The returned Application object can be exported to a dictionary or YAML
     config.
     """
-
     if in_interactive_shell():
         raise RuntimeError(
             "build cannot be called from an interactive shell like "

@@ -244,9 +244,16 @@ def _put_library_usage(library_usage: str):
 class TagKey(Enum):
     _TEST1 = auto()
     _TEST2 = auto()
+
+    # RLlib
     RLLIB_FRAMEWORK = auto()
     RLLIB_ALGORITHM = auto()
     RLLIB_NUM_WORKERS = auto()
+
+    # Serve
+    SERVE_USING_V1_API = auto()
+    SERVE_USING_V2_API = auto()
+    SERVE_NUM_DEPLOYMENTS = auto()
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
