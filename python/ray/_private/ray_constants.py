@@ -273,7 +273,7 @@ LOG_MONITOR_MAX_OPEN_FILES = int(
 # The maximum batch of lines to be read in a single iteration. We _always_ try
 # to read this number of lines even if there aren't any new lines.
 LOG_MONITOR_NUM_LINES_TO_READ = int(
-    os.environ.get("RAY_LOG_MONITOR_NUM_LINES_TO_READ", "100")
+    os.environ.get("RAY_LOG_MONITOR_NUM_LINES_TO_READ", "1000")
 )
 
 # Autoscaler events are denoted by the ":event_summary:" magic token.
