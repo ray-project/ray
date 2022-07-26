@@ -37,7 +37,10 @@ class HuggingFacePredictor(Predictor):
         super().__init__(preprocessor)
 
     def __repr__(self):
-        return f"HuggingFacePredictor(pipeline={self.pipeline}, preprocessor={self._preprocessor})"
+        return (
+            f"HuggingFacePredictor(pipeline={self.pipeline}, "
+            f"preprocessor={self._preprocessor})"
+        )
 
     @classmethod
     def from_checkpoint(

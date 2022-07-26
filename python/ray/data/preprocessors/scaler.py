@@ -6,7 +6,6 @@ import pandas as pd
 from ray.data import Dataset
 from ray.data.aggregate import Mean, Std, Min, Max, AbsMax
 from ray.data.preprocessor import Preprocessor
-from torch import quantile
 
 
 class StandardScaler(Preprocessor):
@@ -210,4 +209,7 @@ class RobustScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"RobustScaler(columns={self.columns}, quantile_range={self.quantile_range})"
+        return (
+            f"RobustScaler(columns={self.columns}, "
+            f"quantile_range={self.quantile_range})"
+        )

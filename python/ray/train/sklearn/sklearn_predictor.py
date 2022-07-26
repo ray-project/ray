@@ -36,7 +36,10 @@ class SklearnPredictor(Predictor):
         super().__init__(preprocessor)
 
     def __repr__(self):
-        return f"SklearnPredictor(estimator={self.estimator}, preprocessor={self._preprocessor})"
+        return (
+            f"SklearnPredictor(estimator={self.estimator}, "
+            f"preprocessor={self._preprocessor})"
+        )
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "SklearnPredictor":
