@@ -16,7 +16,9 @@
 
 #include <vector>
 
+#include "ray/common/bundle_spec.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/scorer.h"
@@ -59,7 +61,12 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
   std::pair<scheduling::NodeID, const Node *> GetBestNode(
       const ResourceRequest &required_resources,
       const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
-      const SchedulingOptions &options) const;
+      const SchedulingOptions &options,
+      const absl::flat_hash_map<scheduling::NodeID, double>
+          &available_cpus_before_temporary_subtraction) const;
+
+  const absl::flat_hash_map<scheduling::NodeID, double>
+  GetAvailableCpusBeforeTemporarySubtraction() const;
 
  protected:
   /// The cluster resource manager.
