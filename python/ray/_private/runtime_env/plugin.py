@@ -37,10 +37,10 @@ class RuntimeEnvPlugin(ABC):
         expected string for "conda" field".
 
         Args:
-            runtime_env_dict(dict): the entire dictionary passed in by user.
+            runtime_env_dict: the entire dictionary passed in by user.
 
         Returns:
-            uri(str): a URI uniquely describing this resource (e.g., a hash of
+            uri: a URI uniquely describing this resource (e.g., a hash of
               the conda spec).
         """
         raise NotImplementedError()
@@ -57,9 +57,9 @@ class RuntimeEnvPlugin(ABC):
         used as a caching mechanism.
 
         Args:
-            uri(str): a URI uniquely describing this resource.
-            runtime_env(RuntimeEnv): the runtime env protobuf.
-            ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
+            uri: a URI uniquely describing this resource.
+            runtime_env: the runtime env protobuf.
+            ctx: auxiliary information supplied by Ray.
 
         Returns:
             the disk space taken up by this plugin installation for this
@@ -81,9 +81,9 @@ class RuntimeEnvPlugin(ABC):
         startup, or add new environment variables.
 
         Args:
-            uris(List[str]): a URIs used by this resource.
-            runtime_env(RuntimeEnv): the runtime env protobuf.
-            ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
+            uris: a URIs used by this resource.
+            runtime_env: the runtime env protobuf.
+            ctx: auxiliary information supplied by Ray.
         """
         return
 
@@ -91,8 +91,8 @@ class RuntimeEnvPlugin(ABC):
         """Delete the the runtime environment given uri.
 
         Args:
-            uri(str): a URI uniquely describing this resource.
-            ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
+            uri: a URI uniquely describing this resource.
+            ctx: auxiliary information supplied by Ray.
 
         Returns:
             the amount of space reclaimed by the deletion.

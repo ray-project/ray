@@ -68,7 +68,7 @@ class ParametricRecSys(gym.Env):
                 # It has to select a k-slate out of these.
                 "doc": gym.spaces.Dict(
                     {
-                        str(i): gym.spaces.Box(
+                        str(i): gym.spaces.Box(  # noqa
                             -1.0, 1.0, shape=(self.embedding_size,), dtype=np.float32
                         )
                         for i in range(self.num_docs_to_select_from)

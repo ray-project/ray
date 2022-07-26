@@ -133,9 +133,9 @@ def placement_group(
     """Asynchronously creates a PlacementGroup.
 
     Args:
-        bundles(List[Dict]): A list of bundles which
+        bundles: A list of bundles which
             represent the resources requirements.
-        strategy(str): The strategy to create the placement group.
+        strategy: The strategy to create the placement group.
 
          - "PACK": Packs Bundles into as few nodes as possible.
          - "SPREAD": Places Bundles across distinct nodes as even as possible.
@@ -143,8 +143,8 @@ def placement_group(
            not allowed to span multiple nodes.
          - "STRICT_SPREAD": Packs Bundles across distinct nodes.
 
-        name(str): The name of the placement group.
-        lifetime(str): Either `None`, which defaults to the placement group
+        name: The name of the placement group.
+        lifetime: Either `None`, which defaults to the placement group
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.

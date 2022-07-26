@@ -440,7 +440,7 @@ class ServeController:
         """Get the current information about a deployment.
 
         Args:
-            name(str): the name of the deployment.
+            name: the name of the deployment.
 
         Returns:
             DeploymentRoute's protobuf serialized bytes
@@ -467,7 +467,7 @@ class ServeController:
         """Gets the current information about all deployments.
 
         Args:
-            include_deleted(bool): Whether to include information about
+            include_deleted: Whether to include information about
                 deployments that have been deleted.
 
         Returns:
@@ -492,7 +492,7 @@ class ServeController:
         """Gets the current information about all deployments.
 
         Args:
-            include_deleted(bool): Whether to include information about
+            include_deleted: Whether to include information about
                 deployments that have been deleted.
 
         Returns:

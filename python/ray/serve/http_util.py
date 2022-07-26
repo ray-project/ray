@@ -262,7 +262,7 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
     """Mutate a socket object to allow multiple process listening on the same port.
 
     Returns:
-        success(bool): whether the setting was successful.
+        success: whether the setting was successful.
     """
     try:
         # These two socket options will allow multiple process to bind the the

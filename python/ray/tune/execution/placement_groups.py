@@ -124,9 +124,9 @@ class PlacementGroupFactory:
         tuner.fit()
 
     Args:
-        bundles(List[Dict]): A list of bundles which
+        bundles: A list of bundles which
             represent the resources requirements.
-        strategy(str): The strategy to create the placement group.
+        strategy: The strategy to create the placement group.
 
          - "PACK": Packs Bundles into as few nodes as possible.
          - "SPREAD": Places Bundles across distinct nodes as even as possible.
