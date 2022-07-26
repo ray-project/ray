@@ -128,7 +128,7 @@ class TunerInternal:
             pickle.dump(self._trainable, fp)
         self._maybe_warn_resource_contention()
 
-    def _expected_concurrency(self, cpus_per_trial, cpus_total):
+    def _expected_utilization(self, cpus_per_trial, cpus_total):
         num_samples = self._tune_config.num_samples
         if num_samples < 0:  # TODO: simplify this in Tune
             num_samples = math.inf
@@ -139,14 +139,14 @@ class TunerInternal:
         actual_concurrency = min(
             (cpus_total // cpus_per_trial, num_samples, concurrent_trials)
         )
-        return actual_concurrency
+        return (actual_concurrency * cpus_per_trial) / cpus_total
 
     def _maybe_warn_resource_contention(self):
-        scaling_config = None
         trainable = self._convert_trainable(self._trainable)
 
         # This may not be precise, but we don't have a great way of
         # accessing the scaling config.
+        scaling_config = None
         get_scaling_config = getattr(trainable, "base_scaling_config", None)
         if callable(get_scaling_config):
             scaling_config = get_scaling_config()
@@ -160,10 +160,9 @@ class TunerInternal:
 
         cpus_per_trial = scaling_config.total_resources.get("CPU", 0)
         cpus_left = ray.available_resources().get("CPU", 0) + 0.001  # avoid div by 0
-        actual_concurrency = self._expected_concurrency(cpus_per_trial, cpus_left)
         # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
         #  longer experimental.
-        if has_dataset and (actual_concurrency * cpus_per_trial) / cpus_left > 0.8:
+        if has_dataset and self._expected_utilization(cpus_per_trial, cpus_left) > 0.8:
             warnings.warn(
                 "Executing `.fit()` may leave less than 20% of CPUs in "
                 "this cluster for Dataset execution, which can lead to "
