@@ -204,7 +204,6 @@ def get_worker_log_file_name(worker_type, job_id=None):
 
 
 def configure_log_file(out_file, err_file):
-    # ANT-INTERNAL: test before python redirect.
     if os.environ.get("WORKER_LOG_REDIRECTED_TEST"):
         sys.stdout.write("stdout test")
         sys.stderr.write("stderr test")
