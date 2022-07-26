@@ -2,7 +2,6 @@
 import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
-import warnings
 
 import ray._private.ray_constants as ray_constants
 from ray._private.utils import get_ray_doc_version
@@ -265,8 +264,13 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
 
     if "object_store_memory" in options:
         warnings.warn(
-            "DeprecationWarning: Setting 'object_store_memory'"
-            " for actors is deprecated and will be removed"
+            "Setting 'object_store_memory'"
+            " for actors is deprecated since it doesn't actually"
+            " reserve the required object store memory.",
+            f" Use object spilling (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) " # noqa: E501
+            "instead to bypass the object store memory limitation.",
+            DeprecationWarning,
+            stacklevel=3,
         )
 
     _check_deprecate_placement_group(options)
