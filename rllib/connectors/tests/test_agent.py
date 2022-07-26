@@ -434,7 +434,9 @@ class TestViewRequirementConnector(unittest.TestCase):
         t = 0
         while t < n_steps:
             eval_batch = agent_obs.data.for_action
-            action, state, extra_fetch = policy.compute_actions_from_input_dict(eval_batch)
+            action, state, extra_fetch = policy.compute_actions_from_input_dict(
+                eval_batch
+            )
             next_obs, rewards, dones, info = env.step(action)
             env_out_dict = {
                 SampleBatch.NEXT_OBS: next_obs,
@@ -452,6 +454,7 @@ class TestViewRequirementConnector(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
+
     # import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
