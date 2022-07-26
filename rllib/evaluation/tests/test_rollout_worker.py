@@ -10,7 +10,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.a2c import A2C
 from ray.rllib.algorithms.pg import PG
-from ray.rllib.env.multi_agent_env import MultiAgentEnv, make_multi_agent
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
