@@ -1,5 +1,4 @@
 from collections import defaultdict
-from random import Random
 import gym
 import numpy as np
 import time
@@ -22,14 +21,14 @@ class Counter:
     def __init__(self):
         self.reset()
 
-    def _key(self, worker_index, vector_index):
-        return f"{worker_index}:{vector_index}"
+    def _key(self, eval, worker_index, vector_index):
+        return f"{eval}:{worker_index}:{vector_index}"
 
-    def increment(self, worker_index, vector_index):
-        self.counter[self._key(worker_index, vector_index)] += 1
+    def increment(self, eval, worker_index, vector_index):
+        self.counter[self._key(eval, worker_index, vector_index)] += 1
 
-    def get(self, worker_index, vector_index):
-        return self.counter[self._key(worker_index, vector_index)]
+    def get(self, eval, worker_index, vector_index):
+        return self.counter[self._key(eval, worker_index, vector_index)]
 
     def reset(self):
         self.counter = defaultdict(int)
@@ -85,15 +84,17 @@ class FaultInjectEnv(gym.Env):
 
     def _increment_count(self):
         if self.counter:
+            eval = self.config.get("evaluation", False)
             worker_index = self.config.worker_index
             vector_index = self.config.vector_index
-            ray.wait([self.counter.increment.remote(worker_index, vector_index)])
+            ray.wait([self.counter.increment.remote(eval, worker_index, vector_index)])
 
     def _get_count(self):
         if self.counter:
+            eval = self.config.get("evaluation", False)
             worker_index = self.config.worker_index
             vector_index = self.config.vector_index
-            return ray.get(self.counter.get.remote(worker_index, vector_index))
+            return ray.get(self.counter.get.remote(eval, worker_index, vector_index))
         return -1
 
     def _maybe_raise_error(self):
@@ -147,7 +148,7 @@ def is_recreated(w):
 class TestWorkerFailure(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)  ###### DO NOT SUBMIT
+        ray.init()
 
         register_env("fault_env", lambda c: FaultInjectEnv(c))
         register_env(
@@ -279,7 +280,8 @@ class TestWorkerFailure(unittest.TestCase):
 
     def test_workers_fatal_but_recover(self):
         # Counter that will survive restarts.
-        counter = Counter.remote()
+        COUNTER_NAME = "test_workers_fatal_but_recover"
+        counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = {
             "num_workers": 2,
@@ -293,7 +295,7 @@ class TestWorkerFailure(unittest.TestCase):
                 # Env throws error between steps 100 and 102.
                 "failure_start_count": 100,
                 "failure_stop_count": 102,
-                "counter": counter,
+                "counter": COUNTER_NAME,
             },
         }
 
@@ -342,6 +344,7 @@ class TestWorkerFailure(unittest.TestCase):
             "evaluation_config": {
                 "env_config": {
                     "evaluation": True,
+                    "max_episode_len": 20,
                     # Make both eval workers fail.
                     "bad_indices": [1, 2],
                     # Env throws error between steps 10 and 12.
@@ -517,6 +520,7 @@ class TestWorkerFailure(unittest.TestCase):
                 "restart_failed_sub_environments": True,
                 "env_config": {
                     "evaluation": True,
+                    "max_episode_len": 20,
                     # Make eval worker (index 1) fail.
                     "bad_indices": [1],
                     "counter": COUNTER_NAME,
@@ -540,7 +544,7 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertTrue(result["evaluation"]["num_healthy_workers"] == 2)
             self.assertEqual(result["evaluation"]["num_recreated_workers"], 0)
             # There should be a faulty episode.
-            self.assertEqual(result["evaluation"]["num_faulty_episodes"], 1)
+            self.assertEqual(result["evaluation"]["num_faulty_episodes"], 2)
 
             # This should also work several times.
             result = a.train()
@@ -556,7 +560,7 @@ class TestWorkerFailure(unittest.TestCase):
 
     def test_long_failure_period_restore_env(self):
         # Counter that will survive restarts.
-        COUNTER_NAME = "test_multi_agent_env_eval_workers_fault_but_restore_env"
+        COUNTER_NAME = "test_long_failure_period_restore_env"
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = {
@@ -567,10 +571,11 @@ class TestWorkerFailure(unittest.TestCase):
             "restart_failed_sub_environments": True,  # And create failed envs.
             "model": {"fcnet_hiddens": [4]},
             "env_config": {
+                "max_episode_len": 200,
                 "bad_indices": [1, 2],
-                # Env throws error between steps 1000 and 2000.
-                "failure_start_count": 1000,
-                "failure_stop_count": 2000,
+                # Env throws error between steps 100 and 200.
+                "failure_start_count": 100,
+                "failure_stop_count": 200,
                 "counter": COUNTER_NAME,
             },
             # 2 eval workers.
@@ -579,11 +584,6 @@ class TestWorkerFailure(unittest.TestCase):
             "evaluation_config": {
                 "env_config": {
                     "evaluation": True,
-                    # Make eval worker (index 1) fail.
-                    "bad_indices": [1, 2],
-                    # Env throws error between steps 1000 and 2000.
-                    "failure_start_count": 1000,
-                    "failure_stop_count": 2000,
                 }
             },
         }
@@ -624,9 +624,9 @@ class TestWorkerFailure(unittest.TestCase):
                     "num_faulty_episodes"
                 ]
 
-            # We should see a bunch of faulty episodes.
-            self.assertGreater(total_failed_episodes, 5)
-            self.assertGreater(total_failed_eval_episodes, 5)
+            # Should see a lot of faulty episodes.
+            self.assertGreaterEqual(total_failed_episodes, 200)
+            self.assertGreaterEqual(total_failed_eval_episodes, 200)
 
             self.assertTrue(result["num_healthy_workers"] == 2)
             # All workers are still not restored, since env are restored.
