@@ -1,12 +1,12 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve.common import (
+from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
     StatusOverview,
 )
-from ray.serve.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT
 
 
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):

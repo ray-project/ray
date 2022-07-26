@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.common import (
+from ray.serve._private.common import (
     DeploymentConfig,
     DeploymentInfo,
     DeploymentStatus,
@@ -16,7 +16,7 @@ from ray.serve.common import (
     ReplicaTag,
     ReplicaName,
 )
-from ray.serve.deployment_state import (
+from ray.serve._private.deployment_state import (
     DeploymentState,
     DeploymentStateManager,
     DeploymentVersion,
@@ -27,8 +27,8 @@ from ray.serve.deployment_state import (
     VersionedReplica,
     rank_replicas_for_stopping,
 )
-from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import get_random_letters
+from ray.serve._private.storage.kv_store import RayInternalKVStore
+from ray.serve._private.utils import get_random_letters
 
 
 class MockReplicaActorWrapper:

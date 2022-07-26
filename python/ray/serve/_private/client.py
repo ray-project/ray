@@ -8,9 +8,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, U
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.common import DeploymentInfo, DeploymentStatus, StatusOverview
+from ray.serve._private.common import DeploymentInfo, DeploymentStatus, StatusOverview
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_NAMESPACE,
@@ -20,7 +20,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.schema import ServeApplicationSchema
+from ray.serve._private.schema import ServeApplicationSchema
 
 logger = logging.getLogger(__file__)
 # Whether to issue warnings about using sync handles in async context

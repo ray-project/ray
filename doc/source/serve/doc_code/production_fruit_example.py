@@ -107,7 +107,7 @@ deployment_graph = DAGDriver.bind(net_price, http_adapter=json_request)
 
 # Test example's behavior
 import requests  # noqa: E402
-from ray.serve.schema import ServeApplicationSchema  # noqa: E402
+from ray.serve._private.schema import ServeApplicationSchema  # noqa: E402
 from ray.serve.api import build  # noqa: E402
 from ray._private.test_utils import wait_for_condition  # noqa: E402
 

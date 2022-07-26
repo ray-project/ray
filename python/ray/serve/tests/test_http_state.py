@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from ray.serve.config import DeploymentMode, HTTPOptions
-from ray.serve.http_state import HTTPState
+from ray.serve._private.http_state import HTTPState
 
 
 def test_node_selection():

@@ -21,8 +21,8 @@ import ray
 import ray.util.serialization_addons
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.serve.http_util import HTTPRequestWrapper, build_starlette_request
+from ray.serve._private.constants import HTTP_PROXY_TIMEOUT
+from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
 
 import __main__

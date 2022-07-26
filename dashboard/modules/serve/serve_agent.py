@@ -59,7 +59,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def get_all_deployment_statuses(self, req: Request) -> Response:
         from ray.serve.context import get_global_client
-        from ray.serve.schema import serve_status_to_schema
+        from ray.serve._private.schema import serve_status_to_schema
 
         client = get_global_client()
 
@@ -81,7 +81,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve.context import get_global_client
-        from ray.serve.schema import ServeApplicationSchema
+        from ray.serve._private.schema import ServeApplicationSchema
 
         config = ServeApplicationSchema.parse_obj(await req.json())
         get_global_client().deploy_app(config)

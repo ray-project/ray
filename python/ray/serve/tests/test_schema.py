@@ -7,12 +7,12 @@ from typing import List, Dict
 
 import ray
 from ray import serve
-from ray.serve.common import (
+from ray.serve._private.common import (
     StatusOverview,
     DeploymentStatusInfo,
     ApplicationStatusInfo,
 )
-from ray.serve.schema import (
+from ray.serve._private.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
     ServeApplicationSchema,
