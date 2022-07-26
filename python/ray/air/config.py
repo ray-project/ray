@@ -53,16 +53,6 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 
     Returns:
         A representation of the dataclass.
-
-    Examples:
-        >>> @dataclass
-        >>> class A:
-        >>>     x: List = None
-        >>>     def __post_init__(self):
-        >>>         self.x = []
-        >>> a = A()
-        >>> _repr_dataclass(a, default_values={"x": []})
-        'A()'
     """
     if default_values is None:
         default_values = {}
