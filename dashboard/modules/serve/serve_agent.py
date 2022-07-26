@@ -97,7 +97,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         if client.http_config.host != config.host:
             return Response(
                 status=400,
-                reason=(
+                text=(
                     "Serve is already running on this Ray cluster. Its "
                     f'HTTP host is set to "{client.http_config.host}". '
                     f'However, the requested host is "{config.host}". '
@@ -114,7 +114,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         if client.http_config.port != config.port:
             return Response(
                 status=400,
-                reason=(
+                text=(
                     "Serve is already running on this Ray cluster. Its "
                     f'HTTP port is set to "{client.http_config.port}". '
                     f'However, the requested port is "{config.port}". '
