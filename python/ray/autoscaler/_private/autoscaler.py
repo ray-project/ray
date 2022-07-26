@@ -24,6 +24,8 @@ from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
+    WORKER_LIVENESS_CHECK_KEY,
+    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
@@ -263,9 +265,27 @@ class StandardAutoscaler:
         # are launched in the main thread, all in one batch, blocking until all
         # NodeProvider.create_node calls have returned.
         self.foreground_node_launch = self.config["provider"].get(
-            FOREGROUND_NODE_LAUNCH_KEY
+            FOREGROUND_NODE_LAUNCH_KEY, False
         )
         logger.info(f"{FOREGROUND_NODE_LAUNCH_KEY}:{self.foreground_node_launch}")
+
+        # By default, the autoscaler kills and/or tries to recover
+        # a worker node if it hasn't produced a resource heartbeat in the last 30
+        # seconds. The worker_liveness_check flag allows disabling this behavior in
+        # settings where another component, such as a Kubernetes operator, is
+        # responsible for healthchecks.
+        self.worker_liveness_check = self.config["provider"].get(
+            WORKER_LIVENESS_CHECK_KEY, True
+        )
+        logger.info(f"{WORKER_LIVENESS_CHECK_KEY}:{self.worker_liveness_check}")
+
+        # By default, before worker node termination, the autoscaler sends an RPC to the
+        # GCS asking to kill the worker node.
+        # The worker_rpc_drain flag allows disabling this behavior in settings where
+        # another component, such as a Kubernetes operator, is responsible for worker
+        # lifecycle.
+        self.worker_rpc_drain = self.config["provider"].get(WORKER_RPC_DRAIN_KEY, True)
+        logger.info(f"{WORKER_RPC_DRAIN_KEY}:{self.worker_rpc_drain}")
 
         # Node launchers
         self.foreground_node_launcher: Optional[BaseNodeLauncher] = None
@@ -370,11 +390,17 @@ class StandardAutoscaler:
             self.terminate_nodes_to_enforce_config_constraints(now)
 
             if self.disable_node_updaters:
-                self.terminate_unhealthy_nodes(now)
+                # Don't handle unhealthy nodes if the liveness check is disabled.
+                # self.worker_liveness_check is True by default.
+                if self.worker_liveness_check:
+                    self.terminate_unhealthy_nodes(now)
             else:
                 self.process_completed_updates()
                 self.update_nodes()
-                self.attempt_to_recover_unhealthy_nodes(now)
+                # Don't handle unhealthy nodes if the liveness check is disabled.
+                # self.worker_liveness_check is True by default.
+                if self.worker_liveness_check:
+                    self.attempt_to_recover_unhealthy_nodes(now)
                 self.set_prometheus_updater_data()
 
         # Dict[NodeType, int], List[ResourceDict]
@@ -539,8 +565,10 @@ class StandardAutoscaler:
         if not self.nodes_to_terminate:
             return
 
-        # Do Ray-internal preparation for termination
-        self.drain_nodes_via_gcs(self.nodes_to_terminate)
+        # Do Ray-internal preparation for termination, unless this behavior is
+        # explicitly disabled.
+        if self.worker_rpc_drain:
+            self.drain_nodes_via_gcs(self.nodes_to_terminate)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:

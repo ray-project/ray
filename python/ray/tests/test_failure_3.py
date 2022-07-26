@@ -307,6 +307,51 @@ def test_actor_failure_async_4(ray_start_regular, tmp_path):
         ray.get(t)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail on windowns")
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        {
+            "_system_config": {
+                "timeout_ms_task_wait_for_death_info": 0,
+                "core_worker_internal_heartbeat_ms": 1000000,
+            }
+        }
+    ],
+    indirect=True,
+)
+def test_actor_failure_no_wait(ray_start_regular, tmp_path):
+    p = tmp_path / "a_pid"
+    time.sleep(1)
+
+    # Make sure the request will fail immediately without waiting for the death info
+    @ray.remote(max_restarts=1, max_task_retries=0)
+    class A:
+        def __init__(self):
+            pid = os.getpid()
+            # The second time start, it'll block,
+            # so that we'll know the actor is restarting.
+            if p.exists():
+                p.write_text(str(pid))
+                time.sleep(100000)
+            else:
+                p.write_text(str(pid))
+
+        def p(self):
+            time.sleep(100000)
+
+        def pid(self):
+            return os.getpid()
+
+    a = A.remote()
+    pid = ray.get(a.pid.remote())
+    t = a.p.remote()
+    os.kill(int(pid), signal.SIGKILL)
+    with pytest.raises(ray.exceptions.RayActorError):
+        # Make sure it'll return within 1s
+        ray.get(t)
+
+
 if __name__ == "__main__":
     import pytest
 
