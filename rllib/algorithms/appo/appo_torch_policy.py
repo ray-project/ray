@@ -371,10 +371,8 @@ class APPOTorchPolicy(
             ),
         }
 
-        timers = {}
         for k, timer in self.torch_timers.items():
-            timers["torch_{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
-        stats_dict["timers"] = timers
+            stats_dict["torch_{}_time_ms".format(k)] = round(timer.mean * 1000, 3)
 
         if self.config["vtrace"]:
             is_stat_mean = torch.mean(self._is_ratio, [0, 1])
