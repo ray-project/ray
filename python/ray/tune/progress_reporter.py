@@ -59,18 +59,6 @@ except NameError:
 
 SKIP_RESULTS_IN_REPORT = {"config", TRIAL_ID, EXPERIMENT_TAG, DONE}
 
-SKIP_RLLIB_RESULTS_IN_REPORT = {
-    "hist_stats",
-    "sampler_results",
-    "sampler_perf",
-    "info",
-    "timers",
-    "perf",
-    "counters",
-    "episode_media",
-    "num_healthy_workers",
-}
-
 
 @PublicAPI
 class ProgressReporter:
