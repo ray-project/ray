@@ -529,6 +529,76 @@ TEST(RayClusterModeTest, GetNamespaceApiTest) {
   auto actor_handle = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
   auto actor_ns = actor_handle.Task(&Counter::GetNamespaceInActor).Remote();
   EXPECT_EQ(*actor_ns.Get(), ns);
+  ray::Shutdown();
+}
+
+class Pip {
+ public:
+  std::vector<std::string> packages;
+  bool pip_check = false;
+  Pip() = default;
+  Pip(std::vector<std::string> packages, bool pip_check)
+      : packages(packages), pip_check(pip_check) {}
+};
+
+void to_json(json &j, const Pip &pip) {
+  j = json{{"packages", pip.packages}, {"pip_check", pip.pip_check}};
+};
+
+void from_json(const json &j, Pip &pip) {
+  j.at("packages").get_to(pip.packages);
+  j.at("pip_check").get_to(pip.pip_check);
+};
+
+TEST(RayClusterModeTest, RuntimeEnvApiTest) {
+  ray::RuntimeEnv runtime_env;
+  // Set pip
+  std::vector<std::string> packages = {"requests"};
+  Pip pip(packages, true);
+  runtime_env.Set("pip", pip);
+  // Set working_dir
+  std::string working_dir = "https://path/to/working_dir.zip";
+  runtime_env.Set("working_dir", working_dir);
+
+  // Serialize
+  auto serialized_runtime_env = runtime_env.Serialize();
+
+  // Deserialize
+  auto runtime_env_2 = ray::RuntimeEnv::Deserialize(serialized_runtime_env);
+
+  auto pip2 = runtime_env_2.Get<Pip>("pip");
+  EXPECT_EQ(pip2.packages, pip.packages);
+  EXPECT_EQ(pip2.pip_check, pip.pip_check);
+
+  auto working_dir2 = runtime_env_2.Get<std::string>("working_dir");
+  EXPECT_EQ(working_dir2, working_dir);
+
+  // Construct runtime env with raw json string
+  ray::RuntimeEnv runtime_env_3;
+  std::string pip_raw_json_string =
+      R"({"packages":["requests","tensorflow"],"pip_check":false})";
+  runtime_env_3.SetJsonStr("pip", pip_raw_json_string);
+  auto get_json_result = runtime_env_3.GetJsonStr("pip");
+  EXPECT_EQ(get_json_result, pip_raw_json_string);
+}
+
+TEST(RayClusterModeTest, RuntimeEnvJobLevelEnvVarsTest) {
+  ray::RayConfig config;
+  ray::RuntimeEnv runtime_env;
+  std::map<std::string, std::string> env_vars{{"KEY1", "value1"}};
+  runtime_env.Set("env_vars", env_vars);
+  config.runtime_env = runtime_env;
+  ray::Init(config, cmd_argc, cmd_argv);
+  auto r0 = ray::Task(GetEnvVar).Remote("KEY1");
+  auto get_result0 = *(ray::Get(r0));
+  EXPECT_EQ("value1", get_result0);
+
+  auto actor_handle = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto r1 = actor_handle.Task(&Counter::GetEnvVar).Remote("KEY1");
+  auto get_result1 = *(ray::Get(r1));
+  EXPECT_EQ("value1", get_result1);
+
+  ray::Shutdown();
 }
 
 int main(int argc, char **argv) {
