@@ -78,13 +78,57 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         return Response()
 
     @routes.put("/api/serve/deployments/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=True)
+    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
     async def put_all_deployments(self, req: Request) -> Response:
-        from ray.serve.context import get_global_client
+        from ray import serve
         from ray.serve.schema import ServeApplicationSchema
 
         config = ServeApplicationSchema.parse_obj(await req.json())
-        get_global_client().deploy_app(config)
+
+        client = serve.start(
+            detached=True,
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
+        )
+
+        if client.http_config.host != config.host:
+            return Response(
+                status=400,
+                reason=(
+                    "Serve is already running on this Ray cluster. Its "
+                    f'HTTP host is set to "{client.http_config.host}". '
+                    f'However, the requested host is "{config.host}". '
+                    f"The requested host must match the running Serve "
+                    "application's host. To change the Serve application "
+                    "host, shut down Serve on this Ray cluster using the "
+                    "`serve delete` CLI command or by sending a DELETE "
+                    "request to this Ray cluster's "
+                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
+                    "down Serve will also shut down all Serve deployments."
+                ),
+            )
+
+        if client.http_config.port != config.port:
+            return Response(
+                status=400,
+                reason=(
+                    "Serve is already running on this Ray cluster. Its "
+                    f'HTTP port is set to "{client.http_config.port}". '
+                    f'However, the requested port is "{config.port}". '
+                    f"The requested port must match the running Serve "
+                    "application's port. To change the Serve application "
+                    "port, shut down Serve on this Ray cluster using the "
+                    "`serve delete` CLI command or by sending a DELETE "
+                    "request to this Ray cluster's "
+                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
+                    "down Serve will also shut down all Serve deployments."
+                ),
+            )
+
+        client.deploy_app(config)
 
         return Response()
 
