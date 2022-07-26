@@ -19,6 +19,7 @@ from ray._private.inspect_util import (
     is_function_or_method,
     is_static_method,
 )
+from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import PythonFunctionDescriptor
 from ray.exceptions import AsyncioActorExit
@@ -786,6 +787,11 @@ class ActorClass:
         max_restarts = actor_options["max_restarts"]
         max_task_retries = actor_options["max_task_retries"]
         max_pending_calls = actor_options["max_pending_calls"]
+
+        if scheduling_strategy is None or not isinstance(
+            scheduling_strategy, PlacementGroupSchedulingStrategy
+        ):
+            _warn_if_using_deprecated_placement_group(actor_options, 3)
 
         worker = ray._private.worker.global_worker
         worker.check_connected()
