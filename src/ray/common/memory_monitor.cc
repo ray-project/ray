@@ -15,11 +15,9 @@
 #include <tuple>
 #include "ray/common/memory_monitor.h"
 #include <fstream>      // std::ifstream
-#include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
 #include "ray/common/ray_config.h"
 
-using json = nlohmann::json;
 
 namespace ray {
 
