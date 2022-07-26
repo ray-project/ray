@@ -41,7 +41,7 @@ class RuntimeEnvPlugin(ABC):
     def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         return []
 
-    async def create(
+    def create(
         self,
         uri: Optional[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
@@ -223,7 +223,7 @@ class RuntimeEnvPluginManager:
         return sorted(self.plugins.values(), key=lambda x: x.priority)
 
 
-async def create_for_plugin_if_needed(
+def create_for_plugin_if_needed(
     runtime_env,
     plugin: RuntimeEnvPlugin,
     uri_cache: URICache,
@@ -243,12 +243,12 @@ async def create_for_plugin_if_needed(
             f"No URIs for runtime env plugin {plugin.name}; "
             "create always without checking the cache."
         )
-        await plugin.create(None, runtime_env, context, logger=logger)
+        plugin.create(None, runtime_env, context, logger=logger)
 
     for uri in uris:
         if uri not in uri_cache:
             logger.debug(f"Cache miss for URI {uri}.")
-            size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)
+            size_bytes = plugin.create(uri, runtime_env, context, logger=logger)
             uri_cache.add(uri, size_bytes, logger=logger)
         else:
             logger.debug(f"Cache hit for URI {uri}.")

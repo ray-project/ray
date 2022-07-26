@@ -2,7 +2,6 @@ import logging
 import os
 from pathlib import Path
 import tempfile
-import asyncio
 import time
 import json
 from typing import List
@@ -106,7 +105,7 @@ class MyPluginForHang(RuntimeEnvPlugin):
     def validate(runtime_env_dict: dict) -> str:
         return "True"
 
-    async def create(
+    def create(
         self,
         uri: str,
         runtime_env: dict,
@@ -119,7 +118,7 @@ class MyPluginForHang(RuntimeEnvPlugin):
         # first setup
         if my_plugin_setup_times == 1:
             # sleep forever
-            await asyncio.sleep(3600)
+            time.sleep(3600)
 
     def modify_context(
         self,
@@ -173,10 +172,6 @@ DUMMY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.DummyPlugin"
 DUMMY_PLUGIN_NAME = "DummyPlugin"
 HANG_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.HangPlugin"
 HANG_PLUGIN_NAME = "HangPlugin"
-DISABLE_TIMEOUT_PLUGIN_CLASS_PATH = (
-    "ray.tests.test_runtime_env_plugin.DiasbleTimeoutPlugin"
-)
-DISABLE_TIMEOUT_PLUGIN_NAME = "test_plugin_timeout"
 
 
 class DummyPlugin(RuntimeEnvPlugin):
@@ -190,7 +185,7 @@ class DummyPlugin(RuntimeEnvPlugin):
 class HangPlugin(DummyPlugin):
     name = HANG_PLUGIN_NAME
 
-    async def create(
+    def create(
         self,
         uri: str,
         runtime_env: "RuntimeEnv",
@@ -200,25 +195,11 @@ class HangPlugin(DummyPlugin):
         time.sleep(3600)
 
 
-class DiasbleTimeoutPlugin(DummyPlugin):
-    name = DISABLE_TIMEOUT_PLUGIN_NAME
-
-    async def create(
-        self,
-        uri: str,
-        runtime_env: "RuntimeEnv",
-        ctx: RuntimeEnvContext,
-        logger: logging.Logger,  # noqa: F821
-    ) -> float:
-        time.sleep(10)
-
-
 @pytest.mark.parametrize(
     "set_runtime_env_plugins",
     [
         '[{"class":"' + DUMMY_PLUGIN_CLASS_PATH + '"},'
-        '{"class":"' + HANG_PLUGIN_CLASS_PATH + '"},'
-        '{"class":"' + DISABLE_TIMEOUT_PLUGIN_CLASS_PATH + '"}]',
+        '{"class":"' + HANG_PLUGIN_CLASS_PATH + '"}]',
     ],
     indirect=True,
 )
@@ -232,7 +213,7 @@ def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
         f.options(
             runtime_env={
                 HANG_PLUGIN_NAME: {"name": "f1"},
-                "config": {"setup_timeout_seconds": 10},
+                "config": {"setup_timeout_seconds": 1},
             }
         ).remote(),
         f.options(runtime_env={DUMMY_PLUGIN_NAME: {"name": "f2"}}).remote(),
@@ -244,6 +225,8 @@ def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
         ).remote(),
     ]
 
+    # print(ray.get(refs[0]))
+    # return
     def condition():
         good_fun_num = 0
         bad_fun_num = 0
@@ -256,7 +239,9 @@ def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
                 return True
             except RuntimeEnvSetupError:
                 bad_fun_num += 1
-        return bad_fun_num == 1 and good_fun_num == 2
+        return (
+            bad_fun_num == 1 and good_fun_num == 2
+        )  # XXX: fix this test to remove these unused variables
 
     wait_for_condition(condition, timeout=60)
 
