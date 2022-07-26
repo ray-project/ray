@@ -1920,38 +1920,45 @@ def test_network_failure(shutdown_only):
         list_tasks(_explain=True)
 
 
-def test_network_partial_failures(ray_start_cluster):
+def test_network_partial_failures(monkeypatch, ray_start_cluster):
     """When the request fails due to network failure,
     verifies it prints proper warning."""
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2)
-    ray.init(address=cluster.address)
-    n = cluster.add_node(num_cpus=2)
+    with monkeypatch.context() as m:
+        # defer for 5s for the second node.
+        # This will help the API not return until the node is killed.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeManagerService.grpc_server.GetTasksInfo=5000000:5000000",
+        )
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=2)
+        ray.init(address=cluster.address)
+        n = cluster.add_node(num_cpus=2)
 
-    @ray.remote
-    def f():
-        import time
+        @ray.remote
+        def f():
+            import time
 
-        time.sleep(30)
+            time.sleep(30)
 
-    a = [f.remote() for _ in range(4)]  # noqa
-    wait_for_condition(lambda: len(list_tasks()) == 4)
+        a = [f.remote() for _ in range(4)]  # noqa
+        wait_for_condition(lambda: len(list_tasks()) == 4)
 
-    # Make sure when there's 0 node failure, it doesn't print the error.
-    with pytest.warns(None) as record:
-        list_tasks(_explain=True)
-    assert len(record) == 0
+        # Make sure when there's 0 node failure, it doesn't print the error.
+        with pytest.warns(None) as record:
+            list_tasks(_explain=True)
+        assert len(record) == 0
 
-    # Kill raylet so that list_tasks will have network error on querying raylets.
-    cluster.remove_node(n, allow_graceful=False)
+        # Kill raylet so that list_tasks will have network error on querying raylets.
+        cluster.remove_node(n, allow_graceful=False)
 
-    with pytest.warns(UserWarning):
-        list_tasks(raise_on_missing_output=False, _explain=True)
+        with pytest.warns(UserWarning):
+            list_tasks(raise_on_missing_output=False, _explain=True)
 
-    # Make sure when _explain == False, warning is not printed.
-    with pytest.warns(None) as record:
-        list_tasks(raise_on_missing_output=False, _explain=False)
-    assert len(record) == 0
+        # Make sure when _explain == False, warning is not printed.
+        with pytest.warns(None) as record:
+            list_tasks(raise_on_missing_output=False, _explain=False)
+        assert len(record) == 0
 
 
 def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
@@ -2193,8 +2200,23 @@ def test_detail(shutdown_only):
     assert "test_detail" in result.output
 
     # Columns are upper case in the default formatting (table).
-    assert "serialized_runtime_env".upper() in result.output
-    assert "actor_id".upper() in result.output
+    assert "serialized_runtime_env" in result.output
+    assert "actor_id" in result.output
+
+    # Make sure when the --detail option is specified, the default formatting
+    # is yaml. If the format is not yaml, the below line will raise an yaml exception.
+    print(
+        yaml.load(
+            result.output,
+            Loader=yaml.FullLoader,
+        )
+    )
+
+    # When the format is given, it should respect that formatting.
+    result = runner.invoke(cli_list, ["actors", "--detail", "--format=table"])
+    assert result.exit_code == 0
+    with pytest.raises(yaml.YAMLError):
+        yaml.load(result.output, Loader=yaml.FullLoader)
 
 
 def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None):
