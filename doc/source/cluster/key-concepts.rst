@@ -95,7 +95,7 @@ Cluster managers
 ----------------
 
 You can simplify the process of managing Ray clusters using a number of popular
-cluster managers including :ref:`Kubernetes<ray-k8s-deploy>`,
+cluster managers including :ref:`Kubernetes<kuberay-index>`,
 :ref:`YARN<ray-yarn-deploy>`, :ref:`Slurm<ray-slurm-deploy>` and :ref:`LSF<ray-LSF-deploy>`.
 
 Kubernetes (K8s) operator
@@ -104,4 +104,4 @@ Kubernetes (K8s) operator
 Deployments of Ray on Kubernetes are managed by the Ray Kubernetes Operator. The
 Ray Operator makes it easy to deploy clusters of Ray pods within a Kubernetes
 cluster. To learn more about the K8s operator, refer to
-the :ref:`documentation<ray-operator>`.
+the :ref:`documentation<kuberay-index>`.
