@@ -223,6 +223,25 @@ def test_validation(ray_start_4_cpus):
         )
 
 
+def test_default_parameters_default():
+    trainer = LightGBMTrainer(
+        datasets={TRAIN_DATASET_KEY: ray.data.from_pandas(train_df)},
+        label_column="target",
+        params=params,
+    )
+    assert trainer._ray_params.cpus_per_actor == 2
+
+
+def test_default_parameters_scaling_config():
+    trainer = LightGBMTrainer(
+        datasets={TRAIN_DATASET_KEY: ray.data.from_pandas(train_df)},
+        label_column="target",
+        params=params,
+        scaling_config=ScalingConfig(resources_per_worker={"CPU": 4}),
+    )
+    assert trainer._ray_params.cpus_per_actor == 4
+
+
 if __name__ == "__main__":
     import pytest
     import sys
