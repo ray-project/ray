@@ -209,16 +209,6 @@ class Checkpoint:
         self._uri: Optional[str] = uri
         self._obj_ref: Optional[ray.ObjectRef] = obj_ref
 
-    def __repr__(self):
-        if self._local_path:
-            return "directory checkpoint at " + self._local_path
-        elif self._uri:
-            return "cloud checkpoint at " + self._uri
-        elif self._data_dict:
-            return "dict checkpoint of " + self._data_dict
-        else:
-            return "object ref checkpoint"
-
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
         """Create a checkpoint from the given byte string.
