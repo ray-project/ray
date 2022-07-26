@@ -94,14 +94,11 @@ if __name__ == "__main__":
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
 
-    checkpoints = results.get_trial_checkpoints_paths(
-        trial=results.get_best_trial("episode_reward_mean", mode="max"),
-        metric="episode_reward_mean",
-    )
+    ckpt = results.get_best_result(metric="episode_reward_mean", mode="max").checkpoint
 
-    checkpoint_path = checkpoints[0][0]
     algo = PPO(config)
-    algo.restore(checkpoint_path)
+    with ckpt.as_directory() as ckpt_dir:
+        algo.restore(ckpt_dir)
 
     # Inference loop.
     env = StatelessCartPole()

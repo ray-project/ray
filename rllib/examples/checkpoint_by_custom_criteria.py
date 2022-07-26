@@ -63,6 +63,8 @@ if __name__ == "__main__":
     # Setting scope to "avg" will compare (using `mode`=min|max) the average
     # values over the entire run.
     metric = "episodes_this_iter"
+    # notice here `scope` is `all`, meaning for each trial,
+    # all results (not just the last one) will be examined.
     best_result = results.get_best_result(metric=metric, mode="min", scope="all")
     value_best_metric = best_result.metrics_dataframe[metric].min()
     print(
@@ -71,21 +73,19 @@ if __name__ == "__main__":
     )
 
     # Confirm, we picked the right trial.
-    assert all(
-        value_best_metric <= results.results[t][metric] for t in results.results.keys()
-    )
+    assert value_best_metric <= results.get_dataframe()[metric].min()
 
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
     ckpt = results.get_best_result(
         metric="info/learner/default_policy/learner_stats/policy_loss", mode="min"
     ).checkpoint
-    print("Lowest pol-loss: {}".format(ckpt.to_dict()))
+    print("Lowest pol-loss: {}".format(ckpt))
 
     # Checkpoint with the highest value-function loss:
     ckpt = results.get_best_result(
         metric="info/learner/default_policy/learner_stats/vf_loss", mode="max"
     ).checkpoint
-    print("Highest vf-loss: {}".format(ckpt.to_dict()))
+    print("Highest vf-loss: {}".format(ckpt))
 
     ray.shutdown()

@@ -8,7 +8,7 @@ import argparse
 import os
 
 import ray
-from ray.tune import air, tune
+from ray import air, tune
 from ray.tune import sample_from
 from ray.rllib.examples.env.fast_image_env import FastImageEnv
 from ray.rllib.examples.models.fast_model import FastModel, TorchFastModel
