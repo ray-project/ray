@@ -95,7 +95,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             # then lets try to search for a submission with given id
             submission_id = job_or_submission_id
 
-        job_info = await asyncio.get_running_loop().run_in_executor(
+        job_info = await asyncio.get_event_loop().run_in_executor(
             self._executor, lambda: self._job_manager.get_job_info(submission_id)
         )
         if job_info:
@@ -256,7 +256,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         driver_jobs, submission_job_drivers = await self._get_driver_jobs()
 
         # TODO(aguo): convert _job_manager.list_jobs to an async function.
-        submission_jobs = await asyncio.get_running_loop().run_in_executor(
+        submission_jobs = await asyncio.get_event_loop().run_in_executor(
             self._executor, self._job_manager.list_jobs
         )
         submission_jobs = [
