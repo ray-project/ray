@@ -244,6 +244,9 @@ def _put_library_usage(library_usage: str):
 class TagKey(Enum):
     _TEST1 = auto()
     _TEST2 = auto()
+    RLLIB_FRAMEWORK = auto()
+    RLLIB_ALGORITHM = auto()
+    RLLIB_NUM_WORKERS = auto()
 
 
 def record_extra_usage_tag(key: TagKey, value: str):

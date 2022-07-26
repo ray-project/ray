@@ -120,8 +120,8 @@ def test_workflow_storage(workflow_start_regular):
     step_options = WorkflowStepRuntimeOptions(
         step_type=StepType.FUNCTION,
         catch_exceptions=False,
+        retry_exceptions=True,
         max_retries=0,
-        allow_inplace=False,
         checkpoint=False,
         ray_options={},
     )
