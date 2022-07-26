@@ -172,7 +172,6 @@ class DatasetContext:
                 _default_context.block_splitting_enabled
                 and _default_context.block_owner is None
             ):
-                print("block_splitting_enabled true")
                 owner = _DesignatedBlockOwner.options(
                     scheduling_strategy=_default_context.scheduling_strategy
                 ).remote()

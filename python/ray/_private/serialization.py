@@ -281,10 +281,6 @@ class SerializationContext:
                 return OutOfDiskError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OUT_OF_MEMORY_ERROR"):
-                return OutOfDiskError(
-                    object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
-                )
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
                 return ReferenceCountingAssertionError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()

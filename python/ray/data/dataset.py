@@ -1888,26 +1888,6 @@ class Dataset(Generic[T]):
             return None
         return sum(m.size_bytes for m in metadata)
 
-    def max_rss(self) -> int:
-        """Return the max rss used across all blocks.
-
-        Time complexity: O(1)
-
-        Returns:
-        """
-        metadata = self._plan.execute().get_metadata()
-        return max(m.exec_stats.max_rss_bytes if hasattr(m.exec_stats, 'max_rss_bytes') else 0 for m in metadata)
-
-    def max_uss(self) -> int:
-        """Return the max uss used across all blocks.
-
-        Time complexity: O(1)
-
-        Returns:
-        """
-        metadata = self._plan.execute().get_metadata()
-        return max(m.exec_stats.end_uss_bytes if hasattr(m.exec_stats, 'end_uss_bytes') else 0 for m in metadata)
-
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
 
