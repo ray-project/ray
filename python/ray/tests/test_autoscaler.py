@@ -456,6 +456,13 @@ class MockAutoscaler(StandardAutoscaler):
         self.provider.fail_to_fetch_ip = False
 
 
+class NoUpdaterMockAutoscaler(MockAutoscaler):
+    def update_nodes(self):
+        raise AssertionError(
+            "Node updaters are disabled. This method should not be accessed!"
+        )
+
+
 SMALL_CLUSTER = {
     "cluster_name": "default",
     "min_workers": 2,
@@ -1411,7 +1418,13 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = MockAutoscaler(
+        if disable_node_updaters:
+            # This class raises an assertion error if we try to create
+            # a node updater thread.
+            autoscaler_class = NoUpdaterMockAutoscaler
+        else:
+            autoscaler_class = MockAutoscaler
+        autoscaler = autoscaler_class(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -1440,7 +1453,6 @@ class AutoscalingTest(unittest.TestCase):
         if disable_node_updaters:
             # Node Updaters have NOT been invoked because they were explicitly
             # disabled.
-            time.sleep(1)
             assert len(runner.calls) == 0
             # Nodes were create in uninitialized and not updated.
             self.waitForNodes(
@@ -2769,11 +2781,16 @@ class AutoscalingTest(unittest.TestCase):
         if disable_liveness_check:
             # We've disabled the liveness check, so the unhealthy node should stick
             # around until someone else takes care of it.
-            # Do several autoscaler updates:
+            # Do several autoscaler updates, to reinforce the fact that the
+            # autoscaler will never take down the unhealthy nodes.
             for _ in range(10):
                 autoscaler.update()
             # The nodes are still there.
             assert self.num_nodes() == 2
+            # There's no synchronization required to make the last assertion valid:
+            # The autoscaler's node termination is synchronous and blocking, as is
+            # the terminate_node method of the mock node provider used in this test.
+
             # No events generated indicating that we are removing nodes.
             for event in autoscaler.event_summarizer.summary():
                 assert "Removing" not in event
@@ -2795,10 +2812,8 @@ class AutoscalingTest(unittest.TestCase):
             ), events
 
             # No additional runner calls, since updaters were disabled.
-            time.sleep(1)
             assert len(runner.calls) == num_calls
             assert mock_metrics.drain_node_exceptions.inc.call_count == 0
-            pass
 
     def testTerminateUnhealthyWorkers2(self):
         """Tests finer details of termination of unhealthy workers when
