@@ -116,8 +116,8 @@ class OneHotEncoder(Preprocessor):
     be set to 1 if the value matches, otherwise 0.
 
     Transforming values not included in the fitted dataset or not among
-    the top popular values (see ``limit``) will result in all of the encoded column
-    values being 0.
+    the top popular values (see ``max_categories``) will result in all of the encoded
+    column values being 0.
 
     All column values must be hashable or lists. Lists will be treated as separate
     categories. If you would like to encode list elements,
@@ -138,7 +138,7 @@ class OneHotEncoder(Preprocessor):
                 "payment_type",
                 "company",
             ],
-            limit={
+            max_categories={
                 "dropoff_census_tract": 25,
                 "pickup_community_area": 20,
                 "dropoff_community_area": 20,
@@ -149,21 +149,26 @@ class OneHotEncoder(Preprocessor):
 
     Args:
         columns: The columns that will individually be encoded.
-        limit: If set, only the top "limit" number of most popular values become
-            categorical variables. The less frequent ones will result in all
-            the encoded column values being 0. This is a dict of column to
-            its corresponding limit. The column in this dictionary has to be
-            in ``columns``.
+        max_categories: If set, only the top "max_categories" number of most popular
+            values become categorical variables. The less frequent ones will result in
+            all the encoded column values being 0. This is a dict of column to its
+            corresponding limit. The column in this dictionary has to be in
+            ``columns``.
     """
 
-    def __init__(self, columns: List[str], *, limit: Optional[Dict[str, int]] = None):
+    def __init__(
+        self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
+    ):
         # TODO: add `drop` parameter.
         self.columns = columns
-        self.limit = limit
+        self.max_categories = max_categories
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, limit=self.limit, encode_lists=False
+            dataset,
+            self.columns,
+            max_categories=self.max_categories,
+            encode_lists=False,
         )
         return self
 
@@ -222,8 +227,8 @@ class MultiHotEncoder(Preprocessor):
         assert transformed_batch.equals(expected_batch)
 
     Transforming values not included in the fitted dataset or not among
-    the top popular values (see ``limit``) will result in all of the encoded column
-    values being 0.
+    the top popular values (see ``max_categories``) will result in all of the encoded
+    column values being 0.
 
     The logic is similar to scikit-learn's `MultiLabelBinarizer \
 <https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
@@ -236,21 +241,23 @@ class MultiHotEncoder(Preprocessor):
 
     Args:
         columns: The columns that will individually be encoded.
-        limit: If set, only the top "limit" number of most popular values become
-            categorical variables. The less frequent ones will result in all
-            the encoded values being 0. This is a dict of column to
-            its corresponding limit. The column in this dictionary has to be
-            in ``columns``.
+        max_categories: If set, only the top "max_categories" number of most popular
+            values become categorical variables. The less frequent ones will result in
+            all the encoded values being 0. This is a dict of column to its
+            corresponding limit. The column in this dictionary has to be in
+            ``columns``.
     """
 
-    def __init__(self, columns: List[str], *, limit: Optional[Dict[str, int]] = None):
+    def __init__(
+        self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
+    ):
         # TODO: add `drop` parameter.
         self.columns = columns
-        self.limit = limit
+        self.max_categories = max_categories
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self.stats_ = _get_unique_value_indices(
-            dataset, self.columns, limit=self.limit, encode_lists=True
+            dataset, self.columns, max_categories=self.max_categories, encode_lists=True
         )
         return self
 
@@ -371,15 +378,17 @@ def _get_unique_value_indices(
     columns: List[str],
     drop_na_values: bool = False,
     key_format: str = "unique_values({0})",
-    limit: Optional[Dict[str, int]] = None,
+    max_categories: Optional[Dict[str, int]] = None,
     encode_lists: bool = True,
 ) -> Dict[str, Dict[str, int]]:
     """If drop_na_values is True, will silently drop NA values."""
-    limit = limit or {}
-    for column in limit:
+    if max_categories is None:
+        max_categories = {}
+    for column in max_categories:
         if column not in columns:
             raise ValueError(
-                f"You set limit for {column}, which is not present in {columns}."
+                f"You set `max_categories` for {column}, which is not present in "
+                f"{columns}."
             )
 
     def get_pd_value_counts_per_column(col: pd.Series):
@@ -426,11 +435,13 @@ def _get_unique_value_indices(
 
     unique_values_with_indices = OrderedDict()
     for column in columns:
-        if column in limit:
+        if column in max_categories:
             # Output sorted by freq.
             unique_values_with_indices[key_format.format(column)] = {
                 k[0]: j
-                for j, k in enumerate(final_counters[column].most_common(limit[column]))
+                for j, k in enumerate(
+                    final_counters[column].most_common(max_categories[column])
+                )
             }
         else:
             # Output sorted by column name.
