@@ -25,12 +25,24 @@ def some_func2(x):
     return x - 1
 
 
-def test_delete(workflow_start_regular):
-    from ray._private.storage import _storage_uri
-
-    # Try deleting a random workflow that never existed.
+def test_delete_1(workflow_start_regular):
     with pytest.raises(WorkflowNotFoundError):
         workflow.delete(workflow_id="never_existed")
+
+    @ray.remote
+    def hello():
+        return "hello world"
+
+    workflow.run(hello.bind(), workflow_id="workflow_exists")
+    workflow.delete(workflow_id="workflow_exists")
+
+
+def test_delete_2(workflow_start_regular):
+    from ray._private.storage import _storage_uri
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # This test restarts the cluster, so we cannot test under client mode.
+    skip_client_mode_test()
 
     # Delete a workflow that has not finished and is not running.
     @ray.remote
@@ -51,12 +63,12 @@ def test_delete(workflow_start_regular):
     ray.init(storage=_storage_uri)
     workflow.init()
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ValueError):
         workflow.get_output("never_finishes")
 
     workflow.delete("never_finishes")
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ValueError):
         # TODO(suquark): we should raise "ValueError" without
         #  been blocking over the result.
         workflow.get_output("never_finishes")
@@ -80,7 +92,7 @@ def test_delete(workflow_start_regular):
 
     workflow.delete(workflow_id="finishes")
 
-    with pytest.raises(ray.exceptions.RaySystemError):
+    with pytest.raises(ValueError):
         # TODO(suquark): we should raise "ValueError" without
         #  blocking over the result.
         workflow.get_output("finishes")
@@ -114,6 +126,11 @@ def test_delete(workflow_start_regular):
 
 
 def test_workflow_storage(workflow_start_regular):
+    from ray.workflow.tests.utils import skip_client_mode_test
+
+    # This test depends on raw storage, so we cannot test under client mode.
+    skip_client_mode_test()
+
     workflow_id = test_workflow_storage.__name__
     wf_storage = workflow_storage.WorkflowStorage(workflow_id)
     task_id = "some_step"
