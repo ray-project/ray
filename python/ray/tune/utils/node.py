@@ -1,3 +1,6 @@
+import ray
+
+
 def _get_current_node_resource_key() -> str:
     """Get the Ray resource key for current node.
     It can be used for actor placement.

@@ -6,8 +6,6 @@ import logging
 import numbers
 import os
 import shutil
-import warnings
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -16,7 +14,6 @@ from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
 from ray.air._internal.util import is_nan
 from ray.util import log_once
-from ray.util.annotations import Deprecated
 
 
 logger = logging.getLogger(__name__)

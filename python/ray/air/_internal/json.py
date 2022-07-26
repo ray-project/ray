@@ -3,8 +3,6 @@ import numbers
 
 import numpy as np
 
-from ray.util.annotations import Deprecated
-
 
 class SafeFallbackEncoder(json.JSONEncoder):
     def __init__(self, nan_str="null", **kwargs):
