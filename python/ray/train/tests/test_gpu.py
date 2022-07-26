@@ -50,6 +50,7 @@ def ray_start_1_cpu_1_gpu():
     yield address_info
     ray.shutdown()
 
+
 @pytest.fixture
 def ray_2_node_4_gpu():
     cluster = Cluster()
