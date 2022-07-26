@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
 from pkg_resources import packaging
+import ray
 
 try:
     import requests
@@ -125,8 +126,20 @@ def parse_cluster_info(
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
     if address is None:
-        logger.info(f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}.")
-        address = DEFAULT_DASHBOARD_ADDRESS
+        if (
+            ray.is_initialized()
+            and ray._private.worker.global_worker.node.address_info["webui_url"]
+            is not None
+        ):
+            address = (
+                "http://"
+                f"{ray._private.worker.global_worker.node.address_info['webui_url']}"
+            )
+        else:
+            logger.info(
+                f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}."
+            )
+            address = DEFAULT_DASHBOARD_ADDRESS
 
     module_string, inner_address = _split_address(address)
 
@@ -206,13 +219,21 @@ class SubmissionClient:
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
     ):
+        self._check_connection_and_version_with_url(min_version, version_error_message)
+
+    def _check_connection_and_version_with_url(
+        self,
+        min_version: str = "1.9",
+        version_error_message: str = None,
+        url: str = "/api/version",
+    ):
         if version_error_message is None:
             version_error_message = (
                 f"Please ensure the cluster is running Ray {min_version} or higher."
             )
 
         try:
-            r = self._do_request("GET", "/api/version")
+            r = self._do_request("GET", url)
             if r.status_code == 404:
                 raise RuntimeError(version_error_message)
             r.raise_for_status()

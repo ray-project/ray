@@ -102,6 +102,7 @@ class TaskPoolStrategy(ComputeStrategy):
             data_refs = [r[0] for r in all_refs]
             refs = [r[1] for r in all_refs]
 
+        in_block_owned_by_consumer = block_list._owned_by_consumer
         # Release input block references.
         if clear_input_blocks:
             del blocks
@@ -134,7 +135,11 @@ class TaskPoolStrategy(ComputeStrategy):
             for block, metadata in zip(data_refs, results):
                 new_blocks.append(block)
                 new_metadata.append(metadata)
-        return BlockList(list(new_blocks), list(new_metadata))
+        return BlockList(
+            list(new_blocks),
+            list(new_metadata),
+            owned_by_consumer=in_block_owned_by_consumer,
+        )
 
 
 @PublicAPI
@@ -184,6 +189,8 @@ class ActorPoolStrategy(ComputeStrategy):
         self.min_size = min_size
         self.max_size = max_size or float("inf")
         self.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
+        self.num_workers = 0
+        self.ready_to_total_workers_ratio = 0.8
 
     def _apply(
         self,
@@ -211,6 +218,7 @@ class ActorPoolStrategy(ComputeStrategy):
         context = DatasetContext.get_current()
 
         blocks_in = block_list.get_blocks_with_metadata()
+        owned_by_consumer = block_list._owned_by_consumer
 
         # Early release block references.
         if clear_input_blocks:
@@ -265,7 +273,7 @@ class ActorPoolStrategy(ComputeStrategy):
                     block, block_fn, input_files, self.fn, *fn_args, **fn_kwargs
                 )
 
-        if not remote_args:
+        if "num_cpus" not in remote_args:
             remote_args["num_cpus"] = 1
 
         if "scheduling_strategy" not in remote_args:
@@ -295,7 +303,8 @@ class ActorPoolStrategy(ComputeStrategy):
                 if not ready:
                     if (
                         len(workers) < self.max_size
-                        and len(ready_workers) / len(workers) > 0.8
+                        and len(ready_workers) / len(workers)
+                        > self.ready_to_total_workers_ratio
                     ):
                         w = BlockWorker.remote(
                             *fn_constructor_args, **fn_constructor_kwargs
@@ -351,6 +360,7 @@ class ActorPoolStrategy(ComputeStrategy):
                     tasks_in_flight[worker] += 1
 
             map_bar.close()
+            self.num_workers += len(workers)
             new_blocks, new_metadata = [], []
             # Put blocks in input order.
             results.sort(key=block_indices.get)
@@ -364,7 +374,9 @@ class ActorPoolStrategy(ComputeStrategy):
                     new_blocks.append(block)
                     new_metadata.append(metadata_mapping[block])
                 new_metadata = ray.get(new_metadata)
-            return BlockList(new_blocks, new_metadata)
+            return BlockList(
+                new_blocks, new_metadata, owned_by_consumer=owned_by_consumer
+            )
 
         except Exception as e:
             try:

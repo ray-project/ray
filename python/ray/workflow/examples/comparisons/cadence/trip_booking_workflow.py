@@ -89,4 +89,4 @@ if __name__ == "__main__":
     final_result = handle_errors.bind(
         car_req_id, hotel_req_id, flight_req_id, saga_result
     )
-    print(workflow.create(final_result).run())
+    print(workflow.run(final_result))

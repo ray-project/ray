@@ -28,7 +28,7 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
         return f"{lf},{rt};{b}"
 
     with pytest.raises(TypeError):
-        workflow.create(begin.remote(1, 2, 3))
+        workflow.run_async(begin.remote(1, 2, 3))
 
     with InputNode() as dag_input:
         f = begin.bind(2, dag_input[1], a=dag_input.a)
@@ -36,8 +36,10 @@ def test_dag_to_workflow_execution(workflow_start_regular_shared):
         rt = right.bind(f, b=dag_input.b, pos=dag_input[0])
         b = end.bind(lf, rt, b=dag_input.b)
 
-    wf = workflow.create(b, 2, 3.14, a=10, b="ok")
-    assert wf.run() == "left(23.14, hello, 10),right(23.14, ok, 2);ok"
+    assert (
+        workflow.run(b, 2, 3.14, a=10, b="ok")
+        == "left(23.14, hello, 10),right(23.14, ok, 2);ok"
+    )
 
 
 def test_dedupe_serialization_dag(workflow_start_regular_shared):
@@ -64,7 +66,7 @@ def test_dedupe_serialization_dag(workflow_start_regular_shared):
     single = identity.bind((ref,))
     double = identity.bind(list_of_refs)
 
-    result_ref, result_list = workflow.create(gather.bind(single, double)).run()
+    result_ref, result_list = workflow.run(gather.bind(single, double))
 
     for result in result_list:
         assert ray.get(*result_ref) == ray.get(result)
@@ -84,10 +86,10 @@ def test_same_object_many_dags(workflow_start_regular_shared):
 
     x = {0: ray.put(10)}
 
-    result1 = workflow.create(f.bind(x)).run()
-    result2 = workflow.create(f.bind(x)).run()
+    result1 = workflow.run(f.bind(x))
+    result2 = workflow.run(f.bind(x))
     with InputNode() as dag_input:
-        result3 = workflow.create(f.bind(dag_input.x), x=x).run()
+        result3 = workflow.run(f.bind(dag_input.x), x=x)
 
     assert ray.get(*result1) == 10
     assert ray.get(*result2) == 10
@@ -116,7 +118,7 @@ def test_dereference_object_refs(workflow_start_regular_shared):
     dag = f.bind(g.bind(x=ray.put(314), y=[ray.put(2022)]))
 
     # Run with workflow and normal Ray engine.
-    workflow.create(dag).run()
+    workflow.run(dag)
     ray.get(dag.execute())
 
 
@@ -164,7 +166,7 @@ def test_dereference_dags(workflow_start_regular_shared):
     )
 
     # Run with workflow and normal Ray engine.
-    assert workflow.create(dag).run() == "ok"
+    assert workflow.run(dag) == "ok"
     assert ray.get(dag.execute()) == "ok"
 
 
@@ -189,7 +191,7 @@ def test_workflow_continuation(workflow_start_regular_shared):
 
     dag = f.bind()
     assert ray.get(dag.execute()) == 43
-    assert workflow.create(dag).run() == 43
+    assert workflow.run(dag) == 43
 
 
 if __name__ == "__main__":

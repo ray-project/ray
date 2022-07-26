@@ -19,6 +19,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
+from ray.rllib.policy.tf_mixins import GradStatsMixin
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
@@ -254,7 +255,7 @@ class VTraceOptimizer:
 
 # We need this builder function because we want to share the same
 # custom logics between TF1 dynamic and TF2 eager policies.
-def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
+def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     """Construct an ImpalaTFPolicy inheriting either dynamic or eager base policies.
 
     Args:
@@ -271,6 +272,7 @@ def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
         VTraceOptimizer,
         LearningRateSchedule,
         EntropyCoeffSchedule,
+        GradStatsMixin,
         base,
     ):
         def __init__(
@@ -298,6 +300,7 @@ def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
                 existing_model=existing_model,
             )
 
+            GradStatsMixin.__init__(self)
             VTraceClipGradients.__init__(self)
             VTraceOptimizer.__init__(self)
             LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
@@ -418,27 +421,14 @@ def get_impala_tf_policy(base: TFPolicyV2Type) -> TFPolicyV2Type:
             }
 
         @override(base)
-        def grad_stats_fn(
-            self, train_batch: SampleBatch, grads: ModelGradients
-        ) -> Dict[str, TensorType]:
-            # We have support for more than one loss (list of lists of grads).
-            if self.config.get("_tf_policy_handles_more_than_one_loss"):
-                grad_gnorm = [tf.linalg.global_norm(g) for g in grads]
-            # Old case: We have a single list of grads (only one loss term and
-            # optimizer).
-            else:
-                grad_gnorm = tf.linalg.global_norm(grads)
-
-            return {
-                "grad_gnorm": grad_gnorm,
-            }
-
-        @override(base)
         def get_batch_divisibility_req(self) -> int:
             return self.config["rollout_fragment_length"]
+
+    ImpalaTFPolicy.__name__ = name
+    ImpalaTFPolicy.__qualname__ = name
 
     return ImpalaTFPolicy
 
 
-ImpalaTF1Policy = get_impala_tf_policy(DynamicTFPolicyV2)
-ImpalaTF2Policy = get_impala_tf_policy(EagerTFPolicyV2)
+ImpalaTF1Policy = get_impala_tf_policy("ImpalaTF1Policy", DynamicTFPolicyV2)
+ImpalaTF2Policy = get_impala_tf_policy("ImpalaTF2Policy", EagerTFPolicyV2)

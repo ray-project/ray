@@ -25,7 +25,7 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
-from ray._private.services import canonicalize_bootstrap_address
+from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray.job_config import JobConfig
 from ray.util.client.common import (
@@ -147,18 +147,22 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
-        if (
-            current_job_config
-            and set(job_config.runtime_env_info.uris)
-            != set(current_job_config.runtime_env_info.uris)
-            and len(job_config.runtime_env_info.uris) > 0
-        ):
-            return ray_client_pb2.InitResponse(
-                ok=False,
-                msg="Runtime environment doesn't match "
-                f"request one {job_config.runtime_env_info.uris} "
-                f"current one {current_job_config.runtime_env_info.uris}",
+        if current_job_config:
+            job_uris = set(job_config.runtime_env_info.uris.working_dir_uri)
+            job_uris.update(job_config.runtime_env_info.uris.py_modules_uris)
+            current_job_uris = set(
+                current_job_config.runtime_env_info.uris.working_dir_uri
             )
+            current_job_uris.update(
+                current_job_config.runtime_env_info.uris.py_modules_uris
+            )
+            if job_uris != current_job_uris and len(job_uris) > 0:
+                return ray_client_pb2.InitResponse(
+                    ok=False,
+                    msg="Runtime environment doesn't match "
+                    f"request one {job_config.runtime_env_info.uris} "
+                    f"current one {current_job_config.runtime_env_info.uris}",
+                )
         return ray_client_pb2.InitResponse(ok=True)
 
     @_use_response_cache
@@ -795,7 +799,7 @@ def try_create_gcs_client(
     Try to create a gcs client based on the the command line args or by
     autodetecting a running Ray cluster.
     """
-    address = canonicalize_bootstrap_address(address)
+    address = canonicalize_bootstrap_address_or_die(address)
     return GcsClient(address=address)
 
 

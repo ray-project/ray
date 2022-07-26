@@ -13,6 +13,7 @@ from functools import partial
 from typing import Callable, Dict, Iterable, List, Optional, Set, Union
 
 import ray
+from ray.air import Checkpoint
 from ray.exceptions import GetTimeoutError, RayTaskError
 from ray.tune.error import (
     TuneError,
@@ -421,7 +422,7 @@ class RayTrialExecutor:
                 if log_once("trial_executor_buffer_checkpoint"):
                     logger.warning(
                         "Disabling buffered training as you passed "
-                        "`checkpoint_at_end` to `tune.run()`."
+                        "`checkpoint_at_end` to `air.CheckpointConfig()`."
                     )
                 buffer_length = 1
 
@@ -794,7 +795,8 @@ class RayTrialExecutor:
                 # This provides FT backwards compatibility in the
                 # case where no cloud checkpoints are provided.
                 logger.debug("Trial %s: Reading checkpoint into memory", trial)
-                obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
+                checkpoint_path = TrainableUtil.find_checkpoint_dir(checkpoint_dir)
+                obj = Checkpoint.from_directory(checkpoint_path).to_bytes()
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore_from_object.remote(obj)
             else:

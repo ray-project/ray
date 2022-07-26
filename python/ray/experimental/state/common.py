@@ -1,11 +1,11 @@
 import logging
 from abc import ABC
-from dataclasses import dataclass, fields, field
+from dataclasses import dataclass, field, fields
 from enum import Enum, unique
-from typing import List, Optional, Set, Tuple, Union, Dict
+from typing import Dict, List, Optional, Set, Tuple, Union
 
-from ray.dashboard.modules.job.common import JobInfo
 from ray.core.generated.common_pb2 import TaskType
+from ray.dashboard.modules.job.common import JobInfo
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +13,16 @@ DEFAULT_RPC_TIMEOUT = 30
 DEFAULT_LIMIT = 100
 DEFAULT_LOG_LIMIT = 1000
 MAX_LIMIT = 10000
+
+STATE_OBS_ALPHA_FEEDBACK_MSG = [
+    "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
+    "State Observability APIs is currently in Alpha-Preview. ",
+    "If you have any feedback, you could do so at either way as below:",
+    "  1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
+    "  2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
+    "https://tinyurl.com/2pm26m4a",
+    "==========================================================",
+]
 
 
 @unique
@@ -71,6 +81,7 @@ class ListApiOptions:
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
         self.timeout = int(self.timeout * self._server_timeout_multiplier)
+        assert self.timeout != 0, "0 second timeout is not supported."
         if self.filters is None:
             self.filters = []
 
@@ -299,14 +310,13 @@ class JobState(JobInfo, StateSchema):
 @dataclass(init=True)
 class WorkerState(StateSchema):
     worker_id: str = state_column(filterable=True)
-    is_alive: str = state_column(filterable=True)
+    is_alive: bool = state_column(filterable=True)
     worker_type: str = state_column(filterable=True)
     exit_type: str = state_column(filterable=True)
     node_id: str = state_column(filterable=True)
     ip: str = state_column(filterable=True)
     pid: str = state_column(filterable=True)
     exit_detail: str = state_column(detail=True, filterable=False)
-    worker_info: dict = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=True)
@@ -369,6 +379,8 @@ class ListApiResponse:
     # availability of data because ray's state information is
     # not replicated.
     partial_failure_warning: str = ""
+    # A list of warnings to print.
+    warnings: Optional[List[str]] = None
 
 
 """
@@ -397,8 +409,8 @@ class TaskSummaries:
     total_tasks: int
     # Total actor tasks
     total_actor_tasks: int
-    # Total actor scheduling tasks
-    total_actor_scheduling_tasks: int
+    # Total scheduling actors
+    total_actor_scheduled: int
     summary_by: str = "func_name"
 
     @classmethod
@@ -411,7 +423,7 @@ class TaskSummaries:
         summary = {}
         total_tasks = 0
         total_actor_tasks = 0
-        total_actor_scheduling_tasks = 0
+        total_actor_scheduled = 0
 
         for task in tasks:
             key = task["func_or_class_name"]
@@ -431,7 +443,7 @@ class TaskSummaries:
             if type_enum == TaskType.NORMAL_TASK:
                 total_tasks += 1
             elif type_enum == TaskType.ACTOR_CREATION_TASK:
-                total_actor_scheduling_tasks += 1
+                total_actor_scheduled += 1
             elif type_enum == TaskType.ACTOR_TASK:
                 total_actor_tasks += 1
 
@@ -439,7 +451,7 @@ class TaskSummaries:
             summary=summary,
             total_tasks=total_tasks,
             total_actor_tasks=total_actor_tasks,
-            total_actor_scheduling_tasks=total_actor_scheduling_tasks,
+            total_actor_scheduled=total_actor_scheduled,
         )
 
 
@@ -597,5 +609,11 @@ class StateSummary:
 
 @dataclass(init=True)
 class SummaryApiResponse:
+    # Total number of the resource from the cluster.
+    # Note that this value can be larger than `result`
+    # because `result` can be truncated.
+    total: int
     result: StateSummary = None
     partial_failure_warning: str = ""
+    # A list of warnings to print.
+    warnings: Optional[List[str]] = None

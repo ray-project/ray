@@ -57,6 +57,14 @@ RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
 RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
+
+/// If GCS restarts, before the first heatbeat is sent,
+/// gcs_failover_worker_reconnect_timeout is used for the threshold
+/// of the raylet. This is very useful given that raylet might need
+/// a while to reconnect to the GCS, for example, when GCS is available
+/// but not reachable to raylet.
+RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
+
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
@@ -479,8 +487,9 @@ RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 /// In unlimited allocation mode, this is the time delay prior to fallback allocating.
 RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
-/// Whether or not the external storage is file system.
-/// This is configured based on object_spilling_config.
+/// Whether or not the external storage is the local file system.
+/// Note that this value should be overridden based on the storage type
+/// specified by object_spilling_config.
 RAY_CONFIG(bool, is_external_storage_type_fs, true)
 
 /// Control the capacity threshold for ray local file system (for object store).
@@ -611,6 +620,10 @@ RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
+
+/// The namespace for the storage.
+/// This fields is used to isolate data stored in DB.
+RAY_CONFIG(std::string, external_storage_namespace, "default")
 
 /// Whether or not use TLS.
 RAY_CONFIG(bool, USE_TLS, false)

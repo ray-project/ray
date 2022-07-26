@@ -5,7 +5,8 @@ import datasets.iterable_dataset
 import transformers.trainer
 from transformers.trainer_callback import TrainerCallback
 
-from ray import train
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.util import get_node_ip_address
 from ray.data.dataset import Dataset
 
@@ -118,9 +119,9 @@ class TrainReportCallback(TrainerCallback):
         # HF first logs metrics, and then checkpoints. With Ray AIR, we need the
         # opposite. Furthermore, some metrics are logged just at the end.
         # Therefore, if we detect that a checkpoint will be created,
-        # we delay the train.report call after the checkpoint is reported
+        # we delay the session.report call after the checkpoint is reported
         # to Ray Train.
-        self.delayed_report = {}
+        self.delayed_report = {"metrics": {}, "checkpoint": None}
         super().__init__()
 
     def on_step_end(self, args, state, control, **kwargs):
@@ -132,7 +133,7 @@ class TrainReportCallback(TrainerCallback):
     def on_log(self, args, state, control, model=None, logs=None, **kwargs):
         # Log is called in multiple places (evaluation, train metrics).
         report = {**logs, "step": state.global_step, "epoch": state.epoch}
-        self.delayed_report.update(report)
+        self.delayed_report["metrics"].update(report)
 
     def on_save(self, args, state, control, **kwargs):
         # Save is called after evaluation.
@@ -140,17 +141,17 @@ class TrainReportCallback(TrainerCallback):
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
         if checkpoint_path:
-            train.save_checkpoint(
-                **{
+            self.delayed_report["checkpoint"] = Checkpoint.from_dict(
+                {
                     NODE_IP_KEY: get_node_ip_address(),
                     CHECKPOINT_PATH_ON_NODE_KEY: str(checkpoint_path),
                 }
             )
 
     def _report(self):
-        if self.delayed_report:
-            train.report(**self.delayed_report)
-            self.delayed_report = {}
+        if self.delayed_report["metrics"]:
+            session.report(**self.delayed_report)
+            self.delayed_report = {"metrics": {}, "checkpoint": None}
 
     def on_epoch_begin(self, args, state, control, **kwargs):
         # Report previous epoch - this way we ensure everything

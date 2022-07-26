@@ -53,13 +53,14 @@ def _assert_step_checkpoints(wf_storage, task_id, mode):
 
 
 def test_checkpoint_dag_skip_all(workflow_start_regular_shared):
-    outputs = workflow.create(
+    outputs = workflow.run(
         checkpoint_dag.options(
             **workflow.options(name="checkpoint_dag", checkpoint=False)
-        ).bind(False)
-    ).run(workflow_id="checkpoint_skip")
+        ).bind(False),
+        workflow_id="checkpoint_skip",
+    )
     assert np.isclose(outputs, 8388607.5)
-    recovered = ray.get(workflow.resume("checkpoint_skip"))
+    recovered = workflow.resume("checkpoint_skip")
     assert np.isclose(recovered, 8388607.5)
 
     wf_storage = workflow_storage.WorkflowStorage("checkpoint_skip")
@@ -70,11 +71,12 @@ def test_checkpoint_dag_skip_all(workflow_start_regular_shared):
 
 
 def test_checkpoint_dag_skip_partial(workflow_start_regular_shared):
-    outputs = workflow.create(
-        checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(False)
-    ).run(workflow_id="checkpoint_partial")
+    outputs = workflow.run(
+        checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(False),
+        workflow_id="checkpoint_partial",
+    )
     assert np.isclose(outputs, 8388607.5)
-    recovered = ray.get(workflow.resume("checkpoint_partial"))
+    recovered = workflow.resume("checkpoint_partial")
     assert np.isclose(recovered, 8388607.5)
 
     wf_storage = workflow_storage.WorkflowStorage("checkpoint_partial")
@@ -85,11 +87,12 @@ def test_checkpoint_dag_skip_partial(workflow_start_regular_shared):
 
 
 def test_checkpoint_dag_full(workflow_start_regular_shared):
-    outputs = workflow.create(
-        checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(True)
-    ).run(workflow_id="checkpoint_whole")
+    outputs = workflow.run(
+        checkpoint_dag.options(**workflow.options(name="checkpoint_dag")).bind(True),
+        workflow_id="checkpoint_whole",
+    )
     assert np.isclose(outputs, 8388607.5)
-    recovered = ray.get(workflow.resume("checkpoint_whole"))
+    recovered = workflow.resume("checkpoint_whole")
     assert np.isclose(recovered, 8388607.5)
 
     wf_storage = workflow_storage.WorkflowStorage("checkpoint_whole")

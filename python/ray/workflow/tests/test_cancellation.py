@@ -18,10 +18,9 @@ def test_cancellation(tmp_path, workflow_start_regular):
                 pass
 
     workflow_id = "test_cancellation"
-    wf = workflow.create(simple.bind())
 
     with filelock.FileLock(lock_b):
-        r = wf.run_async(workflow_id=workflow_id)
+        r = workflow.run_async(simple.bind(), workflow_id=workflow_id)
         try:
             ray.get(r, timeout=5)
         except GetTimeoutError:

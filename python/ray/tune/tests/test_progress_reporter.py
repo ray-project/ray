@@ -1,13 +1,12 @@
-import pytest
 import collections
 import os
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
-from ray.tune.experiment import Trial
-from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
@@ -15,9 +14,12 @@ from ray.tune.progress_reporter import (
     _fair_filter_trials,
     best_trial_str,
     detect_reporter,
-    trial_progress_str,
     time_passed_str,
+    trial_progress_str,
+    TuneReporterBase,
 )
+from ray.tune.result import AUTO_RESULT_KEYS
+from ray.tune.trial import Trial
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -470,6 +472,20 @@ class ProgressReporterTest(unittest.TestCase):
         result = best_trial_str(trial, "metric", parameter_columns=["nested/conf"])
         self.assertIn("nested_value", result)
 
+    def testBestTrialZero(self):
+        trial1 = Trial("", config={}, stub=True)
+        trial1.last_result = {"metric": 7, "config": {}}
+
+        trial2 = Trial("", config={}, stub=True)
+        trial2.last_result = {"metric": 0, "config": {}}
+
+        trial3 = Trial("", config={}, stub=True)
+        trial3.last_result = {"metric": 2, "config": {}}
+
+        reporter = TuneReporterBase(metric="metric", mode="min")
+        best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
+        assert best_trial == trial2
+
     def testTimeElapsed(self):
         # Sun Feb 7 14:18:40 2016 -0800
         # (time of the first Ray commit)
@@ -586,6 +602,14 @@ class ProgressReporterTest(unittest.TestCase):
         reporter5 = TestReporter(max_progress_rows=4, mode="max", sort_by_metric=True)
         reporter5.report(trials, done=False)
         assert EXPECTED_SORT_RESULT_UNSORTED in reporter5._output
+
+        # Sort by metric when metric is passed using
+        # reporter.setup (called from tune.run)
+        # calling repoter.set_search_properties
+        reporter6 = TestReporter(max_progress_rows=4, sort_by_metric=True)
+        reporter6.set_search_properties(metric="metric_1", mode="max")
+        reporter6.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_DESC in reporter6._output
 
     def testEndToEndReporting(self):
         try:

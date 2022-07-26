@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 class RuntimeEnvPluginSchemaManager:
     """This manager is used to load plugin json schemas."""
 
-    default_schema_path = os.path.join(os.path.dirname(__file__), "schemas")
+    default_schema_path = os.path.join(
+        os.path.dirname(__file__), "../../runtime_env/schemas"
+    )
     schemas = {}
     loaded = False
 
@@ -46,7 +48,7 @@ class RuntimeEnvPluginSchemaManager:
             for f in files:
                 if f.endswith(RAY_RUNTIME_ENV_PLUGIN_SCHEMA_SUFFIX):
                     schema_json_files.append(os.path.join(root, f))
-            logger.info(
+            logger.debug(
                 f"Loading the default runtime env schemas: {schema_json_files}."
             )
             cls._load_schemas(schema_json_files)

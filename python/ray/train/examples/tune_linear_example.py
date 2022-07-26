@@ -1,27 +1,34 @@
 import argparse
 
+from torch_linear_example import train_func
+
 import ray
 from ray import tune
-from ray.train import Trainer
-
-from train_linear_example import train_func
+from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 
 
 def tune_linear(num_workers, num_samples):
-    trainer = Trainer("torch", num_workers=num_workers)
-    Trainable = trainer.to_tune_trainable(train_func)
-    analysis = tune.run(
-        Trainable,
-        num_samples=num_samples,
-        config={
-            "lr": tune.loguniform(1e-4, 1e-1),
-            "batch_size": tune.choice([4, 16, 32]),
-            "epochs": 3,
-        },
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers)
     )
-    results = analysis.get_best_config(metric="loss", mode="min")
-    print(results)
-    return results
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "lr": tune.loguniform(1e-4, 1e-1),
+                "batch_size": tune.choice([4, 16, 32]),
+                "epochs": 3,
+            },
+        },
+        tune_config=TuneConfig(num_samples=num_samples),
+    )
+    analysis = tuner.fit()
+    result = analysis.get_best_result(metric="loss", mode="min")
+    print(result)
+    return result
 
 
 if __name__ == "__main__":

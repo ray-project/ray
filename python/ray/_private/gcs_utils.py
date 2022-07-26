@@ -1,6 +1,9 @@
 import enum
 import logging
 import time
+import traceback
+import inspect
+import asyncio
 from functools import wraps
 from typing import List, Optional
 
@@ -96,13 +99,15 @@ def create_gcs_channel(address: str, aio=False):
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
-def check_health(address: str, timeout=2) -> bool:
+def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
     """Checks Ray cluster health, before / without actually connecting to the
     cluster via ray.init().
 
     Args:
         address: Ray cluster / GCS address string, e.g. ip:port.
         timeout: request timeout.
+        skip_version_check: If True, will skip comparision of GCS Ray version with local
+            Ray version. If False (default), will raise exception on mismatch.
     Returns:
         Returns True if the cluster is running and has matching Ray version.
         Returns False if no service is running.
@@ -114,9 +119,14 @@ def check_health(address: str, timeout=2) -> bool:
         stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
         resp = stub.CheckAlive(req, timeout=timeout)
     except grpc.RpcError:
+        traceback.print_exc()
         return False
     if resp.status.code != GcsCode.OK:
         raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
+
+    if skip_version_check:
+        return True
+    # Otherwise, continue to check for Ray version match.
     if resp.ray_version is None:
         resp.ray_version = "<= 1.12"
     if resp.ray_version != ray.__version__:
@@ -129,35 +139,72 @@ def check_health(address: str, timeout=2) -> bool:
 
 
 def _auto_reconnect(f):
-    @wraps(f)
-    def wrapper(self, *args, **kwargs):
-        remaining_retry = self._nums_reconnect_retry
-        while True:
-            try:
-                return f(self, *args, **kwargs)
-            except grpc.RpcError as e:
-                if remaining_retry <= 0:
-                    raise
-                if e.code() in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.UNKNOWN):
-                    logger.debug(
-                        "Failed to send request to gcs, reconnecting. " f"Error {e}"
-                    )
-                    try:
-                        self._connect()
-                    except Exception:
-                        logger.error(f"Connecting to gcs failed. Error {e}")
-                    time.sleep(1)
-                    remaining_retry -= 1
-                    continue
-                raise
+    if inspect.iscoroutinefunction(f):
 
-    return wrapper
+        @wraps(f)
+        async def wrapper(self, *args, **kwargs):
+            remaining_retry = self._nums_reconnect_retry
+            while True:
+                try:
+                    return await f(self, *args, **kwargs)
+                except grpc.RpcError as e:
+                    if remaining_retry <= 0:
+                        raise
+                    if e.code() in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
+                    ):
+                        logger.debug(
+                            "Failed to send request to gcs, reconnecting. " f"Error {e}"
+                        )
+                        try:
+                            self._connect()
+                        except Exception:
+                            logger.error(f"Connecting to gcs failed. Error {e}")
+                        await asyncio.sleep(1)
+                        remaining_retry -= 1
+                        continue
+                    raise
+
+        return wrapper
+    else:
+
+        @wraps(f)
+        def wrapper(self, *args, **kwargs):
+            remaining_retry = self._nums_reconnect_retry
+            while True:
+                try:
+                    return f(self, *args, **kwargs)
+                except grpc.RpcError as e:
+                    if remaining_retry <= 0:
+                        raise
+                    if e.code() in (
+                        grpc.StatusCode.UNAVAILABLE,
+                        grpc.StatusCode.UNKNOWN,
+                    ):
+                        logger.debug(
+                            "Failed to send request to gcs, reconnecting. " f"Error {e}"
+                        )
+                        try:
+                            self._connect()
+                        except Exception:
+                            logger.error(f"Connecting to gcs failed. Error {e}")
+                        time.sleep(1)
+                        remaining_retry -= 1
+                        continue
+                    raise
+
+        return wrapper
 
 
 class GcsChannel:
     def __init__(self, gcs_address: Optional[str] = None, aio: bool = False):
         self._gcs_address = gcs_address
         self._aio = aio
+
+    @property
+    def address(self):
+        return self._gcs_address
 
     def connect(self):
         # GCS server uses a cached port, so it should use the same port after
@@ -200,6 +247,12 @@ class GcsClient:
             self._channel.channel()
         )
         self._runtime_env_stub = gcs_service_pb2_grpc.RuntimeEnvGcsServiceStub(
+            self._channel.channel()
+        )
+        self._node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
+            self._channel.channel()
+        )
+        self._job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
             self._channel.channel()
         )
 
@@ -317,12 +370,29 @@ class GcsClient:
                 f"due to unexpected error {reply.status.message}."
             )
 
+    @_auto_reconnect
+    def get_all_node_info(
+        self, timeout: Optional[float] = None
+    ) -> gcs_service_pb2.GetAllNodeInfoReply:
+        req = gcs_service_pb2.GetAllNodeInfoRequest()
+        reply = self._node_info_stub.GetAllNodeInfo(req, timeout=timeout)
+        return reply
+
+    @_auto_reconnect
+    def get_all_job_info(
+        self, timeout: Optional[float] = None
+    ) -> gcs_service_pb2.GetAllJobInfoReply:
+        req = gcs_service_pb2.GetAllJobInfoRequest()
+        reply = self._job_info_stub.GetAllJobInfo(req, timeout=timeout)
+        return reply
+
 
 class GcsAioClient:
     def __init__(
         self,
         channel: Optional[GcsChannel] = None,
         address: Optional[str] = None,
+        nums_reconnect_retry: int = 5,
     ):
         if channel is None:
             assert isinstance(address, str)
@@ -331,13 +401,35 @@ class GcsAioClient:
         assert channel._aio is True
         self._channel = channel
         self._connect()
+        self._nums_reconnect_retry = nums_reconnect_retry
+
+    @property
+    def channel(self):
+        return self._channel
 
     def _connect(self):
         self._channel.connect()
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel()
         )
+        self._heartbeat_info_stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+            self._channel.channel()
+        )
 
+    @_auto_reconnect
+    async def check_alive(
+        self, node_ips: List[bytes], timeout: Optional[float] = None
+    ) -> List[bool]:
+        req = gcs_service_pb2.CheckAliveRequest(raylet_address=node_ips)
+        reply = await self._heartbeat_info_stub.CheckAlive(req, timeout=timeout)
+
+        if reply.status.code != GcsCode.OK:
+            raise RuntimeError(
+                f"GCS running at {self._channel.address} is unhealthy: {reply.status}"
+            )
+        return list(reply.raylet_alive)
+
+    @_auto_reconnect
     async def internal_kv_get(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> Optional[bytes]:
@@ -354,6 +446,7 @@ class GcsAioClient:
                 f"due to error {reply.status.message}"
             )
 
+    @_auto_reconnect
     async def internal_kv_put(
         self,
         key: bytes,
@@ -378,6 +471,7 @@ class GcsAioClient:
                 f"due to error {reply.status.message}"
             )
 
+    @_auto_reconnect
     async def internal_kv_del(
         self,
         key: bytes,
@@ -397,6 +491,7 @@ class GcsAioClient:
                 f"Failed to delete key {key!r} " f"due to error {reply.status.message}"
             )
 
+    @_auto_reconnect
     async def internal_kv_exists(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> bool:
@@ -411,6 +506,7 @@ class GcsAioClient:
                 f"due to error {reply.status.message}"
             )
 
+    @_auto_reconnect
     async def internal_kv_keys(
         self, prefix: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
     ) -> List[bytes]:

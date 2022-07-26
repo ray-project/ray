@@ -10,9 +10,9 @@ from ray.tests.conftest import *  # noqa
 from ray.workflow import workflow_storage
 from ray.workflow.common import (
     StepType,
-    WorkflowNotFoundError,
     WorkflowStepRuntimeOptions,
 )
+from ray.workflow.exceptions import WorkflowNotFoundError
 from ray.workflow import serialization_context
 from ray.workflow.tests import utils
 
@@ -39,7 +39,7 @@ def test_delete(workflow_start_regular):
         time.sleep(1000000)
         return x
 
-    workflow.create(never_ends.bind("hello world")).run_async("never_finishes")
+    workflow.run_async(never_ends.bind("hello world"), workflow_id="never_finishes")
 
     # Make sure the step is actualy executing before killing the cluster
     while not utils.check_global_mark():
@@ -52,15 +52,14 @@ def test_delete(workflow_start_regular):
     workflow.init()
 
     with pytest.raises(ray.exceptions.RaySystemError):
-        result = workflow.get_output("never_finishes")
-        ray.get(result)
+        workflow.get_output("never_finishes")
 
     workflow.delete("never_finishes")
 
     with pytest.raises(ray.exceptions.RaySystemError):
         # TODO(suquark): we should raise "ValueError" without
-        #  ray.get() over the result.
-        ray.get(workflow.get_output("never_finishes"))
+        #  been blocking over the result.
+        workflow.get_output("never_finishes")
 
     # TODO(Alex): Uncomment after
     # https://github.com/ray-project/ray/issues/19481.
@@ -75,17 +74,16 @@ def test_delete(workflow_start_regular):
     def basic_step(arg):
         return arg
 
-    result = workflow.create(basic_step.bind("hello world")).run(workflow_id="finishes")
+    result = workflow.run(basic_step.bind("hello world"), workflow_id="finishes")
     assert result == "hello world"
-    ouput = workflow.get_output("finishes")
-    assert ray.get(ouput) == "hello world"
+    assert workflow.get_output("finishes") == "hello world"
 
     workflow.delete(workflow_id="finishes")
 
     with pytest.raises(ray.exceptions.RaySystemError):
         # TODO(suquark): we should raise "ValueError" without
-        #  ray.get() over the result.
-        ray.get(workflow.get_output("finishes"))
+        #  blocking over the result.
+        workflow.get_output("finishes")
 
     # TODO(Alex): Uncomment after
     # https://github.com/ray-project/ray/issues/19481.
@@ -98,7 +96,7 @@ def test_delete(workflow_start_regular):
     assert workflow.list_all() == []
 
     # The workflow can be re-run as if it was never run before.
-    assert workflow.create(basic_step.bind("123")).run(workflow_id="finishes") == "123"
+    assert workflow.run(basic_step.bind("123"), workflow_id="finishes") == "123"
 
     # utils.unset_global_mark()
     # never_ends.step("123").run_async(workflow_id="never_finishes")
@@ -122,8 +120,8 @@ def test_workflow_storage(workflow_start_regular):
     step_options = WorkflowStepRuntimeOptions(
         step_type=StepType.FUNCTION,
         catch_exceptions=False,
+        retry_exceptions=True,
         max_retries=0,
-        allow_inplace=False,
         checkpoint=False,
         ray_options={},
     )
@@ -252,7 +250,7 @@ def test_cluster_storage_init(workflow_start_cluster, tmp_path):
     def f():
         return 10
 
-    assert workflow.create(f.bind()).run() == 10
+    assert workflow.run(f.bind()) == 10
 
 
 if __name__ == "__main__":
