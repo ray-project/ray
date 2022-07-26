@@ -6,10 +6,6 @@ from unittest.mock import patch
 import pytest
 import torch
 import torchvision
-from test_tune import (
-    torch_fashion_mnist,
-    tune_tensorflow_mnist,
-)
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
@@ -31,6 +27,10 @@ from ray.train.examples.torch_fashion_mnist_example import (
 )
 from ray.train.examples.torch_linear_example import LinearDataset
 from ray.train.horovod.horovod_trainer import HorovodTrainer
+from ray.train.tests.test_tune import (
+    torch_fashion_mnist,
+    tune_tensorflow_mnist,
+)
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch import TorchConfig
 from ray.train.torch.torch_trainer import TorchTrainer
