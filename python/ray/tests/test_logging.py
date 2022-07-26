@@ -543,16 +543,19 @@ def test_log_monitor(tmp_path):
     create_file(log_dir, new_worker_err_file, contents)
     log_monitor.update_log_filenames()
 
+    print("=======================================================================")
+
     # System logs are not closed.
     # - raylet, gcs, monitor
     # Dead workers are not tracked anymore. They will be moved to old folder.
     # - dead pid out & err
     # alive worker is going to be newly opened.
     log_monitor.open_closed_files()
-    assert len(log_monitor.open_file_infos) == 4
+    assert len(log_monitor.open_file_infos) == 2
     assert log_monitor.can_open_more_files
     # Two dead workers are not tracked anymore, and they will be in the old folder.
-    assert len(log_monitor.closed_file_infos) == 0
+    # monitor.err and gcs_server.1.err have not been updated, so they remain closed.
+    assert len(log_monitor.closed_file_infos) == 2
     assert len(list((log_dir / "old").iterdir())) == 2
 
 
