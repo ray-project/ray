@@ -19,7 +19,6 @@ from ray._private import ray_constants
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
 )
-from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
 from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProvider
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
@@ -30,7 +29,6 @@ from ray.autoscaler._private.util import (
     prepare_config,
     validate_config,
 )
-from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 from ray.autoscaler._private._kubernetes.config import get_autodetected_resources
 
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -91,8 +89,8 @@ worker_setup_commands: []
 """  # noqa E501
 
 
-def fake_fillout_available_node_types_resources(config : Dict[str, Any]) -> None:
-    """ A cheap way to fill out the resources field (the same way a node
+def fake_fillout_available_node_types_resources(config: Dict[str, Any]) -> None:
+    """A cheap way to fill out the resources field (the same way a node
     provider would autodetect them) as far as schema validation is concerned."""
     available_node_types = config.get("available_node_types", {})
     for label, value in available_node_types.items():
@@ -478,7 +476,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             merge_setup_commands(config_copy)
             fill_node_type_min_max_workers(config_copy)
             assert config_copy == prepare_config(config)
-
 
     @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
     def testAzureKeyPair(self):
