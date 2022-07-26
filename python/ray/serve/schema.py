@@ -244,6 +244,23 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         default=[],
         description=("Deployment options that override options specified in the code."),
     )
+    host: str = Field(
+        default="0.0.0.0",
+        description=(
+            "Host for HTTP servers to listen on. Defaults to "
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new host instead."
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        description=(
+            "Port for HTTP server. Defaults to 8000. Cannot be updated once "
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new port instead."
+        ),
+    )
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
