@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
@@ -9,6 +9,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 
 torch, nn = try_import_torch()
 
@@ -46,7 +47,7 @@ class DoublyRobust(OffPolicyEstimator):
         self,
         policy: Policy,
         gamma: float,
-        q_model_config: Dict = None,
+        q_model_config: Optional[Dict] = None,
     ):
         """Initializes a Doubly Robust OPE Estimator.
 
@@ -63,7 +64,8 @@ class DoublyRobust(OffPolicyEstimator):
         """
 
         super().__init__(policy, gamma)
-        model_cls = q_model_config.pop("type")
+        q_model_config = q_model_config or {}
+        model_cls = q_model_config.pop("type", FQETorchModel)
 
         self.model = model_cls(
             policy=policy,
