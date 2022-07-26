@@ -37,9 +37,6 @@ namespace ray {
 namespace core {
 namespace {
 
-// Duration between internal book-keeping heartbeats.
-const uint64_t kInternalHeartbeatMillis = 1000;
-
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
@@ -508,8 +505,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       100);
 
-  periodical_runner_.RunFnPeriodically([this] { InternalHeartbeat(); },
-                                       kInternalHeartbeatMillis);
+  periodical_runner_.RunFnPeriodically(
+      [this] { InternalHeartbeat(); },
+      RayConfig::instance().core_worker_internal_heartbeat_ms());
 
 #ifndef _WIN32
   // Doing this last during CoreWorker initialization, so initialization logic like

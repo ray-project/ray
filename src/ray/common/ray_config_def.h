@@ -518,6 +518,10 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 
+/// The core worker heartbeat interval. During heartbeat, it'll
+/// report the loads to raylet.
+RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000);
+
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 
