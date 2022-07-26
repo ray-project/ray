@@ -220,17 +220,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             success=True, message=f"Successfully set fetching to {should_fetch}"
         )
 
-    @routes.get("/node_logs")
-    async def get_logs(self, req) -> aiohttp.web.Response:
-        ip = req.query["ip"]
-        pid = str(req.query.get("pid", ""))
-        node_logs = DataSource.ip_and_pid_to_logs.get(ip, {})
-        if pid:
-            node_logs = {str(pid): node_logs.get(pid, [])}
-        return dashboard_optional_utils.rest_response(
-            success=True, message="Fetched logs.", logs=node_logs
-        )
-
     @routes.get("/node_errors")
     async def get_errors(self, req) -> aiohttp.web.Response:
         ip = req.query["ip"]
@@ -269,18 +258,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             ip = log_batch["ip"]
             pid = str(log_batch["pid"])
             if pid != "autoscaler":
-                logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
-                logs_for_pid = list(logs_for_ip.get(pid, []))
-                logs_for_pid.extend(log_batch["lines"])
-
-                # Only cache upto MAX_LOGS_TO_CACHE
-                logs_length = len(logs_for_pid)
-                if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
-                    offset = logs_length - MAX_LOGS_TO_CACHE
-                    del logs_for_pid[:offset]
-
-                logs_for_ip[pid] = logs_for_pid
-                DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
+                log_counts_for_ip = dict(
+                    DataSource.ip_and_pid_to_log_counts.get(ip, {})
+                )
+                log_counts_for_pid = log_counts_for_ip.get(pid, 0)
+                log_counts_for_pid += len(log_batch["lines"])
+                log_counts_for_ip[pid] = log_counts_for_pid
+                DataSource.ip_and_pid_to_log_counts[ip] = log_counts_for_ip
             logger.debug(f"Received a log for {ip} and {pid}")
 
         while True:
@@ -309,6 +293,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         "type": error_data.type,
                     }
                 )
+
+                # Only cache up to MAX_LOGS_TO_CACHE
+                pid_errors_length = len(pid_errors)
+                if pid_errors_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
+                    offset = pid_errors_length - MAX_LOGS_TO_CACHE
+                    del pid_errors[:offset]
+
                 errs_for_ip[pid] = pid_errors
                 DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
                 logger.info(f"Received error entry for {ip} {pid}")
