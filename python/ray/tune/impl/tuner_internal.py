@@ -83,59 +83,19 @@ class TunerInternal:
 
         # Restore from Tuner checkpoint.
         if restore_path:
-            # Sync down from cloud storage if needed
-            synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
-                restore_path
+            self._restore_from_path_or_uri(
+                path_or_uri=restore_path, resume_config=resume_config
             )
-            experiment_checkpoint_path = Path(experiment_checkpoint_dir)
-
-            if (
-                not (experiment_checkpoint_path / _TRAINABLE_PKL).exists()
-                or not (experiment_checkpoint_path / _TUNER_PKL).exists()
-            ):
-                raise RuntimeError(
-                    f"Could not find Tuner state in restore directory. Did you pass"
-                    f"the correct path (including experiment directory?) Got: "
-                    f"{restore_path}"
-                )
-
-            # Load trainable and tuner state
-            with open(experiment_checkpoint_path / _TRAINABLE_PKL, "rb") as fp:
-                trainable = pickle.load(fp)
-
-            with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
-                tuner = pickle.load(fp)
-                self.__dict__.update(tuner.__dict__)
-
-            self._is_restored = True
-            self._trainable = trainable
-            self._resume_config = resume_config
-
-            if not synced:
-                # If we didn't sync, use the restore_path local dir
-                self._experiment_checkpoint_dir = restore_path
-            else:
-                # If we synced, `experiment_checkpoint_dir` will contain a temporary
-                # directory. Create an experiment checkpoint dir instead and move
-                # our data there.
-                new_exp_path = Path(
-                    self._setup_create_experiment_checkpoint_dir(self._run_config)
-                )
-                for file_dir in experiment_checkpoint_path.glob("*"):
-                    file_dir.rename(new_exp_path / file_dir.name)
-                shutil.rmtree(experiment_checkpoint_path)
-                self._experiment_checkpoint_dir = str(new_exp_path)
-
             return
 
         # Start from fresh
         if not trainable:
             raise TuneError("You need to provide a trainable to tune.")
 
-        self._resume_config = None
-
         self._is_restored = False
         self._trainable = trainable
+        self._resume_config = None
+
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
         self._experiment_checkpoint_dir = self._setup_create_experiment_checkpoint_dir(
             self._run_config
@@ -158,11 +118,57 @@ class TunerInternal:
         with open(experiment_checkpoint_path / _TRAINABLE_PKL, "wb") as fp:
             pickle.dump(self._trainable, fp)
 
+    def _restore_from_path_or_uri(
+        self, path_or_uri: str, resume_config: Optional[_ResumeConfig]
+    ):
+        # Sync down from cloud storage if needed
+        synced, experiment_checkpoint_dir = self._maybe_sync_down_tuner_state(
+            path_or_uri
+        )
+        experiment_checkpoint_path = Path(experiment_checkpoint_dir)
+
+        if (
+            not (experiment_checkpoint_path / _TRAINABLE_PKL).exists()
+            or not (experiment_checkpoint_path / _TUNER_PKL).exists()
+        ):
+            raise RuntimeError(
+                f"Could not find Tuner state in restore directory. Did you pass"
+                f"the correct path (including experiment directory?) Got: "
+                f"{path_or_uri}"
+            )
+
+        # Load trainable and tuner state
+        with open(experiment_checkpoint_path / _TRAINABLE_PKL, "rb") as fp:
+            trainable = pickle.load(fp)
+
+        with open(experiment_checkpoint_path / _TUNER_PKL, "rb") as fp:
+            tuner = pickle.load(fp)
+            self.__dict__.update(tuner.__dict__)
+
+        self._is_restored = True
+        self._trainable = trainable
+        self._resume_config = resume_config
+
+        if not synced:
+            # If we didn't sync, use the restore_path local dir
+            self._experiment_checkpoint_dir = path_or_uri
+        else:
+            # If we synced, `experiment_checkpoint_dir` will contain a temporary
+            # directory. Create an experiment checkpoint dir instead and move
+            # our data there.
+            new_exp_path = Path(
+                self._setup_create_experiment_checkpoint_dir(self._run_config)
+            )
+            for file_dir in experiment_checkpoint_path.glob("*"):
+                file_dir.rename(new_exp_path / file_dir.name)
+            shutil.rmtree(experiment_checkpoint_path)
+            self._experiment_checkpoint_dir = str(new_exp_path)
+
     def _maybe_sync_down_tuner_state(self, restore_path: str) -> Tuple[bool, str]:
         """Sync down trainable state from remote storage.
 
         Returns:
-            Tuple of (synced, local_dir)
+            Tuple of (downloaded from remote, local_dir)
         """
         if not is_non_local_path_uri(restore_path):
             return False, restore_path
