@@ -372,8 +372,8 @@ class Policy(metaclass=ABCMeta):
         # `self.compute_actions()`.
         state_batches = [s for k, s in input_dict.items() if k[:9] == "state_in_"]
         return self.compute_actions(
-            input_dict[SampleBatch.OBS],
-            state_batches,
+            obs_batch=input_dict[SampleBatch.OBS],
+            state_batches=state_batches,
             prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
             info_batch=input_dict.get(SampleBatch.INFOS),

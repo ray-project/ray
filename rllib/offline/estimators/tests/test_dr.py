@@ -19,7 +19,7 @@ class TestDR(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-        checkpoint_dir = "/tmp/cartpole/"
+        checkpoint_dir = "/tmp/cliffwalking/"
         num_episodes = 20
         cls.gamma = 0.99
 
