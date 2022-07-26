@@ -37,8 +37,8 @@ class SklearnPredictor(Predictor):
 
     def __repr__(self):
         return (
-            f"SklearnPredictor(estimator={self.estimator}, "
-            f"preprocessor={self._preprocessor})"
+            f"{self.__class__.__name__}(estimator={self.estimator!r}, "
+            f"preprocessor={self._preprocessor!r})"
         )
 
     @classmethod

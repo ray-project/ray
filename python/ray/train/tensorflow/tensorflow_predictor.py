@@ -77,10 +77,11 @@ class TensorflowPredictor(DLPredictor):
 
     def __repr__(self):
         return (
-            f"TensorflowPredictor(model_definition={self.model_definition}, "
-            f"preprocessor={self._preprocessor}, "
-            f"model_weights={self.model_weights}, "
-            f"use_gpu={self.use_gpu})"
+            f"{self.__class__.__name__}("
+            f"model_definition={self.model_definition!r}, "
+            f"preprocessor={self._preprocessor!r}, "
+            f"model_weights={self.model_weights!r}, "
+            f"use_gpu={self.use_gpu!r})"
         )
 
     @classmethod

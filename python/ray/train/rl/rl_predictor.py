@@ -34,7 +34,10 @@ class RLPredictor(Predictor):
         super().__init__(preprocessor)
 
     def __repr__(self):
-        return f"RLPredictor(policy={self.policy}, preprocessor={self._preprocessor})"
+        return (
+            f"{self.__class__.__name__}(policy={self.policy!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
 
     @classmethod
     def from_checkpoint(

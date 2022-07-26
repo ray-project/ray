@@ -31,7 +31,8 @@ class XGBoostPredictor(Predictor):
 
     def __repr__(self):
         return (
-            f"XGBoostPredictor(model={self.model}, preprocessor={self._preprocessor})"
+            f"{self.__class__.__name__}(model={self.model!r}, "
+            f"preprocessor={self._preprocessor!r})"
         )
 
     @classmethod

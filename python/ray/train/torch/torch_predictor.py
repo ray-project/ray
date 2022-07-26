@@ -63,9 +63,8 @@ class TorchPredictor(DLPredictor):
 
     def __repr__(self):
         return (
-            f"TorchPredictor(model={self.model}, "
-            f"preprocessor={self._preprocessor}, "
-            f"use_gpu={self.use_gpu})"
+            f"{self.__class__.__name__}(model={self.model!r}, "
+            f"preprocessor={self._preprocessor!r}, use_gpu={self.use_gpu!r})"
         )
 
     @classmethod

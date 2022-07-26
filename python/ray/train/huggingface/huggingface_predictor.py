@@ -38,8 +38,8 @@ class HuggingFacePredictor(Predictor):
 
     def __repr__(self):
         return (
-            f"HuggingFacePredictor(pipeline={self.pipeline}, "
-            f"preprocessor={self._preprocessor})"
+            f"{self.__class__.__name__}(pipeline={self.pipeline!r}, "
+            f"preprocessor={self._preprocessor!r})"
         )
 
     @classmethod
