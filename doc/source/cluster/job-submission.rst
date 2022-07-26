@@ -173,6 +173,12 @@ Here are some examples of CLI commands from the Quick Start example and their ou
     ``ray job submit --working_dir="." -- python script.py`` instead of ``ray job submit --working_dir="." -- "python script.py"``.
     Otherwise you may encounter the error ``/bin/sh: 1: python script.py: not found``.
 
+.. tip::
+
+    If your job is stuck in `PENDING`, the runtime environment installation may be stuck.
+    (For example, the `pip` installation or `working_dir` download may be stalled due to internet issues.)
+    You can check the installation logs at `/tmp/ray/session_latest/logs/runtime_env_setup-*.log` for details.
+
 Using the CLI on a remote cluster
 """""""""""""""""""""""""""""""""
 
