@@ -49,7 +49,6 @@ from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
-    _alpha_doc,
     get as state_cli_get,
     list as state_cli_list,
     get_api_server_url,
@@ -1958,7 +1957,7 @@ def local_dump(
     )
 
 
-@cli.command(hidden=True)
+@cli.command()
 @click.argument(
     "glob_filter",
     required=False,
@@ -2036,8 +2035,7 @@ def local_dump(
         "this option will be ignored."
     ),
 )
-@_alpha_doc()
-def logs(
+def ray_logs(
     glob_filter,
     node_ip: str,
     node_id: str,
@@ -2049,10 +2047,45 @@ def logs(
     interval: float,
     timeout: int,
 ):
-    # TODO: We will need to finalize on some example usage of the command.
-    """
-    Get logs from the ray cluster
+    """Print the log file that matches the GLOB_FILTER.
 
+    By default, it prints a list of log files that match the filter.
+    If there's only 1 match, it will print the log file.
+    By default, it prints the head node logs.
+
+    Usage:
+
+        Print the last 500 lines of raylet.out on a head node.
+
+        ```
+        ray logs raylet.out -tail 500
+        ```
+
+        Print the last 500 lines of raylet.out on a worker node id A.
+
+        ```
+        ray logs raylet.out -tail 500 —-node-id A
+        ```
+
+        Follow the log file with an actor id ABC.
+
+        ```
+        ray logs --actor-id ABC --follow
+        ```
+
+        Get the actor log from pid 123, ip ABC.
+        Note that this goes well with the driver log of Ray which prints
+        (ip=ABC, pid=123, class_name) logs.
+
+        ```
+        ray logs —ip=ABC pid=123
+        ```
+
+        Download the gcs_server.txt file to the local machine.
+
+        ```
+        ray logs gcs_server.out -tail -1 > gcs_server.txt
+        ```
     """
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
@@ -2523,9 +2556,10 @@ cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 add_command_alias(job_cli_group, name="job", hidden=True)
+add_command_alias(ray_logs, name="logs", hidden=False)
 cli.add_command(state_cli_list)
 cli.add_command(state_cli_get)
-add_command_alias(summary_state_cli_group, name="summary", hidden=True)
+add_command_alias(summary_state_cli_group, name="summary", hidden=False)
 
 try:
     from ray.serve.scripts import serve_cli

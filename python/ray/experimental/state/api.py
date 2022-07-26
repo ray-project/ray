@@ -449,13 +449,15 @@ class StateApiClient(SubmissionClient):
             resource_name: Resource names,
                 see `SummaryResource` for details.
             options: summary options. See `SummaryApiOptions` for details.
-            A dictionary of queried result from `SummaryApiResponse`,
             raise_on_missing_output: Raise an exception if the output has missing data.
                 Output can have missing data if (1) there's a partial network failure
                 when the source is distributed. (2) data is truncated
                 because it is too large.
             _explain: Print the API information such as API
                 latency or failed query information.
+
+        Returns:
+            A dictionary of queried result from `SummaryApiResponse`.
 
         Raises:
             This doesn't catch any exceptions raised when the underlying request
