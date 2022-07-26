@@ -2712,7 +2712,7 @@
   env: staging
 
   cluster:
-    cluster_env: app_config.yaml
+    cluster_env: app_config_py38.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
