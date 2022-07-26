@@ -545,14 +545,9 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
     return logp_
 
 
-def warn_if_infinite_kl_divergence(policy: Type["TFPolicy"], mean_kl_loss: TensorType):
-    if policy.loss_initialized():
-        tf.cond(
-            tf.math.is_inf(mean_kl_loss),
-            false_fn=lambda: tf.constant(0.0),
-            true_fn=lambda: print_warning(),
-        )
-
+def warn_if_infinite_kl_divergence(
+    policy: Type["TFPolicy"], mean_kl_loss: TensorType
+) -> None:
     def print_warning():
         logger.warning(
             "KL divergence is non-finite, this will likely destabilize your model and"
@@ -563,3 +558,10 @@ def warn_if_infinite_kl_divergence(policy: Type["TFPolicy"], mean_kl_loss: Tenso
             " increasing policy entropy."
         )
         return tf.constant(0.0)
+
+    if policy.loss_initialized():
+        tf.cond(
+            tf.math.is_inf(mean_kl_loss),
+            false_fn=lambda: tf.constant(0.0),
+            true_fn=lambda: print_warning(),
+        )
