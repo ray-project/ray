@@ -1,5 +1,6 @@
 import warnings
 from collections import Counter
+import re
 from unittest.mock import patch
 
 import numpy as np
@@ -28,6 +29,8 @@ from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+
+MAX_REPR_LENGTH = 100
 
 
 @pytest.fixture
@@ -116,6 +119,38 @@ def test_standard_scaler():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+@pytest.mark.parametrize(
+    "preprocessor",
+    [
+        BatchMapper(fn=lambda x: x),
+        Categorizer(columns=["X"]),
+        CountVectorizer(columns=["X"]),
+        Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
+        FeatureHasher(columns=["X"], num_features=1),
+        HashingVectorizer(columns=["X"], num_features=1),
+        LabelEncoder(label_column="X"),
+        MaxAbsScaler(columns=["X"]),
+        MinMaxScaler(columns=["X"]),
+        MultiHotEncoder(columns=["X"]),
+        Normalizer(columns=["X"]),
+        OneHotEncoder(columns=["X"]),
+        OrdinalEncoder(columns=["X"]),
+        PowerTransformer(columns=["X"], power=1),
+        RobustScaler(columns=["X"]),
+        SimpleImputer(columns=["X"]),
+        StandardScaler(columns=["X"]),
+        Concatenator(),
+        Tokenizer(columns=["X"]),
+    ],
+)
+def test_repr(preprocessor):
+    representation = repr(preprocessor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile(f"^{preprocessor.__class__.__name__}\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 @patch.object(warnings, "warn")
