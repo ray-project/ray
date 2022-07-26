@@ -2138,7 +2138,7 @@ def test_data_truncate(shutdown_only, monkeypatch):
         ]
         runner = CliRunner()
         with pytest.warns(UserWarning) as record:
-            result = runner.invoke(cli_list, ["placement-groups"])
+            result = runner.invoke(ray_list, ["placement-groups"])
             # result = list_placement_groups()
         assert (
             f"{max_limit_data_source} ({max_limit_data_source + 1} total) "
