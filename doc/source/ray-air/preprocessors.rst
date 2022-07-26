@@ -130,7 +130,6 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
     #. :class:`Preprocessor <ray.data.preprocessor.Preprocessor>`
     #. :class:`BatchMapper <ray.data.preprocessors.BatchMapper>`
     #. :class:`Chain <ray.data.preprocessors.Chain>`
-    #. :class:`CustomStatefulPreprocessor <ray.data.preprocessors.CustomStatefulPreprocessor>`
 
 .. tabbed:: Tabular
 
@@ -189,7 +188,8 @@ Custom Preprocessors
     :start-after: __custom_stateless_start__
     :end-before: __custom_stateless_end__
 
-**Stateful Preprocessors:** Stateful preprocessors can be implemented with the ``CustomStatefulPreprocessor``.
+**Stateful Preprocessors:** Stateful preprocessors can be implemented by extending the
+:py:class:`~ray.data.preprocessor.Preprocessor` base class.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
