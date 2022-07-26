@@ -1,8 +1,8 @@
-import os
 import time
 
 from ray.tests.conftest import *  # noqa
 
+from filelock import FileLock
 import pytest
 import ray
 from ray import workflow
@@ -135,7 +135,7 @@ def test_partial(workflow_start_regular_shared):
     assert workflow.run(chain_func.bind(1)) == 7
 
 
-def test_run_or_resume_during_running(workflow_start_regular_shared):
+def test_run_or_resume_during_running(workflow_start_regular_shared, tmp_path):
     @ray.remote
     def source1():
         return "[source1]"
@@ -150,17 +150,19 @@ def test_run_or_resume_during_running(workflow_start_regular_shared):
 
     @ray.remote
     def simple_sequential():
-        x = source1.bind()
-        y = append1.bind(x)
-        return workflow.continuation(append2.bind(y))
+        with FileLock(tmp_path / "lock"):
+            x = source1.bind()
+            y = append1.bind(x)
+            return workflow.continuation(append2.bind(y))
 
-    output = workflow.run_async(
-        simple_sequential.bind(), workflow_id="running_workflow"
-    )
-    with pytest.raises(RuntimeError):
-        workflow.run_async(simple_sequential.bind(), workflow_id="running_workflow")
-    with pytest.raises(RuntimeError):
-        workflow.resume_async(workflow_id="running_workflow")
+    with FileLock(tmp_path / "lock"):
+        output = workflow.run_async(
+            simple_sequential.bind(), workflow_id="running_workflow"
+        )
+        with pytest.raises(RuntimeError):
+            workflow.run_async(simple_sequential.bind(), workflow_id="running_workflow")
+        with pytest.raises(RuntimeError):
+            workflow.resume_async(workflow_id="running_workflow")
     assert ray.get(output) == "[source1][append1][append2]"
 
 
@@ -188,58 +190,15 @@ def test_dynamic_output(workflow_start_regular_shared):
         pass
     from ray.workflow.workflow_storage import get_workflow_storage
 
-    wf_storage = get_workflow_storage(workflow_id="dynamic_output")
-    result = wf_storage.inspect_step("step_0")
-    assert result.output_step_id == "step_3"
+    from ray._private.client_mode_hook import client_mode_wrap
 
+    @client_mode_wrap
+    def _check_storage():
+        wf_storage = get_workflow_storage(workflow_id="dynamic_output")
+        result = wf_storage.inspect_step("step_0")
+        return result.output_step_id
 
-def test_workflow_error_message():
-    storage_url = r"c:\ray"
-    expected_error_msg = f"Cannot parse URI: '{storage_url}'"
-    if os.name == "nt":
-
-        expected_error_msg += (
-            " Try using file://{} or file:///{} for Windows file paths.".format(
-                storage_url, storage_url
-            )
-        )
-    if ray.is_initialized():
-        ray.shutdown()
-    with pytest.raises(ValueError) as e:
-        ray.init(storage=storage_url)
-    assert str(e.value) == expected_error_msg
-
-
-def test_options_update():
-    from ray.workflow.common import WORKFLOW_OPTIONS
-
-    # Options are given in decorator first, then in the first .options()
-    # and finally in the second .options()
-    @workflow.options(name="old_name", metadata={"k": "v"})
-    @ray.remote(num_cpus=2, max_retries=1)
-    def f():
-        return
-
-    # name is updated from the old name in the decorator to the new name in the first
-    # .options(), then preserved in the second options.
-    # metadata and ray_options are "updated"
-    # max_retries only defined in the decorator and it got preserved all the way
-    new_f = f.options(
-        num_returns=2,
-        **workflow.options(name="new_name", metadata={"extra_k2": "extra_v2"}),
-    )
-    options = new_f.bind().get_options()
-    assert options == {
-        "num_cpus": 2,
-        "num_returns": 2,
-        "max_retries": 1,
-        "_metadata": {
-            WORKFLOW_OPTIONS: {
-                "name": "new_name",
-                "metadata": {"extra_k2": "extra_v2"},
-            }
-        },
-    }
+    assert _check_storage() == "step_3"
 
 
 if __name__ == "__main__":
