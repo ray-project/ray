@@ -163,11 +163,13 @@ class TestViewRequirementConnector(unittest.TestCase):
     def test_vr_connector_respects_training_or_inference_vr_flags(self):
         """Tests that the connector respects the flags within view_requirements (i.e.
         used_for_training, used_for_compute_actions) under different is_training modes.
-        is_training = False
-            the returned data should be state -> obs
-        is_training = True
-            the returned data should be the data itself. The higher level policy
-            collector in env_runner will construct the proper data structure.
+        is_training = False (inference mode)
+            the returned data is a SampleBatch that can be used to run corresponding
+            policy.
+        is_training = True (training mode)
+            the returned data is the input dict itself, which the policy collector in
+            env_runner will use to construct the episode, and a SampleBatch that can be
+            used to run corresponding policy.
         """
         view_rq_dict = {
             "both": ViewRequirement(

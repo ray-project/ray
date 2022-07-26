@@ -1,6 +1,7 @@
 from gym.spaces import Space
 import math
 import numpy as np
+from ray.rllib.policy.view_requirement import ViewRequirement
 import tree  # pip install dm_tree
 from typing import Any, Dict, List, Optional
 
@@ -222,8 +223,9 @@ class AgentCollector:
         self.agent_steps += 1
 
     def build_for_inference(self) -> SampleBatch:
-        """During inference we will a samplebatch with a batch size of 1.
-        This data will only include the data for the last recorded timestep.
+        """During inference, we will build a SampleBatch with a batch size of 1 that
+        can then be used to run the forward pass of a policy. This data will only
+        include the enviornment context for running the policy at the last timestep.
 
         Returns:
             A SampleBatch with a batch size of 1.
@@ -238,55 +240,26 @@ class AgentCollector:
             # if this view is not for inference, skip it.
             if not view_req.used_for_compute_actions:
                 continue
-            else:
-                if np.any(view_req.shift_arr > 0):
-                    raise ValueError(
-                        f"During inference the agent can only use past observations to "
-                        f"respect causality. However, view_col = {view_col} seems to "
-                        f"depend on future indices {view_req.shift_arr}, while the "
-                        f"used_for_compute_actions flag is set to True. Please fix the "
-                        f"discrepancy. Hint: If you are using a custom model make sure "
-                        f"the view_requirements are initialized properly and is point "
-                        f"only refering to past timesteps during inference."
-                    )
+
+            if np.any(view_req.shift_arr > 0):
+                raise ValueError(
+                    f"During inference the agent can only use past observations to "
+                    f"respect causality. However, view_col = {view_col} seems to "
+                    f"depend on future indices {view_req.shift_arr}, while the "
+                    f"used_for_compute_actions flag is set to True. Please fix the "
+                    f"discrepancy. Hint: If you are using a custom model make sure "
+                    f"the view_requirements are initialized properly and is point "
+                    f"only refering to past timesteps during inference."
+                )
 
             # Some columns don't exist yet
             # (get created during postprocessing or depend on state_out).
             if data_col not in self.buffers:
-                try:
-                    space = self.view_requirements[data_col].space
-                except KeyError:
-                    space = view_req.space
-
-                # special treatment for state_out_<i>
-                # add them to the buffer in case they don't exist yet
-                if data_col.startswith("state_out"):
-                    if not self.is_policy_recurrent:
-                        raise ValueError(
-                            f"{data_col} is not available, because the given policy is"
-                            f"not recurrent according to the input model_inital_states."
-                            f"Have you forgotten to return non-empty lists in"
-                            f"policy.get_initial_states()?"
-                        )
-                    state_ind = int(data_col.split("_")[-1])
-                    self._build_buffers({data_col: self.intial_states[state_ind]})
-                else:
-                    if isinstance(space, Space):
-                        fill_value = get_dummy_batch_for_space(
-                            space,
-                            batch_size=1,
-                        )
-                    else:
-                        fill_value = space
-
-                    self._build_buffers({data_col: fill_value})
+                self._fill_buffer_with_initial_values(data_col, view_req)
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
-            if data_col not in np_data:
-                np_data[data_col] = [
-                    _to_float_np_array(d) for d in self.buffers[data_col]
-                ]
+            self._cache_in_np(np_data, data_col)
 
             data = []
             for d in np_data[data_col]:
@@ -300,13 +273,8 @@ class AgentCollector:
                 # add the batch dimension with [None]
                 data.append(element_at_t[None])
 
-            if len(data) > 0:
-                if data_col not in self.buffer_structs:
-                    batch_data[view_col] = data[0]
-                else:
-                    batch_data[view_col] = tree.unflatten_as(
-                        self.buffer_structs[data_col], data
-                    )
+            if data:
+                batch_data[view_col] = self._unflatten_as_buffer_struct(data)
 
         batch = self._get_sample_batch(batch_data)
         return batch
@@ -341,20 +309,7 @@ class AgentCollector:
             data_col = view_req.data_col or view_col
 
             if data_col not in self.buffers:
-                # special treatment for state_out_<i>
-                # add them to the buffer in case they don't exist yet
-                if data_col.startswith("state_out_"):
-                    if not self.is_policy_recurrent:
-                        raise ValueError(
-                            f"{data_col} is not available, because the given policy is"
-                            f"not recurrent according to the input model_inital_states."
-                            f"Have you forgotten to return non-empty lists in"
-                            f"policy.get_initial_states()?"
-                        )
-                    state_ind = int(data_col.split("_")[-1])
-                    self._build_buffers({data_col: self.intial_states[state_ind]})
-                else:
-                    continue
+                self._fill_buffer_with_initial_values(data_col, view_req)
 
             # OBS are already shifted by -1 (the initial obs starts one ts
             # before all other data columns).
@@ -362,18 +317,11 @@ class AgentCollector:
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
-            if data_col not in np_data:
-                np_data[data_col] = [
-                    _to_float_np_array(d) for d in self.buffers[data_col]
-                ]
-
-            assert (
-                view_req.shift_arr is not None
-            ), "View requirement shift_arr cannot be None."
-            data = []
+            self._cache_in_np(np_data, data_col)
 
             # Go throught each time-step in the buffer and construct the view
             # accordingly.
+            data = []
             for d in np_data[data_col]:
                 shifted_data = []
 
@@ -433,13 +381,8 @@ class AgentCollector:
                     shifted_data_np = np.array(shifted_data)
                 data.append(shifted_data_np)
 
-            if len(data) > 0:
-                if data_col not in self.buffer_structs:
-                    batch_data[view_col] = data[0]
-                else:
-                    batch_data[view_col] = tree.unflatten_as(
-                        self.buffer_structs[data_col], data
-                    )
+            if data:
+                batch_data[view_col] = self._unflatten_as_buffer_struct(data)
 
         batch = self._get_sample_batch(batch_data)
 
@@ -526,3 +469,53 @@ class AgentCollector:
             batch.max_seq_len = max_seq_len
 
         return batch
+
+    def _cache_in_np(self, cache_dict: Dict[str, List[np.ndarray]], key: str) -> None:
+        """Caches the numpy version of the key in the buffer dict."""
+        if key not in cache_dict:
+            cache_dict[key] = [_to_float_np_array(d) for d in self.buffers[key]]
+
+    def _unflatten_as_buffer_struct(
+        self, data: List[np.ndarray], key: str
+    ) -> np.ndarray:
+        """Unflattens the given to match the buffer struct format for that key."""
+        if key not in self.buffer_structs:
+            return data[0]
+
+        return tree.unflatten_as(self.buffer_structs[key], data)
+
+    def _fill_buffer_with_initial_values(
+        self, data_col: str, view_requirement: ViewRequirement
+    ) -> None:
+        """Fills the buffer with the initial values for the given data column.
+        for dat_col starting with `state_out`, use the initial states of the policy,
+        but for other data columns, create a dummy value based on the view requirement
+        space.
+        """
+        try:
+            space = self.view_requirements[data_col].space
+        except KeyError:
+            space = view_requirement.space
+
+        # special treatment for state_out_<i>
+        # add them to the buffer in case they don't exist yet
+        if data_col.startswith("state_out"):
+            if not self.is_policy_recurrent:
+                raise ValueError(
+                    f"{data_col} is not available, because the given policy is"
+                    f"not recurrent according to the input model_inital_states."
+                    f"Have you forgotten to return non-empty lists in"
+                    f"policy.get_initial_states()?"
+                )
+            state_ind = int(data_col.split("_")[-1])
+            self._build_buffers({data_col: self.intial_states[state_ind]})
+        else:
+            if isinstance(space, Space):
+                fill_value = get_dummy_batch_for_space(
+                    space,
+                    batch_size=1,
+                )
+            else:
+                fill_value = space
+
+            self._build_buffers({data_col: fill_value})

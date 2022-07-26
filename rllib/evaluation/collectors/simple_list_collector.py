@@ -232,9 +232,15 @@ class SimpleListCollector(SampleCollector):
         assert agent_key not in self.agent_collectors
         # TODO: determine exact shift-before based on the view-req shifts.
 
+        # get max_seq_len value (Default is 1)
+        try:
+            max_seq_len = policy.config["model"]["max_seq_len"]
+        except KeyError:
+            max_seq_len = 1
+
         self.agent_collectors[agent_key] = AgentCollector(
             policy.view_requirements,
-            max_seq_len=policy.config["model"].get("max_seq_len"),
+            max_seq_len=max_seq_len,
             disable_action_flattening=policy.config.get(
                 "_disable_action_flattening", False
             ),
