@@ -2,7 +2,6 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-from ray.data.extensions import TensorArray
 from ray.data.preprocessor import Preprocessor
 
 
@@ -81,6 +80,8 @@ class Concatenator(Preprocessor):
                 )
 
     def _transform_pandas(self, df: pd.DataFrame):
+        from ray.data.extensions import TensorArray
+
         self._validate(df)
 
         included_columns = set(df)
@@ -91,9 +92,13 @@ class Concatenator(Preprocessor):
         concatenated = df[columns_to_concat].to_numpy(dtype=self.dtype)
         df = df.drop(columns=columns_to_concat)
         try:
+            # Try to convert concatenated ndarrays to TensorArray.
             concatenated = TensorArray(concatenated)
-        except TypeError:
-            pass
+        except TypeError as e:
+            raise ValueError(
+                "Tried to convert concatenated ndarrays to a TensorArray extension "
+                "type but the conversion failed."
+            ) from e
         df[self.output_column_name] = concatenated
         return df
 

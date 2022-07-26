@@ -848,11 +848,26 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
     )
 
-    # Test map_batches ragged ndarray column falls back to opaque object-typed column.
-    ds = ray.data.range(16, parallelism=4).map_batches(
-        lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}), batch_size=2
-    )
-    assert str(ds) == ("Dataset(num_blocks=4, num_rows=16, schema={a: object})")
+    # Test map_batches ragged ndarray column fails by default.
+    with pytest.raises(ValueError):
+        ds = ray.data.range(16, parallelism=4).map_batches(
+            lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
+            batch_size=2,
+        )
+
+    # Test map_batches ragged ndarray column uses opaque object-typed column if
+    # automatic tensor extension type casting is disabled.
+    ctx = DatasetContext.get_current()
+    old_config = ctx.enable_tensor_extension_casting
+    ctx.enable_tensor_extension_casting = False
+    try:
+        ds = ray.data.range(16, parallelism=4).map_batches(
+            lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
+            batch_size=2,
+        )
+        assert str(ds) == ("Dataset(num_blocks=4, num_rows=16, schema={a: object})")
+    finally:
+        ctx.enable_tensor_extension_casting = old_config
 
 
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
