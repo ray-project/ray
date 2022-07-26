@@ -7,7 +7,7 @@ import math
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.test_utils import check
-from ray.rllib.evaluation.collectors.simple_list_collector import _AgentCollector
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 
 
 class TestTrajectoryViewAPI(unittest.TestCase):
@@ -49,7 +49,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             # include the current obs in the context
             "prev_obses": ViewRequirement("obs", shift=f"-{ctx_len - 1}:0"),
         }
-        ac = _AgentCollector(
+        ac = AgentCollector(
             view_reqs=view_reqs,
             is_policy_recurrent=True,
             max_seq_len=20,  # default max_seq_len in lstm
@@ -104,7 +104,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "future_obs": ViewRequirement("obs", shift=1),
             "past_obs": ViewRequirement("obs", shift=-1),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         self._simulate_env_steps(ac, n_steps=10)
 
@@ -140,7 +140,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
             "prev_obses": ViewRequirement("obs", shift=f"-{ctx_len}:-1"),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
@@ -179,7 +179,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "obs", shift=f"-{ctx_len}:-1", batch_repeat_value=ctx_len
             ),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
         obses = self._simulate_env_steps(ac, n_steps=10)
 
         sample_batch = ac.build_for_training(view_reqs)
@@ -202,7 +202,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
             "prev_obses": ViewRequirement("obs", shift=-1, batch_repeat_value=ctx_len),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
@@ -225,7 +225,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
             "prev_obses": ViewRequirement("obs", shift=-1),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
@@ -246,7 +246,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             SampleBatch.OBS: ViewRequirement("obs", space=obs_space),
             SampleBatch.NEXT_OBS: ViewRequirement("obs", shift=1),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
         sample_batch = ac.build_for_training(view_reqs)
@@ -262,7 +262,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "obs", shift=1, batch_repeat_value=ctx_len
             ),
         }
-        ac = _AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
@@ -287,7 +287,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "prev_obses": ViewRequirement("obs", shift=[-3, -1]),
         }
 
-        ac = _AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 
@@ -311,7 +311,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "prev_obses": ViewRequirement("obs", shift="-5:-1:2"),  # [-5, -3, -1]
         }
 
-        ac = _AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
+        ac = AgentCollector(view_reqs=view_reqs, is_policy_recurrent=True)
 
         obses = self._simulate_env_steps(ac, n_steps=10)
 

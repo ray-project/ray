@@ -12,7 +12,7 @@ from ray.rllib.utils.typing import (
     AgentConnectorsOutput,
 )
 from ray.util.annotations import PublicAPI
-from ray.rllib.evaluation.collectors.simple_list_collector import _AgentCollector
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 
 
 @PublicAPI(stability="alpha")
@@ -39,7 +39,7 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         # a dict of env_id to a dict of agent_id to a list of agent_collector objects
         env_default = defaultdict(
-            lambda: _AgentCollector(
+            lambda: AgentCollector(
                 self._view_requirements,
                 max_seq_len=ctx.config["model"]["max_seq_len"],
                 intial_states=ctx.initial_states,
