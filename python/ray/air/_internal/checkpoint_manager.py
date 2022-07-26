@@ -15,14 +15,13 @@ import ray
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
 from ray.util import log_once
-from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.annotations import Deprecated
 from ray.util.ml_utils.util import is_nan
 
 
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
 class CheckpointStorage(enum.Enum):
     MEMORY = enum.auto()
     PERSISTENT = enum.auto()
@@ -191,23 +190,6 @@ class _HeapCheckpointWrapper:
 
     def __repr__(self):
         return f"_HeapCheckpoint({repr(self.tracked_checkpoint)})"
-
-
-# Alias for backwards compatibility
-
-deprecation_message = (
-    "`CheckpointStrategy` is deprecated and will be removed in "
-    "the future. Please use `ray.air.config.CheckpointStrategy` "
-    "instead."
-)
-
-
-@Deprecated(message=deprecation_message)
-@dataclass
-class CheckpointStrategy(CheckpointConfig):
-    def __post_init__(self):
-        warnings.warn(deprecation_message)
-        super().__post_init__()
 
 
 class _CheckpointManager:

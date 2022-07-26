@@ -15,7 +15,18 @@ from ray.train.trainer import Trainer, TrainingIterator
 from ray.air.config import CheckpointConfig
 
 # Deprecated. Alias of CheckpointConfig for backwards compat
-from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy
+deprecation_message = (
+    "`CheckpointStrategy` is deprecated and will be removed in "
+    "the future. Please use `ray.air.config.CheckpointStrategy` "
+    "instead."
+)
+
+@Deprecated(message=deprecation_message)
+@dataclass
+class CheckpointStrategy(CheckpointConfig):
+    def __post_init__(self):
+        warnings.warn(deprecation_message)
+        super().__post_init__()
 
 usage_lib.record_library_usage("train")
 
