@@ -80,11 +80,16 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @routes.put("/api/serve/deployments/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def put_all_deployments(self, req: Request) -> Response:
-        from ray.serve.context import get_global_client
         from ray.serve.schema import ServeApplicationSchema
+        from ray.serve._private.api import serve_start
 
         config = ServeApplicationSchema.parse_obj(await req.json())
-        get_global_client().deploy_app(config)
+
+        client = serve_start(
+            detached=True,
+            http_options={"host": "0.0.0.0", "location": "EveryNode"},
+        )
+        client.deploy_app(config)
 
         return Response()
 
@@ -94,9 +99,3 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @staticmethod
     def is_minimal_module():
         return False
-
-
-# serve.start(
-#     detached=True,
-#     http_options={"host": "0.0.0.0", "location": "EveryNode"},
-# )
