@@ -234,9 +234,14 @@ class _AgentCollector:
             # Some columns don't exist yet
             # (get created during postprocessing or depend on state_out).
             if data_col not in self.buffers:
+                try:
+                    space = self.view_requirements[data_col].space
+                except KeyError:
+                    space = view_req.space
+                    
                 # special treatment for state_out_<i>
                 # add them to the buffer in case they don't exist yet
-                if data_col.startswith("state_out_"):
+                if data_col.startswith("state_out"):
                     if not self.is_policy_recurrent:
                         raise ValueError(
                             f"{data_col} is not available, because the given policy is"
@@ -247,7 +252,15 @@ class _AgentCollector:
                     state_ind = int(data_col.split("_")[-1])
                     self._build_buffers({data_col: self.intial_states[state_ind]})
                 else:
-                    raise ValueError(f"data_col {data_col} does not exist in neither of the the buffer or initial_states.")
+                    if isinstance(space, Space):
+                        fill_value = get_dummy_batch_for_space(
+                            space,
+                            batch_size=1,
+                        )
+                    else:
+                        fill_value = space
+
+                    self._build_buffers({data_col: fill_value})
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
@@ -857,11 +870,6 @@ class SimpleListCollector(SampleCollector):
                 input_dict[view_col] = np_data[0]
 
         self._reset_inference_calls(policy_id)
-        import pprint
-        print(input_dict['state_in_0'].shape)
-        pprint.pprint(input_dict)
-        print(input_dict.keys())
-        breakpoint()
 
         return SampleBatch(
             input_dict,

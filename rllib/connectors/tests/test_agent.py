@@ -1,3 +1,4 @@
+from pprint import pprint
 import gym
 import numpy as np
 import unittest
@@ -172,7 +173,8 @@ class TestAgentConnector(unittest.TestCase):
                 used_for_compute_actions=True,
             ),
         }
-        ctx = ConnectorContext(view_requirements=view_requirements)
+        config = PPOConfig().to_dict()
+        ctx = ConnectorContext(view_requirements=view_requirements, config=config)
 
         c = ViewRequirementAgentConnector(ctx)
         f = FlattenDataAgentConnector(ctx)
@@ -300,10 +302,7 @@ class TestViewRequirementConnector(unittest.TestCase):
 
 
     def test_vr_connector_causal_slice(self):
-        """Test that the ViewRequirementConnector can handle slice shifts correctly.
-
-        This includes things like `-2:0:1`.
-        """
+        """Test that the ViewRequirementConnector can handle slice shifts correctly."""
         view_rq_dict = {
             "state": ViewRequirement("obs"),
             # shift array should be [-2, -1, 0]
@@ -363,39 +362,52 @@ class TestViewRequirementConnector(unittest.TestCase):
         # This view requirement simulates the use-case of a decision transformer
         # without reward-to-go.
         view_rq_dict = {
-            # obs[t-context_len:t+1]
-            "context_obs": ViewRequirement("obs", shift=f"{-context_len}:1"),
-            # act[t-context_len:t]
-            "context_act": ViewRequirement("act", shift=f"{-context_len}:0"),
+            # obs[t-context_len+1:t]
+            "context_obs": ViewRequirement("obs", shift=f"-{context_len-1}:0"),
+            # next_obs[t-context_len+1:t]
+            "context_next_obs": ViewRequirement("obs", shift=f"-{context_len}:1", used_for_compute_actions=False),
+            # act[t-context_len+1:t]
+            "context_act": ViewRequirement(SampleBatch.ACTIONS, 
+            shift=f"-{context_len-1}:-1"),
         }
 
         obs_arrs = np.arange(10)[:, None] + 1
-        act_arrs = np.arange(10)[:, None] * 100 + 1
+        act_arrs = (np.arange(10)[:, None] + 1) * 100
         n_steps = obs_arrs.shape[0]
-        ctx = ConnectorContext(view_requirements=view_rq_dict)
+        config = PPOConfig().to_dict()
+        ctx = ConnectorContext(
+            view_requirements=view_rq_dict, config=config, is_policy_recurrent=True)
         c = ViewRequirementAgentConnector(ctx)
+        
+        # keep a queue of length ctx_len of observations
+        obs_list, act_list = [], []
+        for t in range(n_steps):
+            # next state and action at time t-1 are the following
+            timestep_data = {
+                SampleBatch.NEXT_OBS: obs_arrs[t],
+                SampleBatch.ACTIONS: (
+                    np.zeros_like(act_arrs[0]) if t == 0 else act_arrs[t-1]
+                ),
+                SampleBatch.T: t-1,
+            }
+            data = AgentConnectorDataType(0, 1, timestep_data)
+            processed = c([data])
+            for_action = processed[0].data.for_action
 
-        for is_training in [True, False]:
-            c.is_training(is_training)
-            for i in range(n_steps):
-                data = AgentConnectorDataType(
-                    0, 1, dict(obs=obs_arrs[i], act=act_arrs[i])
+            if t == 0:
+                obs_list.extend([obs_arrs[0] for _ in range(context_len)])
+                act_list.extend(
+                    [np.zeros_like(act_arrs[0]) for _ in range(context_len)]
                 )
-                processed = c([data])
-                for_action = processed[0].data.for_action
+            else:
+                obs_list.pop(0)
+                act_list.pop(0)
+                obs_list.append(obs_arrs[t])
+                act_list.append(act_arrs[t-1])
 
-                if i < context_len:
-                    check(
-                        for_action["context_obs"],
-                        np.concatenate([np.array([[0] * i]), obs_arrs[: i + 1]]),
-                    )
-                    check(
-                        for_action["context_act"],
-                        np.concatenate([np.array([[0] * i]), act_arrs[:i]]),
-                    )
-                else:
-                    check(for_action["context_obs"], obs_arrs[i - context_len : i + 1])
-                    check(for_action["context_act"], act_arrs[i - context_len : i])
+            self.assertTrue("context_next_obs" not in for_action)
+            check(for_action["context_obs"], np.stack(obs_list)[None])
+            check(for_action["context_act"], np.stack(act_list[:-1])[None])
 
 
 if __name__ == "__main__":

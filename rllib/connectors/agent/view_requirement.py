@@ -118,37 +118,6 @@ class ViewRequirementAgentConnector(AgentConnector):
             agent_collector.add_action_reward_next_obs(d)
         sample_batch = agent_collector.build_for_inference()
 
-        # for col, req in vr.items():
-        #     # Not used for action computation.
-        #     if not req.used_for_compute_actions:
-        #         continue
-
-        #     # Create the batch of data from the different buffers.
-        #     if col == SampleBatch.OBS:
-        #         # NEXT_OBS from the training sample is the current OBS
-        #         # to run Policy with.
-        #         data_col = SampleBatch.NEXT_OBS
-        #     else:
-        #         data_col = req.data_col or col
-        #     if data_col not in d:
-        #         continue
-
-        #     if col not in agent_batch:
-        #         agent_batch[col] = []
-        #     # Stack along batch dim.
-        #     agent_batch[col].append(d[data_col])
-
-        #     # Only keep the useful part of the history.
-        #     h = -1
-        #     if req.shift_from is not None:
-        #         h = req.shift_from
-        #     elif type(req.shift) == int:
-        #         h = req.shift
-        #     assert h <= 0, "Cannot use future data to compute action"
-        #     agent_batch[col] = agent_batch[col][h:]
-
-        # sample_batch = self._get_sample_batch_for_action(vr, agent_batch)
-
         return_data = AgentConnectorDataType(
             env_id, agent_id, AgentConnectorsOutput(training_dict, sample_batch)
         )
