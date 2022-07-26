@@ -211,7 +211,9 @@ class DTTorchPolicy(TorchPolicyV2):
         masks: TensorType,
     ) -> TensorType:
         losses = F.mse_loss(preds, targets, reduction="none")
-        losses = losses * masks.reshape(*preds.shape[0:2], *[1] * (len(preds.shape) - 2))
+        losses = losses * masks.reshape(
+            *preds.shape[0:2], *[1] * (len(preds.shape) - 2)
+        )
         return losses.mean()
 
     def log(self, key, value):
