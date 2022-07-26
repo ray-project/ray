@@ -144,5 +144,5 @@ class DAGDriver(SimpleSchemaIngress):
         return await self.dags_routes[route_path].remote(*args, **kwargs)
 
     def reconfigure(self, config):
-        dags_routes = config.get("DAG_ROUTES", {})
+        dags_routes = config.get("DAG_ROUTES", [])
         self._update_dag_routes(dags_routes)
