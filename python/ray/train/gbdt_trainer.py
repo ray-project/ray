@@ -29,13 +29,11 @@ def _convert_scaling_config_to_ray_params(
     Default ray params are defined in the trainers (xgboost/lightgbm),
     but if the user requests something else, that should be respected.
     """
-    ray_params_kwargs = default_ray_params.copy() or {}
-
     resources = scaling_config.resources_per_worker or {}
 
     cpus_per_actor = resources.pop("CPU", 0)
     if not cpus_per_actor:
-        cpus_per_actor = ray_params_kwargs.get("cpus_per_actor", 0)
+        cpus_per_actor = default_ray_params.get("cpus_per_actor", 0)
 
     gpus_per_actor = resources.pop("GPU", 0)
     if not gpus_per_actor:
@@ -48,6 +46,8 @@ def _convert_scaling_config_to_ray_params(
     num_actors = scaling_config.num_workers
     if not num_actors:
         num_actors = default_ray_params.get("num_actors", 0)
+
+    ray_params_kwargs = default_ray_params.copy() or {}
 
     ray_params_kwargs.update(
         {
