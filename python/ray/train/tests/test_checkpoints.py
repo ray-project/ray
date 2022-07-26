@@ -13,7 +13,8 @@ from ray.train.torch import TorchCheckpoint
 MAX_REPR_LENGTH = 100
 
 
-@pytest.mark.parametrize("checkpoint",
+@pytest.mark.parametrize(
+    "checkpoint",
     [
         HuggingFaceCheckpoint(data_dict={"foo": "bar"}),
         LightGBMCheckpoint(data_dict={"foo": "bar"}),
@@ -22,8 +23,8 @@ MAX_REPR_LENGTH = 100
         TensorflowCheckpoint(data_dict={"foo": "bar"}),
         XGBoostCheckpoint(data_dict={"foo": "bar"}),
         TorchCheckpoint(data_dict={"foo": "bar"}),
-
-    ])
+    ],
+)
 def test_repr(checkpoint):
     representation = repr(checkpoint)
 

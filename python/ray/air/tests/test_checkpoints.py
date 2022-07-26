@@ -1,6 +1,5 @@
 import os
 import pickle
-import pytest
 import re
 import shutil
 import tempfile
@@ -31,7 +30,7 @@ def test_repr():
     representation = repr(checkpoint)
 
     assert len(representation) < MAX_REPR_LENGTH
-    pattern = re.compile(f"^Checkpoint\\((.*)\\)$")
+    pattern = re.compile("^Checkpoint\\((.*)\\)$")
     assert pattern.match(representation)
 
 
