@@ -173,7 +173,7 @@ class TunerInternal:
                 "scaling_config. See "
                 "https://docs.ray.io/en/master/data/dataset-internals.html"
                 "#datasets-and-tune for more info.",
-                stacklevel=2,
+                stacklevel=4,
             )
 
     def _process_scaling_config(self) -> None:
