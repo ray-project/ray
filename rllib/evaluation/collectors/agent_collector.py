@@ -1,3 +1,4 @@
+from cmath import e
 from gym.spaces import Space
 import math
 import numpy as np
@@ -312,7 +313,13 @@ class AgentCollector:
             data_col = view_req.data_col or view_col
 
             if data_col not in self.buffers:
-                self._fill_buffer_with_initial_values(data_col, view_req)
+                is_state = self._fill_buffer_with_initial_values(data_col, view_req)
+
+                # we need to skip this view_col if it does not exist in the buffers and 
+                # is not an RNN state because it could be the special keys that gets 
+                # added by policy's postprocessing function for trianing.
+                if not is_state:
+                    continue
 
             # OBS are already shifted by -1 (the initial obs starts one ts
             # before all other data columns).
@@ -489,11 +496,19 @@ class AgentCollector:
 
     def _fill_buffer_with_initial_values(
         self, data_col: str, view_requirement: ViewRequirement
-    ) -> None:
+    ) -> bool:
         """Fills the buffer with the initial values for the given data column.
         for dat_col starting with `state_out`, use the initial states of the policy,
         but for other data columns, create a dummy value based on the view requirement
         space.
+        
+        Args:
+            data_col: The data column to fill the buffer with.
+            view_requirement: The view requirement for the view_col. Normally the view 
+                requirement for the data column is used and if it does not exist for some reason the view requirement for view column is used instead.
+
+        returns:
+            is_state: True if the data_col is an RNN state, False otherwise.
         """
         try:
             space = self.view_requirements[data_col].space
@@ -502,7 +517,8 @@ class AgentCollector:
 
         # special treatment for state_out_<i>
         # add them to the buffer in case they don't exist yet
-        if data_col.startswith("state_out"):
+        is_state = True
+        if data_col.startswith("state_out_"):
             if not self.is_policy_recurrent:
                 raise ValueError(
                     f"{data_col} is not available, because the given policy is"
@@ -513,12 +529,17 @@ class AgentCollector:
             state_ind = int(data_col.split("_")[-1])
             self._build_buffers({data_col: self.intial_states[state_ind]})
         else:
-            if isinstance(space, Space):
-                fill_value = get_dummy_batch_for_space(
-                    space,
-                    batch_size=1,
-                )
-            else:
-                fill_value = space
+            is_state = False
+            # only create dummy data during inference
+            if not self.training:
+                if isinstance(space, Space):
+                    fill_value = get_dummy_batch_for_space(
+                        space,
+                        batch_size=1,
+                    )
+                else:
+                    fill_value = space
 
-            self._build_buffers({data_col: fill_value})
+                self._build_buffers({data_col: fill_value})
+
+        return is_state
