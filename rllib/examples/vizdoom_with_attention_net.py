@@ -12,13 +12,6 @@ parser.add_argument(
     default="tf",
     help="The DL framework specifier.",
 )
-parser.add_argument(
-    "--from-checkpoint",
-    type=str,
-    default=None,
-    help="Full path to a checkpoint file for restoring a previously saved "
-    "Algorithm state.",
-)
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument(
     "--use-n-prev-actions",
