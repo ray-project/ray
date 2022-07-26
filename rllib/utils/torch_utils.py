@@ -8,6 +8,7 @@ import tree  # pip install dm_tree
 from gym.spaces import Discrete, MultiDiscrete
 
 import ray
+from ray.util.timer import _Timer
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -18,6 +19,7 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+
 
 if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy
@@ -33,7 +35,8 @@ FLOAT_MAX = 3.4e38
 
 @PublicAPI
 def apply_grad_clipping(
-    policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
+    policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType, total_timer =
+    None, clip_timer = None
 ) -> Dict[str, TensorType]:
     """Applies gradient clipping to already computed grads inside `optimizer`.
 
@@ -46,22 +49,25 @@ def apply_grad_clipping(
         An info dict containing the "grad_norm" key and the resulting clipped
         gradients.
     """
-    info = {}
-    if policy.config["grad_clip"]:
-        for param_group in optimizer.param_groups:
-            # Make sure we only pass params with grad != None into torch
-            # clip_grad_norm_. Would fail otherwise.
-            params = list(filter(lambda p: p.grad is not None, param_group["params"]))
-            if params:
-                # PyTorch clips gradients inplace and returns the norm before clipping
-                # We therefore need to compute grad_gnorm further down (fixes #4965)
-                clip_value = policy.config["grad_clip"]
-                global_norm = nn.utils.clip_grad_norm_(params, clip_value)
+    with total_timer or None:
+        info = {}
+        if policy.config["grad_clip"]:
+            for param_group in optimizer.param_groups:
+                # Make sure we only pass params with grad != None into torch
+                # clip_grad_norm_. Would fail otherwise.
+                params = list(filter(lambda p: p.grad.to() is not None, param_group[
+                    "params"]))
+                if params:
+                    # PyTorch clips gradients inplace and returns the norm before clipping
+                    # We therefore need to compute grad_gnorm further down (fixes #4965)
+                    clip_value = policy.config["grad_clip"]
+                    with clip_timer or None:
+                        global_norm = nn.utils.clip_grad_norm_(params, clip_value)
 
-                if isinstance(global_norm, torch.Tensor):
-                    global_norm = global_norm.cpu().numpy()
+                    if isinstance(global_norm, torch.Tensor):
+                        global_norm = global_norm.cpu().numpy()
 
-                info["grad_gnorm"] = min(global_norm, clip_value)
+                    info["grad_gnorm"] = min(global_norm, clip_value)
     return info
 
 

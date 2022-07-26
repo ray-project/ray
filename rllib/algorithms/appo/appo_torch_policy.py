@@ -127,7 +127,7 @@ class APPOTorchPolicy(
             Union[TensorType, List[TensorType]]: A single loss tensor or a list
                 of loss tensors.
         """
-        with self.torch_timers["total"]:
+        with self.torch_timers["total_loss"]:
             target_model = self.target_models[model]
 
             model_out, _ = model(train_batch)
@@ -394,27 +394,28 @@ class APPOTorchPolicy(
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
         episode: Optional["Episode"] = None,
     ):
-        with self.torch_timers["postprocess"]:
-            # Call super's postprocess_trajectory first.
-            sample_batch = super().postprocess_trajectory(
-                sample_batch, other_agent_batches, episode
-            )
-            if not self.config["vtrace"]:
-                # Do all post-processing always with no_grad().
-                # Not using this here will introduce a memory leak
-                # in torch (issue #6962).
-                with torch.no_grad():
-                    sample_batch = compute_gae_for_sample_batch(
-                        self, sample_batch, other_agent_batches, episode
-                    )
+        # Call super's postprocess_trajectory first.
+        sample_batch = super().postprocess_trajectory(
+            sample_batch, other_agent_batches, episode
+        )
+        if not self.config["vtrace"]:
+            # Do all post-processing always with no_grad().
+            # Not using this here will introduce a memory leak
+            # in torch (issue #6962).
+            with torch.no_grad():
+                sample_batch = compute_gae_for_sample_batch(
+                    self, sample_batch, other_agent_batches, episode
+                )
         return sample_batch
 
     @override(TorchPolicyV2)
     def extra_grad_process(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
     ) -> Dict[str, TensorType]:
-        with self.torch_timers["grad_clip"]:
-            return apply_grad_clipping(self, optimizer, loss)
+
+        return apply_grad_clipping(self, optimizer, loss,
+                                   total_timer=self.torch_timers["grad_clip_total"],
+                                   clip_timer=self.torch_timers["grad_clip_torch_fn"])
 
     @override(TorchPolicyV2)
     def get_batch_divisibility_req(self) -> int:
