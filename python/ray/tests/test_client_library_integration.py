@@ -1,3 +1,4 @@
+import asyncio
 import sys
 
 import pytest
@@ -34,8 +35,24 @@ def test_rllib_integration(ray_start_regular_shared):
                 trainer.train()
 
 
-@pytest.mark.asyncio
-async def test_serve_handle(ray_start_regular_shared):
+def test_rllib_integration_tune(ray_start_regular_shared):
+    with ray_start_client_server():
+        # Confirming the behavior of this context manager.
+        # (Client mode hook not yet enabled.)
+        assert not client_mode_should_convert(auto_init=True)
+        # Need to enable this for client APIs to be used.
+        with enable_client_mode():
+            # Confirming mode hook is enabled.
+            assert client_mode_should_convert(auto_init=True)
+            tune.run(
+                "DQN", config={"env": "CartPole-v1"}, stop={"training_iteration": 2}
+            )
+
+
+def test_serve_handle(ray_start_regular_shared):
+    async def get_result(ref):
+        return await ref
+
     with ray_start_client_server() as ray:
         from ray import serve
 
@@ -49,21 +66,7 @@ async def test_serve_handle(ray_start_regular_shared):
             hello.deploy()
             handle = hello.get_handle()
             assert ray.get(handle.remote()) == "hello"
-            assert await handle.remote() == "hello"
-
-
-def test_rllib_integration_tune(ray_start_regular_shared):
-    with ray_start_client_server():
-        # Confirming the behavior of this context manager.
-        # (Client mode hook not yet enabled.)
-        assert not client_mode_should_convert(auto_init=True)
-        # Need to enable this for client APIs to be used.
-        with enable_client_mode():
-            # Confirming mode hook is enabled.
-            assert client_mode_should_convert(auto_init=True)
-            tune.run(
-                "DQN", config={"env": "CartPole-v1"}, stop={"training_iteration": 2}
-            )
+            assert asyncio.run(get_result(handle.remote())) == "hello"
 
 
 if __name__ == "__main__":
