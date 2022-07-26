@@ -222,22 +222,21 @@ class TestViewRequirementConnector(unittest.TestCase):
         }
 
         obs_arr = np.array([0, 1, 2, 3])
-        agent_data = dict(obs=obs_arr)
+        agent_data = {SampleBatch.NEXT_OBS: obs_arr}
         data = AgentConnectorDataType(0, 1, agent_data)
 
         config = PPOConfig().to_dict()
         ctx = ConnectorContext(
             view_requirements=view_rq_dict,
             config=config,
-            # model_initial_states=[np.zeros(8)], # simualte RNN policy with state_dim=8
+            is_policy_recurrent=True,
         )
 
-        for_action_expected_list = [
-            # is_training = False
-            SampleBatch({"both": obs_arr, "only_inference": obs_arr}),
-            # is_training = True
-            SampleBatch({"both": obs_arr, "only_inference": obs_arr}),
-        ]
+        for_action_expected = SampleBatch({
+            "both": obs_arr[None], 
+            "only_inference": obs_arr[None],
+            "seq_lens": np.array([1])
+        })
 
         for_training_expected_list = [
             # is_training = False
@@ -254,7 +253,6 @@ class TestViewRequirementConnector(unittest.TestCase):
             for_training = processed[0].data.for_training
             for_training_expected = for_training_expected_list[is_training]
             for_action = processed[0].data.for_action
-            for_action_expected = for_action_expected_list[is_training]
 
             print("-" * 30)
             print(f"is_training = {is_training}")
@@ -268,7 +266,7 @@ class TestViewRequirementConnector(unittest.TestCase):
 
     def test_vr_connector_shift_by_one(self):
         """Test that the ViewRequirementConnector can handle shift by one correctly and
-        can ignore future refrencing view_requirements to respect causality"""
+        can ignore future referencing view_requirements to respect causality"""
         view_rq_dict = {
             "state": ViewRequirement("obs"),
             "next_state": ViewRequirement(
@@ -279,7 +277,8 @@ class TestViewRequirementConnector(unittest.TestCase):
 
         obs_arrs = np.arange(10)[:, None] + 1
         config = PPOConfig().to_dict()
-        ctx = ConnectorContext(view_requirements=view_rq_dict, config=config)
+        ctx = ConnectorContext(
+            view_requirements=view_rq_dict, config=config, is_policy_recurrent=True)
         c = ViewRequirementAgentConnector(ctx)
 
         # keep a running list of observations
@@ -298,90 +297,64 @@ class TestViewRequirementConnector(unittest.TestCase):
             else:
                 # prev state should be equal to the prev time step obs
                 check(for_action['prev_state'], obs_list[-2][None])
-                
+
 
     def test_vr_connector_causal_slice(self):
         """Test that the ViewRequirementConnector can handle slice shifts correctly.
 
-        This includes things like `-2:0:1`. `start:end:step` should be interpreted as
-        np.arange(start, end, step). Both start and end have to be specified when using
-        this format. If step is not specified it defaults to 1.
+        This includes things like `-2:0:1`.
         """
         view_rq_dict = {
             "state": ViewRequirement("obs"),
-            # shift array should be [-2, -1]
+            # shift array should be [-2, -1, 0]
             "prev_states": ViewRequirement("obs", shift="-2:0"),
-            # shift array should be [-4, -2]
+            # shift array should be [-4, -2, 0]
             "prev_strided_states_even": ViewRequirement("obs", shift="-4:0:2"),
             # shift array should be [-3, -1]
             "prev_strided_states_odd": ViewRequirement("obs", shift="-3:0:2"),
         }
 
         obs_arrs = np.arange(10)[:, None] + 1
-        ctx = ConnectorContext(view_requirements=view_rq_dict)
+        config = PPOConfig().to_dict()
+        ctx = ConnectorContext(
+            view_requirements=view_rq_dict, config=config, is_policy_recurrent=True)
         c = ViewRequirementAgentConnector(ctx)
 
-        for is_training in [True, False]:
-            c.is_training(is_training)
-            for i, obs_arr in enumerate(obs_arrs):
-                data = AgentConnectorDataType(0, 1, dict(obs=obs_arr))
-                processed = c([data])
-                for_action = processed[0].data.for_action
+        # keep a queue of observations
+        obs_list = []
+        for t, obs in enumerate(obs_arrs):
+            # t=0 is the next state of t=-1
+            data = AgentConnectorDataType(0, 1, 
+                {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t-1})
+            processed = c([data])
+            for_action = processed[0].data.for_action
+            
+            if t == 0:
+                obs_list.extend([obs for _ in range(5)])
+            else:
+                # remove the first obs and add the current obs to the end
+                obs_list.pop(0)
+                obs_list.append(obs)
 
-                check(for_action["state"], obs_arrs[i])
+            # check state
+            check(for_action["state"], obs[None])
 
-                # check prev_states
-                if i == 0:
-                    check(for_action["prev_states"], np.array([[0], [0]]))
-                elif i == 1:
-                    check(for_action["prev_states"], np.array([[0], [1]]))
-                else:
-                    check(for_action["prev_states"], obs_arrs[i - 2 : i])
+            # check prev_states
+            check(
+                for_action["prev_states"], 
+                np.stack(obs_list)[np.array([-3, -2, -1])][None]
+            )
 
-                # check strided states
-                if i == 0:
-                    # for this case they should all be equal to the padded value
-                    check(
-                        for_action["prev_states"],
-                        for_action["prev_strided_states_even"],
-                    )
-                    check(
-                        for_action["prev_states"], for_action["prev_strided_states_odd"]
-                    )
+            # check prev_strided_states_even
+            check(
+                for_action["prev_strided_states_even"], 
+                np.stack(obs_list)[np.array([-5, -3, -1])][None]
+            )
 
-                elif i == 1:
-                    check(
-                        for_action["prev_state"], for_action["prev_strided_states_even"]
-                    )
-                    check(
-                        for_action["prev_strided_states_odd"],
-                        np.array([[0], [1]]),  # [-2, 0]
-                    )
-                elif i == 2:
-                    check(
-                        for_action["prev_strided_states_even"],
-                        np.array([[0], [1]]),  # [-2, 0]
-                    )
-                    check(
-                        for_action["prev_strided_states_odd"],
-                        np.array([[0], [2]]),  # [-1, 1]
-                    )
-                elif i == 3:
-                    check(
-                        for_action["prev_strided_states_even"],
-                        np.array([[0], [2]]),  # [-1, 1]
-                    )
-                    check(
-                        for_action["prev_strided_states_odd"],
-                        np.array([[1], [3]]),  # [0, 2]
-                    )
-                else:
-                    check(
-                        for_action["prev_strided_states_even"], obs_arrs[i - 4 : i : 2]
-                    )
-                    check(
-                        for_action["prev_strided_states_even"], obs_arrs[i - 3 : i : 2]
-                    )
+            check(
+                for_action["prev_strided_states_odd"], 
+                np.stack(obs_list)[np.array([-4, -2])][None]
+            )
 
     def test_vr_connector_with_multiple_buffers(self):
         """Test that the ViewRequirementConnector can handle slice shifts correctly
