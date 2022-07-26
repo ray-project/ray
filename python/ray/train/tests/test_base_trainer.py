@@ -210,6 +210,9 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
         def info(self, msg):
             print(msg)
 
+        def clear(self):
+            self.warnings = []
+
     try:
         old = tuner_internal.warnings
         tuner_internal.warnings = MockLogger()
@@ -242,6 +245,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
             len(tuner_internal.warnings.warnings) == 1
         ), tuner_internal.warnings.warnings
         assert "_max_cpu_fraction_per_node" in tuner_internal.warnings.warnings[0]
+        tuner_internal.warnings.clear()
 
         # Warn if num_samples is configured
         trainer = DummyTrainer(
@@ -252,16 +256,25 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
         tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
         tuner.fit()
         assert (
-            len(tuner_internal.warnings.warnings) == 2
+            len(tuner_internal.warnings.warnings) == 1
         ), tuner_internal.warnings.warnings
-        assert "_max_cpu_fraction_per_node" in tuner_internal.warnings.warnings[1]
+        assert "_max_cpu_fraction_per_node" in tuner_internal.warnings.warnings[0]
+        tuner_internal.warnings.clear()
+
+        # Don't warn if resources * samples < 0.8
+        trainer = DummyTrainer(
+            train_loop,
+            scaling_config=ScalingConfig(num_workers=1, trainer_resources={"CPU": 0}),
+            datasets={"train": ray.data.range(10)},
+        )
+        tuner = tune.Tuner(trainer, tune_config=tune.TuneConfig(num_samples=3))
+        tuner.fit()
+        assert not tuner_internal.warnings.warnings
 
         # Don't warn if Trainer is not used
         tuner = tune.Tuner(train_loop, tune_config=tune.TuneConfig(num_samples=3))
         tuner.fit()
-        assert (
-            len(tuner_internal.warnings.warnings) == 2
-        ), tuner_internal.warnings.warnings
+        assert not tuner_internal.warnings.warnings
     finally:
         tuner_internal.warnings = old
 
