@@ -2,7 +2,7 @@ cartpole-crashing-pg:
     env: ray.rllib.examples.env.cartpole_crashing.CartPoleCrashing
     run: PG
     stop:
-        evaluation/episode_reward_mean: 100.0
+        evaluation/episode_reward_mean: 180.0
         num_env_steps_sampled: 150000
     config:
         # Works for both torch and tf.
@@ -36,8 +36,3 @@ cartpole-crashing-pg:
         evaluation_parallel_to_training: true
         evaluation_config:
           explore: false
-          # Let's make eval environments stable.
-          # This is to prove that we can still learn a crashing env.
-          p_crash: 0.0
-          p_crash_reset: 0.0
-          init_time_s: 0.0
