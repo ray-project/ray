@@ -299,7 +299,7 @@ def record_library_usage(library_usage: str):
         # This happens if the library is imported before ray.init
         return
 
-    # Only report lib usage for driver / rayc client / workers. Otherwise,
+    # Only report lib usage for driver / ray client / workers. Otherwise,
     # it can be reported if the library is imported from
     # e.g., API server.
     if (
