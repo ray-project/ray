@@ -5,6 +5,8 @@ from typing import List, Tuple
 from ray.dashboard.modules.runtime_env.runtime_env_agent import UriType, ReferenceTable
 from ray.runtime_env import RuntimeEnv
 
+# XXX: Update URIType Tests
+
 
 def test_reference_table():
     expected_unused_uris = []
