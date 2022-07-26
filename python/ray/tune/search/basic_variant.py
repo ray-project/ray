@@ -8,7 +8,7 @@ import warnings
 import numpy as np
 
 from ray.tune.error import TuneError
-from ray.tune.experiment.config_parser import make_parser, create_trial_from_spec
+from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
 from ray.tune.search.sample import np_random_generator, _BackwardsCompatibleNumpyRng
 from ray.tune.search.variant_generator import (
     count_variants,
@@ -103,7 +103,7 @@ class _TrialIterator:
             Union[int, "np_random_generator", np.random.RandomState]
         ] = None,
     ):
-        self.parser = make_parser()
+        self.parser = _make_parser()
         self.num_samples = num_samples
         self.uuid_prefix = uuid_prefix
         self.num_samples_left = num_samples
@@ -124,7 +124,7 @@ class _TrialIterator:
         if resolved_vars:
             experiment_tag += "_{}".format(format_vars(resolved_vars))
         self.counter += 1
-        return create_trial_from_spec(
+        return _create_trial_from_spec(
             spec,
             self.output_path,
             self.parser,
@@ -320,9 +320,9 @@ class BasicVariantGenerator(SearchAlgorithm):
         Arguments:
             experiments: Experiments to run.
         """
-        from ray.tune.experiment import convert_to_experiment_list
+        from ray.tune.experiment.experiment import _convert_to_experiment_list
 
-        experiment_list = convert_to_experiment_list(experiments)
+        experiment_list = _convert_to_experiment_list(experiments)
 
         for experiment in experiment_list:
             grid_vals = count_spec_samples(experiment.spec, num_samples=1)

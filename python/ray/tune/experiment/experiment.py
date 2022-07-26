@@ -424,7 +424,7 @@ class Experiment:
         return {k: v for k, v in self.spec.items() if k in self.PUBLIC_KEYS}
 
 
-def convert_to_experiment_list(experiments: Union[Experiment, List[Experiment], Dict]):
+def _convert_to_experiment_list(experiments: Union[Experiment, List[Experiment], Dict]):
     """Produces a list of Experiment objects.
 
     Converts input from dict, single experiment, or list of

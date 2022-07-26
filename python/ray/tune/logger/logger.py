@@ -201,6 +201,7 @@ class LegacyLoggerCallback(LoggerCallback):
                 trial_loggers[trial].close()
 
 
+@PublicAPI(stability="alpha")
 def pretty_print(result):
     result = result.copy()
     result.update(config=None)  # drop config from pretty print

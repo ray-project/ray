@@ -12,6 +12,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
 )
 from ray.tune.error import TuneError
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -35,25 +36,27 @@ KNOWN_CATEGORIES = [
 logger = logging.getLogger(__name__)
 
 
-def has_trainable(trainable_name):
+def _has_trainable(trainable_name):
     return _global_registry.contains(TRAINABLE_CLASS, trainable_name)
 
 
+@DeveloperAPI
 def get_trainable_cls(trainable_name):
     validate_trainable(trainable_name)
     return _global_registry.get(TRAINABLE_CLASS, trainable_name)
 
 
 def validate_trainable(trainable_name):
-    if not has_trainable(trainable_name):
+    if not _has_trainable(trainable_name):
         # Make sure everything rllib-related is registered.
         from ray.rllib import _register_all
 
         _register_all()
-        if not has_trainable(trainable_name):
+        if not _has_trainable(trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
 
+@DeveloperAPI
 def is_function_trainable(trainable: Union[str, Callable, Type]) -> bool:
     """Check if a given trainable is a function trainable."""
     if isinstance(trainable, str):
@@ -96,6 +99,7 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
+@PublicAPI(stability="alpha")
 def register_env(name: str, env_creator: Callable):
     """Register a custom environment for use with RLlib.
 
@@ -112,6 +116,7 @@ def register_env(name: str, env_creator: Callable):
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
+@PublicAPI(stability="alpha")
 def register_input(name: str, input_creator: Callable):
     """Register a custom input api for RLlib.
 
@@ -133,7 +138,7 @@ def registry_get_input(name: str) -> Callable:
     return _global_registry.get(RLLIB_INPUT, name)
 
 
-def check_serializability(key, value):
+def _check_serializability(key, value):
     _global_registry.register(TEST, key, value)
 
 

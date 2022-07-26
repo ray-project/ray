@@ -3,8 +3,8 @@ import logging
 from typing import Dict, List, Optional, Union
 
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment, convert_to_experiment_list
-from ray.tune.experiment.config_parser import make_parser, create_trial_from_spec
+from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
 from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search import Searcher
 from ray.tune.search.util import set_search_properties_backwards_compatible
@@ -47,7 +47,7 @@ class SearchGenerator(SearchAlgorithm):
             type(searcher), Searcher
         ), "Searcher should be subclassing Searcher."
         self.searcher = searcher
-        self._parser = make_parser()
+        self._parser = _make_parser()
         self._experiment = None
         self._counter = 0  # Keeps track of number of trials created.
         self._total_samples = 0  # int: total samples to evaluate.
@@ -78,7 +78,7 @@ class SearchGenerator(SearchAlgorithm):
         """
         assert not self._experiment
         logger.debug("added configurations")
-        experiment_list = convert_to_experiment_list(experiments)
+        experiment_list = _convert_to_experiment_list(experiments)
         assert (
             len(experiment_list) == 1
         ), "SearchAlgorithms can only support 1 experiment at a time."
@@ -122,7 +122,7 @@ class SearchGenerator(SearchAlgorithm):
         flattened_config = resolve_nested_dict(spec["config"])
         self._counter += 1
         tag = "{0}_{1}".format(str(self._counter), format_vars(flattened_config))
-        trial = create_trial_from_spec(
+        trial = _create_trial_from_spec(
             spec,
             output_path,
             self._parser,

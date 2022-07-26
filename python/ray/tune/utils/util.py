@@ -318,13 +318,13 @@ def diagnose_serialization(trainable: Callable):
         assert diagnose_serialization(test) is True
 
     """
-    from ray.tune.registry import register_trainable, check_serializability
+    from ray.tune.registry import register_trainable, _check_serializability
 
     def check_variables(objects, failure_set, printer):
         for var_name, variable in objects.items():
             msg = None
             try:
-                check_serializability(var_name, variable)
+                _check_serializability(var_name, variable)
                 status = "PASSED"
             except Exception as e:
                 status = "FAILED"

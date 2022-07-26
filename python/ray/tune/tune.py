@@ -12,11 +12,11 @@ import ray
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment, convert_to_experiment_list
+from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.progress_reporter import (
     ProgressReporter,
     RemoteReporterMixin,
-    detect_reporter,
+    _detect_reporter,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -369,7 +369,7 @@ def run(
         remote_run = force_on_current_node(remote_run)
 
         set_verbosity(verbose)
-        progress_reporter = progress_reporter or detect_reporter()
+        progress_reporter = progress_reporter or _detect_reporter()
 
         # JupyterNotebooks don't work with remote tune runs out of the box
         # (e.g. via Ray client) as they don't have access to the main
@@ -695,7 +695,7 @@ def run(
         if hasattr(signal, "SIGUSR1"):
             signal.signal(signal.SIGUSR1, signal_interrupt_tune_run)
 
-    progress_reporter = progress_reporter or detect_reporter()
+    progress_reporter = progress_reporter or _detect_reporter()
 
     tune_start = time.time()
 
@@ -829,7 +829,7 @@ def run_experiments(
     # This is important to do this here
     # because it schematize the experiments
     # and it conducts the implicit registration.
-    experiments = convert_to_experiment_list(experiments)
+    experiments = _convert_to_experiment_list(experiments)
 
     if concurrent:
         return run(
