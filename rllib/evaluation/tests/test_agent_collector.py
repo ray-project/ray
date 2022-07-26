@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import check
 from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 
 
-class TestTrajectoryViewAPI(unittest.TestCase):
+class TestAgentCollector(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -49,46 +49,57 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             # include the current obs in the context
             "prev_obses": ViewRequirement("obs", shift=f"-{ctx_len - 1}:0"),
         }
-        ac = AgentCollector(
-            view_reqs=view_reqs,
-            is_policy_recurrent=True,
-            max_seq_len=20,  # default max_seq_len in lstm
-        )
 
-        n_steps = 10
+
+        n_steps = 100
         obses = np.random.rand(n_steps, 4)
         # list to store the last ctx_len obses
-        obses_ctx = []
-        for t, obs in enumerate(obses):
-            if t == 0:
-                # e.g. state = env.reset()
-                ac.add_init_obs(
-                    episode_id=0,
-                    agent_index=1,
-                    env_id=0,
-                    t=-1,
-                    init_obs=obs,
-                )
-                obses_ctx.extend([obs for _ in range(ctx_len)])
-            else:
-                # e.g. next_state = env.step()
-                ac.add_action_reward_next_obs(
-                    {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
-                )
-                # pop from front and add to the end
-                obses_ctx.pop(0)
-                obses_ctx.append(obs)
-            eval_batch = ac.build_for_inference()
-            # batch size should always be one
-            self.assertEqual(eval_batch.count, 1)
-            # shape of prev_obses should be (1, ctx_len, 4)
-            self.assertEqual(eval_batch["prev_obses"].shape, (1, ctx_len, 4))
-            # obs should always be the last time step obs added
-            check(eval_batch["obs"], obs[None])
-            # prev_obs should always be the last ctx_len time steps obs added
-            # (excluding the current time step)
-            check(eval_batch["prev_obses"], np.stack(obses_ctx, 0)[None])
+        for training_mode in [False, True]:
+            ac = AgentCollector(
+                view_reqs=view_reqs,
+                is_policy_recurrent=True,
+                max_seq_len=20,  # default max_seq_len in lstm
+                is_training=training_mode
+            )
+            obses_ctx = []
+            for t, obs in enumerate(obses):
+                if t == 0:
+                    # e.g. state = env.reset()
+                    ac.add_init_obs(
+                        episode_id=0,
+                        agent_index=1,
+                        env_id=0,
+                        t=-1,
+                        init_obs=obs,
+                    )
+                    obses_ctx.extend([obs for _ in range(ctx_len)])
+                else:
+                    # e.g. next_state = env.step()
+                    ac.add_action_reward_next_obs(
+                        {SampleBatch.NEXT_OBS: obs, SampleBatch.T: t - 1}
+                    )
+                    # pop from front and add to the end
+                    obses_ctx.pop(0)
+                    obses_ctx.append(obs)
+                eval_batch = ac.build_for_inference()
+                # batch size should always be one
+                self.assertEqual(eval_batch.count, 1)
+                # shape of prev_obses should be (1, ctx_len, 4)
+                self.assertEqual(eval_batch["prev_obses"].shape, (1, ctx_len, 4))
+                # obs should always be the last time step obs added
+                check(eval_batch["obs"], obs[None])
+                # prev_obs should always be the last ctx_len time steps obs added
+                # (excluding the current time step)
+                check(eval_batch["prev_obses"], np.stack(obses_ctx, 0)[None])
 
+            # in inference mode the buffer length at the end should be just ctx_len
+            if not training_mode:
+                check(len(ac.buffers[SampleBatch.OBS][0]), ctx_len)
+            else:
+                # otherwise it should be n_steps + ctx_len - 1
+                check(len(ac.buffers[SampleBatch.OBS][0]), n_steps + ctx_len - 1)
+
+        self.assertTrue(ac.training, "Training mode should be True.")
         train_batch = ac.build_for_training(view_reqs)
         self.assertEqual(
             len(train_batch["seq_lens"]), math.ceil(n_steps / ac.max_seq_len)
