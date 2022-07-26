@@ -154,7 +154,7 @@ class ExperimentAnalysis:
     def _get_latest_checkpoint(self, experiment_checkpoint_path: Path) -> List[str]:
         # Case 1: Dir specified, find latest checkpoint.
         if experiment_checkpoint_path.is_dir():
-            latest_checkpoint = find_newest_experiment_checkpoint(
+            latest_checkpoint = _find_newest_experiment_checkpoint(
                 str(experiment_checkpoint_path)
             )
             # If no checkpoint in this folder the sub-directory is searched.

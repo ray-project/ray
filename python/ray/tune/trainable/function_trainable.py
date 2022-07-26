@@ -591,6 +591,7 @@ class FunctionTrainable(Trainable):
             pass
 
 
+@DeveloperAPI
 def wrap_function(
     train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
 ) -> Type["FunctionTrainable"]:

@@ -3,12 +3,12 @@ import logging
 from typing import Dict, List, Optional, Union
 
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment, convert_to_experiment_list
+from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
 from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search import Searcher
 from ray.tune.search.util import _set_search_properties_backwards_compatible
-from ray.tune.search.variant_generator import format_vars, resolve_nested_dict
+from ray.tune.search.variant_generator import format_vars, _resolve_nested_dict
 from ray.tune.experiment import Trial
 from ray.tune.utils.util import (
     flatten_dict,
@@ -78,7 +78,7 @@ class SearchGenerator(SearchAlgorithm):
         """
         assert not self._experiment
         logger.debug("added configurations")
-        experiment_list = convert_to_experiment_list(experiments)
+        experiment_list = _convert_to_experiment_list(experiments)
         assert (
             len(experiment_list) == 1
         ), "SearchAlgorithms can only support 1 experiment at a time."
@@ -119,7 +119,7 @@ class SearchGenerator(SearchAlgorithm):
         spec["config"] = merge_dicts(spec["config"], copy.deepcopy(suggested_config))
 
         # Create a new trial_id if duplicate trial is created
-        flattened_config = resolve_nested_dict(spec["config"])
+        flattened_config = _resolve_nested_dict(spec["config"])
         self._counter += 1
         tag = "{0}_{1}".format(str(self._counter), format_vars(flattened_config))
         trial = _create_trial_from_spec(

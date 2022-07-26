@@ -1,5 +1,4 @@
 from functools import lru_cache
-import getpass
 import os
 
 

@@ -15,8 +15,8 @@ from ray.tune.search.variant_generator import (
     count_spec_samples,
     generate_variants,
     format_vars,
-    flatten_resolved_vars,
-    get_preset_variants,
+    _flatten_resolved_vars,
+    _get_preset_variants,
 )
 from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.utils.util import atomic_save, load_newest_checkpoint
@@ -128,7 +128,7 @@ class _TrialIterator:
             spec,
             self.output_path,
             self.parser,
-            evaluated_params=flatten_resolved_vars(resolved_vars),
+            evaluated_params=_flatten_resolved_vars(resolved_vars),
             trial_id=trial_id,
             experiment_tag=experiment_tag,
         )
@@ -158,7 +158,7 @@ class _TrialIterator:
             config = self.points_to_evaluate.pop(0)
             self.num_samples_left -= 1
             self.variants = _VariantIterator(
-                get_preset_variants(
+                _get_preset_variants(
                     self.unresolved_spec,
                     config,
                     constant_grid_search=self.constant_grid_search,
@@ -320,9 +320,9 @@ class BasicVariantGenerator(SearchAlgorithm):
         Arguments:
             experiments: Experiments to run.
         """
-        from ray.tune.experiment.experiment import _convert_to_experiment_list
+        from ray.tune.experiment import convert_to_experiment_list
 
-        experiment_list = _convert_to_experiment_list(experiments)
+        experiment_list = convert_to_experiment_list(experiments)
 
         for experiment in experiment_list:
             grid_vals = count_spec_samples(experiment.spec, num_samples=1)

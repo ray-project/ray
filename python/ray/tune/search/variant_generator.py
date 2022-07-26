@@ -8,7 +8,7 @@ import numpy
 import random
 
 from ray.tune.search.sample import Categorical, Domain, Function, RandomState
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ def generate_variants(
         yield resolved_vars, spec
 
 
+@PublicAPI(stability="alpha")
 def grid_search(values: Iterable) -> Dict[str, List]:
     """Convenience method for specifying grid search over a value.
 
@@ -74,7 +75,7 @@ _STANDARD_IMPORTS = {
 _MAX_RESOLUTION_PASSES = 20
 
 
-def resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
+def _resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
     """Flattens a nested dict by joining keys into tuple of paths.
 
     Can then be passed into `format_vars`.
@@ -82,13 +83,14 @@ def resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
     res = {}
     for k, v in nested_dict.items():
         if isinstance(v, dict):
-            for k_, v_ in resolve_nested_dict(v).items():
+            for k_, v_ in _resolve_nested_dict(v).items():
                 res[(k,) + k_] = v_
         else:
             res[(k,)] = v
     return res
 
 
+@DeveloperAPI
 def format_vars(resolved_vars: Dict) -> str:
     """Format variables to be used as experiment tags.
 
@@ -120,7 +122,7 @@ def format_vars(resolved_vars: Dict) -> str:
     )
 
 
-def flatten_resolved_vars(resolved_vars: Dict) -> Dict:
+def _flatten_resolved_vars(resolved_vars: Dict) -> Dict:
     """Formats the resolved variable dict into a mapping of (str -> value)."""
     flattened_resolved_vars_dict = {}
     for pieces, value in resolved_vars.items():
@@ -142,6 +144,7 @@ def _clean_value(value: Any) -> str:
         return re.sub(invalid_alphabet, "_", str(value)).strip("_")
 
 
+@DeveloperAPI
 def parse_spec_vars(
     spec: Dict,
 ) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[Tuple, Any]], List[Tuple[Tuple, Any]]]:
@@ -253,7 +256,7 @@ def _generate_variants(
             yield resolved_vars, spec
 
 
-def get_preset_variants(
+def _get_preset_variants(
     spec: Dict,
     config: Dict,
     constant_grid_search: bool = False,
@@ -447,7 +450,7 @@ def _unresolved_values(spec: Dict) -> Dict[Tuple, Any]:
     return _split_resolved_unresolved_values(spec)[1]
 
 
-def has_unresolved_values(spec: Dict) -> bool:
+def _has_unresolved_values(spec: Dict) -> bool:
     return True if _unresolved_values(spec) else False
 
 

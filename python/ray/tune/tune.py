@@ -12,7 +12,7 @@ import ray
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment, convert_to_experiment_list
+from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.progress_reporter import (
     ProgressReporter,
     RemoteReporterMixin,
@@ -44,7 +44,7 @@ from ray.tune.search import (
 from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
-from ray.tune.search.variant_generator import has_unresolved_values
+from ray.tune.search.variant_generator import _has_unresolved_values
 from ray.tune.syncer import SyncConfig, SyncerCallback, _validate_upload_dir
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
@@ -591,7 +591,7 @@ def run(
         config,
         **experiments[0].public_spec,
     ):
-        if has_unresolved_values(config):
+        if _has_unresolved_values(config):
             raise ValueError(
                 "You passed a `config` parameter to `tune.run()` with "
                 "unresolved parameters, but the search algorithm was already "
@@ -829,7 +829,7 @@ def run_experiments(
     # This is important to do this here
     # because it schematize the experiments
     # and it conducts the implicit registration.
-    experiments = convert_to_experiment_list(experiments)
+    experiments = _convert_to_experiment_list(experiments)
 
     if concurrent:
         return run(

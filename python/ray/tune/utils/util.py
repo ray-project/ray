@@ -592,7 +592,7 @@ def _detect_checkpoint_function(train_func, abort=False, partial=False):
     return validated
 
 
-def detect_reporter(func):
+def _detect_reporter(func):
     """Use reporter if any arg has "reporter" and args = 2"""
     func_sig = inspect.signature(func)
     use_reporter = True
@@ -604,7 +604,7 @@ def detect_reporter(func):
     return use_reporter
 
 
-def _detect_reporter(func):
+def _detect_config_single(func):
     """Check if func({}) works."""
     func_sig = inspect.signature(func)
     use_config_single = True
