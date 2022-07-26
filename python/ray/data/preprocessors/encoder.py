@@ -102,7 +102,8 @@ class OrdinalEncoder(Preprocessor):
 
     def __repr__(self):
         return (
-            f"OrdinalEncoder(columns={self.columns}, encode_lists={self.encode_lists})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"encode_lists={self.encode_lists!r})"
         )
 
 
@@ -184,7 +185,9 @@ class OneHotEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"OneHotEncoder(columns={self.columns}, limit={self.limit})"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, limit={self.limit!r})"
+        )
 
 
 class MultiHotEncoder(Preprocessor):
@@ -267,7 +270,9 @@ class MultiHotEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"MultiHotEncoder(columns={self.columns}, limit={self.limit})"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, limit={self.limit!r})"
+        )
 
 
 class LabelEncoder(Preprocessor):
@@ -302,7 +307,7 @@ class LabelEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"LabelEncoder(label_column='{self.label_column}')"
+        return f"{self.__class__.__name__}(label_column={self.label_column!r})"
 
 
 class Categorizer(Preprocessor):
@@ -355,7 +360,10 @@ class Categorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"Categorizer(columns={self.columns}, dtypes={self.dtypes})"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"dtypes={self.dtypes!r})"
+        )
 
 
 def _get_unique_value_indices(

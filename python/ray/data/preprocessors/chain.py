@@ -72,4 +72,4 @@ class Chain(Preprocessor):
 
     def __repr__(self):
         arguments = ", ".join(repr(preprocessor) for preprocessor in self.preprocessors)
-        return f"Chain({arguments})"
+        return f"{self.__class__.__name__}({arguments})"

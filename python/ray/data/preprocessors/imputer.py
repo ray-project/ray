@@ -74,9 +74,8 @@ class SimpleImputer(Preprocessor):
 
     def __repr__(self):
         return (
-            f"SimpleImputer(columns={self.columns}, "
-            f"strategy={self.strategy}, "
-            f"fill_value={self.fill_value})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"strategy={self.strategy!r}, fill_value={self.fill_value!r})"
         )
 
 

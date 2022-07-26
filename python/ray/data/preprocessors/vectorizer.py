@@ -55,9 +55,8 @@ class HashingVectorizer(Preprocessor):
     def __repr__(self):
         fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
         return (
-            f"HasingVectorizer(columns={self.columns}, "
-            f"num_features={self.num_features}, "
-            f"tokenization_fn={fn_name})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"num_features={self.num_features!r}, tokenization_fn={fn_name})"
         )
 
 
@@ -133,8 +132,6 @@ class CountVectorizer(Preprocessor):
     def __repr__(self):
         fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
         return (
-            f"CountVectorizer("
-            f"columns={self.columns}, "
-            f"tokenization_fn={fn_name}, "
-            f"max_features={self.max_features})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"tokenization_fn={fn_name}, max_features={self.max_features!r})"
         )

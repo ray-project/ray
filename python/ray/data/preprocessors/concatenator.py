@@ -99,9 +99,10 @@ class Concatenator(Preprocessor):
 
     def __repr__(self):
         return (
-            f"Concatenator(output_column_name='{self.output_column_name}', "
-            f"include={self.included_columns}, "
-            f"exclude={self.excluded_columns}, "
-            f"dtype={self.dtype}, "
-            f"raise_if_missing={self.raise_if_missing})"
+            f"{self.__class__.__name__}("
+            f"output_column_name={self.output_column_name!r}, "
+            f"include={self.included_columns!r}, "
+            f"exclude={self.excluded_columns!r}, "
+            f"dtype={self.dtype!r}, "
+            f"raise_if_missing={self.raise_if_missing!r})"
         )
