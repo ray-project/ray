@@ -381,6 +381,7 @@ class ReplicaConfig:
             "memory",
             "num_cpus",
             "num_gpus",
+            "object_store_memory",
             "resources",
             # Other options
             "runtime_env",

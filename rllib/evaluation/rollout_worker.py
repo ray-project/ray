@@ -176,6 +176,7 @@ class RolloutWorker(ParallelIteratorWorker):
         num_cpus: Optional[int] = None,
         num_gpus: Optional[Union[int, float]] = None,
         memory: Optional[int] = None,
+        object_store_memory: Optional[int] = None,
         resources: Optional[dict] = None,
     ) -> type:
         """Returns RolloutWorker class as a `@ray.remote using given options`.
@@ -187,6 +188,7 @@ class RolloutWorker(ParallelIteratorWorker):
             num_gpus: The number of GPUs to allocate for the remote actor.
                 This could be a fraction as well.
             memory: The heap memory request for the remote actor.
+            object_store_memory: The object store memory for the remote actor.
             resources: The default custom resources to allocate for the remote
                 actor.
 
@@ -197,6 +199,7 @@ class RolloutWorker(ParallelIteratorWorker):
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             memory=memory,
+            object_store_memory=object_store_memory,
             resources=resources,
         )(cls)
 
