@@ -504,7 +504,7 @@ class AgentCollector:
         Args:
             data_col: The data column to fill the buffer with.
             view_requirement: The view requirement for the view_col. Normally the view
-                requirement for the data column is used and if it does not exist for 
+                requirement for the data column is used and if it does not exist for
                 some reason the view requirement for view column is used instead.
 
         returns:
