@@ -615,7 +615,7 @@ def test_one_hot_encoder():
     null_encoder.transform_batch(nonnull_df)
 
 
-def test_one_hot_encoder_with_limit():
+def test_one_hot_encoder_with_max_categories():
     """Tests basic OneHotEncoder functionality with limit."""
     col_a = ["red", "green", "blue", "red"]
     col_b = ["warm", "cold", "hot", "cold"]
@@ -623,7 +623,7 @@ def test_one_hot_encoder_with_limit():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
-    encoder = OneHotEncoder(["B", "C"], limit={"B": 2})
+    encoder = OneHotEncoder(["B", "C"], max_categories={"B": 2})
 
     ds_out = encoder.fit_transform(ds)
     assert len(ds_out.to_pandas().columns) == 1 + 2 + 3
@@ -724,7 +724,7 @@ def test_multi_hot_encoder():
     null_encoder.transform_batch(nonnull_df)
 
 
-def test_multi_hot_encoder_with_limit():
+def test_multi_hot_encoder_with_max_categories():
     """Tests basic MultiHotEncoder functionality with limit."""
     col_a = ["red", "green", "blue", "red"]
     col_b = ["warm", "cold", "hot", "cold"]
@@ -733,7 +733,7 @@ def test_multi_hot_encoder_with_limit():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c, "D": col_d})
     ds = ray.data.from_pandas(in_df)
 
-    encoder = MultiHotEncoder(["B", "C", "D"], limit={"B": 2})
+    encoder = MultiHotEncoder(["B", "C", "D"], max_categories={"B": 2})
 
     ds_out = encoder.fit_transform(ds)
     assert len(ds_out.to_pandas()["B"].iloc[0]) == 2
