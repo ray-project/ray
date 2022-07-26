@@ -47,7 +47,7 @@ class AgentCollector:
         disable_action_flattening: bool = True,
         intial_states: Optional[List[TensorType]] = None,
         is_policy_recurrent: bool = False,
-        is_training: bool = True
+        is_training: bool = True,
     ):
         """Initialize an AgentCollector.
 
@@ -57,10 +57,10 @@ class AgentCollector:
             disable_action_flattening: If True, don't flatten the action.
             intial_states: The initial states from the policy.get_initial_states()
             is_policy_recurrent: If True, the policy is recurrent.
-            is_training: Sets the is_training flag for the buffers. if True, all the 
+            is_training: Sets the is_training flag for the buffers. if True, all the
                 timesteps are stored in the buffers until explictly build_for_training
-                () is called. if False, only the content required for the last time 
-                step is stored in the buffers. This will save memory during inference. 
+                () is called. if False, only the content required for the last time
+                step is stored in the buffers. This will save memory during inference.
                 You can change the behavior at runtime by calling is_training(mode).
         """
         self.max_seq_len = max_seq_len
@@ -69,7 +69,6 @@ class AgentCollector:
         self.intial_states = intial_states or []
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
-
 
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
@@ -212,14 +211,14 @@ class AgentCollector:
                     sub_list.append(flattened[i])
 
         # In inference mode, we don't need to keep all of trajectory in memory
-        # we only need to keep the steps required. We can pop from the beginning to 
+        # we only need to keep the steps required. We can pop from the beginning to
         # create room for new data.
         if not self.training:
             for k in self.buffers:
                 for sub_list in self.buffers[k]:
                     if sub_list:
                         sub_list.pop(0)
-        
+
         self.agent_steps += 1
 
     def build_for_inference(self) -> SampleBatch:
@@ -507,9 +506,7 @@ class AgentCollector:
                 # each data col.
                 self.buffer_structs[col] = data
 
-    def _get_sample_batch(
-        self, batch_data: Dict[str, TensorType]
-    ) -> SampleBatch:
+    def _get_sample_batch(self, batch_data: Dict[str, TensorType]) -> SampleBatch:
         """Returns a SampleBatch from the given data dictionary. Also updates the
         sequence information based on the max_seq_len."""
 

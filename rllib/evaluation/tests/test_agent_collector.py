@@ -50,7 +50,6 @@ class TestAgentCollector(unittest.TestCase):
             "prev_obses": ViewRequirement("obs", shift=f"-{ctx_len - 1}:0"),
         }
 
-
         n_steps = 100
         obses = np.random.rand(n_steps, 4)
         # list to store the last ctx_len obses
@@ -59,7 +58,7 @@ class TestAgentCollector(unittest.TestCase):
                 view_reqs=view_reqs,
                 is_policy_recurrent=True,
                 max_seq_len=20,  # default max_seq_len in lstm
-                is_training=training_mode
+                is_training=training_mode,
             )
             obses_ctx = []
             for t, obs in enumerate(obses):
