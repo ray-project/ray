@@ -296,7 +296,13 @@ def run(
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-    client = serve.start(detached=True)
+
+    if is_config:
+        client = serve.start(
+            detached=True, http_options={"host": config.host, "port": config.port}
+        )
+    else:
+        client = serve.start(detached=True, http_options={"host": host, "port": port})
 
     try:
         if is_config:
