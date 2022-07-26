@@ -4,6 +4,7 @@ from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
 
+from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskType
 from ray.dashboard.modules.job.common import JobInfo
 
@@ -12,7 +13,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_RPC_TIMEOUT = 30
 DEFAULT_LIMIT = 100
 DEFAULT_LOG_LIMIT = 1000
-MAX_LIMIT = 10000
+
+# Max number of entries from API server to the client
+RAY_MAX_LIMIT_FROM_API_SERVER = env_integer(
+    "RAY_MAX_LIMIT_FROM_API_SERVER", 10 * 1000
+)  # 10k
+
+# Max number of entries from data sources (rest will be truncated at the
+# data source, e.g. raylet)
+RAY_MAX_LIMIT_FROM_DATA_SOURCE = env_integer(
+    "RAY_MAX_LIMIT_FROM_DATA_SOURCE", 10 * 1000
+)  # 10k
 
 STATE_OBS_ALPHA_FEEDBACK_MSG = [
     "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
@@ -84,12 +95,6 @@ class ListApiOptions:
         assert self.timeout != 0, "0 second timeout is not supported."
         if self.filters is None:
             self.filters = []
-
-        if self.limit > MAX_LIMIT:
-            raise ValueError(
-                f"Given limit {self.limit} exceeds the supported "
-                f"limit {MAX_LIMIT}. Use a lower limit."
-            )
 
         for filter in self.filters:
             _, filter_predicate, _ = filter
@@ -355,10 +360,30 @@ class RuntimeEnvState(StateSchema):
 
 @dataclass(init=True)
 class ListApiResponse:
-    # Total number of the resource from the cluster.
-    # Note that this value can be larger than `result`
-    # because `result` can be truncated.
+    # NOTE(rickyyx): We currently perform hard truncation when querying
+    # resources which could have a large number (e.g. asking raylets for
+    # the number of all objects).
+    # The returned of resources seen by the user will go through from the
+    # below funnel:
+    # - total
+    #      |  With truncation at the data source if the number of returned
+    #      |  resource exceeds `RAY_MAX_LIMIT_FROM_DATA_SOURCE`
+    #      v
+    # - num_after_truncation
+    #      |  With filtering at the state API server
+    #      v
+    # - num_filtered
+    #      |  With limiting,
+    #      |  set by min(`RAY_MAX_LIMIT_FROM_API_SERER`, <user-supplied limit>)
+    #      v
+    # - len(result)
+
+    # Total number of the available resource from the cluster.
     total: int
+    # Number of resources returned by data sources after truncation
+    num_after_truncation: int
+    # Number of resources after filtering
+    num_filtered: int
     # Returned data. None if no data is returned.
     result: List[
         Union[
@@ -602,17 +627,19 @@ class ObjectSummaries:
 @dataclass(init=True)
 class StateSummary:
     # Node ID -> summary per node
-    # If the data is not required to be orgnized per node, it will contain
+    # If the data is not required to be organized per node, it will contain
     # a single key, "cluster".
     node_id_to_summary: Dict[str, Union[TaskSummaries, ActorSummaries, ObjectSummaries]]
 
 
 @dataclass(init=True)
 class SummaryApiResponse:
-    # Total number of the resource from the cluster.
-    # Note that this value can be larger than `result`
-    # because `result` can be truncated.
+    # Carried over from ListApiResponse
+    # We currently use list API for listing the resources
     total: int
+    # Carried over from ListApiResponse
+    # Number of resources returned by data sources after truncation
+    num_after_truncation: int
     result: StateSummary = None
     partial_failure_warning: str = ""
     # A list of warnings to print.
