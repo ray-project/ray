@@ -55,8 +55,6 @@ from ray.rllib.utils.typing import (
 )
 from ray.util.annotations import PublicAPI
 
-from ray.rllib.utils.test_utils import check
-
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
