@@ -254,6 +254,7 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
         assert (
             len(tuner_internal.warnings.warnings) == 2
         ), tuner_internal.warnings.warnings
+        assert "_max_cpu_fraction_per_node" in tuner_internal.warnings.warnings[1]
 
         # Don't warn if Trainer is not used
         tuner = tune.Tuner(train_loop, tune_config=tune.TuneConfig(num_samples=3))
@@ -261,7 +262,6 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
         assert (
             len(tuner_internal.warnings.warnings) == 2
         ), tuner_internal.warnings.warnings
-        assert "_max_cpu_fraction_per_node" in tuner_internal.warnings.warnings[0]
     finally:
         tuner_internal.warnings = old
 

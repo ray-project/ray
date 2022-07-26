@@ -151,13 +151,13 @@ class TunerInternal:
         if scaling_config is None or scaling_config._max_cpu_fraction_per_node:
             return
 
-        has_dataset = getattr(trainable, "has_dataset", False)
+        has_base_dataset = getattr(trainable, "has_base_dataset", False)
 
         cpus_per_trial = scaling_config.total_resources.get("CPU", 0)
         cpus_left = ray.available_resources().get("CPU", 0)  # avoid div by 0
         # TODO(amogkam): Remove this warning after _max_cpu_fraction_per_node is no
         # longer experimental.
-        if has_dataset and self._expected_utilization(cpus_per_trial, cpus_left) > 0.8:
+        if has_base_dataset and self._expected_utilization(cpus_per_trial, cpus_left) > 0.8:
             warnings.warn(
                 "Executing `.fit()` may leave less than 20% of CPUs in "
                 "this cluster for Dataset execution, which can lead to "

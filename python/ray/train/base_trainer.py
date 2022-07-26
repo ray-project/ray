@@ -357,7 +357,7 @@ class BaseTrainer(abc.ABC):
         train_func.__name__ = trainer_cls.__name__
 
         trainable_cls = wrap_function(train_func, warn=False)
-        has_dataset = bool(self.datasets)
+        has_base_dataset = bool(self.datasets)
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
@@ -371,11 +371,13 @@ class BaseTrainer(abc.ABC):
                 return super().__repr__()
 
             @classmethod
-            def has_dataset(cls):
-                return has_dataset
+            def has_base_dataset(cls) -> bool:
+                """Whether a dataset is provided through the Trainer."""
+                return has_base_dataset
 
             @classmethod
-            def base_scaling_config(cls):
+            def base_scaling_config(cls) -> ScalingConfig:
+                """Returns the unchanged scaling config provided through the Trainer."""
                 return scaling_config
 
             def __init__(self, *args, **kwargs):
