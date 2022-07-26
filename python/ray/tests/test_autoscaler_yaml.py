@@ -423,44 +423,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             == 2
         )
 
-    def testFillEdgeLegacyConfigs(self):
-        # Test edge cases: legacy configs which specify workers but not head
-        # or vice-versa.
-        no_head = load_test_config("test_no_head.yaml")
-        aws_defaults = _get_default_config(no_head["provider"])
-        head_prepared = prepare_config(no_head)
-        assert (
-            head_prepared["available_node_types"]["ray-legacy-head-node-type"][
-                "node_config"
-            ]
-            == aws_defaults["available_node_types"]["ray.head.default"]["node_config"]
-        )
-        assert head_prepared["head_node"] == {}
-        # Custom worker config preserved
-        node_types = head_prepared["available_node_types"]
-        worker_type = node_types["ray-legacy-worker-node-type"]
-        assert (
-            worker_type["node_config"]
-            == head_prepared["worker_nodes"]
-            == {"foo": "bar"}
-        )
-
-        no_workers = load_test_config("test_no_workers.yaml")
-        workers_prepared = prepare_config(no_workers)
-        assert (
-            workers_prepared["available_node_types"]["ray-legacy-worker-node-type"][
-                "node_config"
-            ]
-            == aws_defaults["available_node_types"]["ray.worker.default"]["node_config"]
-        )
-        assert workers_prepared["worker_nodes"] == {}
-        # Custom head config preserved
-        node_types = workers_prepared["available_node_types"]
-        head_type = node_types["ray-legacy-head-node-type"]
-        assert (
-            head_type["node_config"] == workers_prepared["head_node"] == {"baz": "qux"}
-        )
-
     @pytest.mark.skipif(sys.platform.startswith("win"), reason="Fails on Windows.")
     def testExampleFull(self):
         """
