@@ -118,8 +118,9 @@ class ScalingConfig:
     def total_resources(self):
         """Map of total resources required for the trainer."""
         total_resource_map = defaultdict(float, self._trainer_resources_not_none)
+        num_workers = self.num_workers or 0
         for k, value in self._resources_per_worker_not_none.items():
-            total_resource_map[k] += value * self.num_workers
+            total_resource_map[k] += value * num_workers
         return dict(total_resource_map)
 
     @property

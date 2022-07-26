@@ -2,7 +2,6 @@ import io
 import logging
 import os
 import time
-import warnings
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
@@ -11,6 +10,7 @@ import pytest
 import ray
 from ray import tune
 from ray.data.preprocessor import Preprocessor
+from ray.tune.impl import tuner_internal
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.train.trainer import BaseTrainer
@@ -197,44 +197,53 @@ def test_reserved_cpu_warnings(ray_start_4_cpus):
     def train_loop(self):
         pass
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
+    class MockLogger:
+        def __init__(self):
+            self.warnings = []
+
+        def warning(self, msg):
+            self.warnings.append(msg)
+
+        def warn(self, msg, **kwargs):
+            self.warnings.append(msg)
+
+        def info(self, msg):
+            print(msg)
+
+    try:
+        old = tuner_internal.warnings
+        tuner_internal.warnings = MockLogger()
 
         # Fraction correctly specified.
         trainer = DummyTrainer(
             train_loop,
-            scaling_config=ScalingConfig(num_workers=3, _max_cpu_fraction_per_node=0.9),
+            scaling_config=ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.9),
             datasets={"train": ray.data.range(10)},
         )
         trainer.fit()
+        assert not tuner_internal.warnings.warnings
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
         # No datasets, no fraction.
-        trainer = DummyTrainer(
-            train_loop,
-            scaling_config=ScalingConfig(num_workers=3),
-        )
-        trainer.fit()
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        # Has datasets, no fraction, but CPU less than 80%
         trainer = DummyTrainer(
             train_loop,
             scaling_config=ScalingConfig(num_workers=1),
         )
         trainer.fit()
+        assert not tuner_internal.warnings.warnings
 
-    # Should warn.
-    with pytest.warns(UserWarning) as record:
+        # Should warn.
         trainer = DummyTrainer(
             train_loop,
             scaling_config=ScalingConfig(num_workers=3),
             datasets={"train": ray.data.range(10)},
         )
         trainer.fit()
-        assert "_max_cpu_fraction_per_node" in record[0].message
+        assert (
+            len(tuner_internal.warnings.warnings) == 1
+        ), tuner_internal.warnings.warnings
+        assert "_max_cpu_fraction_per_node" in tuner_internal.warnings.warnings[0]
+    finally:
+        tuner_internal.warnings = old
 
 
 def test_setup(ray_start_4_cpus):
