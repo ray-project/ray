@@ -34,15 +34,52 @@ TEST_F(MemoryMonitorTest, TestThresholdOneAlwaysBelowThreshold) {
   ASSERT_FALSE(monitor.IsUsageAboveThreshold());
 }
 
+std::string exec(const char* cmd) {
+    char buffer[128];
+    std::string result = "";
+    FILE* pipe = popen(cmd, "r");
+    if (!pipe) throw std::runtime_error("popen() failed!");
+    try {
+        while (fgets(buffer, sizeof buffer, pipe) != NULL) {
+            result += buffer;
+        }
+    } catch (...) {
+        pclose(pipe);
+        throw;
+    }
+    pclose(pipe);
+    return result;
+}
+
 TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive) {
   {
     MemoryMonitor monitor(0 /*usage_threshold*/, 0 /*refresh_interval_ms*/,
         [](bool is_usage_above_threshold) {
       FAIL() << "Expected monitor not running";
     });
-    auto [available, total] = monitor.GetNodeAvailableMemoryBytes();
-    ASSERT_GT(available, 0);
-    ASSERT_GT(total, available);
+    auto [used_bytes, total_bytes] = monitor.GetLinuxNodeMemoryBytes();
+    ASSERT_GT(total_bytes, 0);
+    ASSERT_GT(total_bytes, used_bytes);
+
+    std::string cmd = "free -b";
+    auto cmd_out = exec(cmd.c_str());
+
+    std::string title;
+    std::string total;
+    std::string used;
+    std::string free;
+    std::string shared;
+    std::string cache;
+    std::string available;
+    std::istringstream cmd_out_ss(cmd_out);
+    cmd_out_ss >> total >> used >> free >> shared >> cache >> available;
+    cmd_out_ss >> title >> total >> used >> free >> shared >> cache >> available;
+
+    uint64_t free_total_bytes;
+    std::istringstream total_ss(total);
+    total_ss >> free_total_bytes;
+
+    ASSERT_EQ(total_bytes, free_total_bytes);
   }
 }
 

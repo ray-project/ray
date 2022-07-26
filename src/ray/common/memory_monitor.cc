@@ -21,10 +21,10 @@
 
 namespace ray {
 
-MemoryMonitor::MemoryMonitor(float capacity_threshold,
+MemoryMonitor::MemoryMonitor(float usage_threshold_,
     uint64_t monitor_interval_ms,
     MemoryUsageRefreshCallback monitor_callback)
-  : usage_threshold_(capacity_threshold),
+  : usage_threshold_(usage_threshold_),
     monitor_callback_(monitor_callback),
     io_context_(),
     monitor_thread_([this] {
@@ -32,6 +32,9 @@ MemoryMonitor::MemoryMonitor(float capacity_threshold,
       io_context_.run();
     }),
     runner_(io_context_) {
+  RAY_CHECK(monitor_callback_ != nullptr);
+  RAY_CHECK(usage_threshold_ >= 0);
+  RAY_CHECK(usage_threshold_ <= 1);
   if (monitor_interval_ms > 0) {
     #ifdef __linux__
       runner_.RunFnPeriodically([this] { 
@@ -42,22 +45,31 @@ MemoryMonitor::MemoryMonitor(float capacity_threshold,
         "MemoryMonitor.CheckIsMemoryUsageAboveThreshold");
       RAY_LOG(INFO) << "MemoryMonitor initialized";
     #else
-      RAY_LOG(WARNING) << "Not running MemoryMonitor. It is currently supported on Linux.";
+      RAY_LOG(WARNING) << "Not running MemoryMonitor. It is currently supported "
+          << "only on Linux.";
     #endif    
   } else {
-    RAY_LOG(INFO) << "MemoryMonitor disabled";
+    RAY_LOG(INFO) << "MemoryMonitor disabled. Specify "
+        << "`memory_monitor_interval_ms` > 0 to enable the monitor.";
   }
 }
 
 
 bool MemoryMonitor::IsUsageAboveThreshold() {
-  auto [available_memory_bytes, total_memory_bytes]
-          = GetNodeAvailableMemoryBytes();
-  auto used = total_memory_bytes - available_memory_bytes;
-  auto usage_fraction = static_cast<float>(used) / total_memory_bytes;
+  auto [used_memory_bytes, total_memory_bytes] = GetLinuxNodeMemoryBytes();
+  if (total_memory_bytes == 0) {
+    RAY_LOG(ERROR) << "Unable to capture node memory. Monitor will not be able "
+        << "to detect memory usage above threshold.";
+    return false;
+  }
+  auto usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
   bool is_usage_above_threshold = usage_fraction > usage_threshold_;
   if (is_usage_above_threshold) {
-    RAY_LOG(INFO) << "Node memory usage above threshold, usage: "
+    RAY_LOG_EVERY_MS(INFO, 1000) << "Node memory usage above threshold, used: "
+        << used_memory_bytes
+        << ", total: "
+        << total_memory_bytes
+        << ", usage fraction: "
         << usage_fraction
         << ", threshold: "
         << usage_threshold_;
@@ -65,7 +77,11 @@ bool MemoryMonitor::IsUsageAboveThreshold() {
   return is_usage_above_threshold;
 }
 
-std::tuple<uint64_t, uint64_t> MemoryMonitor::GetNodeAvailableMemoryBytes() {
+std::tuple<uint64_t, uint64_t> MemoryMonitor::GetLinuxNodeMemoryBytes() {
+  #ifndef __linux__
+    RAY_LOG(ERROR) << "GetLinuxNodeMemoryBytes called on non-Linux system"
+    return return {0, 0};
+  #endif  
   std::string meminfo_path = "/proc/meminfo";
   std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
   if (!meminfo_ifs.is_open()) {
@@ -81,25 +97,46 @@ std::tuple<uint64_t, uint64_t> MemoryMonitor::GetNodeAvailableMemoryBytes() {
   uint64_t mem_available_bytes = 0;
   uint64_t mem_free_bytes = 0;
   uint64_t cached_bytes = 0;
+  uint64_t buffer_bytes = 0;
   while (std::getline(meminfo_ifs, line)) {
       std::istringstream iss(line);
       iss >> title >> value >> unit;
+      /// Linux reports them as kiB
+      RAY_CHECK(unit == "kB");
+      value = value * 1024;
       if (title == "MemAvailable:") {
           mem_available_bytes = value;
       } else if (title == "MemFree:") {
           mem_free_bytes = value;
       } else if (title == "Cached:") {
           cached_bytes = value;
-      } else if (title == "MemTotal:") {
+      } else if (title == "Buffers:") {
+          buffer_bytes = value;
+      }  else if (title == "MemTotal:") {
           mem_total_bytes = value;
       }
   }
   /// The following logic mimics psutil in python that is used in other parts of
   /// the codebase.
   if (mem_available_bytes > 0) {
-    return {mem_available_bytes, mem_total_bytes};
+    if (mem_total_bytes < mem_available_bytes) {
+      RAY_LOG(ERROR) << " total bytes less than available bytes. "
+          << "Monitor will assume zero usage.";
+      return {0, mem_total_bytes};
+    } 
+    return {mem_total_bytes - mem_available_bytes, mem_total_bytes};
   }
-  return {mem_free_bytes + cached_bytes, mem_total_bytes};
+  auto available_bytes = mem_free_bytes + cached_bytes + buffer_bytes;
+  if (mem_total_bytes < available_bytes) {
+    available_bytes = mem_free_bytes;
+    if (mem_total_bytes < available_bytes) {
+      RAY_LOG(ERROR) << " total bytes less than available bytes. "
+          << "Monitor will assume zero usage.";
+      return {0, mem_total_bytes};
+    }
+  } 
+  auto used_bytes = mem_total_bytes - available_bytes;
+  return {used_bytes, mem_total_bytes};
 }
 
 MemoryMonitor::~MemoryMonitor() {

@@ -45,15 +45,18 @@ class MemoryMonitor {
  private:
   /// Returns true if the memory usage of this node is above the threshold.
   bool IsUsageAboveThreshold();
-  /// Returns the available and total node memory in bytes.
-  std::tuple<uint64_t, uint64_t> GetNodeAvailableMemoryBytes();
+
+  /// Returns the used and total node memory in bytes for linux OS.
+  std::tuple<uint64_t, uint64_t> GetLinuxNodeMemoryBytes();
   
  private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroAlwaysAboveThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestThresholdOneAlwaysBelowThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive);
 
+  /// Memory usage fraction between [0, 1]
   const double usage_threshold_;
+  /// Callback function that executes at each monitoring interval.
   const MemoryUsageRefreshCallback monitor_callback_;
   instrumented_io_context io_context_;
   std::thread monitor_thread_;
