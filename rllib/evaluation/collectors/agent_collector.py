@@ -274,7 +274,7 @@ class AgentCollector:
                 data.append(element_at_t[None])
 
             if data:
-                batch_data[view_col] = self._unflatten_as_buffer_struct(data)
+                batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
 
         batch = self._get_sample_batch(batch_data)
         return batch
@@ -382,7 +382,7 @@ class AgentCollector:
                 data.append(shifted_data_np)
 
             if data:
-                batch_data[view_col] = self._unflatten_as_buffer_struct(data)
+                batch_data[view_col] = self._unflatten_as_buffer_struct(data, data_col)
 
         batch = self._get_sample_batch(batch_data)
 
