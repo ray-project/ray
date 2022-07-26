@@ -267,7 +267,7 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
             "Setting 'object_store_memory'"
             " for actors is deprecated since it doesn't actually"
             " reserve the required object store memory.",
-            f" Use object spilling (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) " # noqa: E501
+            f" Use object spilling (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
             "instead to bypass the object store memory limitation.",
             DeprecationWarning,
             stacklevel=3,
