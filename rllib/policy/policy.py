@@ -55,6 +55,8 @@ from ray.rllib.utils.typing import (
 )
 from ray.util.annotations import PublicAPI
 
+from ray.rllib.utils.test_utils import check
+
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
@@ -1202,15 +1204,27 @@ class Policy(metaclass=ABCMeta):
             # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
-                if view_req.shift_from is not None:
+                if isinstance(view_req.space, gym.spaces.Space):
+                    time_size = (
+                        len(view_req.shift_arr) if len(view_req.shift_arr) > 1 else None
+                    )
                     ret[view_col] = get_dummy_batch_for_space(
+                        view_req.space, batch_size=batch_size, time_size=time_size
+                    )
+                else:
+                    ret[view_col] = [view_req.space for _ in range(batch_size)]
+                
+                # TODO: @kourosh remove these comments after this is tested
+                foo = None
+                if view_req.shift_from is not None:
+                    foo = get_dummy_batch_for_space(
                         view_req.space,
                         batch_size=batch_size,
                         time_size=view_req.shift_to - view_req.shift_from + 1,
                     )
                 # Sequence of (probably non-consecutive) indices.
                 elif isinstance(view_req.shift, (list, tuple)):
-                    ret[view_col] = get_dummy_batch_for_space(
+                    foo = get_dummy_batch_for_space(
                         view_req.space,
                         batch_size=batch_size,
                         time_size=len(view_req.shift),
@@ -1218,12 +1232,15 @@ class Policy(metaclass=ABCMeta):
                 # Single shift int value.
                 else:
                     if isinstance(view_req.space, gym.spaces.Space):
-                        ret[view_col] = get_dummy_batch_for_space(
+                        foo = get_dummy_batch_for_space(
                             view_req.space, batch_size=batch_size, fill_value=0.0
                         )
                     else:
-                        ret[view_col] = [view_req.space for _ in range(batch_size)]
+                        foo = [view_req.space for _ in range(batch_size)]
 
+                check(foo, ret[view_col])
+
+                    
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
         return SampleBatch(ret)

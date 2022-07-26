@@ -282,21 +282,33 @@ class TestViewRequirementConnector(unittest.TestCase):
         ctx = ConnectorContext(view_requirements=view_rq_dict, config=config)
         c = ViewRequirementAgentConnector(ctx)
 
-        # for is_training in [True, False]:
-        #     c.is_training(is_training)
-        for t, obs_arr in enumerate(obs_arrs):
-            # note: initial state starts at t=-1.
-            data = AgentConnectorDataType(0, 1, dict(obs=obs_arr, t=t-1))
-            processed = c([data])
+        # # for is_training in [True, False]:
+        # #     c.is_training(is_training)
+        # for t, obs_arr in enumerate(obs_arrs):
+        #     # note: initial state starts at t=-1.
+        #     data = AgentConnectorDataType(0, 1, {SampleBatch.NEXT_OBS: obs_arr, SampleBatch.T: t - 1})
+        #     processed = c([data])
+        #     for_action = processed[0].data.for_action
+        #     breakpoint()
+
+        #     self.assertTrue("next_state" not in for_action)
+        #     if t == 0:
+        #         pass
+        #         # check(for_action["prev_state"], obs_arrs[0])
+        #     else:
+        #         breakpoint()
+        #         check(for_action["state"], obs_arrs[t:t + 1])
+        #         check(for_action["prev_state"], obs_arrs[t - 1:t])
+
+        for t in range(-1, len(obs_arrs) - 1):
+            data = AgentConnectorDataType(0, 1, 
+                {SampleBatch.NEXT_OBS: obs_arrs[t + 1], SampleBatch.T: t})
+            processed = c([data]) # env.reset() for t == -1 else env.step()
             for_action = processed[0].data.for_action
             breakpoint()
 
-            self.assertTrue("next_state" not in for_action)
-            check(for_action["state"], obs_arrs[t])
-            if t == 0:
-                check(for_action["prev_state"], obs_arrs[0])
-            else:
-                check(for_action["prev_state"], obs_arrs[t - 1])
+
+
 
     def test_vr_connector_causal_slice(self):
         """Test that the ViewRequirementConnector can handle slice shifts correctly.

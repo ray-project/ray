@@ -60,15 +60,16 @@ class _AgentCollector:
         self,
         view_reqs,
         *,
-        max_seq_len,
-        disable_action_flattening,
+        max_seq_len=1,
+        disable_action_flattening=True,
         intial_states=None,
+        is_policy_recurrent=False,
     ):
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
         self.view_requirements = view_reqs
         self.intial_states = intial_states or []
-        self.is_policy_recurrent = len(self.intial_states) > 0
+        self.is_policy_recurrent = is_policy_recurrent
 
         # Determine the size of the buffer we need for data before the actual
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
@@ -204,6 +205,10 @@ class _AgentCollector:
         self.agent_steps += 1
 
     def build_for_inference(self) -> SampleBatch:
+        """
+        During inference we will a samplebatch with a batch size of 1.
+        This data will only include the data for the last recorded timestep.
+        """
 
         batch_data = {}
         np_data = {}
@@ -214,6 +219,17 @@ class _AgentCollector:
             # if this view is not for inference, skip it.
             if not view_req.used_for_compute_actions:
                 continue
+            else:
+                if np.any(view_req.shift_arr > 0):
+                    raise ValueError(
+                        f"During inference the agent can only use past observations to "
+                        f"respect causality. However, view_col = {view_col} seems to "
+                        f"depend on future indices {view_req.shift_arr}, while the "
+                        f"used_for_compute_actions flag is set to True. Please fix the "
+                        f"discrepancy. Hint: If you are using a custom model make sure "
+                        f"the view_requirements are initialized properly and is point "
+                        f"only refering to past timesteps during inference."
+                    )
 
             # Some columns don't exist yet
             # (get created during postprocessing or depend on state_out).
@@ -231,11 +247,7 @@ class _AgentCollector:
                     state_ind = int(data_col.split("_")[-1])
                     self._build_buffers({data_col: self.intial_states[state_ind]})
                 else:
-                    continue
-
-            # OBS are already shifted by -1 (the initial obs starts one ts
-            # before all other data columns).
-            obs_shift = -1 if data_col == SampleBatch.OBS else 0
+                    raise ValueError(f"data_col {data_col} does not exist in neither of the the buffer or initial_states.")
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
@@ -246,29 +258,14 @@ class _AgentCollector:
 
             data = []
             for d in np_data[data_col]:
-                inds = self.shift_before + obs_shift + view_req.shift_arr + len(d) - 1
-
-                # handle the case where the inds are out of bounds
-                element_at_t = []
-                for index in inds:
-                    if index < len(d):
-                        element_at_t.append(d[index])
-                    else:
-                        if view_req.used_for_compute_actions:
-                            breakpoint()
-                            raise ValueError(f"During inference the agent can only use past observations to respect causality. However, view_col = {view_col} seem to depend on future index {index}, while the used_for_compute_actions flag is set to True. Please fix the discrepancy. Hint: If you are using a custom model make sure the view_requirements are initialized properly.")
-                        element_at_t.append(
-                            np.zeros(
-                                shape=view_req.space.shape,
-                                dtype=view_req.space.dtype,
-                            )
-                        )
-                element_at_t = np.stack(element_at_t)
-
+                # if shift_arr = [0] the data will be just the last time step (len(d) - 1), if shift_arr = [-1] the data will be just the timestep before the last one (len(d) - 2) and so on.
+                element_at_t = d[view_req.shift_arr + len(d) - 1]
                 if element_at_t.shape[0] == 1:
-                    # squeeze to remove the T dimension if it is 1.
-                    element_at_t = element_at_t.squeeze(0)
-                data.append(element_at_t)
+                        # squeeze to remove the T dimension if it is 1.
+                        element_at_t = element_at_t.squeeze(0)
+                # add the batch dimension with [None]
+                data.append(element_at_t[None])
+
 
             if len(data) > 0:
                 if data_col not in self.buffer_structs:
@@ -281,7 +278,7 @@ class _AgentCollector:
         batch = self._get_sample_batch(batch_data, is_training=False)
         return batch
 
-    # TODO: @kouorsh we don't really need view_requirements anymore since it's already 
+    # TODO: @kouorsh we don't really need view_requirements anymore since it's already
     # and atribtue of the class
     def build_for_training(
         self, view_requirements: ViewRequirementsDict
@@ -434,7 +431,6 @@ class _AgentCollector:
 
         return batch
 
-
     def _build_buffers(self, single_row: Dict[str, TensorType]) -> None:
         """Builds the buffers for sample collection, given an example data row.
 
@@ -478,7 +474,9 @@ class _AgentCollector:
                 # each data col.
                 self.buffer_structs[col] = data
 
-    def _get_sample_batch(self, batch_data: Dict[str, TensorType], is_training: bool = False) -> SampleBatch:
+    def _get_sample_batch(
+        self, batch_data: Dict[str, TensorType], is_training: bool = False
+    ) -> SampleBatch:
 
         # Due to possible batch-repeats > 1, columns in the resulting batch
         # may not all have the same batch size.
@@ -702,6 +700,7 @@ class SimpleListCollector(SampleCollector):
                 "_disable_action_flattening", False
             ),
             intial_states=policy.get_initial_state(),
+            is_policy_recurrent=policy.is_recurrent(),
         )
         self.agent_collectors[agent_key].add_init_obs(
             episode_id=episode.episode_id,
@@ -858,6 +857,11 @@ class SimpleListCollector(SampleCollector):
                 input_dict[view_col] = np_data[0]
 
         self._reset_inference_calls(policy_id)
+        import pprint
+        print(input_dict['state_in_0'].shape)
+        pprint.pprint(input_dict)
+        print(input_dict.keys())
+        breakpoint()
 
         return SampleBatch(
             input_dict,

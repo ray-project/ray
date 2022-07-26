@@ -44,7 +44,10 @@ class ViewRequirementAgentConnector(AgentConnector):
                 self._view_requirements,
                 max_seq_len=ctx.config["model"]["max_seq_len"],
                 intial_states=ctx.initial_states,
-                disable_action_flattening=ctx.config.get("_disable_action_flattening", False),
+                disable_action_flattening=ctx.config.get(
+                    "_disable_action_flattening", False
+                ),
+                is_policy_recurrent=ctx.is_policy_recurrent,
             )
         )
         self.agent_collectors = defaultdict(lambda: env_default)
@@ -109,11 +112,10 @@ class ViewRequirementAgentConnector(AgentConnector):
                 agent_index=agent_id,
                 env_id=env_id,
                 t=-1,  # not sure about this?
-                init_obs=d[SampleBatch.OBS],
+                init_obs=d[SampleBatch.NEXT_OBS],
             )
         else:
             agent_collector.add_action_reward_next_obs(d)
-
         sample_batch = agent_collector.build_for_inference()
 
         # for col, req in vr.items():
