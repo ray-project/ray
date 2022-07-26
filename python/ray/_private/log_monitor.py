@@ -67,6 +67,17 @@ class LogFileInfo:
         self.actor_name = None
         self.task_name = None
 
+    def reopen_if_necessary(self):
+        """Check if the file's inode has changed and reopen it if necessary.
+        There are a variety of reasons what we would logically consider a file
+        would have different inodes, such as log rotation or file syncing
+        semantics.
+        """
+        open_inode = os.fstat(self.file_handle.fileno()).st_ino
+        new_inode = os.stat(self.filename).st_ino
+        if open_inode != new_inode:
+            self.file_handle = open(self.filename, "rb")
+
     def __repr__(self):
         return (
             "FileInfo(\n"
@@ -280,7 +291,7 @@ class LogMonitor:
                         raise e
 
                 f.seek(file_info.file_position)
-                file_info.filesize_when_last_opened = file_size
+                file_info.size_when_last_opened = file_size
                 file_info.file_handle = f
                 self.open_file_infos.append(file_info)
             else:
@@ -322,8 +333,9 @@ class LogMonitor:
 
         for file_info in self.open_file_infos:
             assert not file_info.file_handle.closed
+            file_info.reopen_if_necessary()
 
-            max_num_lines_to_read = 100
+            max_num_lines_to_read = ray_constants.LOG_MONITOR_NUM_LINES_TO_READ
             for _ in range(max_num_lines_to_read):
                 try:
                     next_line = file_info.file_handle.readline()
