@@ -102,7 +102,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py38 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -118,7 +118,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu111 cu112 cu113 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py39 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -134,7 +134,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu111 cu112 cu113 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py310"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
