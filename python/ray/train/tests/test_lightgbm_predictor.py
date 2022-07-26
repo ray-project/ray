@@ -1,4 +1,3 @@
-import os
 import tempfile
 
 import lightgbm as lgbm
@@ -8,15 +7,21 @@ import pyarrow as pa
 import pytest
 import ray
 
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.lightgbm import LightGBMCheckpoint, LightGBMPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from typing import Tuple
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 class DummyPreprocessor(Preprocessor):

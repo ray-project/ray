@@ -18,6 +18,14 @@ from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
 from typing import Tuple
 
 
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 class DummyPreprocessor(Preprocessor):
     def transform_batch(self, df):
         self._batch_transformed = True
@@ -121,7 +129,7 @@ def test_predict(batch_type):
 
 @pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
 def test_predict_batch(ray_start_4_cpus, batch_type):
-    checkpoint = Checkpoint.from_dict({MODEL_KEY: {}})
+    checkpoint = TensorflowCheckpoint.from_dict({MODEL_KEY: {}})
     predictor = BatchPredictor.from_checkpoint(
         checkpoint, TensorflowPredictor, model_definition=build_model_multi_input
     )

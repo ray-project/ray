@@ -17,6 +17,14 @@ from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 
 
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 class DummyPreprocessor(Preprocessor):
     def transform_batch(self, df):
         return df * 2
@@ -84,7 +92,7 @@ def test_predict(batch_type):
 
 @pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
 def test_predict_batch(ray_start_4_cpus, batch_type):
-    checkpoint = Checkpoint.from_dict({MODEL_KEY: {}})
+    checkpoint = TorchCheckpoint.from_dict({MODEL_KEY: {}})
     predictor = BatchPredictor.from_checkpoint(
         checkpoint, TorchPredictor, model=DummyModelMultiInput()
     )
@@ -106,6 +114,7 @@ def test_predict_batch(ray_start_4_cpus, batch_type):
     predictions = predictor.predict(dataset)
 
     assert predictions.count() == 3
+    assert predictions.to_pandas().to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])

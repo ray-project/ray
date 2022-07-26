@@ -1,5 +1,4 @@
 import json
-import os
 import tempfile
 
 import numpy as np
@@ -9,15 +8,21 @@ import pytest
 import ray.data
 import xgboost as xgb
 
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.xgboost import XGBoostCheckpoint, XGBoostPredictor
 from typing import Tuple
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 class DummyPreprocessor(Preprocessor):
