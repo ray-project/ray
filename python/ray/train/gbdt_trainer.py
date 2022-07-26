@@ -24,6 +24,11 @@ def _convert_scaling_config_to_ray_params(
     ray_params_cls: Type["xgboost_ray.RayParams"],
     default_ray_params: Optional[Dict[str, Any]] = None,
 ) -> "xgboost_ray.RayParams":
+    """Scaling config parameters have precedence over default ray params.
+
+    Default ray params are defined in the trainers (xgboost/lightgbm),
+    but if the user requests something else, that should be respected.
+    """
     ray_params_kwargs = default_ray_params.copy() or {}
 
     resources = scaling_config.resources_per_worker or {}
