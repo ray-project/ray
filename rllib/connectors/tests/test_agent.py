@@ -1,8 +1,9 @@
 import gym
 import numpy as np
 import unittest
+import pytest
 
-from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
@@ -156,42 +157,6 @@ class TestAgentConnector(unittest.TestCase):
         with_buffered = c([d])
         self.assertEqual(len(with_buffered), 1)
         self.assertEqual(with_buffered[0].data[SampleBatch.ACTIONS], [1, 2, 3])
-
-    def test_view_requirement_connector(self):
-        # TODO: @kourosh remove this test when we have a better way to test
-        view_requirements = {
-            "obs": ViewRequirement(
-                used_for_training=True, used_for_compute_actions=True
-            ),
-            "prev_actions": ViewRequirement(
-                data_col="actions",
-                shift=-1,
-                used_for_training=True,
-                used_for_compute_actions=True,
-            ),
-        }
-        config = PPOConfig().to_dict()
-        ctx = ConnectorContext(view_requirements=view_requirements, config=config)
-
-        c = ViewRequirementAgentConnector(ctx)
-        f = FlattenDataAgentConnector(ctx)
-
-        d = AgentConnectorDataType(
-            0,
-            1,
-            {
-                SampleBatch.NEXT_OBS: {
-                    "sensor1": [[1, 1], [2, 2]],
-                    "sensor2": 8.8,
-                },
-                SampleBatch.ACTIONS: np.array(0),
-            },
-        )
-        # ViewRequirementAgentConnector then FlattenAgentConnector.
-        processed = f(c([d]))
-
-        self.assertTrue("obs" in processed[0].data.for_action)
-        self.assertTrue("prev_actions" in processed[0].data.for_action)
 
 
 class TestViewRequirementConnector(unittest.TestCase):
@@ -414,9 +379,79 @@ class TestViewRequirementConnector(unittest.TestCase):
             check(for_action["context_obs"], np.stack(obs_list)[None])
             check(for_action["context_act"], np.stack(act_list[:-1])[None])
 
+    @pytest.mark.skip("test is not ready yet.")
+    def test_connector_pipline_with_view_requirement(self):
+        config = (
+            PPOConfig()
+            .environment(env="CartPole-v0")
+            .training(
+                model=dict(
+                    use_lstm=True,
+                    lstm_use_prev_action=True,
+                    lstm_use_prev_reward=True,
+                ),
+            )
+            .rollouts(create_env_on_local_worker=True)
+        )
+        algo = PPO(config)
+        rollout_worker = algo.workers.local_worker()
+        policy = rollout_worker.get_policy()
+        env = rollout_worker.env
+
+        # create a connector context
+        ctx = ConnectorContext(
+            view_requirements=policy.view_requirements,
+            config=policy.config,
+            initial_states=policy.get_initial_state(),
+            is_policy_recurrent=policy.is_recurrent(),
+            observation_space=policy.observation_space,
+            action_space=policy.action_space,
+        )
+
+        # build chain of connectors
+        connectors = [
+            ObsPreprocessorConnector(ctx),
+            ClipRewardAgentConnector(ctx, False, 1.0),
+            FlattenDataAgentConnector(ctx),
+            StateBufferConnector(ctx),
+            ViewRequirementAgentConnector(ctx),
+        ]
+        pipeline = AgentConnectorPipeline(ctx, connectors)
+
+        name, params = pipeline.to_config()
+        restored = get_connector(ctx, name, params)
+        self.assertTrue(isinstance(restored, AgentConnectorPipeline))
+        for cidx, c in enumerate(connectors):
+            check(restored.connectors[cidx].to_config(), c.to_config())
+
+        # simulate a rollout
+        n_steps = 10
+        obs = env.reset()
+        env_out = AgentConnectorDataType(
+            0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: -1}
+        )
+        agent_obs = pipeline([obs])
+        t = 0
+        while t < n_steps:
+            eval_batch = agent_obs.data.for_action
+            action, state, extra_fetch = policy.compute_actions_from_input_dict(eval_batch)
+            next_obs, rewards, dones, info = env.step(action)
+            env_out_dict = {
+                SampleBatch.NEXT_OBS: next_obs,
+                SampleBatch.REWARDS: rewards,
+                SampleBatch.DONES: dones,
+                SampleBatch.INFO: info,
+                SampleBatch.ACTIONS: action,
+                SampleBatch.T: t,
+                # state_out
+            }
+            env_out = AgentConnectorDataType(0, 1, env_out_dict)
+            agent_obs = pipeline([env_out])
+            t += 1
+
 
 if __name__ == "__main__":
     import sys
-    import pytest
+    # import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

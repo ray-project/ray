@@ -3,9 +3,8 @@ from gym.spaces import Space
 import logging
 import math
 import numpy as np
-from pyparsing import Optional
 import tree  # pip install dm_tree
-from typing import Any, Dict, List, Tuple, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Tuple, TYPE_CHECKING, Union, Optional
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
