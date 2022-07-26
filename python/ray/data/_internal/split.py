@@ -175,8 +175,8 @@ def _split_all_blocks(
     # We make a copy for the blocks that have been splitted, so the input blocks
     # can be cleared if they are owned by consumer (consumer-owned blocks will
     # only be consumed by the owner).
-    if block_list._owned_by_consumer:
-        ray._private.internal_api.free(blocks_splitted, local_only=False)
+    # if block_list._owned_by_consumer:
+    #     ray._private.internal_api.free(blocks_splitted, local_only=False)
 
     return itertools.chain.from_iterable(all_blocks_split_results)
 

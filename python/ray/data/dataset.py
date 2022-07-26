@@ -2243,7 +2243,6 @@ class Dataset(Generic[T]):
             stats,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            clear_block_after_read=True,
             batch_format=batch_format,
             drop_last=drop_last,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
