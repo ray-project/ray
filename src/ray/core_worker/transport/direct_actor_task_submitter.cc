@@ -309,12 +309,13 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
           task_id, error_type, &status, &error_info);
     }
-
-    RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
-                   << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
-    for (auto &net_err_task : wait_for_death_info_tasks) {
-      RAY_UNUSED(GetTaskFinisherWithoutMu().MarkTaskReturnObjectsFailed(
-          net_err_task.second, error_type, &error_info));
+    if (!wait_for_death_info_tasks.empty()) {
+      RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
+                     << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
+      for (auto &net_err_task : wait_for_death_info_tasks) {
+        RAY_UNUSED(GetTaskFinisherWithoutMu().MarkTaskReturnObjectsFailed(
+            net_err_task.second, error_type, &error_info));
+      }
     }
   }
   // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
@@ -525,9 +526,10 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       // No retry == actor is dead.
       // If actor is not dead yet, wait for the grace period until we mark the
       // return object as failed.
-      int64_t death_info_grace_period_ms =
-          current_time_ms() + RayConfig::instance().timeout_ms_task_wait_for_death_info();
-      {
+      if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+        int64_t death_info_grace_period_ms =
+            current_time_ms() +
+            RayConfig::instance().timeout_ms_task_wait_for_death_info();
         absl::MutexLock lock(&mu_);
         auto queue_pair = client_queues_.find(actor_id);
         RAY_CHECK(queue_pair != client_queues_.end());
@@ -538,7 +540,11 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
             << "PushActorTask failed because of network error, this task "
                "will be stashed away and waiting for Death info from GCS, task_id="
             << task_spec.TaskId()
-            << ", wait queue size=" << queue.wait_for_death_info_tasks.size();
+            << ", wait_queue_size=" << queue.wait_for_death_info_tasks.size();
+      } else {
+        // If we don't need death info, just fail the request.
+        GetTaskFinisherWithoutMu().MarkTaskReturnObjectsFailed(
+            task_spec, rpc::ErrorType::ACTOR_DIED);
       }
     }
   }
