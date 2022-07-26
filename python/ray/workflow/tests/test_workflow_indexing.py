@@ -5,7 +5,7 @@ from ray.workflow.common import WorkflowStatus
 from ray.workflow.workflow_storage import WorkflowIndexingStorage
 
 
-def test_workflow_status_update(workflow_start_regular_shared):
+def test_workflow_status_update(workflow_start_regular):
     # Test workflow status update is working.
     @client_mode_wrap
     def check():
@@ -52,7 +52,7 @@ def test_workflow_status_update(workflow_start_regular_shared):
     check()
 
 
-def test_workflow_auto_fix_status(workflow_start_regular_shared):
+def test_workflow_auto_fix_status(workflow_start_regular):
     # Test workflow can recovery from corrupted status updating.
     @client_mode_wrap
     def check():
