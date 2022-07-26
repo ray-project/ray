@@ -18,6 +18,7 @@ from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.utils import Change
 from ray.experimental.state.common import (
+    RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
     GetLogOptions,
     SummaryApiOptions,
@@ -166,6 +167,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             if req.query.get("limit") is not None
             else DEFAULT_LIMIT
         )
+
+        if limit > RAY_MAX_LIMIT_FROM_API_SERVER:
+            raise ValueError(
+                f"Given limit {limit} exceeds the supported "
+                f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit."
+            )
+
         timeout = int(req.query.get("timeout"))
         filter_keys = req.query.getall("filter_keys", [])
         filter_predicates = req.query.getall("filter_predicates", [])
