@@ -1,5 +1,7 @@
 import os
 import pickle
+import pytest
+import re
 import shutil
 import tempfile
 import unittest
@@ -18,6 +20,19 @@ class DummyPreprocessor(Preprocessor):
 
     def transform_batch(self, df):
         return df * self.multiplier
+
+
+MAX_REPR_LENGTH = 100
+
+
+def test_repr():
+    checkpoint = Checkpoint(data_dict={"foo": "bar"})
+
+    representation = repr(checkpoint)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile(f"^Checkpoint\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 class CheckpointsConversionTest(unittest.TestCase):
