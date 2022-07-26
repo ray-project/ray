@@ -565,11 +565,9 @@ TEST(RayClusterModeTest, RuntimeEnvApiTest) {
 
   // Deserialize
   auto runtime_env_2 = ray::RuntimeEnv::Deserialize(serialized_runtime_env);
-
   auto pip2 = runtime_env_2.Get<Pip>("pip");
   EXPECT_EQ(pip2.packages, pip.packages);
   EXPECT_EQ(pip2.pip_check, pip.pip_check);
-
   auto working_dir2 = runtime_env_2.Get<std::string>("working_dir");
   EXPECT_EQ(working_dir2, working_dir);
 
@@ -580,6 +578,50 @@ TEST(RayClusterModeTest, RuntimeEnvApiTest) {
   runtime_env_3.SetJsonStr("pip", pip_raw_json_string);
   auto get_json_result = runtime_env_3.GetJsonStr("pip");
   EXPECT_EQ(get_json_result, pip_raw_json_string);
+}
+
+TEST(RayClusterModeTest, RuntimeEnvApiExceptionTest) {
+  ray::RuntimeEnv runtime_env;
+  EXPECT_THROW(runtime_env.Get<std::string>("working_dir"), ray::internal::RayException);
+  runtime_env.Set("working_dir", "https://path/to/working_dir.zip");
+  EXPECT_THROW(runtime_env.Get<Pip>("working_dir"), ray::internal::RayException);
+  EXPECT_THROW(runtime_env.SetJsonStr("pip", "{123"), ray::internal::RayException);
+  EXPECT_THROW(runtime_env.GetJsonStr("pip"), ray::internal::RayException);
+  EXPECT_EQ(runtime_env.Empty(), false);
+  runtime_env.Remove("working_dir");
+  runtime_env.Remove("pip");
+  EXPECT_EQ(runtime_env.Empty(), true);
+}
+
+TEST(RayClusterModeTest, RuntimeEnvTaskLevelEnvVarsTest) {
+  ray::RayConfig config;
+  ray::Init(config, cmd_argc, cmd_argv);
+  auto r0 = ray::Task(GetEnvVar).Remote("KEY1");
+  auto get_result0 = *(ray::Get(r0));
+  EXPECT_EQ("", get_result0);
+
+  auto actor_handle = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto r1 = actor_handle.Task(&Counter::GetEnvVar).Remote("KEY1");
+  auto get_result1 = *(ray::Get(r1));
+  EXPECT_EQ("", get_result1);
+
+  ray::RuntimeEnv runtime_env;
+  std::map<std::string, std::string> env_vars{{"KEY1", "value1"}};
+  runtime_env.Set("env_vars", env_vars);
+  auto r2 = ray::Task(GetEnvVar).SetRuntimeEnv(runtime_env).Remote("KEY1");
+  auto get_result2 = *(ray::Get(r2));
+  EXPECT_EQ("value1", get_result2);
+
+  ray::RuntimeEnv runtime_env2;
+  std::map<std::string, std::string> env_vars2{{"KEY1", "value2"}};
+  runtime_env2.Set("env_vars", env_vars2);
+  auto actor_handle2 =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetRuntimeEnv(runtime_env2).Remote();
+  auto r3 = actor_handle2.Task(&Counter::GetEnvVar).Remote("KEY1");
+  auto get_result3 = *(ray::Get(r3));
+  EXPECT_EQ("value2", get_result3);
+
+  ray::Shutdown();
 }
 
 TEST(RayClusterModeTest, RuntimeEnvJobLevelEnvVarsTest) {
