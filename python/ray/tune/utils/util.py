@@ -17,6 +17,7 @@ import psutil
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.remote_storage import delete_at_uri
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.ml_utils.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
@@ -121,6 +122,7 @@ class UtilMonitor(Thread):
         self.stopped = True
 
 
+@DeveloperAPI
 def retry_fn(
     fn: Callable[[], Any],
     exception_type: Type[Exception],
@@ -169,7 +171,7 @@ def get_checkpoint_from_remote_node(
     return Checkpoint.from_bytes(checkpoint_data)
 
 
-def delete_external_checkpoint(checkpoint_uri: str):
+def _delete_external_checkpoint(checkpoint_uri: str):
     delete_at_uri(checkpoint_uri)
 
 
@@ -216,6 +218,7 @@ class warn_if_slow:
             logger.warning(self.message.format(name=self.name, duration=duration))
 
 
+@DeveloperAPI
 class Tee(object):
     def __init__(self, stream1, stream2):
         self.stream1 = stream1
@@ -264,6 +267,7 @@ class Tee(object):
         raise NotImplementedError
 
 
+@DeveloperAPI
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -516,6 +520,7 @@ def wait_for_gpu(
     raise RuntimeError("GPU memory was not freed.")
 
 
+@PublicAPI(stability="alpha")
 def validate_save_restore(
     trainable_cls: Type,
     config: Optional[Dict] = None,
@@ -563,7 +568,7 @@ def validate_save_restore(
     return True
 
 
-def detect_checkpoint_function(train_func, abort=False, partial=False):
+def _detect_checkpoint_function(train_func, abort=False, partial=False):
     """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
     func_sig = inspect.signature(train_func)
     validated = True
@@ -599,7 +604,7 @@ def detect_reporter(func):
     return use_reporter
 
 
-def detect_config_single(func):
+def _detect_reporter(func):
     """Check if func({}) works."""
     func_sig = inspect.signature(func)
     use_config_single = True
@@ -638,6 +643,7 @@ def create_logdir(dirname: str, local_dir: str):
     return logdir
 
 
+@PublicAPI()
 def validate_warmstart(
     parameter_names: List[str],
     points_to_evaluate: List[Union[List, Dict]],

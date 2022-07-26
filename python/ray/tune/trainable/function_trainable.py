@@ -26,9 +26,9 @@ from ray.tune.result import (
 )
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.utils import (
-    detect_checkpoint_function,
-    detect_config_single,
-    detect_reporter,
+    _detect_checkpoint_function,
+    _detect_config_single,
+    _detect_reporter,
 )
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -600,9 +600,9 @@ def wrap_function(
         inherit_from = train_func.__mixins__ + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
-    use_checkpoint = detect_checkpoint_function(train_func)
-    use_config_single = detect_config_single(train_func)
-    use_reporter = detect_reporter(train_func)
+    use_checkpoint = _detect_checkpoint_function(train_func)
+    use_config_single = _detect_config_single(train_func)
+    use_reporter = _detect_reporter(train_func)
 
     if not any([use_checkpoint, use_config_single, use_reporter]):
         # use_reporter is hidden

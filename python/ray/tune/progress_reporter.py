@@ -341,7 +341,7 @@ class TuneReporterBase(ProgressReporter):
         messages = [
             "== Status ==",
             _time_passed_str(self._start_time, time.time()),
-            memory_debug_str(),
+            _memory_debug_str(),
             *sys_info,
         ]
         if done:
@@ -633,7 +633,7 @@ class CLIReporter(TuneReporterBase):
         print(self._progress_str(trials, done, *sys_info))
 
 
-def memory_debug_str():
+def _memory_debug_str():
     try:
         import ray  # noqa F401
 

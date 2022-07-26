@@ -3,11 +3,11 @@ import logging
 from typing import Dict, List, Optional, Union
 
 from ray.tune.error import TuneError
-from ray.tune.experiment import Experiment, _convert_to_experiment_list
+from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
 from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search import Searcher
-from ray.tune.search.util import set_search_properties_backwards_compatible
+from ray.tune.search.util import _set_search_properties_backwards_compatible
 from ray.tune.search.variant_generator import format_vars, resolve_nested_dict
 from ray.tune.experiment import Trial
 from ray.tune.utils.util import (
@@ -60,7 +60,7 @@ class SearchGenerator(SearchAlgorithm):
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
-        return set_search_properties_backwards_compatible(
+        return _set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config, **spec
         )
 
@@ -78,7 +78,7 @@ class SearchGenerator(SearchAlgorithm):
         """
         assert not self._experiment
         logger.debug("added configurations")
-        experiment_list = _convert_to_experiment_list(experiments)
+        experiment_list = convert_to_experiment_list(experiments)
         assert (
             len(experiment_list) == 1
         ), "SearchAlgorithms can only support 1 experiment at a time."

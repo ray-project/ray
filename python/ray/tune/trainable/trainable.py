@@ -46,7 +46,7 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import (
     Tee,
-    delete_external_checkpoint,
+    _delete_external_checkpoint,
     get_checkpoint_from_remote_node,
     retry_fn,
 )
@@ -701,7 +701,7 @@ class Trainable:
                 else:
                     checkpoint_uri = self._storage_path(checkpoint_dir)
                     retry_fn(
-                        lambda: delete_external_checkpoint(checkpoint_uri),
+                        lambda: _delete_external_checkpoint(checkpoint_uri),
                         subprocess.CalledProcessError,
                         num_retries=3,
                         sleep_time=1,

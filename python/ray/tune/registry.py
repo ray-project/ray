@@ -46,6 +46,7 @@ def get_trainable_cls(trainable_name):
     return _global_registry.get(TRAINABLE_CLASS, trainable_name)
 
 
+@DeveloperAPI
 def validate_trainable(trainable_name):
     if not _has_trainable(trainable_name):
         # Make sure everything rllib-related is registered.
@@ -69,6 +70,7 @@ def is_function_trainable(trainable: Union[str, Callable, Type]) -> bool:
     )
 
 
+@PublicAPI(stability="alpha")
 def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool = True):
     """Register a trainable function or class.
 
@@ -130,10 +132,12 @@ def register_input(name: str, input_creator: Callable):
     _global_registry.register(RLLIB_INPUT, name, input_creator)
 
 
+@DeveloperAPI
 def registry_contains_input(name: str) -> bool:
     return _global_registry.contains(RLLIB_INPUT, name)
 
 
+@DeveloperAPI
 def registry_get_input(name: str) -> Callable:
     return _global_registry.get(RLLIB_INPUT, name)
 
