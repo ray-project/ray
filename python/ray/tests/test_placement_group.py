@@ -504,9 +504,7 @@ def test_object_store_memory_deprecation_warning(ray_start_regular_shared):
     )
 
     with warnings.catch_warnings(record=True) as w:
-        pg = ray.util.placement_group(
-            [{"object_store_memory": 1}], strategy="STRICT_PACK"
-        )
+        ray.util.placement_group([{"object_store_memory": 1}], strategy="STRICT_PACK")
     assert any(
         "Setting 'object_store_memory' for bundles is deprecated"
         in str(warning.message)
