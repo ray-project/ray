@@ -543,8 +543,6 @@ def test_log_monitor(tmp_path):
     create_file(log_dir, new_worker_err_file, contents)
     log_monitor.update_log_filenames()
 
-    print("=======================================================================")
-
     # System logs are not closed.
     # - raylet, gcs, monitor
     # Dead workers are not tracked anymore. They will be moved to old folder.
