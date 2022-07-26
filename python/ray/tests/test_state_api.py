@@ -91,8 +91,8 @@ from ray.experimental.state.state_cli import (
     format_list_api_output,
     _parse_filter,
 )
-from ray.experimental.state.state_cli import ray_get 
-from ray.experimental.state.state_cli import ray_list 
+from ray.experimental.state.state_cli import ray_get
+from ray.experimental.state.state_cli import ray_list
 from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
