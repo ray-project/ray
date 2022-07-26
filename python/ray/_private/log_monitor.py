@@ -301,8 +301,6 @@ class LogMonitor:
             self.can_open_more_files = False
         # Add the files with no changes back to the list of closed files.
         self.closed_file_infos += files_with_no_updates
-        # print("open files", self.open_file_infos)
-        # print("no updates", files_with_no_updates)
 
     def check_log_files_and_publish_updates(self):
         """Gets updates to the log files and publishes them.
