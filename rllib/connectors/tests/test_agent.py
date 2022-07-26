@@ -1,7 +1,6 @@
 import gym
 import numpy as np
 import unittest
-import pytest
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
@@ -19,8 +18,6 @@ from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
 )
-
-from ray.rllib.utils.test_utils import check
 
 
 class TestAgentConnector(unittest.TestCase):
