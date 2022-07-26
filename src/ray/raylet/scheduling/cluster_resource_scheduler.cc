@@ -108,6 +108,16 @@ bool IsHardNodeAffinitySchedulingStrategy(
 }
 }  // namespace
 
+bool ClusterResourceScheduler::IsAffinityWithBundleSchedule(
+    const rpc::SchedulingStrategy &scheduling_strategy) {
+  return scheduling_strategy.scheduling_strategy_case() ==
+             rpc::SchedulingStrategy::SchedulingStrategyCase::
+                 kPlacementGroupSchedulingStrategy &&
+         (!scheduling_strategy.placement_group_scheduling_strategy()
+               .placement_group_id()
+               .empty());
+}
+
 scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     const ResourceRequest &resource_request,
     const rpc::SchedulingStrategy &scheduling_strategy,
@@ -140,6 +150,17 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
             force_spillback,
             scheduling_strategy.node_affinity_scheduling_strategy().node_id(),
             scheduling_strategy.node_affinity_scheduling_strategy().soft()));
+  } else if (IsAffinityWithBundleSchedule(scheduling_strategy) &&
+             !is_local_node_with_raylet_) {
+    // This scheduling strategy is only used for gcs scheduling for the time being.
+    auto placement_group_id = PlacementGroupID::FromBinary(
+        scheduling_strategy.placement_group_scheduling_strategy().placement_group_id());
+    BundleID bundle_id =
+        std::pair(placement_group_id,
+                  scheduling_strategy.placement_group_scheduling_strategy()
+                      .placement_group_bundle_index());
+    best_node_id = scheduling_policy_->Schedule(
+        resource_request, SchedulingOptions::AffinityWithBundle(bundle_id));
   } else {
     // TODO (Alex): Setting require_available == force_spillback is a hack in order to
     // remain bug compatible with the legacy scheduling algorithms.

@@ -16,7 +16,6 @@ from ray.util.multiprocessing import Pool, TimeoutError, JoinableQueue
 from ray.util.joblib import register_ray
 
 from joblib import parallel_backend, Parallel, delayed
-from ray._private.test_utils import test_external_redis
 
 
 def teardown_function(function):
@@ -69,10 +68,7 @@ def ray_start_4_cpu():
     ray.shutdown()
 
 
-@pytest.mark.skipif(
-    test_external_redis(), reason="The same Redis is used within the test."
-)
-def test_ray_init(shutdown_only):
+def test_ray_init(monkeypatch, shutdown_only):
     def getpid(args):
         return os.getpid()
 
@@ -88,6 +84,11 @@ def test_ray_init(shutdown_only):
     pool.terminate()
     pool.join()
     ray.shutdown()
+
+    # Set up the cluster id so that gcs is talking with a different
+    # storage prefix
+    monkeypatch.setenv("RAY_external_storage_namespace", "new_cluster")
+    ray._raylet.Config.initialize("")
 
     # Check that starting a pool doesn't affect ray if there is a local
     # ray cluster running.
@@ -121,10 +122,7 @@ def test_ray_init(shutdown_only):
     ],
     indirect=True,
 )
-@pytest.mark.skipif(
-    test_external_redis(), reason="The same Redis is used within the test."
-)
-def test_connect_to_ray(ray_start_cluster):
+def test_connect_to_ray(monkeypatch, ray_start_cluster):
     def getpid(args):
         return os.getpid()
 
@@ -138,8 +136,13 @@ def test_connect_to_ray(ray_start_cluster):
     start_cpus = 1  # Set in fixture.
     init_cpus = 2
 
+    # Set up the cluster id so that gcs is talking with a different
+    # storage prefix
+    monkeypatch.setenv("RAY_external_storage_namespace", "new_cluster")
+    ray._raylet.Config.initialize("")
+
     # Check that starting a pool still starts ray if RAY_ADDRESS not set.
-    pool = Pool(processes=init_cpus)
+    pool = Pool(processes=init_cpus, ray_address="local")
     assert ray.is_initialized()
     assert int(ray.cluster_resources()["CPU"]) == init_cpus
     check_pool_size(pool, init_cpus)
@@ -156,6 +159,9 @@ def test_connect_to_ray(ray_start_cluster):
     pool.terminate()
     pool.join()
     ray.shutdown()
+
+    monkeypatch.setenv("RAY_external_storage_namespace", "new_cluster2")
+    ray._raylet.Config.initialize("")
 
     # Set RAY_ADDRESS, so pools should connect to the running ray cluster.
     os.environ["RAY_ADDRESS"] = address
@@ -649,4 +655,7 @@ def test_task_to_actor_assignment(ray_start_4_cpu):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

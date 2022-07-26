@@ -25,7 +25,7 @@ cartpole-apex-dqn-training-itr:
 
         num_gpus: 0
 
-        min_time_s_per_reporting: 5
+        min_time_s_per_iteration: 5
         target_network_update_freq: 500
-        min_sample_timesteps_per_reporting: 1000
+        min_sample_timesteps_per_iteration: 1000
         training_intensity: 4

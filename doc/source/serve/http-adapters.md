@@ -30,28 +30,28 @@ For more detail, you can take a look at [FastAPI documentation](https://fastapi.
 
 You can use adapters in different scenarios within Serve:
 
-- Ray AIR `ModelWrapper`
+- Ray AIR `Predictor`
 - Serve Deployment Graph `DAGDriver`
 - Embedded in Bring Your Own `FastAPI` Application
 
 Let's go over them one by one.
 
-## Ray AIR `ModelWrapper`
+## Ray AIR `Predictor`
 
 Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
-You can just use it with [Ray AI Runtime (AIR) model wrapper](air-serve-integration) feature
+You can use it with [Ray AI Runtime (AIR) model wrapper](air-serving-guide) feature
 to one click deploy pre-trained models.
 
 For example, we provide a simple adapter for n-dimensional array.
 
-With [model wrappers](air-serve-integration), you can specify it via the `http_adapter` field.
+With [model wrappers](air-serving-guide), you can specify it via the `http_adapter` field.
 
 ```python
 from ray import serve
 from ray.serve.http_adapters import json_to_ndarray
-from ray.serve.model_wrappers import ModelWrapperDeployment
+from ray.serve import PredictorDeployment
 
-ModelWrapperDeployment.options(name="my_model").deploy(
+PredictorDeployment.options(name="my_model").deploy(
     my_ray_air_predictor,
     my_ray_air_checkpoint,
     http_adapter=json_to_ndarray
@@ -71,7 +71,7 @@ class User(BaseModel):
     user_name: str
 
 ...
-ModelWrapperDeployment.deploy(..., http_adapter=User)
+PredictorDeployment.deploy(..., http_adapter=User)
 ```
 :::
 
@@ -85,7 +85,7 @@ For example, the json request adapters parse JSON in HTTP body:
 ```python
 from ray.serve.drivers import DAGDriver
 from ray.serve.http_adapters import json_request
-from ray.experimental.dag.input_node import InputNode
+from ray.dag.input_node import InputNode
 
 with InputNode() as input_node:
     ...
@@ -141,6 +141,6 @@ Here is a list of adapters and please feel free to [contribute more](https://git
 
 ```{eval-rst}
 .. automodule:: ray.serve.http_adapters
-    :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request
+    :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request, pandas_read_json, json_to_multi_ndarray
 
 ```

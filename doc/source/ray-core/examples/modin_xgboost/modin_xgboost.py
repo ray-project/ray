@@ -58,7 +58,7 @@ import time
 
 import modin.pandas as pd
 from modin.experimental.sklearn.model_selection import train_test_split
-from xgboost_ray import RayDMatrix, RayParams, train, predict
+from xgboost_ray import RayDMatrix, RayParams, predict, train
 
 import ray
 

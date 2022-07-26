@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs import (
     BareMetalPolicyWithCustomViewReqs,
 )
@@ -49,8 +49,8 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    # Create q custom Trainer class using our custom Policy.
-    class BareMetalPolicyTrainer(Trainer):
+    # Create q custom Algorithm class using our custom Policy.
+    class BareMetalPolicyAlgorithm(Algorithm):
         def get_default_policy_class(self, config):
             return BareMetalPolicyWithCustomViewReqs
 
@@ -77,6 +77,6 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # Train the Trainer with our policy.
-    results = tune.run(BareMetalPolicyTrainer, config=config, stop=stop)
+    # Train the Algorithm with our policy.
+    results = tune.run(BareMetalPolicyAlgorithm, config=config, stop=stop)
     print(results)

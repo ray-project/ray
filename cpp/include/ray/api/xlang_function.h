@@ -21,7 +21,7 @@ namespace ray {
 
 template <typename R>
 struct PyFunction {
-  bool is_python() { return true; }
+  bool IsPython() { return true; }
   R operator()() { return {}; }
 
   std::string module_name;
@@ -29,7 +29,7 @@ struct PyFunction {
 };
 
 struct PyActorClass {
-  bool is_python() { return true; }
+  bool IsPython() { return true; }
   void operator()() {}
 
   std::string module_name;
@@ -39,9 +39,31 @@ struct PyActorClass {
 
 template <typename R>
 struct PyActorMethod {
-  bool is_python() { return true; }
+  bool IsPython() { return true; }
   R operator()() { return {}; }
 
+  std::string function_name;
+};
+
+struct JavaActorClass {
+  bool IsJava() { return true; }
+  void operator()() {}
+  std::string class_name;
+  std::string module_name = "";
+  std::string function_name = "<init>";
+};
+template <typename R>
+struct JavaActorMethod {
+  bool IsJava() { return true; }
+  R operator()() { return {}; }
+  std::string function_name;
+};
+
+template <typename R>
+struct JavaFunction {
+  bool IsJava() { return true; }
+  R operator()() { return {}; }
+  std::string class_name;
   std::string function_name;
 };
 

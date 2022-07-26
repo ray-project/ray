@@ -1,19 +1,19 @@
 import logging
 from typing import Type, Union
 
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bandit.bandit_tf_policy import BanditTFPolicy
 from ray.rllib.algorithms.bandit.bandit_torch_policy import BanditTorchPolicy
-from ray.rllib.agents.trainer import Trainer
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
 
 
-class BanditConfig(TrainerConfig):
+class BanditConfig(AlgorithmConfig):
     """Defines a contextual bandit configuration class from which
     a contexual bandit algorithm can be built. Note this config is shared
     between BanditLinUCB and BanditLinTS. You likely
@@ -21,19 +21,19 @@ class BanditConfig(TrainerConfig):
     instead.
     """
 
-    def __init__(self, trainer_class: Union["BanditLinTS", "BanditLinUCB"] = None):
-        super().__init__(trainer_class=trainer_class)
+    def __init__(self, algo_class: Union["BanditLinTS", "BanditLinUCB"] = None):
+        super().__init__(algo_class=algo_class)
         # fmt: off
         # __sphinx_doc_begin__
-        # Override some of TrainerConfig's default values with bandit-specific values.
+        # Override some of AlgorithmConfig's default values with bandit-specific values.
         self.framework_str = "torch"
         self.num_workers = 0
         self.rollout_fragment_length = 1
         self.train_batch_size = 1
         # Make sure, a `train()` call performs at least 100 env sampling
         # timesteps, before reporting results. Not setting this (default is 0)
-        # would significantly slow down the Bandit Trainer.
-        self.min_sample_timesteps_per_reporting = 100
+        # would significantly slow down the Bandit Algorithm.
+        self.min_sample_timesteps_per_iteration = 100
         # __sphinx_doc_end__
         # fmt: on
 
@@ -46,16 +46,16 @@ class BanditLinTSConfig(BanditConfig):
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinTSConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env=WheelBanditEnv)
         >>> trainer.train()
     """
 
     def __init__(self):
-        super().__init__(trainer_class=BanditLinTS)
+        super().__init__(algo_class=BanditLinTS)
         # fmt: off
         # __sphinx_doc_begin__
-        # Override some of TrainerConfig's default values with bandit-specific values.
+        # Override some of AlgorithmConfig's default values with bandit-specific values.
         self.exploration_config = {"type": "ThompsonSampling"}
         # __sphinx_doc_end__
         # fmt: on
@@ -69,31 +69,31 @@ class BanditLinUCBConfig(BanditConfig):
         >>> from ray.rllib.examples.env.bandit_envs_discrete import WheelBanditEnv
         >>> config = BanditLinUCBConfig().rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env=WheelBanditEnv)
         >>> trainer.train()
     """
 
     def __init__(self):
-        super().__init__(trainer_class=BanditLinUCB)
+        super().__init__(algo_class=BanditLinUCB)
         # fmt: off
         # __sphinx_doc_begin__
-        # Override some of TrainerConfig's default values with bandit-specific values.
+        # Override some of AlgorithmConfig's default values with bandit-specific values.
         self.exploration_config = {"type": "UpperConfidenceBound"}
         # __sphinx_doc_end__
         # fmt: on
 
 
-class BanditLinTS(Trainer):
-    """Bandit Trainer using ThompsonSampling exploration."""
+class BanditLinTS(Algorithm):
+    """Bandit Algorithm using ThompsonSampling exploration."""
 
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> BanditLinTSConfig:
         return BanditLinTSConfig().to_dict()
 
-    @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(Algorithm)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":
@@ -102,14 +102,14 @@ class BanditLinTS(Trainer):
             raise NotImplementedError("Only `framework=[torch|tf2]` supported!")
 
 
-class BanditLinUCB(Trainer):
+class BanditLinUCB(Algorithm):
     @classmethod
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_config(cls) -> BanditLinUCBConfig:
         return BanditLinUCBConfig().to_dict()
 
-    @override(Trainer)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    @override(Algorithm)
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":

@@ -1,30 +1,30 @@
 import asyncio
-from asyncio.tasks import FIRST_COMPLETED
 import copy
-import os
 import json
 import logging
+import os
+import random
+import string
+import subprocess
 import time
 import traceback
-import random
-import subprocess
-import string
+from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
-from typing import Any, Dict, Iterator, Tuple, Optional
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 import ray
-from ray.exceptions import RuntimeEnvSetupError
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
+from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
-from ray.job_submission import JobStatus
 from ray.dashboard.modules.job.common import (
-    JobInfo,
-    JobInfoStorageClient,
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
+    JobInfo,
+    JobInfoStorageClient,
 )
 from ray.dashboard.modules.job.utils import file_tail_iterator
-from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+from ray.exceptions import RuntimeEnvSetupError
+from ray.job_submission import JobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ class JobLogStorageClient:
             /tmp/ray/session_date/logs/job-driver-{job_id}.log
         """
         return os.path.join(
-            ray.worker._global_node.get_logs_dir_path(),
+            ray._private.worker._global_node.get_logs_dir_path(),
             self.JOB_LOGS_PATH.format(job_id=job_id),
         )
 
@@ -174,7 +174,10 @@ class JobSupervisor:
 
     def _get_driver_env_vars(self) -> Dict[str, str]:
         """Returns environment variables that should be set in the driver."""
-        ray_addr = ray._private.services.find_bootstrap_address().pop()
+        ray_addr = ray._private.services.canonicalize_bootstrap_address_or_die(
+            "auto", ray.worker._global_node._ray_params.temp_dir
+        )
+        assert ray_addr is not None
         return {
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
@@ -296,7 +299,9 @@ class JobManager:
     goes down.
     """
 
-    JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
+    JOB_ACTOR_NAME_TEMPLATE = (
+        f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
+    )
     # Time that we will sleep while tailing logs if no new log line is
     # available.
     LOG_TAIL_SLEEP_S = 1
@@ -322,7 +327,7 @@ class JobManager:
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
-            return ray.get_actor(self.JOB_ACTOR_NAME.format(job_id=job_id))
+            return ray.get_actor(self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id))
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
@@ -487,7 +492,7 @@ class JobManager:
         try:
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
-                name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+                name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
                 num_cpus=0,
                 # Currently we assume JobManager is created by dashboard server
                 # running on headnode, same for job supervisor actors scheduled

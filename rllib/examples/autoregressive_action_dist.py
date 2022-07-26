@@ -40,7 +40,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents import ppo
+from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.models.autoregressive_action_model import (
     AutoregressiveActionModel,
@@ -163,10 +163,10 @@ if __name__ == "__main__":
             raise ValueError("Only support --run PPO with --no-tune.")
         ppo_config = ppo.DEFAULT_CONFIG.copy()
         ppo_config.update(config)
-        trainer = ppo.PPO(config=ppo_config, env=CorrelatedActionsEnv)
+        algo = ppo.PPO(config=ppo_config, env=CorrelatedActionsEnv)
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
-            result = trainer.train()
+            result = algo.train()
             print(pretty_print(result))
             # stop training if the target train steps or reward are reached
             if (
@@ -182,14 +182,14 @@ if __name__ == "__main__":
         done = False
         total_reward = 0
         while not done:
-            a1, a2 = trainer.compute_single_action(obs)
+            a1, a2 = algo.compute_single_action(obs)
             next_obs, reward, done, _ = env.step((a1, a2))
             print(f"Obs: {obs}, Action: a1={a1} a2={a2}, Reward: {reward}")
             obs = next_obs
             total_reward += reward
         print(f"Total reward in test episode: {total_reward}")
 
-    # run with Tune for auto env and trainer creation and TensorBoard
+    # run with Tune for auto env and Algorithm creation and TensorBoard
     else:
         results = tune.run(args.run, stop=stop, config=config, verbose=2)
 

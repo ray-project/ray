@@ -10,14 +10,12 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import zipfile
-
-from itertools import chain
-from enum import Enum
-
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
+from enum import Enum
+from itertools import chain
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +194,12 @@ ray_files += [
     for filename in filenames
 ]
 
+# Files for ray.init html template.
+ray_files += [
+    "ray/widgets/templates/context_dashrow.html.j2",
+    "ray/widgets/templates/context.html.j2",
+]
+
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
@@ -214,6 +218,7 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
+            "pydantic",
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
@@ -246,7 +251,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gym<0.22",
+        "gym>=0.21.0,<0.24.0",
         "lz4",
         # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
         # Todo: Remove this when safe?
@@ -256,11 +261,14 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
+    setup_spec.extras["train"] = setup_spec.extras["tune"]
+
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
         set(
             setup_spec.extras["tune"]
             + setup_spec.extras["data"]
+            + setup_spec.extras["train"]
             + setup_spec.extras["serve"]
         )
     )
@@ -278,7 +286,7 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.28.1, <= 1.43.0",
+        "grpcio >= 1.28.1, != 1.44.*, != 1.45.*, != 1.46.*, != 1.47.*",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
@@ -288,6 +296,9 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "requests",
+        # Light weight requirement, can be replaced with "typing" once
+        # we deprecate Python 3.7 (this will take a while).
+        "typing_extensions; python_version < '3.8'",
         "virtualenv",  # For pip runtime env.
     ]
 
@@ -736,6 +747,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
@@ -748,7 +760,7 @@ setuptools.setup(
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
             "rllib=ray.rllib.scripts:cli [rllib]",
-            "tune=ray.tune.scripts:cli",
+            "tune=ray.tune.cli.scripts:cli",
             "ray-operator=ray.ray_operator.operator:main",
             "serve=ray.serve.scripts:cli",
         ]

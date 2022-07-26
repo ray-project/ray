@@ -5,11 +5,11 @@
 # __custom_trainer_begin__
 import torch
 
-from ray.air.trainer import Trainer
-from ray import tune
+from ray.train.trainer import BaseTrainer
+from ray.air import session
 
 
-class MyPytorchTrainer(Trainer):
+class MyPytorchTrainer(BaseTrainer):
     def setup(self):
         self.model = torch.nn.Linear(1, 1)
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=0.1)
@@ -42,7 +42,7 @@ class MyPytorchTrainer(Trainer):
 
             # Use Tune functions to report intermediate
             # results.
-            tune.report(loss=loss, epoch=epoch_idx)
+            session.report({"loss": loss, "epoch": epoch_idx})
 
 
 # __custom_trainer_end__

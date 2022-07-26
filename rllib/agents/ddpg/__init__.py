@@ -1,3 +1,5 @@
+import ray.rllib.agents.ddpg.apex as apex  # noqa
+import ray.rllib.agents.ddpg.td3 as td3  # noqa
 from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPG as ApexDDPGTrainer
 from ray.rllib.algorithms.ddpg.ddpg import (
     DDPGConfig,

@@ -3,7 +3,7 @@ import os
 
 import ray
 from ray import tune
-from ray.rllib.agents.trainer import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
@@ -36,8 +36,8 @@ MyTFPolicy = build_tf_policy(
 )
 
 
-# Create a new Trainer using the Policy defined above.
-class MyTrainer(Trainer):
+# Create a new Algorithm using the Policy defined above.
+class MyAlgo(Algorithm):
     def get_default_policy_class(self, config):
         return MyTFPolicy
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
     tune.run(
-        MyTrainer,
+        MyAlgo,
         stop={"training_iteration": args.stop_iters},
         config={
             "env": "CartPole-v0",

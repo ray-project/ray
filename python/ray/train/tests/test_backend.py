@@ -7,25 +7,25 @@ import pytest
 import ray
 import ray.train as train
 from ray.cluster_utils import Cluster
-from ray.train.backend import (
-    Backend,
+
+# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.train._internal.backend_executor import (
+    BackendExecutor,
     InactiveWorkerGroupError,
     TrainBackendError,
     TrainingWorkerError,
 )
-from ray.train.backend import BackendConfig, BackendExecutor
-from ray.train.impl.dataset_spec import _RayDatasetSpec
-from ray.train.tensorflow import TensorflowConfig
-from ray.train.torch import TorchConfig
+from ray.train._internal.dataset_spec import RayDatasetSpec
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
-from ray.train.worker_group import WorkerGroup
+from ray.train.tensorflow import TensorflowConfig
+from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
-
-# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
 
 
 @pytest.fixture
@@ -103,7 +103,7 @@ class TestBackend(Backend):
         pass
 
 
-EMPTY_RAY_DATASET_SPEC = _RayDatasetSpec(dataset_or_dict=None)
+EMPTY_RAY_DATASET_SPEC = RayDatasetSpec(dataset_or_dict=None)
 
 
 def test_start(ray_start_2_cpus):
@@ -354,7 +354,7 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
 
 def get_node_id_set():
     node_id_set = set()
-    for actor_info in ray.state.actors().values():
+    for actor_info in ray._private.state.actors().values():
         node_id = actor_info["Address"]["NodeID"]
         node_id_set.add(node_id)
     return node_id_set
@@ -413,7 +413,8 @@ def test_placement_group_parent(ray_4_node_4_cpu, placement_group_capture_child_
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

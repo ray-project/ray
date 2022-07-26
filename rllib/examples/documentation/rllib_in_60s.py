@@ -1,5 +1,5 @@
 # __rllib-in-60s-begin__
-# Import the RL algorithm (Trainer) we would like to use.
+# Import the RL algorithm (Algorithm) we would like to use.
 from ray.rllib.algorithms.ppo import PPO
 
 # Configure the algorithm.
@@ -19,7 +19,7 @@ config = {
         "fcnet_activation": "relu",
     },
     # Set up a separate evaluation worker set for the
-    # `trainer.evaluate()` call after training (see below).
+    # `algo.evaluate()` call after training (see below).
     "evaluation_num_workers": 1,
     # Only for evaluation runs, render the env.
     "evaluation_config": {
@@ -28,16 +28,16 @@ config = {
 }
 
 # Create our RLlib Trainer.
-trainer = PPO(config=config)
+algo = PPO(config=config)
 
 # Run it for n training iterations. A training iteration includes
 # parallel sample collection by the environment workers as well as
 # loss calculation on the collected batch and a model update.
 for _ in range(3):
-    print(trainer.train())
+    print(algo.train())
 
 # Evaluate the trained Trainer (and render each timestep to the shell's
 # output).
-trainer.evaluate()
+algo.evaluate()
 
 # __rllib-in-60s-end__

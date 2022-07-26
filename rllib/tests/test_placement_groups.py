@@ -5,9 +5,9 @@ import ray
 from ray import tune
 from ray.tune import Callback
 from ray.rllib.algorithms.pg import PG, DEFAULT_CONFIG
-from ray.tune.ray_trial_executor import RayTrialExecutor
-from ray.tune.trial import Trial
-from ray.tune.utils.placement_groups import PlacementGroupFactory
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
+from ray.tune.experiment import Trial
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 trial_executor = None
 
@@ -57,10 +57,10 @@ class TestPlacementGroups(unittest.TestCase):
         config["env"] = "CartPole-v0"
         config["framework"] = "tf"
 
-        # Create a trainer with an overridden default_resource_request
+        # Create an Algorithm with an overridden default_resource_request
         # method that returns a PlacementGroupFactory.
 
-        class MyTrainer(PG):
+        class MyAlgo(PG):
             @classmethod
             def default_resource_request(cls, config):
                 head_bundle = {"CPU": 1, "GPU": 0}
@@ -70,7 +70,7 @@ class TestPlacementGroups(unittest.TestCase):
                     strategy=config["placement_strategy"],
                 )
 
-        tune.register_trainable("my_trainable", MyTrainer)
+        tune.register_trainable("my_trainable", MyAlgo)
 
         global trial_executor
         trial_executor = RayTrialExecutor(reuse_actors=False)

@@ -12,21 +12,21 @@ and the README for how to run with the multi-agent particle envs.
 import logging
 from typing import List, Optional, Type
 
-from ray.rllib.agents.trainer_config import TrainerConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import Deprecated, override
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-class MADDPGConfig(TrainerConfig):
-    """Defines a configuration class from which a MADDPG Trainer can be built.
+class MADDPGConfig(AlgorithmConfig):
+    """Defines a configuration class from which a MADDPG Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
@@ -44,9 +44,9 @@ class MADDPGConfig(TrainerConfig):
         >>>       .resources(num_gpus=0)\
         >>>       .rollouts(num_rollout_workers=4)\
         >>>       .environment("CartPole-v1")
-        >>> trainer = config.build()
+        >>> algo = config.build()
         >>> while True:
-        >>>     trainer.train()
+        >>>     algo.train()
 
     Example:
         >>> from ray.rllib.algorithms.maddpg.maddpg import MADDPGConfig
@@ -61,9 +61,9 @@ class MADDPGConfig(TrainerConfig):
         >>> )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(trainer_class=trainer_class or MADDPG)
+        super().__init__(algo_class=algo_class or MADDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -97,15 +97,15 @@ class MADDPGConfig(TrainerConfig):
         self.actor_feature_reg = 0.001
         self.grad_norm_clipping = 0.5
 
-        # Changes to Trainer's default:
+        # Changes to Algorithm's default:
         self.rollout_fragment_length = 100
         self.train_batch_size = 1024
         self.num_workers = 1
-        self.min_time_s_per_reporting = 0
+        self.min_time_s_per_iteration = 0
         # fmt: on
         # __sphinx_doc_end__
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -201,7 +201,7 @@ class MADDPGConfig(TrainerConfig):
                 value.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
 
         # Pass kwargs onto super's `training()` method.
@@ -277,11 +277,11 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
 class MADDPG(DQN):
     @classmethod
     @override(DQN)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return MADDPGConfig().to_dict()
 
     @override(DQN)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Adds the `before_learn_on_batch` hook to the config.
 
         This hook is called explicitly prior to TrainOneStep() in the execution
@@ -299,7 +299,7 @@ class MADDPG(DQN):
         config["before_learn_on_batch"] = f
 
     @override(DQN)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         return MADDPGTFPolicy
 
 

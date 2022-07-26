@@ -5,25 +5,27 @@ RLlib: Industry-Grade Reinforcement Learning with TF and Torch
 production-level, highly distributed RL workloads, while maintaining
 unified and simple APIs for a large variety of industry applications.
 
-Whether you would like to train your agents in multi-agent setups,
-purely from offline (historic) datasets, or using externally
-connected simulators, RLlib offers simple solutions for your decision making needs.
+Whether you would like to train your agents in **multi-agent** setups,
+purely from **offline** (historic) datasets, or using **externally
+connected simulators**, RLlib offers simple solutions for your decision making needs.
 
-You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
-other of its libraries! If you either have your problem coded (in python) as an
-`RL environment <https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5>`_
+If you either have your problem coded (in python) as an 
+`RL environment <https://docs.ray.io/en/master/rllib/rllib-env.html#configuring-environments>`_
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
 
 RLlib is already used in production by industry leaders in many different verticals, such as
 `climate control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
-`manufacturing and logistics <https://www.anyscale.com/events/2021/06/22/offline-rl-with-rllib>`_,
+`industrial control <https://www.anyscale.com/events/2021/06/22/offline-rl-with-rllib>`_,
+`manufacturing and logistics <https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial>`_,
 `finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
 `gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
 `automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
 `robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
 and many others.
+
+You can also read about `RLlib Key Concepts. <https://docs.ray.io/en/master/rllib/core-concepts.html>`_
 
 
 Installation and Setup
@@ -60,10 +62,11 @@ Offline RL:
 
 - `Behavior Cloning (BC; derived from MARWIL implementation) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#bc>`__ 
 - `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__ 
-- `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__ 
+- `Critic Regularized Regression (CRR) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#crr>`__
+- `Importance Sampling and Weighted Importance Sampling (OPE) <https://docs.ray.io/en/latest/rllib/rllib-offline.html#is>`__
 - `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__ 
 
-Model-free On-policy RL (for Games):
+Model-free On-policy RL:
 
 - `Synchronous Proximal Policy Optimization (APPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#appo>`__ 
 - `Decentralized Distributed Proximal Policy Optimization (DD-PPO)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ddppo>`__ 
@@ -102,7 +105,6 @@ Bandits:
 
 Multi-agent:  
 
-- `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
 - `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
 - `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN)) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#qmix>`__ 
 - `Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#maddpg>`__
@@ -110,6 +112,7 @@ Multi-agent:
 
 Others:  
 
+- `Single-Player Alpha Zero (AlphaZero)  <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#alphazero>`__
 - `Curiosity (ICM: Intrinsic Curiosity Module) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#curiosity>`__ 
 - `Random encoders (contrib/RE3) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#re3>`__ 
 - `Fully Independent Learning <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#fil>`__ 
@@ -174,9 +177,9 @@ Quick First Experiment
             return self.cur_obs, reward, done, {}
 
 
-    # Create an RLlib Trainer instance to learn how to act in the above
+    # Create an RLlib Algorithm instance to learn how to act in the above
     # environment.
-    trainer = PPO(
+    algo = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": ParrotEnv,
@@ -193,7 +196,7 @@ Quick First Experiment
     # (exact match between observation and action value),
     # we can expect to reach an optimal episode reward of 0.0.
     for i in range(5):
-        results = trainer.train()
+        results = algo.train()
         print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
 
 
@@ -220,7 +223,7 @@ and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/exampl
     while not done:
         # Compute a single action, given the current observation
         # from the environment.
-        action = trainer.compute_single_action(obs)
+        action = algo.compute_single_action(obs)
         # Apply the computed action in the environment.
         obs, reward, done, info = env.step(action)
         # Sum up rewards for reporting purposes.

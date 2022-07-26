@@ -1,7 +1,7 @@
-from copy import deepcopy
-import os
 import logging
-from typing import Dict, Optional, TYPE_CHECKING
+import os
+from copy import deepcopy
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from mlflow.entities import Run
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class MLflowLoggerUtil:
+class _MLflowLoggerUtil:
     """Util class for setting up and logging to MLflow.
 
     Use this util for any library that needs MLflow logging/tracking logic
@@ -28,7 +28,7 @@ class MLflowLoggerUtil:
         _mlflow = self._mlflow
         self.__dict__.pop("_mlflow")
         dict_copy = deepcopy(self.__dict__, memo)
-        copied_object = MLflowLoggerUtil()
+        copied_object = _MLflowLoggerUtil()
         copied_object.__dict__.update(dict_copy)
         self._mlflow = _mlflow
         copied_object._mlflow = _mlflow

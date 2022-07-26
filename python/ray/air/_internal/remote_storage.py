@@ -1,6 +1,7 @@
+import fnmatch
 import os
 import urllib.parse
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ray.util.ml_utils.filelock import TempFileLock
 
@@ -32,13 +33,6 @@ except (ImportError, ModuleNotFoundError):
     _CustomGCSHandler = None
 
 from ray import logger
-
-# We keep these constants for legacy compatibility with Tune's sync client
-# After Tune fully moved to using pyarrow.fs we can remove these.
-S3_PREFIX = "s3://"
-GS_PREFIX = "gs://"
-HDFS_PREFIX = "hdfs://"
-ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX, HDFS_PREFIX)
 
 
 def _assert_pyarrow_installed():
@@ -76,11 +70,7 @@ def is_non_local_path_uri(uri: str) -> bool:
 
     if bool(get_fs_and_path(uri)[0]):
         return True
-    # Keep manual check for prefixes for backwards compatibility with the
-    # TrialCheckpoint class. Remove once fully deprecated.
-    # Deprecated: Remove in Ray > 1.13
-    if any(uri.startswith(p) for p in ALLOWED_REMOTE_PREFIXES):
-        return True
+
     return False
 
 
@@ -107,7 +97,7 @@ def get_fs_and_path(
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
         _cached_fs[cache_key] = fs
         return fs, path
-    except pyarrow.lib.ArrowInvalid:
+    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
         if not fsspec:
             # Only return if fsspec is not installed
@@ -166,7 +156,9 @@ def download_from_uri(uri: str, local_path: str, filelock: bool = True):
         pyarrow.fs.copy_files(bucket_path, local_path, source_filesystem=fs)
 
 
-def upload_to_uri(local_path: str, uri: str):
+def upload_to_uri(
+    local_path: str, uri: str, exclude: Optional[List[str]] = None
+) -> None:
     _assert_pyarrow_installed()
 
     fs, bucket_path = get_fs_and_path(uri)
@@ -177,7 +169,39 @@ def upload_to_uri(local_path: str, uri: str):
             f"Hint: {fs_hint(uri)}"
         )
 
-    pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
+    if not exclude:
+        pyarrow.fs.copy_files(local_path, bucket_path, destination_filesystem=fs)
+        return
+
+    # Else, walk and upload
+    return _upload_to_uri_with_exclude(
+        local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
+    )
+
+
+def _upload_to_uri_with_exclude(
+    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
+) -> None:
+    def _should_exclude(candidate: str) -> bool:
+        for excl in exclude:
+            if fnmatch.fnmatch(candidate, excl):
+                return True
+        return False
+
+    for root, dirs, files in os.walk(local_path):
+        rel_root = os.path.relpath(root, local_path)
+        for file in files:
+            candidate = os.path.join(rel_root, file)
+
+            if _should_exclude(candidate):
+                continue
+
+            full_source_path = os.path.normpath(os.path.join(local_path, candidate))
+            full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
+
+            pyarrow.fs.copy_files(
+                full_source_path, full_target_path, destination_filesystem=fs
+            )
 
 
 def _ensure_directory(uri: str):

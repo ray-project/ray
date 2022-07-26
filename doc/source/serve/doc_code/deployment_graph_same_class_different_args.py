@@ -4,7 +4,6 @@ from ray.serve.deployment_graph import InputNode
 
 
 ray.init()
-serve.start()
 
 
 @serve.deployment

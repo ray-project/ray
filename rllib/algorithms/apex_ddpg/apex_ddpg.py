@@ -1,15 +1,17 @@
 from typing import List, Optional
 
 from ray.actor import ActorHandle
-from ray.rllib.agents import Trainer
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import TrainerConfigDict
-from ray.rllib.utils.typing import PartialTrainerConfigDict
-from ray.rllib.utils.typing import ResultDict
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
+    PartialAlgorithmConfigDict,
+    ResultDict,
+)
 from ray.util.iter import LocalIterator
 
 
@@ -44,9 +46,9 @@ class ApexDDPGConfig(DDPGConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes an ApexDDPGConfig instance."""
-        super().__init__(trainer_class=trainer_class or ApexDDPG)
+        super().__init__(algo_class=algo_class or ApexDDPG)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -66,8 +68,8 @@ class ApexDDPGConfig(DDPGConfig):
         self.exploration_config = {"type": "PerWorkerOrnsteinUhlenbeckNoise"}
         self.num_gpus = 0
         self.num_workers = 32
-        self.min_sample_timesteps_per_reporting = 25000
-        self.min_time_s_per_reporting = 30
+        self.min_sample_timesteps_per_iteration = 25000
+        self.min_time_s_per_iteration = 30
         self.train_batch_size = 512
         self.rollout_fragment_length = 50
         self.replay_buffer_config = {
@@ -174,19 +176,19 @@ class ApexDDPGConfig(DDPGConfig):
 class ApexDDPG(DDPG, ApexDQN):
     @classmethod
     @override(DDPG)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ApexDDPGConfig().to_dict()
 
     @override(DDPG)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         return ApexDQN.setup(self, config)
 
     @override(DDPG)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
-        return ApexDQN.training_iteration(self)
+        return ApexDQN.training_step(self)
 
-    @override(Trainer)
+    @override(Algorithm)
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
     ):
@@ -196,8 +198,11 @@ class ApexDDPG(DDPG, ApexDQN):
             removed_workers: removed worker ids.
             new_workers: ids of newly created workers.
         """
-        self._sampling_actor_manager.remove_workers(removed_workers)
-        self._sampling_actor_manager.add_workers(new_workers)
+        if self.config["_disable_execution_plan_api"]:
+            self._sampling_actor_manager.remove_workers(
+                removed_workers, remove_in_flight_requests=True
+            )
+            self._sampling_actor_manager.add_workers(new_workers)
 
     @staticmethod
     @override(DDPG)

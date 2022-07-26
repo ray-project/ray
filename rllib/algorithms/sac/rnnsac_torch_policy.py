@@ -14,7 +14,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import huber_loss, sequence_mask
-from ray.rllib.utils.typing import ModelInputDict, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelInputDict, TensorType, AlgorithmConfigDict
 
 torch, nn = try_import_torch()
 F = None
@@ -26,7 +26,7 @@ def build_rnnsac_model(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> ModelV2:
     """Constructs the necessary ModelV2 for the Policy and returns it.
 
@@ -34,7 +34,7 @@ def build_rnnsac_model(
         policy: The TFPolicy that will use the models.
         obs_space (gym.spaces.Space): The observation space.
         action_space (gym.spaces.Space): The action space.
-        config: The SAC trainer's config dict.
+        config: The SAC's config dict.
 
     Returns:
         ModelV2: The ModelV2 to be used by the Policy. Note: An additional
@@ -99,7 +99,7 @@ def build_sac_model_and_action_dist(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
     """Constructs the necessary ModelV2 and action dist class for the Policy.
 
@@ -107,7 +107,7 @@ def build_sac_model_and_action_dist(
         policy: The TFPolicy that will use the models.
         obs_space (gym.spaces.Space): The observation space.
         action_space (gym.spaces.Space): The action space.
-        config: The SAC trainer's config dict.
+        config: The SAC's config dict.
 
     Returns:
         ModelV2: The ModelV2 to be used by the Policy. Note: An additional

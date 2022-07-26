@@ -9,7 +9,7 @@ import time
 from typing import Optional
 
 import ray
-from ray.rllib.agents import Trainer, TrainerConfig
+from ray.rllib.algorithms import Algorithm, AlgorithmConfig
 from ray.rllib.algorithms.es import optimizers, utils
 from ray.rllib.algorithms.es.es_tf_policy import ESTFPolicy, rollout
 from ray.rllib.env.env_context import EnvContext
@@ -24,7 +24,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,8 @@ Result = namedtuple(
 )
 
 
-class ESConfig(TrainerConfig):
-    """Defines a configuration class from which an ES Trainer can be built.
+class ESConfig(AlgorithmConfig):
+    """Defines a configuration class from which an ES Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.es import ESConfig
@@ -50,7 +50,7 @@ class ESConfig(TrainerConfig):
         ...     .resources(num_gpus=0)\
         ...     .rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -75,7 +75,7 @@ class ESConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a ESConfig instance."""
-        super().__init__(trainer_class=ES)
+        super().__init__(algo_class=ES)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -91,11 +91,11 @@ class ESConfig(TrainerConfig):
         self.noise_size = 250000000
         self.report_length = 10
 
-        # Override some of TrainerConfig's default values with ES-specific values.
+        # Override some of AlgorithmConfig's default values with ES-specific values.
         self.train_batch_size = 10000
         self.num_workers = 10
         self.observation_filter = "MeanStdFilter"
-        # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
+        # ARS will use Algorithm's evaluation WorkerSet (if evaluation_interval > 0).
         # Therefore, we must be careful not to use more than 1 env per eval worker
         # (would break ARSPolicy's compute_single_action method) and to not do
         # obs-filtering.
@@ -105,7 +105,7 @@ class ESConfig(TrainerConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(TrainerConfig)
+    @override(AlgorithmConfig)
     def training(
         self,
         *,
@@ -137,7 +137,7 @@ class ESConfig(TrainerConfig):
             report_length: How many of the last rewards we average over.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -319,16 +319,16 @@ def get_policy_class(config):
     return policy_cls
 
 
-class ES(Trainer):
+class ES(Algorithm):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return ESConfig().to_dict()
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -348,7 +348,7 @@ class ES(Trainer):
                 "`NoFilter` for ES!"
             )
 
-    @override(Trainer)
+    @override(Algorithm)
     def setup(self, config):
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
@@ -393,7 +393,7 @@ class ES(Trainer):
         self.reward_list = []
         self.tstart = time.time()
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_policy(self, policy=DEFAULT_POLICY_ID):
         if policy != DEFAULT_POLICY_ID:
             raise ValueError(
@@ -402,8 +402,8 @@ class ES(Trainer):
             )
         return self.policy
 
-    @override(Trainer)
-    def step_attempt(self):
+    @override(Algorithm)
+    def step(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()
@@ -503,7 +503,7 @@ class ES(Trainer):
 
         return result
 
-    @override(Trainer)
+    @override(Algorithm)
     def compute_single_action(self, observation, *args, **kwargs):
         action, _, _ = self.policy.compute_actions([observation], update=False)
         if kwargs.get("full_fetch"):
@@ -514,7 +514,7 @@ class ES(Trainer):
     def compute_action(self, observation, *args, **kwargs):
         return self.compute_single_action(observation, *args, **kwargs)
 
-    @override(Trainer)
+    @override(Algorithm)
     def _sync_weights_to_workers(self, *, worker_set=None, workers=None):
         # Broadcast the new policy weights to all evaluation workers.
         assert worker_set is not None
@@ -522,7 +522,7 @@ class ES(Trainer):
         weights = ray.put(self.policy.get_flat_weights())
         worker_set.foreach_policy(lambda p, pid: p.set_flat_weights(ray.get(weights)))
 
-    @override(Trainer)
+    @override(Algorithm)
     def cleanup(self):
         # workaround for https://github.com/ray-project/ray/issues/1516
         for w in self.workers:

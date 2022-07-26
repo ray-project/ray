@@ -24,9 +24,6 @@ import ray
 from ray.rllib.algorithms.ppo import PPOConfig, PPO
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.common import (
-    STEPS_TRAINED_THIS_ITER_COUNTER,
-)
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
@@ -42,9 +39,9 @@ from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import (
     EnvType,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     ResultDict,
-    TrainerConfigDict,
+    AlgorithmConfigDict,
 )
 from ray.tune.logger import Logger
 
@@ -52,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 
 class DDPPOConfig(PPOConfig):
-    """Defines a configuration class from which a DDPPO Trainer can be built.
+    """Defines a configuration class from which a DDPPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddppo import DDPPOConfig
@@ -60,7 +57,7 @@ class DDPPOConfig(PPOConfig):
         ...             .resources(num_gpus=1)\
         ...             .rollouts(num_workers=10)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -83,9 +80,9 @@ class DDPPOConfig(PPOConfig):
         ... )
     """
 
-    def __init__(self, trainer_class=None):
+    def __init__(self, algo_class=None):
         """Initializes a DDPPOConfig instance."""
-        super().__init__(trainer_class=trainer_class or DDPPO)
+        super().__init__(algo_class=algo_class or DDPPO)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -93,7 +90,7 @@ class DDPPOConfig(PPOConfig):
         self.keep_local_weights_in_sync = True
         self.torch_distributed_backend = "gloo"
 
-        # Override some of PPO/Trainer's default values with DDPPO-specific values.
+        # Override some of PPO/Algorithm's default values with DDPPO-specific values.
         # During the sampling phase, each rollout worker will collect a batch
         # `rollout_fragment_length * num_envs_per_worker` steps in size.
         self.rollout_fragment_length = 100
@@ -144,7 +141,7 @@ class DDPPOConfig(PPOConfig):
                 distributed.
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -160,11 +157,10 @@ class DDPPOConfig(PPOConfig):
 class DDPPO(PPO):
     def __init__(
         self,
-        config: Optional[PartialTrainerConfigDict] = None,
+        config: Optional[PartialAlgorithmConfigDict] = None,
         env: Optional[Union[str, EnvType]] = None,
         logger_creator: Optional[Callable[[], Logger]] = None,
-        remote_checkpoint_dir: Optional[str] = None,
-        sync_function_tpl: Optional[str] = None,
+        **kwargs,
     ):
         """Initializes a DDPPO instance.
 
@@ -177,9 +173,11 @@ class DDPPO(PPO):
                 the "env" key in `config`.
             logger_creator: Callable that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            **kwargs: Arguments passed to the Trainable base class
+
         """
         super().__init__(
-            config, env, logger_creator, remote_checkpoint_dir, sync_function_tpl
+            config=config, env=env, logger_creator=logger_creator, **kwargs
         )
 
         if "train_batch_size" in config.keys() and config["train_batch_size"] != -1:
@@ -196,12 +194,12 @@ class DDPPO(PPO):
 
     @classmethod
     @override(PPO)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return DDPPOConfig().to_dict()
 
     @override(PPO)
     def validate_config(self, config):
-        """Validates the Trainer's config dict.
+        """Validates the Algorithm's config dict.
 
         Args:
             config: The Trainer's config to check.
@@ -251,7 +249,7 @@ class DDPPO(PPO):
             raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
     @override(PPO)
-    def setup(self, config: PartialTrainerConfigDict):
+    def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
 
         # Initialize torch process group for
@@ -282,7 +280,7 @@ class DDPPO(PPO):
             )
 
     @override(PPO)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         # Shortcut.
         first_worker = self.workers.remote_workers()[0]
 
@@ -296,10 +294,8 @@ class DDPPO(PPO):
         # - Update the worker's global_vars.
         # - Build info dict using a LearnerInfoBuilder object.
         learner_info_builder = LearnerInfoBuilder(num_devices=1)
-        steps_this_iter = 0
         for worker, results in sample_and_update_results.items():
             for result in results:
-                steps_this_iter += result["env_steps"]
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += result["agent_steps"]
                 self._counters[NUM_AGENT_STEPS_TRAINED] += result["agent_steps"]
                 self._counters[NUM_ENV_STEPS_SAMPLED] += result["env_steps"]
@@ -313,8 +309,6 @@ class DDPPO(PPO):
             global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
             for worker in self.workers.remote_workers():
                 worker.set_global_vars.remote(global_vars)
-
-        self._counters[STEPS_TRAINED_THIS_ITER_COUNTER] = steps_this_iter
 
         # Sync down the weights from 1st remote worker (only if we have received
         # some results from it).

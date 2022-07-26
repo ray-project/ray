@@ -1,15 +1,9 @@
-from typing import Dict
-import tempfile
 import pytest
 import sys
-import os
-import yaml
-import requests
 
 import ray
 from ray import serve
 from ray.serve.application import Application
-from ray.serve.api import build as build_app
 from ray._private.test_utils import wait_for_condition
 
 
@@ -273,136 +267,13 @@ class DecoratedClass:
         return "got decorated class"
 
 
-class TestServeBuild:
-    @serve.deployment
-    class A:
-        pass
-
-    def test_build_non_importable(self, serve_instance):
-        def gen_deployment():
-            @serve.deployment
-            def f():
-                pass
-
-            return f
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            build_app(gen_deployment().bind()).to_dict()
-
-
-def compare_specified_options(deployments1: Dict, deployments2: Dict):
-    """
-    Helper method that takes 2 deployment dictionaries in the REST API
-    format and compares their specified settings. Assumes deployments2 may
-    have default values that deployments1 lacks. Does not compare
-    ray_actor_options.
-    """
-
-    deployments1 = deployments1["deployments"]
-    deployments2 = deployments2["deployments"]
-
-    for deployments in [deployments1, deployments2]:
-        deployments.sort(key=lambda d: d["name"])
-
-    for deployment1, deployment2 in zip(deployments1, deployments2):
-        for key, val in deployment1.items():
-            if val and key != "ray_actor_options":
-                assert deployment1[key] == deployment2[key]
-
-
-class TestDictTranslation:
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="File path incorrect on Windows."
-    )
-    def test_deploy_from_dict(self, serve_instance):
-        config_file_name = os.path.join(
-            os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-        )
-
-        with open(config_file_name, "r") as config_file:
-            config_dict = yaml.safe_load(config_file)
-
-        app = Application.from_dict(config_dict)
-        app_dict = app.to_dict()
-
-        compare_specified_options(config_dict, app_dict)
-
-        serve.run(app.from_dict(app_dict))
-
-        assert (
-            requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
-        )
-        assert requests.get("http://localhost:8000/one").text == "2"
-
-
-class TestYAMLTranslation:
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="File path incorrect on Windows."
-    )
-    def test_deploy_from_yaml(self, serve_instance):
-        config_file_name = os.path.join(
-            os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-        )
-
-        # Check if yaml string and yaml file both produce the same Application
-        with open(config_file_name, "r") as f:
-            app1 = Application.from_yaml(f)
-        with open(config_file_name, "r") as f:
-            yaml_str = f.read()
-        app2 = Application.from_yaml(yaml_str)
-        compare_specified_options(app1.to_dict(), app2.to_dict())
-
-        # Check that deployment works
-        serve.run(app1)
-        assert (
-            requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
-        )
-        assert requests.get("http://localhost:8000/one").text == "2"
-
-        # Check if yaml string output is same as the Application
-        recreated_app = Application.from_yaml(app1.to_yaml())
-        compare_specified_options(recreated_app.to_dict(), app1.to_dict())
-
-        # Check if yaml file output is same as the Application
-        with tempfile.TemporaryFile(mode="w+") as tmp:
-            app1.to_yaml(tmp)
-            tmp.seek(0)
-            compare_specified_options(
-                Application.from_yaml(tmp).to_dict(), app1.to_dict()
-            )
-
-    def test_convert_to_import_path(self, serve_instance):
-        f = decorated_func.options(name="f")
-        C = DecoratedClass.options(name="C")
-        app = Application([f, C])
-
-        reconstructed_app = Application.from_yaml(app.to_yaml())
-
-        serve.run(reconstructed_app)
-        assert requests.get("http://localhost:8000/f").text == "got decorated func"
-        assert requests.get("http://localhost:8000/C").text == "got decorated class"
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_immutable_deployment_list(serve_instance):
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", "two_deployments.yaml"
-    )
-
-    with open(config_file_name, "r") as f:
-        app = Application.from_yaml(f)
-
+    app = Application([DecoratedClass, decorated_func])
     assert len(app.deployments.values()) == 2
 
     for name in app.deployments.keys():
         with pytest.raises(RuntimeError):
             app.deployments[name] = app.deployments[name].options(name="sneaky")
-
-    for deployment in app.deployments.values():
-        deployment.deploy()
-
-    assert requests.get("http://localhost:8000/shallow").text == "Hello shallow world!"
-    assert requests.get("http://localhost:8000/one").text == "2"
 
 
 if __name__ == "__main__":

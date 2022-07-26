@@ -19,7 +19,7 @@ from typing import Optional
 
 import ray
 from ray import serve
-from ray.experimental.dag import InputNode
+from ray.dag import InputNode
 from ray.serve.drivers import DAGDriver
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,

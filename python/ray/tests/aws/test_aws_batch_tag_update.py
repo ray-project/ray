@@ -24,7 +24,7 @@ def batch_test(num_threads, delay):
     updated.
     """
     with mock.patch(
-        "ray.autoscaler._private.aws.node_provider.make_ec2_client"
+        "ray.autoscaler._private.aws.node_provider.make_ec2_resource"
     ), mock.patch.object(AWSNodeProvider, "_create_tags", mock_create_tags):
         provider = AWSNodeProvider(
             provider_config={"region": "nowhere"}, cluster_name="default"

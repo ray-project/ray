@@ -2,6 +2,7 @@ from typing import Optional, Type
 
 from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.algorithms.qmix.qmix_policy import QMixTorchPolicy
+from ray.rllib.utils.replay_buffers.utils import update_priorities_in_replay_buffer
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -20,12 +21,13 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.utils.typing import ResultDict, TrainerConfigDict
+from ray.rllib.utils.typing import ResultDict, AlgorithmConfigDict
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import deprecation_warning
 
 
 class QMixConfig(SimpleQConfig):
-    """Defines a configuration class from which a QMix Trainer can be built.
+    """Defines a configuration class from which QMix can be built.
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -34,9 +36,9 @@ class QMixConfig(SimpleQConfig):
         ...             .resources(num_gpus=0)\
         ...             .rollouts(num_workers=4)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
-        >>> trainer = config.build(env=TwoStepGame)
-        >>> trainer.train()
+        >>> # Build an Algorithm object from the config and run 1 training iteration.
+        >>> algo = config.build(env=TwoStepGame)
+        >>> algo.train()
 
     Example:
         >>> from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -60,7 +62,7 @@ class QMixConfig(SimpleQConfig):
 
     def __init__(self):
         """Initializes a PPOConfig instance."""
-        super().__init__(trainer_class=QMix)
+        super().__init__(algo_class=QMix)
 
         # fmt: off
         # __sphinx_doc_begin__
@@ -70,20 +72,23 @@ class QMixConfig(SimpleQConfig):
         self.double_q = True
         self.optim_alpha = 0.99
         self.optim_eps = 0.00001
-        self.grad_norm_clipping = 10
+        self.grad_clip = 10
 
-        # Override some of TrainerConfig's default values with QMix-specific values.
+        # Override some of AlgorithmConfig's default values with QMix-specific values.
         # .training()
         self.lr = 0.0005
         self.train_batch_size = 32
         self.target_network_update_freq = 500
         self.replay_buffer_config = {
-            "type": "SimpleReplayBuffer",
+            "type": "ReplayBuffer",
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
-            # Size of the replay buffer in batches (not timesteps!).
+            # Size of the replay buffer in batches
             "capacity": 1000,
+            # Choosing `fragments` here makes it so that the buffer stores entire
+            # batches, instead of sequences, episodes or timesteps.
+            "storage_unit": "fragments",
             "learning_starts": 1000,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
@@ -102,8 +107,8 @@ class QMixConfig(SimpleQConfig):
         self.batch_mode = "complete_episodes"
 
         # .reporting()
-        self.min_time_s_per_reporting = 1
-        self.min_sample_timesteps_per_reporting = 1000
+        self.min_time_s_per_iteration = 1
+        self.min_sample_timesteps_per_iteration = 1000
 
         # .exploration()
         self.exploration_config = {
@@ -149,6 +154,7 @@ class QMixConfig(SimpleQConfig):
         optim_alpha: Optional[float] = None,
         optim_eps: Optional[float] = None,
         grad_norm_clipping: Optional[float] = None,
+        grad_clip: Optional[float] = None,
         **kwargs,
     ) -> "QMixConfig":
         """Sets the training related configuration.
@@ -162,14 +168,28 @@ class QMixConfig(SimpleQConfig):
             replay_buffer_config:
             optim_alpha: RMSProp alpha.
             optim_eps: RMSProp epsilon.
-            grad_norm_clipping: If not None, clip gradients during optimization at
+            grad_clip: If not None, clip gradients during optimization at
                 this value.
+            grad_norm_clipping: Depcrecated in favor of grad_clip
 
         Returns:
-            This updated TrainerConfig object.
+            This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
+
+        if grad_norm_clipping is not None:
+            deprecation_warning(
+                old="grad_norm_clipping",
+                new="grad_clip",
+                help="Parameter `grad_norm_clipping` has been "
+                "deprecated in favor of grad_clip in QMix. "
+                "This is now the same parameter as in other "
+                "algorithms. `grad_clip` will be overwritten by "
+                "`grad_norm_clipping={}`".format(grad_norm_clipping),
+                error=False,
+            )
+            grad_clip = grad_norm_clipping
 
         if mixer is not None:
             self.mixer = mixer
@@ -185,8 +205,8 @@ class QMixConfig(SimpleQConfig):
             self.optim_alpha = optim_alpha
         if optim_eps is not None:
             self.optim_eps = optim_eps
-        if grad_norm_clipping is not None:
-            self.grad_norm_clipping = grad_norm_clipping
+        if grad_clip is not None:
+            self.grad_clip = grad_clip
 
         return self
 
@@ -194,11 +214,11 @@ class QMixConfig(SimpleQConfig):
 class QMix(SimpleQ):
     @classmethod
     @override(SimpleQ)
-    def get_default_config(cls) -> TrainerConfigDict:
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return QMixConfig().to_dict()
 
     @override(SimpleQ)
-    def validate_config(self, config: TrainerConfigDict) -> None:
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
         # Call super's validation method.
         super().validate_config(config)
 
@@ -206,11 +226,11 @@ class QMix(SimpleQ):
             raise ValueError("Only `framework=torch` supported so far for QMix!")
 
     @override(SimpleQ)
-    def get_default_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
         return QMixTorchPolicy
 
     @override(SimpleQ)
-    def training_iteration(self) -> ResultDict:
+    def training_step(self) -> ResultDict:
         """QMIX training iteration function.
 
         - Sample n MultiAgentBatches from n workers synchronously.
@@ -270,6 +290,10 @@ class QMix(SimpleQ):
             )
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+        update_priorities_in_replay_buffer(
+            self.local_replay_buffer, self.config, train_batch, train_results
+        )
 
         # Update weights and global_vars - after learning on the local worker - on all
         # remote workers.

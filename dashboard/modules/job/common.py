@@ -1,26 +1,23 @@
+import pickle
+import time
 from dataclasses import dataclass, replace
 from enum import Enum
-import time
-from typing import Any, Dict, Optional, Tuple
-import pickle
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
-from ray import ray_constants
+from ray._private import ray_constants
+from ray._private.runtime_env.packaging import parse_uri
 from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
     _internal_kv_get,
+    _internal_kv_initialized,
     _internal_kv_list,
     _internal_kv_put,
 )
-from ray._private.runtime_env.packaging import parse_uri
 
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
-
-# Version 0 -> 1: Added log streaming and changed behavior of job logs cli.
-CURRENT_VERSION = "1"
 
 
 class JobStatus(str, Enum):
@@ -96,7 +93,7 @@ class JobInfoStorageClient:
     Interface to put and get job data from the Internal KV store.
     """
 
-    JOB_DATA_KEY_PREFIX = "_ray_internal_job_info_"
+    JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
     def __init__(self):
@@ -177,13 +174,6 @@ def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
 
 def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) -> Any:
     return request_type(**json_data)
-
-
-@dataclass
-class VersionResponse:
-    version: str
-    ray_version: str
-    ray_commit: str
 
 
 @dataclass

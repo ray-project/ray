@@ -78,7 +78,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py36 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -86,7 +86,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py36 --device-types cu111 cu112 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py37 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -94,7 +94,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py37 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -102,7 +102,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py38 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -110,7 +110,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py38 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -118,7 +118,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu111 cu112 cu113 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py39 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -126,7 +126,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cpu cu101 cu102 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cpu cu101 cu102 cu110 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py39 (2/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -134,7 +134,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu110 cu111 cu112 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu111 cu112 cu113 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py310"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -204,7 +204,7 @@
       --jobs=2
       -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
-      -//:gcs_server_rpc_test -//:gcs_client_test
+      -//:gcs_server_rpc_test -//:gcs_client_test -//:gcs_heartbeat_manager_test
       -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
       -//:ray_syncer_test
 
@@ -317,7 +317,7 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - . ./ci/ci.sh test_large
+    - ./ci/ci.sh test_large
 - label: ":python: (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -345,7 +345,7 @@
   parallelism: 3
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TEST_EXTERNAL_REDIS=1 . ./ci/ci.sh test_large
+    - TEST_EXTERNAL_REDIS=1 ./ci/ci.sh test_large
 - label: ":redis: (External Redis) (Medium A-J)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -376,7 +376,6 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install "grpcio >= 1.28.1, <= 1.43.0"
     - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
       --config=asan-buildkite
       --test_tag_filters=-kubernetes,asan_tests
@@ -386,38 +385,6 @@
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
-
-- label: ":construction: :python: (syncer) (Small & Client)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=client_tests,small_size_python_tests
-      --test_env=RAY_use_ray_syncer=true
-      -- python/ray/tests/...
-- label: ":construction: :python: (syncer) (Large)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  parallelism: 3
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RAY_use_ray_syncer=true . ./ci/ci.sh test_large --define=RAY_STAGING_TESTS=1
-- label: ":construction: :python: (syncer) (Medium A-J)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j
-      --test_env=RAY_use_ray_syncer=true --define=RAY_STAGING_TESTS=1
-      -- python/ray/tests/... -//python/ray/tests:test_actor_resources
-- label: ":construction: :python: (syncer) (Medium K-Z)"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z
-      --test_env=RAY_use_ray_syncer=true --define=RAY_STAGING_TESTS=1
-      python/ray/tests/...
-
 
 # https://github.com/ray-project/ray/issues/22460
 #- label: ":python: (Privileged test)"
@@ -443,11 +410,12 @@
     - ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=soft_imports python/ray/tune/...
 
+# Test to see if Train can be used without torch, tf, etc. installed
 - label: ":steam_locomotive: Train minimal install"
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
   commands:
       - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-      - ./ci/env/install-minimal.sh
+      - TRAIN_MINIMAL_INSTALL=1 ./ci/env/install-minimal.sh
       - ./ci/env/env_info.sh
       - python ./ci/env/check_minimal_install.py
       - bazel test --config=ci $(./ci/run/bazel_export_options)  --build_tests_only --test_tag_filters=minimal python/ray/train/...
@@ -455,7 +423,13 @@
 - label: ":kubernetes: operator"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - |
+      cleanup() {
+        if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
+        python python/ray/tests/kuberay/setup/teardown_kuberay.py
+        kind delete cluster
+      }
+      trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
     - PYTHON=3.7 ./ci/env/install-dependencies.sh
     # Specifying PYTHON=3.7 above somehow messes up the Ray install.
@@ -473,6 +447,8 @@
     - docker tag rayproject/ray:nightly-py37-cpu ray-ci:kuberay-test
     # Load the image into the kind node.
     - kind load docker-image ray-ci:kuberay-test
+    - echo "--- Setting up KubeRay operator."
+    - python python/ray/tests/kuberay/setup/setup_kuberay.py
     - echo "--- Running the test."
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=kuberay_operator
@@ -480,3 +456,15 @@
       --test_env=PULL_POLICY=IfNotPresent
       --test_env=KUBECONFIG=/root/.kube/config
       python/ray/tests/...
+- label: ":python: Ray DAG Tests"
+  conditions:
+    [
+        "RAY_CI_PYTHON_AFFECTED",
+    ]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - pip install -U pydot
+    - sudo apt-get install -y graphviz
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=ray_dag_tests
+      python/ray/dag/...

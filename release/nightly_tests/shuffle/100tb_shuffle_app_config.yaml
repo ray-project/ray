@@ -1,0 +1,18 @@
+base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
+debian_packages: []
+env_vars: {"RAY_object_spilling_config": "{\"type\":\"filesystem\",\"params\":{\"directory_path\":[\"/tmp/data0\",\"/tmp/data1\"]}}"}
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds:
+  - pip3 uninstall -y ray && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U ray[default]
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  - echo "yes N | sudo mkfs -t ext4 /dev/nvme1n1 || true" >> ~/.bashrc
+  - echo "mkdir -p /tmp/data0" >> ~/.bashrc
+  - echo "mkdir -p /tmp/data1" >> ~/.bashrc
+  - echo "sudo chmod 0777 /tmp/data0" >> ~/.bashrc
+  - echo "sudo chmod 0777 /tmp/data1" >> ~/.bashrc
+  - echo "sudo mount /dev/nvme1n1 /tmp/data1 || true" >> ~/.bashrc

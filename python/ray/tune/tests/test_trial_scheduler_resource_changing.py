@@ -2,12 +2,13 @@ import unittest
 
 from ray.tune import PlacementGroupFactory
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.trial import Trial, _TuneCheckpoint
+from ray.tune.experiment import Trial
 from ray.tune.schedulers.resource_changing_scheduler import (
     ResourceChangingScheduler,
     DistributeResources,
     DistributeResourcesToTopJob,
 )
+from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
 class MockResourceUpdater:
@@ -48,7 +49,11 @@ class MockTrialRunner:
 class MockTrial(Trial):
     @property
     def checkpoint(self):
-        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, "None", {})
+        return _TrackedCheckpoint(
+            dir_or_data="None",
+            storage_mode=CheckpointStorage.MEMORY,
+            metrics={},
+        )
 
 
 class TestUniformResourceAllocation(unittest.TestCase):

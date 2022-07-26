@@ -1,7 +1,8 @@
 import os
+
 import ray
 
-cuda_env = ray.ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
+cuda_env = ray._private.ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 assert os.environ[cuda_env] == "1"
 
 

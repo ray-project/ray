@@ -267,7 +267,8 @@ def plot_images(dataloader):
 def demo_gan(checkpoint_paths):
     img_list = []
     fixed_noise = torch.randn(64, nz, 1, 1)
-    for netG_path in checkpoint_paths:
+    for path in checkpoint_paths:
+        netG_path = os.path.join(path, "checkpoint.pt")
         loadedG = Generator()
         loadedG.load_state_dict(torch.load(netG_path)["netGmodel"])
         with torch.no_grad():

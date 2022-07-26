@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.replay_buffers.reservoir_buffer import ReservoirBuffer
+from ray.rllib.utils.replay_buffers.reservoir_replay_buffer import ReservoirReplayBuffer
 
 
 class TestReservoirBuffer(unittest.TestCase):
@@ -34,7 +34,7 @@ class TestReservoirBuffer(unittest.TestCase):
         batch_size = 1
         buffer_size = 100
 
-        buffer = ReservoirBuffer(capacity=buffer_size)
+        buffer = ReservoirReplayBuffer(capacity=buffer_size)
         # Put 1000 batches in a buffer with capacity 100
         _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1000)
 
@@ -76,7 +76,7 @@ class TestReservoirBuffer(unittest.TestCase):
         batch_size = 1
         buffer_size = 100
 
-        buffer = ReservoirBuffer(capacity=buffer_size, storage_unit="fragments")
+        buffer = ReservoirReplayBuffer(capacity=buffer_size, storage_unit="fragments")
         # Put 1000 batches in a buffer with capacity 100
         _add_data_to_buffer(buffer, batch_size=batch_size, num_batches=1000)
 

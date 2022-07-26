@@ -9,7 +9,7 @@ from ray.tune import Trainable, TuneError
 from ray.tune import register_trainable, run_experiments
 from ray.tune.logger import LegacyLoggerCallback, Logger
 from ray.tune.experiment import Experiment
-from ray.tune.trial import Trial, ExportFormat
+from ray.tune.experiment.trial import Trial, ExportFormat
 
 
 class RunExperimentTest(unittest.TestCase):

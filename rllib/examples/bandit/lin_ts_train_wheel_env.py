@@ -47,18 +47,18 @@ if __name__ == "__main__":
         "framework": args.framework,
         "eager_tracing": (args.framework == "tf2"),
     }
-    trainer = BanditLinTS(env=WheelBanditEnv, config=config)
+    algo = BanditLinTS(env=WheelBanditEnv, config=config)
 
-    policy = trainer.get_policy()
+    policy = algo.get_policy()
     model = policy.model
 
     print("Using exploration strategy:", policy.exploration)
     print("Using model:", model)
 
     for i in range(num_iter):
-        trainer.train()
+        algo.train()
 
-    info = trainer.train()
+    info = algo.train()
     print(info["info"][LEARNER_INFO])
 
     # Get model parameters

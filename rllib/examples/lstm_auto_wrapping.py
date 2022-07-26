@@ -40,7 +40,7 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("my_torch_model", MyCustomModel)
 
     # Create the Trainer.
-    trainer = ppo.PPO(
+    algo = ppo.PPO(
         env="CartPole-v0",
         config={
             "framework": "torch",
@@ -56,6 +56,6 @@ if __name__ == "__main__":
             },
         },
     )
-    trainer.train()
+    algo.train()
 
 # __sphinx_doc_end__

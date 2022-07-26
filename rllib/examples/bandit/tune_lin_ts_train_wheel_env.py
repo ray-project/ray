@@ -51,7 +51,7 @@ if __name__ == "__main__":
     }
 
     # Actual env steps per `train()` call will be
-    # 10 * `min_sample_timesteps_per_reporting` (100 by default) = 1,000
+    # 10 * `min_sample_timesteps_per_iteration` (100 by default) = 1,000
     training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     # Restore trainer from checkpoint
     trial = analysis.trials[0]
     trainer = BanditLinTS(config=config)
-    trainer.restore(trial.checkpoint.value)
+    trainer.restore(trial.checkpoint.dir_or_data)
 
     # Get model to plot arm weights distribution
     model = trainer.get_policy().model

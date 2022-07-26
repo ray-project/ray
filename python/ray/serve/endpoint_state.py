@@ -64,7 +64,7 @@ class EndpointState:
 
         existing_route_endpoint = self._get_endpoint_for_route(endpoint_info.route)
         if existing_route_endpoint is not None and existing_route_endpoint != endpoint:
-            logger.warn(
+            logger.debug(
                 f'route_prefix "{endpoint_info.route}" is currently '
                 f'registered to deployment "{existing_route_endpoint}". '
                 f'Re-registering route_prefix "{endpoint_info.route}" to '

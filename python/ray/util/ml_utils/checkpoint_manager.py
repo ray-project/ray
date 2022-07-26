@@ -6,20 +6,18 @@ import logging
 import numbers
 import os
 import shutil
-
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Union, Callable, Tuple, List, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray.air import Checkpoint
-from ray.tune.result import NODE_IP
-from ray.util import PublicAPI
-from ray.util.annotations import DeveloperAPI
+from ray.air import Checkpoint, CheckpointConfig
+from ray.air.config import MAX
+from ray.util import log_once
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.ml_utils.util import is_nan
 
-MAX = "max"
-MIN = "min"
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +63,8 @@ class _TrackedCheckpoint:
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
     ):
+        from ray.tune.result import NODE_IP
+
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
         self.storage_mode = storage_mode
@@ -72,8 +72,10 @@ class _TrackedCheckpoint:
         self.metrics = metrics or {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
 
-        if storage_mode == CheckpointStorage.MEMORY and not isinstance(
-            dir_or_data, (dict, ray.ObjectRef)
+        if (
+            dir_or_data is not None
+            and storage_mode == CheckpointStorage.MEMORY
+            and not isinstance(dir_or_data, (dict, ray.ObjectRef))
         ):
             raise ValueError(
                 f"Memory checkpoints only support Ray object references and dicts "
@@ -116,12 +118,48 @@ class _TrackedCheckpoint:
         except Exception as e:
             logger.warning(f"Checkpoint deletion failed: {e}")
 
+    def to_air_checkpoint(self) -> Optional[Checkpoint]:
+        from ray.tune.trainable.util import TrainableUtil
+
+        checkpoint_data = self.dir_or_data
+
+        if not checkpoint_data:
+            return None
+
+        if isinstance(checkpoint_data, ray.ObjectRef):
+            checkpoint_data = ray.get(checkpoint_data)
+
+        if isinstance(checkpoint_data, str):
+            try:
+                checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+            except FileNotFoundError:
+                if log_once("checkpoint_not_available"):
+                    logger.error(
+                        f"The requested checkpoint is not available on this node, "
+                        f"most likely because you are using Ray client or disabled "
+                        f"checkpoint synchronization. To avoid this, enable checkpoint "
+                        f"synchronization to cloud storage by specifying a "
+                        f"`SyncConfig`. The checkpoint may be available on a different "
+                        f"node - please check this location on worker nodes: "
+                        f"{checkpoint_data}"
+                    )
+                return None
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+        elif isinstance(checkpoint_data, bytes):
+            checkpoint = Checkpoint.from_bytes(checkpoint_data)
+        elif isinstance(checkpoint_data, dict):
+            checkpoint = Checkpoint.from_dict(checkpoint_data)
+        else:
+            raise RuntimeError(f"Unknown checkpoint data type: {type(checkpoint_data)}")
+
+        return checkpoint
+
     def __repr__(self):
         if self.storage_mode == CheckpointStorage.MEMORY:
-            return f"<TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
+            return f"<_TrackedCheckpoint storage='MEMORY' result={self.metrics}>"
 
         return (
-            f"<TrackedCheckpoint storage='PERSISTENT' "
+            f"<_TrackedCheckpoint storage='PERSISTENT' "
             f"dir_or_data={self.dir_or_data}>"
         )
 
@@ -155,50 +193,21 @@ class _HeapCheckpointWrapper:
         return f"_HeapCheckpoint({repr(self.tracked_checkpoint)})"
 
 
-@PublicAPI(stability="beta")
+# Alias for backwards compatibility
+
+deprecation_message = (
+    "`CheckpointStrategy` is deprecated and will be removed in "
+    "the future. Please use `ray.air.config.CheckpointStrategy` "
+    "instead."
+)
+
+
+@Deprecated(message=deprecation_message)
 @dataclass
-class CheckpointStrategy:
-    """Configurable parameters for defining the checkpointing strategy.
-
-    Default behavior is to persist all checkpoints to disk. If
-    ``num_to_keep`` is set, the default retention policy is to keep the
-    checkpoints with maximum timestamp, i.e. the most recent checkpoints.
-
-    Args:
-        num_to_keep (Optional[int]): The number of checkpoints to keep
-            on disk for this run. If a checkpoint is persisted to disk after
-            there are already this many checkpoints, then an existing
-            checkpoint will be deleted. If this is ``None`` then checkpoints
-            will not be deleted. If this is ``0`` then no checkpoints will be
-            persisted to disk.
-        checkpoint_score_attribute: The attribute that will be used to
-            score checkpoints to determine which checkpoints should be kept
-            on disk when there are greater than ``num_to_keep`` checkpoints.
-            This attribute must be a key from the checkpoint
-            dictionary which has a numerical value. Per default, the last
-            checkpoints will be kept.
-        checkpoint_score_order (str). Either "max" or "min".
-            If "max", then checkpoints with highest values of
-            ``checkpoint_score_attribute`` will be kept.
-            If "min", then checkpoints with lowest values of
-            ``checkpoint_score_attribute`` will be kept.
-    """
-
-    num_to_keep: Optional[int] = None
-    checkpoint_score_attribute: Optional[str] = None
-    checkpoint_score_order: str = MAX
-
+class CheckpointStrategy(CheckpointConfig):
     def __post_init__(self):
-        if self.num_to_keep is not None and self.num_to_keep < 0:
-            raise ValueError(
-                f"Received invalid num_to_keep: "
-                f"{self.num_to_keep}. "
-                f"Must be None or non-negative integer."
-            )
-        if self.checkpoint_score_order not in (MAX, MIN):
-            raise ValueError(
-                f"checkpoint_score_order must be either " f'"{MAX}" or "{MIN}".'
-            )
+        warnings.warn(deprecation_message)
+        super().__post_init__()
 
 
 class _CheckpointManager:
@@ -210,7 +219,7 @@ class _CheckpointManager:
     keeps a configured number of checkpoints according to specified metrics.
 
     The manager supports lazy data writing by utilizing the
-    ``TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
+    ``_TrackedCheckpoint.commit()`` API, which is only invoked if the checkpoint
     should be persisted to disk.
 
     Args:
@@ -228,11 +237,11 @@ class _CheckpointManager:
 
     def __init__(
         self,
-        checkpoint_strategy: CheckpointStrategy,
+        checkpoint_strategy: CheckpointConfig,
         latest_checkpoint_id: int = 0,
         delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]] = None,
     ):
-        self._checkpoint_strategy = checkpoint_strategy or CheckpointStrategy()
+        self._checkpoint_strategy = checkpoint_strategy or CheckpointConfig()
 
         # Incremental unique checkpoint ID of this run.
         self._latest_checkpoint_id = latest_checkpoint_id

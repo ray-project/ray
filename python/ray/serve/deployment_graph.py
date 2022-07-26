@@ -1,10 +1,10 @@
 from contextlib import contextmanager
 import json
 
-from ray.experimental.dag.class_node import ClassNode  # noqa: F401
-from ray.experimental.dag.function_node import FunctionNode  # noqa: F401
-from ray.experimental.dag.input_node import InputNode  # noqa: F401
-from ray.experimental.dag import DAGNode  # noqa: F401
+from ray.dag.class_node import ClassNode  # noqa: F401
+from ray.dag.function_node import FunctionNode  # noqa: F401
+from ray.dag.input_node import InputNode  # noqa: F401
+from ray.dag import DAGNode  # noqa: F401
 from ray.util.annotations import PublicAPI
 import ray.serve.client
 
@@ -44,7 +44,7 @@ class RayServeDAGHandle:
         # NOTE: There's nothing user can do about these warnings, we should hide it.
         with _mute_sync_handle_warnings():
             if self.dag_node is None:
-                from ray.serve.pipeline.json_serde import dagnode_from_json
+                from ray.serve.json_serde import dagnode_from_json
 
                 self.dag_node = json.loads(
                     self.dag_node_json, object_hook=dagnode_from_json

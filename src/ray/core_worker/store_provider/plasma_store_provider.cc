@@ -469,8 +469,12 @@ void CoreWorkerPlasmaStoreProvider::WarnIfFetchHanging(
 Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   ObjectID object_id = ObjectID::FromRandom();
   std::shared_ptr<Buffer> data;
-  RAY_RETURN_NOT_OK(
-      Create(nullptr, 8, object_id, rpc::Address(), &data, /*created_by_worker=*/true));
+  RAY_RETURN_NOT_OK(Create(nullptr,
+                           8,
+                           object_id,
+                           rpc::Address(),
+                           &data,
+                           /*created_by_worker=*/true));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
   RAY_RETURN_NOT_OK(Delete({object_id}, true));

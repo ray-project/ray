@@ -1,15 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-    overload,
-)
+from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
@@ -18,52 +10,48 @@ from uvicorn.lifespan.on import LifespanOn
 
 import ray
 from ray import cloudpickle
-from ray._private.usage import usage_lib
-from ray.experimental.dag import DAGNode
+from ray.dag import DAGNode
 from ray.util.annotations import PublicAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.usage import usage_lib
+from ray._private.utils import deprecated
 
 from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient, get_controller_namespace
-from ray.serve.config import (
-    AutoscalingConfig,
-    DeploymentConfig,
-    HTTPOptions,
-)
+from ray.serve.client import ServeControllerClient
+from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
-    HTTP_PROXY_TIMEOUT,
-    SERVE_CONTROLLER_NAME,
     CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    HTTP_PROXY_TIMEOUT,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
 )
 from ray.serve.context import (
-    set_global_client,
+    ReplicaContext,
     get_global_client,
     get_internal_replica_context,
-    ReplicaContext,
+    set_global_client,
 )
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment_graph_build import build as pipeline_build
+from ray.serve.deployment_graph_build import get_and_validate_ingress_deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
 from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
 from ray.serve.logging_utils import LoggingContext
-from ray.serve.pipeline.api import (
-    build as pipeline_build,
-    get_and_validate_ingress_deployment,
-)
 from ray.serve.utils import (
+    DEFAULT,
     ensure_serialization_context,
     format_actor_name,
-    get_current_node_resource_key,
     get_random_letters,
     in_interactive_shell,
-    DEFAULT,
     install_serve_encoders_to_fastapi,
 )
 
+from ray.serve._private import api as _private_api
 
 logger = logging.getLogger(__file__)
 
@@ -73,8 +61,6 @@ def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
-    _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
-    _override_controller_namespace: Optional[str] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -125,25 +111,17 @@ def start(
                 f'{{"{key}": {kwargs[key]}}}) instead.'
             )
     # Initialize ray if needed.
-    ray.worker.global_worker.filter_logs_by_job = False
+    ray._private.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
-        ray.init(namespace="serve")
-
-    controller_namespace = get_controller_namespace(
-        detached, _override_controller_namespace=_override_controller_namespace
-    )
+        ray.init(namespace=SERVE_NAMESPACE)
 
     try:
-        client = get_global_client(
-            _override_controller_namespace=_override_controller_namespace,
-            _health_check_controller=True,
-        )
+        client = get_global_client(_health_check_controller=True)
         logger.info(
-            "Connecting to existing Serve instance in namespace "
-            f"'{controller_namespace}'."
+            f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
         )
 
-        _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
+        _check_http_options(client, http_options)
         return client
     except RayServeException:
         pass
@@ -158,22 +136,26 @@ def start(
     if http_options is None:
         http_options = HTTPOptions()
 
+    # Used for scheduling things to the head node explicitly.
+    # Assumes that `serve.start` runs on the head node.
+    head_node_id = ray.get_runtime_context().node_id.hex()
     controller = ServeController.options(
         num_cpus=1 if dedicated_cpu else 0,
         name=controller_name,
         lifetime="detached" if detached else None,
         max_restarts=-1,
         max_task_retries=-1,
-        # Pin Serve controller on the head node.
-        resources={get_current_node_resource_key(): 0.01},
-        namespace=controller_namespace,
+        # Schedule the controller on the head node with a soft constraint. This
+        # prefers it to run on the head node in most cases, but allows it to be
+        # restarted on other nodes in an HA cluster.
+        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=True),
+        namespace=SERVE_NAMESPACE,
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
         controller_name,
-        http_options,
-        _checkpoint_path,
+        http_config=http_options,
+        head_node_id=head_node_id,
         detached=detached,
-        _override_controller_namespace=_override_controller_namespace,
     )
 
     proxy_handles = ray.get(controller.get_http_proxies.remote())
@@ -192,12 +174,11 @@ def start(
         controller,
         controller_name,
         detached=detached,
-        _override_controller_namespace=_override_controller_namespace,
     )
     set_global_client(client)
     logger.info(
         f"Started{' detached ' if detached else ' '}Serve instance in "
-        f"namespace '{controller_namespace}'."
+        f'namespace "{SERVE_NAMESPACE}".'
     )
     return client
 
@@ -353,7 +334,6 @@ def deployment(func_or_class: Callable) -> Deployment:
 def deployment(
     name: Optional[str] = None,
     version: Optional[str] = None,
-    prev_version: Optional[str] = None,
     num_replicas: Optional[int] = None,
     init_args: Optional[Tuple[Any]] = None,
     init_kwargs: Optional[Dict[Any, Any]] = None,
@@ -361,11 +341,11 @@ def deployment(
     ray_actor_options: Optional[Dict] = None,
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
-    _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    _graceful_shutdown_wait_loop_s: Optional[float] = None,
-    _graceful_shutdown_timeout_s: Optional[float] = None,
-    _health_check_period_s: Optional[float] = None,
-    _health_check_timeout_s: Optional[float] = None,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+    graceful_shutdown_wait_loop_s: Optional[float] = None,
+    graceful_shutdown_timeout_s: Optional[float] = None,
+    health_check_period_s: Optional[float] = None,
+    health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -375,7 +355,6 @@ def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Optional[str] = None,
     version: Optional[str] = None,
-    prev_version: Optional[str] = None,
     num_replicas: Optional[int] = None,
     init_args: Optional[Tuple[Any]] = None,
     init_kwargs: Optional[Dict[Any, Any]] = None,
@@ -383,11 +362,11 @@ def deployment(
     ray_actor_options: Optional[Dict] = None,
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
-    _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    _graceful_shutdown_wait_loop_s: Optional[float] = None,
-    _graceful_shutdown_timeout_s: Optional[float] = None,
-    _health_check_period_s: Optional[float] = None,
-    _health_check_timeout_s: Optional[float] = None,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+    graceful_shutdown_wait_loop_s: Optional[float] = None,
+    graceful_shutdown_timeout_s: Optional[float] = None,
+    health_check_period_s: Optional[float] = None,
+    health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -399,11 +378,6 @@ def deployment(
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
             new version.
-        prev_version (Optional[str]): Version of the existing deployment which
-            is used as a precondition for the next deployment. If prev_version
-            does not match with the existing deployment's version, the
-            deployment will fail. If not provided, deployment procedure will
-            not check the existing deployment's version.
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
         init_args (Optional[Tuple]): Positional args to be passed to the class
@@ -423,7 +397,7 @@ def deployment(
             catch-all.
         ray_actor_options: Options to be passed to the Ray actor
             constructor such as resource requirements.
-        user_config (Optional[Any]): [experimental] Config to pass to the
+        user_config (Optional[Any]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
             restarting its replicas. The user_config needs to be hashable to
@@ -452,10 +426,10 @@ def deployment(
     if num_replicas == 0:
         raise ValueError("num_replicas is expected to larger than 0")
 
-    if num_replicas is not None and _autoscaling_config is not None:
+    if num_replicas is not None and autoscaling_config is not None:
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
-            "_autoscaling_config is provided."
+            "autoscaling_config is provided."
         )
 
     config = DeploymentConfig.from_default(
@@ -463,11 +437,11 @@ def deployment(
         num_replicas=num_replicas,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
-        autoscaling_config=_autoscaling_config,
-        graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
-        health_check_period_s=_health_check_period_s,
-        health_check_timeout_s=_health_check_timeout_s,
+        autoscaling_config=autoscaling_config,
+        graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
+        health_check_period_s=health_check_period_s,
+        health_check_timeout_s=health_check_timeout_s,
     )
 
     def decorator(_func_or_class):
@@ -476,7 +450,6 @@ def deployment(
             name if name is not None else _func_or_class.__name__,
             config,
             version=version,
-            prev_version=prev_version,
             init_args=init_args,
             init_kwargs=init_kwargs,
             route_prefix=route_prefix,
@@ -489,6 +462,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
@@ -508,51 +482,18 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
-    try:
-        (
-            deployment_info,
-            route_prefix,
-        ) = get_global_client().get_deployment_info(name)
-    except KeyError:
-        raise KeyError(
-            f"Deployment {name} was not found. Did you call Deployment.deploy()?"
-        )
-    return Deployment(
-        deployment_info.replica_config.deployment_def,
-        name,
-        deployment_info.deployment_config,
-        version=deployment_info.version,
-        init_args=deployment_info.replica_config.init_args,
-        init_kwargs=deployment_info.replica_config.init_kwargs,
-        route_prefix=route_prefix,
-        ray_actor_options=deployment_info.replica_config.ray_actor_options,
-        _internal=True,
-    )
+    return _private_api.get_deployment(name)
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments()
 
-    deployments = {}
-    for name, (deployment_info, route_prefix) in infos.items():
-        deployments[name] = Deployment(
-            deployment_info.replica_config.deployment_def,
-            name,
-            deployment_info.deployment_config,
-            version=deployment_info.version,
-            init_args=deployment_info.replica_config.init_args,
-            init_kwargs=deployment_info.replica_config.init_kwargs,
-            route_prefix=route_prefix,
-            ray_actor_options=deployment_info.replica_config.ray_actor_options,
-            _internal=True,
-        )
-
-    return deployments
+    return _private_api.list_deployments()
 
 
 @PublicAPI(stability="alpha")
@@ -626,7 +567,6 @@ def run(
             "ray_actor_options": deployment._ray_actor_options,
             "config": deployment._config,
             "version": deployment._version,
-            "prev_version": deployment._prev_version,
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
         }
@@ -636,7 +576,7 @@ def run(
     )
 
     if ingress is not None:
-        return ingress.get_handle()
+        return ingress._get_handle()
 
 
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
@@ -667,18 +607,9 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     return Application(pipeline_build(target))
 
 
-def _check_http_and_checkpoint_options(
-    client: ServeControllerClient,
-    http_options: Union[dict, HTTPOptions],
-    checkpoint_path: str,
+def _check_http_options(
+    client: ServeControllerClient, http_options: Union[dict, HTTPOptions]
 ) -> None:
-    if checkpoint_path and checkpoint_path != client.checkpoint_path:
-        logger.warning(
-            f"The new client checkpoint path '{checkpoint_path}' "
-            f"is different from the existing one '{client.checkpoint_path}'. "
-            "The new checkpoint path is ignored."
-        )
-
     if http_options:
         client_http_options = client.http_config
         new_http_options = (

@@ -8,20 +8,29 @@ import tarfile
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
 from ray import cloudpickle as pickle
+from ray.air._internal.checkpointing import load_preprocessor_from_dir
 from ray.air._internal.remote_storage import (
     download_from_uri,
     fs_hint,
     is_non_local_path_uri,
     upload_to_uri,
 )
+from ray.air.constants import PREPROCESSOR_KEY
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.ml_utils.filelock import TempFileLock
 
+
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
+
+
 _DICT_CHECKPOINT_FILE_NAME = "dict_checkpoint.pkl"
+_DICT_CHECKPOINT_ADDITIONAL_FILE_KEY = "_ray_additional_checkpoint_files"
+_METADATA_CHECKPOINT_SUFFIX = ".meta.pkl"
 _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
@@ -31,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI(stability="alpha")
 class Checkpoint:
-    """Ray ML Checkpoint.
+    """Ray AIR Checkpoint.
 
     This implementation provides methods to translate between
     different checkpoint storage locations: Local storage, external storage
@@ -46,6 +55,17 @@ class Checkpoint:
     obj ref --> directory) will recover the original checkpoint data.
     There are no guarantees made about compatibility of intermediate
     representations.
+
+    New data can be added to a Checkpoint during conversion. Consider the
+    following conversion: directory --> dict (adding dict["foo"] = "bar")
+    --> directory --> dict (expect to see dict["foo"] = "bar"). Note that
+    the second directory will contain pickle files with the serialized additional
+    field data in them.
+
+    Similarly with a dict as a source: dict --> directory (add file "foo.txt")
+    --> dict --> directory (will have "foo.txt" in it again). Note that the second
+    dict representation will contain an extra field with the serialized additional
+    files in it.
 
     Examples:
 
@@ -253,12 +273,43 @@ class Checkpoint:
                     # from the checkpoint file.
                     with open(checkpoint_data_path, "rb") as f:
                         checkpoint_data = pickle.load(f)
+
+                    # If there are additional files in the directory, add them as
+                    # _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
+                    additional_files = {}
+                    for file_or_dir in os.listdir(local_path):
+                        if file_or_dir in [".", "..", _DICT_CHECKPOINT_FILE_NAME]:
+                            continue
+
+                        additional_files[file_or_dir] = _pack(
+                            os.path.join(local_path, file_or_dir)
+                        )
+
+                    if additional_files:
+                        checkpoint_data[
+                            _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
+                        ] = additional_files
+
                 else:
+                    files = [
+                        f
+                        for f in os.listdir(local_path)
+                        if os.path.isfile(os.path.join(local_path, f))
+                        and f.endswith(_METADATA_CHECKPOINT_SUFFIX)
+                    ]
+                    metadata = {}
+                    for file in files:
+                        with open(os.path.join(local_path, file), "rb") as f:
+                            key = file[: -len(_METADATA_CHECKPOINT_SUFFIX)]
+                            value = pickle.load(f)
+                            metadata[key] = value
+
                     data = _pack(local_path)
 
                     checkpoint_data = {
                         _FS_CHECKPOINT_KEY: data,
                     }
+                    checkpoint_data.update(metadata)
                 return checkpoint_data
         else:
             raise RuntimeError(f"Empty data for checkpoint {self}")
@@ -300,6 +351,26 @@ class Checkpoint:
         """
         return cls(local_path=path)
 
+    @classmethod
+    def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
+        """Create a checkpoint from a generic :py:class:`Checkpoint`.
+
+        This method can be used to create a framework-specific checkpoint from a
+        generic :py:class:`Checkpoint` object.
+
+        Examples:
+            >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
+            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP # noqa: E501
+            >>> model = checkpoint.get_model()  # doctest: +SKIP
+            Linear(in_features=1, out_features=1, bias=True)
+        """
+        return cls(
+            local_path=other._local_path,
+            data_dict=other._data_dict,
+            uri=other._uri,
+            obj_ref=other._obj_ref,
+        )
+
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
         if self._obj_ref:
@@ -331,10 +402,26 @@ class Checkpoint:
             # This is a object ref or dict
             data_dict = self.to_dict()
             if _FS_CHECKPOINT_KEY in data_dict:
+                for key in data_dict.keys():
+                    if key == _FS_CHECKPOINT_KEY:
+                        continue
+                    metadata_path = os.path.join(
+                        path, f"{key}{_METADATA_CHECKPOINT_SUFFIX}"
+                    )
+                    with open(metadata_path, "wb") as f:
+                        pickle.dump(data_dict[key], f)
                 # This used to be a true fs checkpoint, so restore
                 _unpack(data_dict[_FS_CHECKPOINT_KEY], path)
             else:
-                # This is a dict checkpoint. Dump data into checkpoint.pkl
+                # This is a dict checkpoint.
+                # First, restore any additional files
+                additional_files = data_dict.pop(
+                    _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, {}
+                )
+                for file, content in additional_files.items():
+                    _unpack(stream=content, path=os.path.join(path, file))
+
+                # Then dump data into checkpoint.pkl
                 checkpoint_data_path = os.path.join(path, _DICT_CHECKPOINT_FILE_NAME)
                 with open(checkpoint_data_path, "wb") as f:
                     pickle.dump(data_dict, f)
@@ -540,6 +627,29 @@ class Checkpoint:
     def __setstate__(self, state):
         self.__dict__.update(state)
 
+    def __fspath__(self):
+        raise TypeError(
+            "You cannot use `air.Checkpoint` objects directly as paths. "
+            "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
+        )
+
+    def get_preprocessor(self) -> Optional["Preprocessor"]:
+        """Return the saved preprocessor, if one exists."""
+
+        # The preprocessor will either be stored in an in-memory dict or
+        # written to storage. In either case, it will use the PREPROCESSOR_KEY key.
+
+        # First try converting to dictionary.
+        checkpoint_dict = self.to_dict()
+        preprocessor = checkpoint_dict.get(PREPROCESSOR_KEY, None)
+
+        if preprocessor is None:
+            # Fallback to reading from directory.
+            with self.as_directory() as checkpoint_path:
+                preprocessor = load_preprocessor_from_dir(checkpoint_path)
+
+        return preprocessor
+
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
     """Check if path is a local path. Otherwise return None."""
@@ -567,8 +677,15 @@ def _temporary_checkpoint_dir() -> str:
 def _pack(path: str) -> bytes:
     """Pack directory in ``path`` into an archive, return as bytes string."""
     stream = io.BytesIO()
+
+    def filter_function(tarinfo):
+        if tarinfo.name.endswith(_METADATA_CHECKPOINT_SUFFIX):
+            return None
+        else:
+            return tarinfo
+
     with tarfile.open(fileobj=stream, mode="w", format=tarfile.PAX_FORMAT) as tar:
-        tar.add(path, arcname="")
+        tar.add(path, arcname="", filter=filter_function)
 
     return stream.getvalue()
 
@@ -596,5 +713,3 @@ def _make_dir(path: str, acquire_del_lock: bool = True) -> None:
         open(del_lock_path, "a").close()
 
     os.makedirs(path, exist_ok=True)
-    # Drop marker
-    open(os.path.join(path, ".is_checkpoint"), "a").close()

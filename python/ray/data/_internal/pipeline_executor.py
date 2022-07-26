@@ -135,7 +135,7 @@ class PipelineSplitExecutorCoordinator:
         self,
         pipeline: "DatasetPipeline[T]",
         n: int,
-        splitter: Callable[[Dataset], "DatasetPipeline[T]"],
+        splitter: Callable[[Dataset], List["Dataset[T]"]],
         context: DatasetContext,
     ):
         DatasetContext._set_current(context)

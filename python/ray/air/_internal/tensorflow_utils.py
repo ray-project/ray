@@ -1,8 +1,9 @@
-from typing import Optional
+from typing import Optional, Union, Dict
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from pandas.api.types import is_object_dtype
 
 
 def convert_pandas_to_tf_tensor(
@@ -26,7 +27,7 @@ def convert_pandas_to_tf_tensor(
 
     Examples:
         >>> import pandas as pd
-        >>> from ray.air._internal.tensorflow_utils improt convert_pandas_to_tf_tensor
+        >>> from ray.air._internal.tensorflow_utils import convert_pandas_to_tf_tensor
         >>>
         >>> df = pd.DataFrame({"X1": [1, 2, 3], "X2": [4, 5, 6]})
         >>> convert_pandas_to_tf_tensor(df[["X1"]]).shape
@@ -35,6 +36,7 @@ def convert_pandas_to_tf_tensor(
         TensorShape([3, 2])
 
         >>> from ray.data.extensions import TensorArray
+        >>> import numpy as np
         >>>
         >>> df = pd.DataFrame({"image": TensorArray(np.zeros((4, 3, 32, 32)))})
         >>> convert_pandas_to_tf_tensor(df).shape
@@ -46,6 +48,13 @@ def convert_pandas_to_tf_tensor(
             # them. If the columns contain different types (for example, `float32`s
             # and `int32`s), then `tf.concat` raises an error.
             dtype: np.dtype = np.find_common_type(df.dtypes, [])
+
+            # if the columns are `ray.data.extensions.tensor_extension.TensorArray`,
+            # the dtype will be `object`. In this case, we need to set the dtype to
+            # none, and use the automatic type casting of `tf.convert_to_tensor`.
+            if is_object_dtype(dtype):
+                dtype = None
+
         except TypeError:
             # `find_common_type` fails if a series has `TensorDtype`. In this case,
             # don't cast any of the series and continue.
@@ -72,3 +81,40 @@ def convert_pandas_to_tf_tensor(
         return tf.expand_dims(concatenated_tensor, axis=1)
 
     return concatenated_tensor
+
+
+def convert_ndarray_batch_to_tf_tensor_batch(
+    ndarrays: Union[np.ndarray, Dict[str, np.ndarray]],
+    dtypes: Optional[Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]]] = None,
+) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+    """Convert a NumPy ndarray batch to a TensorFlow Tensor batch.
+
+    Args:
+        ndarray: A (dict of) NumPy ndarray(s) that we wish to convert to a TensorFlow
+            Tensor.
+        dtype: A (dict of) TensorFlow dtype(s) for the created tensor; if None, the
+            dtype will be inferred from the NumPy ndarray data.
+
+    Returns: A (dict of) TensorFlow Tensor(s).
+    """
+    if isinstance(ndarrays, np.ndarray):
+        # Single-tensor case.
+        if isinstance(dtypes, dict):
+            if len(dtypes) != 1:
+                raise ValueError(
+                    "When constructing a single-tensor batch, only a single dtype "
+                    f"should be given, instead got: {dtypes}"
+                )
+            dtypes = next(iter(dtypes.values()))
+        batch = tf.convert_to_tensor(ndarrays, dtype=dtypes)
+    else:
+        # Multi-tensor case.
+        batch = {
+            col_name: tf.convert_to_tensor(
+                col_ndarray,
+                dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes,
+            )
+            for col_name, col_ndarray in ndarrays.items()
+        }
+
+    return batch

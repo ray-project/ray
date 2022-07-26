@@ -1,24 +1,20 @@
 import asyncio
 import os
-import psutil
-import tempfile
+import signal
 import sys
+import tempfile
 import urllib.request
 from uuid import uuid4
-import signal
 
+import psutil
 import pytest
 
 import ray
-from ray.job_submission import JobStatus
-from ray.dashboard.modules.job.common import (
-    JOB_ID_METADATA_KEY,
-    JOB_NAME_METADATA_KEY,
-)
-from ray.dashboard.modules.job.job_manager import generate_job_id, JobManager
+from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray._private.test_utils import SignalActor, async_wait_for_condition
-from ray.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
-
+from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
+from ray.dashboard.modules.job.job_manager import JobManager, generate_job_id
+from ray.job_submission import JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -353,9 +349,10 @@ class TestRuntimeEnv:
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         logs = job_manager.get_job_logs(job_id)
-        assert logs.startswith(
-            "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) " "are provided"
+        token = (
+            "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) are provided"
         )
+        assert token in logs, logs
         assert "JOB_1_VAR" in logs
 
     async def test_failed_runtime_env_validation(self, job_manager):
@@ -395,7 +392,7 @@ class TestRuntimeEnv:
             'python -c"'
             "import ray;"
             "ray.init();"
-            "job_config=ray.worker.global_worker.core_worker.get_job_config();"
+            "job_config=ray._private.worker.global_worker.core_worker.get_job_config();"
             "print(dict(sorted(job_config.metadata.items())))"
             '"'
         )
@@ -716,8 +713,8 @@ async def test_bootstrap_address(job_manager, monkeypatch):
     cluster might be started with http://ip:{dashboard_port} from previous
     runs.
     """
-    ip = ray.ray_constants.DEFAULT_DASHBOARD_IP
-    port = ray.ray_constants.DEFAULT_DASHBOARD_PORT
+    ip = ray._private.ray_constants.DEFAULT_DASHBOARD_IP
+    port = ray._private.ray_constants.DEFAULT_DASHBOARD_PORT
 
     monkeypatch.setenv("RAY_ADDRESS", f"http://{ip}:{port}")
     print_ray_address_cmd = (

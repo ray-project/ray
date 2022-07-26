@@ -10,7 +10,7 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     SpaceStruct,
     TensorStructType,
     TensorType,
@@ -225,14 +225,14 @@ def get_placeholder(
 
 @PublicAPI
 def get_tf_eager_cls_if_necessary(
-    orig_cls: Type["TFPolicy"], config: PartialTrainerConfigDict
+    orig_cls: Type["TFPolicy"], config: PartialAlgorithmConfigDict
 ) -> Type["TFPolicy"]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
         orig_cls: The original TFPolicy class to get the corresponding tf-eager
             class for.
-        config: The Trainer config dict.
+        config: The Algorithm config dict.
 
     Returns:
         The tf eager policy class corresponding to the given TFPolicy class.
@@ -466,11 +466,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     if isinstance(space, Discrete):
         return tf.one_hot(x, space.n, dtype=tf.float32)
     elif isinstance(space, MultiDiscrete):
+        if isinstance(space.nvec[0], np.ndarray):
+            nvec = np.ravel(space.nvec)
+            x = tf.reshape(x, (x.shape[0], -1))
+        else:
+            nvec = space.nvec
         return tf.concat(
-            [
-                tf.one_hot(x[:, i], n, dtype=tf.float32)
-                for i, n in enumerate(space.nvec)
-            ],
+            [tf.one_hot(x[:, i], n, dtype=tf.float32) for i, n in enumerate(nvec)],
             axis=-1,
         )
     else:

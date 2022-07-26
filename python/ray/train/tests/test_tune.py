@@ -1,25 +1,36 @@
 import os
 
 import pytest
+
 import ray
+from ray.cluster_utils import Cluster
 import ray.train as train
 from ray import tune
-from ray.air import Checkpoint
 from ray.tune import TuneError
-from ray.train import Trainer
+from ray.air import Checkpoint, session
+from ray.air.config import FailureConfig, RunConfig, ScalingConfig
+from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.examples.tensorflow_mnist_example import (
     train_func as tensorflow_mnist_train_func,
 )
-from ray.train.examples.train_fashion_mnist_example import (
+from ray.train.examples.torch_fashion_mnist_example import (
     train_func as fashion_mnist_train_func,
 )
-from ray.train.worker_group import WorkerGroup
+from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+from ray.train.torch.torch_trainer import TorchTrainer
+from ray.train.trainer import Trainer
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
+
+from ray.train.torch import TorchConfig
+from unittest.mock import patch
 
 
 @pytest.fixture
-def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2)
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -31,6 +42,20 @@ def ray_start_8_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_4_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=2, num_gpus=4)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 class TestConfig(BackendConfig):
@@ -48,20 +73,24 @@ class TestBackend(Backend):
 
 
 def torch_fashion_mnist(num_workers, use_gpu, num_samples):
-    epochs = 2
-
-    trainer = Trainer("torch", num_workers=num_workers, use_gpu=use_gpu)
-    MnistTrainable = trainer.to_tune_trainable(fashion_mnist_train_func)
-
-    analysis = tune.run(
-        MnistTrainable,
-        num_samples=num_samples,
-        config={
-            "lr": tune.loguniform(1e-4, 1e-1),
-            "batch_size": tune.choice([32, 64, 128]),
-            "epochs": epochs,
-        },
+    trainer = TorchTrainer(
+        fashion_mnist_train_func,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "lr": tune.loguniform(1e-4, 1e-1),
+                "batch_size": tune.choice([32, 64, 128]),
+                "epochs": 2,
+            }
+        },
+        tune_config=TuneConfig(
+            num_samples=num_samples,
+        ),
+    )
+    analysis = tuner.fit()._experiment_analysis
 
     # Check that loss decreases in each trial.
     for path, df in analysis.trial_dataframes.items():
@@ -73,19 +102,24 @@ def test_tune_torch_fashion_mnist(ray_start_8_cpus):
 
 
 def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
-    epochs = 2
-    trainer = Trainer("tensorflow", num_workers=num_workers, use_gpu=use_gpu)
-    MnistTrainable = trainer.to_tune_trainable(tensorflow_mnist_train_func)
-
-    analysis = tune.run(
-        MnistTrainable,
-        num_samples=num_samples,
-        config={
-            "lr": tune.loguniform(1e-4, 1e-1),
-            "batch_size": tune.choice([32, 64, 128]),
-            "epochs": epochs,
-        },
+    trainer = TensorflowTrainer(
+        tensorflow_mnist_train_func,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "lr": tune.loguniform(1e-4, 1e-1),
+                "batch_size": tune.choice([32, 64, 128]),
+                "epochs": 2,
+            }
+        },
+        tune_config=TuneConfig(
+            num_samples=num_samples,
+        ),
+    )
+    analysis = tuner.fit()._experiment_analysis
 
     # Check that loss decreases in each trial.
     for path, df in analysis.trial_dataframes.items():
@@ -96,7 +130,122 @@ def test_tune_tensorflow_mnist(ray_start_8_cpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 
-def test_tune_error(ray_start_2_cpus):
+def test_tune_error(ray_start_4_cpus):
+    def train_func(config):
+        raise RuntimeError("Error in training function!")
+
+    trainer = DataParallelTrainer(
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    tuner = Tuner(
+        trainer,
+    )
+
+    result_grid = tuner.fit()
+    with pytest.raises(RuntimeError):
+        raise result_grid[0].error
+
+
+def test_tune_checkpoint(ray_start_4_cpus):
+    def train_func():
+        for i in range(9):
+            session.report(dict(test=i))
+        session.report(
+            dict(test=i + 1), checkpoint=Checkpoint.from_dict(dict(hello="world"))
+        )
+
+    trainer = DataParallelTrainer(
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    tuner = Tuner(
+        trainer,
+        param_space={"train_loop_config": {"max_iter": 5}},
+    )
+
+    [trial] = tuner.fit()._experiment_analysis.trials
+    checkpoint_path = trial.checkpoint.dir_or_data
+    assert os.path.exists(checkpoint_path)
+    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    assert checkpoint["hello"] == "world"
+
+
+def test_reuse_checkpoint(ray_start_4_cpus):
+    def train_func(config):
+        itr = 0
+        ckpt = session.get_checkpoint()
+        if ckpt is not None:
+            ckpt = ckpt.to_dict()
+            itr = ckpt["iter"] + 1
+
+        for i in range(itr, config["max_iter"]):
+            session.report(
+                dict(test=i, training_iteration=i),
+                checkpoint=Checkpoint.from_dict(dict(iter=i)),
+            )
+
+    trainer = DataParallelTrainer(
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    tuner = Tuner(
+        trainer,
+        param_space={"train_loop_config": {"max_iter": 5}},
+    )
+    [trial] = tuner.fit()._experiment_analysis.trials
+    checkpoint_path = trial.checkpoint.dir_or_data
+    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    assert checkpoint["iter"] == 4
+
+    tuner = Tuner(
+        trainer,
+        param_space={"train_loop_config": {"max_iter": 10}},
+    ).restore(trial.local_dir)
+    analysis = tuner.fit()._experiment_analysis
+    trial_dfs = list(analysis.trial_dataframes.values())
+    assert len(trial_dfs[0]["training_iteration"]) == 5
+
+
+def test_retry(ray_start_4_cpus):
+    def train_func():
+        ckpt = session.get_checkpoint()
+        restored = bool(ckpt)  # Does a previous checkpoint exist?
+        itr = 0
+        if ckpt:
+            ckpt = ckpt.to_dict()
+            itr = ckpt["iter"] + 1
+
+        for i in range(itr, 4):
+            if i == 2 and not restored:
+                raise Exception("try to fail me")
+            session.report(
+                dict(test=i, training_iteration=i),
+                checkpoint=Checkpoint.from_dict(dict(iter=i)),
+            )
+
+    trainer = DataParallelTrainer(
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    tuner = Tuner(
+        trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
+    )
+
+    analysis = tuner.fit()._experiment_analysis
+    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
+    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    assert checkpoint["iter"] == 3
+
+    trial_dfs = list(analysis.trial_dataframes.values())
+    assert len(trial_dfs[0]["training_iteration"]) == 4
+
+
+def test_tune_error_legacy(ray_start_4_cpus):
     def train_func(config):
         raise RuntimeError("Error in training function!")
 
@@ -107,7 +256,7 @@ def test_tune_error(ray_start_2_cpus):
         tune.run(TestTrainable)
 
 
-def test_tune_checkpoint(ray_start_2_cpus):
+def test_tune_checkpoint_legacy(ray_start_4_cpus):
     def train_func():
         for i in range(10):
             train.report(test=i)
@@ -117,13 +266,13 @@ def test_tune_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable).trials
-    checkpoint_path = trial.checkpoint.value
+    checkpoint_path = trial.checkpoint.dir_or_data
     assert os.path.exists(checkpoint_path)
     checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
     assert checkpoint["hello"] == "world"
 
 
-def test_reuse_checkpoint(ray_start_2_cpus):
+def test_reuse_checkpoint_legacy(ray_start_4_cpus):
     def train_func(config):
         itr = 0
         ckpt = train.load_checkpoint()
@@ -138,7 +287,7 @@ def test_reuse_checkpoint(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     [trial] = tune.run(TestTrainable, config={"max_iter": 5}).trials
-    checkpoint_path = trial.checkpoint.value
+    checkpoint_path = trial.checkpoint.dir_or_data
     checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
     assert checkpoint["iter"] == 4
     analysis = tune.run(TestTrainable, config={"max_iter": 10}, restore=checkpoint_path)
@@ -146,7 +295,7 @@ def test_reuse_checkpoint(ray_start_2_cpus):
     assert len(trial_dfs[0]["training_iteration"]) == 5
 
 
-def test_retry(ray_start_2_cpus):
+def test_retry_legacy(ray_start_4_cpus):
     def train_func():
         ckpt = train.load_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
@@ -164,7 +313,7 @@ def test_retry(ray_start_2_cpus):
     TestTrainable = trainer.to_tune_trainable(train_func)
 
     analysis = tune.run(TestTrainable, max_failures=3)
-    checkpoint_path = analysis.trials[0].checkpoint.value
+    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
     checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
     assert checkpoint["iter"] == 3
 
@@ -172,8 +321,49 @@ def test_retry(ray_start_2_cpus):
     assert len(trial_dfs[0]["training_iteration"]) == 4
 
 
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_tune_torch_get_device_gpu(ray_2_node_4_gpu, num_gpus_per_worker):
+    from ray import tune
+    from ray.tune.tuner import Tuner, TuneConfig
+
+    num_samples = 2
+
+    @patch("torch.cuda.is_available", lambda: True)
+    def train_func():
+        train.report(device_id=train.torch.get_device().index)
+
+    trainer = TorchTrainer(
+        train_func,
+        torch_config=TorchConfig(backend="gloo"),
+        scaling_config=ScalingConfig(
+            num_workers=2,
+            use_gpu=True,
+            resources_per_worker={"GPU": num_gpus_per_worker},
+        ),
+    )
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "dummy": tune.choice([32, 64, 128]),
+            }
+        },
+        tune_config=TuneConfig(
+            num_samples=num_samples,
+        ),
+    )
+    analysis = tuner.fit()._experiment_analysis
+    trial_dfs = list(analysis.trial_dataframes.values())
+    device_ids = [trial_df["device_id"].tolist() for trial_df in trial_dfs]
+
+    assert len(device_ids) == num_samples
+    for i in range(num_samples):
+        assert device_ids[i][0] == 0
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
