@@ -4,6 +4,8 @@ load("@rules_jvm_external//:specs.bzl", "maven")
 def gen_java_deps():
     maven_install(
         artifacts = [
+            "com.fasterxml.jackson.core:jackson-databind:2.13.3",
+            "com.github.java-json-tools:json-schema-validator:2.2.14",
             "com.google.code.gson:gson:2.8.5",
             "com.google.guava:guava:30.0-jre",
             "com.google.protobuf:protobuf-java:3.19.4",
