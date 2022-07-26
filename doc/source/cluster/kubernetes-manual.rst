@@ -9,7 +9,7 @@ Deploying a Static Ray Cluster on Kubernetes
 
 This document gives an example of how to manually deploy a non-autoscaling Ray cluster on Kubernetes.
 
-- Learn about deploying an autoscaling Ray cluster using the :ref:`Ray Helm chart<ray-k8s-deploy>`.
+- Learn about deploying an autoscaling Ray cluster using the :ref:`Ray Helm chart<kuberay-index>`.
 
 Creating a Ray Namespace
 ------------------------
