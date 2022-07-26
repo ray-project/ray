@@ -34,6 +34,7 @@ class DTConfig(AlgorithmConfig):
         self.shuffle_buffer_size = 32
         self.max_seq_len = 20
         self.lr = 1e-4
+        self.horizon = 1000
 
         # __sphinx_doc_end__
         # fmt: on
@@ -54,12 +55,15 @@ class DTConfig(AlgorithmConfig):
         self.num_workers = 0
         self.offline_sampling = True
         self.min_iter_time_s = 10.0
+        self.postprocess_inputs = True
 
     def training(
         self,
         *,
+        shuffle_buffer_size: Optional[int] = None,
         weight_decay: Optional[float] = None,
         betas: Optional[Tuple[float, float]] = None,
+        max_seq_len: Optional[int] = None,
         embed_dim: Optional[int] = None,
         num_layers: Optional[int] = None,
         num_heads: Optional[int] = None,
@@ -69,8 +73,7 @@ class DTConfig(AlgorithmConfig):
         use_obs_output: Optional[bool] = None,
         use_return_output: Optional[bool] = None,
         **kwargs,
-    ) -> "CRRConfig":
-
+    ) -> "DTConfig":
         """
         === DT configs
 
@@ -81,12 +84,17 @@ class DTConfig(AlgorithmConfig):
         Returns:
             This updated CRRConfig object.
         """
-        super().training(**kwargs)
+        # TODO(charlesjsun): finish doc
 
+        super().training(**kwargs)
+        if shuffle_buffer_size is not None:
+            self.shuffle_buffer_size = shuffle_buffer_size
         if weight_decay is not None:
             self.weight_decay = weight_decay
         if betas is not None:
             self.betas = betas
+        if max_seq_len is not None:
+            self.max_seq_len = max_seq_len
         if embed_dim is not None:
             self.embed_dim = embed_dim
         if num_layers is not None:
@@ -117,7 +125,10 @@ class DT(Algorithm):
         super().setup(config)
 
         # TODO(charlesjsun): add heuristics log2(dataset_size)
-        self.buffer = SegmentationBuffer(self.config["shuffle_buffer_size"])
+        self.buffer = SegmentationBuffer(
+            self.config["shuffle_buffer_size"],
+            self.config["max_seq_len"],
+        )
 
     @classmethod
     @override(Algorithm)

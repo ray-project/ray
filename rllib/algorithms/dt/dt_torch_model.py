@@ -1,14 +1,16 @@
 import gym
 from gym.spaces import Discrete, Box
 import numpy as np
-from typing import Dict
+from typing import Dict, List
 
 from ray.rllib import SampleBatch
+from ray.rllib.models import ModelV2
 from ray.rllib.models.torch.mingpt import (
     GPTConfig,
     GPT,
 )
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.utils import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import (
     ModelConfigDict,
@@ -101,6 +103,17 @@ class DTTorchModel(TorchModelV2, nn.Module):
             return None
         return nn.Linear(self.embed_dim, 1)
 
+    @override(ModelV2)
+    def forward(
+        self,
+        input_dict: Dict[str, TensorType],
+        state: List[TensorType],
+        seq_lens: TensorType,
+    ) -> (TensorType, List[TensorType]):
+        # True No-op forward method.
+        # TODO: Support image observation inputs
+        return input_dict["obs"], state
+
     def get_prediction(
         self,
         model_out: TensorType,
@@ -124,7 +137,7 @@ class DTTorchModel(TorchModelV2, nn.Module):
                 if model_config["use_return_output"]
                     RETURNS_to_GO: [B x T x 1] of predicted returns to go
         """
-        B, T, _ = model_out.shape
+        B, T, *_ = model_out.shape
 
         obs_embeds = self.obs_encoder(model_out)
         actions_embeds = self.action_encoder(input_dict[SampleBatch.ACTIONS])
@@ -165,7 +178,7 @@ class DTTorchModel(TorchModelV2, nn.Module):
 
         return outputs
 
-    def get_target(
+    def get_targets(
         self, model_out: TensorType, input_dict: SampleBatch
     ) -> Dict[str, TensorType]:
         """Compute the target predictions for a given input_dict."""

@@ -15,7 +15,6 @@ from gym.spaces import Discrete, Box
 
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.algorithms.dt.dt_torch_model import DTTorchModel
-from ray.rllib.algorithms.ddpg.noop_model import TorchNoopModel
 from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -82,8 +81,8 @@ class DTTorchPolicy(TorchPolicyV2):
             num_outputs=num_outputs,
             model_config=model_config,
             framework=self.config["framework"],
-            model_interface=DTTorchModel,
-            default_model=TorchNoopModel,
+            model_interface=None,
+            default_model=DTTorchModel,
             name="model",
         )
 
@@ -122,10 +121,6 @@ class DTTorchPolicy(TorchPolicyV2):
         rewards = sample_batch[SampleBatch.REWARDS].reshape(-1)
         sample_batch[SampleBatch.RETURNS_TO_GO] = discount_cumsum(rewards, 1.0)
 
-        if sample_batch.get(SampleBatch.T) is None:
-            ep_len = rewards.shape[0]
-            sample_batch[SampleBatch.T] = np.arange(ep_len)
-
         return sample_batch
 
     @override(TorchPolicyV2)
@@ -138,6 +133,7 @@ class DTTorchPolicy(TorchPolicyV2):
         **kwargs,
     ) -> Tuple[TensorType, type, List[TensorType]]:
 
+        obs_batch = self._lazy_tensor_dict(obs_batch)
         model_out, _ = model(obs_batch)
         preds = self.model.get_prediction(model_out, obs_batch)
         actions = preds[SampleBatch.ACTIONS]
@@ -153,9 +149,10 @@ class DTTorchPolicy(TorchPolicyV2):
         train_batch: SampleBatch,
     ) -> Union[TensorType, List[TensorType]]:
 
+        train_batch = self._lazy_tensor_dict(train_batch)
         model_out, _ = self.model(train_batch)
         preds = self.model.get_prediction(model_out, train_batch)
-        targets = self.model.get_targets(train_batch)
+        targets = self.model.get_targets(model_out, train_batch)
         masks = train_batch[SampleBatch.ATTENTION_MASKS]
 
         losses = []
@@ -174,6 +171,7 @@ class DTTorchPolicy(TorchPolicyV2):
         losses.append(action_loss)
         self.log(f"action_loss", action_loss)
 
+        # obs losses
         if preds.get(SampleBatch.OBS) is not None:
             obs_loss = self._masked_mse_loss(
                 preds[SampleBatch.OBS], targets[SampleBatch.OBS], masks
@@ -181,6 +179,7 @@ class DTTorchPolicy(TorchPolicyV2):
             losses.append(obs_loss)
             self.log(f"obs_loss", obs_loss)
 
+        # return to go losses
         if preds.get(SampleBatch.RETURNS_TO_GO) is not None:
             rtg_loss = self._masked_mse_loss(
                 preds[SampleBatch.RETURNS_TO_GO],
@@ -211,10 +210,8 @@ class DTTorchPolicy(TorchPolicyV2):
         targets: TensorType,
         masks: TensorType,
     ) -> TensorType:
-        losses = F.mse_loss(
-            preds.reshape(-1, preds.shape[-1]), targets.reshape(-1), reduction="none"
-        )
-        losses = losses * masks.reshape(-1)
+        losses = F.mse_loss(preds, targets, reduction="none")
+        losses = losses * masks.reshape(*preds.shape[0:2], *[1] * (len(preds.shape) - 2))
         return losses.mean()
 
     def log(self, key, value):

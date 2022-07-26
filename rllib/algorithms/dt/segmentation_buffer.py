@@ -24,31 +24,32 @@ class SegmentationBuffer:
             self.buffer[replace_ind] = episode
 
     def sample(self, batch_size: int) -> SampleBatch:
-        samples = [self._sample_single() for _ in range(batch_size)]
+        num_samples = int(np.ceil(batch_size / self.max_seq_len))
+        samples = [self._sample_single() for _ in range(num_samples)]
         return concat_samples(samples)
 
     def _sample_single(self) -> SampleBatch:
         # TODO(charlesjsun): sample proportional to episode length
         buffer_ind = np.random.randint(0, len(self.buffer))
         episode: SampleBatch = self.buffer[buffer_ind]
-        si = np.random.randint(0, episode[SampleBatch.OBS])
+        si = np.random.randint(0, episode[SampleBatch.OBS].shape[0])
 
         # TODO(charlesjsun): is this numpy or torch tensors?
         obs = episode[SampleBatch.OBS][si : si + self.max_seq_len]
-        actions = episode[SampleBatch.OBS][si : si + self.max_seq_len]
+        actions = episode[SampleBatch.ACTIONS][si : si + self.max_seq_len]
         # Note that returns to go needs one extra as the target for the last action
         returns_to_go = episode[SampleBatch.RETURNS_TO_GO][
             si : si + self.max_seq_len + 1
         ].reshape(-1, 1)
-        timesteps = episode[SampleBatch.T][si : si + self.max_seq_len].reshape(-1)
 
         length = obs.shape[0]
+        timesteps = np.arange(si, si + length)
         masks = np.ones(length, dtype=returns_to_go.dtype)
 
         # Back pad returns to go if at end
         if returns_to_go.shape[0] == length:
             returns_to_go = np.concatenate(
-                [returns_to_go, np.zeros(1, 1, dtype=returns_to_go.dtype)], axis=0
+                [returns_to_go, np.zeros((1, 1), dtype=returns_to_go.dtype)], axis=0
             )
 
         # Front-pad
