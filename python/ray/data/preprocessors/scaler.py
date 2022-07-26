@@ -47,7 +47,9 @@ class StandardScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"StandardScaler(columns={self.columns}, ddof={self.ddof})"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, ddof={self.ddof!r})"
+        )
 
 
 class MinMaxScaler(Preprocessor):
@@ -91,7 +93,7 @@ class MinMaxScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"MixMaxScaler(columns={self.columns})"
+        return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
 class MaxAbsScaler(Preprocessor):
@@ -132,7 +134,7 @@ class MaxAbsScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"MaxAbsScaler(columns={self.columns})"
+        return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
 class RobustScaler(Preprocessor):
