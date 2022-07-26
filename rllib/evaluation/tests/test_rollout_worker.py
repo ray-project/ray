@@ -816,8 +816,8 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_determine_spaces_for_multi_agent_dict(self):
         class MockMultiAgentEnv(MultiAgentEnv):
-            """A mock testing MultiAgentEnv that doesn't call super.__init__().
-            """
+            """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
+
             def __init__(self):
                 # Intentinoally don't call super().__init__(),
                 # so this env doesn't have _spaces_in_preferred_format

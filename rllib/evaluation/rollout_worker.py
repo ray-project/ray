@@ -1960,9 +1960,9 @@ def _determine_spaces_for_multi_agent_dict(
                 # Need to reverse map spaces (for the different agents) to certain
                 # policy IDs.
                 if (
-                    isinstance(env, MultiAgentEnv) and
-                    hasattr(env, "_spaces_in_preferred_format") and
-                    env._spaces_in_preferred_format
+                    isinstance(env, MultiAgentEnv)
+                    and hasattr(env, "_spaces_in_preferred_format")
+                    and env._spaces_in_preferred_format
                 ):
                     obs_space = None
                     mapping_fn = policy_config.get("multiagent", {}).get(
@@ -2009,9 +2009,9 @@ def _determine_spaces_for_multi_agent_dict(
                 # Need to reverse map spaces (for the different agents) to certain
                 # policy IDs.
                 if (
-                    isinstance(env, MultiAgentEnv) and
-                    hasattr(env, "_spaces_in_preferred_format") and
-                    env._spaces_in_preferred_format
+                    isinstance(env, MultiAgentEnv)
+                    and hasattr(env, "_spaces_in_preferred_format")
+                    and env._spaces_in_preferred_format
                 ):
                     act_space = None
                     mapping_fn = policy_config.get("multiagent", {}).get(
