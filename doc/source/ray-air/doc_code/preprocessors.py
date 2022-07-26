@@ -143,7 +143,7 @@ print(dataset_transformed.take())
 from typing import Dict
 import ray
 from pandas import DataFrame
-from ray.data.preprocessors import Preprocessor
+from ray.data.preprocessor import Preprocessor
 from ray.data import Dataset
 from ray.data.aggregate import Max
 
