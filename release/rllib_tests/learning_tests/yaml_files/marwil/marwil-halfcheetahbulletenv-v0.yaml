@@ -2,8 +2,8 @@ marwil-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: MARWIL
     pass_criteria:
+        # Can not check throughput for offline methods.
         evaluation/episode_reward_mean: 400.0
-        Can not check throughput for offline methods.
         timesteps_total: 10000000
     stop:
         time_total_s: 7200
