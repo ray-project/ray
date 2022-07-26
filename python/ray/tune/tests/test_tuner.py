@@ -6,6 +6,7 @@ import shutil
 import unittest
 from typing import Optional
 
+import ray.air
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
@@ -254,7 +255,7 @@ class TunerTest(unittest.TestCase):
             lambda kw: isinstance(kw["progress_reporter"], CLIReporter),
         ),
         (
-            {"run_config": RunConfig(reuse_actors=True)},
+            {"tune_config": TuneConfig(reuse_actors=True)},
             lambda kw: kw["reuse_actors"] is True,
         ),
         (
@@ -285,6 +286,37 @@ def test_tuner_api_kwargs(params_expected):
         tuner.fit()
 
     assert assertion(caught_kwargs)
+
+
+def test_tuner_fn_trainable_checkpoint_at_end_true():
+    tuner = Tuner(
+        lambda config, checkpoint_dir: 1,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=True)
+        ),
+    )
+    with pytest.raises(TuneError):
+        tuner.fit()
+
+
+def test_tuner_fn_trainable_checkpoint_at_end_false():
+    tuner = Tuner(
+        lambda config, checkpoint_dir: 1,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=False)
+        ),
+    )
+    tuner.fit()
+
+
+def test_tuner_fn_trainable_checkpoint_at_end_none():
+    tuner = Tuner(
+        lambda config, checkpoint_dir: 1,
+        run_config=ray.air.RunConfig(
+            checkpoint_config=ray.air.CheckpointConfig(checkpoint_at_end=None)
+        ),
+    )
+    tuner.fit()
 
 
 if __name__ == "__main__":

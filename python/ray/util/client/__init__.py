@@ -77,11 +77,16 @@ class _ClientContext:
         logging_level = ray_constants.LOGGER_LEVEL
         logging_format = ray_constants.LOGGER_FORMAT
 
-        if ray_init_kwargs is not None:
-            if ray_init_kwargs.get("logging_level") is not None:
-                logging_level = ray_init_kwargs["logging_level"]
-            if ray_init_kwargs.get("logging_format") is not None:
-                logging_format = ray_init_kwargs["logging_format"]
+        if ray_init_kwargs is None:
+            ray_init_kwargs = {}
+
+        # NOTE(architkulkarni): env_hook is not supported with Ray Client.
+        ray_init_kwargs["_skip_env_hook"] = True
+
+        if ray_init_kwargs.get("logging_level") is not None:
+            logging_level = ray_init_kwargs["logging_level"]
+        if ray_init_kwargs.get("logging_format") is not None:
+            logging_format = ray_init_kwargs["logging_format"]
 
         setup_logger(logging_level, logging_format)
 

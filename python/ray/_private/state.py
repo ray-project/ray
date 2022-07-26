@@ -139,28 +139,6 @@ class GlobalState:
         }
         return actor_info
 
-    def node_resource_table(self, node_id=None):
-        """Fetch and parse the node resource table info for one.
-
-        Args:
-            node_id: An node ID to fetch information about.
-
-        Returns:
-            Information from the node resource table.
-        """
-        self._check_connected()
-
-        node_id = ray.NodeID(hex_to_binary(node_id))
-        node_resource_bytes = self.global_state_accessor.get_node_resource_info(node_id)
-        if node_resource_bytes is None:
-            return {}
-        else:
-            node_resource_info = gcs_utils.ResourceMap.FromString(node_resource_bytes)
-            return {
-                key: value.resource_capacity
-                for key, value in node_resource_info.items.items()
-            }
-
     def node_table(self):
         """Fetch and parse the Gcs node info table.
 
@@ -189,7 +167,7 @@ class GlobalState:
             }
             node_info["alive"] = node_info["Alive"]
             node_info["Resources"] = (
-                self.node_resource_table(node_info["NodeID"])
+                {key: value for key, value in item.resources_total.items()}
                 if node_info["Alive"]
                 else {}
             )
