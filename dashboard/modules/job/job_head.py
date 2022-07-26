@@ -187,7 +187,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 metadata=submit_request.metadata,
             )
 
-            resp = JobSubmitResponse(submission_id=submission_id)
+            resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
         except (TypeError, ValueError):
             return Response(
                 text=traceback.format_exc(),

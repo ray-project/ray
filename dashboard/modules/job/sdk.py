@@ -5,9 +5,13 @@ from typing import Any, Dict, Iterator, List, Optional
 try:
     import aiohttp
     import requests
+    from ray.dashboard.modules.job.pydantic_models import (
+        JobDetails,
+    )
 except ImportError:
     aiohttp = None
     requests = None
+    JobDetails = None
 
 from ray.dashboard.modules.job.common import (
     JobStatus,
@@ -16,9 +20,7 @@ from ray.dashboard.modules.job.common import (
     JobStopResponse,
     JobLogsResponse,
 )
-from ray.dashboard.modules.job.pydantic_models import (
-    JobDetails,
-)
+
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 from ray.runtime_env import RuntimeEnv

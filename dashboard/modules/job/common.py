@@ -228,6 +228,8 @@ class JobSubmitRequest:
 
 @dataclass
 class JobSubmitResponse:
+    # DEPRECATED: Use submission_id instead.
+    job_id: str
     submission_id: str
 
 

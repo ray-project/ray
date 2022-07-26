@@ -27,6 +27,9 @@ from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 
+# This test requires you have AWS credentials set up (any AWS credentials will
+# do, this test only accesses a public bucket).
+
 logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")

@@ -492,7 +492,7 @@ class JobManager:
         try:
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
-                name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+                name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
                 # Currently we assume JobManager is created by dashboard server
                 # running on headnode, same for job supervisor actors scheduled
