@@ -29,8 +29,7 @@ from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
-
-MAX_REPR_LENGTH = 100
+from ray.air.constants import MAX_REPR_LENGTH
 
 
 @pytest.fixture
@@ -1231,11 +1230,6 @@ def test_concatenator():
     new_ds = prep.transform(ds)
     for i, row in enumerate(new_ds.take()):
         assert np.array_equal(row["c"].to_numpy(), np.array([i + 1, i + 1]))
-
-    # Test repr
-    assert "c" in prep.__repr__()
-    assert "include" in prep.__repr__()
-    assert "exclude" in prep.__repr__()
 
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)

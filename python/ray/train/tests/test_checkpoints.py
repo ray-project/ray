@@ -2,6 +2,7 @@ import re
 
 import pytest
 
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.train.huggingface import HuggingFaceCheckpoint
 from ray.train.lightgbm import LightGBMCheckpoint
 from ray.train.rl import RLCheckpoint
@@ -9,9 +10,6 @@ from ray.train.sklearn import SklearnCheckpoint
 from ray.train.tensorflow import TensorflowCheckpoint
 from ray.train.xgboost import XGBoostCheckpoint
 from ray.train.torch import TorchCheckpoint
-
-MAX_REPR_LENGTH = 100
-
 
 @pytest.mark.parametrize(
     "checkpoint",
