@@ -240,10 +240,6 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "and py_modules may contain only remote URIs."
         ),
     )
-    deployments: List[DeploymentSchema] = Field(
-        default=[],
-        description=("Deployment options that override options specified in the code."),
-    )
     host: str = Field(
         default="0.0.0.0",
         description=(
@@ -260,6 +256,10 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "your Serve application has started running. The Serve application "
             "must be shut down and restarted with the new port instead."
         ),
+    )
+    deployments: List[DeploymentSchema] = Field(
+        default=[],
+        description=("Deployment options that override options specified in the code."),
     )
 
     @validator("runtime_env")

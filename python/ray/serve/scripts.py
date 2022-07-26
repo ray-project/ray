@@ -446,6 +446,8 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         deployments=[deployment_to_schema(d) for d in app.deployments.values()]
     ).dict()
     config["import_path"] = import_path
+    config["host"] = "0.0.0.0"
+    config["port"] = 8000
 
     config_str = (
         "# This file was generated using the `serve build` command "
