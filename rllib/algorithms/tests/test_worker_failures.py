@@ -215,7 +215,7 @@ class TestWorkerFailure(unittest.TestCase):
             a = agent_cls(config=config, env="fault_env")
             self.assertRaises(Exception, lambda: a.train())
             a.stop()
-    '''
+
     def test_fatal(self):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_fault_fatal("PG", {"optimizer": {}})
@@ -559,7 +559,7 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertEqual(result["evaluation"]["num_faulty_episodes"], 0)
 
             a.stop()
-    '''
+
     def test_long_failure_period_restore_env(self):
         # Counter that will survive restarts.
         COUNTER_NAME = "test_long_failure_period_restore_env"
@@ -646,7 +646,7 @@ class TestWorkerFailure(unittest.TestCase):
                     )
                 )
             )
-    '''
+
     def test_env_wait_time_workers_restore_env(self):
         # Counter that will survive restarts.
         COUNTER_NAME = "test_env_wait_time_workers_restore_env"
@@ -720,7 +720,7 @@ class TestWorkerFailure(unittest.TestCase):
         algo = config.build()
         results = algo.train()
         self.assertTrue(np.isnan(results["evaluation"]["episode_reward_mean"]))
-    '''
+
 
 if __name__ == "__main__":
     import sys
