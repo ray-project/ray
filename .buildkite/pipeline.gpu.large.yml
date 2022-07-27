@@ -36,7 +36,7 @@
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - PYTHON=3.7 RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - PYTHON=3.7 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     # - pip install -Ur ./python/requirements_ml_docker.txt
     - bash ./python/requirements/ml/install_alpa_requirements.sh
     - pip install -Ur ./python/requirements/ml/requirements_alpa.txt
