@@ -26,7 +26,7 @@ def kill_all_ray_worker_process():
     for p in ray_process:
         try:
             p.kill()
-        except:
+        except Exception:
             pass
 
 
