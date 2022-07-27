@@ -189,7 +189,7 @@ test_python() {
       -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
-      -python/ray/tests/xgbost/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
