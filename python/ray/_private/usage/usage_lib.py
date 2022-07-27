@@ -246,13 +246,16 @@ class TagKey(Enum):
     _TEST2 = auto()
 
     # RLlib
+    # The deep learning framework ("tf", "torch", etc.).
     RLLIB_FRAMEWORK = auto()
+    # The algorithm name (only built-in algorithms).
     RLLIB_ALGORITHM = auto()
+    # The number of workers as a string.
     RLLIB_NUM_WORKERS = auto()
 
     # Serve
     SERVE_USING_V1_API = auto()
-    SERVE_USING_V2_API = auto()
+    SERVE_API_VERSION = auto()
     SERVE_NUM_DEPLOYMENTS = auto()
 
 
