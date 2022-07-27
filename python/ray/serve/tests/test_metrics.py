@@ -6,7 +6,7 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve.utils import block_until_http_ready
+from ray.serve._private.utils import block_until_http_ready
 import ray.experimental.state.api as state_api
 
 

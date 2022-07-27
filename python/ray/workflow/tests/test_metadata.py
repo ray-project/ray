@@ -256,17 +256,16 @@ def test_no_workflow_found(workflow_start_regular):
 
     workflow.run(simple.bind(), workflow_id=workflow_id)
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(ValueError, match="No such workflow_id simple1"):
         workflow.get_metadata("simple1")
-    assert str(excinfo.value) == "No such workflow_id simple1"
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(ValueError, match="No such workflow_id simple1"):
         workflow.get_metadata("simple1", "simple_step")
-    assert str(excinfo.value) == "No such workflow_id simple1"
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(
+        ValueError, match="No such task_id simple_step1 in workflow simple"
+    ):
         workflow.get_metadata("simple", "simple_step1")
-    assert str(excinfo.value) == "No such task_id simple_step1 in workflow simple"
 
 
 if __name__ == "__main__":
