@@ -942,7 +942,7 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         assert ds.num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
-            data_size >= 7_000_000 and data_size <= 10_000_000
+            data_size >= 6_000_000 and data_size <= 10_000_000
         ), "estimated data size is out of expected bound"
         data_size = ds.fully_executed().size_bytes()
         assert (
@@ -951,11 +951,11 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
 
         reader = _ParquetDatasourceReader(tensor_output_path)
         assert (
-            reader._encoding_ratio >= 400 and reader._encoding_ratio <= 600
+            reader._encoding_ratio >= 300 and reader._encoding_ratio <= 600
         ), "encoding ratio is out of expected bound"
         data_size = reader.estimate_inmemory_data_size()
         assert (
-            data_size >= 7_000_000 and data_size <= 10_000_000
+            data_size >= 6_000_000 and data_size <= 10_000_000
         ), "estimated data size is either out of expected bound"
         assert (
             data_size
