@@ -104,7 +104,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                     f"The requested host must match the running Serve "
                     "application's host. To change the Serve application "
                     "host, shut down Serve on this Ray cluster using the "
-                    "`serve delete` CLI command or by sending a DELETE "
+                    "`serve shutdown` CLI command or by sending a DELETE "
                     "request to this Ray cluster's "
                     '"/api/serve/deployments/" endpoint. CAUTION: shutting '
                     "down Serve will also shut down all Serve deployments."
@@ -121,7 +121,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                     f"The requested port must match the running Serve "
                     "application's port. To change the Serve application "
                     "port, shut down Serve on this Ray cluster using the "
-                    "`serve delete` CLI command or by sending a DELETE "
+                    "`serve shutdown` CLI command or by sending a DELETE "
                     "request to this Ray cluster's "
                     '"/api/serve/deployments/" endpoint. CAUTION: shutting '
                     "down Serve will also shut down all Serve deployments."
