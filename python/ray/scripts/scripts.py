@@ -43,7 +43,6 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.api import get_log, list_logs
 from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
@@ -2555,11 +2554,18 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-add_command_alias(job_cli_group, name="job", hidden=True)
 add_command_alias(ray_logs, name="logs", hidden=False)
 cli.add_command(state_cli_list)
 cli.add_command(state_cli_get)
 add_command_alias(summary_state_cli_group, name="summary", hidden=False)
+
+try:
+    from ray.dashboard.modules.job.cli import job_cli_group
+
+    add_command_alias(job_cli_group, name="job", hidden=True)
+except Exception as e:
+    logger.debug(f"Integrating ray jobs command line tool failed with {e}")
+
 
 try:
     from ray.serve.scripts import serve_cli
