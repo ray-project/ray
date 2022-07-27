@@ -37,4 +37,7 @@ class Tokenizer(Preprocessor):
 
     def __repr__(self):
         name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
-        return f"Tokenizer(columns={self.columns}, tokenization_fn={name})"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"tokenization_fn={name})"
+        )

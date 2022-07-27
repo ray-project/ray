@@ -61,6 +61,12 @@ class TorchPredictor(DLPredictor):
 
         super().__init__(preprocessor)
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(model={self.model!r}, "
+            f"preprocessor={self._preprocessor!r}, use_gpu={self.use_gpu!r})"
+        )
+
     @classmethod
     def from_checkpoint(
         cls,

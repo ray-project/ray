@@ -1,9 +1,10 @@
+import re
 import time
 from typing import Optional
 
 import pandas as pd
 import pytest
-from ray.air.constants import PREPROCESSOR_KEY
+from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 
 import ray
 from ray.air.checkpoint import Checkpoint
@@ -21,6 +22,19 @@ class DummyPreprocessor(Preprocessor):
 
     def _transform_pandas(self, df):
         return df * self.multiplier
+
+
+def test_repr(shutdown_only):
+    predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0}),
+        DummyPredictorFS,
+    )
+
+    representation = repr(predictor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile("^BatchPredictor\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 class DummyPredictor(Predictor):
