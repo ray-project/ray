@@ -205,12 +205,12 @@ def assert_base_partitioned_ds():
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
         assert (
-            str(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
+            str(ds) == f"<Dataset num_blocks={num_input_files} num_rows={num_rows} "
+            f"schema={schema}>"
         ), ds
         assert (
-            repr(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
+            repr(ds) == f"<Dataset num_blocks={num_input_files} num_rows={num_rows} "
+            f"schema={schema}>"
         ), ds
         if num_computed is not None:
             assert (
