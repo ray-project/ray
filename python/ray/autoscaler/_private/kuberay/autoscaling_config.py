@@ -11,6 +11,8 @@ from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
+    WORKER_LIVENESS_CHECK_KEY,
+    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.kuberay import node_provider
 from ray.autoscaler._private.util import validate_config
@@ -21,6 +23,8 @@ AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 IDLE_SECONDS_KEY = "idleTimeoutSeconds"
 UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
+UPSCALING_VALUE_DEFAULT = "Default"
+UPSCALING_VALUE_CONSERVATIVE = "Conservative"
 
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
@@ -108,11 +112,18 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     if IDLE_SECONDS_KEY in autoscaler_options:
         idle_timeout_minutes = autoscaler_options[IDLE_SECONDS_KEY] / 60.0
     else:
-        idle_timeout_minutes = 5.0
-    if autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_AGGRESSIVE:
-        upscaling_speed = 1000  # i.e. big
+        idle_timeout_minutes = 1.0
+
+    if autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_CONSERVATIVE:
+        upscaling_speed = 1  # Rate-limit upscaling if "Conservative" is set by user.
+    # This elif is redudant but included for clarity.
+    elif autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_DEFAULT:
+        upscaling_speed = 1000  # i.e. big, no rate-limiting by default
+    # This elif is redudant but included for clarity.
+    elif autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_AGGRESSIVE:
+        upscaling_speed = 1000
     else:
-        upscaling_speed = 1
+        upscaling_speed = 1000
 
     autoscaling_config = {
         "provider": provider_config,
@@ -145,6 +156,8 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
         DISABLE_NODE_UPDATERS_KEY: True,
         DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
         FOREGROUND_NODE_LAUNCH_KEY: True,
+        WORKER_LIVENESS_CHECK_KEY: False,
+        WORKER_RPC_DRAIN_KEY: False,
     }
 
 
