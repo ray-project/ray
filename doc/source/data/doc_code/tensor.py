@@ -6,11 +6,8 @@ import ray
 
 # Create a Dataset of tensors.
 ds = ray.data.range_tensor(10000, shape=(64, 64))
-# -> Dataset(
-#       num_blocks=200,
-#       num_rows=10000,
-#       schema={__value__: ArrowTensorType(shape=(64, 64), dtype=int64)}
-#    )
+# -> Dataset(num_blocks=200, num_rows=10000,
+#            schema={__value__: ArrowTensorType(shape=(64, 64), dtype=int64)})
 
 ds.take(2)
 # -> [array([[0, 0, 0, ..., 0, 0, 0],
