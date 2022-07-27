@@ -51,6 +51,7 @@ def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
     # arr = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
     # return pd.DataFrame({"__value__": arr})
 
+
 ds.map_batches(single_col_udf)
 # -> Dataset(num_blocks=17, num_rows=1000, schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
 # __create_pandas_end__
