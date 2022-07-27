@@ -74,7 +74,7 @@ class SimpleSchemaIngress:
             return resp
 
     @abstractmethod
-    async def predict(self, inp, route_path):
+    async def predict(self, inp):
         raise NotImplementedError()
 
     async def __call__(self, request: starlette.requests.Request):
