@@ -747,6 +747,13 @@ py_test(
     srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
+py_test(
+    name = "test_registry",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_registry.py"],
+)
+
 # Specific Algorithms
 
 # A2C
