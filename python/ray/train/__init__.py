@@ -13,6 +13,7 @@ from ray.train.train_loop_utils import (
     world_size,
 )
 from ray.train.trainer import Trainer, TrainingIterator
+from ray.air.config import CheckpointConfig
 
 
 usage_lib.record_library_usage("train")
