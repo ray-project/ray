@@ -43,7 +43,6 @@ def get_agent_connectors_from_config(
         [
             StateBufferConnector(ctx),
             ViewRequirementAgentConnector(ctx),
-            FlattenDataAgentConnector(ctx),  # Creates batch dimension.
         ]
     )
 
