@@ -10,7 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
+from ray import air, tune
 
 # Always import tensorflow using this utility function:
 tf1, tf, tfv = try_import_tf()
@@ -117,7 +117,9 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyAlgo, stop=stop, config=config, verbose=1)
+    results = tune.Tuner(
+        MyAlgo, run_config=air.RunConfig(stop=stop, verbose=1), param_space=config
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

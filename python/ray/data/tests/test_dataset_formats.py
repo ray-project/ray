@@ -10,6 +10,7 @@ import pyarrow as pa
 import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
+from ray.data.datasource.file_meta_provider import _handle_read_os_error
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
@@ -932,57 +933,65 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
 
 
 def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
-    tensor_output_path = os.path.join(tmp_path, "tensor")
-    ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
-    ds = ray.data.read_parquet(tensor_output_path)
-    assert ds.num_blocks() > 1
-    data_size = ds.size_bytes()
-    assert (
-        data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "estimated data size is out of expected bound"
-    data_size = ds.fully_executed().size_bytes()
-    assert (
-        data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "actual data size is out of expected bound"
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_decoding_size_estimation = ctx.decoding_size_estimation
+    ctx.decoding_size_estimation = True
+    try:
+        tensor_output_path = os.path.join(tmp_path, "tensor")
+        ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
+        ds = ray.data.read_parquet(tensor_output_path)
+        assert ds.num_blocks() > 1
+        data_size = ds.size_bytes()
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is out of expected bound"
+        data_size = ds.fully_executed().size_bytes()
+        assert (
+            data_size >= 7_000_000 and data_size <= 10_000_000
+        ), "actual data size is out of expected bound"
 
-    reader = _ParquetDatasourceReader(tensor_output_path)
-    assert (
-        reader._encoding_ratio >= 400 and reader._encoding_ratio <= 600
-    ), "encoding ratio is out of expected bound"
-    data_size = reader.estimate_inmemory_data_size()
-    assert (
-        data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "estimated data size is either out of expected bound"
-    assert (
-        data_size
-        == _ParquetDatasourceReader(tensor_output_path).estimate_inmemory_data_size()
-    ), "estimated data size is not deterministic in multiple calls."
+        reader = _ParquetDatasourceReader(tensor_output_path)
+        assert (
+            reader._encoding_ratio >= 300 and reader._encoding_ratio <= 600
+        ), "encoding ratio is out of expected bound"
+        data_size = reader.estimate_inmemory_data_size()
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is either out of expected bound"
+        assert (
+            data_size
+            == _ParquetDatasourceReader(
+                tensor_output_path
+            ).estimate_inmemory_data_size()
+        ), "estimated data size is not deterministic in multiple calls."
 
-    text_output_path = os.path.join(tmp_path, "text")
-    ray.data.range(1000).map(lambda _: "a" * 1000).write_parquet(text_output_path)
-    ds = ray.data.read_parquet(text_output_path)
-    assert ds.num_blocks() > 1
-    data_size = ds.size_bytes()
-    assert (
-        data_size >= 1_000_000 and data_size <= 2_000_000
-    ), "estimated data size is out of expected bound"
-    data_size = ds.fully_executed().size_bytes()
-    assert (
-        data_size >= 1_000_000 and data_size <= 2_000_000
-    ), "actual data size is out of expected bound"
+        text_output_path = os.path.join(tmp_path, "text")
+        ray.data.range(1000).map(lambda _: "a" * 1000).write_parquet(text_output_path)
+        ds = ray.data.read_parquet(text_output_path)
+        assert ds.num_blocks() > 1
+        data_size = ds.size_bytes()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "estimated data size is out of expected bound"
+        data_size = ds.fully_executed().size_bytes()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "actual data size is out of expected bound"
 
-    reader = _ParquetDatasourceReader(text_output_path)
-    assert (
-        reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
-    ), "encoding ratio is out of expected bound"
-    data_size = reader.estimate_inmemory_data_size()
-    assert (
-        data_size >= 1_000_000 and data_size <= 2_000_000
-    ), "estimated data size is out of expected bound"
-    assert (
-        data_size
-        == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
-    ), "estimated data size is not deterministic in multiple calls."
+        reader = _ParquetDatasourceReader(text_output_path)
+        assert (
+            reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
+        ), "encoding ratio is out of expected bound"
+        data_size = reader.estimate_inmemory_data_size()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "estimated data size is out of expected bound"
+        assert (
+            data_size
+            == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
+        ), "estimated data size is not deterministic in multiple calls."
+    finally:
+        ctx.decoding_size_estimation = old_decoding_size_estimation
 
 
 @pytest.mark.parametrize(
@@ -1211,7 +1220,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
         "Dataset(num_blocks=2, num_rows=None, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1223,7 +1232,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1236,7 +1245,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds.count() == 10
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     assert [v.item() for v in ds.take(2)] == [0, 1]
 
@@ -1249,7 +1258,7 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1306,7 +1315,7 @@ def test_numpy_read_partitioned_with_filter(
         val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema="{__value__: <ArrowTensorType: shape=(2,), dtype=int8>}",
+            schema="{__value__: ArrowTensorType(shape=(2,), dtype=int8)}",
             sorted_values=f"[[{val_str}]]",
             ds_take_transform_fn=lambda taken: [taken],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
@@ -2775,22 +2784,21 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
 
 def test_image_folder_datasource(ray_start_regular_shared):
     root = os.path.join(os.path.dirname(__file__), "image-folder")
-    ds = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
 
     assert ds.count() == 3
 
     df = ds.to_pandas()
     assert sorted(df["label"]) == ["cat", "cat", "dog"]
     assert type(df["image"].dtype) is TensorDtype
-    assert all(tensor.to_numpy().shape == (32, 32, 3) for tensor in df["image"])
+    assert all(tensor.to_numpy().shape == (64, 64, 3) for tensor in df["image"])
 
 
-def test_image_folder_datasource_raises_value_error(ray_start_regular_shared):
-    # `ImageFolderDatasource` should raise an error if more than one path is passed.
+@pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
+def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
     with pytest.raises(ValueError):
-        ray.data.read_datasource(
-            ImageFolderDatasource(), paths=["imagenet/train", "imagenet/test"]
-        )
+        ray.data.read_datasource(ImageFolderDatasource(), root=root, size=size)
 
 
 def test_image_folder_datasource_e2e(ray_start_regular_shared):
@@ -2802,7 +2810,9 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from torchvision.models import resnet18
 
     root = os.path.join(os.path.dirname(__file__), "image-folder")
-    dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[root])
+    dataset = ray.data.read_datasource(
+        ImageFolderDatasource(), root=root, size=(32, 32)
+    )
 
     def preprocess(df):
         # We convert the `TensorArrayElement` to a NumPy array because `ToTensor`
@@ -3006,16 +3016,23 @@ def test_read_s3_file_error(ray_start_regular_shared, s3_path):
     error_message = "Please check that file exists and has properly configured access."
     with pytest.raises(OSError) as e:
         ray.data.read_parquet(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
     with pytest.raises(OSError) as e:
         ray.data.read_binary_files(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
     with pytest.raises(OSError) as e:
         ray.data.read_csv(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
     with pytest.raises(OSError) as e:
         ray.data.read_json(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
+    with pytest.raises(OSError) as e:
+        error = OSError(
+            f"Error creating dataset. Could not read schema from {dummy_path}: AWS "
+            "Error [code 15]: No response body.. Is this a 'parquet' file?"
+        )
+        _handle_read_os_error(error, dummy_path)
+    assert error_message in str(e.value)
 
 
 if __name__ == "__main__":

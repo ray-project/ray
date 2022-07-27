@@ -47,6 +47,7 @@ class RayDatasetSpec:
             return dataset_or_pipeline.split(
                 len(training_worker_handles),
                 equal=True,
+                locality_hints=training_worker_handles,
             )
 
         if isinstance(self.dataset_or_dict, dict):
@@ -207,6 +208,7 @@ class DataParallelIngestSpec:
                 dataset_splits = dataset.split(
                     len(training_worker_handles),
                     equal=True,
+                    locality_hints=training_worker_handles,
                 )
             else:
                 dataset_splits = [dataset] * len(training_worker_handles)

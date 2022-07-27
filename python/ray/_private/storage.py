@@ -49,6 +49,7 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     return _get_filesystem_internal()
 
 
+# TODO(suquark): There is no implementation of 'get_client' in client hook.
 @client_mode_hook(auto_init=True)
 def get_client(prefix: str) -> "KVClient":
     """Returns a KV-client (convenience wrapper around underlying filesystem).
