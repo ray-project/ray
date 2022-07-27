@@ -6,9 +6,8 @@ Distributed Scikit-learn / Joblib
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
 Ray supports running distributed `scikit-learn`_ programs by
-implementing a Ray backend for `joblib`_ using `Ray Actors <actors.html>`__
-instead of local processes. This makes it easy to scale existing applications
-that use scikit-learn from a single node to a cluster.
+implementing a Ray backend for `joblib`_ using `Ray Actors <../ray-core/actors.html>`__
+instead of local processes. This makes it easy to distribute existing application process that use scikit-learn from a single node to a cluster.
 
 .. note::
 
@@ -21,13 +20,25 @@ that use scikit-learn from a single node to a cluster.
 Quickstart
 ----------
 
-To get started, first `install Ray <installation.html>`__, then use
-``from ray.util.joblib import register_ray`` and run ``register_ray()``.
-This will register Ray as a joblib backend for scikit-learn to use.
-Then run your original scikit-learn code inside
-``with joblib.parallel_backend('ray')``. This will start a local Ray cluster.
-See the `Run on a Cluster`_ section below for instructions to run on
-a multi-node Ray cluster instead.
+`Install Ray <../ray-overview/installation.html>`__ and call some methods in your scikit-learn code as the following.
+
+.. code-block:: python
+
+  import joblib
+  from ray.util.joblib import register_ray
+  register_ray()
+  with joblib.parallel_backend('ray'):
+      # scikit-learn code
+
+Usage
+-----
+
+``from ray.util.joblib import register_ray`` imports joblib with Ray backend library.
+``register_ray()`` registers Ray as a joblib backend for scikit-learn to use.
+
+The program inside ``with joblib.parallel_backend()`` is executed on the backend used by Parallel, and 
+the program inside ``with joblib.parallel_backend('ray')`` is executed on Ray as the backend used by Parallel.
+Then, ``with joblib.parallel_backend('ray')`` deploys your code on a Ray cluster. Inside the call, run your original scikit-learn code.
 
 .. code-block:: python
 
@@ -48,8 +59,19 @@ a multi-node Ray cluster instead.
   import joblib
   from ray.util.joblib import register_ray
   register_ray()
+  # ray.init(address=<address>) # if necessary
   with joblib.parallel_backend('ray'):
       search.fit(digits.data, digits.target)
+
+This will start a local Ray cluster. 
+To execute on a remote Ray cluster, start a Ray cluster and define a ``RAY_ADDRESS`` environment variable.
+Please refer to the `cluster setup <../cluster/index.html>`__ instructions.
+You can also start Ray manually by calling ``ray.init()`` (with any of its supported configuration options) before calling ``with joblib.parallel_backend('ray')``.
+
+.. warning::
+
+    If both ``RAY_ADDRESS`` environment variable and
+    ``address`` in ``ray.init(address=<address>)`` are not defined, scikit-learn will run on a SINGLE node!
 
 You can also set the ``ray_remote_args`` argument in ``parallel_backend`` to :ref:`configure
 the Ray Actors <ray-remote-ref>` making up the Pool. This can be used to eg. :ref:`assign resources
@@ -60,20 +82,3 @@ to Actors, such as GPUs <actor-resource-guide>`.
   # Allows to use GPU-enabled estimators, such as cuML
   with joblib.parallel_backend('ray', ray_remote_args=dict(num_gpus=1)):
       search.fit(digits.data, digits.target)
-
-Run on a Cluster
-----------------
-
-This section assumes that you have a running Ray cluster. To start a Ray cluster,
-please refer to the `cluster setup <cluster/index.html>`__ instructions.
-
-To connect a scikit-learn to a running Ray cluster, you have to specify the address of the
-head node by setting the ``RAY_ADDRESS`` environment variable.
-
-You can also start Ray manually by calling ``ray.init()`` (with any of its supported
-configuration options) before calling ``with joblib.parallel_backend('ray')``.
-
-.. warning::
-
-    If you do not set the ``RAY_ADDRESS`` environment variable and do not provide
-    ``address`` in ``ray.init(address=<address>)`` then scikit-learn will run on a SINGLE node!
