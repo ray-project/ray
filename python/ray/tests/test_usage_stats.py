@@ -955,6 +955,8 @@ provider:
             "extra_k1": "extra_v1",
             "_test1": "extra_v2",
             "_test2": "extra_v3",
+            "serve_num_deployments": "1",
+            "serve_api_version": "v1",
         }
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
