@@ -28,7 +28,7 @@ TUNE_PLACEMENT_GROUP_REMOVAL_DELAY = 2.0
 _tune_pg_prefix = None
 
 
-def get_tune_pg_prefix():
+def _get_tune_pg_prefix():
     """Get the tune placement group name prefix.
 
     This will store the prefix in a global variable so that subsequent runs
@@ -260,7 +260,9 @@ class PlacementGroupFactory:
         )
 
 
+@DeveloperAPI
 def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
+    """Translates resource dict into PlacementGroupFactory."""
     spec = spec or {"cpu": 1}
 
     if isinstance(spec, Resources):
