@@ -228,8 +228,6 @@ def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
         ).remote(),
     ]
 
-    # print(ray.get(refs[0]))
-    # return
     def condition():
         good_fun_num = 0
         bad_fun_num = 0
@@ -242,9 +240,7 @@ def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
                 return True
             except RuntimeEnvSetupError:
                 bad_fun_num += 1
-        return (
-            bad_fun_num == 1 and good_fun_num == 2
-        )  # XXX: fix this test to remove these unused variables
+        return bad_fun_num == 1 and good_fun_num == 2
 
     wait_for_condition(condition, timeout=60)
 
@@ -455,12 +451,8 @@ class UriCachingTestPlugin(RuntimeEnvPlugin):
         logger: logging.Logger,
     ) -> float:
         self.create_call_count += 1
-        logger.error("Creating %s", uri)
         created_size_bytes = runtime_env[self.name]["size_bytes"]
         self.uris_to_sizes[uri] = created_size_bytes
-        # log uri_to_sizes to make sure that the uri is in the dict.
-        logger.error("uris_to_sizes: %s", self.uris_to_sizes)
-
         self.write_plugin_usage_data()
         return created_size_bytes
 
@@ -475,8 +467,6 @@ class UriCachingTestPlugin(RuntimeEnvPlugin):
         self.write_plugin_usage_data()
 
     def delete_uri(self, uri: str, logger: logging.Logger) -> int:
-        logger.error("Deleting %s", uri)
-        logger.error("uris_to_sizes: %s", self.uris_to_sizes)
         size = self.uris_to_sizes.pop(uri)
         self.write_plugin_usage_data()
         return size
