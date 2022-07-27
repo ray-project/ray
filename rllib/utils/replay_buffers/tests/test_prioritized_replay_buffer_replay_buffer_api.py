@@ -116,9 +116,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             capacity=100, alpha=0.1, storage_unit="fragments"
         )
         for _ in range(40):
-            buffer.add(
-                concat_samples([self._generate_data() for _ in range(5)])
-            )
+            buffer.add(concat_samples([self._generate_data() for _ in range(5)]))
         assert len(buffer._storage) == 20, len(buffer._storage)
         assert buffer.stats()["added_count"] == 200, buffer.stats()
         # Test get_state/set_state.

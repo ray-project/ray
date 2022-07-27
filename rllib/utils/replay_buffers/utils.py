@@ -13,7 +13,7 @@ from ray.rllib.utils.replay_buffers import (
     ReplayBuffer,
     MultiAgentReplayBuffer,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
 from ray.util import log_once
 
