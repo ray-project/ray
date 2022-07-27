@@ -13,14 +13,12 @@ from ray.train.train_loop_utils import (
     world_size,
 )
 from ray.train.trainer import Trainer, TrainingIterator
-from ray.air.config import CheckpointConfig
 
 
 usage_lib.record_library_usage("train")
 
 __all__ = [
     "BackendConfig",
-    "CheckpointConfig",
     "get_dataset_shard",
     "load_checkpoint",
     "local_rank",
