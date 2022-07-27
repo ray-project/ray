@@ -260,7 +260,7 @@ class PlacementGroupFactory:
         )
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]]):
     """Translates resource dict into PlacementGroupFactory."""
     spec = spec or {"cpu": 1}
