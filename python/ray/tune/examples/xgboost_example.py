@@ -3,11 +3,12 @@ import sklearn.datasets
 import sklearn.metrics
 import os
 import numpy as np
-from ray.tune.schedulers import ASHAScheduler
 from sklearn.model_selection import train_test_split
 import xgboost as xgb
 
+import ray
 from ray import tune
+from ray.tune.schedulers import ASHAScheduler
 from ray.tune.integration.xgboost import (
     TuneReportCheckpointCallback,
     TuneReportCallback,
@@ -109,38 +110,16 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
-    parser.add_argument(
         "--use-cv", action="store_true", help="Use `xgb.cv` instead of `xgb.train`."
     )
     args, _ = parser.parse_known_args()
-
-    if args.server_address:
-        import ray
-
-        ray.init(f"ray://{args.server_address}")
 
     best_result = tune_xgboost(args.use_cv)
 
     # Load the best model checkpoint.
     # Checkpointing is not supported when using `xgb.cv`
     if not args.use_cv:
-        if args.server_address:
-            # If connecting to a remote server with Ray Client, checkpoint loading
-            # should be wrapped in a task so it will execute on the server.
-            # We have to make sure it gets executed on the same node that
-            # ``tuner.fit()`` is called on.
-            from ray.util.ml_utils.node import force_on_current_node
-
-            remote_fn = force_on_current_node(ray.remote(get_best_model_checkpoint))
-            best_bst = ray.get(remote_fn.remote(best_result))
-        else:
-            best_bst = get_best_model_checkpoint(best_result)
+        best_bst = get_best_model_checkpoint(best_result)
 
         # You could now do further predictions with
         # best_bst.predict(...)

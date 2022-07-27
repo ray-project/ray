@@ -17,6 +17,7 @@ from ray.tune.progress_reporter import (
     ProgressReporter,
     RemoteReporterMixin,
     detect_reporter,
+    detect_progress_metrics,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -51,30 +52,40 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
+from ray.tune.utils.node import force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.node import force_on_current_node
 from ray.util.queue import Empty, Queue
 
 logger = logging.getLogger(__name__)
 
 
-def _check_default_resources_override(
+def _get_trainable(
     run_identifier: Union[Experiment, str, Type, Callable]
-) -> bool:
+) -> Optional[Type[Trainable]]:
     if isinstance(run_identifier, Experiment):
         run_identifier = run_identifier.run_identifier
 
     if isinstance(run_identifier, type):
         if not issubclass(run_identifier, Trainable):
             # If obscure dtype, assume it is overridden.
-            return True
+            return None
         trainable_cls = run_identifier
     elif callable(run_identifier):
         trainable_cls = run_identifier
     elif isinstance(run_identifier, str):
         trainable_cls = get_trainable_cls(run_identifier)
     else:
+        return None
+
+    return trainable_cls
+
+
+def _check_default_resources_override(
+    run_identifier: Union[Experiment, str, Type, Callable]
+) -> bool:
+    trainable_cls = _get_trainable(run_identifier)
+    if not trainable_cls:
         # Default to True
         return True
 
@@ -610,8 +621,12 @@ def run(
             "from your scheduler or from your call to `tune.run()`"
         )
 
+    progress_metrics = detect_progress_metrics(_get_trainable(run_or_experiment))
+
     # Create syncer callbacks
-    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
+    callbacks = create_default_callbacks(
+        callbacks, sync_config, metric=metric, progress_metrics=progress_metrics
+    )
 
     runner = TrialRunner(
         search_alg=search_alg,

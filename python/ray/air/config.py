@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Union, Tuple
 
@@ -112,6 +113,15 @@ class ScalingConfig:
         if self.trainer_resources is None:
             return {"CPU": 1}
         return {k: v for k, v in self.trainer_resources.items() if v != 0}
+
+    @property
+    def total_resources(self):
+        """Map of total resources required for the trainer."""
+        total_resource_map = defaultdict(float, self._trainer_resources_not_none)
+        num_workers = self.num_workers or 0
+        for k, value in self._resources_per_worker_not_none.items():
+            total_resource_map[k] += value * num_workers
+        return dict(total_resource_map)
 
     @property
     def num_cpus_per_worker(self):
