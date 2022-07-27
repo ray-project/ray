@@ -2807,27 +2807,20 @@ void NodeManager::SubscribeGlobalOwnerAddress(ActorID actor_id) {
                        << actor_data.address().port()
                        << ", actor_name: " << actor_data.address().actor_name();
         if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-          {
-            absl::MutexLock guard(&global_owner_mutex_);
-            global_owner_address_.emplace(actor_id, actor_data.address());
-          }
-          {
-            absl::MutexLock guard(&objects_need_to_report_mutex_);
-            const ActorID actor_id = ActorID::FromBinary(actor_data.actor_id());
-            auto it = objects_need_to_report_.find(actor_id);
-            if (it == objects_need_to_report_.end()) return;
-            for (const auto &object_id : it->second) {
-              ObjectInfo object_info;
-              object_info.object_id = object_id;
-              object_info.owner_raylet_id =
-                  NodeID::FromBinary(actor_data.address().raylet_id());
-              object_info.owner_ip_address = actor_data.address().ip_address();
-              object_info.owner_port = actor_data.address().port();
-              object_info.owner_worker_id =
-                  WorkerID::FromBinary(actor_data.address().worker_id());
-              RAY_LOG(DEBUG) << "try to report object add " << object_id;
-              object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
-            }
+          absl::MutexLock guard(&objects_need_to_report_mutex_);
+          auto it = objects_need_to_report_.find(actor_id);
+          if (it == objects_need_to_report_.end()) return;
+          for (const auto &object_id : it->second) {
+            ObjectInfo object_info;
+            object_info.object_id = object_id;
+            object_info.owner_raylet_id =
+                NodeID::FromBinary(actor_data.address().raylet_id());
+            object_info.owner_ip_address = actor_data.address().ip_address();
+            object_info.owner_port = actor_data.address().port();
+            object_info.owner_worker_id =
+                WorkerID::FromBinary(actor_data.address().worker_id());
+            RAY_LOG(DEBUG) << "try to report object add " << object_id;
+            object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
           }
         }
       },

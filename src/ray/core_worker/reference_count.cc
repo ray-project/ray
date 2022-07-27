@@ -236,15 +236,6 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   if (!spilled_url.empty()) {
     it->second.spilled_url = spilled_url;
     it->second.spilled_node_id = spilled_node_id;
-    auto location_updates = std::move(pending_object_location_updates_[object_id]);
-    pending_object_location_updates_.erase(object_id);
-    for (auto [location, is_add] : location_updates) {
-      if (is_add) {
-        AddObjectLocationInternal(it, location);
-      } else {
-        RemoveObjectLocationInternal(it, location);
-      }
-    }
   }
 
   if (add_local_ref) {
@@ -1211,14 +1202,8 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(DEBUG) << "Tried to add an object location for an object " << object_id
-                   << " that doesn't exist in the reference table. It can happen if the "
-                      "object is already evicted.";
-    // NOTE(kfstorm): We should delay adding the object location if this object has HA
-    // enabled. Maybe the global owner just restarted and a Raylet tries to re-announce
-    // the location of the object.
-    // TODO(kfstorm): Maybe we should make RemoveObjectLocation pending as well.
-    pending_object_location_updates_[object_id].emplace_back(node_id, true);
-    return false;
+                   << " that doesn't exist in the reference table.";
+    it = object_id_refs_.emplace(object_id, Reference()).first;
   }
   AddObjectLocationInternal(it, node_id);
   return true;
@@ -1242,13 +1227,7 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(DEBUG) << "Tried to remove an object location for an object " << object_id
-                   << " that doesn't exist in the reference table. It can happen if the "
-                      "object is already evicted.";
-    // NOTE(kfstorm): We should delay adding the object location if this object has HA
-    // enabled. Maybe the global owner just restarted and a Raylet tries to re-announce
-    // the location of the object.
-    // TODO(kfstorm): Maybe we should make RemoveObjectLocation pending as well.
-    pending_object_location_updates_[object_id].emplace_back(node_id, false);
+                   << " that doesn't exist in the reference table.";
     return false;
   }
   RemoveObjectLocationInternal(it, node_id);

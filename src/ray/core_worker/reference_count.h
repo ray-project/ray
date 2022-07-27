@@ -26,6 +26,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/logging.h"
+#include "ray/common/ray_config.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -616,11 +617,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// 2. If lineage pinning is enabled, there are no tasks that depend on
     /// the object that may be retried in the future.
     bool ShouldDelete(bool lineage_pinning_enabled) const {
+      bool should_delete;
       if (lineage_pinning_enabled) {
-        return OutOfScope(lineage_pinning_enabled) && (lineage_ref_count == 0);
+        should_delete = OutOfScope(lineage_pinning_enabled) && (lineage_ref_count == 0);
       } else {
-        return OutOfScope(lineage_pinning_enabled);
+        should_delete = OutOfScope(lineage_pinning_enabled);
       }
+      if (!should_delete) return should_delete;
+      if (!::RayConfig::instance().is_global_owner()) return should_delete;
+      should_delete = (should_delete && (locations.size() == 0));
+      return should_delete;
     }
 
     /// Access BorrowInfo without modifications.
@@ -1002,9 +1008,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// due to node failure. These objects are still in scope and need to be
   /// recovered.
   std::vector<ObjectID> objects_to_recover_ GUARDED_BY(mutex_);
-
-  absl::flat_hash_map<ObjectID, std::vector<std::pair<NodeID, bool>>>
-      pending_object_location_updates_ GUARDED_BY(mutex_);
 };
 
 }  // namespace core
