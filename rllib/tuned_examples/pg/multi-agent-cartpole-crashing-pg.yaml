@@ -25,11 +25,6 @@ multi-agent-cartpole-crashing-pg:
         # Switch on resiliency for failed sub environments (within a vectorized stack).
         restart_failed_sub_environments: true
 
-        # Disable env checking. Otherwise, RolloutWorkers will crash during
-        # initialization, which is not covered by the
-        # `restart_failed_sub_environments=True` failure tolerance mode.
-        disable_env_checking: true
-
         evaluation_num_workers: 2
         evaluation_interval: 1
         evaluation_duration: 20
