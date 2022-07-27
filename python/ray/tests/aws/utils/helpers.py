@@ -2,6 +2,7 @@ import os
 import yaml
 import ray
 import copy
+from typing import Dict, Any
 
 from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
 from ray.autoscaler.tags import (
@@ -29,8 +30,17 @@ def load_aws_example_config_file(file_name):
     return yaml.safe_load(open(config_file_path).read())
 
 
+def fake_fillout_available_node_types_resources(config: Dict[str, Any]) -> None:
+    """A cheap way to fill out the resources field (the same way a node
+    provider would autodetect them) as far as schema validation is concerned."""
+    available_node_types = config.get("available_node_types", {})
+    for label, value in available_node_types.items():
+        value["resources"] = value.get("resources", {"filler": 1})
+
+
 def bootstrap_aws_config(config):
     config = prepare_config(config)
+    fake_fillout_available_node_types_resources(config)
     validate_config(config)
     config["cluster_name"] = DEFAULT_CLUSTER_NAME
     return ray.autoscaler._private.aws.config.bootstrap_aws(config)

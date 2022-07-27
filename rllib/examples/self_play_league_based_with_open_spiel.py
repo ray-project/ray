@@ -38,7 +38,7 @@ import pyspiel
 import re
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.self_play_with_open_spiel import ask_user_for_action
@@ -327,14 +327,18 @@ if __name__ == "__main__":
     # Train the "main" policy to play really well using self-play.
     results = None
     if not args.from_checkpoint:
-        results = tune.run(
+        results = tune.Tuner(
             "PPO",
-            config=config,
-            stop=stop,
-            checkpoint_at_end=True,
-            checkpoint_freq=10,
-            verbose=3,
-        )
+            param_space=config,
+            run_config=air.RunConfig(
+                stop=stop,
+                checkpoint_config=air.CheckpointConfig(
+                    checkpoint_at_end=True,
+                    checkpoint_frequency=10,
+                ),
+                verbose=3,
+            ),
+        ).fit()
 
     # Restore trained trainer (set to non-explore behavior) and play against
     # human on command line.
@@ -344,7 +348,7 @@ if __name__ == "__main__":
         if args.from_checkpoint:
             trainer.restore(args.from_checkpoint)
         else:
-            checkpoint = results.get_last_checkpoint()
+            checkpoint = results.get_best_result().checkpoint
             if not checkpoint:
                 raise ValueError("No last checkpoint found in results!")
             trainer.restore(checkpoint)
