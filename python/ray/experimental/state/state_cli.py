@@ -411,7 +411,7 @@ def ray_get(
     # Create the State API server and put it into context
     logger.debug(f"Create StateApiClient at {address}...")
     client = StateApiClient(
-        api_server_url=address,
+        address=address,
     )
 
     options = GetApiOptions(
@@ -551,7 +551,7 @@ def ray_list(
 
     # Create the State API server and put it into context
     client = StateApiClient(
-        api_server_url=address if address else get_api_server_url(),
+        address=address if address else get_api_server_url(),
     )
 
     filter = [_parse_filter(f) for f in filter]
@@ -614,7 +614,7 @@ def task_summary(ctx, timeout: float, address: str):
     print(
         format_summary_output(
             summarize_tasks(
-                api_server_url=address,
+                address=address,
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
@@ -646,7 +646,7 @@ def actor_summary(ctx, timeout: float, address: str):
     print(
         format_summary_output(
             summarize_actors(
-                api_server_url=address,
+                address=address,
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
@@ -697,7 +697,7 @@ def object_summary(ctx, timeout: float, address: str):
     print(
         format_object_summary_output(
             summarize_objects(
-                api_server_url=address,
+                address=address,
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,

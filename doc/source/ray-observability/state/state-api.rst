@@ -147,7 +147,7 @@ You can also access logs through ``ray logs`` API.
         from ray.experimental.state.api import get_log
 
         actor_id = "31405554844820381c2f0f8501000000"
-        for line in get_log(api_server_url="http://localhost:8265", actor_id=actor_id):
+        for line in get_log(address="http://localhost:8265", actor_id=actor_id):
             print(line)
 
 .. code-block:: text
@@ -458,7 +458,7 @@ E.g., Get a particular log file from a node
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
         node_ip = "172.31.47.143" 
-        for line in get_log(api_server_url="http://localhost:8265", filename="gcs_server.out", node_ip=node_ip):
+        for line in get_log(address="http://localhost:8265", filename="gcs_server.out", node_ip=node_ip):
             print(line)
 
 E.g., Stream a log file from a node
@@ -479,7 +479,7 @@ E.g., Stream a log file from a node
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
         node_ip = "172.31.47.143" 
-        for line in get_log(api_server_url="http://localhost:8265", filename="raylet.out", node_ip=node_ip, follow=True):
+        for line in get_log(address="http://localhost:8265", filename="raylet.out", node_ip=node_ip, follow=True):
             print(line)
 
 
@@ -506,7 +506,7 @@ E.g., Stream log from a pid
         # of worker being directed to the driver (default)
         pid = "318158" 
         # The loop will block with `follow=True`
-        for line in get_log(api_server_url="http://localhost:8265", pid=pid, node_ip=node_ip, follow=True):
+        for line in get_log(address="http://localhost:8265", pid=pid, node_ip=node_ip, follow=True):
             print(line)
 
 Failure Semantics
