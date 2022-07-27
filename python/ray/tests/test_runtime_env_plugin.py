@@ -491,7 +491,6 @@ def gb_to_bytes(size_gb: int) -> int:
     return size_gb * 1024 * 1024 * 1024
 
 
-# XXX(architkulkarni): fix
 class TestGC:
     @pytest.mark.parametrize(
         "set_runtime_env_plugins",
