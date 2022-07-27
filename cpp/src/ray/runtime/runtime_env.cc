@@ -20,7 +20,7 @@
 
 namespace ray {
 
-void RuntimeEnv::SetJsonStr(const std::string name, const std::string &json_str) {
+void RuntimeEnv::SetJsonStr(const std::string &name, const std::string &json_str) {
   try {
     json value_j = json::parse(json_str);
     fields_[name] = value_j;
@@ -30,7 +30,7 @@ void RuntimeEnv::SetJsonStr(const std::string name, const std::string &json_str)
   }
 }
 
-std::string RuntimeEnv::GetJsonStr(const std::string name) {
+std::string RuntimeEnv::GetJsonStr(const std::string &name) const {
   if (!Contains(name)) {
     throw ray::internal::RayRuntimeEnvException("The field " + name + " not found.");
   }
@@ -38,9 +38,11 @@ std::string RuntimeEnv::GetJsonStr(const std::string name) {
   return j.dump();
 }
 
-bool RuntimeEnv::Contains(const std::string name) { return fields_.contains(name); }
+bool RuntimeEnv::Contains(const std::string &name) const {
+  return fields_.contains(name);
+}
 
-bool RuntimeEnv::Remove(const std::string name) {
+bool RuntimeEnv::Remove(const std::string &name) {
   if (Contains(name)) {
     fields_.erase(name);
     return true;
@@ -48,11 +50,11 @@ bool RuntimeEnv::Remove(const std::string name) {
   return false;
 }
 
-bool RuntimeEnv::Empty() { return fields_.empty(); }
+bool RuntimeEnv::Empty() const { return fields_.empty(); }
 
-std::string RuntimeEnv::Serialize() { return fields_.dump(); }
+std::string RuntimeEnv::Serialize() const { return fields_.dump(); }
 
-std::string RuntimeEnv::SerializeToRuntimeEnvInfo() {
+std::string RuntimeEnv::SerializeToRuntimeEnvInfo() const {
   rpc::RuntimeEnvInfo runtime_env_info;
   runtime_env_info.set_serialized_runtime_env(Serialize());
   std::string serialized_runtime_env_info;

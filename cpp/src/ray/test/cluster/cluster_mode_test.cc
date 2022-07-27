@@ -537,7 +537,7 @@ class Pip {
   std::vector<std::string> packages;
   bool pip_check = false;
   Pip() = default;
-  Pip(std::vector<std::string> packages, bool pip_check)
+  Pip(const std::vector<std::string> &packages, bool pip_check)
       : packages(packages), pip_check(pip_check) {}
 };
 

@@ -72,7 +72,7 @@ class ActorCreator {
     return *this;
   }
 
-  ActorCreator &SetRuntimeEnv(ray::RuntimeEnv runtime_env) {
+  ActorCreator &SetRuntimeEnv(const ray::RuntimeEnv &runtime_env) {
     create_options_.serialized_runtime_env_info = runtime_env.SerializeToRuntimeEnvInfo();
     return *this;
   }

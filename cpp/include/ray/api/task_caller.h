@@ -52,7 +52,7 @@ class TaskCaller {
     return *this;
   }
 
-  TaskCaller &SetRuntimeEnv(ray::RuntimeEnv runtime_env) {
+  TaskCaller &SetRuntimeEnv(const ray::RuntimeEnv &runtime_env) {
     task_options_.serialized_runtime_env_info = runtime_env.SerializeToRuntimeEnvInfo();
     return *this;
   }
