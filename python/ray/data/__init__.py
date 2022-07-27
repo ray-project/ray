@@ -7,7 +7,7 @@ from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.data.datasource import Datasource, ReadTask
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor, train_test_split
 from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
@@ -73,4 +73,5 @@ __all__ = [
     "read_parquet_bulk",
     "set_progress_bars",
     "Preprocessor",
+    "train_test_split",
 ]

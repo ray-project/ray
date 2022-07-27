@@ -24,7 +24,7 @@ Built-in Preprocessors
     :members:
     :show-inheritance:
 
-.. autofunction:: ray.air.train_test_split
+.. autofunction:: ray.data.train_test_split
 
 .. _air-trainer-ref:
 

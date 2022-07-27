@@ -1,6 +1,6 @@
 import ray
 from ray.data.preprocessors import StandardScaler
-from ray.air import train_test_split
+from ray.data import train_test_split
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostTrainer, XGBoostPredictor
 from ray.air.config import ScalingConfig

@@ -5,7 +5,7 @@
 import ray
 import pandas as pd
 from sklearn.datasets import load_breast_cancer
-from ray.air import train_test_split
+from ray.data import train_test_split
 
 from ray.data.preprocessors import *
 

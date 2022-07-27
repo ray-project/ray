@@ -24,7 +24,7 @@ checkpoint = TensorflowCheckpoint.from_model(model)
 
 # __use_trainer_checkpoint_start__
 import ray
-from ray.air import train_test_split
+from ray.data import train_test_split
 from ray.train.xgboost import XGBoostTrainer
 from ray.air.config import ScalingConfig
 

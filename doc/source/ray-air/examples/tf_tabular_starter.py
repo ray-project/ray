@@ -4,7 +4,7 @@
 # __air_generic_preprocess_start__
 import ray
 from ray.data.preprocessors import StandardScaler
-from ray.air import train_test_split
+from ray.data import train_test_split
 from ray.air.config import ScalingConfig
 
 

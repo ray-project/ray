@@ -447,7 +447,7 @@ Using Ray Datasets is the recommended way for ingesting data into ``Trainer``\s 
 
     import ray
     from ray import train
-    from ray.air import train_test_split, ScalingConfig
+    from ray.data import train_test_split, ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
