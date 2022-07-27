@@ -15,6 +15,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Apply flow style for sequences of this length
+_SEQUENCE_LEN_FLOW_STYLE = 3
+
+
 @DeveloperAPI
 class Logger(abc.ABC):
     """Logging interface for ray.tune.
@@ -201,6 +205,13 @@ class LegacyLoggerCallback(LoggerCallback):
                 trial_loggers[trial].close()
 
 
+class _RayDumper(yaml.SafeDumper):
+    def represent_sequence(self, tag, sequence, flow_style=None):
+        if len(sequence) > _SEQUENCE_LEN_FLOW_STYLE:
+            return super().represent_sequence(tag, sequence, flow_style=True)
+        return super().represent_sequence(tag, sequence, flow_style=flow_style)
+
+
 def pretty_print(result):
     result = result.copy()
     result.update(config=None)  # drop config from pretty print
@@ -211,4 +222,4 @@ def pretty_print(result):
             out[k] = v
 
     cleaned = json.dumps(out, cls=SafeFallbackEncoder)
-    return yaml.safe_dump(json.loads(cleaned), default_flow_style=False)
+    return yaml.dump(json.loads(cleaned), Dumper=_RayDumper, default_flow_style=False)
