@@ -10,6 +10,7 @@ import pyarrow as pa
 import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
+from ray.data.datasource.file_meta_provider import _handle_read_os_error
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
@@ -3015,16 +3016,23 @@ def test_read_s3_file_error(ray_start_regular_shared, s3_path):
     error_message = "Please check that file exists and has properly configured access."
     with pytest.raises(OSError) as e:
         ray.data.read_parquet(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
     with pytest.raises(OSError) as e:
         ray.data.read_binary_files(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
     with pytest.raises(OSError) as e:
         ray.data.read_csv(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
     with pytest.raises(OSError) as e:
         ray.data.read_json(dummy_path)
-        assert error_message in str(e)
+    assert error_message in str(e.value)
+    with pytest.raises(OSError) as e:
+        error = OSError(
+            f"Error creating dataset. Could not read schema from {dummy_path}: AWS "
+            "Error [code 15]: No response body.. Is this a 'parquet' file?"
+        )
+        _handle_read_os_error(error, dummy_path)
+    assert error_message in str(e.value)
 
 
 if __name__ == "__main__":
