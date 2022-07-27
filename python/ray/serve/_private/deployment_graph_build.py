@@ -5,13 +5,17 @@ from collections import OrderedDict
 
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.deployment_method_node import DeploymentMethodNode
-from ray.serve.deployment_node import DeploymentNode
-from ray.serve.deployment_function_node import DeploymentFunctionNode
-from ray.serve.deployment_executor_node import DeploymentExecutorNode
-from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
-from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
-from ray.serve.json_serde import DAGNodeEncoder
+from ray.serve._private.deployment_method_node import DeploymentMethodNode
+from ray.serve._private.deployment_node import DeploymentNode
+from ray.serve._private.deployment_function_node import DeploymentFunctionNode
+from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
+from ray.serve._private.deployment_method_executor_node import (
+    DeploymentMethodExecutorNode,
+)
+from ray.serve._private.deployment_function_executor_node import (
+    DeploymentFunctionExecutorNode,
+)
+from ray.serve._private.json_serde import DAGNodeEncoder
 from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.schema import DeploymentSchema
 

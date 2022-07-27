@@ -13,8 +13,8 @@ from ray._private.utils import import_attr
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
-from ray.serve.common import (
+from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve._private.common import (
     ApplicationStatus,
     ApplicationStatusInfo,
     DeploymentInfo,
@@ -25,21 +25,21 @@ from ray.serve.common import (
     StatusOverview,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
     CONTROLLER_MAX_CONCURRENCY,
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
 )
-from ray.serve.deployment_state import DeploymentStateManager, ReplicaState
-from ray.serve.endpoint_state import EndpointState
-from ray.serve.http_state import HTTPState
-from ray.serve.logging_utils import configure_component_logger
-from ray.serve.long_poll import LongPollHost
+from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
+from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.http_state import HTTPState
+from ray.serve._private.logging_utils import configure_component_logger
+from ray.serve._private.long_poll import LongPollHost
 from ray.serve.schema import ServeApplicationSchema
-from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import (
+from ray.serve._private.storage.kv_store import RayInternalKVStore
+from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
 )
 from ray.types import ObjectRef

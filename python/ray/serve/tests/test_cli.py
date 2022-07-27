@@ -14,7 +14,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve.schema import ServeApplicationSchema, ServeStatusSchema
-from ray.serve.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient

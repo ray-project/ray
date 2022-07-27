@@ -1,5 +1,3 @@
-import tempfile
-
 import lightgbm as lgbm
 import numpy as np
 import pandas as pd
@@ -43,12 +41,7 @@ def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     preprocessor = DummyPreprocessor()
     preprocessor.attr = 1
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        checkpoint = LightGBMCheckpoint.from_model(
-            booster=model, path=tmpdir, preprocessor=preprocessor
-        )
-        # Serialize to dict so we can remove the temporary directory
-        checkpoint = LightGBMCheckpoint.from_dict(checkpoint.to_dict())
+    checkpoint = LightGBMCheckpoint.from_model(booster=model, preprocessor=preprocessor)
 
     return checkpoint, preprocessor
 

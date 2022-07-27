@@ -11,22 +11,26 @@ from ray.dag import (
     InputAttributeNode,
     DAGNODE_TYPE_KEY,
 )
-from ray.serve.deployment_executor_node import DeploymentExecutorNode
-from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
-from ray.serve.deployment_function_executor_node import DeploymentFunctionExecutorNode
+from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
+from ray.serve._private.deployment_method_executor_node import (
+    DeploymentMethodExecutorNode,
+)
+from ray.serve._private.deployment_function_executor_node import (
+    DeploymentFunctionExecutorNode,
+)
 
 from ray.serve.schema import (
     DeploymentSchema,
 )
-from ray.serve.utils import parse_import_path
+from ray.serve._private.utils import parse_import_path
 from ray.serve.handle import (
     HandleOptions,
     RayServeHandle,
     RayServeLazySyncHandle,
-    serve_handle_to_json_dict,
-    serve_handle_from_json_dict,
+    _serve_handle_to_json_dict,
+    _serve_handle_from_json_dict,
 )
-from ray.serve.constants import SERVE_HANDLE_JSON_KEY
+from ray.serve._private.constants import SERVE_HANDLE_JSON_KEY
 from ray.serve.deployment_graph import RayServeDAGHandle
 
 
@@ -87,7 +91,7 @@ class DAGNodeEncoder(json.JSONEncoder):
                 "schema": obj.dict(),
             }
         elif isinstance(obj, RayServeHandle):
-            return serve_handle_to_json_dict(obj)
+            return _serve_handle_to_json_dict(obj)
         elif isinstance(obj, RayServeDAGHandle):
             # TODO(simon) Do a proper encoder
             return {
@@ -136,7 +140,7 @@ def dagnode_from_json(input_json: Any) -> Union[DAGNode, RayServeHandle, Any]:
     }
     # Deserialize RayServeHandle type
     if SERVE_HANDLE_JSON_KEY in input_json:
-        return serve_handle_from_json_dict(input_json)
+        return _serve_handle_from_json_dict(input_json)
     # Base case for plain objects
     elif DAGNODE_TYPE_KEY not in input_json:
         return input_json
