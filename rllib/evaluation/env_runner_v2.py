@@ -117,10 +117,10 @@ class _PerfStats:
         }
 
     def get(self):
-        if self.ema:
-            return self._get_ema()
-        else:
+        if self.ema_coef is None:
             return self._get_avg()
+        else:
+            return self._get_ema()
 
 
 class _NewDefaultDict(defaultdict):
