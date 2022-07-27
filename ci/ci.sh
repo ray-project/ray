@@ -300,6 +300,17 @@ build_sphinx_docs() {
   )
 }
 
+doctest_sphinx_docs() {
+  (
+    cd "${WORKSPACE_DIR}"/doc
+    if [ "${OSTYPE}" = msys ]; then
+      echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
+    else
+      make doctest
+    fi
+  )
+}
+
 check_sphinx_links() {
   (
     cd "${WORKSPACE_DIR}"/doc
