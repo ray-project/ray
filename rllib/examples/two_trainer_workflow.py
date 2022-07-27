@@ -9,7 +9,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.agents import with_common_config
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn.dqn import DEFAULT_CONFIG as DQN_CONFIG
@@ -218,7 +218,9 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(MyAlgo, config=config, stop=stop)
+    results = tune.Tuner(
+        MyAlgo, param_space=config, run_config=air.RunConfig(stop=stop)
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

@@ -10,7 +10,7 @@ import numpy as np
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import Episode, RolloutWorker
@@ -142,12 +142,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init()
-    trials = tune.run(
+    tuner = tune.Tuner(
         "PG",
-        stop={
-            "training_iteration": args.stop_iters,
-        },
-        config={
+        run_config=air.RunConfig(
+            stop={
+                "training_iteration": args.stop_iters,
+            },
+        ),
+        param_space={
             "env": "CartPole-v0",
             "num_envs_per_worker": 2,
             "callbacks": MyCallbacks,
@@ -155,19 +157,15 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         },
-    ).trials
+    )
+    # there is only one trial involved.
+    result = tuner.fit().get_best_result()
 
     # Verify episode-related custom metrics are there.
-    custom_metrics = trials[0].last_result["custom_metrics"]
+    custom_metrics = result.metrics["custom_metrics"]
     print(custom_metrics)
     assert "pole_angle_mean" in custom_metrics
     assert "pole_angle_min" in custom_metrics
     assert "pole_angle_max" in custom_metrics
     assert "num_batches_mean" in custom_metrics
-    assert "callback_ok" in trials[0].last_result
-
-    # Verify `on_learn_on_batch` custom metrics are there (per policy).
-    if args.framework == "torch":
-        info_custom_metrics = custom_metrics["default_policy"]
-        print(info_custom_metrics)
-        assert "sum_actions_in_train_batch" in info_custom_metrics
+    assert "callback_ok" in result.metrics

@@ -17,7 +17,7 @@ from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
+from ray import air, tune
 from ray.tune import PlacementGroupFactory
 from ray.tune.logger import pretty_print
 
@@ -153,7 +153,11 @@ if __name__ == "__main__":
             "episode_reward_mean": args.stop_reward,
         }
 
-        results = tune.run(PPORemoteInference, config=config, stop=stop, verbose=1)
+        results = tune.Tuner(
+            PPORemoteInference,
+            param_space=config,
+            run_config=air.RunConfig(stop=stop, verbose=1),
+        ).fit()
 
         if args.as_test:
             check_learning_achieved(results, args.stop_reward)
