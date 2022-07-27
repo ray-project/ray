@@ -129,15 +129,15 @@ class PolicySpec:
         if isinstance(spec["policy_class"], str):
             # Try to recover the actual policy class from durable name.
             from ray.rllib.algorithms.registry import get_policy_class
-            cls = get_policy_class(spec["policy_class"])
+            policy_class = get_policy_class(spec["policy_class"])
         elif isinstance(spec["policy_class"], type):
             # Policy spec is already a class type. Simply use it.
-            cls = spec["policy_class"]
+            policy_class = spec["policy_class"]
         else:
             raise AttributeError(f"Unknown policy class spec {spec['policy_class']}")
 
         return cls(
-            policy_class=cls,
+            policy_class=policy_class,
             observation_space=space_from_dict(spec["observation_space"]),
             action_space=space_from_dict(spec["action_space"]),
             config=spec["config"],
