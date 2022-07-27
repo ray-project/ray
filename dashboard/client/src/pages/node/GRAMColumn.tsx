@@ -67,6 +67,13 @@ export const WorkerGRAM = ({
 const MiBRatioNoPercent = (used: number, total: number) =>
   `${used}MiB/${total}MiB`;
 
+type GRAMEntryProps = {
+  gpuName: string;
+  slot: number;
+  utilization: number;
+  total: number;
+};
+
 const GRAMEntry: React.FC<GRAMEntryProps> = ({
   gpuName,
   slot,
