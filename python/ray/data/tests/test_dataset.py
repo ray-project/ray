@@ -1335,9 +1335,7 @@ def test_schema(ray_start_regular_shared):
     assert str(ds) == "<Dataset num_blocks=10 num_rows=10 schema=<class 'int'>>"
     assert str(ds2) == "<Dataset num_blocks=10 num_rows=10 schema={value: int64}>"
     assert str(ds3) == "<Dataset num_blocks=5 num_rows=10 schema={value: int64}>"
-    assert (
-        str(ds4) == "<Dataset num_blocks=1 num_rows=5 schema={a: string, b: double}>"
-    )
+    assert str(ds4) == "<Dataset num_blocks=1 num_rows=5 schema={a: string, b: double}>"
 
 
 def test_schema_lazy(ray_start_regular_shared):
