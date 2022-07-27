@@ -577,7 +577,7 @@ class ModelCatalog:
                 # ok.
                 registered = []
                 if not isinstance(instance, tf.keras.Model):
-                    registered = set(instance.var_list)
+                    registered = set([var.ref() for var in instance.var_list])
                 if len(registered) > 0:
                     not_registered = set()
                     for var in created:
