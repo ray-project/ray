@@ -4619,7 +4619,7 @@
     cluster_compute: compute_tpl.yaml
 
   run:
-    timeout: 7200
+    timeout: 1800
     prepare: bash prepare.sh
     script: python run_gcs_ft_on_k8s.py
     type: sdk_command
