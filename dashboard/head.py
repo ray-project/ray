@@ -104,6 +104,7 @@ class DashboardHead:
         self.temp_dir = temp_dir
         self.session_dir = session_dir
         self.aiogrpc_gcs_channel = None
+        self.gcs_aio_client = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = ray.util.get_node_ip_address()
