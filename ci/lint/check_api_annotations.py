@@ -99,10 +99,10 @@ if __name__ == "__main__":
     verify(ray.air, set(), ok, output)
     verify(ray.train, set(), ok, output)
     verify(ray.tune, set(), ok, output)
-    verify(ray, set(), ok, output, ignore=["ray.workflow", "ray.serve"])
-    assert len(ok) >= 400, len(ok)
+    verify(ray, set(), ok, output, ignore=["ray.workflow", "ray.tune", "ray.serve"])
+    verify(ray.serve, set(), ok, output)
+    assert len(ok) >= 500, len(ok)
     # TODO(ekl) enable it for all modules.
-    #    verify(ray.serve, set(), ok, output)
     #    verify(ray.tune, set(), ok, output)
     #    verify(ray.workflow, set(), ok, output)
 
