@@ -24,6 +24,7 @@ from ray.data.block import (
     KeyType,
     U,
 )
+from ray.data.context import DatasetContext
 from ray.data.row import TableRow
 from ray.data._internal.table_block import (
     TableBlockAccessor,
@@ -103,7 +104,10 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
             df = pandas.concat(tables, ignore_index=True)
         else:
             df = tables[0]
-        return _cast_ndarray_columns_to_tensor_extension(df)
+        ctx = DatasetContext.get_current()
+        if ctx.enable_tensor_extension_casting:
+            df = _cast_ndarray_columns_to_tensor_extension(df)
+        return df
 
     @staticmethod
     def _empty_table() -> "pandas.DataFrame":
@@ -161,7 +165,11 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
-        return _cast_tensor_columns_to_ndarrays(self._table)
+        ctx = DatasetContext.get_current()
+        table = self._table
+        if ctx.enable_tensor_extension_casting:
+            table = _cast_tensor_columns_to_ndarrays(table)
+        return table
 
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None

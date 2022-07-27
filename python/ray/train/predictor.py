@@ -76,6 +76,16 @@ class Predictor(abc.ABC):
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
         self._preprocessor: Optional[Preprocessor] = preprocessor
+        # Whether tensor columns should be automatically cast from/to the tensor
+        # extension type at UDF boundaries. This can be overridden by subclasses.
+        self._cast_tensor_columns = False
+
+    @DeveloperAPI
+    def _set_cast_tensor_columns(self):
+        """Enable automatic tensor column casting from/to the tensor extension type at
+        UDF boundaries.
+        """
+        self._cast_tensor_columns = True
 
     @classmethod
     @abc.abstractmethod
@@ -132,7 +142,7 @@ class Predictor(abc.ABC):
             DataBatchType: Prediction result. The return type will be the same as the
                 input type.
         """
-        data_df = convert_batch_type_to_pandas(data)
+        data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
 
         if not hasattr(self, "_preprocessor"):
             raise NotImplementedError(
@@ -144,7 +154,9 @@ class Predictor(abc.ABC):
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
         return convert_pandas_to_batch_type(
-            predictions_df, type=TYPE_TO_ENUM[type(data)]
+            predictions_df,
+            type=TYPE_TO_ENUM[type(data)],
+            cast_tensor_columns=self._cast_tensor_columns,
         )
 
     @DeveloperAPI

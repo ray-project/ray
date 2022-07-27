@@ -8,6 +8,7 @@ import pyarrow
 import pytest
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.data.preprocessors import (
     BatchMapper,
@@ -1195,7 +1196,7 @@ def test_concatenator():
     prep = Concatenator(output_column_name="c")
     new_ds = prep.transform(ds)
     for i, row in enumerate(new_ds.take()):
-        assert np.array_equal(row["c"].to_numpy(), np.array([i + 1, i + 1]))
+        assert np.array_equal(row["c"], np.array([i + 1, i + 1]))
 
     # Test repr
     assert "c" in prep.__repr__()
@@ -1229,12 +1230,23 @@ def test_concatenator():
     for i, row in enumerate(new_ds.take()):
         assert set(row) == {"concat_out", "b", "c"}
 
-    # check it works with string types
+    # check it fails with string types by default
     df = pd.DataFrame({"a": ["string", "string2", "string3"]})
     ds = ray.data.from_pandas(df)
     prep = Concatenator(output_column_name="huh")
-    new_ds = prep.transform(ds)
-    assert "huh" in set(new_ds.schema().names)
+    with pytest.raises(ValueError):
+        new_ds = prep.transform(ds)
+
+    # check it works with string types if automatic tensor extension casting is
+    # disabled
+    ctx = DatasetContext.get_current()
+    old_config = ctx.enable_tensor_extension_casting
+    ctx.enable_tensor_extension_casting = False
+    try:
+        new_ds = prep.transform(ds)
+        assert "huh" in set(new_ds.schema().names)
+    finally:
+        ctx.enable_tensor_extension_casting = old_config
 
 
 def test_tokenizer():

@@ -22,11 +22,15 @@ class DataType(Enum):
 
 
 @DeveloperAPI
-def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
+def convert_batch_type_to_pandas(
+    data: DataBatchType,
+    cast_tensor_columns: bool = False,
+) -> pd.DataFrame:
     """Convert the provided data to a Pandas DataFrame.
 
     Args:
         data: Data of type DataBatchType
+        cast_tensor_columns: Whether tensor columns should be cast to NumPy ndarrays.
 
     Returns:
         A pandas Dataframe representation of the input data.
@@ -52,21 +56,30 @@ def convert_batch_type_to_pandas(data: DataBatchType) -> pd.DataFrame:
             f"Received data of type: {type(data)}, but expected it to be one "
             f"of {DataBatchType}"
         )
-    return _cast_tensor_columns_to_ndarrays(data)
+    if cast_tensor_columns:
+        data = _cast_tensor_columns_to_ndarrays(data)
+    return data
 
 
 @DeveloperAPI
-def convert_pandas_to_batch_type(data: pd.DataFrame, type: DataType) -> DataBatchType:
+def convert_pandas_to_batch_type(
+    data: pd.DataFrame,
+    type: DataType,
+    cast_tensor_columns: bool = False,
+) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
     Args:
         data: A Pandas DataFrame
         type: The specific ``DataBatchType`` to convert to.
+        cast_tensor_columns: Whether tensor columns should be cast to our tensor
+            extension type.
 
     Returns:
         The input data represented with the provided type.
     """
-    data = _cast_ndarray_columns_to_tensor_extension(data)
+    if cast_tensor_columns:
+        data = _cast_ndarray_columns_to_tensor_extension(data)
     if type == DataType.PANDAS:
         return data
 
@@ -105,20 +118,17 @@ def _ndarray_to_column(arr: np.ndarray) -> Union[pd.Series, List[np.ndarray]]:
     """
     try:
         # Try to convert to Series, falling back to a list conversion if this fails
-        # (e.g. if the ndarray is multi-dimensional.
+        # (e.g. if the ndarray is multi-dimensional).
         return pd.Series(arr)
     except ValueError:
         return list(arr)
 
 
 def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
-    """Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray."""
+    """
+    Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
+    """
     from ray.air.util.tensor_extensions.pandas import TensorArray
-    from ray.data.context import DatasetContext
-
-    ctx = DatasetContext.get_current()
-    if not ctx.enable_tensor_extension_casting:
-        return df
 
     # Try to convert any ndarray columns to TensorArray columns.
     # TODO(Clark): Once Pandas supports registering extension types for type
@@ -134,8 +144,11 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
                 df.loc[:, col_name] = TensorArray(col)
             except Exception as e:
                 raise ValueError(
-                    f"Tried to transparently convert column {col_name} to a "
-                    "TensorArray but the conversion failed."
+                    f"Tried to cast column {col_name} to the TensorArray tensor "
+                    "extension type but the conversion failed. To disable automatic "
+                    "casting to this tensor extension, set "
+                    "ctx = DatasetContext.get_current(); "
+                    "ctx.enable_tensor_extension_casting = False."
                 ) from e
     return df
 
@@ -143,14 +156,9 @@ def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
 def _cast_tensor_columns_to_ndarrays(df: pd.DataFrame) -> pd.DataFrame:
     """Cast all tensor extension columns in df to NumPy ndarrays."""
     from ray.air.util.tensor_extensions.pandas import TensorDtype
-    from ray.data.context import DatasetContext
-
-    ctx = DatasetContext.get_current()
-    if not ctx.enable_tensor_extension_casting:
-        return df
 
     # Try to convert any tensor extension columns to ndarray columns.
     for col_name, col in df.items():
         if isinstance(col.dtype, TensorDtype):
-            df.loc[:, col_name] = list(col.to_numpy())
+            df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
     return df

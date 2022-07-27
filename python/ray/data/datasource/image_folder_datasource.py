@@ -113,7 +113,6 @@ class ImageFolderDatasource(BinaryDatasource):
     ):
         import imageio as iio
         import pandas as pd
-        from ray.data.extensions import TensorArray
         import skimage
 
         records = super()._read_file(f, path, include_paths=True)
@@ -124,20 +123,11 @@ class ImageFolderDatasource(BinaryDatasource):
         image = skimage.transform.resize(image, size)
         image = skimage.util.img_as_ubyte(image)
 
-        try:
-            # Try to convert image `ndarray` to `TensorArray`s.
-            image = TensorArray([np.array(image)])
-        except TypeError as e:
-            raise ValueError(
-                "Tried to convert image ndarray to a TensorArray extension type but "
-                "the conversion failed."
-            ) from e
-
         label = _get_class_from_path(path, root)
 
         return pd.DataFrame(
             {
-                "image": image,
+                "image": [np.array(image)],
                 "label": [label],
             }
         )
