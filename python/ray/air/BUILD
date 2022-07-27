@@ -180,6 +180,14 @@ py_test(
 )
 
 py_test(
+    name = "test_checkpoint_manager",
+    size = "small",
+    srcs = ["tests/test_checkpoint_manager.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_configs",
     size = "small",
     srcs = ["tests/test_configs.py"],
@@ -215,6 +223,14 @@ py_test(
     name = "test_keras_callback",
     size = "small",
     srcs = ["tests/test_keras_callback.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_mlflow",
+    size = "medium",
+    srcs = ["tests/test_mlflow.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

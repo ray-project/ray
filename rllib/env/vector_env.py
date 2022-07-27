@@ -248,7 +248,16 @@ class _VectorizedGymEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_reset(self):
-        return [e.reset() for e in self.envs]
+        # Use reset_at(index) to restart and retry until
+        # we successfully create a new env.
+        resetted_obs = []
+        for i in range(len(self.envs)):
+            while True:
+                obs = self.reset_at(i)
+                if not isinstance(obs, Exception):
+                    break
+            resetted_obs.append(obs)
+        return resetted_obs
 
     @override(VectorEnv)
     def reset_at(self, index: Optional[int] = None) -> EnvObsType:

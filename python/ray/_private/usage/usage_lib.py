@@ -223,9 +223,9 @@ def _put_library_usage(library_usage: str):
     assert _internal_kv_initialized()
     try:
         _internal_kv_put(
-            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}",
-            "",
-            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+            f"{usage_constant.LIBRARY_USAGE_PREFIX}{library_usage}".encode(),
+            b"",
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
     except Exception as e:
         logger.debug(f"Failed to put library usage, {e}")
@@ -275,9 +275,9 @@ def _put_extra_usage_tag(key: str, value: str):
     assert _internal_kv_initialized()
     try:
         _internal_kv_put(
-            f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}",
-            value,
-            namespace=usage_constant.USAGE_STATS_NAMESPACE,
+            f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}".encode(),
+            value.encode(),
+            namespace=usage_constant.USAGE_STATS_NAMESPACE.encode(),
         )
     except Exception as e:
         logger.debug(f"Failed to put extra usage tag, {e}")
@@ -299,12 +299,13 @@ def record_library_usage(library_usage: str):
         # This happens if the library is imported before ray.init
         return
 
-    # Only report lib usage for driver / workers. Otherwise,
+    # Only report lib usage for driver / ray client / workers. Otherwise,
     # it can be reported if the library is imported from
     # e.g., API server.
     if (
         ray._private.worker.global_worker.mode == ray.SCRIPT_MODE
         or ray._private.worker.global_worker.mode == ray.WORKER_MODE
+        or ray.util.client.ray.is_connected()
     ):
         _put_library_usage(library_usage)
 
@@ -314,8 +315,12 @@ def _put_pre_init_library_usages():
     # NOTE: When the lib is imported from a worker, ray should
     # always be initialized, so there's no need to register the
     # pre init hook.
-    if ray._private.worker.global_worker.mode != ray.SCRIPT_MODE:
+    if not (
+        ray._private.worker.global_worker.mode == ray.SCRIPT_MODE
+        or ray.util.client.ray.is_connected()
+    ):
         return
+
     for library_usage in _recorded_library_usages:
         _put_library_usage(library_usage)
 
@@ -326,8 +331,12 @@ def _put_pre_init_extra_usage_tags():
         _put_extra_usage_tag(k, v)
 
 
-ray._private.worker._post_init_hooks.append(_put_pre_init_library_usages)
-ray._private.worker._post_init_hooks.append(_put_pre_init_extra_usage_tags)
+def put_pre_init_usage_stats():
+    _put_pre_init_library_usages()
+    _put_pre_init_extra_usage_tags()
+
+
+ray._private.worker._post_init_hooks.append(put_pre_init_usage_stats)
 
 
 def _usage_stats_report_url():

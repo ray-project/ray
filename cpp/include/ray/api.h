@@ -23,6 +23,7 @@
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/ray_runtime_holder.h>
+#include <ray/api/runtime_env.h>
 #include <ray/api/task_caller.h>
 #include <ray/api/wait_result.h>
 

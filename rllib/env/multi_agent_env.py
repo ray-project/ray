@@ -3,6 +3,7 @@ import logging
 from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
 from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -432,9 +433,15 @@ def make_multi_agent(
     """
 
     class MultiEnv(MultiAgentEnv):
-        def __init__(self, config=None):
+        def __init__(self, config: EnvContext = None):
             MultiAgentEnv.__init__(self)
-            config = config or {}
+            # Note(jungong) : explicitly check for None here, because config
+            # can have an empty dict but meaningful data fields (worker_index,
+            # vector_index) etc.
+            # TODO(jungong) : clean this up, so we are not mixing up dict fields
+            # with data fields.
+            if config is None:
+                config = {}
             num = config.pop("num_agents", 1)
             if isinstance(env_name_or_creator, str):
                 self.agents = [gym.make(env_name_or_creator) for _ in range(num)]
