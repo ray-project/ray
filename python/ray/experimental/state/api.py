@@ -1073,7 +1073,7 @@ Log APIs
 
 
 def get_log(
-    address: str = None,
+    address: Optional[str] = None,
     node_id: Optional[str] = None,
     node_ip: Optional[str] = None,
     filename: Optional[str] = None,
@@ -1168,10 +1168,10 @@ def get_log(
 
 
 def list_logs(
-    address: str = None,
-    node_id: str = None,
-    node_ip: str = None,
-    glob_filter: str = None,
+    address: Optional[str] = None,
+    node_id: Optional[str] = None,
+    node_ip: Optional[str] = None,
+    glob_filter: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
 ) -> Dict[str, List[str]]:
     """Listing log files available.
