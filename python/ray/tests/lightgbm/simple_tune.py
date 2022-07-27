@@ -1,11 +1,10 @@
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
-from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.util.xgboost import RayDMatrix, RayParams, train
+from lightgbm_ray import RayDMatrix, RayParams, train
 
 # __train_begin__
-num_cpus_per_actor = 1
+num_cpus_per_actor = 2
 num_actors = 1
 
 
@@ -27,7 +26,7 @@ def train_model(config):
         verbose_eval=False,
         ray_params=RayParams(num_actors=num_actors, cpus_per_actor=num_cpus_per_actor),
     )
-    bst.save_model("model.xgb")
+    bst.booster_.save_model("model.lgbm")
 
 
 # __train_end__
@@ -35,11 +34,10 @@ def train_model(config):
 
 # __load_begin__
 def load_best_model(best_logdir):
-    import xgboost as xgb
+    import lightgbm as lgbm
     import os
 
-    best_bst = xgb.Booster()
-    best_bst.load_model(os.path.join(best_logdir, "model.xgb"))
+    best_bst = lgbm.Booster(model_file=os.path.join(best_logdir, "model.lgbm"))
     return best_bst
 
 
@@ -52,9 +50,8 @@ def main():
 
     # Set config
     config = {
-        "tree_method": "approx",
-        "objective": "binary:logistic",
-        "eval_metric": ["logloss", "error"],
+        "objective": "binary",
+        "metric": ["binary_logloss", "binary_error"],
         "eta": tune.loguniform(1e-4, 1e-1),
         "subsample": tune.uniform(0.5, 1.0),
         "max_depth": tune.randint(1, 9),
@@ -65,12 +62,10 @@ def main():
     analysis = tune.run(
         train_model,
         config=config,
-        metric="eval-error",
+        metric="eval-binary_error",
         mode="min",
         num_samples=4,
-        resources_per_trial=PlacementGroupFactory(
-            [{"CPU": 1.0}] + [{"CPU": float(num_cpus_per_actor)}] * num_actors
-        ),
+        resources_per_trial={"cpu": 1, "extra_cpu": num_actors * num_cpus_per_actor},
     )
 
     # Load in the best performing model.
@@ -87,7 +82,7 @@ def main():
     # Do something with the best model.
     _ = best_bst
 
-    accuracy = 1.0 - analysis.best_result["eval-error"]
+    accuracy = 1.0 - analysis.best_result["eval-binary_error"]
     print(f"Best model parameters: {analysis.best_config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
     # __tune_run_end__

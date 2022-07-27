@@ -1,4 +1,3 @@
-import argparse
 import os
 import torch
 from torch import nn
@@ -8,11 +7,15 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 import pytorch_lightning as pl
 
-from ray.util.ray_lightning import RayPlugin
+from ray_lightning import RayPlugin
+from ray_lightning.tune import TuneReportCallback, get_tune_resources
+
+num_cpus_per_actor = 1
+num_workers = 1
 
 
 class LitAutoEncoder(pl.LightningModule):
-    def __init__(self):
+    def __init__(self, lr):
         super().__init__()
         self.encoder = nn.Sequential(
             nn.Linear(28 * 28, 128), nn.ReLU(), nn.Linear(128, 3)
@@ -20,6 +23,7 @@ class LitAutoEncoder(pl.LightningModule):
         self.decoder = nn.Sequential(
             nn.Linear(3, 128), nn.ReLU(), nn.Linear(128, 28 * 28)
         )
+        self.lr = lr
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
@@ -37,46 +41,42 @@ class LitAutoEncoder(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer
 
 
-def main(num_workers: int = 2, use_gpu: bool = False, max_steps: int = 10):
+def train(config):
     dataset = MNIST(os.getcwd(), download=True, transform=transforms.ToTensor())
     train, val = random_split(dataset, [55000, 5000])
 
-    autoencoder = LitAutoEncoder()
+    metrics = {"loss": "train_loss"}
+    autoencoder = LitAutoEncoder(lr=config["lr"])
     trainer = pl.Trainer(
-        plugins=[RayPlugin(num_workers=num_workers, use_gpu=use_gpu)],
-        max_steps=max_steps,
+        callbacks=[TuneReportCallback(metrics, on="batch_end")],
+        plugins=[RayPlugin(num_workers=num_workers)],
+        max_steps=10,
     )
     trainer.fit(autoencoder, DataLoader(train), DataLoader(val))
 
 
+def main():
+    from ray import tune
+
+    config = {"lr": tune.loguniform(1e-4, 1e-1)}
+
+    analysis = tune.run(
+        train,
+        config=config,
+        num_samples=1,
+        metric="loss",
+        mode="min",
+        resources_per_trial=get_tune_resources(
+            num_workers=num_workers, cpus_per_worker=num_cpus_per_actor
+        ),
+    )
+
+    print("Best hyperparameters: ", analysis.best_config)
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Ray Lightning Example",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument(
-        "--num-workers",
-        type=int,
-        default=2,
-        help="Number of workers to use for training.",
-    )
-    parser.add_argument(
-        "--max-steps",
-        type=int,
-        default=10,
-        help="Maximum number of steps to run for training.",
-    )
-    parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="Whether to enable GPU training.",
-    )
-
-    args = parser.parse_args()
-
-    main(num_workers=args.num_workers, max_steps=args.max_steps, use_gpu=args.use_gpu)
+    main()

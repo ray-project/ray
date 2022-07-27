@@ -80,7 +80,7 @@ def test_train(ray_start_4_cpus):
 
 @pytest.mark.skipif(not gloo_built(), reason="Gloo is required for Ray integration")
 def test_horovod_example(ray_start_4_cpus):
-    from ray.util.horovod.horovod_example import main
+    from ray.tests.horovod.horovod_example import main
 
     kwargs = {
         "data_dir": "./data",

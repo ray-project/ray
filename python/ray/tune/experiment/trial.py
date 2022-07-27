@@ -13,6 +13,7 @@ from typing import Dict, Optional, Sequence, Union, Callable, List
 import uuid
 
 import ray
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
@@ -43,7 +44,6 @@ from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)

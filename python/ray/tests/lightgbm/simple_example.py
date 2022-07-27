@@ -1,10 +1,10 @@
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
-from ray.util.xgboost import RayDMatrix, RayParams, train
+from lightgbm_ray import RayDMatrix, RayParams, train
 
 
-# __xgboost_begin__
+# __lightgbm_begin__
 def main():
     # Load dataset
     data, labels = datasets.load_breast_cancer(return_X_y=True)
@@ -16,9 +16,8 @@ def main():
 
     # Set config
     config = {
-        "tree_method": "approx",
-        "objective": "binary:logistic",
-        "eval_metric": ["logloss", "error"],
+        "objective": "binary",
+        "metric": ["binary_logloss", "binary_error"],
         "max_depth": 3,
     }
 
@@ -34,11 +33,15 @@ def main():
         verbose_eval=False,
     )
 
-    bst.save_model("simple.xgb")
-    print("Final validation error: {:.4f}".format(evals_result["eval"]["error"][-1]))
+    bst.booster_.save_model("simple.lgbm")
+    print(
+        "Final validation error: {:.4f}".format(
+            evals_result["eval"]["binary_error"][-1]
+        )
+    )
 
 
-# __xgboost_end__
+# __lightgbm_end__
 
 if __name__ == "__main__":
     main()

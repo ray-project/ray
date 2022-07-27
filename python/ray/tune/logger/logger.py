@@ -5,9 +5,9 @@ import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Type, Iterable
 
 import yaml
+from ray.air._internal.json import SafeFallbackEncoder
 from ray.tune.callback import Callback
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.util.ml_utils.json import SafeFallbackEncoder
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401

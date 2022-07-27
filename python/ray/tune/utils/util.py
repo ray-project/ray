@@ -17,18 +17,18 @@ import psutil
 import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.remote_storage import delete_at_uri
-from ray.util.ml_utils.dict import (  # noqa: F401
+from ray.air._internal.json import SafeFallbackEncoder  # noqa
+from ray.air._internal.util import (  # noqa: F401
+    is_nan,
+    is_nan_or_inf,
+)
+from ray._private.dict import (  # noqa: F401
     merge_dicts,
     deep_update,
     flatten_dict,
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
-)
-from ray.util.ml_utils.json import SafeFallbackEncoder  # noqa
-from ray.util.ml_utils.util import (  # noqa: F401
-    is_nan,
-    is_nan_or_inf,
 )
 
 logger = logging.getLogger(__name__)

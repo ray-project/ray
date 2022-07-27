@@ -1,5 +1,5 @@
 import pytest
-from ray.util.ml_utils.checkpoint_manager import (
+from ray.air._internal.checkpoint_manager import (
     _CheckpointManager,
     CheckpointStorage,
     CheckpointConfig,

@@ -14,6 +14,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Set, Union
 
 import ray
 from ray.air import Checkpoint
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.exceptions import GetTimeoutError, RayTaskError
 from ray.tune.error import (
     TuneError,
@@ -33,7 +34,6 @@ from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.tune.trainable.util import TrainableUtil
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.util.placement_group import PlacementGroup, remove_placement_group
 
 logger = logging.getLogger(__name__)

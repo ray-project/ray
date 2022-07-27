@@ -9,6 +9,7 @@ from collections import OrderedDict
 
 import ray
 from ray import tune
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.rllib import _register_all
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import (
@@ -25,7 +26,6 @@ from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune import Callback
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.experiment import Experiment
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
 class TestCallback(Callback):

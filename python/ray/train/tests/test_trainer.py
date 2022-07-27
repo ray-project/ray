@@ -10,7 +10,8 @@ import torch
 import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
-from ray.train import Trainer, CheckpointConfig
+from ray.air import CheckpointConfig
+from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
 from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.torch import TorchConfig
