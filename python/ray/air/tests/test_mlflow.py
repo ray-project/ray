@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import unittest
 
-from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 
 
 class MLflowTest(unittest.TestCase):
