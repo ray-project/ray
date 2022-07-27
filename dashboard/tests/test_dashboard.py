@@ -973,6 +973,10 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
     assert response is None
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
+)
 def test_dashboard_module_load(tmpdir):
     """Verify if the head module can load only selected modules."""
     head = DashboardHead(

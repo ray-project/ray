@@ -160,7 +160,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--modules-to-load",
         required=False,
-        # type=Optional[str],
+        type=Optional[str],
         default=None,
         help=(
             "Specify the list of module names in [module_1],[module_2] format."
@@ -184,7 +184,8 @@ if __name__ == "__main__":
         if args.modules_to_load:
             modules_to_load = set(args.modules_to_load.strip(" ,").split(","))
         else:
-            modules_to_load = set()
+            # None == default.
+            modules_to_load = None
 
         dashboard = Dashboard(
             args.host,
