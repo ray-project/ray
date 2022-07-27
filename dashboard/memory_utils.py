@@ -47,7 +47,7 @@ class GroupByType(Enum):
     STACK_TRACE = "stack_trace"
 
 
-class ReferenceType:
+class ReferenceType(Enum):
     # We don't use enum because enum is not json serializable.
     ACTOR_HANDLE = "ACTOR_HANDLE"
     PINNED_IN_MEMORY = "PINNED_IN_MEMORY"
@@ -146,17 +146,17 @@ class MemoryTableEntry:
 
     def _get_reference_type(self) -> str:
         if self._is_object_ref_actor_handle():
-            return ReferenceType.ACTOR_HANDLE
+            return ReferenceType.ACTOR_HANDLE.value
         if self.pinned_in_memory:
-            return ReferenceType.PINNED_IN_MEMORY
+            return ReferenceType.PINNED_IN_MEMORY.value
         elif self.submitted_task_ref_count > 0:
-            return ReferenceType.USED_BY_PENDING_TASK
+            return ReferenceType.USED_BY_PENDING_TASK.value
         elif self.local_ref_count > 0:
-            return ReferenceType.LOCAL_REFERENCE
+            return ReferenceType.LOCAL_REFERENCE.value
         elif len(self.contained_in_owned) > 0:
-            return ReferenceType.CAPTURED_IN_OBJECT
+            return ReferenceType.CAPTURED_IN_OBJECT.value
         else:
-            return ReferenceType.UNKNOWN_STATUS
+            return ReferenceType.UNKNOWN_STATUS.value
 
     def _is_object_ref_actor_handle(self) -> bool:
         object_ref_hex = self.object_ref.hex()
@@ -247,15 +247,15 @@ class MemoryTable:
         for entry in self.table:
             if entry.object_size > 0:
                 total_object_size += entry.object_size
-            if entry.reference_type == ReferenceType.LOCAL_REFERENCE:
+            if entry.reference_type == ReferenceType.LOCAL_REFERENCE.value:
                 total_local_ref_count += 1
-            elif entry.reference_type == ReferenceType.PINNED_IN_MEMORY:
+            elif entry.reference_type == ReferenceType.PINNED_IN_MEMORY.value:
                 total_pinned_in_memory += 1
-            elif entry.reference_type == ReferenceType.USED_BY_PENDING_TASK:
+            elif entry.reference_type == ReferenceType.USED_BY_PENDING_TASK.value:
                 total_used_by_pending_task += 1
-            elif entry.reference_type == ReferenceType.CAPTURED_IN_OBJECT:
+            elif entry.reference_type == ReferenceType.CAPTURED_IN_OBJECT.value:
                 total_captured_in_objects += 1
-            elif entry.reference_type == ReferenceType.ACTOR_HANDLE:
+            elif entry.reference_type == ReferenceType.ACTOR_HANDLE.value:
                 total_actor_handles += 1
 
         self.summary = {

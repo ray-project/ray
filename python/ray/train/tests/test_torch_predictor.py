@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+import ray
 import torch
 
 from ray.air.checkpoint import Checkpoint
@@ -11,8 +12,17 @@ from ray.air.util.data_batch_conversion import (
     convert_batch_type_to_pandas,
 )
 from ray.data.preprocessor import Preprocessor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 class DummyPreprocessor(Preprocessor):
@@ -31,6 +41,13 @@ class DummyModelMultiInput(torch.nn.Module):
 
 
 class DummyModelMultiOutput(torch.nn.Module):
+    def forward(self, input_tensor):
+        return {"a": input_tensor, "b": input_tensor}
+
+
+class DummyCustomModel(torch.nn.Module):
+    """A model with an unsupported output type."""
+
     def forward(self, input_tensor):
         return [input_tensor, input_tensor]
 
@@ -80,6 +97,33 @@ def test_predict(batch_type):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
+@pytest.mark.parametrize("batch_type", [pd.DataFrame, pa.Table])
+def test_predict_batch(ray_start_4_cpus, batch_type):
+    checkpoint = TorchCheckpoint.from_dict({MODEL_KEY: {}})
+    predictor = BatchPredictor.from_checkpoint(
+        checkpoint, TorchPredictor, model=DummyModelMultiInput()
+    )
+
+    dummy_data = pd.DataFrame(
+        [[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]], columns=["X0", "X1"]
+    )
+
+    # Todo: Ray data does not support numpy dicts
+    if batch_type == np.ndarray:
+        dataset = ray.data.from_numpy(dummy_data.to_numpy())
+    elif batch_type == pd.DataFrame:
+        dataset = ray.data.from_pandas(dummy_data)
+    elif batch_type == pa.Table:
+        dataset = ray.data.from_arrow(pa.Table.from_pandas(dummy_data))
+    else:
+        raise RuntimeError("Invalid batch_type")
+
+    predictions = predictor.predict(dataset)
+
+    assert predictions.count() == 3
+    assert predictions.to_pandas().to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
+
+
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array(model, use_gpu):
     predictor = TorchPredictor(model=model, use_gpu=use_gpu)
@@ -121,6 +165,31 @@ def test_predict_multi_output(use_gpu):
     predictions = predictor.predict(data_batch)
 
     # Model outputs two tensors
+    assert len(predictions) == 2
+    for k, v in predictions.items():
+        # Each tensor is of size 3
+        assert len(v) == 3
+        assert v.flatten().tolist() == [1, 2, 3]
+
+
+def test_predict_unsupported_output():
+    """Tests predictions with models that have unsupported output types."""
+    predictor = TorchPredictor(model=DummyCustomModel())
+
+    data_batch = np.array([1, 2, 3])
+
+    # List output is not supported.
+    with pytest.raises(ValueError):
+        predictor.predict(data_batch)
+
+    # Use a custom predictor instead.
+    class CustomPredictor(TorchPredictor):
+        def call_model(self, tensor):
+            model_output = super().call_model(tensor)
+            return {str(i): model_output[i] for i in range(len(model_output))}
+
+    predictor = CustomPredictor(model=DummyCustomModel())
+    predictions = predictor.predict(data_batch)
     assert len(predictions) == 2
     for k, v in predictions.items():
         # Each tensor is of size 3
@@ -180,6 +249,9 @@ def test_multi_modal_real_model(use_gpu):
             self.linear2 = torch.nn.Linear(1, 1)
 
         def forward(self, input_dict: dict):
+            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
+            input_dict["A"] = input_dict["A"].unsqueeze(1)
+            input_dict["B"] = input_dict["B"].unsqueeze(1)
             out1 = self.linear1(input_dict["A"])
             out2 = self.linear2(input_dict["B"])
             return out1 + out2

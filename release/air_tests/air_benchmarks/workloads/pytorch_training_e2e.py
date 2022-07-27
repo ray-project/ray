@@ -96,7 +96,9 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     # Enable cross host NCCL for larger scale tests
     runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens3"}}
     ray.init(runtime_env=runtime_env)
-    dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[data_url])
+    dataset = ray.data.read_datasource(
+        ImageFolderDatasource(), root=data_url, size=(256, 256)
+    )
 
     preprocessor = BatchMapper(preprocess_image_with_label)
 

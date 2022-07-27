@@ -1,20 +1,27 @@
 import json
-import os
-import tempfile
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+import ray.data
 import xgboost as xgb
 
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.xgboost import XGBoostCheckpoint, XGBoostPredictor
+from typing import Tuple
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 class DummyPreprocessor(Preprocessor):
@@ -33,22 +40,21 @@ def get_num_trees(booster: xgb.Booster) -> int:
     return len(data)
 
 
-def test_init():
+def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     preprocessor = DummyPreprocessor()
     preprocessor.attr = 1
+
+    checkpoint = XGBoostCheckpoint.from_model(booster=model, preprocessor=preprocessor)
+
+    return checkpoint, preprocessor
+
+
+def test_init():
+    checkpoint, preprocessor = create_checkpoint_preprocessor()
+
     predictor = XGBoostPredictor(model=model, preprocessor=preprocessor)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # This somewhat convoluted procedure is the same as in the
-        # Trainers. The reason for saving model to disk instead
-        # of directly to the dict as bytes is due to all callbacks
-        # following save to disk logic. GBDT models are small
-        # enough that IO should not be an issue.
-        model.save_model(os.path.join(tmpdir, MODEL_KEY))
-        save_preprocessor_to_dir(preprocessor, tmpdir)
-
-        checkpoint = Checkpoint.from_directory(tmpdir)
-        checkpoint_predictor = XGBoostPredictor.from_checkpoint(checkpoint)
+    checkpoint_predictor = XGBoostPredictor.from_checkpoint(checkpoint)
 
     assert get_num_trees(checkpoint_predictor.model) == get_num_trees(predictor.model)
     assert (
@@ -68,6 +74,28 @@ def test_predict(batch_type):
 
     assert len(predictions) == 3
     assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+
+
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
+def test_predict_batch(ray_start_4_cpus, batch_type):
+    checkpoint, _ = create_checkpoint_preprocessor()
+    predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
+
+    raw_batch = pd.DataFrame(dummy_data, columns=["A", "B"])
+    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+
+    if batch_type == np.ndarray:
+        dataset = ray.data.from_numpy(dummy_data)
+    elif batch_type == pd.DataFrame:
+        dataset = ray.data.from_pandas(data_batch)
+    elif batch_type == pa.Table:
+        dataset = ray.data.from_arrow(data_batch)
+    else:
+        raise RuntimeError("Invalid batch_type")
+
+    predictions = predictor.predict(dataset)
+
+    assert predictions.count() == 3
 
 
 def test_predict_feature_columns():
@@ -99,9 +127,8 @@ def test_predict_feature_columns_pandas():
 
 
 def test_predict_no_preprocessor_no_training():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        checkpoint = XGBoostCheckpoint.from_model(booster=model, path=tmpdir)
-        predictor = XGBoostPredictor.from_checkpoint(checkpoint)
+    checkpoint = XGBoostCheckpoint.from_model(booster=model)
+    predictor = XGBoostPredictor.from_checkpoint(checkpoint)
 
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])
     predictions = predictor.predict(data_batch)

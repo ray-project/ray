@@ -4,7 +4,7 @@ import ray
 from ray.job_config import JobConfig
 from ray import serve
 from ray.serve.config import ReplicaConfig, DeploymentConfig
-from ray.serve.utils import msgpack_serialize
+from ray.serve._private.utils import msgpack_serialize
 from ray.serve.generated.serve_pb2 import JAVA, RequestMetadata, RequestWrapper
 from ray.tests.conftest import shutdown_only, maybe_external_redis  # noqa: F401
 

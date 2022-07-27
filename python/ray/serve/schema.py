@@ -1,14 +1,16 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve.common import (
+from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
     StatusOverview,
 )
-from ray.serve.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+@PublicAPI(stability="beta")
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
         default={},
@@ -78,6 +80,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         return v
 
 
+@PublicAPI(stability="beta")
 class DeploymentSchema(
     BaseModel, extra=Extra.forbid, allow_population_by_field_name=True
 ):
@@ -141,7 +144,6 @@ class DeploymentSchema(
             "default if null."
         ),
         ge=0,
-        alias="_graceful_shutdown_wait_loop_s",
     )
     graceful_shutdown_timeout_s: float = Field(
         default=None,
@@ -151,7 +153,6 @@ class DeploymentSchema(
             "default if null."
         ),
         ge=0,
-        alias="_graceful_shutdown_timeout_s",
     )
     health_check_period_s: float = Field(
         default=None,
@@ -160,7 +161,6 @@ class DeploymentSchema(
             "replicas. Uses a default if null."
         ),
         gt=0,
-        alias="_health_check_period_s",
     )
     health_check_timeout_s: float = Field(
         default=None,
@@ -170,7 +170,6 @@ class DeploymentSchema(
             "unhealthy. Uses a default if null."
         ),
         gt=0,
-        alias="_health_check_timeout_s",
     )
     ray_actor_options: RayActorOptionsSchema = Field(
         default=None, description="Options set for each replica actor."
@@ -223,6 +222,7 @@ class DeploymentSchema(
         return v
 
 
+@PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     import_path: str = Field(
         default=None,
@@ -301,6 +301,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         return v
 
 
+@PublicAPI(stability="beta")
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
     app_status: ApplicationStatusInfo = Field(
         ...,
@@ -321,6 +322,7 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
     )
 
 
+@DeveloperAPI
 def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
 
     return ServeStatusSchema(
