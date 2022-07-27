@@ -2844,9 +2844,13 @@ class Dataset(Generic[T]):
         from mars.dataframe.datasource.read_raydataset import DataFrameReadRayDataset
         from mars.dataframe.utils import parse_index
 
+        from ray.data._internal.pandas_block import PandasBlockSchema
+
         refs = self.to_pandas_refs()
         # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
         schema = self.schema()
+        if isinstance(schema, PandasBlockSchema):
+            schema = schema.arrow_schema
         if isinstance(schema, pa.Schema):
             dtypes = schema.empty_table().to_pandas().dtypes
         else:
@@ -3625,6 +3629,8 @@ class Dataset(Generic[T]):
             return result
 
     def __repr__(self) -> str:
+        from ray.data._internal.pandas_block import PandasBlockSchema
+
         schema = self.schema()
         if schema is None:
             schema_str = "Unknown schema"
@@ -3632,6 +3638,8 @@ class Dataset(Generic[T]):
             schema_str = str(schema)
         else:
             schema_str = []
+            if isinstance(schema, PandasBlockSchema):
+                schema = schema.arrow_schema
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
                     t = t.__name__

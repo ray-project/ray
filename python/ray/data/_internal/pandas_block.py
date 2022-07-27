@@ -131,6 +131,10 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         return pandas.DataFrame()
 
 
+# TODO(ekl): this is a thin wrapper around pyarrow.Schema that could be eliminated.
+PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["arrow_schema"])
+
+
 class PandasBlockAccessor(TableBlockAccessor):
     ROW_TYPE = PandasRow
 
@@ -158,10 +162,11 @@ class PandasBlockAccessor(TableBlockAccessor):
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         return self._table.sample(frac=1, random_state=random_seed)
 
-    def schema(self) -> "pyarrow.lib.Schema":
+    def schema(self) -> "PandasBlockSchema":
         import pyarrow
 
-        return pyarrow.Schema.from_pandas(self._table)
+        schema = pyarrow.Schema.from_pandas(self._table)
+        return PandasBlockSchema(schema)
 
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table
