@@ -315,6 +315,7 @@ class Deployment:
         graceful_shutdown_timeout_s: Optional[float] = None,
         health_check_period_s: Optional[float] = None,
         health_check_timeout_s: Optional[float] = None,
+        _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -331,6 +332,13 @@ class Deployment:
 
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
+
+        if not _internal and version is not None:
+            logger.warning(
+                "DeprecationWarning: `version` in `Deployment.options()` has been "
+                "deprecated. Explicitly specifying version will raise an error in the "
+                "future!"
+            )
 
         if num_replicas is not None:
             new_config.num_replicas = num_replicas
@@ -406,6 +414,7 @@ class Deployment:
         graceful_shutdown_timeout_s: Optional[float] = None,
         health_check_period_s: Optional[float] = None,
         health_check_timeout_s: Optional[float] = None,
+        _internal: bool = False,
     ) -> None:
         """Overwrite this deployment's options. Mutates the deployment.
 
@@ -429,6 +438,7 @@ class Deployment:
             graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
             health_check_period_s=health_check_period_s,
             health_check_timeout_s=health_check_timeout_s,
+            _internal=_internal,
         )
 
         self._func_or_class = validated._func_or_class

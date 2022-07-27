@@ -41,6 +41,7 @@ from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
+    get_random_letters,
 )
 from ray.types import ObjectRef
 
@@ -290,7 +291,7 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
-            self.deployment_timestamp, config = pickle.loads(checkpoint)
+            self.deployment_timestamp, config, _ = pickle.loads(checkpoint)
             self.deploy_app(ServeApplicationSchema.parse_obj(config), update_time=False)
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
@@ -408,10 +409,23 @@ class ServeController:
             self.deployment_timestamp = time.time()
 
         config_dict = config.dict(exclude_unset=True)
+
+        # Compare new config options with old ones and set versions of new deployments
+        config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+        if config_checkpoint is not None:
+            _, last_config_dict, last_version_dict = pickle.loads(config_checkpoint)
+            version_dict = self.version_config(
+                config_dict, last_config_dict, last_version_dict
+            )
+        else:
+            version_dict = self.version_config(config_dict, {}, {})
+
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((self.deployment_timestamp, config_dict)),
+            pickle.dumps((self.deployment_timestamp, config_dict, version_dict)),
         )
+
+        deployment_override_options = config_dict.get("deployments", [])
 
         if self.config_deployment_request_ref is not None:
             ray.cancel(self.config_deployment_request_ref)
@@ -420,13 +434,62 @@ class ServeController:
                 "previous request."
             )
 
-        deployment_override_options = config.dict(
-            by_alias=True, exclude_unset=True
-        ).get("deployments", [])
-
         self.config_deployment_request_ref = run_graph.options(
             runtime_env=config.runtime_env
-        ).remote(config.import_path, config.runtime_env, deployment_override_options)
+        ).remote(
+            config.import_path,
+            config.runtime_env,
+            deployment_override_options,
+            version_dict,
+        )
+
+    def version_config(
+        self, new_config: Dict, old_config: Dict, version_dict: Dict
+    ) -> Dict[str, str]:
+        """
+        When a deployment's options change, its version should generally change,
+        so old replicas are torn down. The only options which can be updated
+        without tearing down replicas (i.e. changing the version) are:
+
+        * num_replicas
+        * user_config
+        * autoscaling_config
+
+        This function determines whether each deployment's version
+        should be changed based on the updated options.
+        """
+
+        new_deployments = {d["name"]: d for d in new_config.get("deployments", [])}
+        old_deployments = {d["name"]: d for d in old_config.get("deployments", [])}
+
+        def exclude_lightweight_update_options(dict):
+            # Exclude config options from dict that qualify for a lightweight config
+            # update. Changes in any other config options are considered a code change,
+            # and require a version change to trigger an update that tears
+            # down existing replicas and replaces them with updated ones.
+            lightweight_update_options = [
+                "num_replicas",
+                "user_config",
+                "autoscaling_config",
+            ]
+            return {
+                option: dict[option]
+                for option in dict
+                if option not in lightweight_update_options
+            }
+
+        for name in new_deployments:
+            new_deployment = exclude_lightweight_update_options(new_deployments[name])
+            old_deployment = exclude_lightweight_update_options(
+                old_deployments.get(name, {})
+            )
+
+            # If config options haven't changed, version stays the same
+            # otherwise, generate a new random version
+            if old_deployment != new_deployment:
+                version_dict[name] = get_random_letters()
+
+        return version_dict
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
@@ -555,15 +618,29 @@ class ServeController:
                 "deployments": [],
             }
         else:
-            _, config = pickle.loads(checkpoint)
+            _, config, _ = pickle.loads(checkpoint)
             return config
 
 
 @ray.remote(num_cpus=0, max_calls=1)
 def run_graph(
-    import_path: str, graph_env: dict, deployment_override_options: List[Dict]
+    import_path: str,
+    graph_env: Dict,
+    deployment_override_options: List[Dict],
+    deployment_versions: Dict,
 ):
-    """Deploys a Serve application to the controller's Ray cluster."""
+    """
+    Deploys a Serve application to the controller's Ray cluster.
+
+    Args:
+        import_path: Serve deployment graph's import path
+        graph_env: runtime env to run the deployment graph in
+        deployment_override_options: Dictionary of options that overrides
+            deployment options set in the graph's code itself.
+        deployment_versions: Versions of each deployment, each of which is
+            the same as the last deployment if it is a config update or
+            a new randomly generated version if it is a code update
+    """
     try:
         from ray import serve
         from ray.serve.api import build
@@ -593,8 +670,10 @@ def run_graph(
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
 
+            options["version"] = deployment_versions[name]
+
             # Update the deployment's options
-            app.deployments[name].set_options(**options)
+            app.deployments[name].set_options(**options, _internal=True)
 
         # Run the graph locally on the cluster
         serve.run(app)
