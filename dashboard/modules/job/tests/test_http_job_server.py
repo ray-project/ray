@@ -500,7 +500,7 @@ def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
     """Check that job_id, runtime_env, and metadata are optional."""
     client = job_sdk_client
 
-    r = client._do_request(
+    client._do_request(
         "POST",
         "/api/jobs/",
         json_data={"entrypoint": "ls", "job_id": "raysubmit_12345"},
@@ -508,7 +508,7 @@ def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
 
     wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_12345")
 
-    r = client._do_request(
+    client._do_request(
         "POST",
         "/api/jobs/",
         json_data={"entrypoint": "ls", "submission_id": "raysubmit_23456"},
