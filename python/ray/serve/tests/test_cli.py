@@ -13,6 +13,7 @@ import yaml
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
+from ray.serve.schema import ServeApplicationSchema, ServeStatusSchema
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
@@ -129,6 +130,12 @@ def test_deploy(ray_start_stop):
 def test_config(ray_start_stop):
     """Deploys config and checks that `serve config` returns correct response."""
 
+    # Check that `serve config` works even if no Serve app is running
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
+
+    assert ServeApplicationSchema.get_empty_schema_dict() == info
+
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
     )
@@ -150,6 +157,12 @@ def test_config(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status(ray_start_stop):
     """Deploys a config file and checks its status."""
+
+    # Check that `serve status` works even if no Serve app is running
+    status_response = subprocess.check_output(["serve", "status"])
+    status = yaml.safe_load(status_response)
+
+    assert ServeStatusSchema.get_empty_schema_dict() == status
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "pizza.yaml"
@@ -220,6 +233,9 @@ def test_status_error_msg_format(ray_start_stop):
 def test_shutdown(ray_start_stop):
     """Deploys a config file and shuts down the Serve application."""
 
+    # Check that `serve shutdown` works even if no Serve app is running
+    subprocess.check_output(["serve", "shutdown", "-y"])
+
     def num_live_deployments():
         status_response = subprocess.check_output(["serve", "status"])
         serve_status = yaml.safe_load(status_response)
@@ -239,10 +255,30 @@ def test_shutdown(ray_start_stop):
         wait_for_condition(lambda: num_live_deployments() == 2, timeout=15)
         print("Deployment successful. Deployments are live.")
 
+        # `serve config` and `serve status` should print non-empty schemas
+        config_response = subprocess.check_output(["serve", "config"])
+        config = yaml.safe_load(config_response)
+        assert ServeApplicationSchema.get_empty_schema_dict() != config
+
+        status_response = subprocess.check_output(["serve", "status"])
+        status = yaml.safe_load(status_response)
+        assert ServeStatusSchema.get_empty_schema_dict() != status
+        print("`serve config` and `serve status` print non-empty responses.\n")
+
         print("Deleting Serve app.")
         subprocess.check_output(["serve", "shutdown", "-y"])
         wait_for_condition(lambda: num_live_deployments() == 0, timeout=15)
-        print("Deletion successful. All deployments have shut down.\n")
+        print("Deletion successful. All deployments have shut down.")
+
+        # `serve config` and `serve status` should print empty schemas
+        config_response = subprocess.check_output(["serve", "config"])
+        config = yaml.safe_load(config_response)
+        assert ServeApplicationSchema.get_empty_schema_dict() == config
+
+        status_response = subprocess.check_output(["serve", "status"])
+        status = yaml.safe_load(status_response)
+        assert ServeStatusSchema.get_empty_schema_dict() == status
+        print("`serve config` and `serve status` print empty responses.\n")
 
 
 @serve.deployment
