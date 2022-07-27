@@ -227,7 +227,7 @@ def translate_trivial_legacy_config(config: Dict[str, Any]):
     Drop empty deprecated fields ("head_node" and "worker_node").
     """
 
-    REMOVABLE_FIELDS = ["head_node", "worker_node"]
+    REMOVABLE_FIELDS = ["head_node", "worker_nodes"]
 
     for field in REMOVABLE_FIELDS:
         if field in config and not config[field]:
