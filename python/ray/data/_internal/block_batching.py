@@ -81,10 +81,27 @@ def batch_blocks(
     else:
         batcher = Batcher(batch_size=batch_size)
 
-    def get_batches(block: Optional[ObjectRef[Block]] = None) -> Iterator[BatchType]:
-        if block is not None:
+    def get_batches(
+        block_ref: Optional[ObjectRef[Block]] = None,
+    ) -> Iterator[BatchType]:
+        if block_ref is not None:
             with stats.iter_get_s.timer():
-                block = ray.get(block)
+                try:
+                    block = ray.get(block_ref)
+                except Exception as e:
+                    print(
+                        "obj ref: ",
+                        block_ref,
+                        " owner address from objref: ",
+                        block_ref.owner_address(),
+                        " owner address from core worker: ",
+                        ray._private.worker.global_worker.core_worker.get_owner_address(
+                            block_ref
+                        ),
+                        "exception: ",
+                        e,
+                    )
+                    raise e
             # NOTE: Since we add one block at a time and then immediately consume
             # batches, we don't need to check batcher.can_add() before adding the block;
             # it will always be True, and batcher.add() will assert this internally.
@@ -100,7 +117,7 @@ def batch_blocks(
             with stats.iter_user_s.timer():
                 yield result
         # Handle remainder batches.
-        if block is None and not drop_last and batcher.has_any():
+        if block_ref is None and not drop_last and batcher.has_any():
             with stats.iter_next_batch_s.timer():
                 batch = batcher.next_batch()
             with stats.iter_format_batch_s.timer():
