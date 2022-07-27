@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 
 import numpy as np
 import tensorflow as tf
@@ -103,19 +103,46 @@ class TensorflowPredictor(DLPredictor):
             use_gpu=use_gpu,
         )
 
-    def _arrays_to_tensors(
-        self,
-        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtypes: Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]],
-    ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
-        return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtypes)
-
-    def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
-        return tensor.numpy()
-
-    def _model_predict(
+    def call_model(
         self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]
-    ) -> Union[tf.Tensor, Dict[str, tf.Tensor], List[tf.Tensor], Tuple[tf.Tensor]]:
+    ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+        """Runs inference on a single batch of tensor data.
+
+        This method is called by `TorchPredictor.predict` after converting the
+        original data batch to torch tensors.
+
+        Override this method to add custom logic for processing the model input or
+        output.
+
+        Example:
+
+            .. code-block:: python
+
+                # List outputs are not supported by default TensorflowPredictor.
+                def build_model() -> tf.keras.Model:
+                    input = tf.keras.layers.Input(shape=1)
+                    model = tf.keras.models.Model(inputs=input, outputs=[input, input])
+                    return model
+
+                # Use a custom predictor to format model output as a dict.
+                class CustomPredictor(TensorflowPredictor):
+                    def call_model(self, tensor):
+                        model_output = super().call_model(tensor)
+                        return {
+                            str(i): model_output[i] for i in range(len(model_output))
+                        }
+
+                predictor = CustomPredictor(model_definition=build_model)
+                predictions = predictor.predict(data_batch)
+
+        Args:
+            tensor: A batch of data to predict on, represented as either a single
+                PyTorch tensor or for multi-input models, a dictionary of tensors.
+
+        Returns:
+            The model outputs, either as a single tensor or a dictionary of tensors.
+
+        """
         if self.use_gpu:
             with tf.device("GPU:0"):
                 return self._model(tensor)
@@ -190,3 +217,22 @@ class TensorflowPredictor(DLPredictor):
                 input type.
         """
         return super(TensorflowPredictor, self).predict(data=data, dtype=dtype)
+
+    def _arrays_to_tensors(
+        self,
+        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
+        dtypes: Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]],
+    ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+        return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtypes)
+
+    def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
+        if not isinstance(tensor, tf.Tensor):
+            raise ValueError(
+                "Expected the model to return either a tf.Tensor or a "
+                f"dict of tf.Tensor, but got {type(tensor)} instead. "
+                f"To support models with different output types, subclass "
+                f"TensorflowPredictor and override the `call_model` method "
+                f"to process the output into either torch.Tensor or Dict["
+                f"str, torch.Tensor]."
+            )
+        return tensor.numpy()
