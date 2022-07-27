@@ -1,9 +1,12 @@
+.. warning::
+    This page is udner construction!
+
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _ref-cluster-setup:
+.. _ref-cluster-setup-under-construction:
 
-Ray with Cluster Managers
-=========================
+Community Supported Cluster Managers
+====================================
 
 .. note::
 
@@ -12,7 +15,6 @@ Ray with Cluster Managers
 .. toctree::
    :maxdepth: 2
 
-   kubernetes.rst
    yarn.rst
    slurm.rst
    lsf.rst
