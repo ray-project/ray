@@ -550,6 +550,7 @@ TYPES_A = {
     "empty_node": {
         "node_config": {
             "FooProperty": 42,
+            "TestProp": 1,
         },
         "resources": {},
         "max_workers": 0,
