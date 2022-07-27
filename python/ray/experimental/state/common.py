@@ -175,20 +175,7 @@ class StateSchema(ABC):
 
     @classmethod
     def list_columns(cls) -> List[str]:
-        """Return a list of columns.
-
-        The order of columns is defined by the order
-        of attributes from the dataclass.
-
-        E.g.,
-        @dataclass
-        class A(StateSchema):
-            a: str
-            b: str
-            c: str
-
-        -> ["a", "b", "c"]
-        """
+        """Return a list of columns."""
         cols = []
         for f in fields(cls):
             cols.append(f.name)
