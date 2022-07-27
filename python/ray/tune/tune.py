@@ -51,7 +51,7 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils.node import force_on_current_node
+from ray.tune.utils.node import _force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Empty, Queue
@@ -366,7 +366,7 @@ def run(
         remote_run = ray.remote(num_cpus=0)(run)
 
         # Make sure tune.run is called on the sever node.
-        remote_run = force_on_current_node(remote_run)
+        remote_run = _force_on_current_node(remote_run)
 
         set_verbosity(verbose)
         progress_reporter = progress_reporter or _detect_reporter()
@@ -377,7 +377,7 @@ def run(
         # strings, which will then be displayed on the driver side.
         if isinstance(progress_reporter, RemoteReporterMixin):
             string_queue = Queue(
-                actor_options={"num_cpus": 0, **force_on_current_node(None)}
+                actor_options={"num_cpus": 0, **_force_on_current_node(None)}
             )
             progress_reporter.output_queue = string_queue
 
@@ -807,7 +807,7 @@ def run_experiments(
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
         # Make sure tune.run_experiments is run on the server node.
-        remote_run = force_on_current_node(remote_run)
+        remote_run = _force_on_current_node(remote_run)
 
         return ray.get(
             remote_run.remote(
