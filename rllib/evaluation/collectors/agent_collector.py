@@ -288,7 +288,7 @@ class AgentCollector:
         return batch
 
     # TODO: @kouorsh we don't really need view_requirements anymore since it's already
-    # and atribtue of the class
+    # and attribute of the class
     def build_for_training(
         self, view_requirements: ViewRequirementsDict
     ) -> SampleBatch:
