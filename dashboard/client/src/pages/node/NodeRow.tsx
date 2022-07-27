@@ -11,6 +11,8 @@ import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
+import { NodeGPUView, WorkerGPU } from "./GPUColumn";
+import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
 
 type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   /**
@@ -80,6 +82,12 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
             %)
           </PercentageBar>
         )}
+      </TableCell>
+      <TableCell>
+        <NodeGPUView node={node} />
+      </TableCell>
+      <TableCell>
+        <NodeGRAM node={node} />
       </TableCell>
       <TableCell>
         {raylet && raylet.objectStoreUsedMemory && (
@@ -171,6 +179,12 @@ const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           </PercentageBar>
         )}
       </TableCell>
+      <TableCell>
+        <WorkerGPU worker={worker} />
+      </TableCell>
+      <TableCell>
+        <WorkerGRAM worker={worker} node={node} />
+      </TableCell>
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
@@ -193,13 +207,18 @@ type NodeRowsProps = {
    * Whether the node row should refresh data about its workers.
    */
   isRefreshing: boolean;
+  startExpanded?: boolean;
 };
 
 /**
  * The rows related to a node and its workers. Expandable to show information about workers.
  */
-export const NodeRows = ({ node, isRefreshing }: NodeRowsProps) => {
-  const [isExpanded, setExpanded] = useState(false);
+export const NodeRows = ({
+  node,
+  isRefreshing,
+  startExpanded = false,
+}: NodeRowsProps) => {
+  const [isExpanded, setExpanded] = useState(startExpanded);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const tot = useRef<NodeJS.Timeout>();
 

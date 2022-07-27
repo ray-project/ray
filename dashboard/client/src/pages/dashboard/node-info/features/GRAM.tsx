@@ -101,7 +101,7 @@ type GRAMEntryProps = {
   total: number;
 };
 
-const GRAMEntry: React.FC<GRAMEntryProps> = ({
+export const GRAMEntry: React.FC<GRAMEntryProps> = ({
   gpuName,
   slot,
   utilization,
