@@ -133,9 +133,9 @@ def placement_group(
     """Asynchronously creates a PlacementGroup.
 
     Args:
-        bundles(List[Dict]): A list of bundles which
+        bundles: A list of bundles which
             represent the resources requirements.
-        strategy(str): The strategy to create the placement group.
+        strategy: The strategy to create the placement group.
 
          - "PACK": Packs Bundles into as few nodes as possible.
          - "SPREAD": Places Bundles across distinct nodes as even as possible.
@@ -143,18 +143,19 @@ def placement_group(
            not allowed to span multiple nodes.
          - "STRICT_SPREAD": Packs Bundles across distinct nodes.
 
-        name(str): The name of the placement group.
-        lifetime(str): Either `None`, which defaults to the placement group
+        name: The name of the placement group.
+        lifetime: Either `None`, which defaults to the placement group
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.
-        _max_cpu_fraction_per_node: (Experimental) The max fraction of CPUs this
-            placement group can take up on *per node*, in [0.0, 1.0]. This prevents
-            placement groups from fully occupying node resources. Note that when
+        _max_cpu_fraction_per_node: (Experimental) Disallow placing bundles on nodes
+            if it would cause the fraction of CPUs used by bundles from *any* placement
+            group on the node to exceed this fraction. This effectively sets aside
+            CPUs that placement groups cannot occupy on nodes. when
             `max_cpu_fraction_per_node < 1.0`, at least 1 CPU will be excluded from
-            placement group scheduling. Warning: this feature is experimental and is
-            not recommended for use with autoscaling clusters (scale-up will not
-            trigger properly).
+            placement group scheduling. Note: This feature is experimental and is not
+            recommended for use with autoscaling clusters (scale-up will not trigger
+            properly).
 
     Raises:
         ValueError if bundle type is not a list.
