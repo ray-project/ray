@@ -438,7 +438,7 @@ class JobManager:
         self,
         *,
         entrypoint: str,
-        job_id: Optional[str] = None,
+        submission_id: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
@@ -471,12 +471,12 @@ class JobManager:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
         """
-        if job_id is None:
-            job_id = generate_job_id()
-        elif self._job_info_client.get_status(job_id) is not None:
-            raise RuntimeError(f"Job {job_id} already exists.")
+        if submission_id is None:
+            submission_id = generate_job_id()
+        elif self._job_info_client.get_status(submission_id) is not None:
+            raise RuntimeError(f"Job {submission_id} already exists.")
 
-        logger.info(f"Starting job with job_id: {job_id}")
+        logger.info(f"Starting job with submission_id: {submission_id}")
         job_info = JobInfo(
             entrypoint=entrypoint,
             status=JobStatus.PENDING,
@@ -484,7 +484,7 @@ class JobManager:
             metadata=metadata,
             runtime_env=runtime_env,
         )
-        self._job_info_client.put_info(job_id, job_info)
+        self._job_info_client.put_info(submission_id, job_info)
 
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
@@ -492,7 +492,7 @@ class JobManager:
         try:
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
-                name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+                name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
                 # Currently we assume JobManager is created by dashboard server
                 # running on headnode, same for job supervisor actors scheduled
@@ -500,20 +500,20 @@ class JobManager:
                     self._get_current_node_resource_key(): 0.001,
                 },
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
-            ).remote(job_id, entrypoint, metadata or {})
+            ).remote(submission_id, entrypoint, metadata or {})
             supervisor.run.remote(_start_signal_actor=_start_signal_actor)
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
-            create_task(self._monitor_job(job_id, job_supervisor=supervisor))
+            create_task(self._monitor_job(submission_id, job_supervisor=supervisor))
         except Exception as e:
             self._job_info_client.put_status(
-                job_id,
+                submission_id,
                 JobStatus.FAILED,
                 message=f"Failed to start job supervisor: {e}.",
             )
 
-        return job_id
+        return submission_id
 
     def stop_job(self, job_id) -> bool:
         """Request a job to exit, fire and forget.

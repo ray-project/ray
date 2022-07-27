@@ -932,57 +932,65 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
 
 
 def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
-    tensor_output_path = os.path.join(tmp_path, "tensor")
-    ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
-    ds = ray.data.read_parquet(tensor_output_path)
-    assert ds.num_blocks() > 1
-    data_size = ds.size_bytes()
-    assert (
-        data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "estimated data size is out of expected bound"
-    data_size = ds.fully_executed().size_bytes()
-    assert (
-        data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "actual data size is out of expected bound"
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_decoding_size_estimation = ctx.decoding_size_estimation
+    ctx.decoding_size_estimation = True
+    try:
+        tensor_output_path = os.path.join(tmp_path, "tensor")
+        ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
+        ds = ray.data.read_parquet(tensor_output_path)
+        assert ds.num_blocks() > 1
+        data_size = ds.size_bytes()
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is out of expected bound"
+        data_size = ds.fully_executed().size_bytes()
+        assert (
+            data_size >= 7_000_000 and data_size <= 10_000_000
+        ), "actual data size is out of expected bound"
 
-    reader = _ParquetDatasourceReader(tensor_output_path)
-    assert (
-        reader._encoding_ratio >= 400 and reader._encoding_ratio <= 600
-    ), "encoding ratio is out of expected bound"
-    data_size = reader.estimate_inmemory_data_size()
-    assert (
-        data_size >= 7_000_000 and data_size <= 10_000_000
-    ), "estimated data size is either out of expected bound"
-    assert (
-        data_size
-        == _ParquetDatasourceReader(tensor_output_path).estimate_inmemory_data_size()
-    ), "estimated data size is not deterministic in multiple calls."
+        reader = _ParquetDatasourceReader(tensor_output_path)
+        assert (
+            reader._encoding_ratio >= 300 and reader._encoding_ratio <= 600
+        ), "encoding ratio is out of expected bound"
+        data_size = reader.estimate_inmemory_data_size()
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is either out of expected bound"
+        assert (
+            data_size
+            == _ParquetDatasourceReader(
+                tensor_output_path
+            ).estimate_inmemory_data_size()
+        ), "estimated data size is not deterministic in multiple calls."
 
-    text_output_path = os.path.join(tmp_path, "text")
-    ray.data.range(1000).map(lambda _: "a" * 1000).write_parquet(text_output_path)
-    ds = ray.data.read_parquet(text_output_path)
-    assert ds.num_blocks() > 1
-    data_size = ds.size_bytes()
-    assert (
-        data_size >= 1_000_000 and data_size <= 2_000_000
-    ), "estimated data size is out of expected bound"
-    data_size = ds.fully_executed().size_bytes()
-    assert (
-        data_size >= 1_000_000 and data_size <= 2_000_000
-    ), "actual data size is out of expected bound"
+        text_output_path = os.path.join(tmp_path, "text")
+        ray.data.range(1000).map(lambda _: "a" * 1000).write_parquet(text_output_path)
+        ds = ray.data.read_parquet(text_output_path)
+        assert ds.num_blocks() > 1
+        data_size = ds.size_bytes()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "estimated data size is out of expected bound"
+        data_size = ds.fully_executed().size_bytes()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "actual data size is out of expected bound"
 
-    reader = _ParquetDatasourceReader(text_output_path)
-    assert (
-        reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
-    ), "encoding ratio is out of expected bound"
-    data_size = reader.estimate_inmemory_data_size()
-    assert (
-        data_size >= 1_000_000 and data_size <= 2_000_000
-    ), "estimated data size is out of expected bound"
-    assert (
-        data_size
-        == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
-    ), "estimated data size is not deterministic in multiple calls."
+        reader = _ParquetDatasourceReader(text_output_path)
+        assert (
+            reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
+        ), "encoding ratio is out of expected bound"
+        data_size = reader.estimate_inmemory_data_size()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "estimated data size is out of expected bound"
+        assert (
+            data_size
+            == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
+        ), "estimated data size is not deterministic in multiple calls."
+    finally:
+        ctx.decoding_size_estimation = old_decoding_size_estimation
 
 
 @pytest.mark.parametrize(

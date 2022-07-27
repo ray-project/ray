@@ -287,8 +287,6 @@ def setup_and_get_worker_interceptor_logger(
         is_for_stdout=is_for_stdout,
     )
     logger.addHandler(handler)
-    # TODO(sang): Add 0 or 1 to decide whether
-    # or not logs are streamed to drivers.
     handler.setFormatter(logging.Formatter("%(message)s"))
     # Avoid messages are propagated to parent loggers.
     logger.propagate = False

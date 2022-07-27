@@ -1584,6 +1584,7 @@ def start_raylet(
             session_dir,
             log_dir,
             node_ip_address,
+            setup_worker_path,
         )
     else:
         cpp_worker_command = []
@@ -1798,6 +1799,7 @@ def build_cpp_worker_command(
     session_dir: str,
     log_dir: str,
     node_ip_address: str,
+    setup_worker_path: str,
 ):
     """This method assembles the command used to start a CPP worker.
 
@@ -1810,11 +1812,15 @@ def build_cpp_worker_command(
         session_dir: The path of this session.
         log_dir: The path of logs.
         node_ip_address: The ip address for this node.
+        setup_worker_path: The path of the Python file that will set up
+            the environment for the worker process.
     Returns:
         The command string for starting CPP worker.
     """
 
     command = [
+        sys.executable,
+        setup_worker_path,
         DEFAULT_WORKER_EXECUTABLE,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",

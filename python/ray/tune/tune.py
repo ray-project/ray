@@ -51,9 +51,9 @@ from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
+from ray.tune.utils.node import force_on_current_node
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import PublicAPI
-from ray.util.ml_utils.node import force_on_current_node
 from ray.util.queue import Empty, Queue
 
 logger = logging.getLogger(__name__)
