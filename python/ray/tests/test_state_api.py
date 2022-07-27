@@ -89,6 +89,7 @@ from ray.experimental.state.state_cli import (
     AvailableFormat,
     format_list_api_output,
     _parse_filter,
+    summary_state_cli_group,
 )
 from ray.experimental.state.state_cli import get as cli_get
 from ray.experimental.state.state_cli import list as cli_list
@@ -2002,22 +2003,37 @@ async def test_cli_format_print(state_api_manager):
     result = result.result
     # If the format is not yaml, it will raise an exception.
     yaml.load(
-        format_list_api_output(result, format=AvailableFormat.YAML),
+        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML),
         Loader=yaml.FullLoader,
     )
     # If the format is not json, it will raise an exception.
-    json.loads(format_list_api_output(result, format=AvailableFormat.JSON))
+    json.loads(
+        format_list_api_output(result, schema=ActorState, format=AvailableFormat.JSON)
+    )
     # Test a table formatting.
-    output = format_list_api_output(result, format=AvailableFormat.TABLE)
+    output = format_list_api_output(
+        result, schema=ActorState, format=AvailableFormat.TABLE
+    )
     assert "Table:" in output
     assert "Stats:" in output
     with pytest.raises(ValueError):
-        format_list_api_output(result, format="random_format")
+        format_list_api_output(result, schema=ActorState, format="random_format")
 
     # Verify the default format.
-    output = format_list_api_output(result)
+    output = format_list_api_output(result, schema=ActorState)
     assert "Table:" in output
     assert "Stats:" in output
+
+    # Verify the ordering is equal to it is defined in `StateSchema` class.
+    # Index 8 contains headers
+    headers = output.split("\n")[8]
+    cols = ActorState.list_columns()
+    headers = list(filter(lambda item: item != "", headers.strip().split(" ")))
+
+    for i in range(len(headers)):
+        header = headers[i].upper()
+        col = cols[i].upper()
+        assert header == col
 
 
 def test_filter(shutdown_only):
@@ -2139,11 +2155,10 @@ def test_data_truncate(shutdown_only, monkeypatch):
         runner = CliRunner()
         with pytest.warns(UserWarning) as record:
             result = runner.invoke(cli_list, ["placement-groups"])
-            # result = list_placement_groups()
         assert (
-            f"{max_limit_data_source} ({max_limit_data_source + 1} total) "
-            "placement_groups are retrieved from the data source. "
-            "1 entries have been truncated." in record[0].message.args[0]
+            f"{max_limit_data_source} ({max_limit_data_source + 1} total "
+            "from the cluster) placement_groups are retrieved from the "
+            "data source. 1 entries have been truncated." in record[0].message.args[0]
         )
         assert result.exit_code == 0
 
@@ -2547,14 +2562,16 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
         try:
             list_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster." in str(e)
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "due to query failures to the data sources." in str(e)
         else:
             assert False
 
         try:
             summarize_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster." in str(e)
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "due to query failures to the data sources." in str(e)
         else:
             assert False
 
@@ -2563,11 +2580,9 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
             list_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
         assert len(record) == 1
 
-        # TODO(sang): Add warning after https://github.com/ray-project/ray/pull/26801
-        # is merged.
-        # with pytest.warns(None) as record:
-        #     summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
-        # assert len(record) == 1
+        with pytest.warns(None) as record:
+            summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+        assert len(record) == 1
 
         # Verify when CLI is used, exceptions are not raised.
         with pytest.warns(None) as record:
@@ -2575,13 +2590,72 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
         assert len(record) == 1
         assert result.exit_code == 0
 
-        # TODO(sang): Add warning after https://github.com/ray-project/ray/pull/26801
-        # is merged.
         # Verify summary CLI also doesn't raise an exception.
-        # with pytest.warns(None) as record:
-        #     result = runner.invoke(task_summary, ["--timeout=3"])
-        # assert result.exit_code == 0
-        # assert len(record) == 1
+        with pytest.warns(None) as record:
+            result = runner.invoke(summary_state_cli_group, ["tasks", "--timeout=3"])
+        assert result.exit_code == 0
+        assert len(record) == 1
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_MAX_LIMIT_FROM_DATA_SOURCE",
+            "10",
+        )
+        ray.init()
+
+        @ray.remote
+        def task():
+            time.sleep(300)
+
+        tasks = [task.remote() for _ in range(15)]  # noqa
+
+    runner = CliRunner()
+
+    # Verify
+    def verify():
+        # Verify when raise_on_missing_output=True, it raises an exception.
+        try:
+            list_tasks(_explain=True, timeout=3)
+        except RayStateApiException as e:
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "(> 10)" in str(e)
+        else:
+            assert False
+
+        try:
+            summarize_tasks(_explain=True, timeout=3)
+        except RayStateApiException as e:
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "(> 10)" in str(e)
+        else:
+            assert False
+
+        # Verify when raise_on_missing_output=False, it prints warnings.
+        with pytest.warns(None) as record:
+            list_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+        assert len(record) == 1
+
+        with pytest.warns(None) as record:
+            summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+        assert len(record) == 1
+
+        # Verify when CLI is used, exceptions are not raised.
+        with pytest.warns(None) as record:
+            result = runner.invoke(cli_list, ["tasks", "--timeout=3"])
+        assert len(record) == 1
+        assert result.exit_code == 0
+
+        # Verify summary CLI also doesn't raise an exception.
+        with pytest.warns(None) as record:
+            result = runner.invoke(summary_state_cli_group, ["tasks", "--timeout=3"])
+        assert result.exit_code == 0
+        assert len(record) == 1
         return True
 
     wait_for_condition(verify)

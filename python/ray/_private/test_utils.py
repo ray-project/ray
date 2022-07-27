@@ -36,6 +36,8 @@ from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
 
+logger = logging.getLogger(__name__)
+
 try:
     from prometheus_client.parser import text_string_to_metric_families
 except (ImportError, ModuleNotFoundError):
@@ -355,8 +357,8 @@ def wait_for_condition(
         try:
             if condition_predictor(**kwargs):
                 return
-        except Exception as ex:
-            last_ex = ex
+        except Exception:
+            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
