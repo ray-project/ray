@@ -9,7 +9,7 @@ ds = ray.data.range_tensor(10000, shape=(64, 64))
 # -> Dataset(
 #       num_blocks=200,
 #       num_rows=10000,
-#       schema={__value__: <ArrowTensorType: shape=(64, 64), dtype=int64>}
+#       schema={__value__: ArrowTensorType(shape=(64, 64), dtype=int64)}
 #    )
 
 ds.take(2)
@@ -82,12 +82,12 @@ import ray
 # From in-memory numpy data.
 ray.data.from_numpy(np.zeros((1000, 128, 128, 3), dtype=np.int64))
 # -> Dataset(num_blocks=1, num_rows=1000,
-#            schema={__value__: <ArrowTensorType: shape=(128, 128, 3), dtype=int64>})
+#            schema={__value__: ArrowTensorType(shape=(128, 128, 3), dtype=int64)})
 
 # From saved numpy files.
 ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
 # __create_numpy_end__
 
 # __create_parquet_1_begin__
@@ -221,7 +221,7 @@ import ray
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
 
 # This returns batches in numpy.ndarray format.
 next(ds.iter_batches())
@@ -246,7 +246,7 @@ import ray
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
 
 # This returns pandas batches with List[np.ndarray] columns.
 next(ds.iter_batches(batch_format="pandas"))
@@ -262,7 +262,7 @@ import ray
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
 
 # This returns batches in pyarrow.Table format.
 next(ds.iter_batches(batch_format="pyarrow"))
@@ -293,7 +293,7 @@ import ray
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
 
 # This returns batches in np.ndarray format.
 next(ds.iter_batches(batch_format="numpy"))
@@ -361,7 +361,7 @@ shutil.rmtree("/tmp/some_path")
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
+#            schema={__value__: ArrowTensorType(shape=(28, 28), dtype=uint8)})
 
 # You can write the dataset to Parquet.
 ds.write_numpy("/tmp/some_path")
