@@ -76,7 +76,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def get_package(self, req: Request) -> Response:
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -101,7 +101,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response()
 
     @routes.put("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def upload_package(self, req: Request):
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -119,7 +119,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response(status=aiohttp.web.HTTPOk.status_code)
 
     @routes.post("/api/jobs/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def submit_job(self, req: Request) -> Response:
         result = await self._parse_and_validate_request(req, JobSubmitRequest)
         # Request parsing failed, returned with Response object.
@@ -155,7 +155,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.post("/api/jobs/{job_id}/stop")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def stop_job(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
@@ -178,7 +178,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_id}")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_info(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
@@ -193,7 +193,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def list_jobs(self, req: Request) -> Response:
         data: dict[str, JobInfo] = self._job_manager.list_jobs()
         return Response(
@@ -207,7 +207,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_id}/logs")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_logs(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
@@ -222,7 +222,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_id}/logs/tail")
-    @optional_utils.init_ray_and_catch_exceptions(connect_to_serve=False)
+    @optional_utils.init_ray_and_catch_exceptions()
     async def tail_job_logs(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
