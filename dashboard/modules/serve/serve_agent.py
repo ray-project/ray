@@ -51,7 +51,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
         client = self.get_serve_client()
 
         if client is None:
-            config = ServeApplicationSchema.get_empty_schema()
+            config = ServeApplicationSchema.get_empty_schema_dict()
         else:
             config = client.get_app_config()
 
@@ -64,13 +64,18 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_all_deployment_statuses(self, req: Request) -> Response:
         from ray.serve.context import get_global_client
-        from ray.serve.schema import serve_status_to_schema
+        from ray.serve.schema import serve_status_to_schema, ServeStatusSchema
 
         client = get_global_client()
 
-        serve_status_schema = serve_status_to_schema(client.get_serve_status())
+        if client is None:
+            status_json = ServeStatusSchema.get_empty_schema_dict()
+        else:
+            status = client.get_serve_status()
+            status_json = serve_status_to_schema(status).json()
+
         return Response(
-            text=serve_status_schema.json(),
+            text=status_json,
             content_type="application/json",
         )
 
