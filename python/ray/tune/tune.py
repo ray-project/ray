@@ -17,7 +17,7 @@ from ray.tune.progress_reporter import (
     ProgressReporter,
     RemoteReporterMixin,
     _detect_reporter,
-    detect_progress_metrics,
+    _detect_progress_metrics,
 )
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls, is_function_trainable
@@ -621,10 +621,10 @@ def run(
             "from your scheduler or from your call to `tune.run()`"
         )
 
-    progress_metrics = detect_progress_metrics(_get_trainable(run_or_experiment))
+    progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
     # Create syncer callbacks
-    callbacks = create_default_callbacks(callbacks, sync_config, metric=metric)
+    callbacks = _create_default_callbacks(callbacks, sync_config, metric=metric)
 
     runner = TrialRunner(
         search_alg=search_alg,

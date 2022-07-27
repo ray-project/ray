@@ -1234,7 +1234,7 @@ def _detect_reporter(**kwargs) -> TuneReporterBase:
     return progress_reporter
 
 
-def detect_progress_metrics(
+def _detect_progress_metrics(
     trainable: Optional[Union["Trainable", Callable]]
 ) -> Optional[List[str]]:
     """Detect progress metrics to report."""
