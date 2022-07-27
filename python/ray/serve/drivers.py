@@ -1,3 +1,4 @@
+import functools
 import inspect
 from abc import abstractmethod
 from typing import Any, Callable, Optional, Type, Union, Dict
@@ -97,14 +98,18 @@ class DAGDriver:
 
         if isinstance(dags, dict):
             self.dags = dags
-            for route in dags:
+            for route, handle in dags.items():
 
-                @self.app.get(f"{route}")
-                @self.app.post(f"{route}")
-                async def handle_request(
-                    request: starlette.requests.Request, inp=Depends(http_adapter)
-                ):
-                    return await self.multi_dag_predict(request.url.path, inp)
+                def endpoint_create(handle):
+                    @self.app.get(f"{route}")
+                    @self.app.post(f"{route}")
+                    async def handle_request(
+                        request: starlette.requests.Request, inp=Depends(http_adapter)
+                    ):
+                        return await handle.remote(inp)
+
+                endpoint_create_func = functools.partial(endpoint_create, handle)
+                endpoint_create_func()
 
         else:
             assert isinstance(dags, (RayServeDAGHandle, RayServeLazySyncHandle))
