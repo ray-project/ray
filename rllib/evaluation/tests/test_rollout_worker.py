@@ -22,7 +22,7 @@ from ray.rllib.examples.env.mock_env import (
 )
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
@@ -813,6 +813,41 @@ class TestRolloutWorker(unittest.TestCase):
         seeds = ev.foreach_env(lambda env: env.rng_seed)
         self.assertEqual(seeds, [1, 2, 3])
         ev.stop()
+
+    def test_determine_spaces_for_multi_agent_dict(self):
+        class MockMultiAgentEnv(MultiAgentEnv):
+            """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
+
+            def __init__(self):
+                # Intentinoally don't call super().__init__(),
+                # so this env doesn't have _spaces_in_preferred_format
+                # attribute.
+                self.observation_space = gym.spaces.Discrete(2)
+                self.action_space = gym.spaces.Discrete(2)
+
+            def reset(self):
+                pass
+
+            def step(self, action_dict):
+                obs = {1: [0, 0], 2: [1, 1]}
+                rewards = {1: 0, 2: 0}
+                dones = {1: False, 2: False, "__all__": False}
+                infos = {1: {}, 2: {}}
+                return obs, rewards, dones, infos
+
+        ev = RolloutWorker(
+            env_creator=lambda _: MockMultiAgentEnv(),
+            num_envs=3,
+            policy_spec={
+                "policy_1": PolicySpec(policy_class=MockPolicy),
+                "policy_2": PolicySpec(policy_class=MockPolicy),
+            },
+            seed=1,
+        )
+        # The fact that this RolloutWorker can be created without throwing
+        # exceptions means _determine_spaces_for_multi_agent_dict() is
+        # handling multiagent user environments properly.
+        self.assertIsNotNone(ev)
 
     def test_wrap_multi_agent_env(self):
         ev = RolloutWorker(
