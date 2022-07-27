@@ -549,11 +549,7 @@ class ServeController:
     def get_app_config(self) -> Dict:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is None:
-            return {
-                "import_path": "",
-                "runtime_env": "",
-                "deployments": [],
-            }
+            return ServeApplicationSchema.get_empty_schema_dict()
         else:
             _, config = pickle.loads(checkpoint)
             return config
