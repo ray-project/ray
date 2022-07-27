@@ -5,10 +5,10 @@
 import ray
 
 # Create a Dataset of tensors.
-ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
+ds = ray.data.range_tensor(10000, shape=(64, 64))
 # -> Dataset(
 #       num_blocks=200,
-#       num_rows=409600,
+#       num_rows=10000,
 #       schema={__value__: <ArrowTensorType: shape=(64, 64), dtype=int64>}
 #    )
 
@@ -31,7 +31,6 @@ ds.take(2)
 
 # __create_pandas_begin__
 import ray
-from ray.data.extensions.tensor_extension import TensorArray
 
 import pandas as pd
 import numpy as np
@@ -42,23 +41,37 @@ ds = ray.data.range_table(1000)
 # Create a single TensorArray column.
 def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
     bs = len(batch)
-    arr = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
+
+    # Lists of ndarrays are automatically cast to TensorArray.
+    arr = [np.zeros((128, 128, 3)) for _ in range(bs)]
+
+    ## Alternatively, manually construct a TensorArray from a single ndarray.
+    # from ray.data.extensions.tensor_extension import TensorArray
+    # arr = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
+
     return pd.DataFrame({"__value__": arr})
 
 ds.map_batches(single_col_udf)
-# -> Dataset(num_blocks=17, num_rows=1000, schema={__value__: TensorDtype})
+# -> Dataset(num_blocks=17, num_rows=1000, schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
 # __create_pandas_end__
 
 # __create_pandas_2_begin__
 # Create multiple TensorArray columns.
 def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
     bs = len(batch)
-    image = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
-    embed = TensorArray(np.zeros((bs, 256,), dtype=np.uint8))
-    return pd.DataFrame({"image": image, "embed": embed})
+
+    # Lists of ndarrays are automatically cast to TensorArray.
+    images = [np.zeros((128, 128, 3), dtype=np.int64) for _ in range(bs)]
+    embeds = [np.zeros((256,), dtype=np.uint8) for _ in range(bs)]
+
+    ## Alternatively, manually construct a TensorArray from a single ndarray.
+    # images = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
+    # embeds = TensorArray(np.zeros((bs, 256,), dtype=np.uint8))
+
+    return pd.DataFrame({"images": images, "embeds": embeds})
 
 ds.map_batches(multi_col_udf)
-# -> Dataset(num_blocks=17, num_rows=1000, schema={image: TensorDtype, embed: TensorDtype})
+# -> Dataset(num_blocks=17, num_rows=1000, schema={image: TensorDtype(shape=(128, 128, 3), dtype=int64), embed: TensorDtype(shape=(256,), dtype=uint8)})
 # __create_pandas_2_end__
 
 # __create_numpy_begin__

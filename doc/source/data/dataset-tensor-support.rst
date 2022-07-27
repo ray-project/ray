@@ -29,7 +29,7 @@ This section shows how to create single and multi-column Tensor datasets.
 
 .. tabbed:: Pandas UDF
 
-  Create a tensor dataset by returning ``TensorArray`` columns from a Pandas UDF.
+  Create tensor datasets by returning ``List[np.ndarray]`` columns from a Pandas UDF.
 
   **Single-column**:
 
