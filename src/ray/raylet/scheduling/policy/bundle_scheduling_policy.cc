@@ -66,10 +66,11 @@ bool AllocationWillExceedMaxCpuFraction(const ray::NodeResources &node_resources
   // - Resources taken by current bundles (that's scheduled so far)
   // + the bundle for this method.
   auto cpus_for_new_bundles = available_cpus_before_scheduling -
-                              node_resources.available.Get(cpu_id).Double() + 
+                              node_resources.available.Get(cpu_id).Double() +
                               resource_request.Get(cpu_id).Double();
 
-  auto cpus_for_existing_and_new_bundles = cpus_for_existing_bundles.Double() + cpus_for_new_bundles;
+  auto cpus_for_existing_and_new_bundles =
+      cpus_for_existing_bundles.Double() + cpus_for_new_bundles;
   return cpus_for_existing_and_new_bundles > max_reservable_cpus;
 }
 
@@ -406,9 +407,8 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
   const auto &right_node_it = std::find_if(
       candidate_nodes.begin(),
       candidate_nodes.end(),
-      [&aggregated_resource_request,
-       &options,
-       &available_cpus_before_bundle_scheduling](const auto &entry) {
+      [&aggregated_resource_request, &options, &available_cpus_before_bundle_scheduling](
+          const auto &entry) {
         const auto &node_resources = entry.second->GetLocalView();
         auto allocatable =
             (node_resources.IsAvailable(

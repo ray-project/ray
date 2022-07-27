@@ -68,7 +68,7 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
   /// Return the map of node id -> available cpus before the current bundle scheduling.
   /// It is used to calculate how many CPUs have been allocated for the current bundles.
   const absl::flat_hash_map<scheduling::NodeID, double>
-    GetAvailableCpusBeforeBundleScheduling() const;
+  GetAvailableCpusBeforeBundleScheduling() const;
 
  protected:
   /// The cluster resource manager.
