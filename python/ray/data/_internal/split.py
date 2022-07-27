@@ -93,9 +93,10 @@ def _split_single_block(
     block: Block,
     meta: BlockMetadata,
     split_indices: List[int],
-) -> Tuple[int, BlockPartition]:
+):
     """Split the provided block at the given indices."""
-    split_result = []
+    split_meta = []
+    split_blocks = []
     block_accessor = BlockAccessor.for_block(block)
     prev_index = 0
     # append one more entry at the last so we don't
@@ -113,9 +114,12 @@ def _split_single_block(
             input_files=meta.input_files,
             exec_stats=stats.build(),
         )
-        split_result.append((ray.put(split_block), split_meta))
+        split_meta.append(split_meta)
+        split_blocks.append(split_block)
         prev_index = index
-    return (block_id, split_result)
+    results = [(block_id, split_meta)]
+    results.extend(split_blocks)
+    return *results
 
 
 def _drop_empty_block_split(block_split_indices: List[int], num_rows: int) -> List[int]:
