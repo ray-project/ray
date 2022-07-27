@@ -30,7 +30,7 @@ def memory_summary(
 ):
     from ray.dashboard.memory_utils import memory_summary
 
-    address = services.canonicalize_bootstrap_address(address)
+    address = services.canonicalize_bootstrap_address_or_die(address)
 
     state = GlobalState()
     options = GcsClientOptions.from_gcs_address(address)

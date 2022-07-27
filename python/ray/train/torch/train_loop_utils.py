@@ -4,6 +4,7 @@ import os
 import random
 import types
 import warnings
+import collections
 
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -295,7 +296,10 @@ class _TorchAccelerator(Accelerator):
             torch.cuda.set_device(device)
 
         if move_to_device:
-            logger.info(f"Moving model to device: {device}")
+            if rank == 0:
+                logger.info(f"Moving model to device: {device}")
+            else:
+                logger.debug(f"Moving model to device: {device}")
             model = model.to(device)
 
         def model_get_state(self):
@@ -339,7 +343,10 @@ class _TorchAccelerator(Accelerator):
             world_size = train.world_size()
 
         if wrap_ddp and world_size > 1:
-            logger.info("Wrapping provided model in DDP.")
+            if rank == 0:
+                logger.info("Wrapping provided model in DDP.")
+            else:
+                logger.debug("Wrapping provided model in DDP.")
             if torch.cuda.is_available():
                 model = DistributedDataParallel(
                     model, device_ids=[rank], output_device=rank, **ddp_kwargs
@@ -354,7 +361,7 @@ class _TorchAccelerator(Accelerator):
         data_loader: torch.utils.data.DataLoader,
         add_dist_sampler: bool = True,
         move_to_device: bool = True,
-        auto_transfer: bool = True,
+        auto_transfer: bool = False,
     ) -> torch.utils.data.DataLoader:
         """Prepares DataLoader for distributed execution.
 
@@ -368,7 +375,7 @@ class _TorchAccelerator(Accelerator):
                 the provided DataLoader.
             move_to_device: If set, automatically move the data
                 returned by the data loader to the correct device.
-            auto_transfer: If set and device is GPU, another CUDA stream
+            auto_transfer: (Experimental) If set and device is GPU, another CUDA stream
                 is created to automatically copy data from host (CPU) memory
                 to device (GPU) memory (the default CUDA stream still runs the
                 training procedure). If device is CPU, it will be disabled
@@ -463,11 +470,51 @@ class _TorchAccelerator(Accelerator):
         return data_loader
 
     def get_device(self) -> torch.device:
-        """Gets the correct torch device to use for training."""
+        """Gets the correct torch device to use for training.
+
+        Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
+        superset of the `ray.get_gpu_ids()`.
+
+        Example:
+            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
+            >>> # ray.get_gpu_ids() == [3]
+            >>> # torch.cuda.is_available() == True
+            >>> # get_device() == torch.device("cuda:0")
+
+            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
+            >>> # ray.get_gpu_ids() == [4]
+            >>> # torch.cuda.is_available() == True
+            >>> # get_device() == torch.device("cuda:4")
+
+            >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
+            >>> # ray.get_gpu_ids() == [4,5]
+            >>> # torch.cuda.is_available() == True
+            >>> # get_device() == torch.device("cuda:4")
+        """
         if torch.cuda.is_available():
+            # GPU IDs are assigned by Ray after you specify "use_gpu"
             gpu_ids = ray.get_gpu_ids()
+
             if len(gpu_ids) > 0:
-                device_id = gpu_ids[0]
+                # By default, there should only be one GPU ID if `use_gpu=True`.
+                # If there are multiple GPUs, use the first one.
+                # If using fractional GPUs, these IDs are not guaranteed
+                # to be unique across different processes.
+                gpu_id = gpu_ids[0]
+
+                cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+                if cuda_visible_str and cuda_visible_str != "NoDevFiles":
+                    cuda_visible_list = [
+                        int(dev) for dev in cuda_visible_str.split(",")
+                    ]
+                    device_id = cuda_visible_list.index(gpu_id)
+                else:
+                    raise RuntimeError(
+                        "CUDA_VISIBLE_DEVICES set incorrectly. "
+                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
+                        " variable? If not, please help file an issue on Github."
+                    )
             else:
                 # If called on the driver or outside of Ray Train, return the
                 # 0th device.
@@ -530,7 +577,7 @@ class _WrappedDataLoader(DataLoader):
         self._auto_transfer = auto_transfer if device.type == "cuda" else False
         # create a new CUDA stream to move data from host to device concurrently
         self._memcpy_stream = (
-            torch.cuda.Stream()
+            torch.cuda.Stream(device)
             if device.type == "cuda" and self._auto_transfer
             else None
         )
@@ -548,7 +595,21 @@ class _WrappedDataLoader(DataLoader):
             return i
 
         with torch.cuda.stream(self._memcpy_stream):
-            return tuple(try_move_device(i) for i in item)
+            if isinstance(item, collections.abc.Mapping):
+                item_on_device = {k: self._move_to_device(v) for k, v in item.items()}
+            elif isinstance(item, tuple):
+                item_on_device = tuple(self._move_to_device(i) for i in item)
+            elif isinstance(item, list):
+                item_on_device = [self._move_to_device(i) for i in item]
+            elif isinstance(item, torch.Tensor):
+                item_on_device = try_move_device(item)
+            else:
+                logger.info(
+                    f"Data type {type(item)} doesn't support being moved to device."
+                )
+                item_on_device = item
+
+            return item_on_device
 
     def _wait_for_batch(self, item):
         if self._memcpy_stream is None:

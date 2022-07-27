@@ -3,7 +3,7 @@ import numpy as np
 
 import ray
 from ray.data.preprocessors import Concatenator
-from ray.train.tensorflow import to_air_checkpoint, TensorflowPredictor
+from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
 from ray.train.batch_predictor import BatchPredictor
 
 
@@ -28,7 +28,9 @@ num_features = len(all_features)
 
 prep = Concatenator(dtype=np.float32)
 
-checkpoint = to_air_checkpoint(model=create_model(num_features), preprocessor=prep)
+checkpoint = TensorflowCheckpoint.from_model(
+    model=create_model(num_features), preprocessor=prep
+)
 # You can also fetch a checkpoint from a Trainer
 # checkpoint = trainer.fit().checkpoint
 

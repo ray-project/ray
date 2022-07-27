@@ -18,7 +18,7 @@ torch, nn = try_import_torch()
 @DeveloperAPI
 class FQETorchModel:
     """Pytorch implementation of the Fitted Q-Evaluation (FQE) model from
-    https://arxiv.org/pdf/1911.06854.pdf
+    https://arxiv.org/abs/1911.06854
     """
 
     def __init__(
@@ -44,9 +44,9 @@ class FQETorchModel:
                     "vf_share_layers": True,
                 },
             n_iters: Number of gradient steps to run on batch, defaults to 1
-            lr: Learning rate for Q-model optimizer
+            lr: Learning rate for Adam optimizer
             delta: Early stopping threshold if the mean loss < delta
-            clip_grad_norm: Clip gradients to this maximum value
+            clip_grad_norm: Clip loss gradients to this maximum value
             minibatch_size: Minibatch size for training Q-function;
                 if None, train on the whole batch
             tau: Polyak averaging factor for target Q-function
@@ -110,8 +110,9 @@ class FQETorchModel:
             A list of losses for each training iteration
         """
         losses = []
-        if self.minibatch_size is None:
-            minibatch_size = batch.count
+        minibatch_size = self.minibatch_size or batch.count
+        # Copy batch for shuffling
+        batch = batch.copy(shallow=True)
         for _ in range(self.n_iters):
             minibatch_losses = []
             batch.shuffle()
@@ -209,18 +210,29 @@ class FQETorchModel:
         input_dict = {SampleBatch.OBS: obs}
         seq_lens = torch.ones(len(obs), device=self.device, dtype=int)
         state_batches = []
-        if self.policy.action_distribution_fn and is_overridden(
-            self.policy.action_distribution_fn
-        ):
-            dist_inputs, dist_class, _ = self.policy.action_distribution_fn(
-                self.policy,
-                self.policy.model,
-                input_dict=input_dict,
-                state_batches=state_batches,
-                seq_lens=seq_lens,
-                explore=False,
-                is_training=False,
-            )
+        if is_overridden(self.policy.action_distribution_fn):
+            try:
+                # TorchPolicyV2 function signature
+                dist_inputs, dist_class, _ = self.policy.action_distribution_fn(
+                    self.policy.model,
+                    obs_batch=input_dict,
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
+                    explore=False,
+                    is_training=False,
+                )
+            except TypeError:
+                # TorchPolicyV1 function signature for compatibility with DQN
+                # TODO: Remove this once DQNTorchPolicy is migrated to PolicyV2
+                dist_inputs, dist_class, _ = self.policy.action_distribution_fn(
+                    self.policy,
+                    self.policy.model,
+                    input_dict=input_dict,
+                    state_batches=state_batches,
+                    seq_lens=seq_lens,
+                    explore=False,
+                    is_training=False,
+                )
         else:
             dist_class = self.policy.dist_class
             dist_inputs, _ = self.policy.model(input_dict, state_batches, seq_lens)

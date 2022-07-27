@@ -11,7 +11,7 @@ from ray import serve
 from ray.serve.application import Application
 from ray.serve.api import build as build_app
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve.deployment_graph import ClassNode, InputNode
 from ray.serve.drivers import DAGDriver
 import starlette.requests

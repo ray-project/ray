@@ -125,6 +125,13 @@ RLlib, Tune, Autoscaler, and most Python files do not require you to build and c
     # with your local `ray/python/ray/<package>`.
     python python/ray/setup-dev.py
 
+.. note:: [Advanced] You can also optionally skip creating symbolic link for directories of your choice.
+
+.. code-block:: shell
+
+    # This links all folders except "_private" and "dashboard" without user prompt.
+    python setup-dev.py -y --skip _private dashboard
+
 .. warning:: Do not run ``pip uninstall ray`` or ``pip install -U`` (for Ray or Ray wheels) if setting up your environment this way. To uninstall or upgrade, you must first ``rm -rf`` the pip-installation site (usually a directory at the ``site-packages/ray`` location), then do a pip reinstall (see the command above), and finally run the above ``setup-dev.py`` script again.
 
 .. code-block:: shell

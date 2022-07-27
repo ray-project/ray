@@ -13,6 +13,7 @@ from typing import Dict, Optional, Sequence, Union, Callable, List
 import uuid
 
 import ray
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
@@ -43,7 +44,6 @@ from ray.tune.utils import date_str, flatten_dict
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 DEBUG_PRINT_INTERVAL = 5
 logger = logging.getLogger(__name__)
@@ -213,12 +213,12 @@ class Trial:
         trainable_name: Name of the trainable object to be executed.
         config: Provided configuration dictionary with evaluated params.
         trial_id: Unique identifier for the trial.
-        local_dir: ``local_dir`` as passed to ``tune.run`` joined
+        local_dir: ``local_dir`` as passed to ``air.RunConfig()`` joined
             with the name of the experiment.
         logdir: Directory where the trial logs are saved.
         relative_logdir: Same as ``logdir``, but relative to the parent of
             the ``local_dir`` (equal to ``local_dir`` argument passed
-            to ``tune.run``).
+            to ``air.RunConfig()``).
         evaluated_params: Evaluated parameters by search algorithm,
         experiment_tag: Identifying trial name to show in the console
         status: One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
