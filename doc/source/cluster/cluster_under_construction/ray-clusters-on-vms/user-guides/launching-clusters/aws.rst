@@ -243,12 +243,12 @@ To verify that the correct number of nodes have joined the cluster, you can run 
 .. _aws-cluster-under-construction:
 
 AWS Configurations
--------------------
+==================
 
 .. _aws-cluster-efs-under-construction:
 
 Using Amazon EFS
-~~~~~~~~~~~~~~~~
+----------------
 
 To use Amazon EFS, install some utilities and mount the EFS in ``setup_commands``. Note that these instructions only work if you are using the AWS Autoscaler.
 
@@ -277,7 +277,7 @@ To use Amazon EFS, install some utilities and mount the EFS in ``setup_commands`
 .. _aws-cluster-s3-under-construction:
 
 Configure worker nodes to access Amazon S3
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+------------------------------------------
 
 In various scenarios, worker nodes may need write access to the S3 bucket.
 E.g. Ray Tune has the option that worker nodes write distributed checkpoints to S3 instead of syncing back to the driver using rsync.
@@ -316,7 +316,7 @@ Please refer to `this discussion <https://github.com/ray-project/ray/issues/9327
 .. _aws-cluster-cloudwatch-under-construction:
 
 Using Amazon CloudWatch
------------------------
+=======================
 
 Amazon CloudWatch is a monitoring and observability service that provides data and actionable insights to monitor your applications, respond to system-wide performance changes, and optimize resource utilization.
 CloudWatch integration with Ray requires an AMI (or Docker image) with the Unified CloudWatch Agent pre-installed.
@@ -354,10 +354,10 @@ The table below lists AMIs with the Unified CloudWatch Agent pre-installed in ea
     Using Amazon CloudWatch will incur charges, please refer to `CloudWatch pricing <https://aws.amazon.com/cloudwatch/pricing/>`_ for details.
 
 Getting started
-~~~~~~~~~~~~~~~
+---------------
 
 1. Create a minimal cluster config YAML named ``cloudwatch-basic.yaml`` with the following contents:
-====================================================================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: yaml
 
@@ -395,7 +395,7 @@ Getting started
             min_workers: 0
 
 2. Download CloudWatch Agent and Dashboard config.
-==================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, create a ``cloudwatch`` directory in the same directory as ``cloudwatch-basic.yaml``.
 Then, download the example `CloudWatch Agent <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-agent-config.json>`_ and `CloudWatch Dashboard <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-dashboard-config.json>`_ config files to the ``cloudwatch`` directory.
@@ -408,13 +408,13 @@ Then, download the example `CloudWatch Agent <https://github.com/ray-project/ray
     $ wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-dashboard-config.json
 
 3. Run ``ray up cloudwatch-basic.yaml`` to start your Ray Cluster.
-==================================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This will launch your Ray cluster in ``us-west-2`` by default. When launching a cluster for a different region, you'll need to change your cluster config YAML file's ``region`` AND ``ImageId``.
 See the "Unified CloudWatch Agent Images" table above for available AMIs by region.
 
 4. Check out your Ray cluster's logs, metrics, and dashboard in the `CloudWatch Console <https://console.aws.amazon.com/cloudwatch/>`_!
-=======================================================================================================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A tail can be acquired on all logs written to a CloudWatch log group by ensuring that you have the `AWS CLI V2+ installed <https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html>`_ and then running:
 
@@ -423,12 +423,12 @@ A tail can be acquired on all logs written to a CloudWatch log group by ensuring
     aws logs tail $log_group_name --follow
 
 Advanced Setup
-~~~~~~~~~~~~~~
+--------------
 
 Refer to `example-cloudwatch.yaml <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-cloudwatch.yaml>`_ for a complete example.
 
 1. Choose an AMI with the Unified CloudWatch Agent pre-installed.
-=================================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ensure that you're launching your Ray EC2 cluster in the same region as the AMI,
 then specify the ``ImageId`` to use with your cluster's head and worker nodes in your cluster config YAML file.
@@ -457,7 +457,7 @@ To build your own AMI with the Unified CloudWatch Agent installed:
 2. Follow the `EC2 AMI Creation <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/AMIs.html#creating-an-ami>`_ user guide to create an AMI from this EC2 instance.
 
 2. Define your own CloudWatch Agent, Dashboard, and Alarm JSON config files.
-============================================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can start by using the example `CloudWatch Agent <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-agent-config.json>`_, `CloudWatch Dashboard <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-dashboard-config.json>`_ and `CloudWatch Alarm <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/cloudwatch/example-cloudwatch-alarm-config.json>`_ config files.
 
@@ -496,7 +496,7 @@ See CloudWatch Agent `Configuration File Details <https://docs.aws.amazon.com/Am
       ]
 
 3. Reference your CloudWatch JSON config files in your cluster config YAML.
-===========================================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Specify the file path to your CloudWatch JSON config files relative to the working directory that you will run ``ray up`` from:
 
@@ -509,7 +509,7 @@ Specify the file path to your CloudWatch JSON config files relative to the worki
 
 
 4. Set your IAM Role and EC2 Instance Profile.
-==============================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default the ``ray-autoscaler-cloudwatch-v1`` IAM role and EC2 instance profile is created at Ray cluster launch time.
 This role contains all additional permissions required to integrate CloudWatch with Ray, namely the ``CloudWatchAgentAdminPolicy``, ``AmazonSSMManagedInstanceCore``, ``ssm:SendCommand``, ``ssm:ListCommandInvocations``, and ``iam:PassRole`` managed policies.
@@ -525,7 +525,7 @@ Ensure that all worker nodes are configured to use the ``ray-autoscaler-cloudwat
                 Name: ray-autoscaler-cloudwatch-v1
 
 5. Export Ray system metrics to CloudWatch.
-===========================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To export Ray's Prometheus system metrics to CloudWatch, first ensure that your cluster has the
 Ray Dashboard installed, then uncomment the ``head_setup_commands`` section in `example-cloudwatch.yaml file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-cloudwatch.yaml>`_ file.
@@ -549,7 +549,7 @@ You can find Ray Prometheus metrics in the ``{cluster_name}-ray-prometheus`` met
     >> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.out' 2>> '/opt/aws/amazon-cloudwatch-agent/logs/ray_prometheus_waiter.err'" &
 
 6. Update CloudWatch Agent, Dashboard and Alarm config files.
-=============================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can apply changes to the CloudWatch Logs, Metrics, Dashboard, and Alarms for your cluster by simply modifying the CloudWatch config files referenced by your Ray cluster config YAML and re-running ``ray up example-cloudwatch.yaml``.
 The Unified CloudWatch Agent will be automatically restarted on all cluster nodes, and your config changes will be applied.
@@ -557,7 +557,7 @@ The Unified CloudWatch Agent will be automatically restarted on all cluster node
 
 
 What's Next?
--------------
+============
 
 Now that you have a working understanding of the cluster launcher, check out:
 
@@ -568,6 +568,6 @@ Now that you have a working understanding of the cluster launcher, check out:
 
 
 Questions or Issues?
---------------------
+====================
 
 .. include:: /_includes/_help.rst
