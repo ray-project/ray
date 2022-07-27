@@ -600,7 +600,7 @@ class TestDeployApp:
         }
 
         client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(deployment_running, timeout=5)
+        wait_for_condition(deployment_running, timeout=15)
         pid1 = requests.get("http://localhost:8000/f").text
 
         updated_options = {
@@ -614,7 +614,7 @@ class TestDeployApp:
         ]
 
         client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(deployment_running, timeout=5)
+        wait_for_condition(deployment_running, timeout=15)
 
         # This assumes that Serve implements round-robin routing for its replicas. As
         # long as that doesn't change, this test shouldn't be flaky; however if that
