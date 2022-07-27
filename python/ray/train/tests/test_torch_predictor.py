@@ -235,9 +235,6 @@ def test_multi_modal_real_model(use_gpu):
         ).is_cuda, "Model should not be on GPU if use_gpu is False"
 
 
-# def custom_model
-
-
 if __name__ == "__main__":
     import sys
 
