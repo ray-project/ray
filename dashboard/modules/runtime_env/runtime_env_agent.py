@@ -8,6 +8,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Dict, List, Set, Tuple
+from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.runtime_env.runtime_env_consts as runtime_env_consts
@@ -375,6 +376,16 @@ class RuntimeEnvAgent(
                     error_message = "".join(
                         traceback.format_exception(type(e), e, e.__traceback__)
                     )
+                    if isinstance(e, asyncio.TimeoutError):
+                        hint = (
+                            f"Failed due to timeout; check runtime_env setup logs"
+                            " and consider increasing `setup_timeout_seconds` beyond "
+                            f"the default of {DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS}."
+                            "For example: \n"
+                            '    runtime_env={"config": {"setup_timeout_seconds":'
+                            " 1800}, ...}\n"
+                        )
+                        error_message = hint + error_message
                     await asyncio.sleep(
                         runtime_env_consts.RUNTIME_ENV_RETRY_INTERVAL_MS / 1000
                     )
