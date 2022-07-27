@@ -25,7 +25,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-scale_config = ScalingConfig(num_workers=2)
+scale_config = ScalingConfig(num_workers=2, trainer_resources={"CPU": 0})
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
