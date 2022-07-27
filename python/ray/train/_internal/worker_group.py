@@ -13,7 +13,7 @@ T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 
-class BaseWorkerMixin:
+class RayTrainWorker:
     """A class to execute arbitrary functions. Does not hold any state."""
 
     def __execute(self, func: Callable[..., T], *args, **kwargs) -> T:
@@ -57,12 +57,12 @@ class Worker:
 def create_executable_class(executable_cls: Optional[Type] = None) -> Type:
     """Create the executable class to use as the Ray actors."""
     if not executable_cls:
-        return BaseWorkerMixin
-    elif issubclass(executable_cls, BaseWorkerMixin):
+        return RayTrainWorker
+    elif issubclass(executable_cls, RayTrainWorker):
         return executable_cls
     else:
 
-        class _WrappedExecutable(executable_cls, BaseWorkerMixin):
+        class _WrappedExecutable(executable_cls, RayTrainWorker):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
 
@@ -162,7 +162,7 @@ class WorkerGroup:
         self.additional_resources_per_worker = additional_resources_per_worker
         self.workers = []
         self._base_cls = create_executable_class(actor_cls)
-        assert issubclass(self._base_cls, BaseWorkerMixin)
+        assert issubclass(self._base_cls, RayTrainWorker)
 
         self._actor_cls_args = actor_cls_args or []
         self._actor_cls_kwargs = actor_cls_kwargs or {}
@@ -239,7 +239,7 @@ class WorkerGroup:
             )
 
         return [
-            w.actor._BaseWorkerMixin__execute.remote(func, *args, **kwargs)
+            w.actor._RayTrainWorker__execute.remote(func, *args, **kwargs)
             for w in self.workers
         ]
 
@@ -276,7 +276,7 @@ class WorkerGroup:
                 f"The provided worker_index {worker_index} is "
                 f"not valid for {self.num_workers} workers."
             )
-        return self.workers[worker_index].actor._BaseWorkerMixin__execute.remote(
+        return self.workers[worker_index].actor._RayTrainWorker__execute.remote(
             func, *args, **kwargs
         )
 
@@ -331,7 +331,7 @@ class WorkerGroup:
             ).remote(*self._actor_cls_args, **self._actor_cls_kwargs)
             new_actors.append(actor)
             new_actor_metadata.append(
-                actor._BaseWorkerMixin__execute.remote(construct_metadata)
+                actor._RayTrainWorker__execute.remote(construct_metadata)
             )
 
         # Get metadata from all actors.

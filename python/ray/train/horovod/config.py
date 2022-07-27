@@ -153,8 +153,6 @@ class _HorovodWorkerWrapper:
         class ExecuteHandle:
             def remote(self, func, *args, **kwargs):
                 _ = None
-                return w.actor._BaseWorkerMixin__execute.remote(
-                    func, _, *args, **kwargs
-                )
+                return w.actor._RayTrainWorker__execute.remote(func, _, *args, **kwargs)
 
         return ExecuteHandle()
