@@ -437,6 +437,10 @@ def test_parquet_deserialize_pieces_with_retry(
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
@@ -496,6 +500,10 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
@@ -565,6 +573,10 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
@@ -658,6 +670,10 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path):
@@ -719,6 +735,10 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
@@ -902,6 +922,10 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
         (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_path):
@@ -991,6 +1015,11 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -1030,6 +1059,11 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_parquet_write_create_dir(
@@ -1123,6 +1157,11 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_parquet_write_block_path_provider(
@@ -1172,6 +1211,10 @@ def test_parquet_write_block_path_provider(
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -1203,6 +1246,10 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -1323,6 +1370,11 @@ def test_numpy_read_partitioned_with_filter(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -1354,6 +1406,11 @@ def test_numpy_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_numpy_write_block_path_provider(
@@ -1665,6 +1722,11 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -1900,6 +1962,11 @@ def test_json_read_meta_provider(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_json_read_with_read_options(
@@ -1939,6 +2006,11 @@ def test_json_read_with_read_options(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_json_read_partitioned_with_filter(
@@ -2012,6 +2084,11 @@ def test_json_read_partitioned_with_filter(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -2060,6 +2137,10 @@ def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -2167,6 +2248,11 @@ def test_json_write_block_path_provider(
         (
             lazy_fixture("s3_fs_with_special_chars"),
             lazy_fixture("s3_path_with_special_chars"),
+            lazy_fixture("s3_server"),
+        ),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
             lazy_fixture("s3_server"),
         ),
     ],
@@ -2317,6 +2403,11 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_meta_provider(
@@ -2361,6 +2452,11 @@ def test_csv_read_meta_provider(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_hive_implicit(
@@ -2401,6 +2497,11 @@ def test_csv_read_partitioned_hive_implicit(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_styles_explicit(
@@ -2451,6 +2552,11 @@ def test_csv_read_partitioned_styles_explicit(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_with_filter(
@@ -2516,6 +2622,11 @@ def test_csv_read_partitioned_with_filter(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_with_filter_multikey(
@@ -2597,6 +2708,11 @@ def test_csv_read_partitioned_with_filter_multikey(
             lazy_fixture("s3_path_with_special_chars"),
             lazy_fixture("s3_server"),
         ),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -2669,6 +2785,11 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_write_block_path_provider(

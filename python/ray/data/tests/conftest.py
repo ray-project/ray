@@ -65,6 +65,11 @@ def s3_path_with_special_chars(tmp_path, data_dir_with_special_chars):
 
 
 @pytest.fixture(scope="function")
+def s3_path_with_anonymous_crendential(tmp_path, data_dir):
+    yield "s3://" + "anonymous@" + posixpath.join(tmp_path, data_dir).lstrip("/")
+
+
+@pytest.fixture(scope="function")
 def s3_fs(aws_credentials, s3_server, s3_path):
     yield from _s3_fs(aws_credentials, s3_server, s3_path)
 
@@ -77,6 +82,13 @@ def s3_fs_with_space(aws_credentials, s3_server, s3_path_with_space):
 @pytest.fixture(scope="function")
 def s3_fs_with_special_chars(aws_credentials, s3_server, s3_path_with_special_chars):
     yield from _s3_fs(aws_credentials, s3_server, s3_path_with_special_chars)
+
+
+@pytest.fixture(scope="function")
+def s3_fs_with_anonymous_crendential(
+    aws_credentials, s3_server, s3_path_with_anonymous_crendential
+):
+    yield from _s3_fs(aws_credentials, s3_server, s3_path_with_anonymous_crendential)
 
 
 def _s3_fs(aws_credentials, s3_server, s3_path):
