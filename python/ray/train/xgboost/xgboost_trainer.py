@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
@@ -66,6 +66,11 @@ class XGBoostTrainer(GBDTTrainer):
     _ray_params_cls: type = xgboost_ray.RayParams
     _tune_callback_report_cls: type = TuneReportCallback
     _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
+    _default_ray_params: Dict[str, Any] = {
+        "num_actors": 1,
+        "cpus_per_actor": 1,
+        "gpus_per_actor": 0,
+    }
     _init_model_arg_name: str = "xgb_model"
 
     def _train(self, **kwargs):
