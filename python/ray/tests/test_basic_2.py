@@ -693,7 +693,7 @@ def test_load_code_from_local(ray_start_regular_shared):
     # This case writes a driver python file to a temporary directory.
     #
     # The driver starts a cluster with
-    # `ray.init(ray.job_config.JobConfig(code_search_path=<path list>))`,
+    # `ray.init("py_modules"=<path list>))`,
     # then creates a nested actor. The actor will be loaded from code in
     # worker.
     #
@@ -712,8 +712,7 @@ class A:
 
 if __name__ == "__main__":
     current_path = os.path.dirname(__file__)
-    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
-    ray.init({}, job_config=job_config)
+    ray.init({}, runtime_env={"py_modules": ["file://localhost/" + current_path]})
     b = A.B.remote()
     print(ray.get(b.get.remote()))
 """
@@ -736,8 +735,7 @@ def test_use_dynamic_function_and_class():
     # See https://github.com/ray-project/ray/issues/12834.
     ray.shutdown()
     current_path = os.path.dirname(__file__)
-    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
-    ray.init(job_config=job_config)
+    ray.init(runtime_env={"py_modules": ["file://localhost/" + current_path]})
 
     def foo1():
         @ray.remote

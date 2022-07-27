@@ -262,20 +262,16 @@ message JobConfig {
 
   // The jvm options for java workers of the job.
   repeated string jvm_options = 2;
-  // A list of directories or files (jar files or dynamic libraries) that specify the
-  // search path for user code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH`
-  // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
-  repeated string code_search_path = 3;
   // Runtime environment to run the code
-  RuntimeEnvInfo runtime_env_info = 4;
+  RuntimeEnvInfo runtime_env_info = 3;
   // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
-  string ray_namespace = 5;
+  string ray_namespace = 4;
   // An opaque kv store for job related metadata.
-  map<string, string> metadata = 6;
+  map<string, string> metadata = 5;
   // The default lifetime of actors in this job.
   // If the lifetime of an actor is not specified explicitly at runtime, this
   // default value will be applied.
-  ActorLifetime default_actor_lifetime = 7;
+  ActorLifetime default_actor_lifetime = 6;
 }
 
 message JobTableData {

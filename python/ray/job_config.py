@@ -11,9 +11,6 @@ class JobConfig:
 
     Attributes:
         jvm_options: The jvm options for java workers of the job.
-        code_search_path: A list of directories or jar files that
-            specify the search path for user code. This will be used as
-            `CLASSPATH` in Java and `PYTHONPATH` in Python.
         runtime_env: A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
         client_job: A boolean represent the source of the job.
@@ -23,7 +20,6 @@ class JobConfig:
     def __init__(
         self,
         jvm_options: List[str] = None,
-        code_search_path: List[str] = None,
         runtime_env: dict = None,
         client_job: bool = False,
         metadata: Optional[dict] = None,
@@ -31,12 +27,6 @@ class JobConfig:
         default_actor_lifetime: str = "non_detached",
     ):
         self.jvm_options = jvm_options or []
-        self.code_search_path = code_search_path or []
-        # It's difficult to find the error that caused by the
-        # code_search_path is a string. So we assert here.
-        assert isinstance(self.code_search_path, (list, tuple)), (
-            f"The type of code search path is incorrect: " f"{type(code_search_path)}"
-        )
         self.client_job = client_job
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
@@ -107,7 +97,6 @@ class JobConfig:
             else:
                 pb.ray_namespace = self.ray_namespace
             pb.jvm_options.extend(self.jvm_options)
-            pb.code_search_path.extend(self.code_search_path)
             for k, v in self.metadata.items():
                 pb.metadata[k] = v
 
@@ -145,7 +134,6 @@ class JobConfig:
         """
         return cls(
             jvm_options=job_config_json.get("jvm_options", None),
-            code_search_path=job_config_json.get("code_search_path", None),
             runtime_env=job_config_json.get("runtime_env", None),
             client_job=job_config_json.get("client_job", False),
             metadata=job_config_json.get("metadata", None),

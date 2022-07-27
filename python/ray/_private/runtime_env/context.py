@@ -7,10 +7,19 @@ from typing import Any, Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
 from ray.core.generated.common_pb2 import Language
-from ray._private.services import get_ray_jars_dir
+from ray._private.services import get_ray_jars_dir, get_ray_native_library_dir
 
 logger = logging.getLogger(__name__)
 
+_WIN32 = os.name == "nt"
+_LINUX = sys.platform.startswith("linux")
+_MACOS = sys.platform.startswith("darwin")
+if _WIN32:
+      _LIBRARY_PATH_ENV_NAME = "DYLD_LIBRARY_PATH"
+elif _LINUX:
+      _LIBRARY_PATH_ENV_NAME = "LD_LIBRARY_PATH"
+elif _MACOS:
+      _LIBRARY_PATH_ENV_NAME = "PATH"
 
 @DeveloperAPI
 class RuntimeEnvContext:
@@ -24,6 +33,8 @@ class RuntimeEnvContext:
         resources_dir: Optional[str] = None,
         container: Dict[str, Any] = None,
         java_jars: List[str] = None,
+        py_modules: List[str] = None,
+        native_libraries: List[str] = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
@@ -35,6 +46,8 @@ class RuntimeEnvContext:
         self.resources_dir: str = resources_dir
         self.container = container or {}
         self.java_jars = java_jars or []
+        self.py_modules = py_modules or []
+        self.native_libraries = native_libraries or []
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)
@@ -48,6 +61,8 @@ class RuntimeEnvContext:
 
         if language == Language.PYTHON and sys.platform == "win32":
             executable = self.py_executable
+            if self.py_modules:
+                passthrough_args += ["--code-search-path", ":".join(self.py_modules)]
         elif language == Language.PYTHON:
             executable = f"exec {self.py_executable}"
         elif language == Language.JAVA:
@@ -59,8 +74,18 @@ class RuntimeEnvContext:
                 local_java_jars.append(f"{java_jar}/*")
                 local_java_jars.append(java_jar)
 
-            class_path_args = ["-cp", ray_jars + ":" + str(":".join(local_java_jars))]
+            class_path_args = ["-cp", ray_jars, "-Dray.job.code-search-path=" + str(":".join(local_java_jars))]
             passthrough_args = class_path_args + passthrough_args
+        elif language == Language.CPP:
+            all_library_paths = get_ray_native_library_dir()
+            if self.native_libraries:
+                passthrough_args += ["--ray_code_search_path", ":".join(self.native_libraries)]
+                all_library_paths += ":"
+                all_library_paths += ":".join(self.native_libraries)
+            os_paths = os.environ.get(_LIBRARY_PATH_ENV_NAME, None)
+            if os_paths:
+                all_library_paths += ":"
+                all_library_paths += os_paths 
         elif sys.platform == "win32":
             executable = ""
         else:

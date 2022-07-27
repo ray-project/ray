@@ -15,7 +15,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
         num_cpus=8,
         namespace="default_test_namespace",
         # A dummy code search path to enable cross language.
-        job_config=JobConfig(code_search_path=["."]),
+        runtime_env={"py_modules": "file://localhost/.", "java_jars": "file://localhost/."}),
     )
     client = serve.start(detached=True)
 

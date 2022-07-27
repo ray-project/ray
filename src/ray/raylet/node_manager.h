@@ -82,8 +82,6 @@ struct NodeManagerConfig {
   int maximum_startup_concurrency;
   /// The commands used to start the worker process, grouped by language.
   WorkerCommandMap worker_commands;
-  /// The native library path which includes the core libraries.
-  std::string native_library_path;
   /// The command used to start agent.
   std::string agent_command;
   /// The time between reports resources in milliseconds.

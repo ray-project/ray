@@ -57,9 +57,6 @@ GCS_SERVER_EXECUTABLE = os.path.join(
 # Location of the cpp default worker executables.
 DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH, "cpp/default_worker" + EXE_SUFFIX)
 
-# Location of the native libraries.
-DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
-
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
     "found. To use the dashboard please "
@@ -1661,7 +1658,6 @@ def start_raylet(
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
-        f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1721,6 +1717,18 @@ def get_ray_jars_dir():
         )
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
+def get_ray_native_library_dir():
+    """Return a directory where all ray-related native libraries and
+    their dependencies locate."""
+    current_dir = RAY_PATH
+    native_library_dir = os.path.abspath(os.path.join(current_dir, "cpp/lib"))
+    if not os.path.exists(native_library_dir):
+        raise RuntimeError(
+            "Ray native libraries is not packaged into ray. "
+            "Please install ray with option [cpp] "
+            "(pip install ray[cpp])"
+        )
+    return native_library_dir
 
 def build_java_worker_command(
     bootstrap_address: str,

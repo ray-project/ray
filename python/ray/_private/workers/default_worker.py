@@ -85,6 +85,13 @@ parser.add_argument(
     help="True if code is loaded from local files, as opposed to the GCS.",
 )
 parser.add_argument(
+    "--code-search-path",
+    required=False,
+    type=str,
+    default=None,
+    help="A list of directories that specify the search path for user python code.",
+)
+parser.add_argument(
     "--use-pickle",
     default=False,
     action="store_true",
@@ -217,11 +224,10 @@ if __name__ == "__main__":
 
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray._private.worker.global_worker.core_worker
-    code_search_path = core_worker.get_job_config().code_search_path
     load_code_from_local = False
-    if code_search_path:
+    if args.code_search_path:
         load_code_from_local = True
-        for p in code_search_path:
+        for p in args.code_search_path:
             if os.path.isfile(p):
                 p = os.path.dirname(p)
             sys.path.insert(0, p)

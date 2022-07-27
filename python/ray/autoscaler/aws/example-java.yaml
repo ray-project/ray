@@ -72,4 +72,4 @@ worker_start_ray_commands:
     - ray stop
     - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
 
-# To run the program, run `ray exec java.yaml "java -jar ray-word-count/target/ray-word-count-1.0-SNAPSHOT-jar-with-dependencies.jar -Dray.job.code-search-path=ray-word-count/target"`
+# To run the program, run `ray exec java.yaml "java -jar ray-word-count/target/ray-word-count-1.0-SNAPSHOT-jar-with-dependencies.jar -Dray.job.runtime-env.jars=file://localhost/ray-word-count/target"`

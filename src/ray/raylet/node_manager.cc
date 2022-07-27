@@ -195,7 +195,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           config.worker_ports,
           gcs_client_,
           config.worker_commands,
-          config.native_library_path,
           /*starting_worker_timeout_callback=*/
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,

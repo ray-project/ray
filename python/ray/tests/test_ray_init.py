@@ -18,7 +18,7 @@ from ray.util.client.worker import Worker
 
 
 def test_shutdown_and_reset_global_worker(shutdown_only):
-    ray.init(job_config=ray.job_config.JobConfig(code_search_path=["a"]))
+    ray.init(runtime_env={"py_modules": ["file://localhost/a"]})
     ray.shutdown()
     ray.init()
 
