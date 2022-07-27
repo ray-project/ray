@@ -457,7 +457,7 @@ class PipPlugin(RuntimeEnvPlugin):
         uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
         context: RuntimeEnvContext,
-        logger: Optional[logging.Logger] = default_logger,
+        logger: logging.Logger = default_logger,
     ):
         if not runtime_env.has_pip():
             return

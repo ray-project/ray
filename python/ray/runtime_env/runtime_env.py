@@ -345,30 +345,6 @@ class RuntimeEnv(dict):
         if all(val is None for val in self.values()):
             self.clear()
 
-    def get_uris(self) -> List[str]:
-        # TODO(architkulkarni): this should programmatically be extended with
-        # URIs from all plugins.
-        plugin_uris = []
-        if "working_dir" in self:
-            plugin_uris.append(self["working_dir"])
-        if "py_modules" in self:
-            for uri in self["py_modules"]:
-                plugin_uris.append(uri)
-        if "conda" in self:
-            uri = get_conda_uri(self)
-            if uri is not None:
-                plugin_uris.append(uri)
-        if "pip" in self:
-            uri = get_pip_uri(self)
-            if uri is not None:
-                plugin_uris.append(uri)
-
-    def get_working_dir_uri(self) -> str:
-        return self.get("working_dir", None)
-
-    def get_py_modules_uris(self) -> List[str]:
-        return self.get("py_modules", [])
-
     def __setitem__(self, key: str, value: Any) -> None:
         if is_dataclass(value):
             jsonable_type = asdict(value)
@@ -416,16 +392,8 @@ class RuntimeEnv(dict):
 
         return runtime_env_dict
 
-    def has_uris(self) -> bool:
-        if (
-            self.working_dir_uri()
-            or self.py_modules_uris()
-            or self.conda_uri()
-            or self.pip_uri()
-            or self.plugin_uris()
-        ):
-            return True
-        return False
+    def has_working_dir(self) -> bool:
+        return self.get("working_dir") is not None
 
     def working_dir_uri(self) -> Optional[str]:
         return self.get("working_dir")
