@@ -303,7 +303,6 @@ class _ActorClassMetadata:
         num_gpus: The default number of GPUs required by the actor creation
             task.
         memory: The heap memory quota for this actor.
-        object_store_memory: The object store memory quota for this actor.
         resources: The default resources required by the actor creation task.
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
@@ -668,8 +667,6 @@ class ActorClass:
             num_cpus: The number of CPUs required by the actor creation task.
             num_gpus: The number of GPUs required by the actor creation task.
             memory: Restrict the heap memory usage of this actor.
-            object_store_memory: Restrict the object store memory used by
-                this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
             max_concurrency: The max number of concurrent calls to allow for
