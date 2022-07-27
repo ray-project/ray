@@ -292,7 +292,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
               if (status.ok()) {
                 gcs_resource_manager_->UpdateResourceLoads(load.resources());
               } else {
-                RAY_LOG(ERROR) << "Failed to get the resource load: "
+                RAY_LOG_EVERY_N(WARNING, 10) << "Failed to get the resource load: "
                                << status.ToString();
               }
             });
