@@ -634,7 +634,7 @@ def _pairwise(iterable):
     return zip(a, b)
 
 
-def _copy_tensor_array_if_needed(a: "ArrowTensorArray"):
+def _copy_tensor_array_if_needed(a: "ArrowTensorArray") -> "ArrowTensorArray":
     """Copy tensor array if it's a zero-copy slice. This is to circumvent an Arrow
     serialization bug, where a zero-copy slice serializes the entire underlying array
     buffer.
