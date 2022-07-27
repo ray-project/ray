@@ -14,7 +14,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.alpha_star.distributed_learners import DistributedLearners
 from ray.rllib.algorithms.alpha_star.league_builder import AlphaStarLeagueBuilder
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import MultiAgentMixInReplayBuffer
+from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -354,7 +354,7 @@ class AlphaStar(appo.APPO):
         ReplayActor = ray.remote(
             num_cpus=1,
             num_gpus=num_gpus,
-        )(MultiAgentMixInReplayBuffer)
+        )(MixInMultiAgentReplayBuffer)
 
         # Setup remote replay buffer shards and policy learner actors
         # (located on any GPU machine in the cluster):

@@ -10,7 +10,7 @@ from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.utils.replay_buffers.multi_agent_mixin_replay_buffer import MultiAgentMixInReplayBuffer
+from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.common import (
     STEPS_TRAINED_COUNTER,
     STEPS_TRAINED_THIS_ITER_COUNTER,
@@ -589,7 +589,7 @@ class Impala(Algorithm):
 
             else:
                 # Create our local mixin buffer if the num of aggregation workers is 0.
-                self.local_mixin_buffer = MultiAgentMixInReplayBuffer(
+                self.local_mixin_buffer = MixInMultiAgentReplayBuffer(
                     capacity=(
                         self.config["replay_buffer_num_slots"]
                         if self.config["replay_buffer_num_slots"] > 0
@@ -958,7 +958,7 @@ class AggregatorWorker:
 
     def __init__(self, config: AlgorithmConfigDict):
         self.config = config
-        self._mixin_buffer = MultiAgentMixInReplayBuffer(
+        self._mixin_buffer = MixInMultiAgentReplayBuffer(
             capacity=(
                 self.config["replay_buffer_num_slots"]
                 if self.config["replay_buffer_num_slots"] > 0

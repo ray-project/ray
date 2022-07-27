@@ -231,6 +231,8 @@ class MARWILConfig(AlgorithmConfig):
             # User specified their OPE methods.
             self._set_off_policy_estimation_methods = True
 
+        return self
+
     def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
