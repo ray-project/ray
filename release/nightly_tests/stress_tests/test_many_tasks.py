@@ -155,8 +155,8 @@ def stage4():
         spreads.append(spread)
         logger.info(f"Spread: {last - first}\tLast: {last}\tFirst: {first}")
 
-    avg_spread = sum(spreads) / len(spreads)
-    logger.info(f"Avg spread: {sum(spreads)/len(spreads)}")
+    avg_spread = np.mean(spreads)
+    logger.info(f"Avg spread: {np.mean(spreads)}")
     return avg_spread
 
 
