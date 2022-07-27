@@ -1123,7 +1123,7 @@ class DatasetPipeline(Generic[T]):
         return DatasetPipeline(iterable, False, length=length)
 
     def __repr__(self) -> str:
-        return "DatasetPipeline(num_windows={}, num_stages={})".format(
+        return "<DatasetPipeline num_windows={} num_stages={}>".format(
             self._length, 1 + len(self._stages)
         )
 
