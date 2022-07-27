@@ -116,8 +116,8 @@ class DAGDriver:
             self.dag_handle = dags
 
             # Single dag case, we will receive all prefix route
-            @self.app.get("/{path}")
-            @self.app.post("/{path}")
+            @self.app.get("/{path:path}")
+            @self.app.post("/{path:path}")
             async def handle_request(inp=Depends(http_adapter)):
                 return await self.predict(inp)
 
