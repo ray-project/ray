@@ -20,6 +20,7 @@ WorkflowOutputType = ObjectRef
 
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
+HTTP_EVENT_PROVIDER_NAME = "WorkflowHttpEventProvider"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
 WORKFLOW_OPTIONS = "workflow.io/options"
 
