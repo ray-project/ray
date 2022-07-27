@@ -1,3 +1,4 @@
+from copy import deepcopy
 from gym.spaces import Space
 import math
 import numpy as np
@@ -169,7 +170,7 @@ class AgentCollector:
         self.buffers[SampleBatch.EPS_ID][0].append(self.episode_id)
         self.buffers[SampleBatch.UNROLL_ID][0].append(self.unroll_id)
 
-    def add_action_reward_next_obs(self, values: Dict[str, TensorType]) -> None:
+    def add_action_reward_next_obs(self, input_values: Dict[str, TensorType]) -> None:
         """Adds the given dictionary (row) of values to the Agent's trajectory.
 
         Args:
@@ -182,6 +183,8 @@ class AgentCollector:
             AgentCollector._next_unroll_id += 1
 
         # Next obs -> obs.
+        # TODO @kourosh: remove the in-place operations and get rid of this deepcopy.
+        values = deepcopy(input_values)
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
