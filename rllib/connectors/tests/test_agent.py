@@ -1,7 +1,6 @@
 import gym
 import numpy as np
 import unittest
-import pytest
 
 from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
@@ -381,18 +380,14 @@ class TestViewRequirementConnector(unittest.TestCase):
             check(for_action["context_obs"], np.stack(obs_list)[None])
             check(for_action["context_act"], np.stack(act_list[:-1])[None])
 
-    @pytest.mark.skip("test is not ready yet.")
     def test_connector_pipline_with_view_requirement(self):
+        """A very minimal test that checks wheter pipeline connectors work in a 
+        simulation rollout."""
+        # TODO: make this test beefier and more comprehensive
         config = (
             PPOConfig()
+            .framework("torch") # use torch since mi
             .environment(env="CartPole-v0")
-            .training(
-                model=dict(
-                    use_lstm=True,
-                    lstm_use_prev_action=True,
-                    lstm_use_prev_reward=True,
-                ),
-            )
             .rollouts(create_env_on_local_worker=True)
         )
         algo = PPO(config)
@@ -413,14 +408,12 @@ class TestViewRequirementConnector(unittest.TestCase):
         # build chain of connectors
         connectors = [
             ObsPreprocessorConnector(ctx),
-            ClipRewardAgentConnector(ctx, False, 1.0),
-            FlattenDataAgentConnector(ctx),
             StateBufferConnector(ctx),
             ViewRequirementAgentConnector(ctx),
         ]
-        pipeline = AgentConnectorPipeline(ctx, connectors)
+        agent_connector = AgentConnectorPipeline(ctx, connectors)
 
-        name, params = pipeline.to_config()
+        name, params = agent_connector.to_config()
         restored = get_connector(ctx, name, params)
         self.assertTrue(isinstance(restored, AgentConnectorPipeline))
         for cidx, c in enumerate(connectors):
@@ -432,31 +425,38 @@ class TestViewRequirementConnector(unittest.TestCase):
         env_out = AgentConnectorDataType(
             0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: -1}
         )
-        agent_obs = pipeline([obs])
+        agent_obs = agent_connector([env_out])[0]
         t = 0
+        total_rewards = 0
         while t < n_steps:
-            eval_batch = agent_obs.data.for_action
-            action, state, extra_fetch = policy.compute_actions_from_input_dict(
-                eval_batch
+            policy_output = policy.compute_actions_from_input_dict(
+                agent_obs.data.for_action
             )
+            agent_connector.on_policy_output(
+                ActionConnectorDataType(0, 1, policy_output)
+            )
+            action = policy_output[0][0]
+
             next_obs, rewards, dones, info = env.step(action)
             env_out_dict = {
                 SampleBatch.NEXT_OBS: next_obs,
                 SampleBatch.REWARDS: rewards,
                 SampleBatch.DONES: dones,
-                SampleBatch.INFO: info,
+                SampleBatch.INFOS: info,
                 SampleBatch.ACTIONS: action,
                 SampleBatch.T: t,
                 # state_out
             }
             env_out = AgentConnectorDataType(0, 1, env_out_dict)
-            agent_obs = pipeline([env_out])
+            agent_obs = agent_connector([env_out])[0]
+            total_rewards += rewards
             t += 1
+        print(total_rewards)
 
 
 if __name__ == "__main__":
     import sys
 
-    # import pytest
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
