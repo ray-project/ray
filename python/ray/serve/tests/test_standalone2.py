@@ -19,7 +19,7 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.context import get_global_client
-from ray.serve._private.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 

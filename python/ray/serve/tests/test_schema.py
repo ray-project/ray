@@ -12,7 +12,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
 )
-from ray.serve._private.schema import (
+from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
     ServeApplicationSchema,

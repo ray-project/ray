@@ -37,7 +37,7 @@ from ray.serve._private.utils import (
     format_actor_name,
     get_all_node_ids,
 )
-from ray.serve._private.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)

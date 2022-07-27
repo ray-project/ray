@@ -24,7 +24,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve._private.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private import api as _private_api
 
 APP_DIR_HELP_STR = (

@@ -21,7 +21,7 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve._private.utils import DEFAULT
 from ray.util.annotations import PublicAPI
-from ray.serve._private.schema import (
+from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
 )

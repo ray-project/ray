@@ -6,7 +6,7 @@ from ray.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.config import DeploymentConfig
 from ray.serve.handle import RayServeLazySyncHandle
-from ray.serve._private.schema import DeploymentSchema
+from ray.serve.schema import DeploymentSchema
 
 
 class DeploymentFunctionNode(DAGNode):

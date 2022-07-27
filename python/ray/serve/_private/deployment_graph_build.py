@@ -17,7 +17,7 @@ from ray.serve._private.deployment_function_executor_node import (
 )
 from ray.serve._private.json_serde import DAGNodeEncoder
 from ray.serve.handle import RayServeLazySyncHandle
-from ray.serve._private.schema import DeploymentSchema
+from ray.serve.schema import DeploymentSchema
 
 
 from ray.dag import (

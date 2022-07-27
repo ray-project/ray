@@ -37,7 +37,7 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
 from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.long_poll import LongPollHost
-from ray.serve._private.schema import ServeApplicationSchema
+from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,

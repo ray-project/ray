@@ -19,7 +19,7 @@ from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
 
-from ray.serve._private.schema import (
+from ray.serve.schema import (
     DeploymentSchema,
 )
 from ray.serve._private.utils import parse_import_path
