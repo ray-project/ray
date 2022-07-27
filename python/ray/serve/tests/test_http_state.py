@@ -22,7 +22,7 @@ def test_node_selection():
         (f"worker-node-id-{i}", f"fake-worker-ip-{i}") for i in range(100)
     ]
 
-    with patch("ray.serve.http_state.get_all_node_ids") as func:
+    with patch("ray.serve._private.http_state.get_all_node_ids") as func:
         func.return_value = all_nodes
 
         # Test NoServer

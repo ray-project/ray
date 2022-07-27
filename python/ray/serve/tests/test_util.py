@@ -118,7 +118,7 @@ class TestGetDeploymentImportPath:
 
         code = (
             "from ray import serve\n"
-            "from ray.serve.utils import get_deployment_import_path\n"
+            "from ray.serve._private.utils import get_deployment_import_path\n"
             "@serve.deployment\n"
             "def main_f(*args):\n"
             "\treturn 'reached main_f'\n"
