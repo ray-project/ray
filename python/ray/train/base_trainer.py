@@ -11,7 +11,7 @@ from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.dict import merge_dicts
+from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset

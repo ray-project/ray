@@ -10,13 +10,13 @@ from ray.tune.tuner import Tuner
 from torch.utils.data import DataLoader
 
 import torchvision.transforms as transforms
+from torchvision.models import resnet18
 
 import ray
 from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import create_scheduler
 
-from ray.util.ml_utils.resnet import ResNet18
 
 from ray.tune.utils.release_test_util import ProgressCallback
 
@@ -31,7 +31,7 @@ def train_loop_per_worker(config):
 
     hvd.init()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = ResNet18(None).to(device)
+    net = resnet18().to(device)
     optimizer = torch.optim.SGD(
         net.parameters(),
         lr=config["lr"],

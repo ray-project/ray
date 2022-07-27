@@ -7,13 +7,13 @@ import pytest
 import pandas as pd
 
 import ray
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
 from ray.tune.tests.tune_test_util import create_tune_experiment_checkpoint
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
 @pytest.fixture

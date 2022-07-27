@@ -11,6 +11,7 @@ import traceback
 import warnings
 
 import ray
+from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
@@ -46,7 +47,6 @@ from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncode
 from ray.tune.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 MAX_DEBUG_TRIALS = 20
 

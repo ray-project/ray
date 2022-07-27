@@ -15,12 +15,14 @@ Notes: This test seems to be somewhat flaky. This might be due to
 race conditions in handling dead actors. This is likely a problem of
 the lightgbm_ray implementation and not of this test.
 """
+import os
+
 import ray
 
 from lightgbm_ray import RayParams
 
 
-from ray.util.lightgbm.release_test_util import (
+from release_test_util import (
     train_ray,
     FailureState,
     FailureInjection,
@@ -28,7 +30,7 @@ from ray.util.lightgbm.release_test_util import (
 )
 
 if __name__ == "__main__":
-    ray.init(address="auto")
+    ray.init(address="auto", runtime_env={"working_dir": os.path.dirname(__file__)})
 
     failure_state = FailureState.remote()
 

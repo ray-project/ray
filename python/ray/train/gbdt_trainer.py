@@ -11,7 +11,7 @@ from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.dict import flatten_dict
+from ray._private.dict import flatten_dict
 
 if TYPE_CHECKING:
     import xgboost_ray

@@ -4,7 +4,7 @@ from typing import Callable, Optional
 
 from ray.tune.result import TRAINING_ITERATION
 from ray.air.config import CheckpointConfig, MIN, MAX
-from ray.util.ml_utils.checkpoint_manager import (
+from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
     _TrackedCheckpoint,
     CheckpointStorage,
