@@ -582,14 +582,18 @@ TEST(RayClusterModeTest, RuntimeEnvApiTest) {
 
 TEST(RayClusterModeTest, RuntimeEnvApiExceptionTest) {
   ray::RuntimeEnv runtime_env;
-  EXPECT_THROW(runtime_env.Get<std::string>("working_dir"), ray::internal::RayException);
+  EXPECT_THROW(runtime_env.Get<std::string>("working_dir"),
+               ray::internal::RayRuntimeEnvException);
   runtime_env.Set("working_dir", "https://path/to/working_dir.zip");
-  EXPECT_THROW(runtime_env.Get<Pip>("working_dir"), ray::internal::RayException);
-  EXPECT_THROW(runtime_env.SetJsonStr("pip", "{123"), ray::internal::RayException);
-  EXPECT_THROW(runtime_env.GetJsonStr("pip"), ray::internal::RayException);
+  EXPECT_THROW(runtime_env.Get<Pip>("working_dir"),
+               ray::internal::RayRuntimeEnvException);
+  EXPECT_THROW(runtime_env.SetJsonStr("pip", "{123"),
+               ray::internal::RayRuntimeEnvException);
+  EXPECT_THROW(runtime_env.GetJsonStr("pip"), ray::internal::RayRuntimeEnvException);
   EXPECT_EQ(runtime_env.Empty(), false);
-  runtime_env.Remove("working_dir");
-  runtime_env.Remove("pip");
+  EXPECT_EQ(runtime_env.Remove("working_dir"), true);
+  // Do nothing when removing a non-existent key.
+  EXPECT_EQ(runtime_env.Remove("pip"), false);
   EXPECT_EQ(runtime_env.Empty(), true);
 }
 

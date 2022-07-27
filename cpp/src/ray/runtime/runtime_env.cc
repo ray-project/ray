@@ -40,10 +40,12 @@ std::string RuntimeEnv::GetJsonStr(const std::string name) {
 
 bool RuntimeEnv::Contains(const std::string name) { return fields_.contains(name); }
 
-void RuntimeEnv::Remove(const std::string name) {
+bool RuntimeEnv::Remove(const std::string name) {
   if (Contains(name)) {
     fields_.erase(name);
+    return true;
   }
+  return false;
 }
 
 bool RuntimeEnv::Empty() { return fields_.empty(); }
