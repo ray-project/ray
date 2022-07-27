@@ -104,6 +104,7 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
             df = pandas.concat(tables, ignore_index=True)
         else:
             df = tables[0]
+        df.reset_index(drop=True, inplace=True)
         ctx = DatasetContext.get_current()
         if ctx.enable_tensor_extension_casting:
             df = _cast_ndarray_columns_to_tensor_extension(df)
@@ -131,21 +132,31 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
-        # Getting an item in a Pandas tensor column returns a TensorArrayElement, which
-        # we have to convert to an ndarray.
-        return row[VALUE_COL_NAME].iloc[0].to_numpy()
+        from ray.data.extensions import TensorArrayElement
+
+        tensor = row[VALUE_COL_NAME].iloc[0]
+        if isinstance(tensor, TensorArrayElement):
+            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
+            # which we have to convert to an ndarray.
+            tensor = tensor.to_numpy()
+        return tensor
 
     def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
         view = self._table[start:end]
+        view.reset_index(drop=True, inplace=True)
         if copy:
             view = view.copy(deep=True)
         return view
 
     def take(self, indices: List[int]) -> "pandas.DataFrame":
-        return self._table.take(indices)
+        table = self._table.take(indices)
+        table.reset_index(drop=True, inplace=True)
+        return table
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
-        return self._table.sample(frac=1, random_state=random_seed)
+        table = self._table.sample(frac=1, random_state=random_seed)
+        table.reset_index(drop=True, inplace=True)
+        return table
 
     def schema(self) -> PandasBlockSchema:
         dtypes = self._table.dtypes
