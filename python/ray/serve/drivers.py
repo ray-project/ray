@@ -65,7 +65,6 @@ class SimpleSchemaIngress:
         http_adapter = _load_http_adapter(http_adapter)
         self.app = FastAPI()
 
-        # Accept all requests
         @self.app.get("/")
         @self.app.post("/")
         async def handle_request(
@@ -115,9 +114,7 @@ class DAGDriver:
 
             @self.app.get(f"/")
             @self.app.post(f"/")
-            async def handle_request(
-                request: starlette.requests.Request, inp=Depends(http_adapter)
-            ):
+            async def handle_request(inp=Depends(http_adapter)):
                 return await self.predict(inp)
 
     async def __call__(self, request: starlette.requests.Request):
