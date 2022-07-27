@@ -295,9 +295,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      mv ./custom_directives.py _disabled_custom_directives.txt # Get rid of mocks
       make html
-      mv ./_disabled_custom_directives.txt _disabled_custom_directives.txt
     fi
   )
 }
@@ -308,7 +306,9 @@ doctest_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
+      mv ./custom_directives.py _disabled_custom_directives.txt # Get rid of mocks
       make doctest
+      mv ./_disabled_custom_directives.txt _disabled_custom_directives.txt
     fi
   )
 }
