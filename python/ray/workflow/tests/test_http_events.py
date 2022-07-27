@@ -106,6 +106,7 @@ def test_dynamic_event_by_http(workflow_start_regular_shared_serve):
 
     assert event_msg == "event_message_dynamic"
 
+
 if __name__ == "__main__":
     import sys
 
