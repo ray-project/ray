@@ -163,7 +163,7 @@ def test_tune_torch_get_device_gpu(ray_2_node_2_gpu, num_gpus_per_worker, expect
                     use_gpu=True,
                     resources_per_worker={"GPU": num_gpus_per_worker},
                     placement_strategy='SPREAD' 
-                    # Each gpu worker will be spread onto separate nodes on a best effort basis.
+                    # Each gpu worker will be spread onto separate nodes.
                 ),
             )
 
