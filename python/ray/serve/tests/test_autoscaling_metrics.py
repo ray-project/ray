@@ -3,7 +3,7 @@ import time
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 
 
 class TestInMemoryMetricsStore:
@@ -79,7 +79,7 @@ def test_e2e(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )

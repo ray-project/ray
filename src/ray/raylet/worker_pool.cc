@@ -362,27 +362,29 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                                   std::to_string(worker_startup_token_counter_));
   }
 
-  if (language == Language::PYTHON || language == Language::JAVA) {
-    if (serialized_runtime_env_context != "{}" &&
-        !serialized_runtime_env_context.empty()) {
-      worker_command_args.push_back("--language=" + Language_Name(language));
+  if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
+    worker_command_args.push_back("--language=" + Language_Name(language));
+    if (language == Language::CPP) {
+      worker_command_args.push_back("--ray_runtime_env_hash=" +
+                                    std::to_string(runtime_env_hash));
+    } else {
       worker_command_args.push_back("--runtime-env-hash=" +
                                     std::to_string(runtime_env_hash));
-      worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                    serialized_runtime_env_context);
-    } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
-               worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
-      // Check that the arg really is the path to the setup worker before erasing it, to
-      // prevent breaking tests that mock out the worker command args.
-      worker_command_args.erase(worker_command_args.begin() + 1,
-                                worker_command_args.begin() + 2);
-    } else if (language == Language::JAVA) {
-      worker_command_args.push_back("--language=" + Language_Name(language));
     }
+    worker_command_args.push_back("--serialized-runtime-env-context=" +
+                                  serialized_runtime_env_context);
+  } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
+             worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
+    // Check that the arg really is the path to the setup worker before erasing it, to
+    // prevent breaking tests that mock out the worker command args.
+    worker_command_args.erase(worker_command_args.begin() + 1,
+                              worker_command_args.begin() + 2);
+  } else {
+    worker_command_args.push_back("--language=" + Language_Name(language));
+  }
 
-    if (ray_debugger_external) {
-      worker_command_args.push_back("--ray-debugger-external");
-    }
+  if (ray_debugger_external) {
+    worker_command_args.push_back("--ray-debugger-external");
   }
 
   ProcessEnvironment env;

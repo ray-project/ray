@@ -8,6 +8,7 @@ import pytest
 from freezegun import freeze_time
 
 import ray.util
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.tune import TuneError
 from ray.tune.result import NODE_IP
 from ray.tune.syncer import (
@@ -16,9 +17,8 @@ from ray.tune.syncer import (
     SyncerCallback,
     _BackgroundProcess,
 )
-from ray.tune.utils.callback import create_default_callbacks
+from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
 @pytest.fixture
@@ -118,7 +118,7 @@ class MaybeFailingProcess(_BackgroundProcess):
 
 def test_syncer_callback_disabled():
     """Check that syncer=None disables callback"""
-    callbacks = create_default_callbacks(
+    callbacks = _create_default_callbacks(
         callbacks=[], sync_config=SyncConfig(syncer=None)
     )
     syncer_callback = None
@@ -147,7 +147,7 @@ def test_syncer_callback_disabled():
 
 def test_syncer_callback_noop_on_trial_cloud_checkpointing():
     """Check that trial using cloud checkpointing disables sync to driver"""
-    callbacks = create_default_callbacks(callbacks=[], sync_config=SyncConfig())
+    callbacks = _create_default_callbacks(callbacks=[], sync_config=SyncConfig())
     syncer_callback = None
     for cb in callbacks:
         if isinstance(cb, SyncerCallback):
@@ -174,7 +174,7 @@ def test_syncer_callback_noop_on_trial_cloud_checkpointing():
 
 def test_syncer_callback_op_on_no_cloud_checkpointing():
     """Check that without cloud checkpointing sync to driver is enabled"""
-    callbacks = create_default_callbacks(callbacks=[], sync_config=SyncConfig())
+    callbacks = _create_default_callbacks(callbacks=[], sync_config=SyncConfig())
     syncer_callback = None
     for cb in callbacks:
         if isinstance(cb, SyncerCallback):

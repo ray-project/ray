@@ -189,6 +189,10 @@ test_python() {
       -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
+      -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -754,13 +758,23 @@ test_minimal() {
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
   # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
+  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
   # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
+  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
   # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
+  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_output
   # shellcheck disable=SC2086

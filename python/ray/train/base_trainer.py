@@ -1,7 +1,7 @@
 import abc
 import inspect
 import logging
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
@@ -9,17 +9,15 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.tune import Trainable
-from ray.tune.error import TuneError
-from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trainable import wrap_function
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.dict import merge_dicts
+from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset
     from ray.data.preprocessor import Preprocessor
+
+    from ray.tune import Trainable
 
 # A type representing either a ray.data.Dataset or a function that returns a
 # ray.data.Dataset and accepts no arguments.
@@ -139,6 +137,8 @@ class BaseTrainer(abc.ABC):
         "trainer_resources",
         "_max_cpu_fraction_per_node",
     ]
+    _handles_checkpoint_freq: bool = False
+    _handles_checkpoint_at_end: bool = False
 
     def __init__(
         self,
@@ -160,15 +160,26 @@ class BaseTrainer(abc.ABC):
 
         self._validate_attributes()
 
-        if datasets and not self.scaling_config._max_cpu_fraction_per_node:
-            logger.warning(
-                "When passing `datasets` to a Trainer, it is recommended to "
-                "reserve at least 20% of node CPUs for Dataset execution by setting "
-                "`_max_cpu_fraction_per_node = 0.8` in the Trainer `scaling_config`. "
-                "Not doing so can lead to resource contention or hangs. "
-                "See https://docs.ray.io/en/master/data/key-concepts.html"
-                "#example-datasets-in-tune for more info."
-            )
+    def __repr__(self):
+        # A dictionary that maps parameters to their default values.
+        default_values: Dict[str, Any] = {
+            "scaling_config": ScalingConfig(),
+            "run_config": RunConfig(),
+            "datasets": {},
+            "preprocessor": None,
+            "resume_from_checkpoint": None,
+        }
+
+        non_default_arguments = []
+        for parameter, default_value in default_values.items():
+            value = getattr(self, parameter)
+            if value != default_value:
+                non_default_arguments.append(f"{parameter}={value!r}")
+
+        if non_default_arguments:
+            return f"<{self.__class__.__name__} {' '.join(non_default_arguments)}>"
+
+        return f"<{self.__class__.__name__}>"
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
@@ -323,6 +334,7 @@ class BaseTrainer(abc.ABC):
             ``self.as_trainable()``.
         """
         from ray.tune.tuner import Tuner
+        from ray.tune.error import TuneError
 
         trainable = self.as_trainable()
 
@@ -337,8 +349,10 @@ class BaseTrainer(abc.ABC):
             raise TrainingFailedError from e
         return result
 
-    def as_trainable(self) -> Type[Trainable]:
+    def as_trainable(self) -> Type["Trainable"]:
         """Convert self to a ``tune.Trainable`` class."""
+        from ray.tune.execution.placement_groups import PlacementGroupFactory
+        from ray.tune.trainable import wrap_function
 
         base_config = self._param_dict
         trainer_cls = self.__class__
@@ -364,14 +378,28 @@ class BaseTrainer(abc.ABC):
         train_func.__name__ = trainer_cls.__name__
 
         trainable_cls = wrap_function(train_func, warn=False)
+        has_base_dataset = bool(self.datasets)
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
+
+            _handles_checkpoint_freq = trainer_cls._handles_checkpoint_freq
+            _handles_checkpoint_at_end = trainer_cls._handles_checkpoint_at_end
 
             # Workaround for actor name not being logged correctly
             # if __repr__ is not directly defined in a class.
             def __repr__(self):
                 return super().__repr__()
+
+            @classmethod
+            def has_base_dataset(cls) -> bool:
+                """Whether a dataset is provided through the Trainer."""
+                return has_base_dataset
+
+            @classmethod
+            def base_scaling_config(cls) -> ScalingConfig:
+                """Returns the unchanged scaling config provided through the Trainer."""
+                return scaling_config
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)

@@ -12,7 +12,7 @@ import torch.optim as optim
 
 import ray
 from ray.air.util.tensor_extensions.pandas import TensorArray
-from ray.train.torch import to_air_checkpoint
+from ray.train.torch import TorchCheckpoint
 from ray.data.preprocessors import BatchMapper
 from ray import train
 from ray.air import session
@@ -77,7 +77,7 @@ def train_loop_per_worker(config):
 
         session.report(
             dict(running_loss=running_loss),
-            checkpoint=to_air_checkpoint(model),
+            checkpoint=TorchCheckpoint.from_model(model),
         )
 
 
@@ -96,7 +96,9 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1):
     # Enable cross host NCCL for larger scale tests
     runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens3"}}
     ray.init(runtime_env=runtime_env)
-    dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[data_url])
+    dataset = ray.data.read_datasource(
+        ImageFolderDatasource(), root=data_url, size=(256, 256)
+    )
 
     preprocessor = BatchMapper(preprocess_image_with_label)
 

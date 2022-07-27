@@ -13,10 +13,10 @@ import time
 import ray
 from lightgbm_ray import RayParams
 
-from ray.util.lightgbm.release_test_util import train_ray
+from release_test_util import train_ray
 
 if __name__ == "__main__":
-    ray.init(address="auto")
+    ray.init(address="auto", runtime_env={"working_dir": os.path.dirname(__file__)})
 
     ray_params = RayParams(
         elastic_training=False,

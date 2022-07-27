@@ -4,14 +4,13 @@
 # __air_generic_preprocess_start__
 import ray
 from ray.data.preprocessors import StandardScaler
-from ray.air import train_test_split
 from ray.air.config import ScalingConfig
 
 
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
-train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
+train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 
 # Create a test dataset by dropping the target column.
 test_dataset = valid_dataset.map_batches(
@@ -49,7 +48,7 @@ from ray.air.config import ScalingConfig
 from ray.air.callbacks.keras import Callback as KerasCallback
 from ray.train.tensorflow import (
     TensorflowTrainer,
-    to_air_checkpoint,
+    TensorflowCheckpoint,
     prepare_dataset_shard,
 )
 
@@ -174,7 +173,7 @@ print("Best Result:", best_result)
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import TensorflowPredictor
 
-# You can also create a checkpoint from a trained model using `to_air_checkpoint`.
+# You can also create a checkpoint from a trained model using `TensorflowCheckpoint`.
 checkpoint = best_result.checkpoint
 
 batch_predictor = BatchPredictor.from_checkpoint(

@@ -55,8 +55,6 @@ class TestBackend(Backend):
 
 
 def torch_fashion_mnist(num_workers, use_gpu, num_samples):
-    epochs = 2
-
     trainer = TorchTrainer(
         fashion_mnist_train_func,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
@@ -67,7 +65,7 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
                 "batch_size": tune.choice([32, 64, 128]),
-                "epochs": epochs,
+                "epochs": 2,
             }
         },
         tune_config=TuneConfig(
@@ -86,8 +84,6 @@ def test_tune_torch_fashion_mnist(ray_start_8_cpus):
 
 
 def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
-    epochs = 2
-
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
@@ -98,7 +94,7 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
             "train_loop_config": {
                 "lr": tune.loguniform(1e-4, 1e-1),
                 "batch_size": tune.choice([32, 64, 128]),
-                "epochs": epochs,
+                "epochs": 2,
             }
         },
         tune_config=TuneConfig(

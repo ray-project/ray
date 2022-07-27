@@ -8,7 +8,7 @@ import tensorflow as tf
 import ray
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.tensorflow import (
-    to_air_checkpoint,
+    TensorflowCheckpoint,
     TensorflowPredictor,
 )
 
@@ -16,7 +16,9 @@ from ray.train.tensorflow import (
 def build_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
-            tf.keras.layers.InputLayer(input_shape=(1,)),
+            tf.keras.layers.InputLayer(input_shape=()),
+            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
+            tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(1),
         ]
     )
@@ -24,7 +26,7 @@ def build_model() -> tf.keras.Model:
 
 
 model = build_model()
-checkpoint = to_air_checkpoint(model)
+checkpoint = TensorflowCheckpoint.from_model(model)
 predictor = TensorflowPredictor.from_checkpoint(
     checkpoint, model_definition=build_model
 )

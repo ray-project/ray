@@ -13,8 +13,8 @@ from ray._private.utils import import_attr
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
-from ray.serve.common import (
+from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray.serve._private.common import (
     ApplicationStatus,
     ApplicationStatusInfo,
     DeploymentInfo,
@@ -25,22 +25,21 @@ from ray.serve.common import (
     StatusOverview,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
     CONTROLLER_MAX_CONCURRENCY,
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
 )
-from ray.serve.deployment_state import DeploymentStateManager, ReplicaState
-from ray.serve.endpoint_state import EndpointState
-from ray.serve.http_state import HTTPState
-from ray.serve.logging_utils import configure_component_logger
-from ray.serve.long_poll import LongPollHost
+from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
+from ray.serve._private.endpoint_state import EndpointState
+from ray.serve._private.http_state import HTTPState
+from ray.serve._private.logging_utils import configure_component_logger
+from ray.serve._private.long_poll import LongPollHost
 from ray.serve.schema import ServeApplicationSchema
-from ray.serve.storage.checkpoint_path import make_kv_store
-from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import (
+from ray.serve._private.storage.kv_store import RayInternalKVStore
+from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
 )
 from ray.types import ObjectRef
@@ -86,7 +85,6 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        checkpoint_path: str,
         head_node_id: str,
         detached: bool = False,
     ):
@@ -97,9 +95,8 @@ class ServeController:
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
-        self.checkpoint_path = checkpoint_path
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = make_kv_store(checkpoint_path, namespace=kv_store_namespace)
+        self.kv_store = RayInternalKVStore(kv_store_namespace)
         self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
@@ -192,9 +189,6 @@ class ServeController:
         return await (
             self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
         )
-
-    def get_checkpoint_path(self) -> str:
-        return self.checkpoint_path
 
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
@@ -555,11 +549,7 @@ class ServeController:
     def get_app_config(self) -> Dict:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is None:
-            return {
-                "import_path": "",
-                "runtime_env": "",
-                "deployments": [],
-            }
+            return ServeApplicationSchema.get_empty_schema_dict()
         else:
             _, config = pickle.loads(checkpoint)
             return config
@@ -626,7 +616,6 @@ class ServeControllerAvatar:
     def __init__(
         self,
         controller_name: str,
-        checkpoint_path: str,
         detached: bool = False,
         dedicated_cpu: bool = False,
         http_proxy_port: int = 8000,
@@ -657,7 +646,6 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                checkpoint_path=checkpoint_path,
                 head_node_id=head_node_id,
                 detached=detached,
             )
