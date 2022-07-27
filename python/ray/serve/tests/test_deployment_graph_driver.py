@@ -40,7 +40,7 @@ def test_loading_check():
 
 
 class EchoIngress(SimpleSchemaIngress):
-    async def predict(self, inp, route_path=None):
+    async def predict(self, inp):
         return inp
 
 
@@ -60,7 +60,7 @@ def test_unit_schema_injection():
 
     response = client.get("/openapi.json")
     assert response.status_code == 200
-    assert response.json()["paths"]["/{path_name}"]["get"]["parameters"][0] == {
+    assert response.json()["paths"]["/"]["get"]["parameters"][0] == {
         "required": True,
         "schema": {"title": "My Custom Param", "type": "integer"},
         "name": "my_custom_param",
@@ -79,7 +79,7 @@ def test_unit_pydantic_class_adapter():
     client = TestClient(server.app)
     response = client.get("/openapi.json")
     assert response.status_code == 200
-    assert response.json()["paths"]["/{path_name}"]["get"]["requestBody"] == {
+    assert response.json()["paths"]["/"]["get"]["requestBody"] == {
         "content": {
             "application/json": {"schema": {"$ref": "#/components/schemas/MyType"}}
         },
@@ -198,52 +198,6 @@ def test_dag_driver_sync_warning(serve_instance):
         )
 
 
-def test_multi_dag_wrong_inputs(serve_instance):
-    @serve.deployment
-    class D1:
-        def __call__(self):
-            return "D1"
-
-    @serve.deployment
-    class D2:
-        def __call__(self):
-            return "D2"
-
-    with pytest.raises(RuntimeError):
-        dag = DAGDriver.bind(
-            D1.bind(),
-            D2.bind(),
-            dags_routes=[
-                "/D1",
-            ],
-        )
-        serve.run(dag)
-
-    with pytest.raises(RuntimeError):
-        dag = DAGDriver.bind(
-            D1.bind(),
-            D2.bind(),
-            dags_routes=["/D1", "/D2", "/D3"],
-        )
-        serve.run(dag)
-
-    with pytest.raises(RuntimeError):
-        dag = DAGDriver.bind(
-            D1.bind(),
-            D2.bind(),
-            dags_routes=["/D1", "/D1"],
-        )
-        serve.run(dag)
-
-    with pytest.raises(RuntimeError):
-        dag = DAGDriver.bind(
-            D1.bind(),
-            D2.bind(),
-            dags_routes=["/D1", 2],
-        )
-        serve.run(dag)
-
-
 def test_multi_dag(serve_instance):
     @serve.deployment
     class D1:
@@ -254,39 +208,12 @@ def test_multi_dag(serve_instance):
     def D2():
         return "D2"
 
-    dag = DAGDriver.bind(
-        D1.bind(),
-        D2.bind(),
-        dags_routes=["/my_D1", "/my_D2"],
-    )
+    dag = DAGDriver.bind({"/my_D1": D1.bind(), "/my_D2": D2.bind()})
     handle = serve.run(dag)
 
-    assert ray.get(handle.predict.remote(route_path="/my_D1")) == "D1"
-    assert ray.get(handle.predict.remote(route_path="/my_D2")) == "D2"
+    assert ray.get(handle.multi_dag_predict.remote(route_path="/my_D1")) == "D1"
+    assert ray.get(handle.multi_dag_predict.remote(route_path="/my_D2")) == "D2"
     assert requests.post("http://127.0.0.1:8000/my_D1").json() == "D1"
-    assert requests.post("http://127.0.0.1:8000/my_D2").json() == "D2"
-
-
-def test_multi_dag_with_reconfigure(serve_instance):
-    @serve.deployment
-    class D1:
-        def __call__(self):
-            return "D1"
-
-    @serve.deployment
-    def D2():
-        return "D2"
-
-    dag = DAGDriver.options(user_config={"DAG_ROUTES": ["/my_D11", "/my_D2"]}).bind(
-        D1.bind(),
-        D2.bind(),
-        dags_routes=["/my_D1", "/my_D2"],
-    )
-    handle = serve.run(dag)
-
-    assert ray.get(handle.predict.remote(route_path="/my_D11")) == "D1"
-    assert ray.get(handle.predict.remote(route_path="/my_D2")) == "D2"
-    assert requests.post("http://127.0.0.1:8000/my_D11").json() == "D1"
     assert requests.post("http://127.0.0.1:8000/my_D2").json() == "D2"
 
 

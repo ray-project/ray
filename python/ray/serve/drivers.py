@@ -1,6 +1,6 @@
 import inspect
 from abc import abstractmethod
-from typing import Any, Callable, Optional, Type, Union
+from typing import Any, Callable, Optional, Type, Union, Dict
 from pydantic import BaseModel
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -66,12 +66,12 @@ class SimpleSchemaIngress:
         self.app = FastAPI()
 
         # Accept all requests
-        @self.app.get("/{path_name:path}")
-        @self.app.post("/{path_name:path}")
+        @self.app.get("/")
+        @self.app.post("/")
         async def handle_request(
             request: starlette.requests.Request, inp=Depends(http_adapter)
         ):
-            resp = await self.predict(inp, route_path=request.url.path)
+            resp = await self.predict(inp)
             return resp
 
     @abstractmethod
@@ -88,61 +88,53 @@ class SimpleSchemaIngress:
 
 @PublicAPI(stability="beta")
 @serve.deployment(route_prefix="/")
-class DAGDriver(SimpleSchemaIngress):
+class DAGDriver:
     def __init__(
         self,
-        *args,  # plan to change to ‘dag_handles’ variable instead of args
+        dags: Union[RayServeDAGHandle, Dict[str, RayServeDAGHandle]],
         http_adapter: Optional[Union[str, Callable]] = None,
-        dags_routes=None,
     ):
-        self.dag_handles = args
+        install_serve_encoders_to_fastapi()
+        http_adapter = load_http_adapter(http_adapter)
+        self.app = FastAPI()
 
-        def _verify_dag_handles():
-            for handle in self.dag_handles:
-                assert isinstance(
-                    handle, (RayServeDAGHandle, RayServeLazySyncHandle)
-                ), (
-                    f"Currently DAGDriver constructor expects "
-                    f"RayServeDAGHandle as positional arguments, "
-                    f"but {str(type(handle))} passed in"
-                )
+        if isinstance(dags, dict):
+            self.dags = dags
+            for route in dags:
 
-        _verify_dag_handles()
+                @self.app.get(f"{route}")
+                @self.app.post(f"{route}")
+                async def handle_request(
+                    request: starlette.requests.Request, inp=Depends(http_adapter)
+                ):
+                    return await self.multi_dag_predict(request.url.path, inp)
 
-        if dags_routes is not None:
-            self._update_dag_routes(dags_routes)
         else:
-            assert (
-                len(self.dag_handles) == 1
-            ), "Passing multiple Ray Serve DAGHandles without passing DAGs routes"
-            self.dags_routes = None
-        super().__init__(http_adapter)
+            assert isinstance(dags, (RayServeDAGHandle, RayServeLazySyncHandle))
+            self.dag = dags
 
-    def _update_dag_routes(self, dags_routes):
-        assert len(dags_routes) == len(self.dag_handles), (
-            f"Number of routes is not equal to number of dags: "
-            f"{len(dags_routes)} != {len(self.dag_handles)}"
-        )
-        assert len(dags_routes) == len(
-            set(dags_routes)
-        ), "Duplicate DAG route from dags_routes"
-        for route in dags_routes:
-            assert isinstance(
-                route, str
-            ), f"Expect string type for each DAG route, but get {type(route)}"
-        self.dags_routes = dict(zip(dags_routes, self.dag_handles))
+            @self.app.get(f"/")
+            @self.app.post(f"/")
+            async def handle_request(
+                request: starlette.requests.Request, inp=Depends(http_adapter)
+            ):
+                return await self.predict(inp)
 
-    async def predict(self, *args, route_path=None, **kwargs):
+    async def __call__(self, request: starlette.requests.Request):
+        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
+        # generate FastAPI on the fly, we should find a way to unify the two.
+        sender = ASGIHTTPSender()
+        await self.app(request.scope, receive=request.receive, send=sender)
+        return sender.build_asgi_response()
+
+    async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
-        if self.dags_routes is None:
-            return await self.dag_handles[0].remote(*args, **kwargs)
+        return await self.dag.remote(*args, **kwargs)
 
-        if route_path not in self.dags_routes:
-            raise RayServeException(
-                f"Route path ({route_path}) does not exist in DAGs routes"
-            )
-        return await self.dags_routes[route_path].remote(*args, **kwargs)
-
-    def reconfigure(self, config):
-        dags_routes = config.get("DAG_ROUTES", [])
-        self._update_dag_routes(dags_routes)
+    async def multi_dag_predict(self, route_path, *args, **kwargs):
+        """Perform inference directly without HTTP for multi dags."""
+        if self.dags is None:
+            raise RayServeException("No dags route found")
+        if route_path not in self.dags:
+            raise RayServeException(f"{route_path} does not exist in dags routes")
+        return await self.dags[route_path].remote(*args, **kwargs)

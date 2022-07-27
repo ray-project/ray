@@ -269,7 +269,7 @@ class PredictorWrapper(SimpleSchemaIngress):
 
         super().__init__(http_adapter)
 
-    async def predict(self, inp, route_path=None):
+    async def predict(self, inp):
         """Perform inference directly without HTTP."""
         return await self.predict_impl(inp)
 
