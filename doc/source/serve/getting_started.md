@@ -20,7 +20,7 @@ $ pip install "ray[serve]" transformers requests
 
 ## Example Model
 
-Let's first take a look at how the model works. Here's it's code:
+First, let's take a look at our model. Here's it's code:
 
 ```{literalinclude} ../serve/doc_code/getting_started/model.py
 :start-after: __start__
