@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.replay_buffers.reservoir_replay_buffer import ReservoirReplayBuffer
 
 
@@ -28,7 +28,7 @@ class TestReservoirBuffer(unittest.TestCase):
             for i in range(num_batches):
                 data = [_generate_data() for _ in range(batch_size)]
                 self.batch_id += 1
-                batch = SampleBatch.concat_samples(data)
+                batch = concat_samples(data)
                 _buffer.add(batch, **kwargs)
 
         batch_size = 1
@@ -70,7 +70,7 @@ class TestReservoirBuffer(unittest.TestCase):
             for i in range(num_batches):
                 data = [_generate_data() for _ in range(batch_size)]
                 self.batch_id += 1
-                batch = SampleBatch.concat_samples(data)
+                batch = concat_samples(data)
                 _buffer.add(batch, **kwargs)
 
         batch_size = 1

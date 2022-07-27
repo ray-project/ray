@@ -6,6 +6,7 @@ from ray.rllib.policy.sample_batch import (
     SampleBatch,
     MultiAgentBatch,
     DEFAULT_POLICY_ID,
+    concat_samples,
 )
 
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
@@ -41,7 +42,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         for i in range(num_batches):
             data = [self._generate_data() for _ in range(batch_size)]
-            batch = SampleBatch.concat_samples(data)
+            batch = concat_samples(data)
             buffer.add(batch, **kwargs)
 
     def _add_multi_agent_batch_to_buffer(

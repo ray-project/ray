@@ -25,7 +25,7 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
 )
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -134,7 +134,7 @@ class MyAlgo(Algorithm):
             ]
 
         # PPO sub-flow.
-        ppo_train_batch = SampleBatch.concat_samples(ppo_batches)
+        ppo_train_batch = concat_samples(ppo_batches)
         self._counters["agent_steps_trained_PPO"] += ppo_train_batch.agent_steps()
         # Standardize advantages.
         ppo_train_batch[Postprocessing.ADVANTAGES] = standardized(

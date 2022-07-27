@@ -7,7 +7,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dreamer.dreamer_torch_policy import DreamerTorchPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, _get_shared_metrics
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.algorithms.dreamer.dreamer_model import DreamerModel
 from ray.rllib.execution.rollout_ops import (
@@ -248,7 +248,7 @@ class EpisodicBuffer(object):
             index = int(random.randint(0, available))
             episodes_buffer.append(episode[index : index + self.length])
 
-        return SampleBatch.concat_samples(episodes_buffer)
+        return concat_samples(episodes_buffer)
 
 
 def total_sampled_timesteps(worker):
