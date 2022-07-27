@@ -50,7 +50,6 @@ class RemoteFunction:
         _num_gpus: The default number of GPUs to use for invocations of this
             remote function.
         _memory: The heap memory request for this task.
-        _object_store_memory: The object store memory request for this task.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_returns: The default number of return values for invocations

@@ -1,7 +1,7 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
+import warnings
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple, Union
-import warnings
 
 import ray._private.ray_constants as ray_constants
 from ray._private.utils import get_ray_doc_version
@@ -261,6 +261,18 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
 
     if options.get("get_if_exists") and not options.get("name"):
         raise ValueError("The actor name must be specified to use `get_if_exists`.")
+
+    if "object_store_memory" in options:
+        warnings.warn(
+            "Setting 'object_store_memory'"
+            " for actors is deprecated since it doesn't actually"
+            " reserve the required object store memory."
+            f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
+            "instead to bypass the object store memory size limitation.",
+            DeprecationWarning,
+            stacklevel=1,
+        )
+
     _check_deprecate_placement_group(options)
 
 
