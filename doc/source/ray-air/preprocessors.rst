@@ -13,12 +13,12 @@ Overview
 Ray AIR exposes a ``Preprocessor`` class with four public methods for data preprocessing:
 
 #. ``fit()``: Compute state information about a :class:`Dataset <ray.data.Dataset>` (e.g., the mean or standard deviation of a column)
-   and save it to the ``Preprocessor``. This information is used to perform ``transform()``. The method is typically called on a
+   and save it to the ``Preprocessor``. This information is used to perform ``transform()``, and the method is typically called on a
    training dataset.
 #. ``transform()``: Apply a transformation to a ``Dataset``.
-   If the ``Preprocessor`` is stateful, then ``fit()`` must be called first. The method is typically called on training,
+   If the ``Preprocessor`` is stateful, then ``fit()`` must be called first. This method is typically called on training,
    validation, and test datasets.
-#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.train.predictor.DataBatchType>` of data. The method is typically called on online or offline inference data.
+#. ``transform_batch()``: Apply a transformation to a single :class:`batch <ray.train.predictor.DataBatchType>` of data. This method is typically called on online or offline inference data.
 #. ``fit_transform()``: Syntactic sugar for calling both ``fit()`` and ``transform()`` on a ``Dataset``.
 
 To show these methods in action, let's walk through a basic example. First, we'll set up two simple Ray ``Dataset``\s.
@@ -84,7 +84,7 @@ Tune
 ~~~~
 
 If you're using ``Ray Tune`` for hyperparameter optimization, be aware that each ``Trial`` instantiates its own copy of
-the ``Preprocessor`` and the fitting and transformation logic occur once per ``Trial``.
+the ``Preprocessor`` and the fitting and transforming logic occur once per ``Trial``.
 
 Checkpoint
 ~~~~~~~~~~
