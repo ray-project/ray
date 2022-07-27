@@ -66,5 +66,10 @@ class RLPredictor(Predictor):
         actions, _outs, _info = self.policy.compute_actions_from_input_dict(
             input_dict={"obs": obs}
         )
+        actions_arr = np.array(actions)
+        if len(actions_arr.shape) > 1:
+            columns = [f"action{i}" for i in range(actions_arr.shape[1])]
+        else:
+            columns = ["action"]
 
-        return pd.DataFrame(np.array(actions))
+        return pd.DataFrame(actions_arr, columns=columns)

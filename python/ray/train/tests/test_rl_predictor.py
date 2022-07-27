@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+import ray
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.util.data_batch_conversion import (
@@ -15,10 +16,19 @@ from ray.air.util.data_batch_conversion import (
 from ray.data.preprocessor import Preprocessor
 from ray.rllib.algorithms import Algorithm
 from ray.rllib.policy import Policy
+from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.rl import RLTrainer
 from ray.train.rl.rl_predictor import RLPredictor
 from ray.tune.trainable.util import TrainableUtil
+
+
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
 
 class _DummyAlgo(Algorithm):
@@ -113,6 +123,36 @@ def test_predict_with_preprocessor(batch_type, batch_size):
     predictions = predictor.predict(obs)
     actions = convert_batch_type_to_pandas(predictions)
 
+    assert len(actions) == batch_size
+    # Preprocessor doubles observations to 2.0, then we add [0., 1.),
+    # so actions should be in [2., 3.)
+    assert all(2.0 <= action.item() < 3.0 for action in np.array(actions))
+
+
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
+@pytest.mark.parametrize("batch_size", [1, 20])
+def test_predict_batch(ray_start_4_cpus, batch_type, batch_size):
+    preprocessor = _DummyPreprocessor()
+    checkpoint = create_checkpoint(preprocessor=preprocessor)
+    predictor = BatchPredictor.from_checkpoint(checkpoint, RLPredictor)
+
+    # Observations
+    data = pd.DataFrame(
+        [[1.0] * 10] * batch_size, columns=[f"X{i:02d}" for i in range(10)]
+    )
+
+    if batch_type == np.ndarray:
+        dataset = ray.data.from_numpy(data.to_numpy())
+    elif batch_type == pd.DataFrame:
+        dataset = ray.data.from_pandas(data)
+    elif batch_type == pa.Table:
+        dataset = ray.data.from_arrow(pa.Table.from_pandas(data))
+    else:
+        raise RuntimeError("Invalid batch_type")
+
+    # Predictions
+    predictions = predictor.predict(dataset)
+    actions = predictions.to_pandas()
     assert len(actions) == batch_size
     # Preprocessor doubles observations to 2.0, then we add [0., 1.),
     # so actions should be in [2., 3.)
