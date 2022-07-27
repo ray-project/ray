@@ -5,7 +5,7 @@ import ray
 import time
 from typing import Dict
 
-from ray.tune.execution.cluster_info import is_ray_cluster
+from ray.tune.execution.cluster_info import _is_ray_cluster
 from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
 
 @lru_cache()
 def _get_insufficient_resources_warning_threshold() -> float:
-    if is_ray_cluster():
+    if _is_ray_cluster():
         return float(
             os.environ.get(
                 "TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S_AUTOSCALER", "60"
@@ -65,7 +65,7 @@ def _get_insufficient_resources_warning_msg() -> str:
         f"(possibly via `resources_per_trial` or via `num_workers` for rllib) "
         f"and/or add more resources to your Ray runtime."
     )
-    if is_ray_cluster():
+    if _is_ray_cluster():
         return "Ignore this message if the cluster is autoscaling. " + msg
     else:
         return msg
@@ -115,7 +115,7 @@ class _InsufficientResourcesManager:
                 time.monotonic() - self._no_running_trials_since
                 > _get_insufficient_resources_warning_threshold()
             ):
-                if not is_ray_cluster():  # autoscaler not enabled
+                if not _is_ray_cluster():  # autoscaler not enabled
                     # If any of the pending trial cannot be fulfilled,
                     # that's a good enough hint of trial resources not enough.
                     for trial in all_trials:

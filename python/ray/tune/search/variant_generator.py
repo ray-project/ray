@@ -8,11 +8,12 @@ import numpy
 import random
 
 from ray.tune.search.sample import Categorical, Domain, Function, RandomState
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 def generate_variants(
     unresolved_spec: Dict,
     constant_grid_search: bool = False,
@@ -48,7 +49,7 @@ def generate_variants(
     Yields:
         (Dict of resolved variables, Spec object)
     """
-    for resolved_vars, spec in _generate_variants(
+    for resolved_vars, spec in _generate_variants_internal(
         unresolved_spec,
         constant_grid_search=constant_grid_search,
         random_state=random_state,
@@ -57,6 +58,7 @@ def generate_variants(
         yield resolved_vars, spec
 
 
+@PublicAPI(stability="alpha")
 def grid_search(values: Iterable) -> Dict[str, List]:
     """Convenience method for specifying grid search over a value.
 
@@ -74,7 +76,7 @@ _STANDARD_IMPORTS = {
 _MAX_RESOLUTION_PASSES = 20
 
 
-def resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
+def _resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
     """Flattens a nested dict by joining keys into tuple of paths.
 
     Can then be passed into `format_vars`.
@@ -82,13 +84,14 @@ def resolve_nested_dict(nested_dict: Dict) -> Dict[Tuple, Any]:
     res = {}
     for k, v in nested_dict.items():
         if isinstance(v, dict):
-            for k_, v_ in resolve_nested_dict(v).items():
+            for k_, v_ in _resolve_nested_dict(v).items():
                 res[(k,) + k_] = v_
         else:
             res[(k,)] = v
     return res
 
 
+@DeveloperAPI
 def format_vars(resolved_vars: Dict) -> str:
     """Format variables to be used as experiment tags.
 
@@ -120,7 +123,7 @@ def format_vars(resolved_vars: Dict) -> str:
     )
 
 
-def flatten_resolved_vars(resolved_vars: Dict) -> Dict:
+def _flatten_resolved_vars(resolved_vars: Dict) -> Dict:
     """Formats the resolved variable dict into a mapping of (str -> value)."""
     flattened_resolved_vars_dict = {}
     for pieces, value in resolved_vars.items():
@@ -142,6 +145,7 @@ def _clean_value(value: Any) -> str:
         return re.sub(invalid_alphabet, "_", str(value)).strip("_")
 
 
+@DeveloperAPI
 def parse_spec_vars(
     spec: Dict,
 ) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[Tuple, Any]], List[Tuple[Tuple, Any]]]:
@@ -163,7 +167,7 @@ def parse_spec_vars(
     return resolved_vars, domain_vars, grid_vars
 
 
-def count_spec_samples(spec: Dict, num_samples=1) -> int:
+def _count_spec_samples(spec: Dict, num_samples=1) -> int:
     """Count samples for a specific spec"""
     _, domain_vars, grid_vars = parse_spec_vars(spec)
     grid_count = 1
@@ -172,7 +176,7 @@ def count_spec_samples(spec: Dict, num_samples=1) -> int:
     return num_samples * grid_count
 
 
-def count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
+def _count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
     # Helper function: Deep update dictionary
     def deep_update(d, u):
         for k, v in u.items():
@@ -189,16 +193,16 @@ def count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
     for preset in presets:
         preset_spec = copy.deepcopy(spec)
         deep_update(preset_spec["config"], preset)
-        total_samples += count_spec_samples(preset_spec, 1)
+        total_samples += _count_spec_samples(preset_spec, 1)
         total_num_samples -= 1
 
     # Add the remaining samples
     if total_num_samples > 0:
-        total_samples += count_spec_samples(spec, total_num_samples)
+        total_samples += _count_spec_samples(spec, total_num_samples)
     return total_samples
 
 
-def _generate_variants(
+def _generate_variants_internal(
     spec: Dict, constant_grid_search: bool = False, random_state: "RandomState" = None
 ) -> Tuple[Dict, Dict]:
     spec = copy.deepcopy(spec)
@@ -231,7 +235,7 @@ def _generate_variants(
                 resolved_spec, to_resolve, random_state=random_state
             )
 
-        for resolved, spec in _generate_variants(
+        for resolved, spec in _generate_variants_internal(
             resolved_spec,
             constant_grid_search=constant_grid_search,
             random_state=random_state,
@@ -253,7 +257,7 @@ def _generate_variants(
             yield resolved_vars, spec
 
 
-def get_preset_variants(
+def _get_preset_variants(
     spec: Dict,
     config: Dict,
     constant_grid_search: bool = False,
@@ -304,11 +308,12 @@ def get_preset_variants(
                     )
         assign_value(spec["config"], path, val)
 
-    return _generate_variants(
+    return _generate_variants_internal(
         spec, constant_grid_search=constant_grid_search, random_state=random_state
     )
 
 
+@DeveloperAPI
 def assign_value(spec: Dict, path: Tuple, value: Any):
     for k in path[:-1]:
         spec = spec[k]
@@ -447,7 +452,7 @@ def _unresolved_values(spec: Dict) -> Dict[Tuple, Any]:
     return _split_resolved_unresolved_values(spec)[1]
 
 
-def has_unresolved_values(spec: Dict) -> bool:
+def _has_unresolved_values(spec: Dict) -> bool:
     return True if _unresolved_values(spec) else False
 
 

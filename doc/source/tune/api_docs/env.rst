@@ -6,9 +6,6 @@ Environment variables
 Some of Ray Tune's behavior can be configured using environment variables.
 These are the environment variables Ray Tune currently considers:
 
-* **TUNE_CLUSTER_SSH_KEY**: SSH key used by the Tune driver process to connect
-  to remote cluster machines for checkpoint syncing. If this is not set,
-  ``~/ray_bootstrap_key.pem`` will be used.
 * **TUNE_DISABLE_AUTO_CALLBACK_LOGGERS**: Ray Tune automatically adds a CSV and
   JSON logger callback if they haven't been passed. Setting this variable to
   `1` disables this automatic creation. Please note that this will most likely

@@ -28,7 +28,7 @@ from ray.tune.experiment.trial import Trial, _Location, _TrialInfo
 from ray.tune.utils import warn_if_slow
 from ray.tune.execution.placement_groups import (
     _PlacementGroupManager,
-    get_tune_pg_prefix,
+    _get_tune_pg_prefix,
 )
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.tune.trainable.util import TrainableUtil
@@ -85,7 +85,7 @@ class _LocalWrapper:
         return self._result
 
 
-def post_stop_cleanup(future, pg):
+def _post_stop_cleanup(future, pg):
     """Things to be done after a trial is stopped."""
     assert isinstance(pg, PlacementGroup)
     try:
@@ -137,7 +137,7 @@ class _TrialCleanup:
         return len(self._future_to_insert_time) == 0
 
 
-def noop_logger_creator(config, logdir):
+def _noop_logger_creator(config, logdir):
     # Set the working dir in the remote process, for user file writes
     os.makedirs(logdir, exist_ok=True)
     if not ray._private.worker._mode() == ray._private.worker.LOCAL_MODE:
@@ -219,7 +219,7 @@ class RayTrialExecutor:
         self._reuse_actors = reuse_actors
         # The maxlen will be updated when `set_max_pending_trials()` is called
         self._cached_actor_pg = deque(maxlen=1)
-        self._pg_manager = _PlacementGroupManager(prefix=get_tune_pg_prefix())
+        self._pg_manager = _PlacementGroupManager(prefix=_get_tune_pg_prefix())
         self._staged_trials = set()
         self._trial_just_finished = False
         self._trial_just_finished_before = False
@@ -323,7 +323,7 @@ class RayTrialExecutor:
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self._trials_to_cache.add(trial)
-        logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
+        logger_creator = partial(_noop_logger_creator, logdir=trial.logdir)
 
         if len(self._cached_actor_pg) > 0:
             assert self._reuse_actors
@@ -708,7 +708,7 @@ class RayTrialExecutor:
                     break
                 if next_future_to_clean in self._futures.keys():
                     _, pg = self._futures.pop(next_future_to_clean)
-                    post_stop_cleanup(next_future_to_clean, pg)
+                    _post_stop_cleanup(next_future_to_clean, pg)
                 else:
                     # This just means that before the deadline reaches,
                     # the future is already cleaned up.
@@ -838,7 +838,7 @@ class RayTrialExecutor:
                 continue
             event_type, trial_or_pg = self._futures.pop(ready[0])
             if event_type == _ExecutorEventType.STOP_RESULT:
-                post_stop_cleanup(ready[0], trial_or_pg)
+                _post_stop_cleanup(ready[0], trial_or_pg)
 
         self._pg_manager.reconcile_placement_groups(trials)
         self._pg_manager.cleanup(force=True)
@@ -981,7 +981,7 @@ class RayTrialExecutor:
             result_type, trial_or_pg = self._futures.pop(ready_future)
             if result_type == _ExecutorEventType.STOP_RESULT:
                 pg = trial_or_pg
-                post_stop_cleanup(ready_future, pg)
+                _post_stop_cleanup(ready_future, pg)
             else:
                 trial = trial_or_pg
                 assert isinstance(trial, Trial)

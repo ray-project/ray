@@ -212,6 +212,7 @@ class _RayDumper(yaml.SafeDumper):
         return super().represent_sequence(tag, sequence, flow_style=flow_style)
 
 
+@DeveloperAPI
 def pretty_print(result):
     result = result.copy()
     result.update(config=None)  # drop config from pretty print

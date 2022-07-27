@@ -20,7 +20,7 @@ def _get_current_node_resource_key() -> str:
         raise ValueError("Cannot found the node dictionary for current node.")
 
 
-def force_on_current_node(task_or_actor=None):
+def _force_on_current_node(task_or_actor=None):
     """Given a task or actor, place it on the current node.
     If using Ray Client, the current node is the client server node.
     Args:

@@ -12,10 +12,10 @@ from ray.tune.progress_reporter import (
     JupyterNotebookReporter,
     ProgressReporter,
     _fair_filter_trials,
-    best_trial_str,
-    detect_reporter,
-    time_passed_str,
-    trial_progress_str,
+    _best_trial_str,
+    _detect_reporter,
+    _time_passed_str,
+    _trial_progress_str,
     TuneReporterBase,
 )
 from ray.tune.result import AUTO_RESULT_KEYS
@@ -430,21 +430,21 @@ class ProgressReporterTest(unittest.TestCase):
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
         # One metric, two parameters
-        prog1 = trial_progress_str(
+        prog1 = _trial_progress_str(
             trials, ["metric_1"], ["a", "b"], fmt="psql", max_rows=3, force_table=True
         )
         print(prog1)
         assert prog1 == EXPECTED_RESULT_1
 
         # No metric, all parameters
-        prog2 = trial_progress_str(
+        prog2 = _trial_progress_str(
             trials, [], None, fmt="psql", max_rows=None, force_table=True
         )
         print(prog2)
         assert prog2 == EXPECTED_RESULT_2
 
         # Two metrics, one parameter, all with custom representation
-        prog3 = trial_progress_str(
+        prog3 = _trial_progress_str(
             trials,
             {"nested/sub": "NestSub", "metric_2": "Metric 2"},
             {"a": "A"},
@@ -456,7 +456,7 @@ class ProgressReporterTest(unittest.TestCase):
         assert prog3 == EXPECTED_RESULT_3
 
         # Current best trial
-        best1 = best_trial_str(trials[1], "metric_1")
+        best1 = _best_trial_str(trials[1], "metric_1")
         assert best1 == EXPECTED_BEST_1
 
     def testBestTrialStr(self):
@@ -466,10 +466,10 @@ class ProgressReporterTest(unittest.TestCase):
         trial = Trial("", config=config, stub=True)
         trial.last_result = {"metric": 1, "config": config}
 
-        result = best_trial_str(trial, "metric")
+        result = _best_trial_str(trial, "metric")
         self.assertIn("nested_value", result)
 
-        result = best_trial_str(trial, "metric", parameter_columns=["nested/conf"])
+        result = _best_trial_str(trial, "metric", parameter_columns=["nested/conf"])
         self.assertIn("nested_value", result)
 
     def testBestTrialZero(self):
@@ -499,12 +499,12 @@ class ProgressReporterTest(unittest.TestCase):
 
         # Local timezone output can be tricky, so we don't check the
         # day and the hour in this test.
-        output = time_passed_str(time_start, time_now)
+        output = _time_passed_str(time_start, time_now)
         self.assertIn("Current time: 2016-02-", output)
         self.assertIn(":50:02 (running for 01:31:22.00)", output)
 
         time_now += 2 * 60 * 60 * 24  # plus two days
-        output = time_passed_str(time_start, time_now)
+        output = _time_passed_str(time_start, time_now)
         self.assertIn("Current time: 2016-02-", output)
         self.assertIn(":50:02 (running for 2 days, 01:31:22.00)", output)
 
@@ -700,12 +700,12 @@ class ProgressReporterTest(unittest.TestCase):
 
     def testReporterDetection(self):
         """Test if correct reporter is returned from ``detect_reporter()``"""
-        reporter = detect_reporter()
+        reporter = _detect_reporter()
         self.assertTrue(isinstance(reporter, CLIReporter))
         self.assertFalse(isinstance(reporter, JupyterNotebookReporter))
 
         with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
-            reporter = detect_reporter()
+            reporter = _detect_reporter()
             self.assertFalse(isinstance(reporter, CLIReporter))
             self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
 
@@ -733,7 +733,7 @@ class ProgressReporterTest(unittest.TestCase):
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
 
-        progress_str = trial_progress_str(
+        progress_str = _trial_progress_str(
             trials, metric_columns=["some_metric"], force_table=True
         )
         assert any(len(row) <= 90 for row in progress_str.split("\n"))
