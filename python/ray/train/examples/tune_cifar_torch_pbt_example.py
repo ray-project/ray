@@ -5,6 +5,7 @@ from ray.air import session
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
+from torchvision.models import resnet18
 from filelock import FileLock
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import CIFAR10
@@ -17,7 +18,6 @@ from ray.train.torch import TorchTrainer
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
-from ray.util.ml_utils.resnet import ResNet18
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
@@ -60,7 +60,7 @@ def validate_epoch(dataloader, model, loss_fn):
 
 def train_func(config):
     epochs = config.pop("epochs", 3)
-    model = ResNet18(config)
+    model = resnet18()
     model = train.torch.prepare_model(model)
 
     # Create optimizer.
