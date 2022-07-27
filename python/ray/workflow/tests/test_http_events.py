@@ -5,7 +5,6 @@ import ray
 from ray import workflow, serve
 from ray.workflow.http_event_provider import HTTPListener
 from ray.tests.conftest import *  # noqa
-from ray.workflow.tests import utils
 
 import requests
 
