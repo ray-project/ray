@@ -23,6 +23,10 @@ multi-agent-cartpole-crashing-pg:
         num_workers: 2
         num_envs_per_worker: 5
 
+        # Disable env checking. Env checker doesn't handle Exceptions from
+        # user envs, and will crash rollout worker.
+        disable_env_checking: true
+
         # Switch on resiliency for failed sub environments (within a vectorized stack).
         restart_failed_sub_environments: true
 
