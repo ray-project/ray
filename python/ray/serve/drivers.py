@@ -93,7 +93,7 @@ class DAGDriver:
         http_adapter: Optional[Union[str, Callable]] = None,
     ):
         install_serve_encoders_to_fastapi()
-        http_adapter = load_http_adapter(http_adapter)
+        http_adapter = _load_http_adapter(http_adapter)
         self.app = FastAPI()
 
         if isinstance(dags, dict):
