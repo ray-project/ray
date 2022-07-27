@@ -566,7 +566,7 @@ class TestWorkerFailure(unittest.TestCase):
         counter = Counter.options(name=COUNTER_NAME).remote()
 
         config = {
-            "num_workers": 2,
+            "num_workers": 1,
             "create_env_on_driver": False,
             # Worker fault tolerance.
             "recreate_failed_workers": True,  # Restore failed workers.
@@ -575,14 +575,14 @@ class TestWorkerFailure(unittest.TestCase):
             "env_config": {
                 "p_done": 0.0,
                 "max_episode_len": 100,
-                "bad_indices": [1, 2],
+                "bad_indices": [1],
                 # Env throws error between steps 50 and 150.
                 "failure_start_count": 30,
                 "failure_stop_count": 80,
                 "counter": COUNTER_NAME,
             },
             # 2 eval workers.
-            "evaluation_num_workers": 2,
+            "evaluation_num_workers": 1,
             "evaluation_interval": 1,
             "evaluation_config": {
                 "env_config": {
@@ -617,14 +617,13 @@ class TestWorkerFailure(unittest.TestCase):
                 )
             )
 
-            # Able to finish 10 steps of training.
             result = a.train()
 
             # Should see a lot of faulty episodes.
-            self.assertGreaterEqual(result["num_faulty_episodes"], 100)
-            self.assertGreaterEqual(result["evaluation"]["num_faulty_episodes"], 100)
+            self.assertGreaterEqual(result["num_faulty_episodes"], 50)
+            self.assertGreaterEqual(result["evaluation"]["num_faulty_episodes"], 50)
 
-            self.assertTrue(result["num_healthy_workers"] == 2)
+            self.assertTrue(result["num_healthy_workers"] == 1)
             # All workers are still not restored, since env are restored.
             self.assertTrue(
                 not any(
@@ -634,7 +633,7 @@ class TestWorkerFailure(unittest.TestCase):
                 )
             )
 
-            self.assertTrue(result["evaluation"]["num_healthy_workers"] == 2)
+            self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
             # All eval workers are still not restored, since env are recreated.
             self.assertTrue(
                 not any(
