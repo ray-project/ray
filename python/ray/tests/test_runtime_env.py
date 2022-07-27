@@ -39,7 +39,7 @@ from ray.runtime_env import RuntimeEnv
 
 
 def test_get_wheel_filename():
-    ray_version = "2.0.0rc0"
+    ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
             if sys_platform == "win32" and py_version == "36":
@@ -52,7 +52,7 @@ def test_get_wheel_filename():
 
 
 def test_get_master_wheel_url():
-    ray_version = "2.0.0rc0"
+    ray_version = "3.0.0.dev0"
     test_commit = "c3ac6fcf3fcc8cfe6930c9a820add0e187bff579"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
