@@ -7,7 +7,7 @@ from typing import Optional, Tuple, Dict, Generator, Union
 
 import ray
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.filelock import TempFileLock
+from ray.air._internal.filelock import TempFileLock
 
 
 _DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024  # 500 MiB

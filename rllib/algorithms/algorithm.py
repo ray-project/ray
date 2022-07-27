@@ -29,10 +29,12 @@ import pkg_resources
 from packaging import version
 
 import ray
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError, RayError
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.registry import ALGORITHMS as ALL_ALGORITHMS
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.evaluation.episode import Episode
@@ -334,6 +336,8 @@ class Algorithm(Trainable):
         update_global_seed_if_necessary(self.config["framework"], self.config["seed"])
 
         self.validate_config(self.config)
+        self._record_usage(self.config)
+
         self.callbacks = self.config["callbacks"]()
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
@@ -521,7 +525,7 @@ class Algorithm(Trainable):
 
             self.config["evaluation_config"] = eval_config
 
-            env_id, env_creator = self._get_env_id_and_creator(
+            _, env_creator = self._get_env_id_and_creator(
                 eval_config.get("env"), eval_config
             )
 
@@ -664,7 +668,8 @@ class Algorithm(Trainable):
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
             self._sync_filters_if_needed(
-                self.workers,
+                from_worker=self.workers.local_worker(),
+                workers=self.workers,
                 timeout_seconds=self.config[
                     "sync_filters_on_rollout_workers_timeout_s"
                 ],
@@ -736,7 +741,8 @@ class Algorithm(Trainable):
                 from_worker=self.workers.local_worker()
             )
             self._sync_filters_if_needed(
-                self.evaluation_workers,
+                from_worker=self.workers.local_worker(),
+                workers=self.evaluation_workers,
                 timeout_seconds=self.config[
                     "sync_filters_on_rollout_workers_timeout_s"
                 ],
@@ -1705,18 +1711,22 @@ class Algorithm(Trainable):
             )
 
     def _sync_filters_if_needed(
-        self, workers: WorkerSet, timeout_seconds: Optional[float] = None
+        self,
+        from_worker: RolloutWorker,
+        workers: WorkerSet,
+        timeout_seconds: Optional[float] = None,
     ):
-        if self.config.get("observation_filter", "NoFilter") != "NoFilter":
+        if (
+            from_worker
+            and self.config.get("observation_filter", "NoFilter") != "NoFilter"
+        ):
             FilterManager.synchronize(
-                workers.local_worker().filters,
+                from_worker.filters,
                 workers.remote_workers(),
                 update_remote=self.config["synchronize_filters"],
                 timeout_seconds=timeout_seconds,
             )
-            logger.debug(
-                "synchronized filters: {}".format(workers.local_worker().filters)
-            )
+            logger.debug("synchronized filters: {}".format(from_worker.filters))
 
     @DeveloperAPI
     def _sync_weights_to_workers(
@@ -2138,15 +2148,16 @@ class Algorithm(Trainable):
         """
         pass
 
-    def try_recover_from_step_attempt(
-        self, error, worker_set, ignore, recreate
-    ) -> None:
+    def try_recover_from_step_attempt(self, error, worker_set, ignore, recreate) -> int:
         """Try to identify and remove any unhealthy workers (incl. eval workers).
 
         This method is called after an unexpected remote error is encountered
         from a worker during the call to `self.step()`. It issues check requests to
         all current workers and removes any that respond with error. If no healthy
         workers remain, an error is raised.
+
+        Returns:
+            The number of remote workers recreated.
         """
         # @ray.remote RolloutWorker failure.
         if isinstance(error, RayError):
@@ -2193,6 +2204,8 @@ class Algorithm(Trainable):
                 self.train_exec_impl = self.execution_plan(
                     worker_set, self.config, **self._kwargs_for_execution_plan()
                 )
+
+        return len(new_workers)
 
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
@@ -2344,6 +2357,7 @@ class Algorithm(Trainable):
         with TrainIterCtx(algo=self) as train_iter_ctx:
             # .. so we can query it whether we should stop the iteration loop (e.g.
             # when we have reached `min_time_s_per_iteration`).
+            num_recreated = 0
             while not train_iter_ctx.should_stop(results):
                 # Try to train one step.
                 try:
@@ -2354,12 +2368,13 @@ class Algorithm(Trainable):
                             results = next(self.train_exec_impl)
                 # In case of any failures, try to ignore/recover the failed workers.
                 except Exception as e:
-                    self.try_recover_from_step_attempt(
+                    num_recreated += self.try_recover_from_step_attempt(
                         error=e,
                         worker_set=self.workers,
                         ignore=self.config["ignore_worker_failures"],
                         recreate=self.config["recreate_failed_workers"],
                     )
+            results["num_recreated_workers"] = num_recreated
 
         return results, train_iter_ctx
 
@@ -2378,6 +2393,7 @@ class Algorithm(Trainable):
             The results dict from the evaluation call.
         """
         eval_results = {"evaluation": {}}
+        num_recreated = 0
         try:
             if self.config["evaluation_duration"] == "auto":
                 assert (
@@ -2397,10 +2413,9 @@ class Algorithm(Trainable):
             # Run `self.evaluate()` only once per training iteration.
             else:
                 eval_results = self.evaluate()
-
         # In case of any failures, try to ignore/recover the failed evaluation workers.
         except Exception as e:
-            self.try_recover_from_step_attempt(
+            num_recreated = self.try_recover_from_step_attempt(
                 error=e,
                 worker_set=self.evaluation_workers,
                 ignore=self.config["evaluation_config"].get("ignore_worker_failures"),
@@ -2415,6 +2430,7 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
+        eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
@@ -2479,6 +2495,9 @@ class Algorithm(Trainable):
         # Custom metrics and episode media.
         results["custom_metrics"] = iteration_results.pop("custom_metrics", {})
         results["episode_media"] = iteration_results.pop("episode_media", {})
+        results["num_recreated_workers"] = iteration_results.pop(
+            "num_recreated_workers", 0
+        )
 
         # Learner info.
         results["info"] = {LEARNER_INFO: iteration_results}
@@ -2561,6 +2580,20 @@ class Algorithm(Trainable):
 
     def __repr__(self):
         return type(self).__name__
+
+    def _record_usage(self, config):
+        """Record the framework and algorithm used.
+
+        Args:
+            config: Algorithm config dict.
+        """
+        record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
+        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_workers"]))
+        alg = self.__class__.__name__
+        # We do not want to collect user defined algorithm names.
+        if alg not in ALL_ALGORITHMS:
+            alg = "USER_DEFINED"
+        record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
     @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):

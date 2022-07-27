@@ -47,7 +47,7 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.trainable import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.util.ml_utils.dict import merge_dicts
+from ray._private.dict import merge_dicts
 
 
 class ApexDQNConfig(DQNConfig):

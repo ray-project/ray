@@ -11,12 +11,14 @@ from ray.train.trainer import BaseTrainer, GenDataset
 from ray.tune import Trainable
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.dict import flatten_dict
+from ray._private.dict import flatten_dict
 
 if TYPE_CHECKING:
     import xgboost_ray
 
     from ray.data.preprocessor import Preprocessor
+
+_WARN_REPARTITION_THRESHOLD = 10 * 1024 ** 3
 
 
 def _convert_scaling_config_to_ray_params(
@@ -166,13 +168,17 @@ class GBDTTrainer(BaseTrainer):
         # TODO: Move this logic to the respective libraries
         for dataset_key, dataset in self.datasets.items():
             if dataset.num_blocks() < self._ray_params.num_actors:
-                warnings.warn(
-                    f"Dataset '{dataset_key}' has {dataset.num_blocks()} blocks, "
-                    f"which is less than the `num_workers` "
-                    f"{self._ray_params.num_actors}. "
-                    f"This dataset will be automatically repartitioned to "
-                    f"{self._ray_params.num_actors} blocks."
-                )
+                if dataset.size_bytes() > _WARN_REPARTITION_THRESHOLD:
+                    warnings.warn(
+                        f"Dataset '{dataset_key}' has {dataset.num_blocks()} blocks, "
+                        f"which is less than the `num_workers` "
+                        f"{self._ray_params.num_actors}. "
+                        f"This dataset will be automatically repartitioned to "
+                        f"{self._ray_params.num_actors} blocks. You can disable "
+                        "this error message by partitioning the dataset "
+                        "to have blocks >= number of workers via "
+                        "`dataset.repartition(num_workers)`."
+                    )
                 self.datasets[dataset_key] = dataset.repartition(
                     self._ray_params.num_actors
                 )

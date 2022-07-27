@@ -225,10 +225,10 @@ class TuneReporterBase(ProgressReporter):
     def set_search_properties(self, metric: Optional[str], mode: Optional[str]):
         if (self._metric and metric) or (self._mode and mode):
             raise ValueError(
-                "You passed a `metric` or `mode` argument to `tune.run()`, but "
+                "You passed a `metric` or `mode` argument to `tune.TuneConfig()`, but "
                 "the reporter you are using was already instantiated with their "
                 "own `metric` and `mode` parameters. Either remove the arguments "
-                "from your reporter or from your call to `tune.run()`"
+                "from your reporter or from your call to `tune.TuneConfig()`"
             )
 
         if metric:
@@ -528,7 +528,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
                 "If this leads to unformatted output (e.g. like "
                 "<IPython.core.display.HTML object>), consider passing "
                 "a `CLIReporter` as the `progress_reporter` argument "
-                "to `tune.run()` instead."
+                "to `air.RunConfig()` instead."
             )
 
         self._overwrite = overwrite
