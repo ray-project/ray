@@ -196,7 +196,7 @@ def placement_group(
                 "Setting 'object_store_memory' for"
                 " bundles is deprecated since it doesn't actually"
                 " reserve the required object store memory."
-                f" Use object spilling (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
+                f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
                 "instead to bypass the object store memory size limitation.",
                 DeprecationWarning,
                 stacklevel=1,
