@@ -203,7 +203,8 @@ class MockTimer:
 def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
     timer = MockTimer()
     with patch(
-        "ray.serve.deployment_state.ActorReplicaWrapper", new=MockReplicaActorWrapper
+        "ray.serve._private.deployment_state.ActorReplicaWrapper",
+        new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
         "ray.serve.long_poll.LongPollHost"
     ) as mock_long_poll:
@@ -1930,7 +1931,8 @@ def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
     ray.init()
     timer = MockTimer()
     with patch(
-        "ray.serve.deployment_state.ActorReplicaWrapper", new=MockReplicaActorWrapper
+        "ray.serve._private.deployment_state.ActorReplicaWrapper",
+        new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
         "ray.serve.long_poll.LongPollHost"
     ) as mock_long_poll:
