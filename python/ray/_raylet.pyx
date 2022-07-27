@@ -583,14 +583,6 @@ cdef execute_task(
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
         next_title = f"ray::{class_name}"
-        pid = os.getpid()
-        worker_name = f"ray_{class_name}_{pid}"
-        if c_resources.find(b"object_store_memory") != c_resources.end():
-            worker.core_worker.set_object_store_client_options(
-                worker_name,
-                int(ray_constants.from_memory_units(
-                        dereference(
-                            c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function

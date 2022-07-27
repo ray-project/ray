@@ -15,6 +15,9 @@ upscalingSpeed: 1.0
 idleTimeoutMinutes: 5
 # headPodType is the podType used for the Ray head node (as configured below).
 headPodType: rayHeadType
+# serviceAccountName is used for the Ray head and each Ray worker.
+# It can be set to your particular service account instead of using the default.
+# serviceAccountName: ...
 # podTypes is the list of pod configurations available for use as Ray nodes.
 podTypes:
     # The key for each podType is a user-defined string.

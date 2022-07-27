@@ -45,6 +45,13 @@ def build_model_multi_input() -> tf.keras.Model:
 
 def build_model_multi_output() -> tf.keras.Model:
     input = tf.keras.layers.Input(shape=1)
+    model = tf.keras.models.Model(inputs=input, outputs={"a": input, "b": input})
+    return model
+
+
+def build_model_unsupported() -> tf.keras.Model:
+    """Builds a model with unsupported output type."""
+    input = tf.keras.layers.Input(shape=1)
     model = tf.keras.models.Model(inputs=input, outputs=[input, input])
     return model
 
@@ -131,6 +138,32 @@ def test_predict_multi_output(use_gpu):
     )
 
     data_batch = np.array([1, 2, 3])
+    predictions = predictor.predict(data_batch)
+
+    # Model outputs two tensors
+    assert len(predictions) == 2
+    for k, v in predictions.items():
+        # Each tensor is of size 3
+        assert len(v) == 3
+        assert v.flatten().tolist() == [1, 2, 3]
+
+
+def test_predict_unsupported_output():
+    """Tests predictions with models that have unsupported output types."""
+    predictor = TensorflowPredictor(model_definition=build_model_unsupported)
+
+    data_batch = np.array([1, 2, 3])
+    # Unsupported output should fail
+    with pytest.raises(ValueError):
+        predictor.predict(data_batch)
+
+    # Using a CustomPredictor should pass.
+    class CustomPredictor(TensorflowPredictor):
+        def call_model(self, tensor):
+            model_output = super().call_model(tensor)
+            return {str(i): model_output[i] for i in range(len(model_output))}
+
+    predictor = CustomPredictor(model_definition=build_model_unsupported)
     predictions = predictor.predict(data_batch)
 
     # Model outputs two tensors
