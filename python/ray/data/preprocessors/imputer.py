@@ -73,13 +73,9 @@ class SimpleImputer(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
         return (
-            f"SimpleImputer("
-            f"columns={self.columns}, "
-            f"strategy={self.strategy}, "
-            f"fill_value={self.fill_value}, "
-            f"stats={stats})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"strategy={self.strategy!r}, fill_value={self.fill_value!r})"
         )
 
 
@@ -93,7 +89,7 @@ def _get_most_frequent_values(
 
     value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
     final_counters = {col: Counter() for col in columns}
-    for batch in value_counts.iter_batches():
+    for batch in value_counts.iter_batches(batch_size=None):
         for col_value_counts in batch:
             for col, value_counts in col_value_counts.items():
                 final_counters[col] += value_counts

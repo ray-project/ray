@@ -18,22 +18,8 @@ def test_shuffling_batcher():
     ):
         ShufflingBatcher(batch_size=None, shuffle_buffer_min_size=buffer_size)
 
-    with pytest.raises(
-        ValueError,
-        match="Shuffle buffer min size must be at least as large as the batch size",
-    ):
-        ShufflingBatcher(batch_size=batch_size, shuffle_buffer_min_size=batch_size - 1)
-
-    with pytest.raises(
-        ValueError,
-        match="Shuffle buffer capacity must be at least as large as the shuffle "
-        "buffer min size plus the batch size",
-    ):
-        ShufflingBatcher(
-            batch_size=batch_size,
-            shuffle_buffer_min_size=buffer_size,
-            shuffle_buffer_capacity=batch_size + buffer_size - 1,
-        )
+    # Should not raise error.
+    ShufflingBatcher(batch_size=batch_size, shuffle_buffer_min_size=batch_size - 1)
 
     batcher = ShufflingBatcher(
         batch_size=batch_size,

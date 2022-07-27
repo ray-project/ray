@@ -13,7 +13,7 @@ from ray.serve.http_adapters import (
     image_to_ndarray,
     pandas_read_json,
 )
-from ray.serve.utils import require_packages
+from ray.serve._private.utils import require_packages
 
 
 @pytest.mark.asyncio
