@@ -7,7 +7,6 @@ from ray.rllib.connectors.action.lambdas import ConvertToNumpyConnector
 from ray.rllib.connectors.action.normalize import NormalizeActionsConnector
 from ray.rllib.connectors.action.pipeline import ActionConnectorPipeline
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
-from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector

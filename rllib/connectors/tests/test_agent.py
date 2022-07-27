@@ -381,12 +381,12 @@ class TestViewRequirementConnector(unittest.TestCase):
             check(for_action["context_act"], np.stack(act_list[:-1])[None])
 
     def test_connector_pipline_with_view_requirement(self):
-        """A very minimal test that checks wheter pipeline connectors work in a 
+        """A very minimal test that checks wheter pipeline connectors work in a
         simulation rollout."""
         # TODO: make this test beefier and more comprehensive
         config = (
             PPOConfig()
-            .framework("torch") # use torch since mi
+            .framework("torch")
             .environment(env="CartPole-v0")
             .rollouts(create_env_on_local_worker=True)
         )
