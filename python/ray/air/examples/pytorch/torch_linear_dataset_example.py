@@ -8,7 +8,7 @@ import torch.nn as nn
 
 import ray
 import ray.train as train
-from ray.air import session, train_test_split
+from ray.air import session
 from ray.air.result import Result
 from ray.data import Dataset
 from ray.train.batch_predictor import BatchPredictor
@@ -24,7 +24,7 @@ def get_datasets(a=5, b=10, size=1000, split=0.8) -> Tuple[Dataset]:
 
     dataset = get_dataset(a, b, size)
 
-    train_dataset, validation_dataset = train_test_split(dataset, split, shuffle=True)
+    train_dataset, validation_dataset = dataset.train_test_split(split, shuffle=True)
     return train_dataset, validation_dataset
 
 

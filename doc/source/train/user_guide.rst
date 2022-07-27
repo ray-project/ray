@@ -447,7 +447,7 @@ Using Ray Datasets is the recommended way for ingesting data into ``Trainer``\s 
 
     import ray
     from ray import train
-    from ray.air import train_test_split, ScalingConfig
+    from ray.air import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
@@ -478,8 +478,8 @@ Using Ray Datasets is the recommended way for ingesting data into ``Trainer``\s 
         return model
 
     # Random split dataset into 80% training data and 20% validation data.
-    train_dataset, validation_dataset = train_test_split(
-        dataset, test_size=0.2, shuffle=True
+    train_dataset, validation_dataset = dataset.train_test_split(
+        test_size=0.2, shuffle=True
     )
 
     trainer = TorchTrainer(
