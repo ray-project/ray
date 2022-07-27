@@ -1,0 +1,7 @@
+tensorflow==2.9.1; python_version >= '3.7'
+tensorflow-probability==0.16.0; python_version >= '3.7'
+tensorflow_estimator==2.9.0; python_version >= '3.7'
+
+# Jax
+-f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+jax[cuda111]==0.3.15;sys_platform == 'linux'
