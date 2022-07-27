@@ -505,7 +505,7 @@ class _TorchAccelerator(Accelerator):
                     raise RuntimeError(
                         "CUDA_VISIBLE_DEVICES set incorrectly. "
                         f"Got {cuda_visible_str}, expected to include {gpu_id}. "
-                        "Did you override `CUDA_VISIBLE_DEVICES`? "
+                        "Did you override the `CUDA_VISIBLE_DEVICES`?  environment variable"
                         "If not, please help file an issue on Github."
                     )
             else:
