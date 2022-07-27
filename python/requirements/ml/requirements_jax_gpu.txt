@@ -4,4 +4,4 @@ tensorflow_estimator==2.9.0; python_version >= '3.7'
 
 # Jax
 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-jax[cuda111]==0.3.15;sys_platform == 'linux'
+jax[cuda11_cudnn805]==0.3.15;sys_platform == 'linux'
