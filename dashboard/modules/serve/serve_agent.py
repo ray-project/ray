@@ -69,12 +69,13 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         if client is None:
             status_json = ServeStatusSchema.get_empty_schema_dict()
+            status_json_str = json.dumps(status_json)
         else:
             status = client.get_serve_status()
-            status_json = serve_status_to_schema(status).json()
+            status_json_str = serve_status_to_schema(status).json()
 
         return Response(
-            text=status_json,
+            text=status_json_str,
             content_type="application/json",
         )
 
