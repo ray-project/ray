@@ -5,7 +5,7 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
@@ -545,6 +545,7 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
     return logp_
 
 
+@DeveloperAPI
 def warn_if_infinite_kl_divergence(
     policy: Type["TFPolicy"], mean_kl_loss: TensorType
 ) -> None:

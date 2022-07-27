@@ -10,7 +10,7 @@ from gym.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import Deprecated, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
@@ -530,6 +530,7 @@ def sequence_mask(
     return mask
 
 
+@DeveloperAPI
 def warn_if_infinite_kl_divergence(
     policy: "TorchPolicy",
     kl_divergence: TensorType,
