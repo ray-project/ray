@@ -9,10 +9,9 @@ import {
 } from "../dashboard/node-info/features/GPU";
 
 export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
-  const hasGPU = node.gpus !== undefined && node.gpus.length !== 0;
   return (
     <div style={{ minWidth: GPU_COL_WIDTH }}>
-      {hasGPU ? (
+      {node.gpus !== undefined && node.gpus.length !== 0 ? (
         node.gpus.map((gpu, i) => <NodeGPUEntry gpu={gpu} slot={i} />)
       ) : (
         <Typography color="textSecondary" component="span" variant="inherit">
