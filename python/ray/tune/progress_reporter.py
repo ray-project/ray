@@ -10,6 +10,7 @@ import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
+from ray._private.dict import flatten_dict
 
 from ray.tune.callback import Callback
 from ray.tune.logger import logger, pretty_print
@@ -33,7 +34,6 @@ from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.ml_utils.dict import flatten_dict
 from ray.util.queue import Queue
 
 try:
