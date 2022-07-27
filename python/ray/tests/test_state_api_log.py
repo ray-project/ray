@@ -9,7 +9,7 @@ import requests
 from click.testing import CliRunner
 
 import ray
-import ray.scripts.scripts as scripts
+
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
@@ -23,6 +23,7 @@ from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import tail as tail_file
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.experimental.state.state_cli import log_files, log_actor
 from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
 from ray.experimental.state.common import GetLogOptions
 from ray.experimental.state.exception import DataSourceUnavailable
@@ -583,7 +584,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     assert file_response == "1" + "\n".join(streamed_string.split("\n")[-(LINES + 1) :])
 
 
-def test_log_list(ray_start_cluster):
+def test_log_list_single_machine(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 5
     for _ in range(num_nodes):
@@ -595,16 +596,23 @@ def test_log_list(ray_start_cluster):
             # When glob filter is not provided, it should provide all logs
             logs = list_logs(node_id=node["node_id"])
             assert "raylet" in logs
-            assert "gcs_server" in logs
             assert "dashboard" in logs
             assert "agent" in logs
             assert "internal" in logs
             assert "driver" in logs
             assert "autoscaler" in logs
 
+            # TODO(rickyyx): When we have multiple nodes on the same ip,
+            # we will retrieve all the logs without being able to differentiate
+            # those logs from different nodes even though they have different ids.
+            assert "gcs_server" in logs
+
             # Test glob works.
             logs = list_logs(node_id=node["node_id"], glob_filter="raylet*")
-            assert len(logs) == 1
+            assert len(logs) == 1 and "raylet" in logs.keys()
+            assert (
+                len(logs["raylet"]) == num_nodes * 2
+            ), "{num_nodes} nodes should generate 2 (.err and .out) each."
             return True
 
     wait_for_condition(verify)
@@ -612,9 +620,9 @@ def test_log_list(ray_start_cluster):
 
 def test_log_get(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0)
+    head_node = cluster.add_node(num_cpus=0)
+    assert head_node.is_head(), "I should be the head!"
     ray.init(address=cluster.address)
-    head_node = list_nodes()[0]
     cluster.add_node(num_cpus=1)
 
     @ray.remote(num_cpus=1)
@@ -635,7 +643,7 @@ def test_log_get(ray_start_cluster):
     def verify():
         # By default, node id should be configured to the head node.
         for log in get_log(
-            node_id=head_node["node_id"], filename="raylet.out", tail=10
+            node_ip=head_node.node_ip_address, filename="raylet.out", tail=10
         ):
             # + 1 since the last line is just empty.
             assert len(log.split("\n")) == 11
@@ -651,8 +659,7 @@ def test_log_get(ray_start_cluster):
     ray.get(a.print.remote(20))
 
     def verify():
-        # By default, node id should be configured to the head node.
-        for log in get_log(node_ip=head_node["node_ip"], pid=pid, tail=10):
+        for log in get_log(node_ip=head_node.node_ip_address, pid=pid, tail=10):
             # + 1 since the last line is just empty.
             assert len(log.split("\n")) == 11
         return True
@@ -678,13 +685,13 @@ def test_log_get(ray_start_cluster):
             pass
 
 
-def test_log_cli(shutdown_only):
+def test_log_cli_files(shutdown_only):
     ray.init(num_cpus=1)
     runner = CliRunner()
 
     # Test the head node is chosen by default.
     def verify():
-        result = runner.invoke(scripts.ray_logs)
+        result = runner.invoke(log_files)
         print(result.output)
         assert result.exit_code == 0
         assert "raylet.out" in result.output
@@ -697,7 +704,7 @@ def test_log_cli(shutdown_only):
 
     # Test when there's only 1 match, it prints logs.
     def verify():
-        result = runner.invoke(scripts.ray_logs, ["raylet.out"])
+        result = runner.invoke(log_files, ["raylet.out"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" not in result.output
@@ -712,13 +719,41 @@ def test_log_cli(shutdown_only):
 
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
-        result = runner.invoke(scripts.ray_logs, ["raylet.*"])
+        result = runner.invoke(log_files, ["raylet.*"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" in result.output
         assert "raylet.err" in result.output
         assert "gcs_server.out" not in result.output
         assert "gcs_server.err" not in result.output
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_log_cli_actor(shutdown_only):
+
+    ray.init()
+
+    log_line = "Hey, I am a dummy actor"
+
+    @ray.remote
+    class DummyActor:
+        def write(self):
+            print(log_line)
+
+    actor = DummyActor.remote()
+    ray.get(actor.write.remote())
+
+    # Test when getting log from actor works
+    runner = CliRunner()
+
+    def verify():
+        actor_id = actor._actor_id.hex()
+        result = runner.invoke(log_actor, ["--id", actor_id])
+        print(result.output)
+        assert log_line in result.output
+
         return True
 
     wait_for_condition(verify)
