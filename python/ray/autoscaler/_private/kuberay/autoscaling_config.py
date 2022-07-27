@@ -157,7 +157,7 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
         DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
         FOREGROUND_NODE_LAUNCH_KEY: True,
         WORKER_LIVENESS_CHECK_KEY: False,
-        WORKER_RPC_DRAIN_KEY: False,
+        WORKER_RPC_DRAIN_KEY: True,
     }
 
 

@@ -47,7 +47,9 @@ logger.info(f"Using image `{AUTOSCALER_IMAGE}` for Autoscaler containers.")
 logger.info(f"Using pull policy `{PULL_POLICY}` for all images.")
 
 # Path to example config rel RAY_PARENT
-EXAMPLE_CLUSTER_PATH = "ray/python/ray/autoscaler/kuberay/config/samples/ray-cluster.autoscaler.yaml"
+EXAMPLE_CLUSTER_PATH = (
+    "ray/python/ray/autoscaler/kuberay/config/samples/ray-cluster.autoscaler.yaml"
+)
 
 HEAD_SERVICE = "raycluster-autoscaler-head-svc"
 HEAD_POD_PREFIX = "raycluster-autoscaler-head"
@@ -78,7 +80,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         config = yaml.safe_load(ray_cr_config_str)
         head_group = config["spec"]["headGroupSpec"]
         head_group["rayStartParams"][
-            "resources"] = '"{\\"Custom1\\": 1, \\"Custom2\\": 5}"'
+            "resources"
+        ] = '"{\\"Custom1\\": 1, \\"Custom2\\": 5}"'
 
         cpu_group = config["spec"]["workerGroupSpecs"][0]
         cpu_group["replicas"] = cpu_replicas
@@ -86,7 +89,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         # Keep maxReplicas big throughout the test.
         cpu_group["maxReplicas"] = 300
         cpu_group["rayStartParams"][
-            "resources"] = '"{\\"Custom1\\": 1, \\"Custom2\\": 5}"'
+            "resources"
+        ] = '"{\\"Custom1\\": 1, \\"Custom2\\": 5}"'
 
         # Add a GPU-annotated group.
         # (We're not using real GPUs, just adding a GPU annotation for the autoscaler
