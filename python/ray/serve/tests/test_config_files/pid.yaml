@@ -1,8 +1,0 @@
-import_path: ray.serve.tests.test_config_files.pid.node
-
-deployments:
-
-- name: f
-  num_replicas: 1
-  ray_actor_options:
-    num_cpus: 0.1
