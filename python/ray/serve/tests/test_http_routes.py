@@ -10,7 +10,7 @@ import ray
 from ray import serve
 
 
-def test_path_validation_legacy(serve_instance):
+def test_path_validation(serve_instance):
     # Path prefix must start with /.
     with pytest.raises(ValueError):
 
@@ -40,29 +40,6 @@ def test_path_validation_legacy(serve_instance):
 
     # Allow duplicate route.
     D4.options(name="test2").deploy()
-
-
-def test_path_validation(serve_instance):
-    # Path prefix must start with /.
-    with pytest.raises(ValueError):
-
-        @serve.deployment(route_prefix="hello")
-        class D1:
-            pass
-
-    # Path prefix must not end with / unless it's the root.
-    with pytest.raises(ValueError):
-
-        @serve.deployment(route_prefix="/hello/")
-        class D2:
-            pass
-
-    # Wildcards not allowed with new ingress support.
-    with pytest.raises(ValueError):
-
-        @serve.deployment(route_prefix="/{hello}")
-        class D3:
-            pass
 
 
 def test_routes_healthz(serve_instance):
@@ -128,11 +105,7 @@ def test_routes_endpoint(serve_instance):
         def __call__(self):
             return "D2"
 
-    dag = DAGDriver.bind(
-        D1.bind(),
-        D2.bind(),
-        dags_routes=["/D1", "/hello/world"],
-    )
+    dag = DAGDriver.bind({"/D1": D1.bind(), "/hello/world": D2.bind()})
     serve.run(dag)
 
     routes = requests.get("http://localhost:8000/-/routes").json()
@@ -257,20 +230,14 @@ def test_multi_dag_with_wrong_route(serve_instance):
         def __call__(self):
             return "D2"
 
-    dag = DAGDriver.bind(
-        D1.bind(),
-        D2.bind(),
-        dags_routes=["/D1", "/hello/world"],
-    )
+    dag = DAGDriver.bind({"/D1": D1.bind(), "/hello/world": D2.bind()})
 
     serve.run(dag)
 
     assert requests.get("http://localhost:8000/D1").status_code == 200
     assert requests.get("http://localhost:8000/hello/world").status_code == 200
-    assert requests.get("http://localhost:8000/not_exist").status_code == 500
-    assert requests.get("http://localhost:8000/").status_code == 500
-    resp = requests.get("http://localhost:8000/")
-    assert "Route path (/) does not exist in DAGs routes" in resp.text
+    assert requests.get("http://localhost:8000/not_exist").status_code == 404
+    assert requests.get("http://localhost:8000/").status_code == 404
 
 
 @pytest.mark.parametrize("base_path", ["", "subpath"])
