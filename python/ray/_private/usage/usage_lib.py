@@ -244,9 +244,20 @@ def _put_library_usage(library_usage: str):
 class TagKey(Enum):
     _TEST1 = auto()
     _TEST2 = auto()
+
+    # RLlib
+    # The deep learning framework ("tf", "torch", etc.).
     RLLIB_FRAMEWORK = auto()
+    # The algorithm name (only built-in algorithms).
     RLLIB_ALGORITHM = auto()
+    # The number of workers as a string.
     RLLIB_NUM_WORKERS = auto()
+
+    # Serve
+    # The public Python API version ("v1", "v2").
+    SERVE_API_VERSION = auto()
+    # The total number of running serve deployments as a string.
+    SERVE_NUM_DEPLOYMENTS = auto()
 
 
 def record_extra_usage_tag(key: TagKey, value: str):
