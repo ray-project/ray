@@ -320,9 +320,9 @@ class BasicVariantGenerator(SearchAlgorithm):
         Arguments:
             experiments: Experiments to run.
         """
-        from ray.tune.experiment import convert_to_experiment_list
+        from ray.tune.experiment import _convert_to_experiment_list
 
-        experiment_list = convert_to_experiment_list(experiments)
+        experiment_list = _convert_to_experiment_list(experiments)
 
         for experiment in experiment_list:
             grid_vals = _count_spec_samples(experiment.spec, num_samples=1)
