@@ -80,13 +80,6 @@ class Predictor(abc.ABC):
         # extension type at UDF boundaries. This can be overridden by subclasses.
         self._cast_tensor_columns = False
 
-    @DeveloperAPI
-    def _set_cast_tensor_columns(self):
-        """Enable automatic tensor column casting from/to the tensor extension type at
-        UDF boundaries.
-        """
-        self._cast_tensor_columns = True
-
     @classmethod
     @abc.abstractmethod
     def from_checkpoint(cls, checkpoint: Checkpoint, **kwargs) -> "Predictor":
@@ -129,6 +122,15 @@ class Predictor(abc.ABC):
     def set_preprocessor(self, preprocessor: Optional[Preprocessor]) -> None:
         """Set the preprocessor to use prior to executing predictions."""
         self._preprocessor = preprocessor
+
+    def _set_cast_tensor_columns(self):
+        """Enable automatic tensor column casting.
+
+        If this is called on a predictor, the predictor will cast tensor columns to
+        NumPy ndarrays in the input to the preprocessors and cast tensor columns back to
+        the tensor extension type in the prediction outputs.
+        """
+        self._cast_tensor_columns = True
 
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
