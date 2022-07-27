@@ -4,19 +4,20 @@ import logging
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray._private.utils import deprecated
 
 from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient
+from ray.serve._private.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
@@ -24,17 +25,19 @@ from ray.serve.context import (
     ReplicaContext,
     get_global_client,
     get_internal_replica_context,
-    set_global_client,
+    _set_global_client,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.deployment_graph_build import build as pipeline_build
-from ray.serve.deployment_graph_build import get_and_validate_ingress_deployment
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve.logging_utils import LoggingContext
-from ray.serve.utils import (
+from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
+from ray.serve._private.logging_utils import LoggingContext
+from ray.serve._private.utils import (
     DEFAULT,
     ensure_serialization_context,
     in_interactive_shell,
@@ -92,8 +95,12 @@ def start(
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
+    client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
-    return _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+
+    return client
 
 
 @PublicAPI
@@ -114,7 +121,7 @@ def shutdown() -> None:
         return
 
     client.shutdown()
-    set_global_client(None)
+    _set_global_client(None)
 
 
 @PublicAPI
@@ -395,6 +402,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.get_deployment(name)
 
 
@@ -405,7 +413,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.list_deployments()
 
 
@@ -434,10 +442,12 @@ def run(
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
-
     client = _private_api.serve_start(
         detached=True, http_options={"host": host, "port": port}
     )
+
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
@@ -493,6 +503,7 @@ def run(
         return ingress._get_handle()
 
 
+@DeveloperAPI
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
@@ -508,7 +519,6 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     The returned Application object can be exported to a dictionary or YAML
     config.
     """
-
     if in_interactive_shell():
         raise RuntimeError(
             "build cannot be called from an interactive shell like "
