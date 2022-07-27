@@ -13,7 +13,7 @@ from ray.tune.search.sample import np_random_generator, _BackwardsCompatibleNump
 from ray.tune.search.variant_generator import (
     _count_variants,
     _count_spec_samples,
-    _generate_variants,
+    generate_variants,
     format_vars,
     _flatten_resolved_vars,
     _get_preset_variants,
@@ -170,7 +170,7 @@ class _TrialIterator:
             return self.create_trial(resolved_vars, spec)
         elif self.num_samples_left > 0:
             self.variants = _VariantIterator(
-                _generate_variants(
+                generate_variants(
                     self.unresolved_spec,
                     constant_grid_search=self.constant_grid_search,
                     random_state=self.random_state,
@@ -320,9 +320,9 @@ class BasicVariantGenerator(SearchAlgorithm):
         Arguments:
             experiments: Experiments to run.
         """
-        from ray.tune.experiment import _convert_to_experiment_list
+        from ray.tune.experiment import convert_to_experiment_list
 
-        experiment_list = _convert_to_experiment_list(experiments)
+        experiment_list = convert_to_experiment_list(experiments)
 
         for experiment in experiment_list:
             grid_vals = _count_spec_samples(experiment.spec, num_samples=1)

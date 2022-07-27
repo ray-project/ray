@@ -10,7 +10,7 @@ from unittest.mock import patch
 import ray
 import ray._private.utils
 import ray.cloudpickle as cloudpickle
-from ray.tune.utils.util import _wait_for_gpu
+from ray.tune.utils.util import wait_for_gpu
 from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
 from ray.tune.trainable.util import TrainableUtil
 
@@ -226,30 +226,30 @@ class GPUTest(unittest.TestCase):
         sys.modules["GPUtil"] = GPUUtilMock([0, 1], ["GPU-aaa", "GPU-bbb"])
 
     def testGPUWait1(self):
-        _wait_for_gpu(0, delay_s=0)
+        wait_for_gpu(0, delay_s=0)
 
     def testGPUWait2(self):
-        _wait_for_gpu("1", delay_s=0)
+        wait_for_gpu("1", delay_s=0)
 
     def testGPUWait3(self):
-        _wait_for_gpu("GPU-aaa", delay_s=0)
+        wait_for_gpu("GPU-aaa", delay_s=0)
 
     def testGPUWaitFail(self):
         with self.assertRaises(ValueError):
-            _wait_for_gpu(2, delay_s=0)
+            wait_for_gpu(2, delay_s=0)
 
         with self.assertRaises(ValueError):
-            _wait_for_gpu("4", delay_s=0)
+            wait_for_gpu("4", delay_s=0)
 
         with self.assertRaises(ValueError):
-            _wait_for_gpu(1.23, delay_s=0)
+            wait_for_gpu(1.23, delay_s=0)
 
     @patch("ray.get_gpu_ids", lambda: ["0"])
     def testDefaultGPU(self):
         import sys
 
         sys.modules["GPUtil"] = GPUUtilMock([0], ["GPU-aaa"])
-        _wait_for_gpu(delay_s=0)
+        wait_for_gpu(delay_s=0)
 
 
 if __name__ == "__main__":

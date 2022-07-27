@@ -4,8 +4,8 @@ import logging
 
 from ray.tune.experiment import Trial
 from ray.tune.search import SearchAlgorithm
-from ray.tune.experiment import _convert_to_experiment_list
-from ray.tune.search.variant_generator import _generate_variants
+from ray.tune.experiment import convert_to_experiment_list
+from ray.tune.search.variant_generator import generate_variants
 from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class AutoMLSearcher(SearchAlgorithm):
         self._start_ts = 0
 
     def add_configurations(self, experiments):
-        self.experiment_list = _convert_to_experiment_list(experiments)
+        self.experiment_list = convert_to_experiment_list(experiments)
 
     def get_best_trial(self):
         """Returns the Trial object with the best reward_attr"""
@@ -233,7 +233,7 @@ class GridSearch(AutoMLSearcher):
     def _select(self):
         grid = self.search_space.to_grid_search()
         configs = []
-        for _, config in _generate_variants(grid):
+        for _, config in generate_variants(grid):
             configs.append(config)
         return configs, None
 
@@ -252,7 +252,7 @@ class RandomSearch(AutoMLSearcher):
         choices = self.search_space.to_random_choice()
         configs = []
         for _ in range(self.repeat):
-            for _, config in _generate_variants(choices):
+            for _, config in generate_variants(choices):
                 configs.append(config)
         return configs, None
 

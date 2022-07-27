@@ -11,7 +11,7 @@ from ray.tune.utils.util import (
     _detect_checkpoint_function,
     _detect_reporter,
     _detect_config_single,
-    _wait_for_gpu,
+    wait_for_gpu,
 )
 
 __all__ = [
@@ -27,5 +27,5 @@ __all__ = [
     "_detect_checkpoint_function",
     "_detect_reporter",
     "_detect_config_single",
-    "_wait_for_gpu",
+    "wait_for_gpu",
 ]

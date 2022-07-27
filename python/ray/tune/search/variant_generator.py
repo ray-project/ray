@@ -13,7 +13,8 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(__name__)
 
 
-def _generate_variants(
+@DeveloperAPI
+def generate_variants(
     unresolved_spec: Dict,
     constant_grid_search: bool = False,
     random_state: "RandomState" = None,

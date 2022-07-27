@@ -429,7 +429,8 @@ def _load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> Optional[Dict]:
     return checkpoint_state
 
 
-def _wait_for_gpu(
+@PublicAPI(stability="alpha")
+def wait_for_gpu(
     gpu_id: Optional[Union[int, str]] = None,
     target_util: float = 0.01,
     retry: int = 20,
