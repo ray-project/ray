@@ -5,7 +5,7 @@ ML Tensor Support
 
 Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support Tensor data types. To bridge this gap, Datasets provides a unified Tensor data type that can be used to represent and store Tensor data:
 
-* For Pandas, the Datasets Pandas extension :class:`TensorDtype <ray.data.extensions.tensor_extension.TensorDtype>` and :class:`TensorArray <ray.data.extensions.tensor_extension.TensorArray>` enable Pandas-native manipulation of tensor data columns.
+* For Pandas, Datasets will transparently convert ``List[np.ndarray]`` columns to and from the :class:`TensorDtype <ray.data.extensions.tensor_extension.TensorDtype>` extension type.
 * For Parquet, the Datasets Arrow extension :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>` and :class:`ArrowTensorArray <ray.data.extensions.tensor_extension.ArrowTensorArray>` allow Tensors to be loaded and stored in Parquet format.
 * In addition, single-column Tensor datasets can be created from image and Numpy (.npy) files.
 
@@ -205,16 +205,6 @@ Because Tensor datasets rely on Dataset-specific extension types, they can only 
     :language: python
     :start-after: __write_2_begin_
     :end-before: __write_2_end__
-
-Example: Working with the Pandas extension type
------------------------------------------------
-
-This example shows how to work with the Pandas extension type directly. You may find this useful when writing UDFs involving the Pandas tensor type.
-
-.. literalinclude:: ./doc_code/tensor.py
-  :language: python
-  :start-after: __pandas_begin__
-  :end-before: __pandas_end__
 
 Limitations
 -----------

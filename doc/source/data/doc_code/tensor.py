@@ -44,12 +44,12 @@ def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
     # Lists of ndarrays are automatically cast to TensorArray.
     arr = [np.zeros((128, 128, 3)) for _ in range(bs)]
+    return pd.DataFrame({"__value__": arr})
 
     ## Alternatively, manually construct a TensorArray from a single ndarray.
     # from ray.data.extensions.tensor_extension import TensorArray
     # arr = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
-
-    return pd.DataFrame({"__value__": arr})
+    # return pd.DataFrame({"__value__": arr})
 
 ds.map_batches(single_col_udf)
 # -> Dataset(num_blocks=17, num_rows=1000, schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
@@ -61,14 +61,15 @@ def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
     bs = len(batch)
 
     # Lists of ndarrays are automatically cast to TensorArray.
-    images = [np.zeros((128, 128, 3), dtype=np.int64) for _ in range(bs)]
-    embeds = [np.zeros((256,), dtype=np.uint8) for _ in range(bs)]
+    image = [np.zeros((128, 128, 3), dtype=np.int64) for _ in range(bs)]
+    embed = [np.zeros((256,), dtype=np.uint8) for _ in range(bs)]
+    return pd.DataFrame({"image": image, "embed": embed})
 
-    ## Alternatively, manually construct a TensorArray from a single ndarray.
-    # images = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
-    # embeds = TensorArray(np.zeros((bs, 256,), dtype=np.uint8))
+    ## Alternatively, manually construct TensorArrays from ndarray batches.
+    # image = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
+    # embed = TensorArray(np.zeros((bs, 256,), dtype=np.uint8))
+    # return pd.DataFrame({"image": image, "embed": embed})
 
-    return pd.DataFrame({"images": images, "embeds": embeds})
 
 ds.map_batches(multi_col_udf)
 # -> Dataset(num_blocks=17, num_rows=1000, schema={image: TensorDtype(shape=(128, 128, 3), dtype=int64), embed: TensorDtype(shape=(256,), dtype=uint8)})
@@ -92,8 +93,8 @@ ray.data.read_numpy("example://mnist_subset.npy")
 import ray
 
 # Reading previously saved Tensor data works out of the box.
-ray.data.read_parquet("example://parquet_images_mini")
-# -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
+ds = ray.data.read_parquet("example://parquet_images_mini")
+# -> Dataset(num_blocks=3, num_rows=3, schema={image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: string})
 
 ds.take(1)
 # -> [{'image':
@@ -148,6 +149,7 @@ print(ds.schema())
 #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 # __create_parquet_2_end__
 
+ds.fully_executed()
 shutil.rmtree(path)
 
 # __create_parquet_3_begin__
@@ -169,9 +171,7 @@ ds = ray.data.from_pandas([df])
 ds.write_parquet(path)
 
 # Manually deserialize the tensor pickle bytes and cast to our tensor
-# extension type. For the sake of efficiency, we directly construct a
-# TensorArray rather than .astype() casting on the mutated column with
-# TensorDtype.
+# extension type.
 def cast_udf(block: pa.Table) -> pa.Table:
     block = block.to_pandas()
     block["two"] = TensorArray([pickle.loads(a) for a in block["two"]])
@@ -186,12 +186,13 @@ print(ds.schema())
 # -> one: int64
 #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 # __create_parquet_3_end__
+ds.fully_executed()
 
 # __create_images_begin__
 from ray.data.datasource import ImageFolderDatasource
 
-ray.data.read_datasource(ImageFolderDatasource(), paths=["example://image-folder"])
-# -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
+ds = ray.data.read_datasource(ImageFolderDatasource(), root="example://image-folder", size=(128, 128))
+# -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8), label: object})
 
 ds.take(1)
 # -> [{'image':
@@ -246,7 +247,7 @@ ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
 #            schema={__value__: <ArrowTensorType: shape=(28, 28), dtype=uint8>})
 
-# This returns batches in pandas.DataFrame format.
+# This returns pandas batches with List[np.ndarray] columns.
 next(ds.iter_batches(batch_format="pandas"))
 # ->                                            __value__
 # 0  [[  0,   0,   0,   0,   0,   0,   0,   0,   0,...
@@ -334,82 +335,7 @@ next(ds.iter_batches(batch_format="numpy"))
 # __consume_numpy_2_end__
 
 
-# __pandas_begin__
-import ray
-from ray.data.extensions import TensorDtype
-
-import pandas as pd
-import numpy as np
-
-
-# Create a DataFrame with a list of ndarrays as a column.
-df = pd.DataFrame({
-    "one": [1, 2, 3],
-    "two": list(np.arange(24).reshape((3, 2, 2, 2)))})
-# Note the opaque np.object dtype for this column.
-print(df.dtypes)
-# -> one     int64
-#    two    object
-#    dtype: object
-
-# Cast column to our TensorDtype Pandas extension type.
-df["two"] = df["two"].astype(TensorDtype())
-
-# Note that the column dtype is now TensorDtype instead of
-# np.object.
-print(df.dtypes)
-# -> one          int64
-#    two    TensorDtype
-#    dtype: object
-
-# Pandas is now aware of this tensor column, and we can do the
-# typical DataFrame operations on this column.
-col = 2 * df["two"]
-# The ndarrays underlying the tensor column will be manipulated,
-# but the column itself will continue to be a Pandas type.
-print(type(col))
-# -> pandas.core.series.Series
-print(col)
-# -> 0   [[[ 2  4]
-#          [ 6  8]]
-#         [[10 12]
-#           [14 16]]]
-#    1   [[[18 20]
-#          [22 24]]
-#         [[26 28]
-#          [30 32]]]
-#    2   [[[34 36]
-#          [38 40]]
-#         [[42 44]
-#          [46 48]]]
-#    Name: two, dtype: TensorDtype
-
-# Once you do an aggregation on that column that returns a single
-# row's value, you get back our TensorArrayElement type.
-tensor = col.mean()
-print(type(tensor))
-# -> ray.data.extensions.tensor_extension.TensorArrayElement
-print(tensor)
-# -> array([[[18., 20.],
-#            [22., 24.]],
-#           [[26., 28.],
-#            [30., 32.]]])
-
-# This is a light wrapper around a NumPy ndarray, and can easily
-# be converted to an ndarray.
-type(tensor.to_numpy())
-# -> numpy.ndarray
-
-# In addition to doing Pandas operations on the tensor column,
-# you can now put the DataFrame directly into a Dataset.
-ds = ray.data.from_pandas([df])
-# Internally, this column is represented with the corresponding
-# Arrow tensor extension type.
-print(ds.schema())
-# -> one: int64
-#    two: extension<arrow.py_extension_type<ArrowTensorType>>
-# __pandas_end__
-
+ds.fully_executed()
 shutil.rmtree("/tmp/some_path")
 
 # __write_1_begin__
@@ -427,6 +353,7 @@ print(read_ds.schema())
 #    label: string
 # __write_1_end__
 
+read_ds.fully_executed()
 shutil.rmtree("/tmp/some_path")
 
 # __write_2_begin__
