@@ -2844,14 +2844,10 @@ class Dataset(Generic[T]):
         from mars.dataframe.datasource.read_raydataset import DataFrameReadRayDataset
         from mars.dataframe.utils import parse_index
 
-        from ray.data._internal.pandas_block import PandasBlockSchema
-
         refs = self.to_pandas_refs()
         # remove this when https://github.com/mars-project/mars/issues/2945 got fixed
         schema = self.schema()
-        if isinstance(schema, PandasBlockSchema):
-            dtypes = pd.Series(schema.types, index=schema.names)
-        elif isinstance(schema, pa.Schema):
+        if isinstance(schema, pa.Schema):
             dtypes = schema.empty_table().to_pandas().dtypes
         else:
             raise NotImplementedError(f"Unsupported format of schema {schema}")

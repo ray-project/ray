@@ -131,11 +131,6 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         return pandas.DataFrame()
 
 
-# This is to be compatible with pyarrow.lib.schema
-# TODO (kfstorm): We need a format-independent way to represent schema.
-PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types"])
-
-
 class PandasBlockAccessor(TableBlockAccessor):
     ROW_TYPE = PandasRow
 
