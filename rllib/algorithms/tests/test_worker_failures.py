@@ -574,11 +574,11 @@ class TestWorkerFailure(unittest.TestCase):
             "model": {"fcnet_hiddens": [4]},
             "env_config": {
                 "p_done": 0.0,
-                "max_episode_len": 200,
+                "max_episode_len": 100,
                 "bad_indices": [1, 2],
                 # Env throws error between steps 50 and 150.
-                "failure_start_count": 50,
-                "failure_stop_count": 150,
+                "failure_start_count": 30,
+                "failure_stop_count": 80,
                 "counter": COUNTER_NAME,
             },
             # 2 eval workers.
@@ -621,8 +621,8 @@ class TestWorkerFailure(unittest.TestCase):
             result = a.train()
 
             # Should see a lot of faulty episodes.
-            self.assertGreaterEqual(result["num_faulty_episodes"], 200)
-            self.assertGreaterEqual(result["evaluation"]["num_faulty_episodes"], 200)
+            self.assertGreaterEqual(result["num_faulty_episodes"], 100)
+            self.assertGreaterEqual(result["evaluation"]["num_faulty_episodes"], 100)
 
             self.assertTrue(result["num_healthy_workers"] == 2)
             # All workers are still not restored, since env are restored.
@@ -677,6 +677,9 @@ class TestWorkerFailure(unittest.TestCase):
             # Really large coeff to show the difference in env_wait_time_ms.
             # Pretty much consider the last 2 data points.
             "sampler_perf_stats_ema_coeff": 0.5,
+            # Important, don't smooth over all the episodes,
+            # otherwise we don't see latency spike.
+            "metrics_num_episodes_for_smoothing": 1,
         }
 
         for _ in framework_iterator(config, frameworks=("tf2", "torch")):
@@ -693,10 +696,11 @@ class TestWorkerFailure(unittest.TestCase):
             # Doesn't have to restore env during this iteration.
             result = a.train()
             # Still only 1 faulty episode.
-            self.assertEqual(result["num_faulty_episodes"], 1)
+            self.assertEqual(result["num_faulty_episodes"], 0)
             time_without_restore = result["sampler_perf"]["mean_env_wait_ms"]
 
-            self.assertGreater(time_with_restore, time_without_restore)
+            # wait time with restore is at least 2 times wait time without restore.
+            self.assertGreater(time_with_restore, 2 * time_without_restore)
 
     def test_eval_workers_on_infinite_episodes(self):
         """Tests whether eval workers warn appropriately after some episode timeout."""
