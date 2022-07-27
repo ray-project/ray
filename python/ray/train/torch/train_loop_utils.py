@@ -504,7 +504,10 @@ class _TorchAccelerator(Accelerator):
                     device_id = cuda_visible_list.index(gpu_id)
                 else:
                     raise RuntimeError(
-                        f"CUDA_VISIBLE_DEVICES set incorrectly: {cuda_visible_str}"
+                        "CUDA_VISIBLE_DEVICES set incorrectly. "
+                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
+                        " variable? If not, please help file an issue on Github."
                     )
             else:
                 # If called on the driver or outside of Ray Train, return the
