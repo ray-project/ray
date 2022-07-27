@@ -670,7 +670,7 @@ class AlgorithmConfig:
                 league-based purposes.
             sampler_perf_stats_ema_coef: If specified, perf stats are in EMAs. This
                 is the coeff of how much new data points contribute to the averages.
-                Default is None, which disables EMA and use simple global average instead.
+                Default is None, which uses simple global average instead.
                 The EMA update rule is: updated = (1 - ema_coef) * old + ema_coef * new
 
         Returns:

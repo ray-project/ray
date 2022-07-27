@@ -47,10 +47,11 @@ logger = logging.getLogger(__name__)
 
 MIN_LARGE_BATCH_THRESHOLD = 1000
 DEFAULT_LARGE_BATCH_THRESHOLD = 5000
-MS_TO_SEC_FACTOR = 1000.0
+MS_TO_SEC = 1000.0
 
 
 _PolicyEvalData = namedtuple("_PolicyEvalData", ["env_id", "agent_id", "sample_batch"])
+
 
 class _PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
@@ -105,15 +106,15 @@ class _PerfStats:
         # hence we only need to do the sec -> ms conversion here.
         return {
             # Raw observation preprocessing.
-            "mean_raw_obs_processing_ms": self.raw_obs_processing_time * MS_TO_SEC_FACTOR,
+            "mean_raw_obs_processing_ms": self.raw_obs_processing_time * MS_TO_SEC,
             # Computing actions through policy.
-            "mean_inference_ms": self.inference_time * MS_TO_SEC_FACTOR,
+            "mean_inference_ms": self.inference_time * MS_TO_SEC,
             # Processing actions (to be sent to env, e.g. clipping).
-            "mean_action_processing_ms": self.action_processing_time * MS_TO_SEC_FACTOR,
+            "mean_action_processing_ms": self.action_processing_time * MS_TO_SEC,
             # Waiting for environment (during poll).
-            "mean_env_wait_ms": self.env_wait_time * MS_TO_SEC_FACTOR,
+            "mean_env_wait_ms": self.env_wait_time * MS_TO_SEC,
             # Environment rendering (False by default).
-            "mean_env_render_ms": self.env_render_time * MS_TO_SEC_FACTOR,
+            "mean_env_render_ms": self.env_render_time * MS_TO_SEC,
         }
 
     def get(self):
