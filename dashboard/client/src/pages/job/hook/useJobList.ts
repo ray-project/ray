@@ -1,23 +1,24 @@
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { GlobalContext } from "../../../App";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getJobList } from "../../../service/job";
-import { UnifiedJob } from "../../../type/job";
+import { Job } from "../../../type/job";
 
 export const useJobList = () => {
-  const [jobList, setList] = useState<UnifiedJob[]>([]);
+  const [jobList, setList] = useState<Job[]>([]);
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const [msg, setMsg] = useState("Loading the job list...");
   const [isRefreshing, setRefresh] = useState(true);
-  const { ipLogMap } = useContext(GlobalContext);
   const [filter, setFilter] = useState<
     {
-      key: "job_id" | "status";
+      key: "jobId" | "name" | "language" | "state" | "namespaceId";
       val: string;
     }[]
   >([]);
   const refreshRef = useRef(isRefreshing);
   const tot = useRef<NodeJS.Timeout>();
-  const changeFilter = (key: "job_id" | "status", val: string) => {
+  const changeFilter = (
+    key: "jobId" | "name" | "language" | "state" | "namespaceId",
+    val: string,
+  ) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -36,11 +37,9 @@ export const useJobList = () => {
     }
     const rsp = await getJobList();
 
-    if (rsp) {
-      setList(
-        rsp.data.sort((a, b) => (b.start_time ?? 0) - (a.start_time ?? 0)),
-      );
-      setMsg("Fetched jobs");
+    if (rsp?.data?.data?.summary) {
+      setList(rsp.data.data.summary.sort((a, b) => b.timestamp - a.timestamp));
+      setMsg(rsp.data.msg || "");
     }
 
     tot.current = setTimeout(getJob, 4000);
@@ -56,7 +55,7 @@ export const useJobList = () => {
   }, [getJob]);
   return {
     jobList: jobList.filter((node) =>
-      filter.every((f) => node[f.key] && (node[f.key] ?? "").includes(f.val)),
+      filter.every((f) => node[f.key] && node[f.key].includes(f.val)),
     ),
     msg,
     isRefreshing,
@@ -65,6 +64,5 @@ export const useJobList = () => {
     page,
     originalJobs: jobList,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
-    ipLogMap,
   };
 };

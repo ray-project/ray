@@ -5,7 +5,6 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-import subprocess
 from typing import Optional
 from unittest.mock import patch
 
@@ -21,15 +20,11 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.dashboard.modules.job.common import JobInfo
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
-from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
-
-# This test requires you have AWS credentials set up (any AWS credentials will
-# do, this test only accesses a public bucket).
 
 logger = logging.getLogger(__name__)
 
@@ -49,28 +44,22 @@ def job_sdk_client(headers):
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
+# NOTE(architkulkarni): This test must be run first in order for the job
+# submission history of the shared Ray runtime to be empty.
 @pytest.mark.parametrize("use_sdk", [True, False])
-def test_list_jobs_empty(headers, use_sdk: bool):
-    # Create a cluster using `ray start` instead of `ray.init` to avoid creating a job
-    subprocess.check_output(["ray", "start", "--head"])
-    address = "http://127.0.0.1:8265"
-    try:
-        with set_env_var("RAY_ADDRESS", address):
-            client = JobSubmissionClient(format_web_url(address), headers=headers)
+def test_list_jobs_empty(job_sdk_client: JobSubmissionClient, use_sdk: bool):
+    client = job_sdk_client
 
-            if use_sdk:
-                assert client.list_jobs() == []
-            else:
-                r = client._do_request(
-                    "GET",
-                    "/api/jobs/",
-                )
+    if use_sdk:
+        assert client.list_jobs() == dict()
+    else:
+        r = client._do_request(
+            "GET",
+            "/api/jobs/",
+        )
 
-                assert r.status_code == 200
-                assert json.loads(r.text) == []
-
-    finally:
-        subprocess.check_output(["ray", "stop", "--force"])
+        assert r.status_code == 200
+        assert json.loads(r.text) == dict()
 
 
 @pytest.mark.parametrize("use_sdk", [True, False])
@@ -80,17 +69,13 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
     runtime_env = {"env_vars": {"TEST": "123"}}
     metadata = {"foo": "bar"}
     entrypoint = "echo hello"
-    submission_id = client.submit_job(
+    job_id = client.submit_job(
         entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=submission_id)
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
     if use_sdk:
-        info: JobDetails = next(
-            job_info
-            for job_info in client.list_jobs()
-            if job_info.submission_id == submission_id
-        )
+        info: JobInfo = client.list_jobs()[job_id]
     else:
         r = client._do_request(
             "GET",
@@ -99,12 +84,8 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
 
         assert r.status_code == 200
         jobs_info_json = json.loads(r.text)
-        info_json = next(
-            job_info
-            for job_info in jobs_info_json
-            if job_info["submission_id"] == submission_id
-        )
-        info = JobDetails(**info_json)
+        info_json = jobs_info_json[job_id]
+        info = JobInfo(**info_json)
 
     assert info.entrypoint == entrypoint
     assert info.status == JobStatus.SUCCEEDED
@@ -112,10 +93,6 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
     assert info.end_time >= info.start_time
     assert info.runtime_env == runtime_env
     assert info.metadata == metadata
-
-    # Test get job status by job / driver id
-    status = client.get_job_status(info.submission_id)
-    assert status == JobStatus.SUCCEEDED
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
@@ -491,9 +468,7 @@ def test_submit_optional_args(job_sdk_client):
         json_data={"entrypoint": "ls"},
     )
 
-    wait_for_condition(
-        _check_job_succeeded, client=client, job_id=r.json()["submission_id"]
-    )
+    wait_for_condition(_check_job_succeeded, client=client, job_id=r.json()["job_id"])
 
 
 def test_missing_resources(job_sdk_client):

@@ -164,15 +164,12 @@ def test_list_jobs_empty(job_manager: JobManager):
 
 @pytest.mark.asyncio
 async def test_list_jobs(job_manager: JobManager):
-    job_manager.submit_job(entrypoint="echo hi", submission_id="1")
+    job_manager.submit_job(entrypoint="echo hi", job_id="1")
 
     runtime_env = {"env_vars": {"TEST": "123"}}
     metadata = {"foo": "bar"}
     job_manager.submit_job(
-        entrypoint="echo hello",
-        submission_id="2",
-        runtime_env=runtime_env,
-        metadata=metadata,
+        entrypoint="echo hello", job_id="2", runtime_env=runtime_env, metadata=metadata
     )
     await async_wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id="1"
@@ -194,20 +191,18 @@ async def test_list_jobs(job_manager: JobManager):
 
 @pytest.mark.asyncio
 async def test_pass_job_id(job_manager):
-    submission_id = "my_custom_id"
+    job_id = "my_custom_id"
 
-    returned_id = job_manager.submit_job(
-        entrypoint="echo hello", submission_id=submission_id
-    )
-    assert returned_id == submission_id
+    returned_id = job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
+    assert returned_id == job_id
 
     await async_wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=submission_id
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
     )
 
     # Check that the same job_id is rejected.
     with pytest.raises(RuntimeError):
-        job_manager.submit_job(entrypoint="echo hello", submission_id=submission_id)
+        job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
 
 
 @pytest.mark.asyncio
