@@ -23,7 +23,6 @@ from ray.autoscaler._private._kubernetes.node_provider import KubernetesNodeProv
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.util import (
-    _get_default_config,
     fill_node_type_min_max_workers,
     merge_setup_commands,
     prepare_config,
