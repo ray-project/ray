@@ -89,9 +89,7 @@ class TorchPredictor(DLPredictor):
 
     def call_model(
         self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
-    ) -> Union[
-        torch.Tensor, Dict[str, torch.Tensor], List[torch.Tensor], Tuple[torch.Tensor]
-    ]:
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """Runs inference on a single batch of tensor data.
 
         This method is called by `TorchPredictor.predict` after converting the
@@ -107,7 +105,7 @@ class TorchPredictor(DLPredictor):
         Returns:
             The model outputs, either as a single tensor or a collection of tensors.
 
-        """
+        """)
         with torch.no_grad():
             output = self.model(tensor)
         return output
@@ -191,4 +189,6 @@ class TorchPredictor(DLPredictor):
 
 
     def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
+        if not isinstance(tensor, torch.Tensor):
+            raise ValueError("Expected a torch.Tensor, got {}".format(type(tensor)))
         return tensor.cpu().detach().numpy()

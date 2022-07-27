@@ -205,4 +205,6 @@ class TensorflowPredictor(DLPredictor):
         return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtypes)
 
     def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
+        if not isinstance(tensor, tf.Tensor):
+            raise ValueError("Expected a torch.Tensor, got {}".format(type(tensor)))
         return tensor.numpy()

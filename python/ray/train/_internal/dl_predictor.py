@@ -50,7 +50,7 @@ class DLPredictor(Predictor):
     @abc.abstractmethod
     def call_model(
         self, tensor: Union[TensorType, Dict[str, TensorType]]
-    ) -> Union[TensorType, Dict[str, TensorType], List[TensorType], Tuple[TensorType]]:
+    ) -> Union[TensorType, Dict[str, TensorType]]:
         """Inputs the tensor to the model for this Predictor and returns the result.
 
         Args:
@@ -74,14 +74,6 @@ class DLPredictor(Predictor):
             return pd.DataFrame(
                 {k: TensorArray(self._tensor_to_array(v)) for k, v in output}
             )
-        elif isinstance(output, list) or isinstance(output, tuple):
-            tensor_name = "output_"
-            output_dict = {}
-            for i in range(len(output)):
-                output_dict[tensor_name + str(i + 1).zfill(5)] = TensorArray(
-                    self._tensor_to_array(output[i])
-                )
-            return pd.DataFrame(output_dict)
         else:
             return pd.DataFrame(
                 {"predictions": TensorArray(self._tensor_to_array(output))},
