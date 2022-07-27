@@ -16,8 +16,8 @@ import ray
 from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
-from ray.serve.autoscaling_metrics import InMemoryMetricsStore
-from ray.serve.common import (
+from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
+from ray.serve._private.common import (
     DeploymentInfo,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -27,7 +27,7 @@ from ray.serve.common import (
     RunningReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -35,15 +35,15 @@ from ray.serve.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.long_poll import LongPollHost, LongPollNamespace
-from ray.serve.storage.kv_store import KVStoreBase
-from ray.serve.utils import (
+from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
+from ray.serve._private.storage.kv_store import KVStoreBase
+from ray.serve._private.utils import (
     JavaActorHandleProxy,
     format_actor_name,
     get_random_letters,
     msgpack_serialize,
 )
-from ray.serve.version import DeploymentVersion, VersionedReplica
+from ray.serve._private.version import DeploymentVersion, VersionedReplica
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

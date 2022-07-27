@@ -8,7 +8,7 @@ import os
 import random
 from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
 
-from ray.serve.common import ReplicaName
+from ray.serve._private.common import ReplicaName
 from ray.serve.generated.serve_pb2 import (
     LongPollRequest,
     UpdatedObject as UpdatedObjectProto,
@@ -19,8 +19,8 @@ from ray.serve.generated.serve_pb2 import (
 )
 
 import ray
-from ray.serve.constants import SERVE_LOGGER_NAME
-from ray.serve.utils import format_actor_name
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.utils import format_actor_name
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

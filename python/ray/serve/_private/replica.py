@@ -17,10 +17,10 @@ from ray.remote_function import RemoteFunction
 from ray.util import metrics
 from ray._private.async_compat import sync_to_async
 
-from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.common import HEALTH_CHECK_CONCURRENCY_GROUP, ReplicaTag
+from ray.serve._private.autoscaling_metrics import start_metrics_pusher
+from ray.serve._private.common import HEALTH_CHECK_CONCURRENCY_GROUP, ReplicaTag
 from ray.serve.config import DeploymentConfig
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
@@ -29,11 +29,15 @@ from ray.serve.constants import (
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve.http_util import ASGIHTTPSender
-from ray.serve.logging_utils import access_log_msg, configure_component_logger
-from ray.serve.router import Query, RequestMetadata
-from ray.serve.utils import parse_import_path, parse_request_item, wrap_to_ray_error
-from ray.serve.version import DeploymentVersion
+from ray.serve._private.http_util import ASGIHTTPSender
+from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
+from ray.serve._private.router import Query, RequestMetadata
+from ray.serve._private.utils import (
+    parse_import_path,
+    parse_request_item,
+    wrap_to_ray_error,
+)
+from ray.serve._private.version import DeploymentVersion
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -110,7 +114,7 @@ def create_replica_wrapper(name: str):
             # Set the controller name so that serve.connect() in the user's
             # code will connect to the instance that this deployment is running
             # in.
-            ray.serve.context.set_internal_replica_context(
+            ray.serve.context._set_internal_replica_context(
                 deployment_name,
                 replica_tag,
                 controller_name,
@@ -141,7 +145,7 @@ def create_replica_wrapper(name: str):
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
 
                 # Setting the context again to update the servable_object.
-                ray.serve.context.set_internal_replica_context(
+                ray.serve.context._set_internal_replica_context(
                     deployment_name,
                     replica_tag,
                     controller_name,

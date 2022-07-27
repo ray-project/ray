@@ -8,9 +8,9 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Type, U
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.common import DeploymentInfo, DeploymentStatus, StatusOverview
+from ray.serve._private.common import DeploymentInfo, DeploymentStatus, StatusOverview
 from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_NAMESPACE,

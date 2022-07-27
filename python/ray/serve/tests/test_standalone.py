@@ -23,7 +23,7 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve.config import HTTPOptions
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
@@ -31,8 +31,12 @@ from ray.serve.constants import (
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
-from ray.serve.http_util import set_socket_reuse_port
-from ray.serve.utils import block_until_http_ready, format_actor_name, get_all_node_ids
+from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.utils import (
+    block_until_http_ready,
+    format_actor_name,
+    get_all_node_ids,
+)
 from ray.serve.schema import ServeApplicationSchema
 
 # Explicitly importing it here because it is a ray core tests utility (

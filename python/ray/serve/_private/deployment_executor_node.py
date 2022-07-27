@@ -1,7 +1,9 @@
 from typing import Any, Dict, List
 
 from ray.dag import DAGNode
-from ray.serve.deployment_method_executor_node import DeploymentMethodExecutorNode
+from ray.serve._private.deployment_method_executor_node import (
+    DeploymentMethodExecutorNode,
+)
 from ray.dag.constants import DAGNODE_TYPE_KEY, PARENT_CLASS_NODE_KEY
 from ray.dag.format_utils import get_dag_node_str
 from ray.serve.handle import RayServeHandle

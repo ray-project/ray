@@ -8,18 +8,18 @@ from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from ray.serve.config import HTTPOptions, DeploymentMode
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     SERVE_LOGGER_NAME,
     SERVE_PROXY_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.http_proxy import HTTPProxyActor
-from ray.serve.utils import (
+from ray.serve._private.http_proxy import HTTPProxyActor
+from ray.serve._private.utils import (
     format_actor_name,
     get_all_node_ids,
 )
-from ray.serve.common import EndpointTag, NodeId
+from ray.serve._private.common import EndpointTag, NodeId
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

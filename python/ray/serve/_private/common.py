@@ -6,7 +6,7 @@ from typing import Any, List, Dict, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
-from ray.serve.autoscaling_policy import AutoscalingPolicy
+from ray.serve._private.autoscaling_policy import AutoscalingPolicy
 from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
     DeploymentStatusInfo as DeploymentStatusInfoProto,
@@ -142,8 +142,8 @@ class StatusOverview:
 
         # Recreate deployment statuses
         deployment_statuses = []
-        for proto in proto.deployment_statuses.deployment_status_infos:
-            deployment_statuses.append(DeploymentStatusInfo.from_proto(proto))
+        for info_proto in proto.deployment_statuses.deployment_status_infos:
+            deployment_statuses.append(DeploymentStatusInfo.from_proto(info_proto))
 
         # Recreate StatusInfo
         return cls(app_status=app_status, deployment_statuses=deployment_statuses)
@@ -193,7 +193,7 @@ class DeploymentInfo:
     @property
     def actor_def(self):
         # Delayed import as replica depends on this file.
-        from ray.serve.replica import create_replica_wrapper
+        from ray.serve._private.replica import create_replica_wrapper
 
         if self._cached_actor_def is None:
             assert self.actor_name is not None

@@ -17,17 +17,17 @@ from ray.util import metrics
 
 from ray import serve
 from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import (
+from ray.serve._private.http_util import (
     HTTPRequestWrapper,
     RawASGIResponse,
     receive_http_body,
     Response,
     set_socket_reuse_port,
 )
-from ray.serve.common import EndpointInfo, EndpointTag
-from ray.serve.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
-from ray.serve.long_poll import LongPollClient, LongPollNamespace
-from ray.serve.logging_utils import access_log_msg, configure_component_logger
+from ray.serve._private.common import EndpointInfo, EndpointTag
+from ray.serve._private.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
+from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
+from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -197,7 +197,7 @@ class HTTPProxy:
     def __init__(self, controller_name: str):
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
-        ray.serve.context.set_internal_replica_context(
+        ray.serve.context._set_internal_replica_context(
             None, None, controller_name, None
         )
 

@@ -15,7 +15,7 @@ from pydantic import (
 )
 
 from ray import cloudpickle
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
@@ -31,8 +31,10 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray._private import ray_option_utils
 from ray._private.utils import resources_from_ray_options
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+@PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
@@ -96,6 +98,7 @@ def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bo
         return False
 
 
+@PublicAPI(stability="stable")
 class DeploymentConfig(BaseModel):
     """Configuration options for a deployment, to be set by the user.
 
@@ -256,6 +259,7 @@ class DeploymentConfig(BaseModel):
         return config
 
 
+@DeveloperAPI
 class ReplicaConfig:
     """Configuration for a deployment's replicas.
 
@@ -478,6 +482,7 @@ class ReplicaConfig:
         return self.to_proto().SerializeToString()
 
 
+@DeveloperAPI
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"
     HeadOnly = "HeadOnly"
@@ -485,6 +490,7 @@ class DeploymentMode(str, Enum):
     FixedNumber = "FixedNumber"
 
 
+@PublicAPI(stability="beta")
 class HTTPOptions(pydantic.BaseModel):
     # Documentation inside serve.start for user's convenience.
     host: Optional[str] = DEFAULT_HTTP_HOST
