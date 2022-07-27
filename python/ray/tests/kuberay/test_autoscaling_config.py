@@ -95,11 +95,11 @@ def _get_basic_autoscaling_config() -> dict:
         "head_node_type": "head-group",
         "head_setup_commands": [],
         "head_start_ray_commands": [],
-        "idle_timeout_minutes": 5,
+        "idle_timeout_minutes": 1.0,
         "initialization_commands": [],
         "max_workers": 600,
         "setup_commands": [],
-        "upscaling_speed": 1,
+        "upscaling_speed": 1000,
         "worker_nodes": {},
         "worker_setup_commands": [],
         "worker_start_ray_commands": [],
@@ -172,16 +172,16 @@ def _get_gpu_complaint() -> str:
 def _get_ray_cr_with_autoscaler_options() -> dict:
     cr = _get_basic_ray_cr()
     cr["spec"]["autoscalerOptions"] = {
-        "upscalingMode": "Aggressive",
-        "idleTimeoutSeconds": 60,
+        "upscalingMode": "Conservative",
+        "idleTimeoutSeconds": 300,
     }
     return cr
 
 
 def _get_autoscaling_config_with_options() -> dict:
     config = _get_basic_autoscaling_config()
-    config["upscaling_speed"] = 1000
-    config["idle_timeout_minutes"] = 1.0
+    config["upscaling_speed"] = 1
+    config["idle_timeout_minutes"] = 5.0
     return config
 
 
