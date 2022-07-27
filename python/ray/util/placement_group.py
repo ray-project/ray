@@ -1,9 +1,10 @@
+import warnings
 from typing import Dict, List, Optional, Union
 
 import ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
 from ray._private.ray_constants import to_memory_units
-from ray._private.utils import hex_to_binary
+from ray._private.utils import hex_to_binary, get_ray_doc_version
 from ray._raylet import PlacementGroupID
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -190,6 +191,17 @@ def placement_group(
             # Make sure the memory resource can be
             # transformed to memory unit.
             to_memory_units(bundle["memory"], True)
+
+        if "object_store_memory" in bundle.keys():
+            warnings.warn(
+                "Setting 'object_store_memory' for"
+                " bundles is deprecated since it doesn't actually"
+                " reserve the required object store memory."
+                f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
+                "instead to bypass the object store memory size limitation.",
+                DeprecationWarning,
+                stacklevel=1,
+            )
 
     if lifetime is None:
         detached = False
