@@ -1,6 +1,7 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
+from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
@@ -35,7 +36,7 @@ class DirectMethod(OffPolicyEstimator):
         self,
         policy: Policy,
         gamma: float,
-        q_model_config: Dict = None,
+        q_model_config: Optional[Dict] = None,
     ):
         """Initializes a Direct Method OPE Estimator.
 
@@ -55,7 +56,8 @@ class DirectMethod(OffPolicyEstimator):
         ), "DirectMethod estimator only works with torch!"
         super().__init__(policy, gamma)
 
-        model_cls = q_model_config.pop("type")
+        q_model_config = q_model_config or {}
+        model_cls = q_model_config.pop("type", FQETorchModel)
         self.model = model_cls(
             policy=policy,
             gamma=gamma,
