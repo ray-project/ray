@@ -131,7 +131,9 @@ def test_checkpoint_freq(ray_start_4_cpus):
 
 @pytest.mark.parametrize("num_gpus_per_worker, expected_local_rank", [(0.5, 0), (1,0), (2,0)])
 def test_tune_torch_get_device_gpu(ray_2_node_2_gpu, num_gpus_per_worker, expected_local_rank):
-    """Tests if GPU ids are set correctly when running train concurrently in nested actors (for example when used with Tune)."""
+    """Tests if GPU ids are set correctly when running train concurrently in nested actors
+       (for example when used with Tune).
+    """
     from ray.air.config import ScalingConfig
     import time
 
@@ -160,7 +162,8 @@ def test_tune_torch_get_device_gpu(ray_2_node_2_gpu, num_gpus_per_worker, expect
                     num_workers=num_workers,
                     use_gpu=True,
                     resources_per_worker={"GPU": num_gpus_per_worker},
-                    placement_strategy='SPREAD' # Each gpu worker will be spread onto separate nodes on a best effort basis.
+                    placement_strategy='SPREAD' 
+                    # Each gpu worker will be spread onto separate nodes on a best effort basis.
                 ),
             )
 
