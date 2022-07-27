@@ -6,21 +6,29 @@ bc-halfcheetahbulletenv-v0:
         # Can not check throughput for offline methods.
         # timesteps_total: 10000000
     stop:
-        time_total_s: 7200
+        time_total_s: 3600
     config:
         # Use input produced by expert SAC algo.
-        input: ["~/halfcheetah_expert_sac.zip"]
+        framework: "torch"
+        input: "dataset"
+        input_config:
+            format: "json"
+            paths: "/home/ray/halfcheetah_expert_sac.zip"
         actions_in_input_normalized: true
+        # Switch off input evaluation (data does not contain action probs).
+        off_policy_estimation_methods: {}
 
         num_gpus: 1
 
         model:
             fcnet_activation: relu
             fcnet_hiddens: [256, 256, 256]
-
-        evaluation_num_workers: 1
+        num_workers: 8
+        evaluation_num_workers: 2
         evaluation_parallel_to_training: true
         evaluation_interval: 3
         evaluation_config:
             input: sampler
         always_attach_evaluation_results: True
+        lr: 0.001
+        grad_clip: 40
