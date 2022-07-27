@@ -110,8 +110,8 @@ class DAGDriver:
             assert isinstance(dags, (RayServeDAGHandle, RayServeLazySyncHandle))
             self.dag_handle = dags
 
-            @self.app.get(f"/")
-            @self.app.post(f"/")
+            @self.app.get("/")
+            @self.app.post("/")
             async def handle_request(inp=Depends(http_adapter)):
                 return await self.predict(inp)
 
