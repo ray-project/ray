@@ -23,6 +23,14 @@ from ray.train.rl.rl_predictor import RLPredictor
 from ray.tune.trainable.util import TrainableUtil
 
 
+@pytest.fixture
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 class _DummyAlgo(Algorithm):
     train_exec_impl = None
 
