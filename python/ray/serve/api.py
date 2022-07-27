@@ -96,7 +96,7 @@ def start(
     client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
     # Record after Ray has been started.
-    record_extra_usage_tag(TagKey.SERVE_USING_V1_API, "")
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
 
     return client
 
@@ -400,7 +400,7 @@ def get_deployment(name: str) -> Deployment:
     Returns:
         Deployment
     """
-    record_extra_usage_tag(TagKey.SERVE_USING_V1_API, "")
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.get_deployment(name)
 
 
@@ -411,7 +411,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-    record_extra_usage_tag(TagKey.SERVE_USING_V1_API, "")
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.list_deployments()
 
 
@@ -445,7 +445,7 @@ def run(
     )
 
     # Record after Ray has been started.
-    record_extra_usage_tag(TagKey.SERVE_USING_V2_API, "")
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())

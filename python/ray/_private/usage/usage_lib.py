@@ -254,8 +254,9 @@ class TagKey(Enum):
     RLLIB_NUM_WORKERS = auto()
 
     # Serve
-    SERVE_USING_V1_API = auto()
+    # The public Python API version ("v1", "v2").
     SERVE_API_VERSION = auto()
+    # The total number of running serve deployments as a string.
     SERVE_NUM_DEPLOYMENTS = auto()
 
 
