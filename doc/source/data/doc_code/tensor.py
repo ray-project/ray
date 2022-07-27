@@ -53,7 +53,8 @@ def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 
 ds.map_batches(single_col_udf)
-# -> Dataset(num_blocks=17, num_rows=1000, schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
+# -> Dataset(num_blocks=17, num_rows=1000,
+#            schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
 # __create_pandas_end__
 
 # __create_pandas_2_begin__
@@ -73,7 +74,9 @@ def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
 
 
 ds.map_batches(multi_col_udf)
-# -> Dataset(num_blocks=17, num_rows=1000, schema={image: TensorDtype(shape=(128, 128, 3), dtype=int64), embed: TensorDtype(shape=(256,), dtype=uint8)})
+# -> Dataset(num_blocks=17, num_rows=1000,
+#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=int64),
+#                    embed: TensorDtype(shape=(256,), dtype=uint8)})
 # __create_pandas_2_end__
 
 # __create_numpy_begin__
@@ -95,7 +98,9 @@ import ray
 
 # Reading previously saved Tensor data works out of the box.
 ds = ray.data.read_parquet("example://parquet_images_mini")
-# -> Dataset(num_blocks=3, num_rows=3, schema={image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8), label: string})
+# -> Dataset(num_blocks=3, num_rows=3,
+#            schema={image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8),
+#                    label: string})
 
 ds.take(1)
 # -> [{'image':
@@ -193,7 +198,9 @@ ds.fully_executed()
 from ray.data.datasource import ImageFolderDatasource
 
 ds = ray.data.read_datasource(ImageFolderDatasource(), root="example://image-folder", size=(128, 128))
-# -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8), label: object})
+# -> Dataset(num_blocks=3, num_rows=3,
+#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8),
+#                    label: object})
 
 ds.take(1)
 # -> [{'image':
