@@ -28,7 +28,7 @@ def ray_start_4_cpus():
 def ray_2_node_2_gpu():
     cluster = Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=8, num_gpus=4)
+        cluster.add_node(num_cpus=4, num_gpus=2)
 
     ray.init(address=cluster.address)
 
@@ -129,53 +129,43 @@ def test_checkpoint_freq(ray_start_4_cpus):
         trainer.fit()
 
 
-@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
-def test_tune_torch_get_device_gpu(ray_2_node_2_gpu, num_gpus_per_worker):
-    """Tests if GPU ids are set correctly when running train concurrently in nested
-    actors (for example when used with Tune)."""
+@pytest.mark.parametrize("num_gpus_per_worker, expected_local_rank", [(0.5, 0), (1,0), (2,0)])
+def test_tune_torch_get_device_gpu(ray_2_node_2_gpu, num_gpus_per_worker, expected_local_rank):
+    """Tests if GPU ids are set correctly when running train concurrently in nested actors (for example when used with Tune)."""
     from ray.air.config import ScalingConfig
-    from ray.air import session
     import time
 
-    num_samples = 2
-    num_workers = int(2 // num_gpus_per_worker)
+    num_samples = int(2 // num_gpus_per_worker)
+    num_workers = 2
 
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
-        local_rank = session.get_local_rank()
-        if num_gpus_per_worker == 0.5:
-            assert train.torch.get_device().index == 0
-        else:
-            # if num_gpus_per_worker == 1:
-            # CUDA_VISIBLE_DEVICES=0,1, and device index will be 0, 1
-            # or CUDA_VISIBLE_DEVICES=2,3, and device index will still be 0, 1
-            # Thus, device_index equals local_rank
-            # if num_gpus_per_worker == 2:
-            # CUDA_VISIBLE_DEVICES=0,1,2,3 and device index will be 0, 2
-            # Thus, device_index equals twice the local_rank
-            assert train.torch.get_device().index == local_rank * num_gpus_per_worker
-
-    @ray.remote(num_gpus=2)
+        # two workers are spread across two different nodes
+        # the device ids are always set to 0, 
+        # for example, if `num_gpus_per_worker`` is 2, 
+        # then each worker will have `ray.get_gpu_ids() == [0, 1]`
+        # and thus, the local rank is 0. 
+        assert train.torch.get_device().index == expected_local_rank
+        
+    @ray.remote
     class TrialActor:
         def __init__(self, warmup_steps):
             # adding warmup_steps to the config
             # to avoid the error of checkpoint name conflict
             time.sleep(2 * warmup_steps)
-            trainer = TorchTrainer(
+            self.trainer = TorchTrainer(
                 train_fn,
                 torch_config=TorchConfig(backend="gloo"),
                 scaling_config=ScalingConfig(
                     num_workers=num_workers,
                     use_gpu=True,
                     resources_per_worker={"GPU": num_gpus_per_worker},
+                    placement_strategy='SPREAD' # Each gpu worker will be spread onto separate nodes on a best effort basis.
                 ),
             )
 
-            self.trainer = trainer
-
         def run(self):
-            ids = self.trainer.fit()
-            return ids
+            return self.trainer.fit()
 
     actors = [TrialActor.remote(_) for _ in range(num_samples)]
     ray.get([actor.run.remote() for actor in actors])
