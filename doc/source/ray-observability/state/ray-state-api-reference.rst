@@ -33,8 +33,11 @@ Log CLI
 Log CLI allows users to access the log from the cluster. 
 Note that only the logs from alive nodes are available through this API.
 
-.. click:: ray.scripts.scripts:ray_logs
-    :prog: ray logs
+.. click:: ray.experimental.state.state_cli:log_file
+    :prog: ray logs file
+
+.. click:: ray.experimental.state.state_cli:log_actor
+    :prog: ray logs actor
 
 .. _state-api-schema:
 

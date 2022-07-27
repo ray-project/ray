@@ -114,7 +114,13 @@ def _get_available_resources(
 
 
 def get_api_server_url(address: Optional[str] = None) -> str:
-    address = services.canonicalize_bootstrap_address_or_die(address)
+    try:
+        address = services.canonicalize_bootstrap_address_or_die(address)
+    except ConnectionError as e:
+        # Re-throw the error to hide traceback(which is not useful)
+        # from the user.
+        raise click.UsageError(message=str(e))
+
     gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(
@@ -123,7 +129,6 @@ def get_api_server_url(address: Optional[str] = None) -> str:
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         num_retries=20,
     )
-
     if api_server_url is None:
         raise ValueError(
             (
@@ -677,10 +682,32 @@ def object_summary(ctx, timeout: float, address: str):
 @click.group("logs", invoke_without_command=True)
 @click.pass_context
 def logs_state_cli_group(ctx):
-    """Get logs based on filename (file) or resource identifiers (actor)"""
+    """Get logs based on filename (file) or resource identifiers (actor)
+
+    Usage:
+
+        Get all the log files available on a node (ray address could be
+        obtained from `ray start --head` or `ray.init()`)
+
+        ```
+        ray log --address=<ray address>
+        ```
+
+        [ray logs file] Print the last 500 lines of raylet.out on a head node.
+
+        ```
+        ray logs file raylet.out --tail 500
+        ```
+
+        [ray logs actor] Follow the log file with an actor id ABC.
+
+        ```
+        ray logs actor --id ABC --follow
+        ```
+    """
     if ctx.invoked_subcommand is None:
         # Forward to `ray logs file`
-        ctx.invoke(log_files)
+        ctx.invoke(log_file)
 
 
 def _parse_log_node_target(
@@ -806,7 +833,7 @@ def _print_log(
 @log_interval_option
 @log_timeout_option
 @click.pass_context
-def log_files(
+def log_file(
     ctx,
     address: Optional[str],
     node_id: Optional[str],
@@ -928,7 +955,7 @@ def log_actor(
     interval: float,
     timeout: int,
 ):
-    """Print the log associated with an actor
+    """Print the log associated with an actor.
 
     Usage:
 
@@ -939,6 +966,7 @@ def log_actor(
         ```
 
         Get the actor log from pid 123, ip ABC.
+
         Note that this goes well with the driver log of Ray which prints
         (ip=ABC, pid=123, class_name) logs.
 

@@ -23,7 +23,7 @@ from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import tail as tail_file
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.experimental.state.state_cli import log_files, log_actor
+from ray.experimental.state.state_cli import log_file, log_actor
 from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
 from ray.experimental.state.common import GetLogOptions
 from ray.experimental.state.exception import DataSourceUnavailable
@@ -691,7 +691,7 @@ def test_log_cli_files(shutdown_only):
 
     # Test the head node is chosen by default.
     def verify():
-        result = runner.invoke(log_files)
+        result = runner.invoke(log_file)
         print(result.output)
         assert result.exit_code == 0
         assert "raylet.out" in result.output
@@ -704,7 +704,7 @@ def test_log_cli_files(shutdown_only):
 
     # Test when there's only 1 match, it prints logs.
     def verify():
-        result = runner.invoke(log_files, ["raylet.out"])
+        result = runner.invoke(log_file, ["raylet.out"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" not in result.output
@@ -719,7 +719,7 @@ def test_log_cli_files(shutdown_only):
 
     # Test when there's more than 1 match, it prints a list of logs.
     def verify():
-        result = runner.invoke(log_files, ["raylet.*"])
+        result = runner.invoke(log_file, ["raylet.*"])
         assert result.exit_code == 0
         print(result.output)
         assert "raylet.out" in result.output

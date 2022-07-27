@@ -106,7 +106,7 @@ You can also access logs through ``ray logs`` API.
 .. code-block:: bash
 
     ray list actors
-    ray logs --actor-id <ACTOR_ID>
+    ray logs actor --id <ACTOR_ID>
 
 .. code-block:: text
 
@@ -251,26 +251,26 @@ E.g., Get a particular log file from a node
 .. code-block:: bash
 
     # You could get the node id / node ip from `ray list nodes` 
-    ray logs gcs_server.out --node-id <XYZ> 
+    ray logs file gcs_server.out --node-id <XYZ> 
 
 E.g., Stream a log file from a node
 
 .. code-block:: bash
 
-    ray logs -f raylet.out --node-ip 172.31.47.143
+    ray logs file -f raylet.out --node-ip 172.31.47.143
 
 E.g., Stream actor log with actor id 
 
 .. code-block:: bash
 
     # You could use ray list actors to get the actor ids
-    ray logs --actor-id=<XXX>
+    ray logs actor --id=<XXX>
 
-E.g., Stream log from a pid 
+E.g., Stream log from a pid running the actor
 
 .. code-block:: bash
 
-    ray logs --pid=<XXX> --follow
+    ray logs actor --pid=<XXX> --follow
 
 Failure Semantics
 -----------------
