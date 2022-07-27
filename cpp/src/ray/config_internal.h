@@ -60,6 +60,10 @@ class ConfigInternal {
 
   std::vector<std::string> head_args = {};
 
+  boost::optional<RuntimeEnv> runtime_env;
+
+  int runtime_env_hash = 0;
+
   // The default actor lifetime type.
   rpc::JobConfig_ActorLifetime default_actor_lifetime =
       rpc::JobConfig_ActorLifetime_NON_DETACHED;
