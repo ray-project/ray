@@ -3,7 +3,7 @@ import os
 import urllib.parse
 from typing import List, Optional, Tuple
 
-from ray.util.ml_utils.filelock import TempFileLock
+from ray.air._internal.filelock import TempFileLock
 
 try:
     import fsspec
