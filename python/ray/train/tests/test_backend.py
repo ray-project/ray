@@ -81,9 +81,11 @@ def ray_2_node_4_gpu():
 def gen_execute_special(special_f):
     def execute_async_special(self, f):
         """Runs f on worker 0, special_f on other workers."""
-        futures = [self.workers[0].actor._BaseWorkerMixin__execute.remote(f)]
+        futures = [self.workers[0].actor._DistributedRayWorker__execute.remote(f)]
         for worker in self.workers[1:]:
-            futures.append(worker.actor._BaseWorkerMixin__execute.remote(special_f))
+            futures.append(
+                worker.actor._DistributedRayWorker__execute.remote(special_f)
+            )
         return futures
 
     return execute_async_special
