@@ -185,6 +185,17 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
   /// "ClusterResourceSchedulerTest" have different namespaces.
   friend void SetUnitInstanceResourceIds(absl::flat_hash_set<ResourceID> ids);
 
+  bool IsPlacementGroupWildcardResource() const {
+    auto resource_name = this->Binary();
+    std::string pattern("_group_");
+    auto idx = resource_name.find(pattern);
+    if (idx != std::string::npos &&
+        resource_name.find("_", idx + pattern.size()) == std::string::npos) {
+      return true;
+    }
+    return false;
+  }
+
  private:
   /// Return the IDs of all unit-instance resources.
   static absl::flat_hash_set<int64_t> &UnitInstanceResources();

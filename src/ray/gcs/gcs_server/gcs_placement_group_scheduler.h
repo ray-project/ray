@@ -332,6 +332,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                                 std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles) override;
 
+  /// Add resources changed listener.
+  void AddResourcesChangedListener(std::function<void()> listener);
+
  protected:
   /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
   /// on a node until COMMIT or CANCEL requests are sent to a node.
@@ -457,6 +460,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The syncer of resource. This is used to report placement group updates.
   /// TODO (iycheng): Remove this one from pg once we finish the refactor
   gcs_syncer::RaySyncer *ray_syncer_;
+
+  /// The resources changed listeners.
+  std::vector<std::function<void()>> resources_changed_listeners_;
 };
 
 }  // namespace gcs

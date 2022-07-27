@@ -106,8 +106,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                 .second);
 
   // Acquire resources from gcs resources manager to reserve bundle resources.
-  const auto &prepared_bundle_locations = lease_status_tracker->GetBundleLocations();
-  AcquireBundleResources(prepared_bundle_locations);
+  const auto &bundle_locations = lease_status_tracker->GetBundleLocations();
+  AcquireBundleResources(bundle_locations);
 
   // Covert to a set of bundle specifications grouped by the node.
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
@@ -620,9 +620,21 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
   auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
   for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
     for (const auto &[resource_id, capacity] : node_bundle_resources.ToMap()) {
-      cluster_resource_manager.UpdateResourceCapacity(
-          node_id, resource_id, capacity.Double());
+      if (resource_id.IsPlacementGroupWildcardResource()) {
+        auto current_capacity = cluster_resource_manager.GetNodeResources(node_id)
+                                    .total.Get(resource_id)
+                                    .Double();
+        cluster_resource_manager.UpdateResourceCapacity(
+            node_id, resource_id, current_capacity + capacity.Double());
+      } else {
+        cluster_resource_manager.UpdateResourceCapacity(
+            node_id, resource_id, capacity.Double());
+      }
     }
+  }
+
+  for (const auto &listener : resources_changed_listeners_) {
+    listener();
   }
 }
 
@@ -631,25 +643,66 @@ void GcsPlacementGroupScheduler::ReturnBundleResources(
   // Return bundle resources to gcs resources manager should contains the following steps.
   // 1. Remove related bundle resources from nodes.
   // 2. Add resources allocated for bundles back to nodes.
-  // TODO(Shanly): It's necessary to check whether the bundle could be returned in gcs
-  // scheduling. Only bundles with same total and availe resources could be returnd.
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
+  // Subtract wildcard resources and delete bundle resources.
   for (auto &bundle : *bundle_locations) {
     auto node_id = scheduling::NodeID(bundle.second.first.Binary());
     const auto &bundle_spec = *bundle.second.second;
-    // Remove bundle resource names (the label with `_group_`).
     std::vector<scheduling::ResourceID> bundle_resource_ids;
+    std::pair<std::string, double> wildcard_resource;
     for (const auto &entry : bundle_spec.GetFormattedResources()) {
-      bundle_resource_ids.emplace_back(scheduling::ResourceID(entry.first));
+      auto resource_id = scheduling::ResourceID(entry.first);
+      auto capacity =
+          cluster_resource_manager.GetNodeResources(node_id).total.Get(resource_id);
+      if (resource_id.IsPlacementGroupWildcardResource()) {
+        wildcard_resource.first = entry.first;
+        wildcard_resource.second = capacity.Double() - entry.second;
+      } else {
+        auto available_amount =
+            cluster_resource_manager.GetNodeResources(node_id).available.Get(resource_id);
+        if (available_amount < capacity) {
+          RAY_LOG(WARNING)
+              << "The resource " << entry.first
+              << " now has less available amount than the total one when removing bundle "
+              << bundle_spec.Index()
+              << " from placement group: " << bundle_spec.PlacementGroupId()
+              << ", maybe some workers depending on this bundle have not released the "
+                 "resource yet."
+              << " We will try it later.";
+          bundle_resource_ids.clear();
+          break;
+        }
+        bundle_resource_ids.emplace_back(resource_id);
+      }
     }
-    // It will affect nothing if the resource_id to be deleted does not exist in the
-    // cluster_resource_manager_.
-    cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
-    // Add reserved bundle resources back to the node.
-    cluster_resource_manager.AddNodeAvailableResources(
-        node_id, bundle_spec.GetRequiredResources());
+    if (!bundle_resource_ids.empty()) {  // This bundle is eligible for returning.
+      if (wildcard_resource.second > 0) {
+        cluster_resource_manager.UpdateResourceCapacity(
+            node_id,
+            scheduling::ResourceID(wildcard_resource.first),
+            wildcard_resource.second);
+      } else {
+        bundle_resource_ids.emplace_back(scheduling::ResourceID(wildcard_resource.first));
+      }
+      // It will affect nothing if the resource_id to be deleted does not exist in the
+      // cluster_resource_manager_.
+      cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
+      // Add reserved bundle resources back to the node.
+      cluster_resource_manager.AddNodeAvailableResources(
+          node_id, bundle_spec.GetRequiredResources());
+    }
   }
+
+  for (const auto &listener : resources_changed_listeners_) {
+    listener();
+  }
+}
+
+void GcsPlacementGroupScheduler::AddResourcesChangedListener(
+    std::function<void()> listener) {
+  RAY_CHECK(listener != nullptr);
+  resources_changed_listeners_.emplace_back(std::move(listener));
 }
 
 LeaseStatusTracker::LeaseStatusTracker(
