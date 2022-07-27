@@ -3586,7 +3586,7 @@ class Dataset(Generic[T]):
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
-        return "<Dataset num_blocks={} num_rows={} schema={}>".format(
+        return "Dataset(num_blocks={}, num_rows={}, schema={})".format(
             self._plan.initial_num_blocks(), count, schema_str
         )
 

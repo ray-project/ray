@@ -462,12 +462,12 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={one: int64, two: string}>"
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={one: int64, two: string}>"
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
     ), ds
     assert ds._plan.execute()._num_computed() == 1
 
@@ -533,12 +533,12 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={one: int64, two: string}>"
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={one: int64, two: string}>"
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
     ), ds
     assert ds._plan.execute()._num_computed() == 2
 
@@ -605,12 +605,12 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={one: int64, two: string}>"
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={one: int64, two: string}>"
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
     ), ds
     assert ds._plan.execute()._num_computed() == 2
 
@@ -691,12 +691,12 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={one: int64, two: string}>"
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={one: int64, two: string}>"
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={one: int64, two: string})"
     ), ds
     assert ds._plan.execute()._num_computed() == 2
 
@@ -744,14 +744,14 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert (
-        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}>"
+        "one: dictionary<values=int32, indices=int32, ordered=0>})"
     ), ds
     assert (
-        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}>"
+        "one: dictionary<values=int32, indices=int32, ordered=0>})"
     ), ds
     assert ds._plan.execute()._num_computed() == 1
 
@@ -830,12 +830,12 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert (
-        str(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={two: string, one: int32}>"
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={two: string, one: int32})"
     ), ds
     assert (
-        repr(ds) == "<Dataset num_blocks=2 num_rows=6 "
-        "schema={two: string, one: int32}>"
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
+        "schema={two: string, one: int32})"
     ), ds
     assert ds._plan.execute()._num_computed() == 1
 
@@ -1218,8 +1218,8 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds.write_numpy(data_path, filesystem=fs)
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
-        "<Dataset num_blocks=2 num_rows=None "
-        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}>"
+        "Dataset(num_blocks=2, num_rows=None, "
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1230,8 +1230,8 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
-        "<Dataset num_blocks=1 num_rows=10 "
-        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}>"
+        "Dataset(num_blocks=1, num_rows=10, "
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1243,8 +1243,8 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds.num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
-        "<Dataset num_blocks=1 num_rows=10 "
-        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}>"
+        "Dataset(num_blocks=1, num_rows=10, "
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     assert [v.item() for v in ds.take(2)] == [0, 1]
 
@@ -1256,8 +1256,8 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     np.save(path, np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
-        "<Dataset num_blocks=1 num_rows=10 "
-        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)}>"
+        "Dataset(num_blocks=1, num_rows=10, "
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
