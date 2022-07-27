@@ -187,7 +187,7 @@ def add_time_dimension(
         assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.
-        new_batch_size = seq_lens.shape[0]
+        new_batch_size = tf.shape(seq_lens)[0]
         time_size = padded_batch_size // new_batch_size
         new_shape = tf.concat(
             [
