@@ -267,7 +267,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @RateLimitedModule.enforce_max_concurrent_calls
     async def list_jobs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         try:
-            result = self._state_api.list_jobs(option=self._options_from_req(req))
+            result = await self._state_api.list_jobs(option=self._options_from_req(req))
             return self._reply(
                 success=True,
                 error_message="",
@@ -432,7 +432,9 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._state_api_data_source_client = StateDataSourceClient(gcs_channel)
+        self._state_api_data_source_client = StateDataSourceClient(
+            gcs_channel, self._dashboard_head.gcs_aio_client
+        )
         self._state_api = StateAPIManager(self._state_api_data_source_client)
         self._log_api = LogsManager(self._state_api_data_source_client)
 
