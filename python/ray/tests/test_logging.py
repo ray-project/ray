@@ -516,7 +516,7 @@ def test_log_monitor(tmp_path):
     assert not log_monitor.check_log_files_and_publish_updates()
 
     # Test max lines read == 99 is repsected.
-    lines = "1\n" * 150
+    lines = "1\n" * int(1.5 * ray_constants.LOG_MONITOR_NUM_LINES_TO_READ)
     with open(raylet_err_info.filename, "a") as f:
         # Write 150 more lines.
         f.write(lines)
@@ -528,7 +528,7 @@ def test_log_monitor(tmp_path):
             "pid": raylet_err_info.worker_pid,
             "job": raylet_err_info.job_id,
             "is_err": raylet_err_info.is_err_file,
-            "lines": ["1" for _ in range(100)],
+            "lines": ["1" for _ in range(ray_constants.LOG_MONITOR_NUM_LINES_TO_READ)],
             "actor_name": file_info.actor_name,
             "task_name": file_info.task_name,
         }
@@ -549,10 +549,11 @@ def test_log_monitor(tmp_path):
     # - dead pid out & err
     # alive worker is going to be newly opened.
     log_monitor.open_closed_files()
-    assert len(log_monitor.open_file_infos) == 4
+    assert len(log_monitor.open_file_infos) == 2
     assert log_monitor.can_open_more_files
     # Two dead workers are not tracked anymore, and they will be in the old folder.
-    assert len(log_monitor.closed_file_infos) == 0
+    # monitor.err and gcs_server.1.err have not been updated, so they remain closed.
+    assert len(log_monitor.closed_file_infos) == 2
     assert len(list((log_dir / "old").iterdir())) == 2
 
 
