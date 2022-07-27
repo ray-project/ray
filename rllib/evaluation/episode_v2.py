@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.collectors.simple_list_collector import (
-    _AgentCollector,
     _PolicyCollector,
     _PolicyCollectorGroup,
 )
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -80,7 +80,7 @@ class EpisodeV2:
         ] = policy_mapping_fn
         # Per-agent data collectors.
         self._agent_to_policy: Dict[AgentID, PolicyID] = {}
-        self._agent_collectors: Dict[AgentID, _AgentCollector] = {}
+        self._agent_collectors: Dict[AgentID, AgentCollector] = {}
 
         self._next_agent_index: int = 0
         self._agent_to_index: Dict[AgentID, int] = {}
@@ -177,8 +177,13 @@ class EpisodeV2:
 
         # Add initial obs to Trajectory.
         assert agent_id not in self._agent_collectors
-        self._agent_collectors[agent_id] = _AgentCollector(
-            policy.view_requirements, policy
+        self._agent_collectors[agent_id] = AgentCollector(
+            policy.view_requirements,
+            max_seq_len=policy.config["model"]["max_seq_len"],
+            disable_action_flattening=policy.config.get(
+                "_disable_action_flattening", False
+            ),
+            is_policy_recurrent=policy.is_recurrent(),
         )
         self._agent_collectors[agent_id].add_init_obs(
             episode_id=self.episode_id,
@@ -254,7 +259,7 @@ class EpisodeV2:
                 continue
             pid = self.policy_for(agent_id)
             policy = self.policy_map[pid]
-            pre_batch = collector.build(policy.view_requirements)
+            pre_batch = collector.build_for_training(policy.view_requirements)
             pre_batches[agent_id] = (pid, policy, pre_batch)
 
         for agent_id, (pid, policy, pre_batch) in pre_batches.items():
