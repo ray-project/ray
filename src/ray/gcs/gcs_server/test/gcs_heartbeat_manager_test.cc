@@ -72,13 +72,18 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicReport) {
   auto start = absl::Now();
   AddNode(node_1);
 
-  rpc::ReportHeartbeatReply reply;
-  rpc::ReportHeartbeatRequest request;
-  request.mutable_heartbeat()->set_node_id(node_1.Binary());
   while (absl::Now() - start < absl::Seconds(3)) {
     ASSERT_TRUE(dead_nodes.empty());
     // std::function<void(ray::Status, std::function<void()>, std::function<void()>)>'
-    heartbeat_manager->HandleReportHeartbeat(request, &reply, [](auto, auto, auto) {});
+    io_service.post(
+        [&]() {
+          rpc::ReportHeartbeatReply reply;
+          rpc::ReportHeartbeatRequest request;
+          request.mutable_heartbeat()->set_node_id(node_1.Binary());
+          heartbeat_manager->HandleReportHeartbeat(
+              request, &reply, [](auto, auto, auto) {});
+        },
+        "HandleReportHeartbeat");
   }
 }
 
@@ -122,12 +127,16 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicRestart2) {
 
   heartbeat_manager->Initialize(init_data);
 
-  rpc::ReportHeartbeatReply reply;
-  rpc::ReportHeartbeatRequest request;
-
   while (absl::Now() - start < absl::Seconds(1)) {
-    request.mutable_heartbeat()->set_node_id(node_1.Binary());
-    heartbeat_manager->HandleReportHeartbeat(request, &reply, [](auto, auto, auto) {});
+    io_service.post(
+        [&]() {
+          rpc::ReportHeartbeatReply reply;
+          rpc::ReportHeartbeatRequest request;
+          request.mutable_heartbeat()->set_node_id(node_1.Binary());
+          heartbeat_manager->HandleReportHeartbeat(
+              request, &reply, [](auto, auto, auto) {});
+        },
+        "HandleReportHeartbeat");
   }
 
   while (absl::Now() - start < absl::Seconds(1)) {
