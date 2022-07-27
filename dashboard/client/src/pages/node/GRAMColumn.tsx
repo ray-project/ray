@@ -84,12 +84,14 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
   return (
     <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
-        <RightPaddedTypography variant="body1">
-          [{slot}]:{" "}
+        <Box display="flex" flexWrap="nowrap">
+          <RightPaddedTypography variant="body1">
+            [{slot}]:{" "}
+          </RightPaddedTypography>
           <PercentageBar num={utilization} total={total}>
             {ratioStr}
           </PercentageBar>
-        </RightPaddedTypography>
+        </Box>
       </Tooltip>
     </Box>
   );
