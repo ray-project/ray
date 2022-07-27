@@ -311,15 +311,21 @@
     - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only,-ray_air python/ray/train/...
 
-- label: ":octopus: Tune/Modin/Dask tests and examples. Python 3.7"
+- label: ":octopus: Tune tests and examples. Python 3.7"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=py37,-client python/ray/tune/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/xgboost/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/util/horovod/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/util/ray_lightning/...
+
+- label: ":octopus: ML library integrations tests and examples. Python 3.7"
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TUNE_TESTING=1 PYTHON=3.7 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/xgboost/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/horovod/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) python/ray/tests/ray_lightning/...
 
 # TODO(amogkam): Re-enable Ludwig tests after Ludwig supports Ray 2.0
 #- label: ":octopus: Ludwig tests and examples. Python 3.7"
@@ -337,9 +343,8 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/ci.sh build
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client python/ray/tune/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client python/ray/util/xgboost/...
 
-- label: ":potable_water: Modin/Dask tests and examples. Python 3.7"
+- label: ":potable_water: Dataset library integrations tests and examples. Python 3.7"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT

@@ -8,26 +8,27 @@ import ray
 from ray.actor import ActorHandle
 
 from ray import serve
-from ray.serve.common import EndpointTag
-from ray.serve.constants import (
+from ray.serve._private.common import EndpointTag
+from ray.serve._private.constants import (
     SERVE_HANDLE_JSON_KEY,
     ServeHandleType,
 )
-from ray.serve.utils import (
+from ray.serve._private.utils import (
     get_random_letters,
     DEFAULT,
 )
-from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.common import DeploymentInfo
-from ray.serve.constants import HANDLE_METRIC_PUSH_INTERVAL_S
+from ray.serve._private.autoscaling_metrics import start_metrics_pusher
+from ray.serve._private.common import DeploymentInfo
+from ray.serve._private.constants import HANDLE_METRIC_PUSH_INTERVAL_S
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.router import Router, RequestMetadata
+from ray.serve._private.router import Router, RequestMetadata
 from ray.util import metrics
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 
 
-def create_or_get_async_loop_in_thread():
+def _create_or_get_async_loop_in_thread():
     global _global_async_loop
     if _global_async_loop is None:
         _global_async_loop = asyncio.new_event_loop()
@@ -39,6 +40,7 @@ def create_or_get_async_loop_in_thread():
     return _global_async_loop
 
 
+@PublicAPI(stability="beta")
 @dataclass(frozen=True)
 class HandleOptions:
     """Options for each ServeHandle instances. These fields are immutable."""
@@ -46,6 +48,7 @@ class HandleOptions:
     method_name: str = "__call__"
 
 
+@PublicAPI(stability="beta")
 class RayServeHandle:
     """A handle to a service deployment.
 
@@ -237,6 +240,7 @@ class RayServeHandle:
         self.stop_metrics_pusher()
 
 
+@PublicAPI(stability="beta")
 class RayServeSyncHandle(RayServeHandle):
     @property
     def is_same_loop(self) -> bool:
@@ -249,7 +253,7 @@ class RayServeSyncHandle(RayServeHandle):
         return Router(
             self.controller_handle,
             self.deployment_name,
-            event_loop=create_or_get_async_loop_in_thread(),
+            event_loop=_create_or_get_async_loop_in_thread(),
         )
 
     def remote(self, *args, **kwargs):
@@ -286,6 +290,7 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
+@DeveloperAPI
 class RayServeLazySyncHandle:
     """Lazily initialized handle that only gets fulfilled upon first execution."""
 
@@ -333,11 +338,11 @@ class RayServeLazySyncHandle:
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
 
 
-def serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
+def _serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
     """Converts a Serve handle to a JSON-serializable dictionary.
 
     The dictionary can be converted back to a ServeHandle using
-    serve_handle_from_json_dict.
+    _serve_handle_from_json_dict.
     """
     if isinstance(handle, RayServeSyncHandle):
         handle_type = ServeHandleType.SYNC
@@ -350,10 +355,10 @@ def serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
     }
 
 
-def serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
+def _serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
     """Converts a JSON-serializable dictionary back to a ServeHandle.
 
-    The dictionary should be constructed using serve_handle_to_json_dict.
+    The dictionary should be constructed using _serve_handle_to_json_dict.
     """
     if SERVE_HANDLE_JSON_KEY not in d:
         raise ValueError(f"dict must contain {SERVE_HANDLE_JSON_KEY} key.")
