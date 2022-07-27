@@ -53,7 +53,7 @@ class RuntimeEnv {
 
   /// Remove a field by name.
   /// \param[in] name The runtime env plugin name.
-  /// \return true if remove an existing key, otherwise false.
+  /// \return true if remove an existing field, otherwise false.
   bool Remove(const std::string name);
 
   /// Whether the runtime env is empty.
