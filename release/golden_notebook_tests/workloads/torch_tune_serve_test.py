@@ -13,10 +13,10 @@ import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune, train
 from ray.train import Trainer
-from ray.util.ml_utils.node import force_on_current_node
-from ray.util.ml_utils.resnet import ResNet18
+from ray.tune.utils.node import force_on_current_node
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
+from torchvision.models import resnet18
 
 
 def load_mnist_data(train: bool, download: bool):
@@ -55,7 +55,7 @@ def validate_epoch(dataloader, model, loss_fn):
 
 def training_loop(config):
     # Create model.
-    model = ResNet18(config)
+    model = resnet18()
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
     model = train.torch.prepare_model(model)
 
@@ -129,7 +129,7 @@ def get_model(model_checkpoint_path):
     checkpoint_dict = Trainer.load_checkpoint_from_path(model_checkpoint_path)
     model_state = checkpoint_dict["model_state_dict"]
 
-    model = ResNet18(None)
+    model = resnet18()
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
     model.load_state_dict(model_state)
 

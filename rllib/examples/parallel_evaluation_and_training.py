@@ -114,7 +114,7 @@ class AssertEvalCallback(DefaultCallbacks):
 
 if __name__ == "__main__":
     import ray
-    from ray import tune
+    from ray import air, tune
 
     args = parser.parse_args()
 
@@ -156,7 +156,9 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    results = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
