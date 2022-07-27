@@ -160,7 +160,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--modules-to-load",
         required=False,
-        type=Optional[str],
         default=None,
         help=(
             "Specify the list of module names in [module_1],[module_2] format."

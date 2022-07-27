@@ -1299,7 +1299,7 @@ def test_usage_stats_gcs_query_failure(
 
 
 def test_usages_stats_available_when_dashboard_not_included(
-    monkeypatch, ray_start_cluster, reset_lib_usage
+    monkeypatch, ray_start_cluster, reset_usage_stats
 ):
     """
     Test library usage is correctly reported when they are imported from
@@ -1316,8 +1316,7 @@ def test_usages_stats_available_when_dashboard_not_included(
         """
         Verify the usage_stats.json contains the lib usage.
         """
-        global_node = ray.worker._global_node
-        temp_dir = pathlib.Path(global_node.get_session_dir_path())
+        temp_dir = pathlib.Path(cluster.head_node.get_session_dir_path())
         wait_for_condition(lambda: file_exists(temp_dir), timeout=30)
 
         def verify():
