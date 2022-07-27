@@ -226,16 +226,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     print("Best trial final validation accuracy: {}".format(
         best_result.metrics["accuracy"]))
 
-    if ray.util.client.ray.is_connected():
-        # If using Ray Client, we want to make sure checkpoint access
-        # happens on the server. So we wrap `test_best_model` in a Ray task.
-        # We have to make sure it gets executed on the same node that
-        # ``tuner.fit()`` is called on.
-        from ray.util.ml_utils.node import force_on_current_node
-        remote_fn = force_on_current_node(ray.remote(test_best_model))
-        ray.get(remote_fn.remote(best_result.config, best_result.checkpoint))
-    else:
-        test_best_model(best_result.config, best_result.checkpoint)
+    test_best_model(best_result.config, best_result.checkpoint)
 
 
 # __main_end__
@@ -251,24 +242,12 @@ if __name__ == "__main__":
         "--ray-address",
         help="Address of Ray cluster for seamless distributed execution.",
         required=False)
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using "
-             "Ray Client.")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
         ray.init(num_cpus=2)
         main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
     else:
-        if args.server_address:
-            # Connect to a remote server through Ray Client.
-            ray.init(f"ray://{args.server_address}")
-        elif args.ray_address:
-            # Run directly on the Ray cluster.
-            ray.init(args.ray_address)
+        ray.init(args.ray_address)
         # Change this to activate training on GPUs
         main(num_samples=10, max_num_epochs=10, gpus_per_trial=0)
