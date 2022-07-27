@@ -25,6 +25,7 @@ def create_default_callbacks(
     callbacks: Optional[List[Callback]],
     sync_config: SyncConfig,
     metric: Optional[str] = None,
+    progress_metrics: Optional[List[str]] = None,
 ):
     """Create default callbacks for `Tuner.fit()`.
 
@@ -60,7 +61,9 @@ def create_default_callbacks(
     )
 
     if not has_trial_progress_callback:
-        trial_progress_callback = TrialProgressCallback(metric=metric)
+        trial_progress_callback = TrialProgressCallback(
+            metric=metric, progress_metrics=progress_metrics
+        )
         callbacks.append(trial_progress_callback)
 
     # Track syncer obj/index to move callback after loggers

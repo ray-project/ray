@@ -7,7 +7,7 @@ import os
 import sys
 import time
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -16,7 +16,9 @@ from ray.tune.logger import logger, pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     DEFAULT_METRIC,
+    DONE,
     EPISODE_REWARD_MEAN,
+    EXPERIMENT_TAG,
     MEAN_ACCURACY,
     MEAN_LOSS,
     NODE_IP,
@@ -24,11 +26,14 @@ from ray.tune.result import (
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
     TRAINING_ITERATION,
+    TRIAL_ID,
 )
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
+from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.ml_utils.dict import flatten_dict
 from ray.util.queue import Queue
 
 try:
@@ -50,6 +55,9 @@ try:
     IS_NOTEBOOK = True if "Terminal" not in class_name else False
 except NameError:
     IS_NOTEBOOK = False
+
+
+SKIP_RESULTS_IN_REPORT = {"config", TRIAL_ID, EXPERIMENT_TAG, DONE}
 
 
 @PublicAPI
@@ -1093,11 +1101,18 @@ class TrialProgressCallback(Callback):
 
     """
 
-    def __init__(self, metric: Optional[str] = None):
+    def __init__(
+        self, metric: Optional[str] = None, progress_metrics: Optional[List[str]] = None
+    ):
         self._last_print = collections.defaultdict(float)
         self._completed_trials = set()
         self._last_result_str = {}
         self._metric = metric
+        self._progress_metrics = set(progress_metrics or [])
+
+        # Only use progress metrics if at least two metrics are in there
+        if self._metric and self._progress_metrics:
+            self._progress_metrics.add(self._metric)
 
     def on_trial_result(
         self,
@@ -1179,16 +1194,27 @@ class TrialProgressCallback(Callback):
             self._last_print[trial] = time.time()
 
     def _print_result(self, result: Dict):
-        print_result = result.copy()
-        print_result.pop("config", None)
-        print_result.pop("hist_stats", None)
-        print_result.pop("trial_id", None)
-        print_result.pop("experiment_tag", None)
-        print_result.pop("done", None)
-        for auto_result in AUTO_RESULT_KEYS:
-            print_result.pop(auto_result, None)
+        if self._progress_metrics:
+            # If progress metrics are given, only report these
+            flat_result = flatten_dict(result)
 
-        print_result_str = ",".join([f"{k}={v}" for k, v in print_result.items()])
+            print_result = {}
+            for metric in self._progress_metrics:
+                print_result[metric] = flat_result.get(metric)
+
+        else:
+            # Else, skip auto populated results
+            print_result = result.copy()
+
+            for skip_result in SKIP_RESULTS_IN_REPORT:
+                print_result.pop(skip_result, None)
+
+            for auto_result in AUTO_RESULT_KEYS:
+                print_result.pop(auto_result, None)
+
+        print_result_str = ",".join(
+            [f"{k}={v}" for k, v in print_result.items() if v is not None]
+        )
         return print_result_str
 
 
@@ -1206,3 +1232,13 @@ def detect_reporter(**kwargs) -> TuneReporterBase:
     else:
         progress_reporter = CLIReporter(**kwargs)
     return progress_reporter
+
+
+def detect_progress_metrics(
+    trainable: Optional[Union["Trainable", Callable]]
+) -> Optional[List[str]]:
+    """Detect progress metrics to report."""
+    if not trainable:
+        return None
+
+    return getattr(trainable, "_progress_metrics", None)
