@@ -471,11 +471,17 @@ SMALL_CLUSTER = {
         "ssh_user": "ubuntu",
         "ssh_private_key": os.devnull,
     },
-    "head_node": {
-        "TestProp": 1,
-    },
-    "worker_nodes": {
-        "TestProp": 2,
+    "available_node_types": {
+        NODE_TYPE_LEGACY_HEAD: {
+            "node_config": {
+                "TestProp": 1,
+            }
+        },
+        NODE_TYPE_LEGACY_WORKER: {
+            "node_config": {
+                "TestProp": 2,
+            }
+        },
     },
     "file_mounts": {},
     "cluster_synced_files": [],
