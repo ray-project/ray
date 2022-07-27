@@ -25,7 +25,9 @@ from ray.experimental.state.common import (
     ListApiOptions,
     PredicateType,
     StateResource,
+    StateSchema,
     SupportedFilterType,
+    resource_to_schema,
 )
 
 logger = logging.getLogger(__name__)
@@ -134,16 +136,43 @@ def get_api_server_url() -> str:
     return api_server_url
 
 
-def get_table_output(state_data: List) -> str:
+def get_table_output(state_data: List, schema: StateSchema) -> str:
+    """Display the table output.
+
+    The table headers are ordered as the order defined in the dataclass of
+    `StateSchema`. For example,
+
+    @dataclass
+    class A(StateSchema):
+        a: str
+        b: str
+        c: str
+
+    will create headers
+    A B C
+    -----
+
+    Args:
+        state_data: A list of state data.
+        schema: The schema for the corresponding resource.
+
+    Returns:
+        The table formatted string.
+    """
     time = datetime.now()
     header = "=" * 8 + f" List: {time} " + "=" * 8
     headers = []
     table = []
+    cols = schema.list_columns()
     for data in state_data:
         for key, val in data.items():
             if isinstance(val, dict):
                 data[key] = yaml.dump(val, indent=2)
-        headers = sorted([key.upper() for key in data.keys()])
+        keys = set(data.keys())
+        headers = []
+        for col in cols:
+            if col in keys:
+                headers.append(col.upper())
         table.append([data[header.lower()] for header in headers])
     return f"""
 {header}
@@ -158,17 +187,19 @@ Table:
 
 
 def output_with_format(
-    state_data: List, format: AvailableFormat = AvailableFormat.DEFAULT
+    state_data: List,
+    *,
+    schema: Optional[StateSchema],
+    format: AvailableFormat = AvailableFormat.DEFAULT,
 ) -> str:
-    # Default is yaml.
     if format == AvailableFormat.DEFAULT:
-        return get_table_output(state_data)
+        return get_table_output(state_data, schema)
     if format == AvailableFormat.YAML:
         return yaml.dump(state_data, indent=4, explicit_start=True)
     elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
     elif format == AvailableFormat.TABLE:
-        return get_table_output(state_data)
+        return get_table_output(state_data, schema)
     else:
         raise ValueError(
             f"Unexpected format: {format}. "
@@ -269,20 +300,25 @@ Table (group by {summary_by})
 def format_get_api_output(
     state_data: Optional[Dict],
     id: str,
+    *,
+    schema: StateSchema,
     format: AvailableFormat = AvailableFormat.DEFAULT,
 ) -> str:
     if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
-    return output_with_format(state_data, format)
+    return output_with_format(state_data, schema=schema, format=format)
 
 
 def format_list_api_output(
-    state_data: List[Dict], *, format: AvailableFormat = AvailableFormat.DEFAULT
+    state_data: List[Dict],
+    *,
+    schema: StateSchema,
+    format: AvailableFormat = AvailableFormat.DEFAULT,
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    return output_with_format(state_data, format)
+    return output_with_format(state_data, schema=schema, format=format)
 
 
 def _should_explain(format: AvailableFormat) -> bool:
@@ -398,6 +434,7 @@ def get(
         format_get_api_output(
             state_data=data,
             id=id,
+            schema=resource_to_schema(resource),
             format=AvailableFormat.YAML,
         )
     )
@@ -545,6 +582,7 @@ def list(
     print(
         format_list_api_output(
             state_data=data,
+            schema=resource_to_schema(resource),
             format=format,
         )
     )
