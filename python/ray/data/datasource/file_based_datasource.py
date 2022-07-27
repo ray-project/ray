@@ -556,7 +556,18 @@ def _resolve_paths_and_filesystem(
             filesystem = resolved_filesystem
         elif need_unwrap_path_protocol:
             resolved_path = _unwrap_protocol(resolved_path)
-        resolved_path = filesystem.normalize_path(resolved_path)
+
+        # S3 bucket name cannot contain "@", thus indicating pyarrow failed
+        # to parse a path with ananymous credentials, for a path like
+        # `s3://anonymous@bucket/data.parquet` with known filesystem, pyarrow
+        # returns `anonymous@bucket/data.parquet` as the resolved path by
+        # mistake.
+        if type(filesystem).__name__ == "S3FileSystem" and "@" in resolved_path:
+            # S3FileSystem's normalize_path does not know how to resolve paths
+            # like `anonymous@bucket/data.parquet`
+            resolved_path = resolved_path.split("@")[-1]
+        else:
+            resolved_path = filesystem.normalize_path(resolved_path)
         resolved_paths.append(resolved_path)
 
     return resolved_paths, filesystem
