@@ -8,7 +8,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 from ray.train.predictor import Predictor
-from ray.train.rl.utils import load_checkpoint
+from ray.train.rl.rl_checkpoint import RLCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -33,6 +33,12 @@ class RLPredictor(Predictor):
         self.policy = policy
         super().__init__(preprocessor)
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(policy={self.policy!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
+
     @classmethod
     def from_checkpoint(
         cls,
@@ -52,7 +58,8 @@ class RLPredictor(Predictor):
                 it is parsed from the saved trainer configuration instead.
 
         """
-        policy, _ = load_checkpoint(checkpoint, env)
+        checkpoint = RLCheckpoint.from_checkpoint(checkpoint)
+        policy = checkpoint.get_policy(env)
         preprocessor = checkpoint.get_preprocessor()
         return cls(policy=policy, preprocessor=preprocessor)
 
@@ -65,5 +72,10 @@ class RLPredictor(Predictor):
         actions, _outs, _info = self.policy.compute_actions_from_input_dict(
             input_dict={"obs": obs}
         )
+        actions_arr = np.array(actions)
+        if len(actions_arr.shape) > 1:
+            columns = [f"action{i}" for i in range(actions_arr.shape[1])]
+        else:
+            columns = ["action"]
 
-        return pd.DataFrame(np.array(actions))
+        return pd.DataFrame(actions_arr, columns=columns)

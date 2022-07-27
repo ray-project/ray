@@ -29,6 +29,8 @@ ObjectRef Reference Counting
 
 Ray implements distributed reference counting so that any ``ObjectRef`` in scope in the cluster is pinned in the object store. This includes local python references, arguments to pending tasks, and IDs serialized inside of other objects.
 
+.. _debug-with-ray-memory:
+
 Debugging using 'ray memory'
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

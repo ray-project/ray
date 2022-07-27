@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterator, Optional, Tuple, Union, TYPE_CHECKING
 import ray
 from ray import cloudpickle as pickle
 from ray.air._internal.checkpointing import load_preprocessor_from_dir
+from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.remote_storage import (
     download_from_uri,
     fs_hint,
@@ -21,7 +22,6 @@ from ray.air._internal.remote_storage import (
 )
 from ray.air.constants import PREPROCESSOR_KEY
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.util.ml_utils.filelock import TempFileLock
 
 
 if TYPE_CHECKING:
@@ -209,6 +209,10 @@ class Checkpoint:
         self._uri: Optional[str] = uri
         self._obj_ref: Optional[ray.ObjectRef] = obj_ref
 
+    def __repr__(self):
+        parameter, argument = self.get_internal_representation()
+        return f"{self.__class__.__name__}({parameter}={argument})"
+
     @classmethod
     def from_bytes(cls, data: bytes) -> "Checkpoint":
         """Create a checkpoint from the given byte string.
@@ -350,6 +354,26 @@ class Checkpoint:
             Checkpoint: checkpoint object.
         """
         return cls(local_path=path)
+
+    @classmethod
+    def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
+        """Create a checkpoint from a generic :py:class:`Checkpoint`.
+
+        This method can be used to create a framework-specific checkpoint from a
+        generic :py:class:`Checkpoint` object.
+
+        Examples:
+            >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
+            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP # noqa: E501
+            >>> model = checkpoint.get_model()  # doctest: +SKIP
+            Linear(in_features=1, out_features=1, bias=True)
+        """
+        return cls(
+            local_path=other._local_path,
+            data_dict=other._data_dict,
+            uri=other._uri,
+            obj_ref=other._obj_ref,
+        )
 
     def _get_temporary_checkpoint_dir(self) -> str:
         """Return the name for the temporary checkpoint dir."""
@@ -606,6 +630,12 @@ class Checkpoint:
 
     def __setstate__(self, state):
         self.__dict__.update(state)
+
+    def __fspath__(self):
+        raise TypeError(
+            "You cannot use `air.Checkpoint` objects directly as paths. "
+            "Use `Checkpoint.to_directory()` or `Checkpoint.as_directory()` instead."
+        )
 
     def get_preprocessor(self) -> Optional["Preprocessor"]:
         """Return the saved preprocessor, if one exists."""

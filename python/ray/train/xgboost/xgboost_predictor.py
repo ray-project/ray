@@ -1,12 +1,12 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import pandas as pd
+from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
 import xgboost
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.train.predictor import Predictor
-from ray.train.xgboost.utils import load_checkpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -29,6 +29,12 @@ class XGBoostPredictor(Predictor):
         self.model = model
         super().__init__(preprocessor)
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(model={self.model!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
+
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "XGBoostPredictor":
         """Instantiate the predictor from a Checkpoint.
@@ -41,9 +47,10 @@ class XGBoostPredictor(Predictor):
                 ``XGBoostTrainer`` run.
 
         """
-        bst, _ = load_checkpoint(checkpoint)
+        checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+        model = checkpoint.get_model()
         preprocessor = checkpoint.get_preprocessor()
-        return cls(model=bst, preprocessor=preprocessor)
+        return cls(model=model, preprocessor=preprocessor)
 
     def _predict_pandas(
         self,

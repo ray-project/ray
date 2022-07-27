@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
-from ray.train.lightgbm.utils import load_checkpoint
+from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
 
 import lightgbm
 import lightgbm_ray
@@ -75,6 +75,9 @@ class LightGBMTrainer(GBDTTrainer):
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,
         "allow_less_than_two_cpus": True,
+        "num_actors": 1,
+        "cpus_per_actor": 2,
+        "gpus_per_actor": 0,
     }
     _init_model_arg_name: str = "init_model"
 
@@ -84,7 +87,8 @@ class LightGBMTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[lightgbm.Booster, Optional["Preprocessor"]]:
-        return load_checkpoint(checkpoint)
+        checkpoint = LightGBMCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: lightgbm.LGBMModel, path: str):
         model.booster_.save_model(path)
