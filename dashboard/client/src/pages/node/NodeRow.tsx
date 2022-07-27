@@ -1,4 +1,10 @@
-import { IconButton, TableCell, TableRow, Tooltip } from "@material-ui/core";
+import {
+  Box,
+  IconButton,
+  TableCell,
+  TableRow,
+  Tooltip,
+} from "@material-ui/core";
 import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import { sortBy } from "lodash";
@@ -13,6 +19,8 @@ import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
 import { NodeGPUView, WorkerGPU } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
+
+const TEXT_COL_MIN_WIDTH = 100;
 
 type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   /**
@@ -67,8 +75,12 @@ const NodeRow = ({ node, expanded, onExpandButtonClick }: NodeRowProps) => {
           </Link>
         </Tooltip>
       </TableCell>
-      <TableCell align="center">{hostname}</TableCell>
-      <TableCell align="center">{ip}</TableCell>
+      <TableCell align="center">
+        <Box minWidth={TEXT_COL_MIN_WIDTH}>{hostname}</Box>
+      </TableCell>
+      <TableCell align="center">
+        <Box minWidth={TEXT_COL_MIN_WIDTH}>{ip}</Box>
+      </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>
           {cpu}%
