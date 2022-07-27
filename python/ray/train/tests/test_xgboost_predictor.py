@@ -99,9 +99,8 @@ def test_predict_feature_columns_pandas():
 
 
 def test_predict_no_preprocessor_no_training():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        checkpoint = XGBoostCheckpoint.from_model(booster=model, path=tmpdir)
-        predictor = XGBoostPredictor.from_checkpoint(checkpoint)
+    checkpoint = XGBoostCheckpoint.from_model(booster=model)
+    predictor = XGBoostPredictor.from_checkpoint(checkpoint)
 
     data_batch = np.array([[1, 2], [3, 4], [5, 6]])
     predictions = predictor.predict(data_batch)
