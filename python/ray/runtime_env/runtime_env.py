@@ -119,6 +119,9 @@ class RuntimeEnvConfig(dict):
             eager_install=runtime_env_config.eager_install,
         )
 
+    def to_dict(self) -> Dict:
+        return dict(deepcopy(self))
+
 
 # Due to circular reference, field config can only be assigned a value here
 OPTION_TO_VALIDATION_FN[
@@ -404,7 +407,14 @@ class RuntimeEnv(dict):
         )
 
     def to_dict(self) -> Dict:
-        return dict(deepcopy(self))
+        runtime_env_dict = dict(deepcopy(self))
+
+        # Replace strongly-typed RuntimeEnvConfig with a dict to allow the returned
+        # dict to work properly as a field in a dataclass. Details in issue #26986
+        if runtime_env_dict.get("config"):
+            runtime_env_dict["config"] = runtime_env_dict["config"].to_dict()
+
+        return runtime_env_dict
 
     def has_uris(self) -> bool:
         if (

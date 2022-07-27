@@ -10,6 +10,7 @@ from typing import Optional
 from unittest.mock import patch
 
 import pytest
+from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 import ray
@@ -294,6 +295,29 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
 
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
+
+
+def test_timeout(job_sdk_client):
+    client = job_sdk_client
+
+    job_id = client.submit_job(
+        entrypoint="echo hello",
+        # Assume pip packages take > 1s to download, or this test will spuriously fail.
+        runtime_env=RuntimeEnv(
+            pip={
+                "packages": ["tensorflow", "requests", "botocore", "torch"],
+                "pip_check": False,
+                "pip_version": "==22.0.2;python_version=='3.8.11'",
+            },
+            config=RuntimeEnvConfig(setup_timeout_seconds=1),
+        ),
+    )
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id, timeout=10)
+    data = client.get_job_info(job_id)
+    assert "Failed to setup runtime environment" in data.message
+    assert "Timeout" in data.message
+    assert "consider increasing `setup_timeout_seconds`" in data.message
 
 
 def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
