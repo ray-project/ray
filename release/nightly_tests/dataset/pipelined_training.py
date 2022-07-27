@@ -268,12 +268,13 @@ def create_dataset(
 
 @ray.remote
 def consume(split, rank=None, batch_size=None):
-    torch_iterator = create_torch_iterator(split, batch_size=batch_size, rank=rank)
+    # torch_iterator = create_torch_iterator(split, batch_size=batch_size, rank=rank)
     start = time.perf_counter()
     batch_start = start
     batch_wait_time = []
     num_batches = 0
-    for i, (x, y) in enumerate(torch_iterator):
+    for b in split.iter_batches(batch_size=batch_size):
+    # for i, (x, y) in enumerate(torch_iterator):
         num_batches += 1
         batch_wait = time.perf_counter() - batch_start
         batch_wait_time.append(batch_wait)
