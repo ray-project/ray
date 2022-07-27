@@ -32,7 +32,7 @@
 #       --test_tag_filters=multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 
- label: ":tv: :brain: RLlib: Multi-GPU Tests"
+ label: ":tv: :horse: Alpa: Multi-GPU Tests"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
