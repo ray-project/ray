@@ -46,8 +46,8 @@ if sys.platform == "win32":
         win32con = None
         win32job = None
         logger.warning(
-            "Failed to Import win32api. For best usage experience run 'conda install pywin32'. "
-            f"Import error: {e}"
+            "Failed to Import win32api. For best usage experience run "
+            f"'conda install pywin32'. Import error: {e}"
         )
 
 
@@ -197,9 +197,10 @@ class JobSupervisor:
                 )
 
             if sys.platform == "win32" and win32api:
-                # Create a JobObject to which the child process (and its children) will be
-                # connected. This job object can be used to kill the child processes explicitly or
-                # when the jobObject gets deleted during garbage collection.
+                # Create a JobObject to which the child process (and its children)
+                # will be connected. This job object can be used to kill the child
+                # processes explicitly or when the jobObject gets deleted during
+                # garbage collection.
                 self._win32_job_object = win32job.CreateJobObject(None, "")
                 win32_job_info = win32job.QueryInformationJobObject(
                     self._win32_job_object, win32job.JobObjectExtendedLimitInformation
