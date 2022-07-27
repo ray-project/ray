@@ -163,20 +163,10 @@ class PandasBlockAccessor(TableBlockAccessor):
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
         return self._table.sample(frac=1, random_state=random_seed)
 
-    def schema(self) -> PandasBlockSchema:
-        dtypes = self._table.dtypes
-        schema = PandasBlockSchema(
-            names=dtypes.index.tolist(), types=dtypes.values.tolist()
-        )
-        # Column names with non-str types of a pandas DataFrame is not
-        # supported by Ray Dataset.
-        if any(not isinstance(name, str) for name in schema.names):
-            raise ValueError(
-                "A Pandas DataFrame with column names of non-str types"
-                " is not supported by Ray Dataset. Column names of this"
-                f" DataFrame: {schema.names!r}."
-            )
-        return schema
+    def schema(self) -> "pyarrow.lib.Schema":
+        import pyarrow
+
+        return pyarrow.Schema.from_pandas(self._table)
 
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table
