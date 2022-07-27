@@ -336,11 +336,9 @@ def _get_custom_resources(
 ) -> Dict[str, int]:
     """Format custom resources based on the `resources` Ray start param.
 
-    For the current prototype, the value of the `resources` field must
+    Currently, the value of the `resources` field must
     be formatted as follows:
     '"{\"Custom1\": 1, \"Custom2\": 5}"'.
-
-    We intend to provide a better interface soon.
 
     This method first converts the input to a correctly formatted
     json string and then loads that json string to a dict.
