@@ -10,13 +10,13 @@ from uvicorn.lifespan.on import LifespanOn
 
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray._private.utils import deprecated
 
 from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient
+from ray.serve._private.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
@@ -24,17 +24,19 @@ from ray.serve.context import (
     ReplicaContext,
     get_global_client,
     get_internal_replica_context,
-    set_global_client,
+    _set_global_client,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.deployment_graph_build import build as pipeline_build
-from ray.serve.deployment_graph_build import get_and_validate_ingress_deployment
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve.logging_utils import LoggingContext
-from ray.serve.utils import (
+from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
+from ray.serve._private.logging_utils import LoggingContext
+from ray.serve._private.utils import (
     DEFAULT,
     ensure_serialization_context,
     in_interactive_shell,
@@ -114,7 +116,7 @@ def shutdown() -> None:
         return
 
     client.shutdown()
-    set_global_client(None)
+    _set_global_client(None)
 
 
 @PublicAPI
@@ -493,6 +495,7 @@ def run(
         return ingress._get_handle()
 
 
+@DeveloperAPI
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
