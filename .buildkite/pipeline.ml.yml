@@ -316,7 +316,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - TRAIN_TESTING=1 PYTHON=3.7 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install -Ur ./python/ml/requirements_jax.txt
+    - pip install -Ur ./python/requirements/ml/requirements_jax.txt
     - ./ci/env/env_info.sh
 
 - label: ":octopus: Tune tests and examples. Python 3.7"
