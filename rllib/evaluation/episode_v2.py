@@ -14,7 +14,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.typing import AgentID, EnvID, PolicyID, TensorType
 
 if TYPE_CHECKING:
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 

@@ -267,7 +267,7 @@ class DatasetReader(InputReader):
                     out.append(self._default_policy.postprocess_trajectory(sub_batch))
                 else:
                     out.append(sub_batch)
-            return SampleBatch.concat_samples(out)
+            return concat_samples(out)
         else:
             # TODO(ekl) this is trickier since the alignments between agent
             #  trajectories in the episode are not available any more.

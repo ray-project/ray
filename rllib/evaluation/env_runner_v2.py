@@ -38,7 +38,7 @@ from ray.util.debug import log_once
 if TYPE_CHECKING:
     from gym.envs.classic_control.rendering import SimpleImageViewer
 
-    from ray.rllib.agents.callbacks import DefaultCallbacks
+    from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 
@@ -86,8 +86,8 @@ class _PerfStats:
             ] + self.ema_coef * value
 
     def _get_avg(self):
-        # Mean multiplicator (1000 = ms -> sec).
-        factor = 1000 / self.iters
+        # Mean multiplicator (1000 = sec -> ms).
+        factor = MS_TO_SEC / self.iters
         return {
             # Raw observation preprocessing.
             "mean_raw_obs_processing_ms": self.raw_obs_processing_time * factor,

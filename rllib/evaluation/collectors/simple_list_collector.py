@@ -11,7 +11,7 @@ from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -89,7 +89,7 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        batch = SampleBatch.concat_samples(self.batches)
+        batch = concat_samples(self.batches)
         # Clear batches for future samples.
         self.batches = []
         # Reset agent steps to 0.
