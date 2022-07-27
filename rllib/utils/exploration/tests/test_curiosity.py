@@ -6,7 +6,7 @@ import sys
 import unittest
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
@@ -261,9 +261,13 @@ class TestCuriosity(unittest.TestCase):
             #         s = env.reset()
             #     env.render()
 
-            results = tune.run("PPO", config=config, stop=stop, verbose=1)
+            results = tune.Tuner(
+                "PPO",
+                param_space=config,
+                run_config=air.RunConfig(stop=stop, verbose=1),
+            ).fit()
             check_learning_achieved(results, min_reward)
-            iters = results.trials[0].last_result["training_iteration"]
+            iters = results.get_best_result().metrics["training_iteration"]
             print("Reached in {} iterations.".format(iters))
 
             # config_wo = config.copy()

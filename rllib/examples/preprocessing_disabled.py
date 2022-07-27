@@ -15,7 +15,7 @@ import numpy as np
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 
 
 def get_cli_args():
@@ -111,6 +111,8 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+    ).fit()
 
     ray.shutdown()

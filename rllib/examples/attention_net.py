@@ -34,7 +34,7 @@ import os
 import numpy as np
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.look_and_push import LookAndPush, OneHot
 from ray.rllib.examples.env.repeat_after_me_env import RepeatAfterMeEnv
@@ -214,7 +214,10 @@ if __name__ == "__main__":
 
     # Run with Tune for auto env and algorithm creation and TensorBoard.
     else:
-        results = tune.run(args.run, config=config, stop=stop, verbose=2)
+        tuner = tune.Tuner(
+            args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+        )
+        results = tuner.fit()
 
         if args.as_test:
             print("Checking if learning goals were achieved")

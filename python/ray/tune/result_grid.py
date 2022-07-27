@@ -75,6 +75,8 @@ class ResultGrid:
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
+        if len(self._experiment_analysis.trials) == 1:
+            return self._trial_to_result(self._experiment_analysis.trials[0])
         if not metric and not self._experiment_analysis.default_metric:
             raise ValueError(
                 "No metric is provided. Either pass in a `metric` arg to "

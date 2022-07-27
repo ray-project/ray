@@ -7,7 +7,7 @@ import argparse
 import pyspiel
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.policy.policy import PolicySpec
@@ -123,23 +123,28 @@ if __name__ == "__main__":
     }
 
     # Train the "main" policy to play really well using self-play.
-    tune.run(
+    tuner = tune.Tuner(
         "SAC",
-        config=config,
-        stop=stop,
-        checkpoint_at_end=True,
-        checkpoint_freq=10,
-        verbose=2,
-        progress_reporter=CLIReporter(
-            metric_columns={
-                "training_iteration": "iter",
-                "time_total_s": "time_total_s",
-                "timesteps_total": "ts",
-                "episodes_this_iter": "train_episodes",
-                "policy_reward_mean/main": "reward_main",
-            },
-            sort_by_metric=True,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_at_end=True,
+                checkpoint_frequency=10,
+            ),
+            verbose=2,
+            progress_reporter=CLIReporter(
+                metric_columns={
+                    "training_iteration": "iter",
+                    "time_total_s": "time_total_s",
+                    "timesteps_total": "ts",
+                    "episodes_this_iter": "train_episodes",
+                    "policy_reward_mean/main": "reward_main",
+                },
+                sort_by_metric=True,
+            ),
         ),
     )
+    tuner.fit()
 
     ray.shutdown()

@@ -28,7 +28,7 @@ import logging
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.examples.env.windy_maze_env import WindyMazeEnv, HierarchicalWindyMazeEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -69,15 +69,17 @@ if __name__ == "__main__":
     }
 
     if args.flat:
-        results = tune.run(
+        results = tune.Tuner(
             "PPO",
-            stop=stop,
-            config={
+            run_config=air.RunConfig(
+                stop=stop,
+            ),
+            param_space={
                 "env": WindyMazeEnv,
                 "num_workers": 0,
                 "framework": args.framework,
             },
-        )
+        ).fit()
     else:
         maze = WindyMazeEnv(None)
 
@@ -113,7 +115,9 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }
 
-        results = tune.run("PPO", stop=stop, config=config, verbose=1)
+        results = tune.Tuner(
+            "PPO", run_config=air.RunConfig(stop=stop, verbose=1), param_space=config
+        ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

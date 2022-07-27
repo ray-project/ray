@@ -4,7 +4,7 @@ import numpy as np
 import ray
 from gym.spaces import Box, Discrete
 
-from ray import tune
+from ray import air, tune
 from ray.rllib.env.multi_agent_env import make_multi_agent
 
 parser = argparse.ArgumentParser()
@@ -123,4 +123,4 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run("PPO", config=config, stop=stop)
+    tune.Tuner("PPO", param_space=config, run_config=air.RunConfig(stop=stop)).fit()

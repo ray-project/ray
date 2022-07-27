@@ -6,7 +6,7 @@ import logging
 from pprint import pformat
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.tune import CLIReporter
 
 logging.basicConfig(level=logging.WARN)
@@ -38,25 +38,29 @@ def run(smoke_test=False):
 
     # Run the experiment.
     # TODO(jungong) : maybe add checkpointing.
-    return tune.run(
+    tune.Tuner(
         "APPO",
-        config=config,
-        stop=stop,
-        verbose=1,
-        num_samples=1,
-        progress_reporter=CLIReporter(
-            metric_columns={
-                "training_iteration": "iter",
-                "time_total_s": "time_total_s",
-                "timesteps_total": "ts",
-                "snapshots": "snapshots",
-                "episodes_this_iter": "train_episodes",
-                "episode_reward_mean": "reward_mean",
-            },
-            sort_by_metric=True,
-            max_report_frequency=30,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=1,
+            progress_reporter=CLIReporter(
+                metric_columns={
+                    "training_iteration": "iter",
+                    "time_total_s": "time_total_s",
+                    "timesteps_total": "ts",
+                    "snapshots": "snapshots",
+                    "episodes_this_iter": "train_episodes",
+                    "episode_reward_mean": "reward_mean",
+                },
+                sort_by_metric=True,
+                max_report_frequency=30,
+            ),
         ),
-    )
+        tune_config=tune.TuneConfig(
+            num_samples=1,
+        ),
+    ).fit()
 
 
 if __name__ == "__main__":

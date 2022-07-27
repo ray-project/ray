@@ -5,7 +5,7 @@ import numpy as np
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 
 
 def on_episode_start(info):
@@ -64,12 +64,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init()
-    trials = tune.run(
+    tuner = tune.Tuner(
         "PG",
-        stop={
-            "training_iteration": args.stop_iters,
-        },
-        config={
+        run_config=air.RunConfig(
+            stop={
+                "training_iteration": args.stop_iters,
+            },
+        ),
+        param_space={
             "env": "CartPole-v0",
             "callbacks": {
                 "on_episode_start": on_episode_start,
@@ -83,13 +85,14 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         },
-    ).trials
+    )
+    results = tuner.fit()
 
     # verify custom metrics for integration tests
-    custom_metrics = trials[0].last_result["custom_metrics"]
+    custom_metrics = results.get_best_result().metrics["custom_metrics"]
     print(custom_metrics)
     assert "pole_angle_mean" in custom_metrics
     assert "pole_angle_min" in custom_metrics
     assert "pole_angle_max" in custom_metrics
     assert "num_batches_mean" in custom_metrics
-    assert "callback_ok" in trials[0].last_result
+    assert "callback_ok" in results.get_best_result().metrics
