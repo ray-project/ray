@@ -9,7 +9,7 @@ Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, po
 * For Parquet, the Datasets Arrow extension :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>` and :class:`ArrowTensorArray <ray.data.extensions.tensor_extension.ArrowTensorArray>` allow Tensors to be loaded and stored in Parquet format.
 * In addition, single-column Tensor datasets can be created from image and Numpy (.npy) files.
 
-Datasets automatically converts between the Pandas and Arrow extension types/arrays above. This means you can just think of "Tensors" as a single first-class data type in Datasets.
+Datasets automatically converts between the extension types/arrays above. This means you can just think of "Tensors" as a single first-class data type in Datasets.
 
 Creating Tensor Datasets
 ------------------------
@@ -211,4 +211,4 @@ Limitations
 
 The following are current limitations of Tensor datasets.
 
-* All tensors in a tensor column must have the same shape; see GitHub issue `#18316 <https://github.com/ray-project/ray/issues/18316>`__.
+* All tensors in a tensor column must have the same shape; see GitHub issue `#18316 <https://github.com/ray-project/ray/issues/18316>`__. An error will be raised in the ragged tensor case.
