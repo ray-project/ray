@@ -278,7 +278,6 @@ class Deployment:
         Returns:
             ServeHandle
         """
-        record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
         return self._get_handle(sync)
 
     # TODO(Sihan) Promote the _get_handle to get_handle after we fully deprecate the API
