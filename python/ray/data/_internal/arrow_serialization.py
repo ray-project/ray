@@ -177,6 +177,17 @@ def _arrow_array_reduce(a: "pyarrow.Array"):
     """Custom reducer for Arrow arrays that works around a zero-copy slicing pickling
     bug.
 
+    Background:
+        Arrow has both array-level slicing and buffer-level slicing; both are zero-copy,
+        but the former has a serialization bug where the entire buffer is serialized
+        instead of just the slice, while the latter's serialization works as expected
+        and only serializes the slice of the buffer. I.e., array-level slicing doesn't
+        propagate the slice down to the buffer when serializing the array.
+
+        All that these copy methods do is, at serialization time, take the array-level
+        slicing and translate them to buffer-level slicing, so only the buffer slice is
+        sent over the wire instead of the entire buffer.
+
     See https://issues.apache.org/jira/browse/ARROW-10739.
     """
     from ray.air.util.tensor_extensions.arrow import (
@@ -225,7 +236,11 @@ def _arrow_array_reduce(a: "pyarrow.Array"):
 
 
 def _copy_array_if_needed(a: "pyarrow.Array") -> "pyarrow.Array":
-    """Copy the provided Arrow array, if needed."""
+    """Copy the provided Arrow array, if needed.
+
+    This method recursively traverses the array and subarrays, translating array-level
+    slices to buffer-level slices, thereby ensuring a copy at pickle time.
+    """
     # See the Arrow buffer layouts for each type for information on how this buffer
     # traversal and copying works:
     # https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout
