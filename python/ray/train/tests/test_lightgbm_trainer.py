@@ -18,14 +18,14 @@ from sklearn.model_selection import train_test_split
 
 
 @pytest.fixture
-def ray_start_4_cpus():
-    address_info = ray.init(num_cpus=4)
+def ray_start_6_cpus():
+    address_info = ray.init(num_cpus=6)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
-scale_config = ScalingConfig(num_workers=2, trainer_resources={"CPU": 0})
+scale_config = ScalingConfig(num_workers=2)
 
 data_raw = load_breast_cancer()
 dataset_df = pd.DataFrame(data_raw["data"], columns=data_raw["feature_names"])
@@ -42,7 +42,7 @@ def get_num_trees(booster: lgbm.Booster) -> int:
     return booster.current_iteration()
 
 
-def test_fit_with_categoricals(ray_start_4_cpus):
+def test_fit_with_categoricals(ray_start_6_cpus):
     train_df_with_cat = train_df.copy()
     test_df_with_cat = test_df.copy()
     train_df_with_cat["categorical_column"] = pd.Series(
@@ -66,7 +66,7 @@ def test_fit_with_categoricals(ray_start_4_cpus):
     assert model.pandas_categorical == [["A", "B"]]
 
 
-def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
+def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = LightGBMTrainer(
@@ -112,7 +112,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         (0, False, 0),
     ],
 )
-def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
+def test_checkpoint_freq(ray_start_6_cpus, freq_end_expected):
     freq, end, expected = freq_end_expected
 
     train_dataset = ray.data.from_pandas(train_df)
@@ -144,7 +144,7 @@ def test_checkpoint_freq(ray_start_4_cpus, freq_end_expected):
     assert cp_paths == sorted(cp_paths), str(cp_paths)
 
 
-def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
+def test_preprocessor_in_checkpoint(ray_start_6_cpus, tmpdir):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
 
@@ -183,7 +183,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     assert preprocessor.fitted_
 
 
-def test_tune(ray_start_4_cpus):
+def test_tune(ray_start_6_cpus):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = LightGBMTrainer(
@@ -203,7 +203,7 @@ def test_tune(ray_start_4_cpus):
     assert trainer.params["max_depth"] == 1
 
 
-def test_validation(ray_start_4_cpus):
+def test_validation(ray_start_6_cpus):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     with pytest.raises(KeyError, match=TRAIN_DATASET_KEY):
