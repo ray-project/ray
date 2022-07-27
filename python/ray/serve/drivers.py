@@ -67,9 +67,7 @@ class SimpleSchemaIngress:
 
         @self.app.get("/")
         @self.app.post("/")
-        async def handle_request(
-            request: starlette.requests.Request, inp=Depends(http_adapter)
-        ):
+        async def handle_request(inp=Depends(http_adapter)):
             resp = await self.predict(inp)
             return resp
 
@@ -110,7 +108,7 @@ class DAGDriver:
 
         else:
             assert isinstance(dags, (RayServeDAGHandle, RayServeLazySyncHandle))
-            self.dag = dags
+            self.dag_handle = dags
 
             @self.app.get(f"/")
             @self.app.post(f"/")
@@ -126,7 +124,7 @@ class DAGDriver:
 
     async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
-        return await self.dag.remote(*args, **kwargs)
+        return await self.dag_handle.remote(*args, **kwargs)
 
     async def multi_dag_predict(self, route_path, *args, **kwargs):
         """Perform inference directly without HTTP for multi dags."""
