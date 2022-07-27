@@ -210,7 +210,7 @@ def test_no_metric_mode(ray_start_2_cpus):
     def f(config):
         tune.report(x=1)
 
-    analysis = tune.run(f)
+    analysis = tune.run(f, num_samples=2)
     result_grid = ResultGrid(analysis)
     with pytest.raises(ValueError):
         result_grid.get_best_result()
@@ -220,6 +220,16 @@ def test_no_metric_mode(ray_start_2_cpus):
 
     with pytest.raises(ValueError):
         result_grid.get_best_result(mode="max")
+
+
+def test_no_metric_mode_one_trial(ray_start_2_cpus):
+    def f(config):
+        tune.report(x=1)
+
+    results = tune.Tuner(f, tune_config=tune.TuneConfig(num_samples=1)).fit()
+    # This should not throw any exception
+    best_result = results.get_best_result()
+    assert best_result
 
 
 def test_result_grid_df(ray_start_2_cpus):
