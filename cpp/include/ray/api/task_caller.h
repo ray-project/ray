@@ -14,8 +14,10 @@
 
 #pragma once
 
+#include <ray/api/runtime_env.h>
 #include <ray/api/static_check.h>
 #include <ray/api/task_options.h>
+
 namespace ray {
 namespace internal {
 
@@ -47,6 +49,11 @@ class TaskCaller {
   TaskCaller &SetPlacementGroup(PlacementGroup group, int bundle_index) {
     task_options_.group = group;
     task_options_.bundle_index = bundle_index;
+    return *this;
+  }
+
+  TaskCaller &SetRuntimeEnv(const ray::RuntimeEnv &runtime_env) {
+    task_options_.serialized_runtime_env_info = runtime_env.SerializeToRuntimeEnvInfo();
     return *this;
   }
 
