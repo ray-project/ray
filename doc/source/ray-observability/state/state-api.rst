@@ -53,11 +53,8 @@ Now, let's see the summarized states of tasks. If it doesn't return the output i
 
     .. code-block:: python
 
-        from ray.experimental.state.common import StateResource
-        from ray.experimental.state.state_cli import format_summary_output
         from ray.experimental.state.api import summarize_tasks
-
-        print(format_summary_output(summarize_tasks(), resource=StateResource.TASKS))
+        print(summarize_tasks())
 
 .. code-block:: text
 
@@ -87,10 +84,8 @@ Let's list all actors.
 
     .. code-block:: python
 
-        from ray.experimental.state.state_cli import format_list_api_output 
         from ray.experimental.state.api import list_actors 
-
-        print(format_list_api_output(list_actors()))
+        print(list_actors())
 
 .. code-block:: text
 
@@ -117,11 +112,10 @@ You can get the state of a single task using the get API.
 
     .. code-block:: python
 
-        from ray.experimental.state.state_cli import format_get_api_output 
         from ray.experimental.state.api import get_actor
         
         actor_id = "31405554844820381c2f0f8501000000" 
-        print(format_get_api_output(get_actor(id=actor_id), id=actor_id))
+        print(get_actor(id=actor_id))
 
 
 .. code-block:: text
@@ -150,15 +144,11 @@ You can also access logs through ``ray logs`` API.
 
     .. code-block:: python
 
-        import ray
         from ray.experimental.state.api import get_log
 
-        # To connect to an existing ray instance if there is
-        ray.init("auto")
-
         actor_id = "31405554844820381c2f0f8501000000"
-        for l in get_log(actor_id=actor_id):
-            print(l)
+        for line in get_log(api_server_url="http://localhost:8265", actor_id=actor_id):
+            print(line)
 
 .. code-block:: text
 
@@ -199,11 +189,9 @@ E.g., Summarize all actors
 
     .. code-block:: python
 
-        from ray.experimental.state.common import StateResource
-        from ray.experimental.state.state_cli import format_summary_output
         from ray.experimental.state.api import summarize_actors
 
-        print(format_summary_output(summarize_actors(), resource=StateResource.ACTORS))
+        print(summarize_actors())
 
 E.g., Summarize all tasks  
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -218,17 +206,16 @@ E.g., Summarize all tasks
 
     .. code-block:: python
 
-        from ray.experimental.state.common import StateResource
-        from ray.experimental.state.state_cli import format_summary_output
         from ray.experimental.state.api import summarize_tasks
 
-        print(format_summary_output(summarize_tasks(), resource=StateResource.TASKS))
+        print(summarize_tasks())
 
 E.g., Summarize all objects  
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. note::
 
+    By default, objects are summarized by callsite. However, callsite is not recorded by Ray by default.
     To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the ray cluster
     RAY_record_ref_creation_sites=1 ray start --head
 
@@ -243,13 +230,9 @@ E.g., Summarize all objects
 
     .. code-block:: python
 
-        from ray.experimental.state.common import StateResource
-        from ray.experimental.state.state_cli import format_summary_output
         from ray.experimental.state.api import summarize_objects
 
-        # To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the ray cluster
-        # RAY_record_ref_creation_sites=1 ray start --head
-        print(format_summary_output(summarize_objects(), resource=StateResource.OBJECTS))
+        print(summarize_objects())
 
 List
 ----
@@ -278,8 +261,8 @@ E.g., List all nodes
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_actors 
-        list_actors()
+        from ray.experimental.state.api import list_nodes() 
+        list_nodes()
 
 E.g., List all placement groups 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -439,8 +422,8 @@ Logs
 State API also allows you to conveniently access ray logs. Note that you cannot access the logs from a dead node.
 By default, the API prints log from a head node.
 
-E.g., Get all retrievable log file names
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+E.g., Get all retrievable log file names from a head node
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabbed:: CLI
 
@@ -454,7 +437,7 @@ E.g., Get all retrievable log file names
 
         # You could get the node id / node ip from `ray list nodes` 
         from ray.experimental.state.api import list_logs 
-        list_logs(node_id="<node_id>")
+        list_logs(node_id="<head_node_id>")
 
 E.g., Get a particular log file from a node
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -471,15 +454,12 @@ E.g., Get a particular log file from a node
     .. code-block:: python
 
         # You could get the node id / node ip from `ray list nodes` 
-        import ray
         from ray.experimental.state.api import get_log 
 
-        # To connect to an existing ray instance if there is
-        ray.init("auto")
         # Node IP could be retrieved from list_nodes() or ray.nodes()
         node_ip = "172.31.47.143" 
-        for l in get_log(filename="gcs_server.out", node_ip=node_ip):
-            print(l)
+        for line in get_log(api_server_url="http://localhost:8265", filename="gcs_server.out", node_ip=node_ip):
+            print(line)
 
 E.g., Stream a log file from a node
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -495,15 +475,12 @@ E.g., Stream a log file from a node
     .. code-block:: python
 
         # You could get the node id / node ip from `ray list nodes` 
-        import ray
         from ray.experimental.state.api import get_log 
 
-        # To connect to an existing ray instance if there is
-        ray.init("auto")
         # Node IP could be retrieved from list_nodes() or ray.nodes()
         node_ip = "172.31.47.143" 
-        for l in get_log(filename="raylet.out", node_ip=node_ip, follow=True):
-            print(l)
+        for line in get_log(api_server_url="http://localhost:8265", filename="raylet.out", node_ip=node_ip, follow=True):
+            print(line)
 
 
 E.g., Stream log from a pid 
@@ -523,15 +500,14 @@ E.g., Stream log from a pid
         import ray
         from ray.experimental.state.api import get_log 
 
-        # To connect to an existing ray instance if there is
-        ray.init("auto")
         # Node IP could be retrieved from list_nodes() or ray.nodes()
         node_ip = "172.31.47.143" 
         # You could get the pid of the worker running the actor easily when output
         # of worker being directed to the driver (default)
         pid = "318158" 
-        for l in get_log(pid=pid, node_ip=node_ip, follow=True):
-            print(l)
+        # The loop will block with `follow=True`
+        for line in get_log(api_server_url="http://localhost:8265", pid=pid, node_ip=node_ip, follow=True):
+            print(line)
 
 Failure Semantics
 -----------------

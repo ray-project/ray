@@ -20,7 +20,6 @@ from ray.experimental.state.custom_types import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_HTTP_TIMEOUT = 30
 DEFAULT_RPC_TIMEOUT = 30
 DEFAULT_LIMIT = 100
 DEFAULT_LOG_LIMIT = 1000
