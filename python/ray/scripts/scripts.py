@@ -2104,7 +2104,7 @@ def ray_logs(
     # If there's no unique match, try listing logs based on the glob filter.
     if not match_unique:
         logs = list_logs(
-            api_server_url=api_server_url,
+            address=api_server_url,
             node_id=node_id,
             node_ip=node_ip,
             glob_filter=glob_filter,
@@ -2139,7 +2139,7 @@ def ray_logs(
                 )
 
         for chunk in get_log(
-            api_server_url=api_server_url,
+            address=api_server_url,
             node_id=node_id,
             node_ip=node_ip,
             filename=filename,
