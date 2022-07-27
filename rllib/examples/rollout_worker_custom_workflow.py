@@ -10,7 +10,7 @@ import gym
 import numpy as np
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.policy import Policy
@@ -106,17 +106,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(num_cpus=args.num_cpus or None)
 
-    tune.run(
-        training_workflow,
-        resources_per_trial=PlacementGroupFactory(
-            (
-                [{"CPU": 1, "GPU": 1 if args.gpu else 0}]
-                + [{"CPU": 1}] * args.num_workers
-            )
+    tune.Tuner(
+        tune.with_resources(
+            training_workflow,
+            resources=PlacementGroupFactory(
+                (
+                    [{"CPU": 1, "GPU": 1 if args.gpu else 0}]
+                    + [{"CPU": 1}] * args.num_workers
+                )
+            ),
         ),
-        config={
+        param_space={
             "num_workers": args.num_workers,
             "num_iters": args.num_iters,
         },
-        verbose=1,
+        run_config=air.RunConfig(
+            verbose=1,
+        ),
     )
