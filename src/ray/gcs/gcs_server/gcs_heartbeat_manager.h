@@ -78,6 +78,8 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   void RemoveNode(const NodeID &node_id);
 
  protected:
+  void AddNodeInternal(const rpc::GcsNodeInfo &node_info, int64_t heartbeats_counts);
+
   /// Check that if any raylet is inactive due to no heartbeat for a period of time.
   /// If found any, mark it as dead.
   void DetectDeadNodes();
@@ -89,7 +91,10 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   /// The callback of node death.
   std::function<void(const NodeID &)> on_node_death_callback_;
   /// The number of heartbeats that can be missed before a node is removed.
-  int64_t num_heartbeats_timeout_;
+  const int64_t num_heartbeats_timeout_;
+  /// The heartbeat timeout when GCS restarts and waiting for raylet to
+  /// reconnect. Once connected, we'll use num_heartbeats_timeout_
+  const int64_t gcs_failover_worker_reconnect_timeout_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks

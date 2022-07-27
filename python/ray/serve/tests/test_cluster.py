@@ -10,8 +10,8 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
-from ray.serve.constants import SERVE_NAMESPACE
-from ray.serve.deployment_state import ReplicaStartupStatus, ReplicaState
+from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.deployment_state import ReplicaStartupStatus, ReplicaState
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def test_scale_up(ray_cluster):
     # By default, Serve controller and proxy actors use 0 CPUs,
     # so initially there should only be room for 1 replica.
 
-    @serve.deployment(version="1", num_replicas=1, _health_check_period_s=1)
+    @serve.deployment(version="1", num_replicas=1, health_check_period_s=1)
     def D(*args):
         return os.getpid()
 

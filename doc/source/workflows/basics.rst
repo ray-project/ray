@@ -130,8 +130,13 @@ We can retrieve the results for individual workflow tasks too with *named tasks*
  2) via decorator ``@workflow.options(name="task_name")``
 
 If tasks are not given ``task_name``, the function name of the steps is set as the ``task_name``.
+The ID of the task would be same as the name. If there are multiple tasks with the same name, a suffix with a counter ``_n`` will be added automatically.
 
-Once a task is given a name, the result of the task will be retrievable via ``workflow.get_output(workflow_id, name="task_name")``. If the task with the given name hasn't been executed yet, an exception will be thrown. Here are some examples:
+The suffix with a counter ``_n`` is a sequential number (1,2,3,...) of the tasks to be executed.
+(Note that the first task does not have the suffix.)
+
+Once a task is given a name, the result of the task will be retrievable via ``workflow.get_output(workflow_id, task_id="task_name")``.
+If the task with the given ``task_id`` hasn't been executed before the workflow completes, an exception will be thrown. Here are some examples:
 
 .. code-block:: python
 
@@ -153,17 +158,13 @@ Once a task is given a name, the result of the task will be retrievable via ``wo
     outer_task = double.options(**workflow.options(name="outer")).bind(inner_task)
     result_ref = workflow.run_async(outer_task, workflow_id="double")
 
-    inner = workflow.get_output_async(workflow_id, name="inner")
-    outer = workflow.get_output_async(workflow_id, name="outer")
+    inner = workflow.get_output_async(workflow_id, task_id="inner")
+    outer = workflow.get_output_async(workflow_id, task_id="outer")
 
     assert ray.get(inner) == 2
     assert ray.get(outer) == 4
     assert ray.get(result_ref) == 4
 
-If there are multiple tasks with the same name, a suffix with a counter ``_n`` will be added automatically.
-
-The suffix with a counter ``_n`` is a sequential number (1,2,3,...) of the tasks to be executed.
-(Note that the first task does not have the suffix.)
 
 # TODO(suquark): make sure Ray DAG does not depend on Ray Serve and PyArrow.
 
@@ -192,9 +193,9 @@ For example,
         x = simple.options(**workflow.options(name="step")).bind(x)
 
     ret = workflow.run_async(x, workflow_id=workflow_id)
-    outputs = [workflow.get_output_async(workflow_id, name="step")]
+    outputs = [workflow.get_output_async(workflow_id, task_id="step")]
     for i in range(1, n):
-        outputs.append(workflow.get_output_async(workflow_id, name=f"step_{i}"))
+        outputs.append(workflow.get_output_async(workflow_id, task_id=f"step_{i}"))
     assert ray.get(ret) == n - 1
     assert ray.get(outputs) == list(range(n))
 
@@ -209,7 +210,30 @@ Error handling
 
 Workflows provides two ways to handle application-level exceptions: (1) automatic retry (as in normal Ray tasks), and (2) the ability to catch and handle exceptions.
 
-The following error handling flags can be either set in the task decorator or via ``.options()``:
+- If ``max_retries`` is given, the task will be retried for the given number of times if the workflow task failed.
+- If ``retry_exceptions`` is True, then the workflow task retries both task crashes and application-level errors;
+  if it is ``False``, then the workflow task only retries task crashes.
+- If ``catch_exceptions`` is True, the return value of the function will be converted to ``Tuple[Optional[T], Optional[Exception]]``.
+  It can be combined with ``max_retries`` to retry a given number of times before returning the result tuple.
+
+``max_retries`` and ``retry_exceptions`` are also Ray task options,
+so they should be used inside the Ray remote decorator. Here is how you could use them:
+
+.. code-block:: python
+
+    # specify in decorator
+    @workflow.options(catch_exceptions=True)
+    @ray.remote(max_retries=5, retry_exceptions=True)
+    def faulty_function():
+        pass
+
+    # specify in .options()
+    faulty_function.options(max_retries=3, retry_exceptions=False,
+                            **workflow.options(catch_exceptions=False))
+
+.. note::  By default ``retry_exceptions`` is ``False``,  ``max_retries`` is ``3``.
+
+Here is one example:
 
 .. code-block:: python
 
@@ -242,18 +266,6 @@ The following error handling flags can be either set in the task decorator or vi
     r2 = faulty_function.options(**workflow.options(catch_exceptions=True)).bind()
     workflow.run(handle_errors.bind(r2))
 
-
-- If ``max_retries`` is given, the task will be retried for the given number of times if an exception is raised. It will only retry for the application level error. For system errors, it's controlled by ray. By default, ``max_retries`` is set to be 3.
-- If ``catch_exceptions`` is True, the return value of the function will be converted to ``Tuple[Optional[T], Optional[Exception]]``. This can be combined with ``max_retries`` to try a given number of times before returning the result tuple.
-
-The parameters can also be passed to the decorator
-
-.. code-block:: python
-
-    @workflow.options(catch_exceptions=True)
-    @ray.remote(max_retries=5)
-    def faulty_function():
-        pass
 
 Durability guarantees
 ---------------------

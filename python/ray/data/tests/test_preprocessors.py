@@ -1,22 +1,18 @@
 import warnings
 from collections import Counter
-from typing import Dict
+import re
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pyarrow
 import pytest
-from pandas import DataFrame
 
 import ray
-from ray.data import Dataset
-from ray.data.aggregate import Max
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.data.preprocessors import (
     BatchMapper,
     Chain,
-    CustomStatefulPreprocessor,
     LabelEncoder,
     MinMaxScaler,
     OneHotEncoder,
@@ -33,6 +29,7 @@ from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+from ray.air.constants import MAX_REPR_LENGTH
 
 
 @pytest.fixture
@@ -121,6 +118,38 @@ def test_standard_scaler():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+@pytest.mark.parametrize(
+    "preprocessor",
+    [
+        BatchMapper(fn=lambda x: x),
+        Categorizer(columns=["X"]),
+        CountVectorizer(columns=["X"]),
+        Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
+        FeatureHasher(columns=["X"], num_features=1),
+        HashingVectorizer(columns=["X"], num_features=1),
+        LabelEncoder(label_column="X"),
+        MaxAbsScaler(columns=["X"]),
+        MinMaxScaler(columns=["X"]),
+        MultiHotEncoder(columns=["X"]),
+        Normalizer(columns=["X"]),
+        OneHotEncoder(columns=["X"]),
+        OrdinalEncoder(columns=["X"]),
+        PowerTransformer(columns=["X"], power=1),
+        RobustScaler(columns=["X"]),
+        SimpleImputer(columns=["X"]),
+        StandardScaler(columns=["X"]),
+        Concatenator(),
+        Tokenizer(columns=["X"]),
+    ],
+)
+def test_repr(preprocessor):
+    representation = repr(preprocessor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile(f"^{preprocessor.__class__.__name__}\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 @patch.object(warnings, "warn")
@@ -615,7 +644,7 @@ def test_one_hot_encoder():
     null_encoder.transform_batch(nonnull_df)
 
 
-def test_one_hot_encoder_with_limit():
+def test_one_hot_encoder_with_max_categories():
     """Tests basic OneHotEncoder functionality with limit."""
     col_a = ["red", "green", "blue", "red"]
     col_b = ["warm", "cold", "hot", "cold"]
@@ -623,7 +652,7 @@ def test_one_hot_encoder_with_limit():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
-    encoder = OneHotEncoder(["B", "C"], limit={"B": 2})
+    encoder = OneHotEncoder(["B", "C"], max_categories={"B": 2})
 
     ds_out = encoder.fit_transform(ds)
     assert len(ds_out.to_pandas().columns) == 1 + 2 + 3
@@ -724,7 +753,7 @@ def test_multi_hot_encoder():
     null_encoder.transform_batch(nonnull_df)
 
 
-def test_multi_hot_encoder_with_limit():
+def test_multi_hot_encoder_with_max_categories():
     """Tests basic MultiHotEncoder functionality with limit."""
     col_a = ["red", "green", "blue", "red"]
     col_b = ["warm", "cold", "hot", "cold"]
@@ -733,7 +762,7 @@ def test_multi_hot_encoder_with_limit():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c, "D": col_d})
     ds = ray.data.from_pandas(in_df)
 
-    encoder = MultiHotEncoder(["B", "C", "D"], limit={"B": 2})
+    encoder = MultiHotEncoder(["B", "C", "D"], max_categories={"B": 2})
 
     ds_out = encoder.fit_transform(ds)
     assert len(ds_out.to_pandas()["B"].iloc[0]) == 2
@@ -828,23 +857,22 @@ def test_categorizer(predefined_dtypes):
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
+    columns = ["B", "C"]
     if predefined_dtypes:
         expected_dtypes = {
             "B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True),
             "C": pd.CategoricalDtype([1, 5, 10]),
         }
-        columns = {
-            "B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True),
-            "C": None,
-        }
+        dtypes = {"B": pd.CategoricalDtype(["cold", "hot", "warm"], ordered=True)}
     else:
         expected_dtypes = {
             "B": pd.CategoricalDtype(["cold", "hot", "warm"]),
             "C": pd.CategoricalDtype([1, 5, 10]),
         }
         columns = ["B", "C"]
+        dtypes = None
 
-    encoder = Categorizer(columns)
+    encoder = Categorizer(columns, dtypes)
 
     # Transform with unfitted preprocessor.
     with pytest.raises(PreprocessorNotFittedException):
@@ -1131,62 +1159,6 @@ def test_batch_mapper():
     assert out_df.equals(expected_df)
 
 
-def test_custom_stateful_preprocessor():
-    """Tests basic CustomStatefulPreprocessor functionality."""
-
-    items = [
-        {"A": 1, "B": 10, "C": 1},
-        {"A": 2, "B": 20, "C": 2},
-        {"A": 3, "B": 30, "C": 3},
-    ]
-
-    ds = ray.data.from_items(items)
-
-    def get_max_a(ds: Dataset):
-        # Calculate max value for column A.
-        max_a = ds.aggregate(Max("A"))
-        return max_a
-
-    def subtract_max_a_from_a_and_add_max_a_to_b(df: DataFrame, stats: Dict):
-        # Subtract max A value from column A and subtract it from B.
-        max_a = stats["max(A)"]
-        df["A"] = df["A"] - max_a
-        df["B"] = df["B"] + max_a
-        return df
-
-    preprocessor = CustomStatefulPreprocessor(
-        get_max_a, subtract_max_a_from_a_and_add_max_a_to_b
-    )
-    preprocessor.fit(ds)
-    transformed_ds = preprocessor.transform(ds)
-
-    expected_items = [
-        {"A": -2, "B": 13, "C": 1},
-        {"A": -1, "B": 23, "C": 2},
-        {"A": 0, "B": 33, "C": 3},
-    ]
-    expected_ds = ray.data.from_items(expected_items)
-
-    assert transformed_ds.take(3) == expected_ds.take(3)
-
-    batch = pd.DataFrame(
-        {
-            "A": [5, 6],
-            "B": [10, 10],
-            "C": [5, 10],
-        }
-    )
-    transformed_batch = preprocessor.transform_batch(batch)
-    expected_batch = pd.DataFrame(
-        {
-            "A": [2, 3],
-            "B": [13, 13],
-            "C": [5, 10],
-        }
-    )
-    assert transformed_batch.equals(expected_batch)
-
-
 def test_power_transformer():
     """Tests basic PowerTransformer functionality."""
 
@@ -1258,11 +1230,6 @@ def test_concatenator():
     new_ds = prep.transform(ds)
     for i, row in enumerate(new_ds.take()):
         assert np.array_equal(row["c"].to_numpy(), np.array([i + 1, i + 1]))
-
-    # Test repr
-    assert "c" in prep.__repr__()
-    assert "include" in prep.__repr__()
-    assert "exclude" in prep.__repr__()
 
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)
