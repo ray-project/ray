@@ -8,7 +8,7 @@ import { Worker } from "../../type/worker";
 const GRAM_COL_WIDTH = 120;
 
 export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
-  const nodeGRAMEntries = node.gpus.map((gpu, i) => {
+  const nodeGRAMEntries = (node.gpus ?? []).map((gpu, i) => {
     const props = {
       gpuName: gpu.name,
       utilization: gpu.memoryUsed,
@@ -37,7 +37,7 @@ export const WorkerGRAM = ({
   worker: Worker;
   node: NodeDetail;
 }) => {
-  const workerGRAMEntries = node.gpus
+  const workerGRAMEntries = (node.gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processes.find(
         (process) => process.pid === worker.pid,
@@ -82,7 +82,7 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
 }) => {
   const ratioStr = MiBRatioNoPercent(utilization, total);
   return (
-    <Box display="flex" style={{ minWidth: GRAM_COL_WIDTH }}>
+    <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
         <RightPaddedTypography variant="body1">
           [{slot}]:{" "}
