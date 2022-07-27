@@ -21,8 +21,6 @@ from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
 
-from ray.data.preprocessors.utils import train_test_split
-
 __all__ = [
     "BatchMapper",
     "Categorizer",
@@ -43,5 +41,4 @@ __all__ = [
     "StandardScaler",
     "Concatenator",
     "Tokenizer",
-    "train_test_split",
 ]
