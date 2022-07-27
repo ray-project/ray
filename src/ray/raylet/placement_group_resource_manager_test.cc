@@ -89,7 +89,7 @@ TEST_F(NewPlacementGroupResourceManagerTest,
             "GPU");
   ASSERT_EQ(GetOriginalResourceNameFromWildcardResource(
                 "GPU_group_0_4482dec0faaf5ead891ff1659a9501000000"),
-            "GPU");
+            "");
 }
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
