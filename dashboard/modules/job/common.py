@@ -49,6 +49,7 @@ class JobStatus(str, Enum):
         return self.value in {"STOPPED", "SUCCEEDED", "FAILED"}
 
 
+# TODO(aguo): Convert to pydantic model
 @dataclass
 class JobInfo:
     """A class for recording information associated with a job and its execution."""
@@ -180,10 +181,10 @@ def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) ->
 class JobSubmitRequest:
     # Command to start execution, ex: "python script.py"
     entrypoint: str
-    # Optional job_id to specify for the job. If the job_id is not specified,
-    # one will be generated. If a job with the same job_id already exists, it
-    # will be rejected.
-    job_id: Optional[str] = None
+    # Optional submission_id to specify for the job. If the submission_id
+    # is not specified, one will be generated. If a job with the same
+    # submission_id already exists, it will be rejected.
+    submission_id: Optional[str] = None
     # Dict to setup execution environment.
     runtime_env: Optional[Dict[str, Any]] = None
     # Metadata to pass in to the JobConfig.
@@ -193,9 +194,10 @@ class JobSubmitRequest:
         if not isinstance(self.entrypoint, str):
             raise TypeError(f"entrypoint must be a string, got {type(self.entrypoint)}")
 
-        if self.job_id is not None and not isinstance(self.job_id, str):
+        if self.submission_id is not None and not isinstance(self.submission_id, str):
             raise TypeError(
-                f"job_id must be a string if provided, got {type(self.job_id)}"
+                "submission_id must be a string if provided, "
+                f"got {type(self.submission_id)}"
             )
 
         if self.runtime_env is not None:
@@ -226,7 +228,9 @@ class JobSubmitRequest:
 
 @dataclass
 class JobSubmitResponse:
+    # DEPRECATED: Use submission_id instead.
     job_id: str
+    submission_id: str
 
 
 @dataclass

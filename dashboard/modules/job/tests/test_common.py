@@ -19,19 +19,21 @@ class TestJobSubmitRequestValidation:
         with pytest.raises(TypeError, match="must be a string"):
             validate_request_type({"entrypoint": 123}, JobSubmitRequest)
 
-    def test_validate_job_id(self):
+    def test_validate_submission_id(self):
         r = validate_request_type({"entrypoint": "abc"}, JobSubmitRequest)
         assert r.entrypoint == "abc"
-        assert r.job_id is None
+        assert r.submission_id is None
 
         r = validate_request_type(
-            {"entrypoint": "abc", "job_id": "123"}, JobSubmitRequest
+            {"entrypoint": "abc", "submission_id": "123"}, JobSubmitRequest
         )
         assert r.entrypoint == "abc"
-        assert r.job_id == "123"
+        assert r.submission_id == "123"
 
         with pytest.raises(TypeError, match="must be a string"):
-            validate_request_type({"entrypoint": 123, "job_id": 1}, JobSubmitRequest)
+            validate_request_type(
+                {"entrypoint": 123, "submission_id": 1}, JobSubmitRequest
+            )
 
     def test_validate_runtime_env(self):
         r = validate_request_type({"entrypoint": "abc"}, JobSubmitRequest)

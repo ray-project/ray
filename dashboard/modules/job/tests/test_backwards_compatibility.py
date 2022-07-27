@@ -32,6 +32,8 @@ def _compatibility_script_path(file_name: str) -> str:
 
 
 class TestBackwardsCompatibility:
+    # TODO(aguo): Unskip this test once 2.0.0 is released.
+    @pytest.mark.skip("#25902 breaks backwards compatibility of the REST api.")
     def test_cli(self):
         """
         1) Create a new conda environment with ray version X installed

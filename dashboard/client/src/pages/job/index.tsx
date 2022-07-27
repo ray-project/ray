@@ -13,7 +13,7 @@ import dayjs from "dayjs";
 import React from "react";
 import { Link } from "react-router-dom";
 import Loading from "../../components/Loading";
-import { SearchInput, SearchSelect } from "../../components/SearchComponent";
+import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { useJobList } from "./hook/useJobList";
 
@@ -25,12 +25,13 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const columns = [
-  "ID",
-  "DriverIpAddress",
-  "DriverPid",
-  "IsDead",
+  "Job ID",
+  "Submission ID",
+  "Status",
+  "Logs",
   "StartTime",
   "EndTime",
+  "Driver Pid",
 ];
 
 const JobList = () => {
@@ -43,6 +44,7 @@ const JobList = () => {
     changeFilter,
     page,
     setPage,
+    ipLogMap,
   } = useJobList();
 
   return (
@@ -62,13 +64,8 @@ const JobList = () => {
       <TitleCard title="Job List">
         <TableContainer>
           <SearchInput
-            label="ID"
-            onChange={(value) => changeFilter("jobId", value)}
-          />
-          <SearchSelect
-            label="Language"
-            onChange={(value) => changeFilter("language", value)}
-            options={["JAVA", "PYTHON"]}
+            label="Job ID"
+            onChange={(value) => changeFilter("job_id", value)}
           />
           <SearchInput
             label="Page Size"
@@ -100,30 +97,59 @@ const JobList = () => {
                   page.pageNo * page.pageSize,
                 )
                 .map(
-                  ({
-                    jobId = "",
-                    driverIpAddress,
-                    isDead,
-                    driverPid,
-                    startTime,
-                    endTime,
-                  }) => (
-                    <TableRow key={jobId}>
+                  (
+                    {
+                      job_id,
+                      submission_id,
+                      driver_info,
+                      type,
+                      status,
+                      start_time,
+                      end_time,
+                    },
+                    index,
+                  ) => (
+                    <TableRow key={job_id ?? submission_id ?? index}>
+                      <TableCell align="center">{job_id ?? "-"}</TableCell>
                       <TableCell align="center">
-                        <Link to={`/job/${jobId}`}>{jobId}</Link>
+                        {submission_id ?? "-"}
                       </TableCell>
-                      <TableCell align="center">{driverIpAddress}</TableCell>
-                      <TableCell align="center">{driverPid}</TableCell>
+                      <TableCell align="center">{status}</TableCell>
                       <TableCell align="center">
-                        {isDead ? "true" : "false"}
+                        {/* TODO(aguo): Also show logs for the job id instead
+                        of just the submission's logs */}
+                        {driver_info &&
+                        ipLogMap[driver_info.node_ip_address] ? (
+                          <Link
+                            to={`/log/${encodeURIComponent(
+                              ipLogMap[driver_info.node_ip_address],
+                            )}?fileName=${
+                              type === "DRIVER"
+                                ? job_id
+                                : `driver-${submission_id}`
+                            }`}
+                            target="_blank"
+                          >
+                            Log
+                          </Link>
+                        ) : (
+                          "-"
+                        )}
                       </TableCell>
                       <TableCell align="center">
-                        {dayjs(Number(startTime)).format("YYYY/MM/DD HH:mm:ss")}
+                        {dayjs(Number(start_time)).format(
+                          "YYYY/MM/DD HH:mm:ss",
+                        )}
                       </TableCell>
                       <TableCell align="center">
-                        {endTime > 0
-                          ? dayjs(Number(endTime)).format("YYYY/MM/DD HH:mm:ss")
+                        {end_time && end_time > 0
+                          ? dayjs(Number(end_time)).format(
+                              "YYYY/MM/DD HH:mm:ss",
+                            )
                           : "-"}
+                      </TableCell>
+                      <TableCell align="center">
+                        {driver_info?.pid ?? "-"}
                       </TableCell>
                     </TableRow>
                   ),
