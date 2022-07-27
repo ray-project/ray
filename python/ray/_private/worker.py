@@ -1229,7 +1229,11 @@ def init(
         ctx = builder.connect()
         from ray._private.usage import usage_lib
 
-        usage_lib.put_pre_init_usage_stats()
+        if passed_kwargs.get("allow_multiple") is True:
+            with ctx:
+                usage_lib.put_pre_init_usage_stats()
+        else:
+            usage_lib.put_pre_init_usage_stats()
         return ctx
 
     if kwargs:
