@@ -231,9 +231,11 @@ def translate_trivial_legacy_config(config: Dict[str, Any]):
 
     for field in REMOVABLE_FIELDS:
         if field in config and not config[field]:
-            logger.warning(f"Dropping the empty legacy field {field}. {field}"
+            logger.warning(
+                f"Dropping the empty legacy field {field}. {field}"
                 "is not supported for ray>=2.0.0. It is recommended to remove"
-                f"{field} from the cluster config.")
+                f"{field} from the cluster config."
+            )
             del config[field]
 
 

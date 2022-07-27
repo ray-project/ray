@@ -32,13 +32,10 @@ from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     format_info_string,
     is_placement_group_resource,
-    prepare_config,
 )
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     NODE_KIND_WORKER,
-    NODE_TYPE_LEGACY_HEAD,
-    NODE_TYPE_LEGACY_WORKER,
     STATUS_UNINITIALIZED,
     STATUS_UP_TO_DATE,
     STATUS_WAITING_FOR_SSH,
@@ -48,9 +45,7 @@ from ray.autoscaler.tags import (
 )
 from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.tests.test_autoscaler import (
-    MOCK_DEFAULT_CONFIG,
     MULTI_WORKER_CLUSTER,
-    SMALL_CLUSTER,
     TYPES_A,
     MockAutoscaler,
     MockNodeInfoStub,
