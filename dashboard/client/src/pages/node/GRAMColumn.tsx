@@ -1,8 +1,9 @@
-import { Typography } from "@material-ui/core";
+import { Box, Tooltip, Typography } from "@material-ui/core";
 import React from "react";
+import { RightPaddedTypography } from "../../common/CustomTypography";
+import PercentageBar from "../../components/PercentageBar";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
-import { GRAMEntry } from "../dashboard/node-info/features/GRAM";
 
 const GRAM_COL_WIDTH = 120;
 
@@ -60,5 +61,29 @@ export const WorkerGRAM = ({
     </Typography>
   ) : (
     <div style={{ minWidth: GRAM_COL_WIDTH }}>{workerGRAMEntries}</div>
+  );
+};
+
+const MiBRatioNoPercent = (used: number, total: number) =>
+  `${used}MiB/${total}MiB`;
+
+const GRAMEntry: React.FC<GRAMEntryProps> = ({
+  gpuName,
+  slot,
+  utilization,
+  total,
+}) => {
+  const ratioStr = MiBRatioNoPercent(utilization, total);
+  return (
+    <Box display="flex" style={{ minWidth: GRAM_COL_WIDTH }}>
+      <Tooltip title={gpuName}>
+        <RightPaddedTypography variant="body1">
+          [{slot}]:{" "}
+          <PercentageBar num={utilization} total={total}>
+            {ratioStr}
+          </PercentageBar>
+        </RightPaddedTypography>
+      </Tooltip>
+    </Box>
   );
 };
