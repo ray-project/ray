@@ -17,9 +17,9 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
-from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT
 from ray.util.annotations import PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,

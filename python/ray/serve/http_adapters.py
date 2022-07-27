@@ -7,7 +7,7 @@ import numpy as np
 import starlette.requests
 
 from ray.util.annotations import PublicAPI
-from ray.serve.utils import require_packages
+from ray.serve._private.utils import require_packages
 
 
 _1DArray = List[float]

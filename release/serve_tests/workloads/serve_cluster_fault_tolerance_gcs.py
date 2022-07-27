@@ -85,7 +85,7 @@ def main():
     ray.kill(serve.context._global_client._controller, no_restart=True)
     ray.shutdown()
     cluster.shutdown()
-    serve.context.set_global_client(None)
+    serve.context._set_global_client(None)
 
     # Start another ray cluster with same namespace to resume from previous
     # checkpoints with no new deploy() call.

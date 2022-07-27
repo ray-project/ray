@@ -11,7 +11,7 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray._private.test_utils import (
     format_web_url,
     run_string_as_driver,

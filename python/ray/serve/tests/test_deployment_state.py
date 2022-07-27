@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.common import (
+from ray.serve._private.common import (
     DeploymentConfig,
     DeploymentInfo,
     DeploymentStatus,
@@ -16,7 +16,7 @@ from ray.serve.common import (
     ReplicaTag,
     ReplicaName,
 )
-from ray.serve.deployment_state import (
+from ray.serve._private.deployment_state import (
     DeploymentState,
     DeploymentStateManager,
     DeploymentVersion,
@@ -27,8 +27,8 @@ from ray.serve.deployment_state import (
     VersionedReplica,
     rank_replicas_for_stopping,
 )
-from ray.serve.storage.kv_store import RayInternalKVStore
-from ray.serve.utils import get_random_letters
+from ray.serve._private.storage.kv_store import RayInternalKVStore
+from ray.serve._private.utils import get_random_letters
 
 
 class MockReplicaActorWrapper:
@@ -203,9 +203,10 @@ class MockTimer:
 def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
     timer = MockTimer()
     with patch(
-        "ray.serve.deployment_state.ActorReplicaWrapper", new=MockReplicaActorWrapper
+        "ray.serve._private.deployment_state.ActorReplicaWrapper",
+        new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
-        "ray.serve.long_poll.LongPollHost"
+        "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
 
         def mock_save_checkpoint_fn(*args, **kwargs):
@@ -1930,9 +1931,10 @@ def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
     ray.init()
     timer = MockTimer()
     with patch(
-        "ray.serve.deployment_state.ActorReplicaWrapper", new=MockReplicaActorWrapper
+        "ray.serve._private.deployment_state.ActorReplicaWrapper",
+        new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
-        "ray.serve.long_poll.LongPollHost"
+        "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
 
         kv_store = RayInternalKVStore("test")

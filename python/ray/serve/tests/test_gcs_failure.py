@@ -8,7 +8,7 @@ import requests
 import ray
 import ray.serve as serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve.storage.kv_store import KVStoreError, RayInternalKVStore
+from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
 from ray.tests.conftest import external_redis  # noqa: F401
 
 

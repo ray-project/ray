@@ -3,7 +3,7 @@ import pickle
 from typing import Any, Optional
 from zlib import crc32
 
-from ray.serve.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 
 

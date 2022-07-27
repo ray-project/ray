@@ -6,15 +6,15 @@ from ray._private.usage import usage_lib
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import HTTPOptions
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve.client import ServeControllerClient
+from ray.serve._private.client import ServeControllerClient
 
-from ray.serve.utils import (
+from ray.serve._private.utils import (
     format_actor_name,
     get_random_letters,
 )
@@ -22,7 +22,7 @@ from ray.serve.controller import ServeController
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.serve.context import (
     get_global_client,
-    set_global_client,
+    _set_global_client,
 )
 
 
@@ -228,7 +228,7 @@ def serve_start(
         controller_name,
         detached=detached,
     )
-    set_global_client(client)
+    _set_global_client(client)
     logger.info(
         f"Started{' detached ' if detached else ' '}Serve instance in "
         f'namespace "{SERVE_NAMESPACE}".'

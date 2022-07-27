@@ -8,7 +8,7 @@ from threading import Event
 from typing import Callable, DefaultDict, Dict, List, Optional, Type
 
 import ray
-from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

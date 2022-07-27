@@ -11,7 +11,7 @@ import ray
 from ray._private.test_utils import SignalActor
 from ray import serve
 from ray.serve.exceptions import RayServeException
-from ray.serve.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
