@@ -206,7 +206,7 @@ def mock_deployment_state() -> Tuple[DeploymentState, Mock, Mock]:
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
-        "ray.serve.long_poll.LongPollHost"
+        "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
 
         def mock_save_checkpoint_fn(*args, **kwargs):
@@ -1934,7 +1934,7 @@ def mock_deployment_state_manager() -> Tuple[DeploymentStateManager, Mock]:
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
     ), patch("time.time", new=timer.time), patch(
-        "ray.serve.long_poll.LongPollHost"
+        "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
 
         kv_store = RayInternalKVStore("test")
