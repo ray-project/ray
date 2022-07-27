@@ -4,6 +4,7 @@ from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
+    ApplicationStatus,
     StatusOverview,
 )
 from ray.serve._private.utils import DEFAULT
@@ -300,6 +301,19 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return v
 
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty app schema dictionary.
+
+        Schema can be used as a representation of an empty Serve config.
+        """
+
+        return {
+            "import_path": "",
+            "runtime_env": {},
+            "deployments": [],
+        }
+
 
 @PublicAPI(stability="beta")
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
@@ -320,6 +334,23 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
             "the status."
         ),
     )
+
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty status schema dictionary.
+
+        Schema represents Serve status for a Ray cluster where Serve hasn't
+        started yet.
+        """
+
+        return {
+            "app_status": {
+                "status": ApplicationStatus.NOT_STARTED.value,
+                "message": "",
+                "deployment_timestamp": 0,
+            },
+            "deployment_statuses": [],
+        }
 
 
 @DeveloperAPI

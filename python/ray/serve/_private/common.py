@@ -29,6 +29,7 @@ class EndpointInfo:
 
 
 class ApplicationStatus(str, Enum):
+    NOT_STARTED = "NOT_STARTED"
     DEPLOYING = "DEPLOYING"
     RUNNING = "RUNNING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
