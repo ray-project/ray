@@ -9,6 +9,7 @@ import { NightsStay, VerticalAlignTop, WbSunny } from "@material-ui/icons";
 import classnames from "classnames";
 import React, { PropsWithChildren } from "react";
 import { RouteComponentProps } from "react-router-dom";
+import { UsageStatsAlert } from "../../common/UsageStatsAlert";
 
 import SpeedTools from "../../components/SpeedTools";
 import Logo from "../../logo.svg";
@@ -130,9 +131,9 @@ const BasicLayout = (
           <ListItem
             button
             className={classnames(classes.menuItem)}
-            onClick={() => history.push("/")}
+            onClick={() => history.push("/legacy")}
           >
-            <ListItemText>BACK TO LEGACY DASHBOARD</ListItemText>
+            <ListItemText>TO LEGACY DASHBOARD</ListItemText>
           </ListItem>
           <ListItem>
             <IconButton
@@ -159,7 +160,10 @@ const BasicLayout = (
           <SpeedTools />
         </List>
       </Drawer>
-      <div className={classes.child}>{children}</div>
+      <div className={classes.child}>
+        {children}
+        <UsageStatsAlert />
+      </div>
     </div>
   );
 };
