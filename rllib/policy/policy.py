@@ -103,15 +103,16 @@ class PolicySpec:
 
     def serialize(self) -> Dict:
         from ray.rllib.algorithms.registry import get_policy_class_name
+
         # Try to figure out a durable name for this policy.
         cls = get_policy_class_name(self.policy_class)
         if cls is None:
             logger.warning(
                 f"Can not figure out a durable policy name for {self.policy_class}. "
                 f"You are probably trying to checkpoint a custom policy. "
-                f"Raw policy class may cause problems when the checkpoint needs to be "
-                "loaded in the future. To fix this, make sure you add your custom policy "
-                "in rllib.algorithms.registry.POLICIES."
+                f"Raw policy class may cause problems when the checkpoint needs to "
+                "be loaded in the future. To fix this, make sure you add your "
+                "custom policy in rllib.algorithms.registry.POLICIES."
             )
             cls = self.policy_class
 
@@ -129,6 +130,7 @@ class PolicySpec:
         if isinstance(spec["policy_class"], str):
             # Try to recover the actual policy class from durable name.
             from ray.rllib.algorithms.registry import get_policy_class
+
             policy_class = get_policy_class(spec["policy_class"])
         elif isinstance(spec["policy_class"], type):
             # Policy spec is already a class type. Simply use it.
