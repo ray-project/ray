@@ -672,10 +672,9 @@ class TestWorkerFailure(unittest.TestCase):
                 "counter": COUNTER_NAME,
             },
             # Use EMA PerfStat.
-            "sampler_perf_stats_use_ema": True,
             # Really large coeff to show the difference in env_wait_time_ms.
             # Pretty much consider the last 2 data points.
-            "sampler_perf_stats_ema_coeff": 0.5,
+            "sampler_perf_stats_ema_coef": 0.5,
             # Important, don't smooth over all the episodes,
             # otherwise we don't see latency spike.
             "metrics_num_episodes_for_smoothing": 1,

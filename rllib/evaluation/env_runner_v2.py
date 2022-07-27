@@ -47,20 +47,21 @@ logger = logging.getLogger(__name__)
 
 MIN_LARGE_BATCH_THRESHOLD = 1000
 DEFAULT_LARGE_BATCH_THRESHOLD = 5000
+MS_TO_SEC_FACTOR = 1000.0
 
 
 _PolicyEvalData = namedtuple("_PolicyEvalData", ["env_id", "agent_id", "sample_batch"])
 
-
 class _PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
 
-    def __init__(self, ema=False, ema_coeff=0.001):
-        # Exponential Moving Average mode.
+    def __init__(self, ema_coef: Optional[float] = None):
+        # If not None, enable Exponential Moving Average mode.
+        # The way we update stats is by:
+        #     updated = (1 - ema_coef) * old + ema_coef * new
         # In general provides more responsive stats about sampler performance.
         # TODO(jungong) : make ema the default (only) mode if it works well.
-        self.ema = ema
-        self.ema_coeff = ema_coeff
+        self.ema_coef = ema_coef
 
         self.iters = 0
         self.raw_obs_processing_time = 0.0
@@ -75,13 +76,13 @@ class _PerfStats:
             return
 
         # All the other fields support either global average or ema mode.
-        if not self.ema:
+        if self.ema_coef is None:
             # Global average.
             self.__dict__[field] += value
         else:
-            self.__dict__[field] = (1.0 - self.ema_coeff) * self.__dict__[
+            self.__dict__[field] = (1.0 - self.ema_coef) * self.__dict__[
                 field
-            ] + self.ema_coeff * value
+            ] + self.ema_coef * value
 
     def _get_avg(self):
         # Mean multiplicator (1000 = ms -> sec).
@@ -104,15 +105,15 @@ class _PerfStats:
         # hence we only need to do the sec -> ms conversion here.
         return {
             # Raw observation preprocessing.
-            "mean_raw_obs_processing_ms": self.raw_obs_processing_time * 1000,
+            "mean_raw_obs_processing_ms": self.raw_obs_processing_time * MS_TO_SEC_FACTOR,
             # Computing actions through policy.
-            "mean_inference_ms": self.inference_time * 1000,
+            "mean_inference_ms": self.inference_time * MS_TO_SEC_FACTOR,
             # Processing actions (to be sent to env, e.g. clipping).
-            "mean_action_processing_ms": self.action_processing_time * 1000,
+            "mean_action_processing_ms": self.action_processing_time * MS_TO_SEC_FACTOR,
             # Waiting for environment (during poll).
-            "mean_env_wait_ms": self.env_wait_time * 1000,
+            "mean_env_wait_ms": self.env_wait_time * MS_TO_SEC_FACTOR,
             # Environment rendering (False by default).
-            "mean_env_render_ms": self.env_render_time * 1000,
+            "mean_env_render_ms": self.env_render_time * MS_TO_SEC_FACTOR,
         }
 
     def get(self):

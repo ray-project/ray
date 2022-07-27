@@ -3,6 +3,7 @@ import logging
 from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
 from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -432,7 +433,7 @@ def make_multi_agent(
     """
 
     class MultiEnv(MultiAgentEnv):
-        def __init__(self, config=None):
+        def __init__(self, config: EnvContext = None):
             MultiAgentEnv.__init__(self)
             # Note(jungong) : explicitly check for None here, because config
             # can have an empty dict but meaningful data fields (worker_index,

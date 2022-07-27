@@ -228,8 +228,7 @@ class SyncSampler(SamplerInput):
         self.horizon = horizon
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats(
-            ema=worker.policy_config.get("sampler_perf_stats_use_ema"),
-            ema_coeff=worker.policy_config.get("sampler_perf_stats_ema_coeff"),
+            ema_coeff=worker.policy_config.get("sampler_perf_stats_ema_coef"),
         )
         if not sample_collector_class:
             sample_collector_class = SimpleListCollector
