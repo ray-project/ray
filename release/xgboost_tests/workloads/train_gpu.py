@@ -37,7 +37,8 @@ if __name__ == "__main__":
     runtime_env = {
         "env_vars": {
             "NCCL_SOCKET_IFNAME": "ens3",
-        }
+        },
+        "working_dir": os.path.dirname(__file__),
     }
     ray.init(address="auto", runtime_env=runtime_env)
 

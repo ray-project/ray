@@ -42,7 +42,7 @@ if __name__ == "__main__":
         "max_depth": tune.randint(1, 9),
     }
 
-    ray.init(address="auto")
+    ray.init(address="auto", runtime_env={"working_dir": os.path.dirname(__file__)})
 
     ray_params = RayParams(
         elastic_training=False,
