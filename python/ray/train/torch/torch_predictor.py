@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
 import torch
@@ -10,7 +10,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train._internal.dl_predictor import DLPredictor
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -98,14 +98,34 @@ class TorchPredictor(DLPredictor):
         Override this method to add custom logic for processing the model input or
         output.
 
+        Example:
+
+            .. code-block:: python
+
+                # List outputs are not supported by default TorchPredictor.
+                class MyModel(torch.nn.Module):
+                    def forward(self, input_tensor):
+                        return [input_tensor, input_tensor]
+
+                # Use a custom predictor to format model output as a dict.
+                class CustomPredictor(TorchPredictor):
+                    def call_model(self, tensor):
+                        model_output = super().call_model(tensor)
+                        return {
+                            str(i): model_output[i] for i in range(len(model_output))
+                        }
+
+                predictor = CustomPredictor(model=MyModel())
+                predictions = predictor.predict(data_batch)
+
         Args:
             tensor: A batch of data to predict on, represented as either a single
                 PyTorch tensor or for multi-input models, a dictionary of tensors.
 
         Returns:
-            The model outputs, either as a single tensor or a collection of tensors.
+            The model outputs, either as a single tensor or a dictionary of tensors.
 
-        """)
+        """
         with torch.no_grad():
             output = self.model(tensor)
         return output
@@ -175,7 +195,6 @@ class TorchPredictor(DLPredictor):
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
 
-
     def _arrays_to_tensors(
         self,
         numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
@@ -187,8 +206,14 @@ class TorchPredictor(DLPredictor):
             device="cuda" if self.use_gpu else None,
         )
 
-
     def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
         if not isinstance(tensor, torch.Tensor):
-            raise ValueError("Expected a torch.Tensor, got {}".format(type(tensor)))
+            raise ValueError(
+                "Expected the model to return either a torch.Tensor or a "
+                f"dict of torch.Tensor, but got {type(tensor)} instead. "
+                f"To support models with different output types, subclass "
+                f"TorchPredictor and override the `call_model` method to "
+                f"process the output into either torch.Tensor or Dict["
+                f"str, torch.Tensor]."
+            )
         return tensor.cpu().detach().numpy()

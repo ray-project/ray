@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, TypeVar, Union, List, Tuple
+from typing import Dict, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -57,7 +57,7 @@ class DLPredictor(Predictor):
             tensor: The tensor to input to the model.
 
         Returns:
-            A tensor or collection of tensors containing the model output.
+            A tensor or dictionary of tensors containing the model output.
         """
         raise NotImplementedError
 
@@ -72,7 +72,7 @@ class DLPredictor(Predictor):
         # Handle model multi-output. For example if model outputs 2 images.
         if isinstance(output, dict):
             return pd.DataFrame(
-                {k: TensorArray(self._tensor_to_array(v)) for k, v in output}
+                {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
             )
         else:
             return pd.DataFrame(
