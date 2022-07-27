@@ -6,7 +6,7 @@ import numpy as np
 
 import ray
 from ray.actor import ActorHandle
-from ray.data._internal.batcher import Batcher, ShufflingBatcher
+from ray.data._internal.batcher import Batcher, ShufflingBatcher, XXBatcher
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
@@ -27,6 +27,63 @@ BatchType = Union[
     list,
 ]
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
+
+
+def old_batch_blocks(
+    blocks: Iterator[ObjectRef[Block]],
+    stats: Union[DatasetStats, DatasetPipelineStats],
+    *,
+    prefetch_blocks: int = 0,
+    clear_block_after_read: bool = False,
+    batch_size: Optional[int] = None,
+    batch_format: str = "native",
+    drop_last: bool = False,
+) -> Iterator[BatchType]:
+    print("jxdeb old_batch_blocks")
+    batcher = Batcher(batch_size=batch_size)
+
+    def batch_block(block: ObjectRef[Block]):
+        with stats.iter_get_s.timer():
+            block = ray.get(block)
+        batcher.add(block)
+        while batcher.has_batch():
+            with stats.iter_format_batch_s.timer():
+                result = _format_batch(batcher.next_batch(), batch_format)
+            with stats.iter_user_s.timer():
+                yield result
+
+    block_window = []  # Handle empty sliding window gracefully.
+    context = DatasetContext.get_current()
+    if (
+        prefetch_blocks > 0
+        and context.actor_prefetcher_enabled
+        and not ray.util.client.ray.is_connected()
+    ):
+        prefetcher = ActorBlockPrefetcher()
+    else:
+        prefetcher = WaitBlockPrefetcher()
+
+    cnt = 0
+    for block_window in _sliding_window(
+        blocks, prefetch_blocks + 1, clear_block_after_read
+    ):
+        print("jxdeb: window:", cnt)
+        cnt += 1
+        block_window = list(block_window)
+        with stats.iter_wait_s.timer():
+            prefetcher.prefetch_blocks(block_window)
+        yield from batch_block(block_window[0])
+
+    # Consume remainder of final block window.
+    for block in block_window[1:]:
+        yield from batch_block(block)
+
+    # Yield any remainder batches.
+    if batcher.has_any() and not drop_last:
+        with stats.iter_format_batch_s.timer():
+            result = _format_batch(batcher.next_batch(), batch_format)
+        with stats.iter_user_s.timer():
+            yield result
 
 
 def batch_blocks(
@@ -72,68 +129,79 @@ def batch_blocks(
     Returns:
         An iterator over record batches.
     """
+    if shuffle_buffer_min_size is None:
+        yield from old_batch_blocks(
+            blocks,
+            stats,
+            prefetch_blocks=prefetch_blocks,
+            clear_block_after_read=clear_block_after_read,
+            batch_size=batch_size,
+            batch_format=batch_format,
+            drop_last=drop_last,
+        )
+
     if shuffle_buffer_min_size is not None:
         batcher = ShufflingBatcher(
             batch_size=batch_size,
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
         )
-    else:
-        batcher = Batcher(batch_size=batch_size)
 
-    def get_batches(block: Optional[ObjectRef[Block]] = None) -> Iterator[BatchType]:
-        if block is not None:
-            with stats.iter_get_s.timer():
-                block = ray.get(block)
-            # NOTE: Since we add one block at a time and then immediately consume
-            # batches, we don't need to check batcher.can_add() before adding the block;
-            # it will always be True, and batcher.add() will assert this internally.
-            batcher.add(block)
+        def get_batches(
+            block: Optional[ObjectRef[Block]] = None,
+        ) -> Iterator[BatchType]:
+            if block is not None:
+                with stats.iter_get_s.timer():
+                    block = ray.get(block)
+                # NOTE: Since we add one block at a time and then immediately consume
+                # batches, we don't need to check batcher.can_add() before adding the block;
+                # it will always be True, and batcher.add() will assert this internally.
+                batcher.add(block)
+            else:
+                batcher.done_adding()
+            while batcher.has_batch():
+                # While the batcher has full batches, yield batches.
+                with stats.iter_next_batch_s.timer():
+                    batch = batcher.next_batch()
+                with stats.iter_format_batch_s.timer():
+                    result = _format_batch(batch, batch_format)
+                with stats.iter_user_s.timer():
+                    yield result
+            # Handle remainder batches.
+            if block is None and not drop_last and batcher.has_any():
+                with stats.iter_next_batch_s.timer():
+                    batch = batcher.next_batch()
+                with stats.iter_format_batch_s.timer():
+                    result = _format_batch(batch, batch_format)
+                with stats.iter_user_s.timer():
+                    yield result
+
+        block_window = []  # Handle empty sliding window gracefully.
+        context = DatasetContext.get_current()
+        if (
+            prefetch_blocks > 0
+            and context.actor_prefetcher_enabled
+            and not ray.util.client.ray.is_connected()
+        ):
+            prefetcher = ActorBlockPrefetcher()
         else:
-            batcher.done_adding()
-        while batcher.has_batch():
-            # While the batcher has full batches, yield batches.
-            with stats.iter_next_batch_s.timer():
-                batch = batcher.next_batch()
-            with stats.iter_format_batch_s.timer():
-                result = _format_batch(batch, batch_format)
-            with stats.iter_user_s.timer():
-                yield result
-        # Handle remainder batches.
-        if block is None and not drop_last and batcher.has_any():
-            with stats.iter_next_batch_s.timer():
-                batch = batcher.next_batch()
-            with stats.iter_format_batch_s.timer():
-                result = _format_batch(batch, batch_format)
-            with stats.iter_user_s.timer():
-                yield result
+            prefetcher = WaitBlockPrefetcher()
 
-    block_window = []  # Handle empty sliding window gracefully.
-    context = DatasetContext.get_current()
-    if (
-        prefetch_blocks > 0
-        and context.actor_prefetcher_enabled
-        and not ray.util.client.ray.is_connected()
-    ):
-        prefetcher = ActorBlockPrefetcher()
-    else:
-        prefetcher = WaitBlockPrefetcher()
+        # Batch blocks over the prefetch windows.
+        for block_window in _sliding_window(
+            blocks, prefetch_blocks + 1, clear_block_after_read
+        ):
+            block_window = list(block_window)
+            with stats.iter_wait_s.timer():
+                prefetcher.prefetch_blocks(block_window)
+            yield from get_batches(block_window[0])
 
-    # Batch blocks over the prefetch windows.
-    for block_window in _sliding_window(
-        blocks, prefetch_blocks + 1, clear_block_after_read
-    ):
-        block_window = list(block_window)
-        with stats.iter_wait_s.timer():
-            prefetcher.prefetch_blocks(block_window)
-        yield from get_batches(block_window[0])
+        # Consume remainder of final block window.
+        for block in block_window[1:]:
+            yield from get_batches(block)
 
-    # Consume remainder of final block window.
-    for block in block_window[1:]:
-        yield from get_batches(block)
-
-    # Consume any remaining batches, now that we're done adding blocks to the batcher.
-    yield from get_batches()
+        # Consume any remaining batches, now that we're done adding blocks to the batcher.
+        yield from get_batches()
 
 
 def _format_batch(batch: Block, batch_format: str) -> BatchType:
