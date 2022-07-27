@@ -36,7 +36,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     import ray
-    from ray import tune
+    from ray import air, tune
 
     args = parser.parse_args()
 
@@ -81,7 +81,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # To run the Algorithm without tune.run, using our LSTM model and
+    # To run the Algorithm without ``Tuner.fit``, using our LSTM model and
     # manual state-in handling, do the following:
 
     # Example (use `config` from the above code):
@@ -114,7 +114,10 @@ if __name__ == "__main__":
     # >>         prev_a = a
     # >>         prev_r = reward
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    tuner = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+    )
+    results = tuner.fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
