@@ -52,8 +52,8 @@ class ViewRequirementAgentConnector(AgentConnector):
         self.agent_collectors = defaultdict(lambda: env_default)
 
     def reset(self, env_id: str):
-        if env_id in self._agent_data:
-            del self._agent_data[env_id]
+        if env_id in self.agent_collectors:
+            del self.agent_collectors[env_id]
 
     def _get_sample_batch_for_action(
         self, view_requirements, agent_batch
