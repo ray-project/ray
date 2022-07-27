@@ -60,7 +60,7 @@ available_node_types:
             BlockDeviceMappings:
                 - DeviceName: /dev/sda1
                   Ebs:
-                      VolumeSize: 100
+                      VolumeSize: 256
             # Additional options in the boto docs.
     ray.worker.default:
         # The minimum number of nodes of this type to launch.
@@ -122,9 +122,9 @@ initialization_commands: []
 # List of shell commands to run to set up nodes.
 setup_commands:
     - >-
-        (stat $HOME/anaconda3/envs/tensorflow2_latest_p37/ &> /dev/null &&
-        echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_latest_p37/bin:$PATH"' >> ~/.bashrc) || true
-    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+        (stat $HOME/anaconda3/envs/tensorflow2_p38/ &> /dev/null &&
+        echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_p38/bin:$PATH"' >> ~/.bashrc) || true
+    - which ray || pip install -U "ray[default] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
