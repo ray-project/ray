@@ -5,13 +5,12 @@
 import ray
 import pandas as pd
 from sklearn.datasets import load_breast_cancer
-from ray.air import train_test_split
 
 from ray.data.preprocessors import *
 
 # Split data into train and validation.
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
+train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 test_dataset = valid_dataset.drop_columns(["target"])
 
 columns_to_scale = ["mean radius", "mean texture"]

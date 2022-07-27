@@ -159,7 +159,7 @@ Ray AIR provides a handful of ``Preprocessor``\s that you can use out of the box
 
 .. tabbed:: Utilities
 
-    #. :func:`train_test_split <ray.air.train_test_split>`
+    #. :meth:`Dataset.train_test_split <ray.data.Dataset.train_test_split>`
 
 Chaining Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~
