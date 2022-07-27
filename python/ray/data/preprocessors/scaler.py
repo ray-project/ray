@@ -47,9 +47,8 @@ class StandardScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
         return (
-            f"StandardScaler(columns={self.columns}, ddof={self.ddof}, stats={stats})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, ddof={self.ddof!r})"
         )
 
 
@@ -94,8 +93,7 @@ class MinMaxScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"MixMaxScaler(columns={self.columns}, stats={stats})"
+        return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
 class MaxAbsScaler(Preprocessor):
@@ -136,8 +134,7 @@ class MaxAbsScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"MaxAbsScaler(columns={self.columns}, stats={stats})"
+        return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
 class RobustScaler(Preprocessor):
@@ -214,10 +211,7 @@ class RobustScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
         return (
-            f"RobustScaler("
-            f"columns={self.columns}, "
-            f"quantile_range={self.quantile_range}, "
-            f"stats={stats})>"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"quantile_range={self.quantile_range!r})"
         )

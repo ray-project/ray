@@ -30,6 +30,12 @@ class LightGBMPredictor(Predictor):
         self.model = model
         super().__init__(preprocessor)
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(model={self.model!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
+
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "LightGBMPredictor":
         """Instantiate the predictor from a Checkpoint.

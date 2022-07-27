@@ -1,7 +1,7 @@
 import abc
 import inspect
 import logging
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
@@ -159,6 +159,27 @@ class BaseTrainer(abc.ABC):
         self.resume_from_checkpoint = resume_from_checkpoint
 
         self._validate_attributes()
+
+    def __repr__(self):
+        # A dictionary that maps parameters to their default values.
+        default_values: Dict[str, Any] = {
+            "scaling_config": ScalingConfig(),
+            "run_config": RunConfig(),
+            "datasets": {},
+            "preprocessor": None,
+            "resume_from_checkpoint": None,
+        }
+
+        non_default_arguments = []
+        for parameter, default_value in default_values.items():
+            value = getattr(self, parameter)
+            if value != default_value:
+                non_default_arguments.append(f"{parameter}={value!r}")
+
+        if non_default_arguments:
+            return f"<{self.__class__.__name__} {' '.join(non_default_arguments)}>"
+
+        return f"<{self.__class__.__name__}>"
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""

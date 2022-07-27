@@ -32,6 +32,12 @@ class BatchPredictor:
         self._predictor_kwargs = predictor_kwargs
         self._override_preprocessor: Optional[Preprocessor] = None
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(checkpoint={self._checkpoint}, "
+            f"predictor_cls={self._predictor_cls.__name__})"
+        )
+
     @classmethod
     def from_checkpoint(
         cls, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **kwargs

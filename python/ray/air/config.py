@@ -1,6 +1,16 @@
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Union, Tuple
+from dataclasses import _MISSING_TYPE, dataclass, fields
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Union,
+    Tuple,
+)
 
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
@@ -26,6 +36,44 @@ SampleRange = Union["Domain", Dict[str, List]]
 
 MAX = "max"
 MIN = "min"
+
+
+def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> str:
+    """A utility function to elegantly represent dataclasses.
+
+    In contrast to the default dataclass `__repr__`, which shows all parameters, this
+    function only shows parameters with non-default values.
+
+    Args:
+        obj: The dataclass to represent.
+        default_values: An optional dictionary that maps field names to default values.
+            Use this parameter to specify default values that are generated dynamically
+            (e.g., in `__post_init__` or by a `default_factory`). If a default value
+            isn't specified in `default_values`, then the default value is inferred from
+            the `dataclass`.
+
+    Returns:
+        A representation of the dataclass.
+    """
+    if default_values is None:
+        default_values = {}
+
+    non_default_values = {}  # Maps field name to value.
+
+    for field in fields(obj):
+        value = getattr(obj, field.name)
+        default_value = default_values.get(field.name, field.default)
+        is_required = isinstance(field.default, _MISSING_TYPE)
+        if is_required or value != default_value:
+            non_default_values[field.name] = value
+
+    string = f"{obj.__class__.__name__}("
+    string += ", ".join(
+        f"{name}={value!r}" for name, value in non_default_values.items()
+    )
+    string += ")"
+
+    return string
 
 
 @dataclass
@@ -86,6 +134,9 @@ class ScalingConfig:
                     "request a positive number of `GPU` in "
                     "`resources_per_worker."
                 )
+
+    def __repr__(self):
+        return _repr_dataclass(self)
 
     def __eq__(self, o: "ScalingConfig") -> bool:
         if not isinstance(o, type(self)):
@@ -272,6 +323,9 @@ class DatasetConfig:
     # True by default.
     randomize_block_order: Optional[bool] = None
 
+    def __repr__(self):
+        return _repr_dataclass(self)
+
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
         return DatasetConfig(
@@ -404,6 +458,9 @@ class FailureConfig:
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
             )
 
+    def __repr__(self):
+        return _repr_dataclass(self)
+
 
 @dataclass
 @PublicAPI(stability="alpha")
@@ -467,6 +524,9 @@ class CheckpointConfig:
             raise ValueError(
                 f"checkpoint_frequency must be >=0, got {self.checkpoint_frequency}"
             )
+
+    def __repr__(self):
+        return _repr_dataclass(self)
 
     @property
     def _tune_legacy_checkpoint_score_attr(self) -> Optional[str]:
@@ -550,3 +610,15 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+    def __repr__(self):
+        from ray.tune.syncer import SyncConfig
+
+        return _repr_dataclass(
+            self,
+            default_values={
+                "failure_config": FailureConfig(),
+                "sync_config": SyncConfig(),
+                "checkpoint_config": CheckpointConfig(),
+            },
+        )
