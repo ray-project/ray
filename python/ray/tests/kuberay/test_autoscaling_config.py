@@ -46,7 +46,7 @@ def _get_basic_autoscaling_config() -> dict:
             "disable_launch_config_check": True,
             "foreground_node_launch": True,
             "worker_liveness_check": False,
-            "worker_rpc_drain": False,
+            "worker_rpc_drain": True,
             "namespace": "default",
             "type": "kuberay",
         },

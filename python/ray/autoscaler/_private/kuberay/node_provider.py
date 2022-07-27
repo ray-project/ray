@@ -178,8 +178,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
         ), f"To use KuberayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
         assert (
-            provider_config.get(WORKER_RPC_DRAIN_KEY, True) is False
-        ), f"To use KuberayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:False`."
+            provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
+        ), f"To use KuberayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
         provider_exists = True
 
         super().__init__(provider_config, cluster_name)
