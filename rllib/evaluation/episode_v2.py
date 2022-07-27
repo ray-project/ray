@@ -259,7 +259,7 @@ class EpisodeV2:
                 continue
             pid = self.policy_for(agent_id)
             policy = self.policy_map[pid]
-            pre_batch = collector.build(policy.view_requirements)
+            pre_batch = collector.build_for_training(policy.view_requirements)
             pre_batches[agent_id] = (pid, policy, pre_batch)
 
         for agent_id, (pid, policy, pre_batch) in pre_batches.items():
