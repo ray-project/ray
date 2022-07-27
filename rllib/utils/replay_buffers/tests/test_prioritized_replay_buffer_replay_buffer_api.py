@@ -5,7 +5,7 @@ import unittest
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
     PrioritizedReplayBuffer,
 )
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
 from ray.rllib.utils.test_utils import check
 
 
@@ -117,7 +117,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         )
         for _ in range(40):
             buffer.add(
-                SampleBatch.concat_samples([self._generate_data() for _ in range(5)])
+                concat_samples([self._generate_data() for _ in range(5)])
             )
         assert len(buffer._storage) == 20, len(buffer._storage)
         assert buffer.stats()["added_count"] == 200, buffer.stats()
