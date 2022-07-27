@@ -50,12 +50,15 @@ class CartPoleCrashing(CartPoleEnv):
         # No env pre-checking?
         self._skip_env_checking = config.get("skip_env_checking", False)
 
+        # Make sure envs don't crash at the same time.
+        self._rng = np.random.RandomState()
+
     @override(CartPoleEnv)
     def reset(self):
         # Reset timestep counter for the new episode.
         self.timesteps = 0
         # Should we crash?
-        if np.random.random() < self.p_crash_reset or (
+        if self._rng.rand() < self.p_crash_reset or (
             self.crash_after_n_steps is not None and self.crash_after_n_steps == 0
         ):
             raise EnvError(
@@ -69,7 +72,7 @@ class CartPoleCrashing(CartPoleEnv):
         # Increase timestep counter for the ongoing episode.
         self.timesteps += 1
         # Should we crash?
-        if np.random.random() < self.p_crash or (
+        if self._rng.rand() < self.p_crash or (
             self.crash_after_n_steps and self.crash_after_n_steps == self.timesteps
         ):
             raise EnvError(
