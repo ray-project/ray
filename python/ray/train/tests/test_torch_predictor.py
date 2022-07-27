@@ -32,6 +32,13 @@ class DummyModelMultiInput(torch.nn.Module):
 
 class DummyModelMultiOutput(torch.nn.Module):
     def forward(self, input_tensor):
+        return {"a": input_tensor, "b": input_tensor}
+
+
+class DummyCustomModel(torch.nn.Module):
+    """A model with an unsupported output type."""
+
+    def forward(self, input_tensor):
         return [input_tensor, input_tensor]
 
 
@@ -121,6 +128,31 @@ def test_predict_multi_output(use_gpu):
     predictions = predictor.predict(data_batch)
 
     # Model outputs two tensors
+    assert len(predictions) == 2
+    for k, v in predictions.items():
+        # Each tensor is of size 3
+        assert len(v) == 3
+        assert v.flatten().tolist() == [1, 2, 3]
+
+
+def test_predict_unsupported_output():
+    """Tests predictions with models that have unsupported output types."""
+    predictor = TorchPredictor(model=DummyCustomModel())
+
+    data_batch = np.array([1, 2, 3])
+
+    # List output is not supported.
+    with pytest.raises(ValueError):
+        predictor.predict(data_batch)
+
+    # Use a custom predictor instead.
+    class CustomPredictor(TorchPredictor):
+        def call_model(self, tensor):
+            model_output = super().call_model(tensor)
+            return {str(i): model_output[i] for i in range(len(model_output))}
+
+    predictor = CustomPredictor(model=DummyCustomModel())
+    predictions = predictor.predict(data_batch)
     assert len(predictions) == 2
     for k, v in predictions.items():
         # Each tensor is of size 3
