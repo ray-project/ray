@@ -6,6 +6,7 @@ import { MiBRatioNoPercent } from "../../../../common/formatUtils";
 import { Accessor } from "../../../../common/tableUtils";
 import UsageBar from "../../../../common/UsageBar";
 import { getWeightedAverage, sum } from "../../../../common/util";
+import PercentageBar from "../../../../components/PercentageBar";
 import {
   ClusterFeatureRenderFn,
   Node,
@@ -112,7 +113,9 @@ export const GRAMEntry: React.FC<GRAMEntryProps> = ({
     <Box display="flex" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
         <RightPaddedTypography variant="body1">
-          [{slot}]: {ratioStr}
+          <PercentageBar num={utilization} total={total}>
+            [{slot}]: {ratioStr}
+          </PercentageBar>
         </RightPaddedTypography>
       </Tooltip>
     </Box>
