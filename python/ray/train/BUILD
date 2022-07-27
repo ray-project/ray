@@ -361,6 +361,14 @@ py_test(
     deps = [":train_lib"]
 )
 
+py_test(
+    name = "test_jax",
+    size = "large",
+    srcs = ["tests/test_jax.py"],
+    tags = ["team:ml", "exclusive", "jax"],
+    deps = [":train_lib"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
