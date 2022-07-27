@@ -2044,7 +2044,7 @@ def connect(
             )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory)
