@@ -84,7 +84,9 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def delete_serve_application(self, req: Request) -> Response:
         from ray import serve
 
-        serve.shutdown()
+        if self.get_serve_client() is not None:
+            serve.shutdown()
+
         return Response()
 
     @routes.put("/api/serve/deployments/")
