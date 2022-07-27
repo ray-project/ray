@@ -4,10 +4,18 @@ debian_packages:
   - curl
   - unzip
   - jq
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
 
 python:
-  pip_packages: []
+  pip_packages:
+  - kubernetes
   conda_packages: []
 
 post_build_cmds:
-  - aws secretsmanager get-secret-value --secret-id oss-nightly-ci-gke-cluster-service-account --region us-west-2 | jq -r .SecretString | jq -r .json_text > gke_service_account.json
+  # Install gcloud tools
+  - echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+  - curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+  - sudo apt-get update && sudo apt-get install google-cloud-cli
+  - sudo apt-get install google-cloud-sdk-gke-gcloud-auth-plugin
