@@ -923,7 +923,7 @@ def _set_up_config_for_head_node(
     # head node won't be able to connect to workers
     remote_config["auth"].pop("ssh_proxy_command", None)
 
-    # drop the head_node field if it was introduced. It is technically not a
+    # Drop the head_node field if it was introduced. It is technically not a
     # valid field in the config, but it may have been introduced after
     # validation (see _bootstrap_config() call to
     # provider_cls.bootstrap_config(config)). The head node will never try to
