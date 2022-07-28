@@ -1733,7 +1733,7 @@ py_test(
 )
 
 py_test(
-    name = "test_dm",
+    name = "test_dr",
     tags = ["team:rllib", "offline"],
     size = "small",
     srcs = ["offline/estimators/tests/test_dr.py"],
