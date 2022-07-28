@@ -99,8 +99,47 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         client = serve_start(
             detached=True,
-            http_options={"host": "0.0.0.0", "location": "EveryNode"},
+            http_options={
+                "host": config.host,
+                "port": config.port,
+                "location": "EveryNode",
+            },
         )
+
+        if client.http_config.host != config.host:
+            return Response(
+                status=400,
+                text=(
+                    "Serve is already running on this Ray cluster. Its "
+                    f'HTTP host is set to "{client.http_config.host}". '
+                    f'However, the requested host is "{config.host}". '
+                    f"The requested host must match the running Serve "
+                    "application's host. To change the Serve application "
+                    "host, shut down Serve on this Ray cluster using the "
+                    "`serve shutdown` CLI command or by sending a DELETE "
+                    "request to this Ray cluster's "
+                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
+                    "down Serve will also shut down all Serve deployments."
+                ),
+            )
+
+        if client.http_config.port != config.port:
+            return Response(
+                status=400,
+                text=(
+                    "Serve is already running on this Ray cluster. Its "
+                    f'HTTP port is set to "{client.http_config.port}". '
+                    f'However, the requested port is "{config.port}". '
+                    f"The requested port must match the running Serve "
+                    "application's port. To change the Serve application "
+                    "port, shut down Serve on this Ray cluster using the "
+                    "`serve shutdown` CLI command or by sending a DELETE "
+                    "request to this Ray cluster's "
+                    '"/api/serve/deployments/" endpoint. CAUTION: shutting '
+                    "down Serve will also shut down all Serve deployments."
+                ),
+            )
+
         client.deploy_app(config)
 
         return Response()
