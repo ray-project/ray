@@ -4,6 +4,8 @@ load("@rules_jvm_external//:specs.bzl", "maven")
 def gen_java_deps():
     maven_install(
         artifacts = [
+            "com.fasterxml.jackson.core:jackson-databind:2.13.3",
+            "com.github.java-json-tools:json-schema-validator:2.2.14",
             "com.google.code.gson:gson:2.8.5",
             "com.google.guava:guava:30.0-jre",
             "com.google.protobuf:protobuf-java:3.19.4",
@@ -25,7 +27,7 @@ def gen_java_deps():
             "org.slf4j:slf4j-api:1.7.25",
             "com.lmax:disruptor:3.3.4",
             "org.yaml:snakeyaml:1.26",
-            "net.java.dev.jna:jna:5.5.0",
+            "net.java.dev.jna:jna:5.8.0",
             "org.apache.httpcomponents.client5:httpclient5:5.0.3",
             "org.apache.httpcomponents.core5:httpcore5:5.0.2",
             maven.artifact(
@@ -34,6 +36,7 @@ def gen_java_deps():
                 version = "7.3.0",
                 exclusions = [
                     "org.yaml:snakeyaml",
+                    "com.google.guava:guava",
                 ]
             ),
         ],

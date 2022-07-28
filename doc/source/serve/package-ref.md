@@ -1,3 +1,4 @@
+(serve-api)=
 # Ray Serve API
 
 ## Core APIs

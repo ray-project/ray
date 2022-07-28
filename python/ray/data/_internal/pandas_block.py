@@ -12,16 +12,25 @@ from typing import (
 )
 
 import collections
+import heapq
 import numpy as np
 
-from ray.data.block import BlockAccessor, BlockMetadata, KeyFn, U
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    BlockExecStats,
+    KeyFn,
+    KeyType,
+    U,
+)
+from ray.data.context import DatasetContext
 from ray.data.row import TableRow
 from ray.data._internal.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
     VALUE_COL_NAME,
 )
-from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
@@ -57,7 +66,7 @@ class PandasRow(TableRow):
             # Try to interpret this as a numpy-type value.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
             return item.item()
-        except AttributeError:
+        except (AttributeError, ValueError):
             # Fallback to the original form.
             return item
 
@@ -87,7 +96,19 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
 
     def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
-        return pandas.concat(tables, ignore_index=True)
+        from ray.air.util.data_batch_conversion import (
+            _cast_ndarray_columns_to_tensor_extension,
+        )
+
+        if len(tables) > 1:
+            df = pandas.concat(tables, ignore_index=True)
+        else:
+            df = tables[0]
+        df.reset_index(drop=True, inplace=True)
+        ctx = DatasetContext.get_current()
+        if ctx.enable_tensor_extension_casting:
+            df = _cast_ndarray_columns_to_tensor_extension(df)
+        return df
 
     @staticmethod
     def _empty_table() -> "pandas.DataFrame":
@@ -111,18 +132,31 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
-        # Getting an item in a Pandas tensor column returns a TensorArrayElement, which
-        # we have to convert to an ndarray.
-        return row[VALUE_COL_NAME].iloc[0].to_numpy()
+        from ray.data.extensions import TensorArrayElement
+
+        tensor = row[VALUE_COL_NAME].iloc[0]
+        if isinstance(tensor, TensorArrayElement):
+            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
+            # which we have to convert to an ndarray.
+            tensor = tensor.to_numpy()
+        return tensor
 
     def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
         view = self._table[start:end]
+        view.reset_index(drop=True, inplace=True)
         if copy:
             view = view.copy(deep=True)
         return view
 
+    def take(self, indices: List[int]) -> "pandas.DataFrame":
+        table = self._table.take(indices)
+        table.reset_index(drop=True, inplace=True)
+        return table
+
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
-        return self._table.sample(frac=1, random_state=random_seed)
+        table = self._table.sample(frac=1, random_state=random_seed)
+        table.reset_index(drop=True, inplace=True)
+        return table
 
     def schema(self) -> PandasBlockSchema:
         dtypes = self._table.dtypes
@@ -140,7 +174,13 @@ class PandasBlockAccessor(TableBlockAccessor):
         return schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        return self._table
+        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+
+        ctx = DatasetContext.get_current()
+        table = self._table
+        if ctx.enable_tensor_extension_casting:
+            table = _cast_tensor_columns_to_ndarrays(table)
+        return table
 
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None
@@ -207,15 +247,19 @@ class PandasBlockAccessor(TableBlockAccessor):
         self, agg_fn: Callable[["pandas.Series", bool], U], on: KeyFn
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation to a column."""
+        pd = lazy_import_pandas()
         if on is not None and not isinstance(on, str):
             raise ValueError(
                 "on must be a string or None when aggregating on Pandas blocks, but "
                 f"got: {type(on)}."
             )
 
+        if self.num_rows() == 0:
+            return None
+
         col = self._table[on]
         try:
-            return agg_fn(col)
+            val = agg_fn(col)
         except TypeError as e:
             # Converting an all-null column in an Arrow Table to a Pandas DataFrame
             # column will result in an all-None column of object type, which will raise
@@ -224,16 +268,23 @@ class PandasBlockAccessor(TableBlockAccessor):
             if np.issubdtype(col.dtype, np.object_) and col.isnull().all():
                 return None
             raise e from None
+        if pd.isnull(val):
+            return None
+        return val
 
     def count(self, on: KeyFn) -> Optional[U]:
         return self._apply_agg(lambda col: col.count(), on)
 
     def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+        pd = lazy_import_pandas()
         if on is not None and not isinstance(on, str):
             raise ValueError(
                 "on must be a string or None when aggregating on Pandas blocks, but "
                 f"got: {type(on)}."
             )
+
+        if self.num_rows() == 0:
+            return None
 
         col = self._table[on]
         if col.isnull().all():
@@ -241,7 +292,10 @@ class PandasBlockAccessor(TableBlockAccessor):
             # sum() since it will otherwise return 0 when summing on an all-null column,
             # which is not what we want.
             return None
-        return col.sum(skipna=ignore_nulls)
+        val = col.sum(skipna=ignore_nulls)
+        if pd.isnull(val):
+            return None
+        return val
 
     def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
         return self._apply_agg(lambda col: col.min(skipna=ignore_nulls), on)
@@ -267,35 +321,227 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
-    ) -> List["pandas.DataFrame"]:
-        # TODO (kfstorm): A workaround to pass tests. Not efficient.
-        delegated_result = BlockAccessor.for_block(self.to_arrow()).sort_and_partition(
-            boundaries, key, descending
-        )
-        return [BlockAccessor.for_block(_).to_pandas() for _ in delegated_result]
+    ) -> List[Block[T]]:
+        if len(key) > 1:
+            raise NotImplementedError(
+                "sorting by multiple columns is not supported yet"
+            )
+
+        if self._table.shape[0] == 0:
+            # If the pyarrow table is empty we may not have schema
+            # so calling sort_indices() will raise an error.
+            return [self._empty_table() for _ in range(len(boundaries) + 1)]
+
+        col, _ = key[0]
+        table = self._table.sort_values(by=col, ascending=not descending)
+        if len(boundaries) == 0:
+            return [table]
+
+        partitions = []
+        # For each boundary value, count the number of items that are less
+        # than it. Since the block is sorted, these counts partition the items
+        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
+        # partition[i]. If `descending` is true, `boundaries` would also be
+        # in descending order and we only need to count the number of items
+        # *greater than* the boundary value instead.
+        if descending:
+            num_rows = len(table[col])
+            bounds = num_rows - table[col].searchsorted(
+                boundaries, sorter=np.arange(num_rows - 1, -1, -1)
+            )
+        else:
+            bounds = table[col].searchsorted(boundaries)
+        last_idx = 0
+        for idx in bounds:
+            partitions.append(table[last_idx:idx])
+            last_idx = idx
+        partitions.append(table[last_idx:])
+        return partitions
 
     def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
-        # TODO (kfstorm): A workaround to pass tests. Not efficient.
-        return BlockAccessor.for_block(self.to_arrow()).combine(key, aggs).to_pandas()
+        """Combine rows with the same key into an accumulator.
+
+        This assumes the block is already sorted by key in ascending order.
+
+        Args:
+            key: The column name of key or None for global aggregation.
+            aggs: The aggregations to do.
+
+        Returns:
+            A sorted block of [k, v_1, ..., v_n] columns where k is the groupby
+            key and v_i is the partially combined accumulator for the ith given
+            aggregation.
+            If key is None then the k column is omitted.
+        """
+        if key is not None and not isinstance(key, str):
+            raise ValueError(
+                "key must be a string or None when aggregating on Pandas blocks, but "
+                f"got: {type(key)}."
+            )
+
+        def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
+            """Creates an iterator over zero-copy group views."""
+            if key is None:
+                # Global aggregation consists of a single "group", so we short-circuit.
+                yield None, self.to_block()
+                return
+
+            start = end = 0
+            iter = self.iter_rows()
+            next_row = None
+            while True:
+                try:
+                    if next_row is None:
+                        next_row = next(iter)
+                    next_key = next_row[key]
+                    while next_row[key] == next_key:
+                        end += 1
+                        try:
+                            next_row = next(iter)
+                        except StopIteration:
+                            next_row = None
+                            break
+                    yield next_key, self.slice(start, end, copy=False)
+                    start = end
+                except StopIteration:
+                    break
+
+        builder = PandasBlockBuilder()
+        for group_key, group_view in iter_groups():
+            # Aggregate.
+            accumulators = [agg.init(group_key) for agg in aggs]
+            for i in range(len(aggs)):
+                accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_view)
+
+            # Build the row.
+            row = {}
+            if key is not None:
+                row[key] = group_key
+
+            count = collections.defaultdict(int)
+            for agg, accumulator in zip(aggs, accumulators):
+                name = agg.name
+                # Check for conflicts with existing aggregation name.
+                if count[name] > 0:
+                    name = self._munge_conflict(name, count[name])
+                count[name] += 1
+                row[name] = accumulator
+
+            builder.add(row)
+
+        return builder.build()
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List["pandas.DataFrame"], key: "SortKeyT", _descending: bool
+        blocks: List[Block[T]], key: "SortKeyT", _descending: bool
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
-        # TODO (kfstorm): A workaround to pass tests. Not efficient.
-        block, metadata = ArrowBlockAccessor.merge_sorted_blocks(
-            [BlockAccessor.for_block(block).to_arrow() for block in blocks],
-            key,
-            _descending,
+        pd = lazy_import_pandas()
+        stats = BlockExecStats.builder()
+        blocks = [b for b in blocks if b.shape[0] > 0]
+        if len(blocks) == 0:
+            ret = PandasBlockAccessor._empty_table()
+        else:
+            ret = pd.concat(blocks, ignore_index=True)
+            ret = ret.sort_values(by=key[0][0], ascending=not _descending)
+        return ret, PandasBlockAccessor(ret).get_metadata(
+            None, exec_stats=stats.build()
         )
-        return BlockAccessor.for_block(block).to_pandas(), metadata
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List["pandas.DataFrame"], key: KeyFn, aggs: Tuple[AggregateFn]
+        blocks: List["pandas.DataFrame"],
+        key: KeyFn,
+        aggs: Tuple[AggregateFn],
+        finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
-        # TODO (kfstorm): A workaround to pass tests. Not efficient.
-        block, metadata = ArrowBlockAccessor.aggregate_combined_blocks(
-            [BlockAccessor.for_block(block).to_arrow() for block in blocks], key, aggs
+        """Aggregate sorted, partially combined blocks with the same key range.
+
+        This assumes blocks are already sorted by key in ascending order,
+        so we can do merge sort to get all the rows with the same key.
+
+        Args:
+            blocks: A list of partially combined and sorted blocks.
+            key: The column name of key or None for global aggregation.
+            aggs: The aggregations to do.
+            finalize: Whether to finalize the aggregation. This is used as an
+                optimization for cases where we repeatedly combine partially
+                aggregated groups.
+
+        Returns:
+            A block of [k, v_1, ..., v_n] columns and its metadata where k is
+            the groupby key and v_i is the corresponding aggregation result for
+            the ith given aggregation.
+            If key is None then the k column is omitted.
+        """
+
+        stats = BlockExecStats.builder()
+        key_fn = (lambda r: r[r._row.columns[0]]) if key is not None else (lambda r: 0)
+
+        iter = heapq.merge(
+            *[PandasBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
         )
-        return BlockAccessor.for_block(block).to_pandas(), metadata
+        next_row = None
+        builder = PandasBlockBuilder()
+        while True:
+            try:
+                if next_row is None:
+                    next_row = next(iter)
+                next_key = key_fn(next_row)
+                next_key_name = next_row._row.columns[0] if key is not None else None
+
+                def gen():
+                    nonlocal iter
+                    nonlocal next_row
+                    while key_fn(next_row) == next_key:
+                        yield next_row
+                        try:
+                            next_row = next(iter)
+                        except StopIteration:
+                            next_row = None
+                            break
+
+                # Merge.
+                first = True
+                accumulators = [None] * len(aggs)
+                resolved_agg_names = [None] * len(aggs)
+                for r in gen():
+                    if first:
+                        count = collections.defaultdict(int)
+                        for i in range(len(aggs)):
+                            name = aggs[i].name
+                            # Check for conflicts with existing aggregation
+                            # name.
+                            if count[name] > 0:
+                                name = PandasBlockAccessor._munge_conflict(
+                                    name, count[name]
+                                )
+                            count[name] += 1
+                            resolved_agg_names[i] = name
+                            accumulators[i] = r[name]
+                        first = False
+                    else:
+                        for i in range(len(aggs)):
+                            accumulators[i] = aggs[i].merge(
+                                accumulators[i], r[resolved_agg_names[i]]
+                            )
+                # Build the row.
+                row = {}
+                if key is not None:
+                    row[next_key_name] = next_key
+
+                for agg, agg_name, accumulator in zip(
+                    aggs, resolved_agg_names, accumulators
+                ):
+                    if finalize:
+                        row[agg_name] = agg.finalize(accumulator)
+                    else:
+                        row[agg_name] = accumulator
+
+                builder.add(row)
+            except StopIteration:
+                break
+
+        ret = builder.build()
+        return ret, PandasBlockAccessor(ret).get_metadata(
+            None, exec_stats=stats.build()
+        )

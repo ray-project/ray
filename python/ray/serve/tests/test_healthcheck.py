@@ -4,7 +4,7 @@ import ray
 from ray.exceptions import RayError
 from ray._private.test_utils import wait_for_condition
 from ray import serve
-from ray.serve.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 
 
 class Counter:
@@ -22,7 +22,7 @@ class Counter:
         self._count = 0
 
 
-@serve.deployment(_health_check_period_s=1, _health_check_timeout_s=1)
+@serve.deployment(health_check_period_s=1, health_check_timeout_s=1)
 class Patient:
     def __init__(self):
         self.healthy = True
@@ -74,8 +74,7 @@ def test_no_user_defined_method(serve_instance, use_class):
         def A(*args):
             return ray.get_runtime_context().current_actor
 
-    A.deploy()
-    h = A.get_handle()
+    h = serve.run(A.bind())
     actor = ray.get(h.remote())
     ray.kill(actor)
 
@@ -84,8 +83,7 @@ def test_no_user_defined_method(serve_instance, use_class):
 
 
 def test_user_defined_method_fails(serve_instance):
-    Patient.deploy()
-    h = Patient.get_handle()
+    h = serve.run(Patient.bind())
     actor = ray.get(h.remote())
     ray.get(h.set_should_fail.remote())
 
@@ -94,8 +92,7 @@ def test_user_defined_method_fails(serve_instance):
 
 
 def test_user_defined_method_hangs(serve_instance):
-    Patient.deploy()
-    h = Patient.get_handle()
+    h = serve.run(Patient.bind())
     actor = ray.get(h.remote())
     ray.get(h.set_should_hang.remote())
 
@@ -104,8 +101,7 @@ def test_user_defined_method_hangs(serve_instance):
 
 
 def test_multiple_replicas(serve_instance):
-    Patient.options(num_replicas=2).deploy()
-    h = Patient.get_handle()
+    h = serve.run(Patient.options(num_replicas=2).bind())
     actors = {a._actor_id for a in ray.get([h.remote() for _ in range(100)])}
     assert len(actors) == 2
 
@@ -130,13 +126,12 @@ def test_inherit_healthcheck(serve_instance):
         def set_should_fail(self):
             self.should_fail = True
 
-    @serve.deployment(_health_check_period_s=1)
+    @serve.deployment(health_check_period_s=1)
     class Child(Parent):
         def __call__(self, *args):
             return ray.get_runtime_context().current_actor
 
-    Child.deploy()
-    h = Child.get_handle()
+    h = serve.run(Child.bind())
     actors = {ray.get(h.remote())._actor_id for _ in range(100)}
     assert len(actors) == 1
 
@@ -148,7 +143,7 @@ def test_nonconsecutive_failures(serve_instance):
     counter = ray.remote(Counter).remote()
 
     # Test that a health check failing every other call isn't marked unhealthy.
-    @serve.deployment(_health_check_period_s=0.1)
+    @serve.deployment(health_check_period_s=0.1)
     class FlakyHealthCheck:
         def check_health(self):
             curr_count = ray.get(counter.inc.remote())
@@ -158,8 +153,7 @@ def test_nonconsecutive_failures(serve_instance):
         def __call__(self, *args):
             return ray.get_runtime_context().current_actor
 
-    FlakyHealthCheck.deploy()
-    h = FlakyHealthCheck.get_handle()
+    h = serve.run(FlakyHealthCheck.bind())
     a1 = ray.get(h.remote())
 
     # Wait for 10 health check periods, should never get marked unhealthy.
@@ -172,7 +166,7 @@ def test_consecutive_failures(serve_instance):
 
     counter = ray.remote(Counter).remote()
 
-    @serve.deployment(_health_check_period_s=1)
+    @serve.deployment(health_check_period_s=1)
     class ChronicallyUnhealthy:
         def __init__(self):
             self._actor_id = ray.get_runtime_context().current_actor._actor_id
@@ -190,8 +184,7 @@ def test_consecutive_failures(serve_instance):
         def __call__(self, *args):
             return self._actor_id
 
-    ChronicallyUnhealthy.deploy()
-    h = ChronicallyUnhealthy.get_handle()
+    h = serve.run(ChronicallyUnhealthy.bind())
 
     def check_fails_3_times():
         original_actor_id = ray.get(h.set_should_fail.remote())

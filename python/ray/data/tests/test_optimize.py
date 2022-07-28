@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
+from ray.data import Dataset
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.datasource import Datasource, ReadTask
@@ -48,7 +49,14 @@ def expect_stages(pipe, num_stages_expected, stage_names):
     for name in stage_names:
         name = " " + name + ":"
         assert name in stats, (name, stats)
-    assert len(pipe._optimized_stages) == num_stages_expected, pipe._optimized_stages
+    if isinstance(pipe, Dataset):
+        assert (
+            len(pipe._plan._stages_before_snapshot) == num_stages_expected
+        ), pipe._plan._stages_before_snapshot
+    else:
+        assert (
+            len(pipe._optimized_stages) == num_stages_expected
+        ), pipe._optimized_stages
 
 
 def test_memory_sanity(shutdown_only):
@@ -152,7 +160,7 @@ def test_memory_release_lazy(shutdown_only):
     ds = ray.data.range(10)
 
     # Should get fused into single stage.
-    ds = ds.experimental_lazy()
+    ds = ds.lazy()
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
     ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
@@ -172,7 +180,7 @@ def test_memory_release_lazy_shuffle(shutdown_only):
             ds = ray.data.range(10)
 
             # Should get fused into single stage.
-            ds = ds.experimental_lazy()
+            ds = ds.lazy()
             ds = ds.map(lambda x: np.ones(100 * 1024 * 1024, dtype=np.uint8))
             ds.random_shuffle().fully_executed()
             meminfo = memory_summary(info.address_info["address"], stats_only=True)
@@ -205,7 +213,7 @@ def test_lazy_fanout(shutdown_only, local_path):
     # Test that fan-out of a lazy dataset results in re-execution up to the datasource,
     # due to block move semantics.
     ds = ray.data.read_datasource(source, parallelism=1, paths=path)
-    ds = ds.experimental_lazy()
+    ds = ds.lazy()
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
@@ -236,7 +244,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
     # The source data shouldn't be cleared since it's non-lazy.
     ds = ray.data.from_items(list(range(10)))
-    ds = ds.experimental_lazy()
+    ds = ds.lazy()
     ds1 = ds.map(inc)
     ds2 = ds1.map(inc)
     ds3 = ds1.map(inc)
@@ -248,7 +256,7 @@ def test_lazy_fanout(shutdown_only, local_path):
 
 
 def test_spread_hint_inherit(ray_start_regular_shared):
-    ds = ray.data.range(10).experimental_lazy()
+    ds = ray.data.range(10).lazy()
     ds = ds.map(lambda x: x + 1)
     ds = ds.random_shuffle()
     for s in ds._plan._stages_before_snapshot:
@@ -280,7 +288,7 @@ def test_stage_linking(ray_start_regular_shared):
     _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
 
     # Test lazy dataset.
-    ds = ray.data.range(10).experimental_lazy()
+    ds = ray.data.range(10).lazy()
     assert len(ds._plan._stages_before_snapshot) == 0
     assert len(ds._plan._stages_after_snapshot) == 0
     assert len(ds._plan._last_optimized_stages) == 0
@@ -292,6 +300,44 @@ def test_stage_linking(ray_start_regular_shared):
     _assert_has_stages(ds._plan._stages_before_snapshot, ["map"])
     assert len(ds._plan._stages_after_snapshot) == 0
     _assert_has_stages(ds._plan._last_optimized_stages, ["read->map"])
+
+
+def test_optimize_reorder(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_reorder_stages = True
+
+    ds = ray.data.range(10).randomize_block_order().map_batches(lambda x: x)
+    expect_stages(
+        ds,
+        2,
+        ["read->map_batches", "randomize_block_order"],
+    )
+
+    ds2 = (
+        ray.data.range(10)
+        .randomize_block_order()
+        .repartition(10)
+        .map_batches(lambda x: x)
+    )
+    expect_stages(
+        ds2,
+        3,
+        ["read->randomize_block_order", "repartition", "map_batches"],
+    )
+
+
+def test_window_randomize_fusion(ray_start_regular_shared):
+    context = DatasetContext.get_current()
+    context.optimize_fuse_stages = True
+    context.optimize_fuse_read_stages = True
+    context.optimize_reorder_stages = True
+
+    pipe = ray.data.range(100).randomize_block_order().window().map_batches(lambda x: x)
+    pipe.take()
+    stats = pipe.stats()
+    assert "read->randomize_block_order->map_batches" in stats, stats
 
 
 def test_optimize_fuse(ray_start_regular_shared):
@@ -572,7 +618,7 @@ def test_optimize_lazy_reuse_base_data(
     ds = ray.data.read_datasource(source, parallelism=4, paths=paths)
     num_reads = ray.get(counter.get.remote())
     assert num_reads == 1, num_reads
-    ds = ds.experimental_lazy()
+    ds = ds.lazy()
     ds = ds.map(lambda x: x)
     if with_shuffle:
         ds = ds.random_shuffle()

@@ -8,11 +8,13 @@ from mlflow.tracking import MlflowClient
 
 from ray.tune.trainable import wrap_function
 from ray.tune.integration.mlflow import (
-    MLflowLoggerCallback,
     MLflowTrainableMixin,
     mlflow_mixin,
 )
-from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
+from ray.air.callbacks.mlflow import (
+    MLflowLoggerCallback,
+)
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 
 
 class MockTrial(
@@ -136,7 +138,7 @@ class MLflowTest(unittest.TestCase):
         logger.setup()
         self.assertEqual(logger.tags, tags)
 
-    @patch("ray.tune.integration.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
+    @patch("ray.air.callbacks.mlflow._MLflowLoggerUtil", Mock_MLflowLoggerUtil)
     def testMlFlowLoggerLogging(self):
         clear_env_vars()
         trial_config = {"par1": "a", "par2": "b"}

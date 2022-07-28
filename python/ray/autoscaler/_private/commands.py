@@ -649,7 +649,7 @@ def get_or_create_head_node(
             yes, "No head node found. Launching a new cluster.", _abort=True
         )
         cli_logger.newline()
-        usage_lib.show_usage_stats_prompt()
+        usage_lib.show_usage_stats_prompt(cli=True)
 
     if head_node:
         if restart_only:
@@ -662,7 +662,7 @@ def get_or_create_head_node(
                 _abort=True,
             )
             cli_logger.newline()
-            usage_lib.show_usage_stats_prompt()
+            usage_lib.show_usage_stats_prompt(cli=True)
         elif no_restart:
             cli_logger.print(
                 "Cluster Ray runtime will not be restarted due to `{}`.",
@@ -679,7 +679,7 @@ def get_or_create_head_node(
                 yes, cf.bold("Cluster Ray runtime will be restarted."), _abort=True
             )
             cli_logger.newline()
-            usage_lib.show_usage_stats_prompt()
+            usage_lib.show_usage_stats_prompt(cli=True)
 
     cli_logger.newline()
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
@@ -922,6 +922,13 @@ def _set_up_config_for_head_node(
     # drop proxy options if they exist, otherwise
     # head node won't be able to connect to workers
     remote_config["auth"].pop("ssh_proxy_command", None)
+
+    # Drop the head_node field if it was introduced. It is technically not a
+    # valid field in the config, but it may have been introduced after
+    # validation (see _bootstrap_config() call to
+    # provider_cls.bootstrap_config(config)). The head node will never try to
+    # launch a head node so it doesn't need these defaults.
+    remote_config.pop("head_node", None)
 
     if "ssh_private_key" in config["auth"]:
         remote_key_path = "~/ray_bootstrap_key.pem"

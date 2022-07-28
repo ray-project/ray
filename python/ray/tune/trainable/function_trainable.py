@@ -6,14 +6,17 @@ import sys
 import threading
 import time
 import uuid
+import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Type, Union
 
+from ray.tune.resources import Resources
 from six.moves import queue
 
 from ray.air.checkpoint import Checkpoint
 from ray.tune import TuneError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
 from ray.tune.result import (
     DEFAULT_METRIC,
@@ -23,11 +26,10 @@ from ray.tune.result import (
 )
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.utils import (
-    detect_checkpoint_function,
-    detect_config_single,
-    detect_reporter,
+    _detect_checkpoint_function,
+    _detect_config_single,
+    _detect_reporter,
 )
-from ray.tune.trainable.util import with_parameters  # noqa: F401
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -345,7 +347,7 @@ class FunctionTrainable(Trainable):
         )
         self._last_result = {}
 
-        session.init(self._status_reporter)
+        session._init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
@@ -442,6 +444,8 @@ class FunctionTrainable(Trainable):
             new_result = self._last_result.copy()
             new_result.update(result)
             result = new_result
+            # Do not checkpoint again
+            result[SHOULD_CHECKPOINT] = False
 
         self._last_result = result
         if self._status_reporter.has_new_checkpoint():
@@ -451,22 +455,26 @@ class FunctionTrainable(Trainable):
     def execute(self, fn):
         return fn(self)
 
-    def save_checkpoint(self, tmp_checkpoint_dir: str = ""):
-        if tmp_checkpoint_dir:
+    def get_state(self):
+        state = super().get_state()
+
+        checkpoint = self._status_reporter.get_checkpoint()
+        if not checkpoint:
+            state.update(iteration=0, timesteps_total=0, episodes_total=0)
+        return state
+
+    def save_checkpoint(self, checkpoint_dir: str = ""):
+        if checkpoint_dir:
             raise ValueError("Checkpoint dir should not be used with function API.")
 
         checkpoint = self._status_reporter.get_checkpoint()
-        state = self.get_state()
 
         if not checkpoint:
-            state.update(iteration=0, timesteps_total=0, episodes_total=0)
             # We drop a marker here to indicate that the checkpoint is empty
             checkpoint = FuncCheckpointUtil.mk_null_checkpoint_dir(self.logdir)
             parent_dir = checkpoint
         elif isinstance(checkpoint, dict):
-            parent_dir = TrainableUtil.make_checkpoint_dir(
-                self.logdir, index=self.training_iteration
-            )
+            return checkpoint
         elif isinstance(checkpoint, str):
             parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint)
             # When the trainable is restored, a temporary checkpoint
@@ -474,41 +482,30 @@ class FunctionTrainable(Trainable):
             # Ideally, there are no save calls upon a temporary
             # checkpoint, but certain schedulers might.
             if FuncCheckpointUtil.is_temp_checkpoint_dir(parent_dir):
-                relative_path = os.path.relpath(checkpoint, parent_dir)
                 parent_dir = FuncCheckpointUtil.create_perm_checkpoint(
                     checkpoint_dir=parent_dir,
                     logdir=self.logdir,
                     step=self.training_iteration,
                 )
-                checkpoint = os.path.abspath(os.path.join(parent_dir, relative_path))
         else:
             raise ValueError(
                 "Provided checkpoint was expected to have "
                 "type (str, dict). Got {}.".format(type(checkpoint))
             )
 
-        checkpoint_path = TrainableUtil.process_checkpoint(
-            checkpoint, parent_dir, state
-        )
-        return checkpoint_path
+        return parent_dir
 
-    def save(self, checkpoint_path=None) -> str:
-        if checkpoint_path:
-            raise ValueError("Checkpoint path should not be used with function API.")
-
-        checkpoint_path = self.save_checkpoint()
-
-        parent_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        self._maybe_save_to_cloud(parent_dir)
-
-        return checkpoint_path
+    def _create_checkpoint_dir(
+        self, checkpoint_dir: Optional[str] = None
+    ) -> Optional[str]:
+        return None
 
     def save_to_object(self):
         checkpoint_path = self.save()
-        obj = TrainableUtil.checkpoint_to_object(checkpoint_path)
-        return obj
+        checkpoint = Checkpoint.from_directory(checkpoint_path)
+        return checkpoint.to_bytes()
 
-    def load_checkpoint(self, checkpoint: str):
+    def load_checkpoint(self, checkpoint):
         # This should be removed once Trainables are refactored.
         if "tune_checkpoint_path" in checkpoint:
             del checkpoint["tune_checkpoint_path"]
@@ -521,14 +518,21 @@ class FunctionTrainable(Trainable):
         # as a new checkpoint.
         self._status_reporter.set_checkpoint(checkpoint, is_new=False)
 
+    def _restore_from_checkpoint_obj(self, checkpoint: Checkpoint):
+        self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
+            self.logdir
+        )
+        checkpoint.to_directory(self.temp_checkpoint_dir)
+        self.restore(self.temp_checkpoint_dir)
+
     def restore_from_object(self, obj):
         self.temp_checkpoint_dir = FuncCheckpointUtil.mk_temp_checkpoint_dir(
             self.logdir
         )
-        checkpoint_path = TrainableUtil.create_from_pickle(
-            obj, self.temp_checkpoint_dir
-        )
-        self.restore(checkpoint_path)
+        checkpoint = Checkpoint.from_bytes(obj)
+        checkpoint.to_directory(self.temp_checkpoint_dir)
+
+        self.restore(self.temp_checkpoint_dir)
 
     def cleanup(self):
         # Trigger thread termination
@@ -547,7 +551,7 @@ class FunctionTrainable(Trainable):
 
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
-        session.shutdown()
+        session._shutdown()
 
         if self.temp_checkpoint_dir is not None and os.path.exists(
             self.temp_checkpoint_dir
@@ -587,18 +591,19 @@ class FunctionTrainable(Trainable):
             pass
 
 
+@DeveloperAPI
 def wrap_function(
     train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
-):
+) -> Type["FunctionTrainable"]:
     inherit_from = (FunctionTrainable,)
 
     if hasattr(train_func, "__mixins__"):
         inherit_from = train_func.__mixins__ + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
-    use_checkpoint = detect_checkpoint_function(train_func)
-    use_config_single = detect_config_single(train_func)
-    use_reporter = detect_reporter(train_func)
+    use_checkpoint = _detect_checkpoint_function(train_func)
+    use_config_single = _detect_config_single(train_func)
+    use_reporter = _detect_reporter(train_func)
 
     if not any([use_checkpoint, use_config_single, use_reporter]):
         # use_reporter is hidden
@@ -617,6 +622,29 @@ def wrap_function(
                 "certain schedulers. To enable, set the train function "
                 "arguments to be `func(config, checkpoint_dir=None)`."
             )
+
+    if use_checkpoint:
+        if log_once("tune_checkpoint_dir_deprecation") and warn:
+            with warnings.catch_warnings():
+                warnings.simplefilter("always")
+                warning_msg = (
+                    "`checkpoint_dir` in `func(config, checkpoint_dir)` is "
+                    "being deprecated. "
+                    "To save and load checkpoint in trainable functions, "
+                    "please use the `ray.air.session` API:\n\n"
+                    "from ray.air import session\n\n"
+                    "def train(config):\n"
+                    "    # ...\n"
+                    '    session.report({"metric": metric}, checkpoint=checkpoint)\n\n'
+                    "For more information please see "
+                    "https://docs.ray.io/en/master/ray-air/key-concepts.html#session\n"
+                )
+                warnings.warn(
+                    warning_msg,
+                    DeprecationWarning,
+                )
+
+    resources = getattr(train_func, "_resources", None)
 
     class ImplicitFunc(*inherit_from):
         _name = name or (
@@ -661,5 +689,13 @@ def wrap_function(
             # with the keyword RESULT_DUPLICATE -- see tune/trial_runner.py.
             reporter(**{RESULT_DUPLICATE: True})
             return output
+
+        @classmethod
+        def default_resource_request(
+            cls, config: Dict[str, Any]
+        ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+            if not isinstance(resources, PlacementGroupFactory) and callable(resources):
+                return resources(config)
+            return resources
 
     return ImplicitFunc

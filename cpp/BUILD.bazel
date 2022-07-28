@@ -6,11 +6,24 @@ load("//bazel:ray.bzl", "COPTS")
 cc_binary(
     name = "libray_api.so",
     copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:darwin": [
+            #TODO(larry): Hide the symbols when we make it work on mac.
+        ],
+        "@bazel_tools//src/conditions:windows": [
+            #TODO(larry): Hide the symbols when we make it work on Windows.
+        ],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location :symbols/ray_api_exported_symbols_linux.lds)",
+        ],
+    }),
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":ray_api",
+        ":symbols/ray_api_exported_symbols_linux.lds",
+        ":symbols/ray_api_exported_symbols_mac.lds",
     ],
 )
 
@@ -53,6 +66,7 @@ cc_library(
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/flags:parse",
         "@msgpack",
+        "@nlohmann_json",
     ],
     alwayslink = True,
 )
@@ -89,6 +103,7 @@ cc_binary(
             "@boost//:callable_traits",
             "@boost//:optional",
             "@msgpack",
+            "@nlohmann_json",
         ],
     }),
 )
@@ -110,6 +125,7 @@ genrule(
         mkdir -p "$$PY_CPP_DIR/lib/" &&
         cp -f $(location default_worker) "$$PY_CPP_DIR/" &&
         cp -f -r $$WORK_DIR/external/msgpack/include/* "$$PY_CPP_DIR/include" &&
+        cp -f -r $$WORK_DIR/external/nlohmann_json/single_include/* "$$PY_CPP_DIR/include" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/archive" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/assert" "$$BOOST_DIR" &&
         cp -f -r "$$WORK_DIR/external/boost/boost/bind" "$$BOOST_DIR" &&
@@ -229,11 +245,15 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
+    # NOTE(WangTaoTheTonic): For java x-lang tests. See //java:all_tests
+    # and `CrossLanguageInvocationTest.java`.
+    visibility = ["//java:__subpackages__"],
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
         "@boost//:optional",
         "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
@@ -247,11 +267,15 @@ cc_binary(
     copts = COPTS,
     linkopts = ["-shared"],
     linkstatic = True,
+    # NOTE(WangTaoTheTonic): For java x-lang tests. See //java:all_tests
+    # and `CrossLanguageInvocationTest.java`.
+    visibility = ["//java:__subpackages__"],
     deps = [
         "ray_cpp_lib",
         "@boost//:callable_traits",
         "@boost//:optional",
         "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
@@ -289,6 +313,7 @@ cc_binary(
         "@boost//:callable_traits",
         "@boost//:optional",
         "@msgpack",
+        "@nlohmann_json",
     ],
 )
 
@@ -305,7 +330,5 @@ py_test_module_list(
         "small_size_python_tests",
         "team:core",
     ],
-    deps = [
-        ":ray_api",
-    ],
+    deps = [],
 )

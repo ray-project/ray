@@ -10,9 +10,11 @@ import pyarrow as pa
 import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
+from ray.data.datasource.file_meta_provider import _handle_read_os_error
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
+from fsspec.implementations.http import HTTPFileSystem
 from pytest_lazyfixture import lazy_fixture
 
 import ray
@@ -26,6 +28,7 @@ from ray.data.datasource import (
     DefaultParquetMetadataProvider,
     DummyOutputDatasource,
     FastFileMetadataProvider,
+    ImageFolderDatasource,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
@@ -36,9 +39,13 @@ from ray.data.datasource import (
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
+    _ParquetDatasourceReader,
+    _SerializedPiece,
     _deserialize_pieces_with_retry,
 )
+from ray.data.preprocessors import BatchMapper
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
 
@@ -266,7 +273,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):
-    blocks = ray.data.range(10).get_internal_block_refs()
+    blocks = ray.data.range(10, parallelism=10).get_internal_block_refs()
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
@@ -320,6 +327,14 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     assert ds_df.equals(df)
 
 
+def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
+    ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
+    assert ds.count() > 0
+    # Test auto-resolve of HTTP file system when it is not provided.
+    ds = ray.data.read_text(http_file)
+    assert ds.count() > 0
+
+
 def test_read_example_data(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_csv("example://iris.csv")
     assert ds.count() == 150
@@ -334,6 +349,23 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
+def test_read_pandas_data_array_column(ray_start_regular_shared):
+    df = pd.DataFrame(
+        {
+            "one": [1, 2, 3],
+            "array": [
+                np.array([1, 1, 1]),
+                np.array([2, 2, 2]),
+                np.array([3, 3, 3]),
+            ],
+        }
+    )
+    ds = ray.data.from_pandas(df)
+    row = ds.take(1)[0]
+    assert row["one"] == 1
+    assert all(row["array"] == [1, 1, 1])
+
+
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -343,7 +375,6 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
 def test_parquet_deserialize_pieces_with_retry(
     ray_start_regular_shared, fs, data_path, monkeypatch
 ):
-    from ray import cloudpickle
 
     setup_data_path = _unwrap_protocol(data_path)
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -359,7 +390,7 @@ def test_parquet_deserialize_pieces_with_retry(
     pq_ds = pq.ParquetDataset(
         data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
     )
-    serialized_pieces = cloudpickle.dumps(pq_ds.pieces)
+    serialized_pieces = [_SerializedPiece(p) for p in pq_ds.pieces]
 
     # test 1st attempt succeed
     pieces = _deserialize_pieces_with_retry(serialized_pieces)
@@ -406,6 +437,10 @@ def test_parquet_deserialize_pieces_with_retry(
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
@@ -465,6 +500,10 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
@@ -534,6 +573,10 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
@@ -627,6 +670,10 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path):
@@ -688,6 +735,10 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
@@ -871,6 +922,10 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
         (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_path):
@@ -898,6 +953,68 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
     assert ds._plan.execute()._num_computed() == parallelism
     assert sorted(values) == list(range(3 * num_dfs))
+
+
+def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
+    ctx = ray.data.context.DatasetContext.get_current()
+    old_decoding_size_estimation = ctx.decoding_size_estimation
+    ctx.decoding_size_estimation = True
+    try:
+        tensor_output_path = os.path.join(tmp_path, "tensor")
+        ray.data.range_tensor(1000, shape=(1000,)).write_parquet(tensor_output_path)
+        ds = ray.data.read_parquet(tensor_output_path)
+        assert ds.num_blocks() > 1
+        data_size = ds.size_bytes()
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is out of expected bound"
+        data_size = ds.fully_executed().size_bytes()
+        assert (
+            data_size >= 7_000_000 and data_size <= 10_000_000
+        ), "actual data size is out of expected bound"
+
+        reader = _ParquetDatasourceReader(tensor_output_path)
+        assert (
+            reader._encoding_ratio >= 300 and reader._encoding_ratio <= 600
+        ), "encoding ratio is out of expected bound"
+        data_size = reader.estimate_inmemory_data_size()
+        assert (
+            data_size >= 6_000_000 and data_size <= 10_000_000
+        ), "estimated data size is either out of expected bound"
+        assert (
+            data_size
+            == _ParquetDatasourceReader(
+                tensor_output_path
+            ).estimate_inmemory_data_size()
+        ), "estimated data size is not deterministic in multiple calls."
+
+        text_output_path = os.path.join(tmp_path, "text")
+        ray.data.range(1000).map(lambda _: "a" * 1000).write_parquet(text_output_path)
+        ds = ray.data.read_parquet(text_output_path)
+        assert ds.num_blocks() > 1
+        data_size = ds.size_bytes()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "estimated data size is out of expected bound"
+        data_size = ds.fully_executed().size_bytes()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "actual data size is out of expected bound"
+
+        reader = _ParquetDatasourceReader(text_output_path)
+        assert (
+            reader._encoding_ratio >= 150 and reader._encoding_ratio <= 300
+        ), "encoding ratio is out of expected bound"
+        data_size = reader.estimate_inmemory_data_size()
+        assert (
+            data_size >= 1_000_000 and data_size <= 2_000_000
+        ), "estimated data size is out of expected bound"
+        assert (
+            data_size
+            == _ParquetDatasourceReader(text_output_path).estimate_inmemory_data_size()
+        ), "estimated data size is not deterministic in multiple calls."
+    finally:
+        ctx.decoding_size_estimation = old_decoding_size_estimation
 
 
 @pytest.mark.parametrize(
@@ -1087,6 +1204,10 @@ def test_parquet_write_block_path_provider(
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -1118,6 +1239,10 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -1126,7 +1251,7 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert str(ds) == (
         "Dataset(num_blocks=2, num_rows=None, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1138,7 +1263,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path)
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1151,7 +1276,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     assert ds.count() == 10
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     assert [v.item() for v in ds.take(2)] == [0, 1]
 
@@ -1164,7 +1289,7 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
     assert str(ds) == (
         "Dataset(num_blocks=1, num_rows=10, "
-        "schema={__value__: <ArrowTensorType: shape=(1,), dtype=int64>})"
+        "schema={__value__: ArrowTensorType(shape=(1,), dtype=int64)})"
     )
     np.testing.assert_equal(ds.take(2), [np.array([0]), np.array([1])])
 
@@ -1221,7 +1346,7 @@ def test_numpy_read_partitioned_with_filter(
         val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema="{__value__: <ArrowTensorType: shape=(2,), dtype=int8>}",
+            schema="{__value__: ArrowTensorType(shape=(2,), dtype=int8)}",
             sorted_values=f"[[{val_str}]]",
             ds_take_transform_fn=lambda taken: [taken],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
@@ -1975,6 +2100,10 @@ def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -2276,6 +2405,11 @@ def test_csv_read_meta_provider(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_hive_implicit(
@@ -2316,6 +2450,11 @@ def test_csv_read_partitioned_hive_implicit(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_styles_explicit(
@@ -2486,6 +2625,7 @@ def test_csv_read_partitioned_with_filter_multikey(
             data_path,
             partition_filter=partition_path_filter,
             filesystem=fs,
+            parallelism=100,
         )
         assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
         assert ray.get(kept_file_counter.get.remote()) == 6
@@ -2506,11 +2646,6 @@ def test_csv_read_partitioned_with_filter_multikey(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-        (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
-        ),
     ],
 )
 def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -2687,6 +2822,54 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
         )
 
 
+def test_image_folder_datasource(
+    ray_start_regular_shared, enable_automatic_tensor_extension_cast
+):
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
+
+    assert ds.count() == 3
+
+    df = ds.to_pandas()
+    assert sorted(df["label"]) == ["cat", "cat", "dog"]
+    assert df["image"].dtype.type is np.object_
+    tensors = df["image"]
+    assert all(tensor.shape == (64, 64, 3) for tensor in tensors)
+
+
+@pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
+def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    with pytest.raises(ValueError):
+        ray.data.read_datasource(ImageFolderDatasource(), root=root, size=size)
+
+
+def test_image_folder_datasource_e2e(ray_start_regular_shared):
+    from ray.train.torch import TorchCheckpoint, TorchPredictor
+    from ray.train.batch_predictor import BatchPredictor
+
+    from torchvision import transforms
+    from torchvision.models import resnet18
+
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    dataset = ray.data.read_datasource(
+        ImageFolderDatasource(), root=root, size=(32, 32)
+    )
+
+    def preprocess(df):
+        preprocess = transforms.Compose([transforms.ToTensor()])
+        df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
+        return df
+
+    preprocessor = BatchMapper(preprocess)
+
+    model = resnet18(pretrained=True)
+    checkpoint = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
+
+    predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
+    predictor.predict(dataset, feature_columns=["image"])
+
+
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
 # shutdown_only fixture so the shared cluster is shut down, otherwise the below
 # test_write_datasource_ray_remote_args test, which uses a cluster_utils cluster, will
@@ -2859,6 +3042,30 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {bar_node_id}, locations
     assert sorted(ds.take()) == ["goodbye", "hello", "world"]
+
+
+def test_read_s3_file_error(ray_start_regular_shared, s3_path):
+    dummy_path = s3_path + "_dummy"
+    error_message = "Please check that file exists and has properly configured access."
+    with pytest.raises(OSError) as e:
+        ray.data.read_parquet(dummy_path)
+    assert error_message in str(e.value)
+    with pytest.raises(OSError) as e:
+        ray.data.read_binary_files(dummy_path)
+    assert error_message in str(e.value)
+    with pytest.raises(OSError) as e:
+        ray.data.read_csv(dummy_path)
+    assert error_message in str(e.value)
+    with pytest.raises(OSError) as e:
+        ray.data.read_json(dummy_path)
+    assert error_message in str(e.value)
+    with pytest.raises(OSError) as e:
+        error = OSError(
+            f"Error creating dataset. Could not read schema from {dummy_path}: AWS "
+            "Error [code 15]: No response body.. Is this a 'parquet' file?"
+        )
+        _handle_read_os_error(error, dummy_path)
+    assert error_message in str(e.value)
 
 
 if __name__ == "__main__":

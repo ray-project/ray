@@ -2,13 +2,15 @@ import inspect
 import logging
 import os
 import traceback
+import warnings
 from contextlib import contextmanager
-from typing import Dict, Optional, Set
+from typing import TYPE_CHECKING, Dict, Optional, Set
 
 import ray
 from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint
 from ray.tune.error import TuneError
+from ray.tune.trainable.function_trainable import _StatusReporter
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
@@ -16,14 +18,22 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
-from ray.tune.trainable.function_trainable import _StatusReporter
 
+if TYPE_CHECKING:
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
 _session: Optional[_StatusReporter] = None
 # V2 Session API.
 _session_v2: Optional["_TuneSessionImpl"] = None
+
+_deprecation_msg = (
+    "`tune.report` and `tune.checkpoint_dir` APIs are deprecated in Ray "
+    "2.0, and is replaced by `ray.air.session`. This will provide an easy-"
+    "to-use API across Tune session and Data parallel worker sessions."
+    "The old APIs will be removed in the future. "
+)
 
 
 class _TuneSessionImpl(Session):
@@ -48,8 +58,8 @@ class _TuneSessionImpl(Session):
         return self._status_reporter.trial_id
 
     @property
-    def trial_resources(self) -> Dict[str, float]:
-        return self._status_reporter.trial_resources.required_resources
+    def trial_resources(self) -> "PlacementGroupFactory":
+        return self._status_reporter.trial_resources
 
 
 @PublicAPI
@@ -71,7 +81,7 @@ def get_session():
         if log_once(stack_trace_str):
             logger.warning(
                 "Session not detected. You should not be calling `{}` "
-                "outside `tune.run` or while using the class API. ".format(
+                "outside `tuner.fit()` or while using the class API. ".format(
                     function_name
                 )
             )
@@ -79,7 +89,7 @@ def get_session():
     return _session
 
 
-def init(reporter, ignore_reinit_error=True):
+def _init(reporter, ignore_reinit_error=True):
     """Initializes the global trial context for this process."""
     global _session
     global _session_v2
@@ -112,8 +122,8 @@ def init(reporter, ignore_reinit_error=True):
     from ray import actor, remote_function
 
     if "TUNE_DISABLE_RESOURCE_CHECKS" not in os.environ:
-        actor._actor_launch_hook = tune_task_and_actor_launch_hook
-        remote_function._task_launch_hook = tune_task_and_actor_launch_hook
+        actor._actor_launch_hook = _tune_task_and_actor_launch_hook
+        remote_function._task_launch_hook = _tune_task_and_actor_launch_hook
 
     _session = reporter
     _session_v2 = _TuneSessionImpl(status_reporter=reporter)
@@ -123,7 +133,7 @@ def init(reporter, ignore_reinit_error=True):
 _checked_resources: Set[frozenset] = set()
 
 
-def tune_task_and_actor_launch_hook(
+def _tune_task_and_actor_launch_hook(
     fn, resources: Dict[str, float], strategy: Optional[SchedulingStrategyT]
 ):
     """Launch hook to catch nested tasks that can't fit in the placement group.
@@ -187,7 +197,7 @@ def tune_task_and_actor_launch_hook(
     )
 
 
-def shutdown():
+def _shutdown():
     """Cleans up the trial and removes it from the global context."""
 
     global _session
@@ -208,13 +218,18 @@ def report(_metric=None, **kwargs):
                 time.sleep(1)
                 tune.report(hello="world", ray="tune")
 
-        analysis = tune.run(run_me)
+        tuner = Tuner(run_me)
+        results = tuner.fit()
 
     Args:
         _metric: Optional default anonymous metric for ``tune.report(value)``
         **kwargs: Any key value pair to be logged by Tune. Any of these
             metrics can be used for early stopping or optimization.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         if _session._iter:
@@ -275,6 +290,11 @@ def checkpoint_dir(step: int):
 
     .. versionadded:: 0.8.7
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
+
     _session = get_session()
 
     if step is None:
@@ -302,6 +322,10 @@ def get_trial_dir():
 
     For function API use only.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         return _session.logdir
@@ -313,6 +337,10 @@ def get_trial_name():
 
     For function API use only.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         return _session.trial_name
@@ -324,6 +352,10 @@ def get_trial_id():
 
     For function API use only.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         return _session.trial_id
@@ -338,6 +370,10 @@ def get_trial_resources():
 
     For function API use only.
     """
+    warnings.warn(
+        _deprecation_msg,
+        DeprecationWarning,
+    )
     _session = get_session()
     if _session:
         return _session.trial_resources

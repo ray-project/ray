@@ -93,29 +93,15 @@ class TorchPolicyV2(Policy):
         #   parallelization will be done.
 
         # Get devices to build the graph on.
-        worker_idx = self.config.get("worker_index", 0)
-        if (
-            not config["_fake_gpus"]
-            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-        ):
-            num_gpus = 0
-        elif worker_idx == 0:
-            num_gpus = config["num_gpus"]
-        else:
-            num_gpus = config["num_gpus_per_worker"]
+        num_gpus = self._get_num_gpus_for_policy()
         gpu_ids = list(range(torch.cuda.device_count()))
+        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
         # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-            logger.info(
-                "TorchPolicy (worker={}) running on {}.".format(
-                    worker_idx if worker_idx > 0 else "local",
-                    "{} fake-GPUs".format(num_gpus) if config["_fake_gpus"] else "CPU",
-                )
-            )
             self.device = torch.device("cpu")
             self.devices = [self.device for _ in range(int(math.ceil(num_gpus)) or 1)]
             self.model_gpu_towers = [
@@ -133,11 +119,6 @@ class TorchPolicyV2(Policy):
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
-            logger.info(
-                "TorchPolicy (worker={}) running on {} GPU(s).".format(
-                    worker_idx if worker_idx > 0 else "local", num_gpus
-                )
-            )
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
             if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
@@ -916,7 +897,11 @@ class TorchPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Then the Policy's (NN) weights.
+
+        # Restore glbal timestep.
+        self.global_timestep = state["global_timestep"]
+
+        # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @override(Policy)

@@ -3,6 +3,7 @@
 # https://github.com/longtermrisk/marltoolbox
 ##########
 from abc import ABC
+import numpy as np
 
 from ray.rllib.examples.env.utils.interfaces import InfoAccumulationInterface
 
@@ -27,10 +28,10 @@ class TwoPlayersTwoActionsInfoMixin(InfoAccumulationInterface, ABC):
 
     def _get_episode_info(self):
         return {
-            "CC": sum(self.cc_count) / len(self.cc_count),
-            "DD": sum(self.dd_count) / len(self.dd_count),
-            "CD": sum(self.cd_count) / len(self.cd_count),
-            "DC": sum(self.dc_count) / len(self.dc_count),
+            "CC": np.mean(self.cc_count).item(),
+            "DD": np.mean(self.dd_count).item(),
+            "CD": np.mean(self.cd_count).item(),
+            "DC": np.mean(self.dc_count).item(),
         }
 
     def _accumulate_info(self, ac0, ac1):

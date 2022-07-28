@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Optional, List
 
 from ray.tune.search.searcher import Searcher
-from ray.tune.search.util import set_search_properties_backwards_compatible
+from ray.tune.search.util import _set_search_properties_backwards_compatible
 from ray.util.annotations import PublicAPI
 
 
@@ -36,7 +36,13 @@ class ConcurrencyLimiter(Searcher):
         from ray.tune.search import ConcurrencyLimiter
         search_alg = HyperOptSearch(metric="accuracy")
         search_alg = ConcurrencyLimiter(search_alg, max_concurrent=2)
-        tune.run(trainable, search_alg=search_alg)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                search_alg=search_alg
+            ),
+        )
+        tuner.fit()
     """
 
     def __init__(self, searcher: Searcher, max_concurrent: int, batch: bool = False):
@@ -79,7 +85,7 @@ class ConcurrencyLimiter(Searcher):
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
         self._set_searcher_max_concurrency()
-        return set_search_properties_backwards_compatible(
+        return _set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config, **spec
         )
 
@@ -161,3 +167,11 @@ class ConcurrencyLimiter(Searcher):
 
     def restore(self, checkpoint_path: str):
         self.searcher.restore(checkpoint_path)
+
+    # BOHB Specific.
+    # TODO(team-ml): Refactor alongside HyperBandForBOHB
+    def on_pause(self, trial_id: str):
+        self.searcher.on_pause(trial_id)
+
+    def on_unpause(self, trial_id: str):
+        self.searcher.on_unpause(trial_id)

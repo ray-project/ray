@@ -1,13 +1,21 @@
 package io.ray.runtime;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.CppActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
+import io.ray.api.exception.RuntimeEnvException;
+import io.ray.api.function.CppActorClass;
+import io.ray.api.function.CppActorMethod;
+import io.ray.api.function.CppFunction;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
@@ -28,6 +36,7 @@ import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.config.RunMode;
 import io.ray.runtime.context.RuntimeContextImpl;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.functionmanager.CppFunctionDescriptor;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.PyFunctionDescriptor;
@@ -45,7 +54,6 @@ import io.ray.runtime.util.ConcurrencyGroupUtils;
 import io.ray.runtime.utils.parallelactor.ParallelActorContextImpl;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -66,6 +74,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected WorkerContext workerContext;
 
   private static ParallelActorContextImpl parallelActorContextImpl = new ParallelActorContextImpl();
+
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
@@ -169,9 +179,16 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   public ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options) {
     PyFunctionDescriptor functionDescriptor =
         new PyFunctionDescriptor(pyFunction.moduleName, "", pyFunction.functionName);
-    // Python functions always have a return value, even if it's `None`.
     return callNormalFunction(
         functionDescriptor, args, /*returnType=*/ Optional.of(pyFunction.returnType), options);
+  }
+
+  @Override
+  public ObjectRef call(CppFunction cppFunction, Object[] args, CallOptions options) {
+    CppFunctionDescriptor functionDescriptor =
+        new CppFunctionDescriptor(cppFunction.functionName, "JAVA", "");
+    return callNormalFunction(
+        functionDescriptor, args, /*returnType=*/ Optional.of(cppFunction.returnType), options);
   }
 
   @Override
@@ -188,12 +205,24 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     PyFunctionDescriptor functionDescriptor =
         new PyFunctionDescriptor(
             pyActor.getModuleName(), pyActor.getClassName(), pyActorMethod.methodName);
-    // Python functions always have a return value, even if it's `None`.
     return callActorFunction(
         pyActor,
         functionDescriptor,
         args,
         /*returnType=*/ Optional.of(pyActorMethod.returnType),
+        new CallOptions.Builder().build());
+  }
+
+  @Override
+  public ObjectRef callActor(
+      CppActorHandle cppActor, CppActorMethod cppActorMethod, Object[] args) {
+    CppFunctionDescriptor functionDescriptor =
+        new CppFunctionDescriptor(cppActorMethod.methodName, "JAVA", cppActor.getClassName());
+    return callActorFunction(
+        cppActor,
+        functionDescriptor,
+        args,
+        /*returnType=*/ Optional.of(cppActorMethod.returnType),
         new CallOptions.Builder().build());
   }
 
@@ -213,6 +242,15 @@ public abstract class AbstractRayRuntime implements RayRuntime {
         new PyFunctionDescriptor(
             pyActorClass.moduleName, pyActorClass.className, PYTHON_INIT_METHOD_NAME);
     return (PyActorHandle) createActorImpl(functionDescriptor, args, options);
+  }
+
+  @Override
+  public CppActorHandle createActor(
+      CppActorClass cppActorClass, Object[] args, ActorCreationOptions options) {
+    CppFunctionDescriptor functionDescriptor =
+        new CppFunctionDescriptor(
+            cppActorClass.createFunctionName, "JAVA", cppActorClass.className);
+    return (CppActorHandle) createActorImpl(functionDescriptor, args, options);
   }
 
   @Override
@@ -273,8 +311,19 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public RuntimeEnv createRuntimeEnv(Map<String, String> envVars, List<String> jars) {
-    return new RuntimeEnvImpl(envVars, jars);
+  public RuntimeEnv createRuntimeEnv() {
+    return new RuntimeEnvImpl();
+  }
+
+  @Override
+  public RuntimeEnv deserializeRuntimeEnv(String serializedRuntimeEnv) throws RuntimeEnvException {
+    RuntimeEnvImpl runtimeEnv = new RuntimeEnvImpl();
+    try {
+      runtimeEnv.runtimeEnvs = (ObjectNode) MAPPER.readTree(serializedRuntimeEnv);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException(e);
+    }
+    return runtimeEnv;
   }
 
   private ObjectRef callNormalFunction(

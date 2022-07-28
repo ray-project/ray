@@ -12,6 +12,11 @@ py_library(
 
 serve_tests_srcs = glob(["tests/**/*.py"])
 
+filegroup(
+    name = "test_config_files",
+    data = glob(["tests/test_config_files/**/*"]),
+)
+
 py_test(
     name = "test_api",
     size = "medium",
@@ -182,6 +187,14 @@ py_test(
     deps = [":serve_lib"],
 )
 
+py_test(
+    name = "test_gcs_failure",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 
 py_test(
     name = "test_handle",
@@ -313,6 +326,7 @@ py_test(
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
+    data = [":test_config_files"],
 )
 
 py_test(
@@ -348,7 +362,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_driver",
+    name = "test_deployment_graph_driver",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -356,7 +370,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_dag",
+    name = "test_deployment_graph",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -380,7 +394,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_ingress_deployment",
+    name = "test_deployment_graph_ingress_deployment",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -388,7 +402,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_deployment_config",
+    name = "test_deployment_graph_config",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -396,7 +410,7 @@ py_test(
 )
 
 py_test(
-    name = "test_pipeline_handle_serde",
+    name = "test_deployment_graph_handle_serde",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

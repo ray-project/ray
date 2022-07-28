@@ -1,10 +1,12 @@
 import argparse
 
 import numpy as np
+from ray.air import session
 import torch
 import torch.nn as nn
 import ray.train as train
 from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -78,8 +80,8 @@ def train_func(config):
     for _ in range(epochs):
         train_epoch(train_loader, model, loss_fn, optimizer)
         result = validate_epoch(validation_loader, model, loss_fn)
-        train.report(**result)
         results.append(result)
+        session.report(result)
 
     return results
 
@@ -89,7 +91,7 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3):
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     result = trainer.fit()
 

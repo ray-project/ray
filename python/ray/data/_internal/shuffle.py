@@ -33,9 +33,21 @@ class ShuffleOp:
         raise NotImplementedError
 
     @staticmethod
-    def reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
+    def reduce(
+        *mapper_outputs: List[Block],
+        partial_reduce: bool = False,
+    ) -> (Block, BlockMetadata):
         """
         Reduce function to be run for each output block.
+
+        Args:
+            mapper_outputs: List of blocks to reduce.
+            partial_reduce: A flag passed by the shuffle operator that
+                indicates whether we should partially or fully reduce the
+                mapper outputs.
+
+        Returns:
+            The reduced block and its metadata.
         """
         raise NotImplementedError
 
@@ -80,6 +92,8 @@ class SimpleShufflePlan(ShuffleOp):
             shuffle_map_metadata.append(refs[-1])
             shuffle_map_out[i] = refs[:-1]
 
+        in_blocks_owned_by_consumer = input_blocks._owned_by_consumer
+
         # Eagerly delete the input block references in order to eagerly release
         # the blocks' memory.
         del input_blocks_list
@@ -108,4 +122,11 @@ class SimpleShufflePlan(ShuffleOp):
             "reduce": new_metadata,
         }
 
-        return BlockList(list(new_blocks), list(new_metadata)), stats
+        return (
+            BlockList(
+                list(new_blocks),
+                list(new_metadata),
+                owned_by_consumer=in_blocks_owned_by_consumer,
+            ),
+            stats,
+        )

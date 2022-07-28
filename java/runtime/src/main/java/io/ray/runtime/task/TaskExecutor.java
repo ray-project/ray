@@ -21,7 +21,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
@@ -34,8 +33,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   protected final AbstractRayRuntime runtime;
 
-  // TODO(qwang): Use actorContext instead later.
-  private final ConcurrentHashMap<UniqueId, T> actorContextMap = new ConcurrentHashMap<>();
+  private T actorContext = null;
 
   private final ThreadLocal<RayFunction> localRayFunction = new ThreadLocal<>();
 
@@ -51,7 +49,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
   protected abstract T createActorContext();
 
   T getActorContext() {
-    return actorContextMap.get(runtime.getWorkerContext().getCurrentWorkerId());
+    return actorContext;
   }
 
   void setActorContext(UniqueId workerId, T actorContext) {
@@ -59,11 +57,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       // ConcurrentHashMap doesn't allow null values. So just return here.
       return;
     }
-    this.actorContextMap.put(workerId, actorContext);
-  }
-
-  protected void removeActorContext(UniqueId workerId) {
-    this.actorContextMap.remove(workerId);
+    this.actorContext = actorContext;
   }
 
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {

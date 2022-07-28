@@ -20,7 +20,7 @@ else:
     from asyncmock import AsyncMock
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
-from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetNodeStatsReply
+from ray.core.generated.node_manager_pb2 import GetTasksInfoReply, GetObjectsInfoReply
 from ray.tests.test_state_api import (
     generate_task_entry,
     generate_actor_data,
@@ -125,7 +125,7 @@ async def test_api_manager_summary_tasks(state_api_manager):
 
     assert data.total_tasks == 4
     assert data.total_actor_tasks == 1
-    assert data.total_actor_scheduling_tasks == 0
+    assert data.total_actor_scheduled == 0
 
     """
     Test if it can be correctly modified to a dictionary.
@@ -207,7 +207,7 @@ async def test_api_manager_summary_actors(state_api_manager):
     reason=("Not passing in CI although it works locally. Will handle it later."),
 )
 @pytest.mark.asyncio
-async def test_api_manager_list_objects(state_api_manager):
+async def test_api_manager_summary_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     object_ids = [ObjectID((f"{i}" * 28).encode()) for i in range(9)]
     data_source_client.get_all_registered_raylet_ids = MagicMock()
@@ -217,7 +217,7 @@ async def test_api_manager_list_objects(state_api_manager):
 
     data_source_client.get_object_info = AsyncMock()
     data_source_client.get_object_info.side_effect = [
-        GetNodeStatsReply(
+        GetObjectsInfoReply(
             core_workers_stats=[
                 generate_object_info(
                     object_ids[0].binary(),
@@ -252,9 +252,10 @@ async def test_api_manager_list_objects(state_api_manager):
                     ip="1234",
                     worker_type=WorkerType.WORKER,
                 ),
-            ]
+            ],
+            total=3,
         ),
-        GetNodeStatsReply(
+        GetObjectsInfoReply(
             core_workers_stats=[
                 generate_object_info(
                     object_ids[3].binary(),
@@ -278,7 +279,8 @@ async def test_api_manager_list_objects(state_api_manager):
                     ip="1234",
                     worker_type=WorkerType.DRIVER,
                 ),
-            ]
+            ],
+            total=2,
         ),
     ]
     result = await state_api_manager.summarize_objects(option=create_summary_options())

@@ -10,7 +10,8 @@ import torch
 import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
-from ray.train import Trainer, CheckpointStrategy
+from ray.air import CheckpointConfig
+from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
 from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.torch import TorchConfig
@@ -89,9 +90,7 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i].actor._BaseWorkerMixin__execute.remote(
-            f, *args, **kwargs
-        )
+        return self.workers[i].actor._RayTrainWorker__execute.remote(f, *args, **kwargs)
 
     return execute_single_async_special
 
@@ -514,7 +513,7 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     logdir = "/tmp/test/trainer/test_persisted_checkpoint_strategy"
     config = TestConfig()
 
-    checkpoint_strategy = CheckpointStrategy(
+    checkpoint_strategy = CheckpointConfig(
         num_to_keep=2, checkpoint_score_attribute="loss", checkpoint_score_order="min"
     )
 
@@ -555,7 +554,7 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
 def test_load_checkpoint_from_path(ray_start_2_cpus, tmpdir):
     config = TestConfig()
 
-    checkpoint_strategy = CheckpointStrategy(
+    checkpoint_strategy = CheckpointConfig(
         checkpoint_score_attribute="loss", checkpoint_score_order="min"
     )
 
@@ -585,12 +584,12 @@ def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
     trainer.start()
 
     with pytest.raises(ValueError):
-        trainer.run(train_func, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
+        trainer.run(train_func, checkpoint_strategy=CheckpointConfig(num_to_keep=-1))
 
     with pytest.raises(ValueError):
         trainer.run(
             train_func,
-            checkpoint_strategy=CheckpointStrategy(
+            checkpoint_strategy=CheckpointConfig(
                 checkpoint_score_order="invalid_order"
             ),
         )
@@ -598,7 +597,7 @@ def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
     with pytest.raises(ValueError):
         trainer.run(
             train_func,
-            checkpoint_strategy=CheckpointStrategy(
+            checkpoint_strategy=CheckpointConfig(
                 checkpoint_score_attribute="missing_attribute"
             ),
         )

@@ -3,10 +3,8 @@ import logging
 from typing import Callable, Optional
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.util.ml_utils.checkpoint_manager import (
-    CheckpointStrategy,
-    MIN,
-    MAX,
+from ray.air.config import CheckpointConfig, MIN, MAX
+from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
     _TrackedCheckpoint,
     CheckpointStorage,
@@ -51,7 +49,7 @@ class _CheckpointManager(CommonCheckpointManager):
         else:
             checkpoint_score_attr = checkpoint_score_attr
 
-        checkpoint_strategy = CheckpointStrategy(
+        checkpoint_strategy = CheckpointConfig(
             num_to_keep=keep_checkpoints_num,
             checkpoint_score_attribute=checkpoint_score_attr,
             checkpoint_score_order=MIN if checkpoint_score_desc else MAX,

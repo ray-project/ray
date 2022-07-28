@@ -26,6 +26,7 @@ from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ConcatBatches, ParallelRollouts
 from ray.rllib.execution.tree_agg import gather_experiences_tree_aggregation
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
@@ -140,6 +141,10 @@ class ImpalaConfig(AlgorithmConfig):
         self.min_time_s_per_iteration = 10
         # __sphinx_doc_end__
         # fmt: on
+
+        # TODO: IMPALA/APPO had to be rolled-back to old execution-plan API due
+        #  to issues with the MixIn Buffer (in process of being fixed atm).
+        self._disable_execution_plan_api = False
 
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
@@ -675,12 +680,12 @@ class Impala(Algorithm):
             )
 
         def record_steps_trained(item):
-            count, fetches, _ = item
+            env_steps, agent_steps, fetches = item
             metrics = _get_shared_metrics()
             # Manually update the steps trained counter since the learner
             # thread is executing outside the pipeline.
-            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
-            metrics.counters[STEPS_TRAINED_COUNTER] += count
+            metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = env_steps
+            metrics.counters[STEPS_TRAINED_COUNTER] += env_steps
             return item
 
         # This sub-flow updates the steps trained counter based on learner
@@ -696,7 +701,7 @@ class Impala(Algorithm):
         # Callback for APPO to use to update KL, target network periodically.
         # The input to the callback is the learner fetches dict.
         if config["after_train_step"]:
-            merged_op = merged_op.for_each(lambda t: t[1]).for_each(
+            merged_op = merged_op.for_each(lambda t: t[2]).for_each(
                 config["after_train_step"](workers, config)
             )
 
@@ -774,7 +779,7 @@ class Impala(Algorithm):
                 sum(b.count for b in self.batch_being_built)
                 >= self.config["train_batch_size"]
             ):
-                batch_to_add = SampleBatch.concat_samples(self.batch_being_built)
+                batch_to_add = concat_samples(self.batch_being_built)
                 self.batches_to_place_on_learner.append(batch_to_add)
                 self.batch_being_built = []
 
@@ -806,7 +811,12 @@ class Impala(Algorithm):
         while self.batches_to_place_on_learner:
             batch = self.batches_to_place_on_learner[0]
             try:
-                self._learner_thread.inqueue.put(batch, block=False)
+                # Setting block = True prevents the learner thread,
+                # the main thread, and the gpu loader threads from
+                # thrashing when there are more samples than the
+                # learner can reasonable process.
+                # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa
+                self._learner_thread.inqueue.put(batch, block=True)
                 self.batches_to_place_on_learner.pop(0)
                 self._counters["num_samples_added_to_queue"] += (
                     batch.agent_steps() if self._by_agent_steps else batch.count
