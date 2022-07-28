@@ -66,9 +66,9 @@ class MemoryMonitor {
   std::tuple<nuint64_t, nuint64_t> GetLinuxMemoryBytes();
 
  private:
-  FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroAlwaysAboveThreshold);
-  FRIEND_TEST(MemoryMonitorTest, TestThresholdOneAlwaysBelowThreshold);
-  FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive);
+  FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
+  FRIEND_TEST(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold);
+  FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
 
   /// Memory usage fraction between [0, 1]

@@ -22,7 +22,7 @@
 namespace ray {
 class MemoryMonitorTest : public ::testing::Test {};
 
-TEST_F(MemoryMonitorTest, TestThresholdZeroAlwaysAboveThreshold) {
+TEST_F(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold) {
   MemoryMonitor monitor(
       0 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
@@ -30,7 +30,7 @@ TEST_F(MemoryMonitorTest, TestThresholdZeroAlwaysAboveThreshold) {
   ASSERT_TRUE(monitor.IsUsageAboveThreshold());
 }
 
-TEST_F(MemoryMonitorTest, TestThresholdOneAlwaysBelowThreshold) {
+TEST_F(MemoryMonitorTest, TestThresholdOneMonitorAlwaysBelowThreshold) {
   MemoryMonitor monitor(
       1 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
@@ -38,7 +38,7 @@ TEST_F(MemoryMonitorTest, TestThresholdOneAlwaysBelowThreshold) {
   ASSERT_FALSE(monitor.IsUsageAboveThreshold());
 }
 
-TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive) {
+TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive) {
   {
     MemoryMonitor monitor(
         0 /*usage_threshold*/,
