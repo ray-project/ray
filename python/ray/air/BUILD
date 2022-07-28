@@ -188,6 +188,14 @@ py_test(
 )
 
 py_test(
+    name = "test_configs",
+    size = "small",
+    srcs = ["tests/test_configs.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_data_batch_conversion",
     size = "small",
     srcs = ["tests/test_data_batch_conversion.py"],

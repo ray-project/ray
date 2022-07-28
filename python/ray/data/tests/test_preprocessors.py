@@ -1,5 +1,6 @@
 import warnings
 from collections import Counter
+import re
 from unittest.mock import patch
 
 import numpy as np
@@ -8,6 +9,7 @@ import pyarrow
 import pytest
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.data.preprocessors import (
     BatchMapper,
@@ -28,6 +30,7 @@ from ray.data.preprocessors.tokenizer import Tokenizer
 from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
+from ray.air.constants import MAX_REPR_LENGTH
 
 
 @pytest.fixture
@@ -116,6 +119,38 @@ def test_standard_scaler():
     )
 
     assert pred_out_df.equals(pred_expected_df)
+
+
+@pytest.mark.parametrize(
+    "preprocessor",
+    [
+        BatchMapper(fn=lambda x: x),
+        Categorizer(columns=["X"]),
+        CountVectorizer(columns=["X"]),
+        Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
+        FeatureHasher(columns=["X"], num_features=1),
+        HashingVectorizer(columns=["X"], num_features=1),
+        LabelEncoder(label_column="X"),
+        MaxAbsScaler(columns=["X"]),
+        MinMaxScaler(columns=["X"]),
+        MultiHotEncoder(columns=["X"]),
+        Normalizer(columns=["X"]),
+        OneHotEncoder(columns=["X"]),
+        OrdinalEncoder(columns=["X"]),
+        PowerTransformer(columns=["X"], power=1),
+        RobustScaler(columns=["X"]),
+        SimpleImputer(columns=["X"]),
+        StandardScaler(columns=["X"]),
+        Concatenator(),
+        Tokenizer(columns=["X"]),
+    ],
+)
+def test_repr(preprocessor):
+    representation = repr(preprocessor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile(f"^{preprocessor.__class__.__name__}\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 @patch.object(warnings, "warn")
@@ -1195,12 +1230,7 @@ def test_concatenator():
     prep = Concatenator(output_column_name="c")
     new_ds = prep.transform(ds)
     for i, row in enumerate(new_ds.take()):
-        assert np.array_equal(row["c"].to_numpy(), np.array([i + 1, i + 1]))
-
-    # Test repr
-    assert "c" in prep.__repr__()
-    assert "include" in prep.__repr__()
-    assert "exclude" in prep.__repr__()
+        assert np.array_equal(row["c"], np.array([i + 1, i + 1]))
 
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)
@@ -1229,12 +1259,23 @@ def test_concatenator():
     for i, row in enumerate(new_ds.take()):
         assert set(row) == {"concat_out", "b", "c"}
 
-    # check it works with string types
+    # check it fails with string types by default
     df = pd.DataFrame({"a": ["string", "string2", "string3"]})
     ds = ray.data.from_pandas(df)
     prep = Concatenator(output_column_name="huh")
-    new_ds = prep.transform(ds)
-    assert "huh" in set(new_ds.schema().names)
+    with pytest.raises(ValueError):
+        new_ds = prep.transform(ds)
+
+    # check it works with string types if automatic tensor extension casting is
+    # disabled
+    ctx = DatasetContext.get_current()
+    old_config = ctx.enable_tensor_extension_casting
+    ctx.enable_tensor_extension_casting = False
+    try:
+        new_ds = prep.transform(ds)
+        assert "huh" in set(new_ds.schema().names)
+    finally:
+        ctx.enable_tensor_extension_casting = old_config
 
 
 def test_tokenizer():
