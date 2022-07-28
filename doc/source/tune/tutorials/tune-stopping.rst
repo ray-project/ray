@@ -23,15 +23,15 @@ you can then call ``Tuner.restore()`` like this:
     :emphasize-lines: 4
 
     tuner = Tuner.restore(
-        restored_path="~/ray_results/my_experiment"
+        path="~/ray_results/my_experiment"
     )
     tuner.fit()
 
 There are a few options for restoring an experiment:
 "resume_unfinished", "resume_errored" and "restart_errored". See ``Tuner.restore()`` for more details.
 
-``restored_path`` here is determined by the ``air.RunConfig.name`` you supplied to your ``Tuner()``.
-If you didn't supply name to ``Tuner``, it is likely that your ``restored_path`` looks something like:
+``path`` here is determined by the ``air.RunConfig.name`` you supplied to your ``Tuner()``.
+If you didn't supply name to ``Tuner``, it is likely that your ``path`` looks something like:
 "~/ray_results/my_trainable_2021-01-29_10-16-44".
 
 You can see which name you need to pass by taking a look at the results table
