@@ -129,9 +129,10 @@ class A2C(A3C):
                 )
         if config.get("num_gpus", 0) > 1:
             raise ValueError(
-                "A2C with gpu learning enabled only supports 1 "
-                "gpu. Currently, the methods by which mini-batch"
-                " gradients are computed doesn't support >1 gpus"
+                "A2C with gpu learning enabled only supports 1 gpu. "
+                "Currently, the methods by which mini-batch gpu. Currently, "
+                "the `compute_gradients` method by which mini-batch "
+                "gradients are computed doesn't currently support >1 gpus."
             )
 
     @override(Algorithm)
