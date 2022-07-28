@@ -83,14 +83,14 @@ class SlimConv2d(nn.Module):
         """Creates a standard Conv2d layer, similar to torch.nn.Conv2d
 
         Args:
-            in_channels(int): Number of input channels
+            in_channels: Number of input channels
             out_channels: Number of output channels
-            kernel (Union[int, Tuple[int, int]]): If int, the kernel is
+            kernel: If int, the kernel is
                 a tuple(x,x). Elsewise, the tuple can be specified
-            stride (Union[int, Tuple[int, int]]): Controls the stride
+            stride: Controls the stride
                 for the cross-correlation. If int, the stride is a
                 tuple(x,x). Elsewise, the tuple can be specified
-            padding (Union[int, Tuple[int, int]]): Controls the amount
+            padding: Controls the amount
                 of implicit zero-paddings during the conv operation
             initializer: Initializer function for kernel weights
             activation_fn: Activation function at the end of layer
@@ -140,7 +140,7 @@ class SlimFC(nn.Module):
         """Creates a standard FC layer, similar to torch.nn.Linear
 
         Args:
-            in_size(int): Input size for FC Layer
+            in_size: Input size for FC Layer
             out_size: Output size for FC Layer
             initializer: Initializer function for FC layer weights
             activation_fn: Activation function at the end of layer

@@ -4,6 +4,7 @@ from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
+    ApplicationStatus,
     StatusOverview,
 )
 from ray.serve._private.utils import DEFAULT
@@ -244,6 +245,23 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "and py_modules may contain only remote URIs."
         ),
     )
+    host: str = Field(
+        default="0.0.0.0",
+        description=(
+            "Host for HTTP servers to listen on. Defaults to "
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new host instead."
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        description=(
+            "Port for HTTP server. Defaults to 8000. Cannot be updated once "
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new port instead."
+        ),
+    )
     deployments: List[DeploymentSchema] = Field(
         default=[],
         description=("Deployment options that override options specified in the code."),
@@ -300,6 +318,19 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return v
 
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty app schema dictionary.
+
+        Schema can be used as a representation of an empty Serve config.
+        """
+
+        return {
+            "import_path": "",
+            "runtime_env": {},
+            "deployments": [],
+        }
+
 
 @PublicAPI(stability="beta")
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
@@ -320,6 +351,23 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
             "the status."
         ),
     )
+
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty status schema dictionary.
+
+        Schema represents Serve status for a Ray cluster where Serve hasn't
+        started yet.
+        """
+
+        return {
+            "app_status": {
+                "status": ApplicationStatus.NOT_STARTED.value,
+                "message": "",
+                "deployment_timestamp": 0,
+            },
+            "deployment_statuses": [],
+        }
 
 
 @DeveloperAPI

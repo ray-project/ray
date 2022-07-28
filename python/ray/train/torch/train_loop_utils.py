@@ -296,7 +296,10 @@ class _TorchAccelerator(Accelerator):
             torch.cuda.set_device(device)
 
         if move_to_device:
-            logger.info(f"Moving model to device: {device}")
+            if rank == 0:
+                logger.info(f"Moving model to device: {device}")
+            else:
+                logger.debug(f"Moving model to device: {device}")
             model = model.to(device)
 
         def model_get_state(self):
@@ -340,7 +343,10 @@ class _TorchAccelerator(Accelerator):
             world_size = train.world_size()
 
         if wrap_ddp and world_size > 1:
-            logger.info("Wrapping provided model in DDP.")
+            if rank == 0:
+                logger.info("Wrapping provided model in DDP.")
+            else:
+                logger.debug("Wrapping provided model in DDP.")
             if torch.cuda.is_available():
                 model = DistributedDataParallel(
                     model, device_ids=[rank], output_device=rank, **ddp_kwargs

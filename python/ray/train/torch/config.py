@@ -67,10 +67,16 @@ def _setup_torch_process_group(
         init_method: URL specifying how to initialize the process group.
         timeout_s: Seconds for process group operations to timeout.
     """
-    logger.info(
-        f"Setting up process group for: {init_method} [rank={world_rank}, "
-        f"world_size={world_size}]"
-    )
+    if world_rank == 0:
+        logger.info(
+            f"Setting up process group for: {init_method} [rank={world_rank}, "
+            f"world_size={world_size}]"
+        )
+    else:
+        logger.debug(
+            f"Setting up process group for: {init_method} [rank={world_rank}, "
+            f"world_size={world_size}]"
+        )
     logger.debug(f"using {backend}")
 
     if backend == "nccl" and "NCCL_BLOCKING_WAIT" not in os.environ:
