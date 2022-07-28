@@ -53,7 +53,9 @@ class CRRConfig(AlgorithmConfig):
         self.actor_lr = 3e-4
         self.tau = 5e-3
 
-        # overriding the trainer config default
+        # Overriding the trainer config default:
+        # Only PyTorch supported thus far. Make this the default framework.
+        self.framework_str = "torch"
         # If data ingestion/sample_time is slow, increase this
         self.num_workers = 4
         self.offline_sampling = True
