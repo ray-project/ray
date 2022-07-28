@@ -7,8 +7,9 @@ from ray.workflow.common import WORKFLOW_OPTIONS
 
 from ray.dag import DAGNode, FunctionNode, InputNode
 from ray.dag.input_node import InputAttributeNode, DAGInputData
-
+from ray import cloudpickle
 from ray._private import signature
+from ray._private.client_mode_hook import client_mode_should_convert
 from ray.workflow import serialization_context
 from ray.workflow.common import (
     StepType,
@@ -46,6 +47,27 @@ def slugify(value: str, allow_unicode=False) -> str:
         )
     value = re.sub(r"[^\w.\-]", "", value).strip()
     return re.sub(r"[-\s]+", "-", value)
+
+
+class _DelayedDeserialization:
+    def __init__(self, serialized: bytes):
+        self._serialized = serialized
+
+    def __reduce__(self):
+        return cloudpickle.loads, (self._serialized,)
+
+
+class _SerializationContextPreservingWrapper:
+    """This class is a workaround for preserving serialization context
+    in client mode."""
+
+    def __init__(self, obj: Any):
+        self._serialized = cloudpickle.dumps(obj)
+
+    def __reduce__(self):
+        # This delays the deserialization to the actual worker
+        # instead of the Ray client server.
+        return _DelayedDeserialization, (self._serialized,)
 
 
 def workflow_state_from_dag(
@@ -95,16 +117,6 @@ def workflow_state_from_dag(
             # should be passed recursively.
             catch_exceptions = workflow_options.get("catch_exceptions", None)
             if catch_exceptions is None:
-                # TODO(suquark): should we also handle exceptions from a "leaf node"
-                #   in the continuation? For example, we have a workflow
-                #   > @ray.remote
-                #   > def A(): pass
-                #   > @ray.remote
-                #   > def B(x): return x
-                #   > @ray.remote
-                #   > def C(x): return workflow.continuation(B.bind(A.bind()))
-                #   > dag = C.options(**workflow.options(catch_exceptions=True)).bind()
-                #   Should C catches exceptions of A?
                 if node.get_stable_uuid() == dag_node.get_stable_uuid():
                     # 'catch_exception' context should be passed down to
                     # its direct continuation task.
@@ -115,17 +127,16 @@ def workflow_state_from_dag(
                 else:
                     catch_exceptions = False
 
+            # We do not need to check the validness of bound options, because
+            # Ray option has already checked them for us.
             max_retries = bound_options.get("max_retries", 3)
-            if not isinstance(max_retries, int) or max_retries < -1:
-                raise ValueError(
-                    "'max_retries' only accepts 0, -1 or a positive integer."
-                )
+            retry_exceptions = bound_options.get("retry_exceptions", False)
 
             step_options = WorkflowStepRuntimeOptions(
                 step_type=StepType.FUNCTION,
                 catch_exceptions=catch_exceptions,
+                retry_exceptions=retry_exceptions,
                 max_retries=max_retries,
-                allow_inplace=False,
                 checkpoint=checkpoint,
                 ray_options=bound_options,
             )
@@ -146,6 +157,17 @@ def workflow_state_from_dag(
                 # so it won't be mutated later. This guarantees correct
                 # semantics. See "tests/test_variable_mutable.py" as
                 # an example.
+                if client_mode_should_convert(auto_init=False):
+                    # Handle client mode. The Ray client would serialize and
+                    # then deserialize objects in the Ray client server. When
+                    # the object is being deserialized, the serialization context
+                    # will be missing, resulting in failures. Here we protect the
+                    # object from deserialization in client server, and we make sure
+                    # the 'real' deserialization happens under the serialization
+                    # context later.
+                    flattened_args = _SerializationContextPreservingWrapper(
+                        flattened_args
+                    )
                 input_placeholder: ray.ObjectRef = ray.put(flattened_args)
 
             name = workflow_options.get("name")

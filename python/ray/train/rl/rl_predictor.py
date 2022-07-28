@@ -33,6 +33,12 @@ class RLPredictor(Predictor):
         self.policy = policy
         super().__init__(preprocessor)
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(policy={self.policy!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
+
     @classmethod
     def from_checkpoint(
         cls,
@@ -66,5 +72,10 @@ class RLPredictor(Predictor):
         actions, _outs, _info = self.policy.compute_actions_from_input_dict(
             input_dict={"obs": obs}
         )
+        actions_arr = np.array(actions)
+        if len(actions_arr.shape) > 1:
+            columns = [f"action{i}" for i in range(actions_arr.shape[1])]
+        else:
+            columns = ["action"]
 
-        return pd.DataFrame(np.array(actions))
+        return pd.DataFrame(actions_arr, columns=columns)

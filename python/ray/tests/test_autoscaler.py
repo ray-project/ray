@@ -27,7 +27,11 @@ from ray._private.test_utils import RayTestTimeoutException
 from ray.autoscaler._private import commands
 from ray.autoscaler._private.autoscaler import NonTerminatedNodes, StandardAutoscaler
 from ray.autoscaler._private.commands import get_or_create_head_node
-from ray.autoscaler._private.constants import FOREGROUND_NODE_LAUNCH_KEY
+from ray.autoscaler._private.constants import (
+    FOREGROUND_NODE_LAUNCH_KEY,
+    WORKER_LIVENESS_CHECK_KEY,
+    WORKER_RPC_DRAIN_KEY,
+)
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.monitor import Monitor
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
@@ -75,6 +79,8 @@ class DrainNodeOutcome(str, Enum):
     GenericException = "GenericException"
     # Tell the autoscaler to fail finding ips during drain
     FailedToFindIp = "FailedToFindIp"
+    # Represents the situation in which draining nodes before termination is disabled.
+    DrainDisabled = "DrainDisabled"
 
 
 class MockRpcException(grpc.RpcError):
@@ -448,6 +454,13 @@ class MockAutoscaler(StandardAutoscaler):
             self.provider.fail_to_fetch_ip = True
         super().drain_nodes_via_gcs(provider_node_ids_to_drain)
         self.provider.fail_to_fetch_ip = False
+
+
+class NoUpdaterMockAutoscaler(MockAutoscaler):
+    def update_nodes(self):
+        raise AssertionError(
+            "Node updaters are disabled. This method should not be accessed!"
+        )
 
 
 SMALL_CLUSTER = {
@@ -1405,7 +1418,13 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = MockAutoscaler(
+        if disable_node_updaters:
+            # This class raises an assertion error if we try to create
+            # a node updater thread.
+            autoscaler_class = NoUpdaterMockAutoscaler
+        else:
+            autoscaler_class = MockAutoscaler
+        autoscaler = autoscaler_class(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -1434,7 +1453,6 @@ class AutoscalingTest(unittest.TestCase):
         if disable_node_updaters:
             # Node Updaters have NOT been invoked because they were explicitly
             # disabled.
-            time.sleep(1)
             assert len(runner.calls) == 0
             # Nodes were create in uninitialized and not updated.
             self.waitForNodes(
@@ -1528,6 +1546,9 @@ class AutoscalingTest(unittest.TestCase):
     def testDynamicScaling6(self):
         self.helperDynamicScaling(DrainNodeOutcome.FailedToFindIp)
 
+    def testDynamicScaling7(self):
+        self.helperDynamicScaling(DrainNodeOutcome.DrainDisabled)
+
     def helperDynamicScaling(
         self,
         drain_node_outcome: DrainNodeOutcome = DrainNodeOutcome.Succeeded,
@@ -1535,19 +1556,21 @@ class AutoscalingTest(unittest.TestCase):
     ):
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         mock_node_info_stub = MockNodeInfoStub(drain_node_outcome)
+        disable_drain = drain_node_outcome == DrainNodeOutcome.DrainDisabled
 
         # Run the core of the test logic.
         self._helperDynamicScaling(
             mock_metrics,
             mock_node_info_stub,
             foreground_node_launcher=foreground_node_launcher,
+            disable_drain=disable_drain,
         )
 
         # Make assertions about DrainNode error handling during scale-down.
 
         if drain_node_outcome == DrainNodeOutcome.Succeeded:
             # DrainNode call was made.
-            mock_node_info_stub.drain_node_call_count > 0
+            assert mock_node_info_stub.drain_node_call_count > 0
             # No drain node exceptions.
             assert mock_metrics.drain_node_exceptions.inc.call_count == 0
             # Each drain node call succeeded.
@@ -1557,7 +1580,7 @@ class AutoscalingTest(unittest.TestCase):
             )
         elif drain_node_outcome == DrainNodeOutcome.Unimplemented:
             # DrainNode call was made.
-            mock_node_info_stub.drain_node_call_count > 0
+            assert mock_node_info_stub.drain_node_call_count > 0
             # All errors were supressed.
             assert mock_metrics.drain_node_exceptions.inc.call_count == 0
             # Every call failed.
@@ -1567,7 +1590,7 @@ class AutoscalingTest(unittest.TestCase):
             DrainNodeOutcome.GenericException,
         ):
             # DrainNode call was made.
-            mock_node_info_stub.drain_node_call_count > 0
+            assert mock_node_info_stub.drain_node_call_count > 0
 
             # We encountered an exception.
             assert mock_metrics.drain_node_exceptions.inc.call_count > 0
@@ -1583,17 +1606,30 @@ class AutoscalingTest(unittest.TestCase):
             assert mock_node_info_stub.drain_node_call_count == 0
             # We encountered an exception fetching ip.
             assert mock_metrics.drain_node_exceptions.inc.call_count > 0
+        elif drain_node_outcome == DrainNodeOutcome.DrainDisabled:
+            # We never called this API.
+            assert mock_node_info_stub.drain_node_call_count == 0
+            # There were no failed calls.
+            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
+            # There were no successful calls either.
+            assert mock_node_info_stub.drain_node_reply_success == 0
 
     def testDynamicScalingForegroundLauncher(self):
         """Test autoscaling with node launcher in the foreground."""
         self.helperDynamicScaling(foreground_node_launcher=True)
 
     def _helperDynamicScaling(
-        self, mock_metrics, mock_node_info_stub, foreground_node_launcher=False
+        self,
+        mock_metrics,
+        mock_node_info_stub,
+        foreground_node_launcher=False,
+        disable_drain=False,
     ):
         config = copy.deepcopy(SMALL_CLUSTER)
         if foreground_node_launcher:
             config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
+        if disable_drain:
+            config["provider"][WORKER_RPC_DRAIN_KEY] = False
 
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -2681,7 +2717,28 @@ class AutoscalingTest(unittest.TestCase):
 
         Similar to testRecoverUnhealthyWorkers.
         """
-        config_path = self.write_config(SMALL_CLUSTER)
+        self.unhealthyWorkerHelper(disable_liveness_check=False)
+
+    def testDontTerminateUnhealthyWorkers(self):
+        """Test that the autoscaler leaves unhealthy workers alone when the worker
+        liveness check is disabled.
+        """
+        self.unhealthyWorkerHelper(disable_liveness_check=True)
+
+    def unhealthyWorkerHelper(self, disable_liveness_check: bool):
+        """Helper used to test the autoscaler's handling of unhealthy worker nodes.
+        If disable liveness check is False, the default code path is tested and we
+        expect to see workers terminated.
+
+        If disable liveness check is True, we expect the autoscaler not to take action
+        on unhealthy nodes, instead delegating node management to another component.
+        """
+        config = copy.deepcopy(SMALL_CLUSTER)
+        # Make it clear we're not timing out idle nodes here.
+        config["idle_timeout_minutes"] = 1000000000
+        if disable_liveness_check:
+            config["provider"][WORKER_LIVENESS_CHECK_KEY] = False
+        config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
@@ -2702,13 +2759,16 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
-        # Mark a node as unhealthy
+        # Clear out updaters.
         for _ in range(5):
             if autoscaler.updaters:
                 time.sleep(0.05)
                 autoscaler.update()
         assert not autoscaler.updaters
+
         num_calls = len(runner.calls)
+
+        # Mark a node as unhealthy
         lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
         # Turn off updaters.
         autoscaler.disable_node_updaters = True
@@ -2717,24 +2777,43 @@ class AutoscalingTest(unittest.TestCase):
             "min_workers"
         ] = 1
         fill_in_raylet_ids(self.provider, lm)
-        autoscaler.update()
-        # Stopped node metric incremented.
-        mock_metrics.stopped_nodes.inc.assert_called_once_with()
-        # One node left.
-        self.waitForNodes(1)
 
-        # Check the node removal event is generated.
-        autoscaler.update()
-        events = autoscaler.event_summarizer.summary()
-        assert (
-            "Removing 1 nodes of type "
-            "ray-legacy-worker-node-type (lost contact with raylet)." in events
-        ), events
+        if disable_liveness_check:
+            # We've disabled the liveness check, so the unhealthy node should stick
+            # around until someone else takes care of it.
+            # Do several autoscaler updates, to reinforce the fact that the
+            # autoscaler will never take down the unhealthy nodes.
+            for _ in range(10):
+                autoscaler.update()
+            # The nodes are still there.
+            assert self.num_nodes() == 2
+            # There's no synchronization required to make the last assertion valid:
+            # The autoscaler's node termination is synchronous and blocking, as is
+            # the terminate_node method of the mock node provider used in this test.
 
-        # No additional runner calls, since updaters were disabled.
-        time.sleep(1)
-        assert len(runner.calls) == num_calls
-        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
+            # No events generated indicating that we are removing nodes.
+            for event in autoscaler.event_summarizer.summary():
+                assert "Removing" not in event
+        else:
+            # We expect the unhealthy node to be cleared out with a single
+            # autoscaler update.
+            autoscaler.update()
+            # Stopped node metric incremented.
+            mock_metrics.stopped_nodes.inc.assert_called_once_with()
+            # One node left.
+            self.waitForNodes(1)
+
+            # Check the node removal event is generated.
+            autoscaler.update()
+            events = autoscaler.event_summarizer.summary()
+            assert (
+                "Removing 1 nodes of type "
+                "ray-legacy-worker-node-type (lost contact with raylet)." in events
+            ), events
+
+            # No additional runner calls, since updaters were disabled.
+            assert len(runner.calls) == num_calls
+            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testTerminateUnhealthyWorkers2(self):
         """Tests finer details of termination of unhealthy workers when
