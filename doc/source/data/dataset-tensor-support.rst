@@ -120,17 +120,10 @@ Like any other Dataset, Datasets with Tensor columns can be consumed / transform
 
   **Multi-column**:
 
-    Coming soon.
-
-  ..
-    #TODO(ekl) why does this crash with TensorDType not understood?
-
-    # Read a multi-column example dataset.
-    ray.data.read_parquet("example://parquet_images_mini")
-    # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
-
-    next(ds.iter_batches())
-    # -> TypeError: data type 'TensorDtype' not understood
+  .. literalinclude:: ./doc_code/tensor.py
+    :language: python
+    :start-after: __consume_native_2_begin__
+    :end-before: __consume_native_2_end__
 
 .. tabbed:: "pandas"
 
@@ -143,17 +136,10 @@ Like any other Dataset, Datasets with Tensor columns can be consumed / transform
 
   **Multi-column**:
 
-    Coming soon.
-
-  ..
-    #TODO(ekl) why does this crash with TensorDType not understood?
-
-    # Read a multi-column example dataset.
-    ray.data.read_parquet("example://parquet_images_mini")
-    # -> Dataset(num_blocks=3, num_rows=3, schema={image: TensorDtype, label: object})
-
-    next(ds.iter_batches(batch_format="pandas"))
-    # -> TypeError: data type 'TensorDtype' not understood
+  .. literalinclude:: ./doc_code/tensor.py
+    :language: python
+    :start-after: __consume_pandas_2_begin__
+    :end-before: __consume_pandas_2_end__
 
 .. tabbed:: "pyarrow"
 
@@ -188,7 +174,7 @@ Like any other Dataset, Datasets with Tensor columns can be consumed / transform
     :end-before: __consume_numpy_2_end__
 
 Saving Tensor Datasets
-~~~~~~~~~~~~~~~~~~~~~~
+----------------------
 
 Because Tensor datasets rely on Dataset-specific extension types, they can only be saved in formats that preserve Arrow metadata (currently only Parquet). In addition, single-column Tensor datasets can be saved in Numpy format.
 

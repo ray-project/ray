@@ -96,7 +96,7 @@ import ray
 # Reading previously saved Tensor data works out of the box.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: ArrowTensorType(shape=(32, 32, 3), dtype=uint8),
+#            schema={image: ArrowTensorType(shape=(128, 128, 3), dtype=uint8),
 #                    label: string})
 
 ds.take(1)
@@ -245,6 +245,23 @@ next(ds.iter_batches())
 #            [0, 0, 0, ..., 0, 0, 0]]], dtype=uint8)
 # __consume_native_end__
 
+# __consume_native_2_begin__
+import ray
+
+# Read a multi-column example dataset.
+ds = ray.data.read_parquet("example://parquet_images_mini")
+# -> Dataset(num_blocks=3, num_rows=3,
+#            schema={image: ArrowTensorType(shape=(128, 128, 3), dtype=uint8),
+#                    label: string})
+
+# This returns pandas batches with List[np.ndarray] columns.
+next(ds.iter_batches())
+# ->                                             image label
+# 0  [[[ 96,  76,  61], [ 92,  72,  57], [ 92,  72,...   cat
+# 1  [[[ 38,  38,  39], [ 39,  39,  40], [ 39,  39,...   cat
+# 2  [[[ 47,  39,  33], [ 43,  36,  29], [ 43,  36,...   dog
+# __consume_native_2_end__
+
 # __consume_pandas_begin__
 import ray
 
@@ -260,6 +277,23 @@ next(ds.iter_batches(batch_format="pandas"))
 # 1  [[  0,   0,   0,   0,   0,   0,   0,   0,   0,...
 # 2  [[  0,   0,   0,   0,   0,   0,   0,   0,   0,...
 # __consume_pandas_end__
+
+# __consume_pandas_2_begin__
+import ray
+
+# Read a multi-column example dataset.
+ds = ray.data.read_parquet("example://parquet_images_mini")
+# -> Dataset(num_blocks=3, num_rows=3,
+#            schema={image: ArrowTensorType(shape=(128, 128, 3), dtype=uint8),
+#                    label: string})
+
+# This returns pandas batches with List[np.ndarray] columns.
+next(ds.iter_batches(batch_format="pandas"))
+# ->                                             image label
+# 0  [[[ 96,  76,  61], [ 92,  72,  57], [ 92,  72,...   cat
+# 1  [[[ 38,  38,  39], [ 39,  39,  40], [ 39,  39,...   cat
+# 2  [[[ 47,  39,  33], [ 43,  36,  29], [ 43,  36,...   dog
+# __consume_pandas_2_end__
 
 # __consume_pyarrow_begin__
 import ray
