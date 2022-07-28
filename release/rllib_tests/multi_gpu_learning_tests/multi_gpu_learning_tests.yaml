@@ -1,18 +1,4 @@
 
-a2c-cartpole-v0:
-    env: CartPole-v0
-    run: A2C
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        episode_reward_mean: 150.0
-        timesteps_total: 500000
-    stop:
-        time_total_s: 600
-    config:
-        num_gpus: 2
-        num_workers: 23
-        lr: 0.001
-
 appo-cartpole-v0-no-vtrace:
     env: CartPole-v0
     run: APPO

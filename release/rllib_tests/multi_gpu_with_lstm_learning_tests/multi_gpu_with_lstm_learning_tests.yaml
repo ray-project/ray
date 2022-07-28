@@ -1,24 +1,4 @@
 
-a2c-stateless-cartpole:
-    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
-    run: A2C
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        episode_reward_mean: 150.0
-        timesteps_total: 500000
-    stop:
-        time_total_s: 600
-    config:
-        num_gpus: 2
-        num_workers: 23
-        # Use a large train batch size to make sure mini batches work
-        # after split to 2 GPU towers.
-        train_batch_size: 200
-        lr: 0.001
-        # Test w/ LSTMs.
-        model:
-            use_lstm: true
-
 appo-stateless-cartpole-no-vtrace:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: APPO
