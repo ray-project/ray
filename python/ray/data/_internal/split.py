@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Iterable, Tuple, List
+from typing import Union, Iterable, Tuple, List
 
 import ray
 from ray.data._internal.block_list import BlockList
@@ -93,8 +93,21 @@ def _split_single_block(
     block: Block,
     meta: BlockMetadata,
     split_indices: List[int],
-):
-    """Split the provided block at the given indices."""
+) -> Tuple[Union[Tuple[int, List[BlockMetadata]], Block], ...]:
+    """Split the provided block at the given indices.
+
+    Args:
+        block_id: the id of this block in the block list.
+        block: block to be split.
+        meta: metadata of the block, we expect meta.num is valid.
+        split_indices: the indices where the block should be split.
+    Returns:
+        returns block_id, split blocks metadata, and a list of blocks
+        in the following form. We return blocks in this way
+        so that the owner of blocks could be the caller(driver)
+        instead of worker itself.
+        Tuple(block_id, split_blocks_meta)), block0, block1 ...
+    """
     split_meta = []
     split_blocks = []
     block_accessor = BlockAccessor.for_block(block)
@@ -178,6 +191,7 @@ def _split_all_blocks(
             blocks_splitted.append(block_ref)
 
     if per_block_split_metadata_futures:
+        # only get metadata.
         per_block_split_metadata = ray.get(per_block_split_metadata_futures)
         for (block_id, meta), block_refs in zip(
             per_block_split_metadata, per_block_split_block_refs
