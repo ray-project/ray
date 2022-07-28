@@ -349,7 +349,7 @@ def deployment(
 
     if version is not None:
         logger.warning(
-            "DeprecationWarning: `version` in `serve.deployment` has been deprecated. "
+            "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
             "Explicitly specifying version will raise an error in the future!"
         )
 

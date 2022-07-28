@@ -414,11 +414,11 @@ class ServeController:
         config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if config_checkpoint is not None:
             _, last_config_dict, last_version_dict = pickle.loads(config_checkpoint)
-            updated_version_dict = _version_config(
+            updated_version_dict = _generate_new_version_config(
                 config_dict, last_config_dict, last_version_dict
             )
         else:
-            updated_version_dict = _version_config(config_dict, {}, {})
+            updated_version_dict = _generate_new_version_config(config_dict, {}, {})
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
@@ -576,7 +576,7 @@ class ServeController:
             return config
 
 
-def _version_config(
+def _generate_new_version_config(
     new_config: Dict, last_deployed_config: Dict, last_deployed_versions: Dict
 ) -> Dict[str, str]:
     """
