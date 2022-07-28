@@ -98,7 +98,10 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
         region="us-west-2", endpoint_override=s3_server, **aws_credentials
     )
     if s3_path.startswith("s3://"):
-        s3_path = s3_path[len("s3://") :]
+        if "@" in s3_path:
+            s3_path = s3_path.split("@")[-1]
+        else:
+            s3_path = s3_path[len("s3://") :]
     s3_path = urllib.parse.quote(s3_path)
     fs.create_dir(s3_path)
     yield fs
