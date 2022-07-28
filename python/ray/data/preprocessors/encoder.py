@@ -101,10 +101,9 @@ class OrdinalEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
         return (
-            f"OrdinalEncoder(columns={self.columns}, stats={stats}, "
-            f"encode_lists={self.encode_lists})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"encode_lists={self.encode_lists!r})"
         )
 
 
@@ -191,8 +190,10 @@ class OneHotEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"OneHotEncoder(columns={self.columns}, stats={stats})"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"max_categories={self.max_categories!r})"
+        )
 
 
 class MultiHotEncoder(Preprocessor):
@@ -277,8 +278,10 @@ class MultiHotEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"MultiHotEncoder(columns={self.columns}, stats={stats})"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"max_categories={self.max_categories!r})"
+        )
 
 
 class LabelEncoder(Preprocessor):
@@ -313,8 +316,7 @@ class LabelEncoder(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
-        return f"LabelEncoder(label_column={self.label_column}, stats={stats})"
+        return f"{self.__class__.__name__}(label_column={self.label_column!r})"
 
 
 class Categorizer(Preprocessor):
@@ -367,9 +369,9 @@ class Categorizer(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
         return (
-            f"<Categorizer columns={self.columns} dtypes={self.dtypes} stats={stats}>"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"dtypes={self.dtypes!r})"
         )
 
 
