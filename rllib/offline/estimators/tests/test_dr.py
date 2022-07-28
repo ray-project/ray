@@ -5,7 +5,7 @@ from ray.rllib.algorithms import AlgorithmConfig
 
 import numpy as np
 from ray.rllib.offline.estimators import DoublyRobust
-from ray.rllib.offline.estimators.tests.utils import GridWorldPolicy, GridWorldEnv
+from ray.rllib.offline.estimators.tests.gridworld import GridWorldPolicy, GridWorldEnv
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.framework import try_import_torch
@@ -16,6 +16,8 @@ _, nn = try_import_torch()
 
 
 class TestDR(unittest.TestCase):
+    """Learning tests for the Doubly Robust Estimator"""
+
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -151,8 +153,10 @@ class TestDR(unittest.TestCase):
         assert (
             est_mean - est_std <= mean_ret + std_ret
             and mean_ret - std_ret <= est_mean + est_std
-        ), f"DR estimate {est_mean:.2f} with stddev {est_std:.2f} does not "
-        f"converge to true estimate {mean_ret:.2f} with stddev {std_ret:.2f}!"
+        ), (
+            f"DR estimate {est_mean:.2f} with stddev {est_std:.2f} does not "
+            f"converge to true estimate {mean_ret:.2f} with stddev {std_ret:.2f}!"
+        )
 
     def test_random_random_data(self):
         print("Test random policy on random dataset")
