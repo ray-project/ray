@@ -60,14 +60,15 @@ MemoryMonitor::MemoryMonitor(float usage_threshold_,
 bool MemoryMonitor::IsUsageAboveThreshold() {
   auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
   if (total_memory_bytes == kNull || used_memory_bytes == kNull) {
-    RAY_LOG(WARNING) << "Unable to capture node memory. Monitor will not be able "
-                     << "to detect memory usage above threshold.";
+    RAY_LOG_EVERY_MS(WARNING, kLogIntervalMs)
+        << "Unable to capture node memory. Monitor will not be able "
+        << "to detect memory usage above threshold.";
     return false;
   }
   auto usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
   bool is_usage_above_threshold = usage_fraction > usage_threshold_;
   if (is_usage_above_threshold) {
-    RAY_LOG_EVERY_MS(INFO, 1000)
+    RAY_LOG_EVERY_MS(INFO, kLogIntervalMs)
         << "Node memory usage above threshold, used: " << used_memory_bytes
         << ", total: " << total_memory_bytes << ", usage fraction: " << usage_fraction
         << ", threshold: " << usage_threshold_;
@@ -79,7 +80,11 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetMemoryBytes() {
   RAY_CHECK(__linux__) << "Memory monitor currently supports only linux";
   auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
   auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
+  /// cgroup memory limit can be higher than system memory limit when it is
+  /// not used. We take its value only when it is less than or equal to system memory
+  /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
   system_total_bytes = NullableInt::min(system_total_bytes, cgroup_total_bytes);
+  /// This assumes cgroup total bytes will look different than system (meminfo)
   if (system_total_bytes == cgroup_total_bytes) {
     system_used_bytes = cgroup_used_bytes;
   }
@@ -119,7 +124,7 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   std::string meminfo_path = "/proc/meminfo";
   std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
   if (!meminfo_ifs.is_open()) {
-    RAY_LOG(ERROR) << " file not found: " << meminfo_path;
+    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs) << " file not found: " << meminfo_path;
     return {kNull, kNull};
   }
   std::string line;
@@ -151,7 +156,8 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetLinuxMemoryBytes() {
     }
   }
   if (mem_total_bytes == kNull) {
-    RAY_LOG(ERROR) << "Unable to determine total bytes . Will return null";
+    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs)
+        << "Unable to determine total bytes . Will return null";
     return {kNull, kNull};
   }
 
@@ -164,11 +170,13 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   }
 
   if (available_bytes == kNull) {
-    RAY_LOG(ERROR) << "Unable to determine available bytes. Will return null";
+    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs)
+        << "Unable to determine available bytes. Will return null";
     return {kNull, kNull};
   }
   if (mem_total_bytes < available_bytes) {
-    RAY_LOG(ERROR) << "Total bytes less than available bytes. Will return null";
+    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs)
+        << "Total bytes less than available bytes. Will return null";
     return {kNull, kNull};
   }
   auto used_bytes = mem_total_bytes - available_bytes;

@@ -376,19 +376,15 @@ std::error_code Process::Call(const std::vector<std::string> &args,
 }
 
 std::string Process::Exec(const std::string command) {
-  char buffer[128];
-  std::string result = "";
-  FILE *pipe = popen(command.c_str(), "r");
+  /// Based on answer in
+  /// https://stackoverflow.com/questions/478898/how-do-i-execute-a-command-and-get-the-output-of-the-command-within-c-using-po
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
   RAY_CHECK(pipe) << "popen() failed for command " + command;
-  try {
-    while (fgets(buffer, sizeof buffer, pipe) != NULL) {
-      result += buffer;
-    }
-  } catch (int exception) {
-    pclose(pipe);
-    throw exception;
+  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+    result += buffer.data();
   }
-  pclose(pipe);
   return result;
 }
 

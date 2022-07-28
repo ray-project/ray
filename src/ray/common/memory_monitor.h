@@ -30,6 +30,7 @@ namespace ray {
 using MemoryUsageRefreshCallback = std::function<void(bool is_usage_above_threshold)>;
 
 /// Monitors the memory usage of the node.
+/// It checks the memory usage p
 /// This class is thread safe.
 class MemoryMonitor {
  public:
@@ -37,8 +38,9 @@ class MemoryMonitor {
   ///
   /// \param usage_threshold a value in [0-1] to indicate the max usage.
   /// \param monitor_interval_ms the frequency to update the usage. 0 disables the
-  /// the monitor and callbacks wown't fire.
-  /// \param monitor_callback function to execute when usage is refreshed.
+  /// the monitor and callbacks won't fire.
+  /// \param monitor_callback function to execute on a dedicated thread owned by this
+  /// monitor when the usage is refreshed.
   MemoryMonitor(float usage_threshold,
                 uint64_t monitor_interval_ms,
                 MemoryUsageRefreshCallback monitor_callback);
@@ -52,6 +54,7 @@ class MemoryMonitor {
       "/sys/fs/cgroup/memory/memory.usage_in_bytes";
   static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
   static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
+  static constexpr uint32_t kLogIntervalMs = 5000;
 
   /// Returns true if the memory usage of this node is above the threshold.
   bool IsUsageAboveThreshold();
@@ -73,7 +76,8 @@ class MemoryMonitor {
 
   /// Memory usage fraction between [0, 1]
   const double usage_threshold_;
-  /// Callback function that executes at each monitoring interval.
+  /// Callback function that executes at each monitoring interval,
+  /// on a dedicated thread managed by this class.
   const MemoryUsageRefreshCallback monitor_callback_;
   instrumented_io_context io_context_;
   std::thread monitor_thread_;

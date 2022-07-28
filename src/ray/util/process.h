@@ -82,6 +82,7 @@ class Process {
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
   /// Executes command line operation.
+  ///
   /// \param[in] argv The command line command to execute.
   /// \return The output from the command.
   static std::string Exec(const std::string command);
