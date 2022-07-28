@@ -31,11 +31,11 @@ class Dashboard:
         which polls said API for display purposes.
 
     Args:
-        host(str): Host address of dashboard aiohttp server.
-        port(int): Port number of dashboard aiohttp server.
-        port_retries(int): The retry times to select a valid port.
-        gcs_address(str): GCS address of the cluster
-        log_dir(str): Log directory of dashboard.
+        host: Host address of dashboard aiohttp server.
+        port: Port number of dashboard aiohttp server.
+        port_retries: The retry times to select a valid port.
+        gcs_address: GCS address of the cluster
+        log_dir: Log directory of dashboard.
     """
 
     def __init__(

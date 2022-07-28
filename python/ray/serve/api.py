@@ -4,6 +4,7 @@ import logging
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -72,14 +73,14 @@ def start(
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
 
-            - host(str, None): Host for HTTP servers to listen on. Defaults to
+            - host: Host for HTTP servers to listen on. Defaults to
               "127.0.0.1". To expose Serve publicly, you probably want to set
               this to "0.0.0.0".
-            - port(int): Port for HTTP server. Defaults to 8000.
-            - root_path(str): Root path to mount the serve application
+            - port: Port for HTTP server. Defaults to 8000.
+            - root_path: Root path to mount the serve application
               (for example, "/serve"). All deployment routes will be prefixed
               with this path. Defaults to "".
-            - middlewares(list): A list of Starlette middlewares that will be
+            - middlewares: A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.DeploymentMode): The deployment
               location of HTTP servers:
@@ -89,13 +90,17 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
-            - num_cpus (int): The number of CPU cores to reserve for each
+            - num_cpus: The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
+    client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
-    return _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+
+    return client
 
 
 @PublicAPI
@@ -391,12 +396,13 @@ def get_deployment(name: str) -> Deployment:
     >>> MyDeployment.options(num_replicas=10).deploy()  # doctest: +SKIP
 
     Args:
-        name(str): name of the deployment. This must have already been
+        name: name of the deployment. This must have already been
         deployed.
 
     Returns:
         Deployment
     """
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.get_deployment(name)
 
 
@@ -407,7 +413,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.list_deployments()
 
 
@@ -436,10 +442,12 @@ def run(
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
-
     client = _private_api.serve_start(
         detached=True, http_options={"host": host, "port": port}
     )
+
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
@@ -511,7 +519,6 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     The returned Application object can be exported to a dictionary or YAML
     config.
     """
-
     if in_interactive_shell():
         raise RuntimeError(
             "build cannot be called from an interactive shell like "

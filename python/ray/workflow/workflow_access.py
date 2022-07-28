@@ -314,6 +314,18 @@ class WorkflowManagementActor:
         wf_storage.delete_workflow()
         self._executed_workflows.discard(workflow_id)
 
+    def create_http_event_provider(self) -> None:
+        """Deploy an HTTPEventProvider as a Serve deployment with
+        name = common.HTTP_EVENT_PROVIDER_NAME, if one doesn't exist
+        """
+        ray.serve.start(detached=True)
+        try:
+            ray.serve.get_deployment(common.HTTP_EVENT_PROVIDER_NAME)
+        except KeyError:
+            from ray.workflow.http_event_provider import HTTPEventProvider
+
+            HTTPEventProvider.deploy()
+
     def ready(self) -> None:
         """A no-op to make sure the actor is ready."""
 
