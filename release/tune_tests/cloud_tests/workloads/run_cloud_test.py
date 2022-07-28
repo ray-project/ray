@@ -644,9 +644,7 @@ def load_trial_checkpoint_data(
             with open(json_path, "rt") as f:
                 checkpoint_data = json.load(f)
         else:
-            meta_path = os.path.join(
-                cp_full_dir, f"checkpoint-{checkpoint_num}.tune_metadata"
-            )
+            meta_path = os.path.join(cp_full_dir, ".tune_metadata")
             with open(meta_path, "rb") as f:
                 checkpoint_meta = pickle.load(f)
                 checkpoint_data = {"internal_iter": checkpoint_meta["iteration"]}
