@@ -89,9 +89,10 @@ def train_loop_per_worker(config):
                         epoch=epoch,
                     )
                 )
-            else:
-                checkpoint = None
-            session.report(dict(loss=running_loss / epoch_steps), checkpoint=checkpoint)
+                session.report(
+                    dict(loss=running_loss / epoch_steps), checkpoint=checkpoint
+                )
+
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print(
                     "[%d, %5d] loss: %.3f"
