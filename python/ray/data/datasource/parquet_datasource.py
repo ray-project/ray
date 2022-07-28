@@ -61,8 +61,8 @@ PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO = 0.01
 # Parquet encoding ratio.
 # This is to restrict `PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO` within the
 # proper boundary.
-PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES = 4
-PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 20
+PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES = 2
+PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 
 # The number of rows to read from each file for sampling. Try to keep it low to avoid
 # reading too much data into memory.
@@ -314,7 +314,13 @@ class _ParquetDatasourceReader(Reader):
         futures = []
         for idx, sample in enumerate(file_samples):
             # Sample i-th row group in i-th file.
-            futures.append(sample_piece.remote(_SerializedPiece(sample), idx))
+            # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
+            # same machine to cause OOM issue, as sampling can be memory-intensive.
+            futures.append(
+                sample_piece.options(scheduling_strategy="SPREAD").remote(
+                    _SerializedPiece(sample), idx
+                )
+            )
         sample_ratios = ray.get(futures)
         ratio = np.mean(sample_ratios)
 

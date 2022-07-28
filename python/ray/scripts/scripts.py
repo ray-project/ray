@@ -43,13 +43,16 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.dashboard.modules.job.cli import job_cli_group
+from ray.experimental.state.api import get_log, list_logs
+from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
-    get as state_cli_get,
-    list as state_cli_list,
+    AvailableFormat,
     logs_state_cli_group,
+    ray_get,
+    ray_list,
+    output_with_format,
     summary_state_cli_group,
 )
 
@@ -1954,6 +1957,209 @@ def local_dump(
 
 
 @cli.command()
+@click.argument(
+    "glob_filter",
+    required=False,
+    default="*",
+)
+@click.option(
+    "-ip",
+    "--node-ip",
+    required=False,
+    type=str,
+    default=None,
+    help="Filters the logs by this ip address.",
+)
+@click.option(
+    "--node-id",
+    "-id",
+    required=False,
+    type=str,
+    default=None,
+    help="Filters the logs by this NodeID.",
+)
+@click.option(
+    "--pid",
+    "-pid",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs from the process with this pid.",
+)
+@click.option(
+    "--actor-id",
+    "-a",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs corresponding to this ActorID.",
+)
+@click.option(
+    "--task-id",
+    "-t",
+    required=False,
+    type=str,
+    default=None,
+    help="Retrieves the logs corresponding to this TaskID.",
+)
+@click.option(
+    "--follow",
+    "-f",
+    required=False,
+    type=bool,
+    is_flag=True,
+    help="Streams the log file as it is updated instead of just tailing.",
+)
+@click.option(
+    "--tail",
+    required=False,
+    type=int,
+    default=None,
+    help="Number of lines to tail from log. -1 indicates fetching the whole file.",
+)
+@click.option(
+    "--interval",
+    required=False,
+    type=float,
+    default=None,
+    help="The interval to print new logs when `--follow` is specified.",
+    hidden=True,
+)
+@click.option(
+    "--timeout",
+    default=DEFAULT_RPC_TIMEOUT,
+    help=(
+        "Timeout in seconds for the API requests. "
+        f"Default is {DEFAULT_RPC_TIMEOUT}. If --follow is specified, "
+        "this option will be ignored."
+    ),
+)
+@click.option(
+    "--address",
+    default=None,
+    help=(
+        "The address of Ray API server. If not provided, it will be configured "
+        "automatically from querying the GCS server."
+    ),
+)
+def ray_logs(
+    glob_filter,
+    node_ip: str,
+    node_id: str,
+    pid: str,
+    actor_id: str,
+    task_id: str,
+    follow: bool,
+    tail: int,
+    interval: float,
+    timeout: int,
+    address: Optional[str],
+):
+    """Print the log file that matches the GLOB_FILTER.
+
+    By default, it prints a list of log files that match the filter.
+    If there's only 1 match, it will print the log file.
+    By default, it prints the head node logs.
+
+    Usage:
+
+        Print the last 500 lines of raylet.out on a head node.
+
+        ```
+        ray logs raylet.out -tail 500
+        ```
+
+        Print the last 500 lines of raylet.out on a worker node id A.
+
+        ```
+        ray logs raylet.out -tail 500 —-node-id A
+        ```
+
+        Follow the log file with an actor id ABC.
+
+        ```
+        ray logs --actor-id ABC --follow
+        ```
+
+        Get the actor log from pid 123, ip ABC.
+        Note that this goes well with the driver log of Ray which prints
+        (ip=ABC, pid=123, class_name) logs.
+
+        ```
+        ray logs —ip=ABC pid=123
+        ```
+
+        Download the gcs_server.txt file to the local machine.
+
+        ```
+        ray logs gcs_server.out -tail -1 > gcs_server.txt
+        ```
+    """
+    if task_id is not None:
+        raise NotImplementedError("--task-id is not yet supported")
+
+    # If both id & ip are not provided, choose a head node as a default.
+    if node_id is None and node_ip is None:
+        address = ray._private.services.canonicalize_bootstrap_address_or_die(address)
+        node_ip = address.split(":")[0]
+
+    filename = None
+    match_unique = pid is not None or actor_id is not None  # Worker log  # Actor log
+
+    # If there's no unique match, try listing logs based on the glob filter.
+    if not match_unique:
+        logs = list_logs(
+            address=address,
+            node_id=node_id,
+            node_ip=node_ip,
+            glob_filter=glob_filter,
+            timeout=timeout,
+        )
+        log_files_found = []
+        for _, log_files in logs.items():
+            for log_file in log_files:
+                log_files_found.append(log_file)
+
+        # if there's only 1 file, that means there's a unique match.
+        if len(log_files_found) == 1:
+            filename = log_files_found[0]
+            match_unique = True
+        # Otherwise, print a list of log files.
+        else:
+            if node_id:
+                print(f"Node ID: {node_id}")
+            elif node_ip:
+                print(f"Node IP: {node_ip}")
+            print(output_with_format(logs, schema=None, format=AvailableFormat.YAML))
+
+    # If there's an unique match, print the log file.
+    if match_unique:
+        if not tail:
+            tail = 0 if follow else DEFAULT_LOG_LIMIT
+
+            if tail > 0:
+                print(
+                    f"--- Log has been truncated to last {tail} lines."
+                    " Use `--tail` flag to toggle. ---\n"
+                )
+
+        for chunk in get_log(
+            address=address,
+            node_id=node_id,
+            node_ip=node_ip,
+            filename=filename,
+            actor_id=actor_id,
+            task_id=task_id,
+            pid=pid,
+            tail=tail,
+            follow=follow,
+            _interval=interval,
+            timeout=timeout,
+        ):
+            print(chunk, end="", flush=True)
+
+
+@cli.command()
 @click.argument("cluster_config_file", required=False, type=str)
 @click.option(
     "--host",
@@ -2353,11 +2559,18 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-add_command_alias(job_cli_group, name="job", hidden=True)
 add_command_alias(logs_state_cli_group, name="logs", hidden=False)
-cli.add_command(state_cli_list)
-cli.add_command(state_cli_get)
+cli.add_command(ray_list, name="list")
+cli.add_command(ray_get, name="get")
 add_command_alias(summary_state_cli_group, name="summary", hidden=False)
+
+try:
+    from ray.dashboard.modules.job.cli import job_cli_group
+
+    add_command_alias(job_cli_group, name="job", hidden=True)
+except Exception as e:
+    logger.debug(f"Integrating ray jobs command line tool failed with {e}")
+
 
 try:
     from ray.serve.scripts import serve_cli

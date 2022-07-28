@@ -414,8 +414,11 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
 
 
 def test_logs_list(ray_start_with_dashboard):
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
-    webui_url = ray_start_with_dashboard["webui_url"]
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
     webui_url = format_web_url(webui_url)
     node_id = list_nodes()[0]["node_id"]
 

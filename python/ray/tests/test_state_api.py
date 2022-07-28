@@ -10,7 +10,6 @@ import yaml
 from click.testing import CliRunner
 
 import ray
-import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
@@ -82,6 +81,7 @@ from ray.experimental.state.common import (
     TaskState,
     WorkerState,
     StateSchema,
+    ray_address_to_api_server_url,
     state_column,
 )
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
@@ -89,9 +89,10 @@ from ray.experimental.state.state_cli import (
     AvailableFormat,
     format_list_api_output,
     _parse_filter,
+    summary_state_cli_group,
 )
-from ray.experimental.state.state_cli import get as cli_get
-from ray.experimental.state.state_cli import list as cli_list
+from ray.experimental.state.state_cli import ray_get
+from ray.experimental.state.state_cli import ray_list
 from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
@@ -259,6 +260,25 @@ def create_api_options(
         _server_timeout_multiplier=1.0,
         detail=detail,
     )
+
+
+def test_ray_address_to_api_server_url(shutdown_only):
+    ctx = ray.init()
+    api_server_url = f'http://{ctx.address_info["webui_url"]}'
+    address = ctx.address_info["address"]
+    gcs_address = ctx.address_info["gcs_address"]
+
+    # None should auto detect current ray address
+    assert api_server_url == ray_address_to_api_server_url(None)
+    # 'auto' should get
+    assert api_server_url == ray_address_to_api_server_url("auto")
+    # ray address
+    assert api_server_url == ray_address_to_api_server_url(address)
+    # explicit head node gcs address
+    assert api_server_url == ray_address_to_api_server_url(gcs_address)
+    # localhost string
+    gcs_port = gcs_address.split(":")[1]
+    assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
 
 
 def test_state_schema():
@@ -1159,16 +1179,8 @@ async def test_state_data_source_client(ray_start_cluster):
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-
-        def get_port():
-            return ray.experimental.internal_kv._internal_kv_get(
-                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-            )
-
-        wait_for_condition(lambda: get_port() is not None)
         # The second index is the gRPC port
-        port = json.loads(get_port())[1]
+        port = node["AgentInfo"]["GrpcPort"]
         ip = node["NodeManagerAddress"]
         client.register_agent_client(node_id, ip, port)
         result = await client.get_runtime_envs_info(node_id)
@@ -1370,16 +1382,8 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-
-        def get_port():
-            return ray.experimental.internal_kv._internal_kv_get(
-                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-            )
-
-        wait_for_condition(lambda: get_port() is not None)
         # The second index is the gRPC port
-        port = json.loads(get_port())[1]
+        port = node["AgentInfo"]["GrpcPort"]
         ip = node["NodeManagerAddress"]
         client.register_agent_client(node_id, ip, port)
 
@@ -1458,29 +1462,29 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         return exit_code_correct and substring_matched
 
     wait_for_condition(
-        lambda: verify_output(cli_list, ["actors"], ["Stats:", "Table:", "ACTOR_ID"])
+        lambda: verify_output(ray_list, ["actors"], ["Stats:", "Table:", "ACTOR_ID"])
     )
     wait_for_condition(
-        lambda: verify_output(cli_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
+        lambda: verify_output(ray_list, ["workers"], ["Stats:", "Table:", "WORKER_ID"])
     )
     wait_for_condition(
-        lambda: verify_output(cli_list, ["nodes"], ["Stats:", "Table:", "NODE_ID"])
+        lambda: verify_output(ray_list, ["nodes"], ["Stats:", "Table:", "NODE_ID"])
     )
     wait_for_condition(
         lambda: verify_output(
-            cli_list, ["placement-groups"], ["Stats:", "Table:", "PLACEMENT_GROUP_ID"]
+            ray_list, ["placement-groups"], ["Stats:", "Table:", "PLACEMENT_GROUP_ID"]
         )
     )
-    wait_for_condition(lambda: verify_output(cli_list, ["jobs"], ["raysubmit"]))
+    wait_for_condition(lambda: verify_output(ray_list, ["jobs"], ["raysubmit"]))
     wait_for_condition(
-        lambda: verify_output(cli_list, ["tasks"], ["Stats:", "Table:", "TASK_ID"])
+        lambda: verify_output(ray_list, ["tasks"], ["Stats:", "Table:", "TASK_ID"])
     )
     wait_for_condition(
-        lambda: verify_output(cli_list, ["objects"], ["Stats:", "Table:", "OBJECT_ID"])
+        lambda: verify_output(ray_list, ["objects"], ["Stats:", "Table:", "OBJECT_ID"])
     )
     wait_for_condition(
         lambda: verify_output(
-            cli_list, ["runtime-envs"], ["Stats:", "Table:", "RUNTIME_ENV"]
+            ray_list, ["runtime-envs"], ["Stats:", "Table:", "RUNTIME_ENV"]
         )
     )
 
@@ -1488,21 +1492,26 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     nodes = ray.nodes()
     wait_for_condition(
         lambda: verify_output(
-            cli_get, ["nodes", nodes[0]["NodeID"]], ["node_id", nodes[0]["NodeID"]]
+            ray_get, ["nodes", nodes[0]["NodeID"]], ["node_id", nodes[0]["NodeID"]]
         )
     )
     # Test get workers by id
+
+    # Still need a `wait_for_condition`,
+    # because the worker obtained through the api server will not filter the driver,
+    # but `global_state.workers` will filter the driver.
+    wait_for_condition(lambda: len(global_state.workers()) > 0)
     workers = global_state.workers()
-    assert len(workers) > 0
+
     worker_id = list(workers.keys())[0]
     wait_for_condition(
-        lambda: verify_output(cli_get, ["workers", worker_id], ["worker_id", worker_id])
+        lambda: verify_output(ray_get, ["workers", worker_id], ["worker_id", worker_id])
     )
 
     # Test get actors by id
     wait_for_condition(
         lambda: verify_output(
-            cli_get,
+            ray_get,
             ["actors", actor._actor_id.hex()],
             ["actor_id", actor._actor_id.hex()],
         )
@@ -1511,7 +1520,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     # Test get placement groups by id
     wait_for_condition(
         lambda: verify_output(
-            cli_get,
+            ray_get,
             ["placement-groups", pg.id.hex()],
             ["placement_group_id", pg.id.hex()],
         )
@@ -1519,7 +1528,21 @@ def test_cli_apis_sanity_check(ray_start_cluster):
 
     # Test get objects by id
     wait_for_condition(
-        lambda: verify_output(cli_get, ["objects", obj.hex()], ["object_id", obj.hex()])
+        lambda: verify_output(ray_get, ["objects", obj.hex()], ["object_id", obj.hex()])
+    )
+
+    # Test address flag auto detection
+    wait_for_condition(
+        lambda: verify_output(
+            ray_get,
+            ["objects", obj.hex(), "--address", "auto"],
+            ["object_id", obj.hex()],
+        )
+    )
+    wait_for_condition(
+        lambda: verify_output(
+            ray_list, ["tasks", "--address", "auto"], ["Stats:", "Table:", "TASK_ID"]
+        )
     )
 
     # TODO(rickyyx:alpha-obs):
@@ -2002,22 +2025,37 @@ async def test_cli_format_print(state_api_manager):
     result = result.result
     # If the format is not yaml, it will raise an exception.
     yaml.load(
-        format_list_api_output(result, format=AvailableFormat.YAML),
+        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML),
         Loader=yaml.FullLoader,
     )
     # If the format is not json, it will raise an exception.
-    json.loads(format_list_api_output(result, format=AvailableFormat.JSON))
+    json.loads(
+        format_list_api_output(result, schema=ActorState, format=AvailableFormat.JSON)
+    )
     # Test a table formatting.
-    output = format_list_api_output(result, format=AvailableFormat.TABLE)
+    output = format_list_api_output(
+        result, schema=ActorState, format=AvailableFormat.TABLE
+    )
     assert "Table:" in output
     assert "Stats:" in output
     with pytest.raises(ValueError):
-        format_list_api_output(result, format="random_format")
+        format_list_api_output(result, schema=ActorState, format="random_format")
 
     # Verify the default format.
-    output = format_list_api_output(result)
+    output = format_list_api_output(result, schema=ActorState)
     assert "Table:" in output
     assert "Stats:" in output
+
+    # Verify the ordering is equal to it is defined in `StateSchema` class.
+    # Index 8 contains headers
+    headers = output.split("\n")[8]
+    cols = ActorState.list_columns()
+    headers = list(filter(lambda item: item != "", headers.strip().split(" ")))
+
+    for i in range(len(headers)):
+        header = headers[i].upper()
+        col = cols[i].upper()
+        assert header == col
 
 
 def test_filter(shutdown_only):
@@ -2109,12 +2147,12 @@ def test_filter(shutdown_only):
     dead_actor_id = list_actors(filters=[("state", "=", "DEAD")])[0]["actor_id"]
     alive_actor_id = list_actors(filters=[("state", "=", "ALIVE")])[0]["actor_id"]
     runner = CliRunner()
-    result = runner.invoke(cli_list, ["actors", "--filter", "state=DEAD"])
+    result = runner.invoke(ray_list, ["actors", "--filter", "state=DEAD"])
     assert result.exit_code == 0
     assert dead_actor_id in result.output
     assert alive_actor_id not in result.output
 
-    result = runner.invoke(cli_list, ["actors", "--filter", "state!=DEAD"])
+    result = runner.invoke(ray_list, ["actors", "--filter", "state!=DEAD"])
     assert result.exit_code == 0
     assert dead_actor_id not in result.output
     assert alive_actor_id in result.output
@@ -2138,12 +2176,11 @@ def test_data_truncate(shutdown_only, monkeypatch):
         ]
         runner = CliRunner()
         with pytest.warns(UserWarning) as record:
-            result = runner.invoke(cli_list, ["placement-groups"])
-            # result = list_placement_groups()
+            result = runner.invoke(ray_list, ["placement-groups"])
         assert (
-            f"{max_limit_data_source} ({max_limit_data_source + 1} total) "
-            "placement_groups are retrieved from the data source. "
-            "1 entries have been truncated." in record[0].message.args[0]
+            f"{max_limit_data_source} ({max_limit_data_source + 1} total "
+            "from the cluster) placement_groups are retrieved from the "
+            "data source. 1 entries have been truncated." in record[0].message.args[0]
         )
         assert result.exit_code == 0
 
@@ -2168,7 +2205,7 @@ def test_data_truncate(shutdown_only, monkeypatch):
         ray.get(a.ready.remote())
 
         with pytest.warns(None) as record:
-            result = runner.invoke(cli_list, ["actors"])
+            result = runner.invoke(ray_list, ["actors"])
         assert len(record) == 0
 
 
@@ -2193,7 +2230,7 @@ def test_detail(shutdown_only):
     Test CLI
     """
     runner = CliRunner()
-    result = runner.invoke(cli_list, ["actors", "--detail"])
+    result = runner.invoke(ray_list, ["actors", "--detail"])
     print(result.output)
     assert result.exit_code == 0
     # The column for --detail should be in the output.
@@ -2213,7 +2250,7 @@ def test_detail(shutdown_only):
     )
 
     # When the format is given, it should respect that formatting.
-    result = runner.invoke(cli_list, ["actors", "--detail", "--format=table"])
+    result = runner.invoke(ray_list, ["actors", "--detail", "--format=table"])
     assert result.exit_code == 0
     with pytest.raises(yaml.YAMLError):
         yaml.load(result.output, Loader=yaml.FullLoader)
@@ -2505,7 +2542,7 @@ def test_callsite_warning(callsite_enabled, monkeypatch, shutdown_only):
         wait_for_condition(lambda: len(list_objects()) > 0)
 
         with pytest.warns(None) as record:
-            result = runner.invoke(cli_list, ["objects"])
+            result = runner.invoke(ray_list, ["objects"])
             assert result.exit_code == 0
 
         if callsite_enabled:
@@ -2547,14 +2584,16 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
         try:
             list_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster." in str(e)
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "due to query failures to the data sources." in str(e)
         else:
             assert False
 
         try:
             summarize_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster." in str(e)
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "due to query failures to the data sources." in str(e)
         else:
             assert False
 
@@ -2563,25 +2602,82 @@ def test_raise_on_missing_output_partial_failures(monkeypatch, ray_start_cluster
             list_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
         assert len(record) == 1
 
-        # TODO(sang): Add warning after https://github.com/ray-project/ray/pull/26801
-        # is merged.
-        # with pytest.warns(None) as record:
-        #     summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
-        # assert len(record) == 1
+        with pytest.warns(None) as record:
+            summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+        assert len(record) == 1
 
         # Verify when CLI is used, exceptions are not raised.
         with pytest.warns(None) as record:
-            result = runner.invoke(cli_list, ["tasks", "--timeout=3"])
+            result = runner.invoke(ray_list, ["tasks", "--timeout=3"])
         assert len(record) == 1
         assert result.exit_code == 0
 
-        # TODO(sang): Add warning after https://github.com/ray-project/ray/pull/26801
-        # is merged.
         # Verify summary CLI also doesn't raise an exception.
-        # with pytest.warns(None) as record:
-        #     result = runner.invoke(task_summary, ["--timeout=3"])
-        # assert result.exit_code == 0
-        # assert len(record) == 1
+        with pytest.warns(None) as record:
+            result = runner.invoke(summary_state_cli_group, ["tasks", "--timeout=3"])
+        assert result.exit_code == 0
+        assert len(record) == 1
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_MAX_LIMIT_FROM_DATA_SOURCE",
+            "10",
+        )
+        ray.init()
+
+        @ray.remote
+        def task():
+            time.sleep(300)
+
+        tasks = [task.remote() for _ in range(15)]  # noqa
+
+    runner = CliRunner()
+
+    # Verify
+    def verify():
+        # Verify when raise_on_missing_output=True, it raises an exception.
+        try:
+            list_tasks(_explain=True, timeout=3)
+        except RayStateApiException as e:
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "(> 10)" in str(e)
+        else:
+            assert False
+
+        try:
+            summarize_tasks(_explain=True, timeout=3)
+        except RayStateApiException as e:
+            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "(> 10)" in str(e)
+        else:
+            assert False
+
+        # Verify when raise_on_missing_output=False, it prints warnings.
+        with pytest.warns(None) as record:
+            list_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+        assert len(record) == 1
+
+        with pytest.warns(None) as record:
+            summarize_tasks(raise_on_missing_output=False, _explain=True, timeout=3)
+        assert len(record) == 1
+
+        # Verify when CLI is used, exceptions are not raised.
+        with pytest.warns(None) as record:
+            result = runner.invoke(ray_list, ["tasks", "--timeout=3"])
+        assert len(record) == 1
+        assert result.exit_code == 0
+
+        # Verify summary CLI also doesn't raise an exception.
+        with pytest.warns(None) as record:
+            result = runner.invoke(summary_state_cli_group, ["tasks", "--timeout=3"])
+        assert result.exit_code == 0
+        assert len(record) == 1
         return True
 
     wait_for_condition(verify)
@@ -2594,7 +2690,7 @@ def test_get_id_not_found(shutdown_only):
     """
     ray.init()
     runner = CliRunner()
-    result = runner.invoke(cli_get, ["actors", "1234"])
+    result = runner.invoke(ray_get, ["actors", "1234"])
     assert result.exit_code == 0
     assert "Resource with id=1234 not found in the cluster." in result.output
 
