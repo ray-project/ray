@@ -1,4 +1,4 @@
-.. _workflow:
+.. _workflows:
 
 Ray Workflow: Fast, Durable Application Flows
 =============================================

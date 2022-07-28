@@ -42,7 +42,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Scikit-learn`: https://docs.ray.io/en/master/joblib.html
 .. _`Serve`: https://docs.ray.io/en/master/serve/index.html
 .. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
-.. _`Workflow`: https://docs.ray.io/en/master/workflow/concepts.html
+.. _`Workflow`: https://docs.ray.io/en/master/workflows/concepts.html
 .. _`Train`: https://docs.ray.io/en/master/train/train.html
 
 
