@@ -15,9 +15,9 @@ class GridWorldEnv(gym.Env):
 
     ### Description
     The board is a 4x12 matrix, with (using NumPy matrix indexing):
-    - [3, 0] as the start at bottom-left
-    - [3, 11] as the goal at bottom-right
-    - [3, 1..10] as the cliff at bottom-center
+    - [3, 0] or obs==36 as the start at bottom-left
+    - [3, 11] or obs==47 as the goal at bottom-right
+    - [3, 1..10] or obs==37...46 as the cliff at bottom-center
 
     An episode terminates when the agent reaches the goal.
 
@@ -32,7 +32,7 @@ class GridWorldEnv(gym.Env):
     There are 3x12 + 2 possible states, not including the walls.
 
     ### Reward
-    Each time step incurs -1 reward.
+    Each time step incurs -1 reward, except for reaching the goal which gives +10 reward.
     """
 
     def __init__(self) -> None:
@@ -141,59 +141,3 @@ class GridWorldPolicy(Policy):
         obs = np.array(obs_batch[SampleBatch.OBS], dtype=int)
         action_probs = self.action_dist[obs]
         return np.log(action_probs), TorchCategorical, None
-
-
-if __name__ == "__main__":
-    from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
-
-    env = GridWorldEnv()
-    policy = GridWorldPolicy(
-        observation_space=env.observation_space,
-        action_space=env.action_space,
-        config={"epsilon": 0.1},
-    )
-    gamma = 0.99
-    q_model_config = {
-        "tau": 1.0,
-        "model": {
-            "fcnet_hiddens": [],
-            "activation": "linear",
-        },
-        "lr": 0.01,
-    }
-
-    fqe = FQETorchModel(
-        policy=policy,
-        gamma=gamma,
-        **q_model_config,
-    )
-    for _ in range(5000):
-        obs_batch = []
-        new_obs = []
-        actions = []
-        action_prob = []
-        rewards = []
-        dones = []
-        obs = env.reset()
-        done = False
-        while not done:
-            obs_batch.append(obs)
-            act, _, extra = policy.compute_single_action(obs)
-            actions.append(act)
-            action_prob.append(extra["action_prob"])
-            obs, rew, done, _ = env.step(act)
-            new_obs.append(obs)
-            rewards.append(rew)
-            dones.append(done)
-        batch = SampleBatch(
-            obs=obs_batch,
-            actions=actions,
-            action_prob=action_prob,
-            rewards=rewards,
-            dones=dones,
-            new_obs=new_obs,
-        )
-        losses = fqe.train(batch)
-        print(losses)
-        estimates = fqe.estimate_v(batch)
-        print(estimates)

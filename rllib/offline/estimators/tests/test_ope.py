@@ -16,6 +16,8 @@ import gym
 
 
 class TestOPE(unittest.TestCase):
+    """Compilation tests for using OPE both standalone and in an Offline Algorithm"""
+
     @classmethod
     def setUpClass(cls):
         ray.init()

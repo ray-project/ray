@@ -1,5 +1,5 @@
 import unittest
-from ray.rllib.offline.estimators.tests.utils import GridWorldEnv, GridWorldPolicy
+from ray.rllib.offline.estimators.tests.gridworld import GridWorldEnv, GridWorldPolicy
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
@@ -10,6 +10,8 @@ import numpy as np
 
 
 class TestFQE(unittest.TestCase):
+    """Compilation and learning tests for the Fitted-Q Evaluation model"""
+
     @classmethod
     def setUpClass(cls) -> None:
         env = GridWorldEnv()
