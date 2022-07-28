@@ -167,6 +167,8 @@ class DeploymentConfig(BaseModel):
 
     @validator("user_config", always=True)
     def user_config_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
         if v is not None:
             try:
                 json.dumps(v)
