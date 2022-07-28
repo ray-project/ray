@@ -30,7 +30,7 @@ def start_metrics_pusher(
     is garbage collected or when the Serve application shuts down.
 
     Args:
-        interval_s(float): the push interval.
+        interval_s: the push interval.
         collection_callback: a callable that returns the metric data points to
           be sent to the the controller. The collection callback should take
           no argument and returns a dictionary of str_key -> float_value.
@@ -99,10 +99,10 @@ class InMemoryMetricsStore:
         """Push new data points to the store.
 
         Args:
-            data_points(dict): dictionary containing the metrics values. The
+            data_points: dictionary containing the metrics values. The
               key should be a string that uniquely identifies this time series
               and to be used to perform aggregation.
-            timestamp(float): the unix epoch timestamp the metrics are
+            timestamp: the unix epoch timestamp the metrics are
               collected at.
         """
         for name, value in data_points.items():
@@ -128,11 +128,11 @@ class InMemoryMetricsStore:
         """Perform a window average operation for metric `key`
 
         Args:
-            key(str): the metric name.
-            window_start_timestamp_s(float): the unix epoch timestamp for the
+            key: the metric name.
+            window_start_timestamp_s: the unix epoch timestamp for the
               start of the window. The computed average will use all datapoints
               from this timestamp until now.
-            do_compact(bool): whether or not to delete the datapoints that's
+            do_compact: whether or not to delete the datapoints that's
               before `window_start_timestamp_s` to save memory. Default is
               true.
         Returns:
@@ -152,11 +152,11 @@ class InMemoryMetricsStore:
         """Perform a max operation for metric `key`.
 
         Args:
-            key(str): the metric name.
-            window_start_timestamp_s(float): the unix epoch timestamp for the
+            key: the metric name.
+            window_start_timestamp_s: the unix epoch timestamp for the
               start of the window. The computed average will use all datapoints
               from this timestamp until now.
-            do_compact(bool): whether or not to delete the datapoints that's
+            do_compact: whether or not to delete the datapoints that's
               before `window_start_timestamp_s` to save memory. Default is
               true.
         Returns:

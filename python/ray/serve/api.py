@@ -73,14 +73,14 @@ def start(
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
 
-            - host(str, None): Host for HTTP servers to listen on. Defaults to
+            - host: Host for HTTP servers to listen on. Defaults to
               "127.0.0.1". To expose Serve publicly, you probably want to set
               this to "0.0.0.0".
-            - port(int): Port for HTTP server. Defaults to 8000.
-            - root_path(str): Root path to mount the serve application
+            - port: Port for HTTP server. Defaults to 8000.
+            - root_path: Root path to mount the serve application
               (for example, "/serve"). All deployment routes will be prefixed
               with this path. Defaults to "".
-            - middlewares(list): A list of Starlette middlewares that will be
+            - middlewares: A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.DeploymentMode): The deployment
               location of HTTP servers:
@@ -90,7 +90,7 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
-            - num_cpus (int): The number of CPU cores to reserve for each
+            - num_cpus: The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
@@ -396,7 +396,7 @@ def get_deployment(name: str) -> Deployment:
     >>> MyDeployment.options(num_replicas=10).deploy()  # doctest: +SKIP
 
     Args:
-        name(str): name of the deployment. This must have already been
+        name: name of the deployment. This must have already been
         deployed.
 
     Returns:

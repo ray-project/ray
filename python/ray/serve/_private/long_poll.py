@@ -64,10 +64,10 @@ class LongPollClient:
     """The asynchronous long polling client.
 
     Args:
-        host_actor(ray.ActorHandle): handle to actor embedding LongPollHost.
-        key_listeners(Dict[str, AsyncCallable]): a dictionary mapping keys to
+        host_actor: handle to actor embedding LongPollHost.
+        key_listeners: a dictionary mapping keys to
           callbacks to be called on state update for the corresponding keys.
-        call_in_event_loop(AbstractEventLoop): an asyncio event loop
+        call_in_event_loop: an asyncio event loop
           to post the callback into.
     """
 

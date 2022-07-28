@@ -43,18 +43,18 @@ def setup_component_logger(
     The only exception is workers. They use the different logging config.
 
     Args:
-        logging_level(str | int): Logging level in string or logging enum.
-        logging_format(str): Logging format string.
-        log_dir(str): Log directory path. If empty, logs will go to
+        logging_level: Logging level in string or logging enum.
+        logging_format: Logging format string.
+        log_dir: Log directory path. If empty, logs will go to
             stderr.
-        filename(str): Name of the file to write logs. If empty, logs will go
+        filename: Name of the file to write logs. If empty, logs will go
             to stderr.
-        max_bytes(int): Same argument as RotatingFileHandler's maxBytes.
-        backup_count(int): Same argument as RotatingFileHandler's backupCount.
-        logger_name(str, optional): used to create or get the correspoding
+        max_bytes: Same argument as RotatingFileHandler's maxBytes.
+        backup_count: Same argument as RotatingFileHandler's backupCount.
+        logger_name: used to create or get the correspoding
             logger in getLogger call. It will get the root logger by default.
     Returns:
-        logger (logging.Logger): the created or modified logger.
+        the created or modified logger.
     """
     logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
@@ -97,7 +97,7 @@ class StandardStreamInterceptor:
     Args:
         logger: Python logger that will receive messages streamed to
                 the standard out/err and delegate writes.
-        intercept_stdout(bool): True if the class intercepts stdout. False
+        intercept_stdout: True if the class intercepts stdout. False
                          if stderr is intercepted.
     """
 
@@ -247,9 +247,9 @@ def setup_and_get_worker_interceptor_logger(
 
     Args:
         args: args received from default_worker.py.
-        max_bytes(int): maxBytes argument of RotatingFileHandler.
-        backup_count(int): backupCount argument of RotatingFileHandler.
-        is_for_stdout(bool): True if logger will be used to intercept stdout.
+        max_bytes: maxBytes argument of RotatingFileHandler.
+        backup_count: backupCount argument of RotatingFileHandler.
+        is_for_stdout: True if logger will be used to intercept stdout.
                              False otherwise.
     """
     file_extension = "out" if is_for_stdout else "err"

@@ -275,7 +275,7 @@ def get_tensor_device_list(tensors):
     """Returns the gpu devices of the list of input tensors.
 
     Args:
-        tensors(list): a list of tensors, each locates on a GPU.
+        tensors: a list of tensors, each locates on a GPU.
 
     Returns:
         list: the list of GPU devices.

@@ -477,7 +477,7 @@ def wait_until_succeeded_without_exception(
 
     Args:
         func: A function to run.
-        exceptions(tuple): Exceptions that are supposed to occur.
+        exceptions: Exceptions that are supposed to occur.
         args: arguments to pass for a given func
         timeout_ms: Maximum timeout in milliseconds.
         retry_interval_ms: Retry interval in milliseconds.

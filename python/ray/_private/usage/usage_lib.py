@@ -852,7 +852,7 @@ def generate_write_data(
 
     Params:
         usage_stats: The usage stats that were reported.
-        error(str): The error message of failed reports.
+        error: The error message of failed reports.
 
     Returns:
         UsageStatsToWrite

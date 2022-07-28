@@ -214,7 +214,7 @@ class Router:
         """Router process incoming queries: assign a replica.
 
         Args:
-            controller_handle(ActorHandle): The controller handle.
+            controller_handle: The controller handle.
         """
         self._event_loop = event_loop
         self._replica_set = ReplicaSet(deployment_name, event_loop)

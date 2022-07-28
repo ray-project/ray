@@ -34,7 +34,7 @@ class RuntimeEnvConfig(dict):
             timeout logic, except `-1`, `setup_timeout_seconds` cannot be
             less than or equal to 0. The default value of `setup_timeout_seconds`
             is 600 seconds.
-        eager_install(bool): Indicates whether to install the runtime environment
+        eager_install: Indicates whether to install the runtime environment
             on the cluster at `ray.init()` time, before the workers are leased.
             This flag is set to `True` by default.
     """

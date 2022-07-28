@@ -349,7 +349,7 @@ class HyperbandSuite(unittest.TestCase):
         """Default statistics for HyperBand."""
         sched = HyperBandScheduler()
         res = {
-            str(s): {"n": sched._get_n0(s), "r": sched._get_r0(s)}
+            str(s): {"n": sched._get_n0(s), "r": sched._get_r0(s)}  # noqa
             for s in range(sched._s_max_1)
         }
         res["max_trials"] = sum(v["n"] for v in res.values())
