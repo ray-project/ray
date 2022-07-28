@@ -648,8 +648,8 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
              ? !y.IsNull()
                    ? x.IsValid()
                          ? y.IsValid() ? equal_to<pid_t>()(x.GetId(), y.GetId()) : false
-                         : y.IsValid() ? false
-                                       : equal_to<void const *>()(x.Get(), y.Get())
+                     : y.IsValid() ? false
+                                   : equal_to<void const *>()(x.Get(), y.Get())
                    : false
              : y.IsNull();
 }
