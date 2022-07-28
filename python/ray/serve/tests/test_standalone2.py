@@ -706,6 +706,7 @@ def test_autoscaler_shutdown_node_http_everynode(
 
 
 def test_handle_early_detect_failure(shutdown_ray):
+    """Check that handle can be notified about replicas failure and take them out of the replicas set."""
     ray.init()
     serve.start(detached=True)
 
@@ -721,6 +722,8 @@ def test_handle_early_detect_failure(shutdown_ray):
     assert len(handle.router._replica_set.in_flight_queries.keys()) == 2
 
     client = get_global_client()
+    # Kill the controller so that the replicas membership won't be updated
+    # through controller health check + long polling.
     ray.kill(client._controller, no_restart=True)
 
     with pytest.raises(RayActorError):

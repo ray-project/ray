@@ -171,12 +171,16 @@ class ReplicaSet:
 
     def _drain_completed_object_refs(self) -> int:
         refs = self._all_query_refs
+        # NOTE(simon): even though the timeout is 0, a large number of refs can still
+        # cause some blocking delay in the event loop. Consider moving this to async?
         done, _ = ray.wait(refs, num_returns=len(refs), timeout=0)
         replicas_to_remove = []
         for replica_info, replica_in_flight_queries in self.in_flight_queries.items():
             completed_queries = replica_in_flight_queries.intersection(done)
             if len(completed_queries):
                 try:
+                    # NOTE(simon): this ray.get call should be cheap because all these
+                    # refs are ready as indicated by previous `ray.wait` call.
                     ray.get(list(completed_queries))
                 except RayActorError:
                     logger.debug(
