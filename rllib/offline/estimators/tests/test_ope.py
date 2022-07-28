@@ -11,8 +11,6 @@ from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.sample_batch import concat_samples
 from pathlib import Path
 import os
-import numpy as np
-import gym
 
 
 class TestOPE(unittest.TestCase):
@@ -68,25 +66,6 @@ class TestOPE(unittest.TestCase):
         cls.mean_ret = {}
         cls.std_ret = {}
         cls.losses = {}
-
-        # Simulate Monte-Carlo rollouts
-        mc_ret = []
-        env = gym.make(env_name)
-        for _ in range(n_episodes):
-            obs = env.reset()
-            done = False
-            rewards = []
-            while not done:
-                act = cls.algo.compute_single_action(obs)
-                obs, reward, done, _ = env.step(act)
-                rewards.append(reward)
-            ret = 0
-            for r in reversed(rewards):
-                ret = r + cls.gamma * ret
-            mc_ret.append(ret)
-
-        cls.mean_ret["simulation"] = np.mean(mc_ret)
-        cls.std_ret["simulation"] = np.std(mc_ret)
 
     @classmethod
     def tearDownClass(cls):

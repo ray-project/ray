@@ -32,7 +32,7 @@ class GridWorldEnv(gym.Env):
     There are 3x12 + 2 possible states, not including the walls.
 
     ### Reward
-    Each time step incurs -1 reward, except for reaching the goal which gives +10 reward.
+    Each time step incurs -1 reward, except reaching the goal which gives +10 reward.
     """
 
     def __init__(self) -> None:
