@@ -117,7 +117,7 @@ def propagate_jemalloc_env_var(
     Params:
         jemalloc_path: The path to the jemalloc shared library.
         jemalloc_conf: `,` separated string of jemalloc config.
-        jemalloc_comps List(str): The list of Ray components
+        jemalloc_comps: The list of Ray components
             that we will profile.
         process_type: The process type that needs jemalloc
             env var for memory profiling. If it doesn't match one of
@@ -1390,7 +1390,7 @@ def start_gcs_server(
         config: Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port: Port number of the gcs server.
-        metrics_agent_port(int): The port where metrics agent is bound to.
+        metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
 
     Returns:
@@ -1470,7 +1470,7 @@ def start_raylet(
         redis_address: The address of the primary Redis server.
         gcs_address: The address of GCS server.
         node_ip_address: The IP address of this node.
-        node_manager_port(int): The port to use for the node manager. If it's
+        node_manager_port: The port to use for the node manager. If it's
             0, a random port will be used.
         raylet_name: The name of the raylet socket to create.
         plasma_store_name: The name of the plasma store socket to connect
@@ -1482,7 +1482,7 @@ def start_raylet(
         storage: The persistent storage URI.
         temp_dir: The path of the temporary directory Ray will use.
         session_dir: The path of this session.
-        resource_dir(str): The path of resource of this session .
+        resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
         resource_spec: Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
@@ -1973,7 +1973,7 @@ def start_monitor(
     Args:
         redis_address: The address that the Redis server is listening on.
         gcs_address: The address of GCS server.
-        logs_dir(str): The path to the log directory.
+        logs_dir: The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If

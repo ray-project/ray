@@ -33,7 +33,7 @@ def get_deployment(name: str):
     """Dynamically fetch a handle to a Deployment object.
 
     Args:
-        name(str): name of the deployment. This must have already been
+        name: name of the deployment. This must have already been
         deployed.
 
     Returns:
