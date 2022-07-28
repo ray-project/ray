@@ -60,19 +60,8 @@ class TestOPE(unittest.TestCase):
         cls.n_episodes = len(cls.batch.split_by_episode())
         print("Episodes:", cls.n_episodes, "Steps:", cls.batch.count)
 
-        cls.mean_ret = {}
-        cls.std_ret = {}
-        cls.losses = {}
-
     @classmethod
     def tearDownClass(cls):
-        print("Standalone OPE results")
-        print("Mean:")
-        print(*list(cls.mean_ret.items()), sep="\n")
-        print("Stddev:")
-        print(*list(cls.std_ret.items()), sep="\n")
-        print("Losses:")
-        print(*list(cls.losses.items()), sep="\n")
         ray.shutdown()
 
     def test_is(self):

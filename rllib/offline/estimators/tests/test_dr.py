@@ -57,7 +57,6 @@ class TestDR(unittest.TestCase):
             action_space=env.action_space,
             config={"epsilon": expert_eps},
         )
-        del env
 
         config = (
             AlgorithmConfig()
