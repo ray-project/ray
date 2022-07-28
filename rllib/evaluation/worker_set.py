@@ -113,9 +113,17 @@ class WorkerSet:
             if trainer_config["input"] == "dataset":
                 # Create the set of dataset readers to be shared by all the
                 # rollout workers.
-                self._ds, self._ds_shards = get_dataset_and_shards(
-                    trainer_config, num_workers
-                )
+                try:
+                    self._ds, self._ds_shards = get_dataset_and_shards(
+                        trainer_config, num_workers
+                    )
+                except FileNotFoundError:
+                    # maybe the file is in the gcs
+                    gdas = ray.remote(num_cpus=0)(get_dataset_and_shards)
+                    self._ds, self._ds_shards = ray.get(gdas.remote(
+                        trainer_config, num_workers
+                    )
+                    )
             else:
                 self._ds = None
                 self._ds_shards = None
