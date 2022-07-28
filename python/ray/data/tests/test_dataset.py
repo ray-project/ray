@@ -848,11 +848,26 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
     )
 
-    # Test map_batches ragged ndarray column falls back to opaque object-typed column.
-    ds = ray.data.range(16, parallelism=4).map_batches(
-        lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}), batch_size=2
-    )
-    assert str(ds) == ("Dataset(num_blocks=4, num_rows=16, schema={a: object})")
+    # Test map_batches ragged ndarray column fails by default.
+    with pytest.raises(ValueError):
+        ds = ray.data.range(16, parallelism=4).map_batches(
+            lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
+            batch_size=2,
+        )
+
+    # Test map_batches ragged ndarray column uses opaque object-typed column if
+    # automatic tensor extension type casting is disabled.
+    ctx = DatasetContext.get_current()
+    old_config = ctx.enable_tensor_extension_casting
+    ctx.enable_tensor_extension_casting = False
+    try:
+        ds = ray.data.range(16, parallelism=4).map_batches(
+            lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
+            batch_size=2,
+        )
+        assert str(ds) == ("Dataset(num_blocks=4, num_rows=16, schema={a: object})")
+    finally:
+        ctx.enable_tensor_extension_casting = old_config
 
 
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
@@ -871,7 +886,10 @@ def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
         np.testing.assert_equal(v, e)
 
 
-def test_tensors_in_tables_pandas_roundtrip(ray_start_regular_shared):
+def test_tensors_in_tables_pandas_roundtrip(
+    ray_start_regular_shared,
+    enable_automatic_tensor_extension_cast,
+):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -880,7 +898,10 @@ def test_tensors_in_tables_pandas_roundtrip(ray_start_regular_shared):
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arr)})
     ds = ray.data.from_pandas([df])
     ds_df = ds.to_pandas()
-    assert ds_df.equals(df)
+    expected_df = df
+    if enable_automatic_tensor_extension_cast:
+        expected_df.loc[:, "two"] = list(expected_df["two"].to_numpy())
+    pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
 def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path):
@@ -1115,6 +1136,40 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
     expected = list(zip(list(range(outer_dim)), arr))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_iter_batches(
+    ray_start_regular_shared,
+    enable_automatic_tensor_extension_cast,
+):
+    outer_dim = 3
+    inner_shape = (2, 2, 2)
+    shape = (outer_dim,) + inner_shape
+    num_items = np.prod(np.array(shape))
+    arr = np.arange(num_items).reshape(shape)
+    df1 = pd.DataFrame(
+        {"one": TensorArray(arr), "two": TensorArray(arr + 1), "label": [1.0, 2.0, 3.0]}
+    )
+    arr2 = np.arange(num_items, 2 * num_items).reshape(shape)
+    df2 = pd.DataFrame(
+        {
+            "one": TensorArray(arr2),
+            "two": TensorArray(arr2 + 1),
+            "label": [4.0, 5.0, 6.0],
+        }
+    )
+    df = pd.concat([df1, df2], ignore_index=True)
+    if enable_automatic_tensor_extension_cast:
+        df.loc[:, "one"] = list(df["one"].to_numpy())
+        df.loc[:, "two"] = list(df["two"].to_numpy())
+    ds = ray.data.from_pandas([df1, df2])
+    batches = list(ds.iter_batches(batch_size=2))
+    assert len(batches) == 3
+    expected_batches = [df.iloc[:2], df.iloc[2:4], df.iloc[4:]]
+    for batch, expected_batch in zip(batches, expected_batches):
+        batch = batch.reset_index(drop=True)
+        expected_batch = expected_batch.reset_index(drop=True)
+        pd.testing.assert_frame_equal(batch, expected_batch)
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
