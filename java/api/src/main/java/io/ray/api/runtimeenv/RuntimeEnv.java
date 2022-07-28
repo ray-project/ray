@@ -51,10 +51,9 @@ public interface RuntimeEnv {
    * Remove a runtime env field by name.
    *
    * @param name The build-in names or a runtime env plugin name.
-   * @return true if remove an existing field, otherwise false.
    * @throws RuntimeEnvException
    */
-  public boolean remove(String name) throws RuntimeEnvException;
+  public void remove(String name) throws RuntimeEnvException;
 
   /**
    * Serialize the runtime env to string.

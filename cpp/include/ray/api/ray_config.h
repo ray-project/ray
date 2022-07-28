@@ -14,7 +14,6 @@
 
 #pragma once
 #include <ray/api/ray_exception.h>
-#include <ray/api/runtime_env.h>
 
 #include <memory>
 #include <string>
@@ -52,9 +51,6 @@ class RayConfig {
 
   // The default actor lifetime type, `DETACHED` or `NON_DETACHED`.
   ActorLifetime default_actor_lifetime = ActorLifetime::NON_DETACHED;
-
-  // The job level runtime environments.
-  boost::optional<RuntimeEnv> runtime_env;
 
   /* The following are unstable parameters and their use is discouraged. */
 

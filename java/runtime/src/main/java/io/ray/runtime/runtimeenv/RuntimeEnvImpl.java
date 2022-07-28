@@ -65,12 +65,8 @@ public class RuntimeEnvImpl implements RuntimeEnv {
   }
 
   @Override
-  public boolean remove(String name) {
-    if (runtimeEnvs.has(name)) {
-      runtimeEnvs.remove(name);
-      return true;
-    }
-    return false;
+  public void remove(String name) {
+    runtimeEnvs.remove(name);
   }
 
   @Override
