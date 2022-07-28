@@ -331,7 +331,7 @@ class LabelEncoder(Preprocessor):
     .. seealso::
 
         :py:class:`OrdinalEncoder`
-            If you're encoding features, use :py:class:`OrdinalEncoder` instead.
+            If you're encoding features, use :py:class:`OrdinalEncoder`.
     """
 
     def __init__(self, label_column: str):
