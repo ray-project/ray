@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+
 
 def convert_pandas_to_torch_tensor(
     data_batch: pd.DataFrame,
@@ -116,14 +118,7 @@ def convert_ndarray_to_torch_tensor(
 
     Returns: A Torch Tensor.
     """
-    if ndarray.dtype.type is np.object_:
-        try:
-            # Try to convert the NumPy ndarray to a non-object dtype.
-            ndarray = np.array([np.asarray(v) for v in ndarray])
-        except Exception:
-            # This may fail if the subndarrays are of hetereogeneous shape; we pass
-            # through to Torch in this case.
-            pass
+    ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
     return torch.as_tensor(ndarray, dtype=dtype, device=device)
 
 

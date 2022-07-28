@@ -5,6 +5,8 @@ import pandas as pd
 import tensorflow as tf
 from pandas.api.types import is_object_dtype
 
+from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+
 
 def convert_pandas_to_tf_tensor(
     df: pd.DataFrame, dtype: Optional[tf.dtypes.DType] = None
@@ -96,14 +98,7 @@ def convert_ndarray_to_tf_tensor(
 
     Returns: A TensorFlow Tensor.
     """
-    if ndarray.dtype.type is np.object_:
-        try:
-            # Try to convert the NumPy ndarray to a non-object dtype.
-            ndarray = np.array([np.asarray(v) for v in ndarray])
-        except Exception:
-            # This may fail if the subndarrays are of hetereogeneous shape; we pass
-            # through to TensorFlow in this case.
-            pass
+    ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
     return tf.convert_to_tensor(ndarray, dtype=dtype)
 
 

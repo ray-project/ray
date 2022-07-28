@@ -124,6 +124,20 @@ def _ndarray_to_column(arr: np.ndarray) -> Union[pd.Series, List[np.ndarray]]:
         return list(arr)
 
 
+def _unwrap_ndarray_object_type_if_needed(arr: np.ndarray) -> np.ndarray:
+    """Unwrap an object-dtyped NumPy ndarray containing ndarray pointers into a single
+    contiguous ndarray, if needed/possible.
+    """
+    if arr.dtype.type is np.object_:
+        try:
+            # Try to convert the NumPy ndarray to a non-object dtype.
+            arr = np.array([np.asarray(v) for v in arr])
+        except Exception:
+            # This may fail if the subndarrays are of heterogeneous shape
+            pass
+    return arr
+
+
 def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
