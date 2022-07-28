@@ -1,7 +1,7 @@
 from ray.rllib.policy.policy import Policy, ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import AlgorithmConfigDict, TensorStructType, TensorType
-from typing import Dict, Union, List, Tuple
+from typing import Dict, Union, List, Tuple, Optional
 from ray.rllib.utils.annotations import override
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 import numpy as np
@@ -105,7 +105,10 @@ class GridWorldPolicy(Policy):
 
     @override(Policy)
     def compute_actions(
-        self, obs_batch: Union[List[TensorStructType], TensorStructType], **kwargs
+        self, 
+        obs_batch: Union[List[TensorStructType], TensorStructType], 
+        state_batches: Optional[List[TensorType]] = None,
+        **kwargs
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         obs = np.array(obs_batch, dtype=int)
         action_probs = self.action_dist[obs]

@@ -76,6 +76,7 @@ class TestOPE(unittest.TestCase):
         ray.shutdown()
 
     def test_is(self):
+        # Test IS standalone
         name = "is"
         estimator = ImportanceSampling(
             policy=self.algo.get_policy(),
@@ -86,6 +87,7 @@ class TestOPE(unittest.TestCase):
         self.std_ret[name] = estimates["v_target_std"]
 
     def test_wis(self):
+        # Test WIS standalone
         name = "wis"
         estimator = WeightedImportanceSampling(
             policy=self.algo.get_policy(),
@@ -96,6 +98,7 @@ class TestOPE(unittest.TestCase):
         self.std_ret[name] = estimates["v_target_std"]
 
     def test_dm_fqe(self):
+        # Test DM standalone
         name = "dm_fqe"
         estimator = DirectMethod(
             policy=self.algo.get_policy(),
@@ -108,6 +111,7 @@ class TestOPE(unittest.TestCase):
         self.std_ret[name] = estimates["v_target_std"]
 
     def test_dr_fqe(self):
+        # Test DR standalone
         name = "dr_fqe"
         estimator = DoublyRobust(
             policy=self.algo.get_policy(),
@@ -120,9 +124,9 @@ class TestOPE(unittest.TestCase):
         self.std_ret[name] = estimates["v_target_std"]
 
     def test_ope_in_algo(self):
-        # Train DQN for evaluation policy; running OPE during training
+        # Test OPE in DQN, during training as well as by calling evaluate()
         results = self.algo.train()
-        # Check that key exist AND is not {}
+        # Check that key exists AND is not {}
         assert results["evaluation"][
             "off_policy_estimator"
         ], "Did not run OPE during training!"

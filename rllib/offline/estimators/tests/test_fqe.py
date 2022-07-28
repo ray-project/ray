@@ -1,4 +1,5 @@
 import unittest
+import ray
 from ray.rllib.offline.estimators.tests.gridworld import GridWorldEnv, GridWorldPolicy
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -14,6 +15,7 @@ class TestFQE(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        ray.init()
         env = GridWorldEnv()
         cls.policy = GridWorldPolicy(
             observation_space=env.observation_space,
@@ -47,6 +49,10 @@ class TestFQE(unittest.TestCase):
             dones=dones,
             new_obs=new_obs,
         )
+    
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def test_fqe_compilation_and_stopping(self):
         # Test FQETorchModel for:

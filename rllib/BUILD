@@ -1728,14 +1728,14 @@ py_test(
 py_test(
     name = "test_dm",
     tags = ["team:rllib", "offline"],
-    size = "medium",
+    size = "small",
     srcs = ["offline/estimators/tests/test_dm.py"],
 )
 
 py_test(
     name = "test_dr",
     tags = ["team:rllib", "offline"],
-    size = "medium",
+    size = "small",
     srcs = ["offline/estimators/tests/test_dr.py"],
 )
 
