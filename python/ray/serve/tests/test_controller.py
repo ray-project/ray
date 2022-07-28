@@ -7,7 +7,7 @@ import ray
 from ray import serve
 from ray.serve._private.common import DeploymentInfo
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.controller import _version_config
+from ray.serve.controller import _generate_new_version_config
 
 
 def test_redeploy_start_time(serve_instance):
@@ -52,10 +52,10 @@ def test_redeploy_start_time(serve_instance):
         ("ray_actor_options", False),
     ],
 )
-def test_version_config(
+def test_generate_new_version_config(
     last_config_had_option: bool, option_to_update: str, config_update: bool
 ):
-    """Check that controller._version_config() has correct behavior."""
+    """Check that controller._generate_new_version_config() has correct behavior."""
 
     options = {
         "num_replicas": {"old": 1, "new": 2},
@@ -87,7 +87,7 @@ def test_version_config(
     new_config["deployments"][0][option_to_update] = options[option_to_update]["new"]
 
     versions = {"f": "v1"}
-    new_versions = _version_config(new_config, old_config, versions)
+    new_versions = _generate_new_version_config(new_config, old_config, versions)
     assert (
         new_versions.get("f") is not None
         and (new_versions.get("f") == versions.get("f")) == config_update
