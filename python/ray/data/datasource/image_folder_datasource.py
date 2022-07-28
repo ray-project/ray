@@ -25,7 +25,12 @@ if TYPE_CHECKING:
 
 IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
-# The lower bound value to estimate Image encoding ratio.
+# The default size multiplier for reading image data source.
+# This essentially is using image on-disk file size to estimate
+# in-memory data size.
+IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT = 1
+
+# The lower bound value to estimate image encoding ratio.
 IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 
@@ -229,7 +234,12 @@ class _ImageFolderDatasourceReader(_FileBasedDatasourceReader):
         non_empty_path_and_size = list(
             filter(lambda p: p[1] > 0, zip(self._paths, self._file_sizes))
         )
-        assert len(non_empty_path_and_size) > 0
+        if len(non_empty_path_and_size) == 0:
+            logger.warn(
+                "All input image files are empty. "
+                "Use on-disk file size to estimate images in-memory size.")
+            return IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
+
         # Prefetch first non-empty image file to do estimation.
         path = non_empty_path_and_size[0][0]
         single_image_block: pd.DataFrame = self._delegate._read_file(
