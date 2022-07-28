@@ -6,6 +6,7 @@ import ray
 from ray.air import Checkpoint
 from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 from ray.data import Preprocessor
+from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
@@ -169,12 +170,18 @@ class BatchPredictor:
         ):
             predictor_kwargs["use_gpu"] = True
 
+        ctx = DatasetContext.get_current()
+        cast_tensor_columns = ctx.enable_tensor_extension_casting
+
         class ScoringWrapper:
             def __init__(self):
                 checkpoint = Checkpoint.from_object_ref(checkpoint_ref)
                 self._predictor = predictor_cls.from_checkpoint(
                     checkpoint, **predictor_kwargs
                 )
+                if cast_tensor_columns:
+                    # Enable automatic tensor column casting at UDF boundaries.
+                    self._predictor._set_cast_tensor_columns()
                 if override_prep:
                     self._predictor.set_preprocessor(override_prep)
 
@@ -188,7 +195,9 @@ class BatchPredictor:
                 )
                 if keep_columns:
                     prediction_output[keep_columns] = batch[keep_columns]
-                return convert_batch_type_to_pandas(prediction_output)
+                return convert_batch_type_to_pandas(
+                    prediction_output, cast_tensor_columns
+                )
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers

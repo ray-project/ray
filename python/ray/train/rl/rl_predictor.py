@@ -5,6 +5,7 @@ import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import EnvType
 from ray.train.predictor import Predictor
@@ -66,6 +67,7 @@ class RLPredictor(Predictor):
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
         if TENSOR_COLUMN_NAME in data:
             obs = data[TENSOR_COLUMN_NAME].to_numpy()
+            obs = _unwrap_ndarray_object_type_if_needed(obs)
         else:
             obs = data.to_numpy()
 

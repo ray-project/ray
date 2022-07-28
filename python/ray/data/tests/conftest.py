@@ -253,3 +253,12 @@ def use_push_based_shuffle(request):
     ctx.use_push_based_shuffle = request.param
     yield request.param
     ctx.use_push_based_shuffle = original
+
+
+@pytest.fixture(params=[True, False])
+def enable_automatic_tensor_extension_cast(request):
+    ctx = ray.data.context.DatasetContext.get_current()
+    original = ctx.enable_tensor_extension_casting
+    ctx.enable_tensor_extension_casting = request.param
+    yield request.param
+    ctx.enable_tensor_extension_casting = original
