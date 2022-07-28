@@ -22,9 +22,9 @@ $ pip install "ray[serve]" transformers requests
 
 First, let's take a look at our model. Here's it's code:
 
-```{literalinclude} ../serve/doc_code/getting_started/model.py
-:start-after: __start__
-:end-before: __end__
+```{literalinclude} ../serve/doc_code/getting_started/models.py
+:start-after: __start_translation_model__
+:end-before: __end_translation_model__
 :language: python
 :linenos: true
 ```
