@@ -11,7 +11,7 @@ from ray._private.test_utils import wait_for_condition, run_string_as_driver_non
 
 
 def get_all_ray_worker_processes():
-    processes = [p for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])]
+    processes = psutil.process_iter(attrs=["pid", "name", "cmdline"])
 
     result = []
     for p in processes:
