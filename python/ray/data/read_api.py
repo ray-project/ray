@@ -275,6 +275,10 @@ def read_datasource(
             )
         )
 
+        logger.warning(
+            f"req parallel {requested_parallelism} {min_safe_parallelism} {len(read_tasks)}"
+        )
+
     if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
         perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
         logger.warning(
