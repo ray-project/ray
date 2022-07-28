@@ -19,6 +19,7 @@ from ray.tune.syncer import (
     _BackgroundProcess,
 )
 from ray.tune.trainable import wrap_function
+from ray.tune.trainable.function_trainable import NULL_MARKER
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 
@@ -416,7 +417,24 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
     ray.get(trainable.save_to_object.remote())
 
     # Temporary directory exists
+    assert_file(True, tmp_source, "checkpoint_-00001/" + NULL_MARKER)
     assert_file(True, tmp_source, "checkpoint_-00001")
+
+    # Create some bogus test directories for testing
+    os.mkdir(os.path.join(tmp_source, "checkpoint_tmp123"))
+    os.link(
+        os.path.join(tmp_source, "level0.txt"),
+        os.path.join(tmp_source, "checkpoint_tmp123", "some_content.txt"),
+    )
+    os.mkdir(os.path.join(tmp_source, "save_to_object1234"))
+    os.link(
+        os.path.join(tmp_source, "level0.txt"),
+        os.path.join(tmp_source, "save_to_object1234", "some_content.txt"),
+    )
+
+    # Sanity check
+    assert_file(True, tmp_source, "checkpoint_tmp123")
+    assert_file(True, tmp_source, "save_to_object1234")
 
     trial1 = MockTrial(trial_id="a", logdir=tmp_source)
     syncer_callback = TestSyncerCallback(
@@ -428,7 +446,10 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
     # Regular files are synced
     assert_file(True, tmp_target, "level0.txt")
     # Temporary checkpoints are not synced
+    assert_file(False, tmp_target, "checkpoint_-00001/" + NULL_MARKER)
     assert_file(False, tmp_target, "checkpoint_-00001")
+    assert_file(False, tmp_target, "checkpoint_tmp123")
+    assert_file(False, tmp_target, "save_to_object1234")
 
 
 if __name__ == "__main__":
