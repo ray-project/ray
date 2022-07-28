@@ -217,9 +217,14 @@ def _get_recursive_files_and_stats(path: str) -> Dict[str, Tuple[float, int]]:
     for root, dirs, files in os.walk(path, topdown=False):
         rel_root = os.path.relpath(root, path)
         for file in files:
-            key = os.path.join(rel_root, file)
-            stat = os.lstat(os.path.join(path, key))
-            files_stats[key] = stat.st_mtime, stat.st_size
+            try:
+                key = os.path.join(rel_root, file)
+                stat = os.lstat(os.path.join(path, key))
+                files_stats[key] = stat.st_mtime, stat.st_size
+            except FileNotFoundError:
+                # Race condition: If a file is deleted while executing this
+                # method, just continue and don't include the file in the stats
+                pass
 
     return files_stats
 
