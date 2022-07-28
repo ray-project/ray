@@ -14,6 +14,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
+from ray._private.usage.usage_lib import (
+    TagKey,
+    record_extra_usage_tag,
+)
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
@@ -385,7 +389,7 @@ class ActorReplicaWrapper:
                     - replica __init__() failed.
                 SUCCEEDED:
                     - replica __init__() and reconfigure() succeeded.
-            version (DeploymentVersion):
+            version:
                 None:
                     - replica reconfigure() haven't returned OR
                     - replica __init__() failed.
@@ -847,9 +851,9 @@ class ReplicaStateContainer:
         """Get the total count of replicas of the given states.
 
         Args:
-            exclude_version(DeploymentVersion): version to exclude. If not
+            exclude_version: version to exclude. If not
                 specified, all versions are considered.
-            version(DeploymentVersion): version to filter to. If not specified,
+            version: version to filter to. If not specified,
                 all versions are considered.
             states: states to consider. If not specified, all replicas
                 are considered.
@@ -1771,6 +1775,9 @@ class DeploymentStateManager:
             self._deployment_states[deployment_name] = self._create_deployment_state(
                 deployment_name
             )
+            record_extra_usage_tag(
+                TagKey.SERVE_NUM_DEPLOYMENTS, str(len(self._deployment_states))
+            )
 
         return self._deployment_states[deployment_name].deploy(deployment_info)
 
@@ -1856,3 +1863,8 @@ class DeploymentStateManager:
 
         for tag in deleted_tags:
             del self._deployment_states[tag]
+
+        if len(deleted_tags):
+            record_extra_usage_tag(
+                TagKey.SERVE_NUM_DEPLOYMENTS, str(len(self._deployment_states))
+            )

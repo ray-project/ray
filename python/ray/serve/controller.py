@@ -457,7 +457,7 @@ class ServeController:
         """Get the current information about a deployment.
 
         Args:
-            name(str): the name of the deployment.
+            name: the name of the deployment.
 
         Returns:
             DeploymentRoute's protobuf serialized bytes
@@ -484,7 +484,7 @@ class ServeController:
         """Gets the current information about all deployments.
 
         Args:
-            include_deleted(bool): Whether to include information about
+            include_deleted: Whether to include information about
                 deployments that have been deleted.
 
         Returns:
@@ -509,7 +509,7 @@ class ServeController:
         """Gets the current information about all deployments.
 
         Args:
-            include_deleted(bool): Whether to include information about
+            include_deleted: Whether to include information about
                 deployments that have been deleted.
 
         Returns:
@@ -566,11 +566,7 @@ class ServeController:
     def get_app_config(self) -> Dict:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is None:
-            return {
-                "import_path": "",
-                "runtime_env": "",
-                "deployments": [],
-            }
+            return ServeApplicationSchema.get_empty_schema_dict()
         else:
             _, config, _ = pickle.loads(checkpoint)
             return config

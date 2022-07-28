@@ -31,8 +31,8 @@ from ray.tune.result import (
 )
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import (
-    find_newest_experiment_checkpoint,
-    load_trial_from_checkpoint,
+    _find_newest_experiment_checkpoint,
+    _load_trial_from_checkpoint,
 )
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
@@ -154,7 +154,7 @@ class ExperimentAnalysis:
     def _get_latest_checkpoint(self, experiment_checkpoint_path: Path) -> List[str]:
         # Case 1: Dir specified, find latest checkpoint.
         if experiment_checkpoint_path.is_dir():
-            latest_checkpoint = find_newest_experiment_checkpoint(
+            latest_checkpoint = _find_newest_experiment_checkpoint(
                 str(experiment_checkpoint_path)
             )
             # If no checkpoint in this folder the sub-directory is searched.
@@ -165,7 +165,7 @@ class ExperimentAnalysis:
                 latest_checkpoint = []
                 for fname in experiment_checkpoint_path.iterdir():
                     fname = experiment_checkpoint_path.joinpath(fname)
-                    latest_checkpoint_subdir = find_newest_experiment_checkpoint(
+                    latest_checkpoint_subdir = _find_newest_experiment_checkpoint(
                         str(fname)
                     )
                     if latest_checkpoint_subdir:
@@ -801,7 +801,7 @@ class ExperimentAnalysis:
             _trial_paths = []
             for checkpoint, path in self._checkpoints_and_paths:
                 try:
-                    trial = load_trial_from_checkpoint(
+                    trial = _load_trial_from_checkpoint(
                         checkpoint, stub=True, local_dir=str(path)
                     )
                 except Exception:
