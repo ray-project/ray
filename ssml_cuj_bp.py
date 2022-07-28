@@ -7,12 +7,9 @@ import pandas as pd
 from PIL import Image
 from sqlalchemy import values
 from torchvision import transforms
-from torchvision.models import resnet18
 
 import ray
 from ray.air.util.tensor_extensions.pandas import TensorArray
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.torch import TorchPredictor, to_air_checkpoint
 
 
 def convert_to_pandas(byte_item_list):
