@@ -26,7 +26,7 @@ class TestOPE(unittest.TestCase):
         env_name = "CartPole-v0"
         cls.gamma = 0.99
         n_episodes = 3
-        cls.q_model_config = {"n_iters": 10}
+        cls.q_model_config = {"n_iters": 160}
 
         config = (
             DQNConfig()
@@ -37,7 +37,7 @@ class TestOPE(unittest.TestCase):
             .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0)))
             .offline_data(input_=train_data)
             .evaluation(
-                evaluation_interval=None,
+                evaluation_interval=1,
                 evaluation_duration=n_episodes,
                 evaluation_num_workers=1,
                 evaluation_duration_unit="episodes",
