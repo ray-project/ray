@@ -10,6 +10,7 @@ from freezegun import freeze_time
 import ray.util
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.tune import TuneError
+from ray.tune.logger import NoopLogger
 from ray.tune.result import NODE_IP
 from ray.tune.syncer import (
     DEFAULT_SYNC_PERIOD,
@@ -17,6 +18,7 @@ from ray.tune.syncer import (
     SyncerCallback,
     _BackgroundProcess,
 )
+from ray.tune.trainable import wrap_function
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 
@@ -395,6 +397,38 @@ def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
 
     syncer_callback.wait_for_all()
     assert_file(True, tmp_target, "level0.txt")
+
+
+def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
+    tmp_source, tmp_target = temp_data_dirs
+
+    def logger_creator(config):
+        return NoopLogger(config, tmp_source)
+
+    def train_fn(config):
+        pass
+
+    trainable_cls = wrap_function(train_fn)
+    trainable = ray.remote(trainable_cls).remote(
+        config={}, logger_creator=logger_creator
+    )
+
+    ray.get(trainable.save_to_object.remote())
+
+    # Temporary directory exists
+    assert_file(True, tmp_source, "checkpoint_-00001")
+
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+    syncer_callback = TestSyncerCallback(
+        sync_period=0,
+        local_logdir_override=tmp_target,
+    )
+    syncer_callback.on_trial_complete(iteration=1, trials=[], trial=trial1)
+
+    # Regular files are synced
+    assert_file(True, tmp_target, "level0.txt")
+    # Temporary checkpoints are not synced
+    assert_file(False, tmp_target, "checkpoint_-00001")
 
 
 if __name__ == "__main__":
