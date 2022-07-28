@@ -129,7 +129,8 @@ class _TuneCheckpointCallback(TuneCallback):
 
     @staticmethod
     def _create_checkpoint(model: Booster, epoch: int, filename: str, frequency: int):
-        if epoch % frequency > 0:
+        if epoch % frequency > 0 or (not epoch and frequency > 1):
+            # Skip 0th checkpoint if frequency > 1
             return
         with tune.checkpoint_dir(step=epoch) as checkpoint_dir:
             model.save_model(os.path.join(checkpoint_dir, filename))

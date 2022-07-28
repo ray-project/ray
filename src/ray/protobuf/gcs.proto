@@ -247,6 +247,8 @@ message GcsNodeInfo {
 
   // The user-provided identifier or name for this node.
   string node_name = 12;
+  // The information of the agent process.
+  AgentInfo agent_info = 13;
 }
 
 message HeartbeatTableData {
@@ -549,5 +551,7 @@ message PlacementGroupTableData {
   // The placement group's stats / information such as when it is created or
   // what's the current scheduling state.
   PlacementGroupStats stats = 12;
+  // The maximum fraction of CPU cores that this placement group can use on each node.
+  double max_cpu_fraction_per_node = 13;
 }
 ///////////////////////////////////////////////////////////////////////////////

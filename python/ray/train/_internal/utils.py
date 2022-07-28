@@ -1,4 +1,5 @@
 import abc
+import functools
 import inspect
 import os
 import logging
@@ -17,10 +18,11 @@ from typing import (
 )
 
 import ray
+from ray.air._internal.util import find_free_port
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
-from ray.util.ml_utils.util import find_free_port
+
 
 T = TypeVar("T")
 
@@ -111,6 +113,7 @@ def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
     fn_arg_name: Optional[str] = "train_func",
+    discard_returns: bool = False,
 ) -> Callable[[], T]:
     """Validates and constructs the training function to execute.
     Args:
@@ -120,6 +123,7 @@ def construct_train_func(
             ``train_func``. If None then an empty Dict will be created.
         fn_arg_name (Optional[str]): The name of training function to use for error
             messages.
+        discard_returns: Whether to discard any returns from train_func or not.
     Returns:
         A valid training function.
     Raises:
@@ -127,6 +131,19 @@ def construct_train_func(
     """
     signature = inspect.signature(train_func)
     num_params = len(signature.parameters)
+
+    if discard_returns:
+        # Discard any returns from the function so that
+        # BackendExecutor doesn't try to deserialize them.
+        # Those returns are inaccesible with AIR anyway.
+        @functools.wraps(train_func)
+        def discard_return_wrapper(*args, **kwargs):
+            train_func(*args, **kwargs)
+
+        wrapped_train_func = discard_return_wrapper
+    else:
+        wrapped_train_func = train_func
+
     if num_params > 1:
         err_msg = (
             f"{fn_arg_name} should take in 0 or 1 arguments, but it accepts "
@@ -135,9 +152,9 @@ def construct_train_func(
         raise ValueError(err_msg)
     elif num_params == 1:
         config = {} if config is None else config
-        return lambda: train_func(config)
+        return lambda: wrapped_train_func(config)
     else:  # num_params == 0
-        return train_func
+        return wrapped_train_func
 
 
 class Singleton(abc.ABCMeta):

@@ -197,7 +197,7 @@ class KLCoeffMixin:
 
 
 class TargetNetworkMixin:
-    """Assign the `update_target` method to the Policy.
+    """Assign the `update_target` method to the SimpleQTFPolicy
 
     The function is called every `target_network_update_freq` steps by the
     master learner.
@@ -209,16 +209,21 @@ class TargetNetworkMixin:
         action_space: gym.spaces.Space,
         config: AlgorithmConfigDict,
     ):
+        trainable_q_func_vars = self.model.trainable_variables()
+        trainable_target_q_func_vars = self.target_model.trainable_variables()
+
         @make_tf_callable(self.get_session())
         def do_update():
             # update_target_fn will be called periodically to copy Q network to
             # target Q network
             update_target_expr = []
-            assert len(self.q_func_vars) == len(self.target_q_func_vars), (
-                self.q_func_vars,
-                self.target_q_func_vars,
+            assert len(trainable_q_func_vars) == len(trainable_target_q_func_vars), (
+                trainable_q_func_vars,
+                trainable_target_q_func_vars,
             )
-            for var, var_target in zip(self.q_func_vars, self.target_q_func_vars):
+            for var, var_target in zip(
+                trainable_q_func_vars, trainable_target_q_func_vars
+            ):
                 update_target_expr.append(var_target.assign(var))
                 logger.debug("Update target op {}".format(var_target))
             return tf.group(*update_target_expr)
@@ -236,10 +241,6 @@ class TargetNetworkMixin:
         if not hasattr(self, "_target_q_func_vars"):
             self._target_q_func_vars = self.target_model.variables()
         return self._target_q_func_vars
-
-    @override(TFPolicy)
-    def variables(self):
-        return self.q_func_vars + self.target_q_func_vars
 
 
 class ValueNetworkMixin:
@@ -321,6 +322,26 @@ class ValueNetworkMixin:
 
         self._cached_extra_action_fetches = self._extra_action_out_impl()
         return self._cached_extra_action_fetches
+
+
+class GradStatsMixin:
+    def __init__(self):
+        pass
+
+    def grad_stats_fn(
+        self, train_batch: SampleBatch, grads: ModelGradients
+    ) -> Dict[str, TensorType]:
+        # We have support for more than one loss (list of lists of grads).
+        if self.config.get("_tf_policy_handles_more_than_one_loss"):
+            grad_gnorm = [tf.linalg.global_norm(g) for g in grads]
+        # Old case: We have a single list of grads (only one loss term and
+        # optimizer).
+        else:
+            grad_gnorm = tf.linalg.global_norm(grads)
+
+        return {
+            "grad_gnorm": grad_gnorm,
+        }
 
 
 # TODO: find a better place for this util, since it's not technically MixIns.

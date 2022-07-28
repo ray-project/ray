@@ -122,8 +122,6 @@ test_core() {
       args+=(
         -//:core_worker_test
         -//:event_test
-        -//:gcs_pub_sub_test
-        -//:gcs_server_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
         -//:gcs_client_reconnection_test
@@ -170,6 +168,8 @@ test_python() {
       python/ray/tests/...
       -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
+      -python/ray/serve:test_gcs_failure # Fork not supported in windows
+      -python/ray/serve:test_standalone2 # Multinode not supported on Windows
       -python/ray/tests:test_actor_advanced  # crashes in shutdown
       -python/ray/tests:test_autoscaler # We don't support Autoscaler on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -189,6 +189,10 @@ test_python() {
       -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
+      -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -705,7 +709,10 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  _check_job_triggers "${1-}"
+  # TODO(jjyao): fix it for windows
+  if [ "${OSTYPE}" != msys ]; then
+    _check_job_triggers "${1-}"
+  fi
 
   configure_system
 
@@ -751,13 +758,23 @@ test_minimal() {
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
   # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
+  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
   # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
+  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
   # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
+  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_output
   # shellcheck disable=SC2086

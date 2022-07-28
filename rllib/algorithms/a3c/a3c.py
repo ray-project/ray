@@ -172,6 +172,8 @@ class A3C(Algorithm):
             raise ValueError("`entropy_coeff` must be >= 0.0!")
         if config["num_workers"] <= 0 and config["sample_async"]:
             raise ValueError("`num_workers` for A3C must be >= 1!")
+        if "_fake_gpus" in config:
+            assert not config["_fake_gpus"], "A3C/A2C do not support fake_gpus"
 
     @override(Algorithm)
     def get_default_policy_class(self, config: AlgorithmConfigDict) -> Type[Policy]:
@@ -180,13 +182,13 @@ class A3C(Algorithm):
 
             return A3CTorchPolicy
         elif config["framework"] == "tf":
-            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CStaticGraphTFPolicy
+            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTF1Policy
 
-            return A3CStaticGraphTFPolicy
+            return A3CTF1Policy
         else:
-            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CEagerTFPolicy
+            from ray.rllib.algorithms.a3c.a3c_tf_policy import A3CTF2Policy
 
-            return A3CEagerTFPolicy
+            return A3CTF2Policy
 
     def training_step(self) -> ResultDict:
         # Shortcut.

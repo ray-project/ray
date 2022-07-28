@@ -14,6 +14,7 @@
 
 #pragma once
 #include <ray/api/ray_exception.h>
+#include <ray/api/runtime_env.h>
 
 #include <memory>
 #include <string>
@@ -52,6 +53,9 @@ class RayConfig {
   // The default actor lifetime type, `DETACHED` or `NON_DETACHED`.
   ActorLifetime default_actor_lifetime = ActorLifetime::NON_DETACHED;
 
+  // The job level runtime environments.
+  boost::optional<RuntimeEnv> runtime_env;
+
   /* The following are unstable parameters and their use is discouraged. */
 
   // Prevents external clients without the password from connecting to Redis if provided.
@@ -59,6 +63,9 @@ class RayConfig {
 
   // A specific flag for internal `default_worker`. Please don't use it in user code.
   bool is_worker_ = false;
+
+  // A namespace is a logical grouping of jobs and named actors.
+  std::string ray_namespace = "";
 };
 
 }  // namespace ray

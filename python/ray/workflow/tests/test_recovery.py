@@ -254,10 +254,10 @@ def test_recovery_non_exists_workflow(workflow_start_regular):
 
 def test_recovery_cluster_failure(tmp_path, shutdown_only):
     ray.shutdown()
-    subprocess.check_call(["ray", "start", "--head"])
+    subprocess.check_call(["ray", "start", "--head", f"--storage={tmp_path}"])
     time.sleep(1)
     proc = run_string_as_driver_nonblocking(
-        f"""
+        """
 import time
 import ray
 from ray import workflow
@@ -272,7 +272,7 @@ def foo(x):
         return 20
 
 if __name__ == "__main__":
-    ray.init(storage="{tmp_path}")
+    ray.init()
     assert workflow.run(foo.bind(0), workflow_id="cluster_failure") == 20
 """
     )
@@ -290,9 +290,9 @@ def test_recovery_cluster_failure_resume_all(tmp_path, shutdown_only):
     ray.shutdown()
 
     tmp_path = tmp_path
-    subprocess.check_call(["ray", "start", "--head"])
-    time.sleep(1)
     workflow_dir = tmp_path / "workflow"
+    subprocess.check_call(["ray", "start", "--head", f"--storage={workflow_dir}"])
+    time.sleep(1)
     lock_file = tmp_path / "lock_file"
     lock = FileLock(lock_file)
     lock.acquire()
@@ -310,7 +310,7 @@ def foo(x):
         return 20
 
 if __name__ == "__main__":
-    ray.init(storage="{str(workflow_dir)}")
+    ray.init()
     assert workflow.run(foo.bind(0), workflow_id="cluster_failure") == 20
 """
     )
@@ -337,11 +337,18 @@ def test_shortcut(workflow_start_regular):
             return 100
 
     assert workflow.run(recursive_chain.bind(0), workflow_id="shortcut") == 100
+
+    from ray._private.client_mode_hook import client_mode_wrap
+
     # the shortcut points to the step with output checkpoint
-    store = workflow_storage.get_workflow_storage("shortcut")
-    task_id = store.get_entrypoint_step_id()
-    output_step_id = store.inspect_step(task_id).output_step_id
-    assert store.inspect_step(output_step_id).output_object_valid
+    @client_mode_wrap
+    def check():
+        store = workflow_storage.WorkflowStorage("shortcut")
+        task_id = store.get_entrypoint_step_id()
+        output_step_id = store.inspect_step(task_id).output_step_id
+        return store.inspect_step(output_step_id).output_object_valid
+
+    assert check()
 
 
 def test_resume_different_storage(shutdown_only, tmp_path):
@@ -353,6 +360,13 @@ def test_resume_different_storage(shutdown_only, tmp_path):
     workflow.init()
     workflow.run(constant.bind(), workflow_id="const")
     assert workflow.resume(workflow_id="const") == 31416
+
+
+def test_no_side_effects_of_resuming(workflow_start_regular):
+    with pytest.raises(Exception):
+        workflow.resume("doesnt_exist")
+
+    assert workflow.list_all() == [], "Shouldn't list the resume that didn't work"
 
 
 if __name__ == "__main__":

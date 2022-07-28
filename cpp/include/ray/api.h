@@ -23,6 +23,7 @@
 #include <ray/api/ray_remote.h>
 #include <ray/api/ray_runtime.h>
 #include <ray/api/ray_runtime_holder.h>
+#include <ray/api/runtime_env.h>
 #include <ray/api/task_caller.h>
 #include <ray/api/wait_result.h>
 
@@ -111,8 +112,7 @@ ray::internal::ActorCreator<PyActorClass> Actor(PyActorClass func);
 ray::internal::ActorCreator<JavaActorClass> Actor(JavaActorClass func);
 
 /// Get a handle to a named actor in current namespace.
-/// Gets a handle to a named actor with the given name. The actor must have been created
-/// with name specified.
+/// The actor must have been created with name specified.
 ///
 /// \param[in] actor_name The name of the named actor.
 /// \return An ActorHandle to the actor if the actor of specified name exists or an
@@ -120,11 +120,22 @@ ray::internal::ActorCreator<JavaActorClass> Actor(JavaActorClass func);
 template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name);
 
+/// Get a handle to a named actor in the given namespace.
+/// The actor must have been created with name specified.
+///
+/// \param[in] actor_name The name of the named actor.
+/// \param[in] namespace The namespace of the actor.
+/// \return An ActorHandle to the actor if the actor of specified name exists in
+/// specifiled namespace or an empty optional object.
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
+                                         const std::string &ray_namespace);
+
 /// Intentionally exit the current actor.
 /// It is used to disconnect an actor and exit the worker.
 /// \Throws RayException if the current process is a driver or the current worker is not
 /// an actor.
-inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
+void ExitActor();
 
 template <typename T>
 std::vector<std::shared_ptr<T>> Get(const std::vector<std::string> &ids);
@@ -151,6 +162,9 @@ PlacementGroup GetPlacementGroup(const std::string &name);
 
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
+
+/// Get the namespace of this job.
+std::string GetNamespace();
 
 // --------- inline implementation ------------
 
@@ -271,17 +285,25 @@ inline ray::internal::ActorCreator<F> Actor(F create_func) {
 
 template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
+  return GetActor<T>(actor_name, "");
+}
+
+template <typename T>
+boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name,
+                                         const std::string &ray_namespace) {
   if (actor_name.empty()) {
     return {};
   }
 
-  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(actor_name);
+  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(actor_name, ray_namespace);
   if (actor_id.empty()) {
     return {};
   }
 
   return ActorHandle<T>(actor_id);
 }
+
+inline void ExitActor() { ray::internal::GetRayRuntime()->ExitActor(); }
 
 inline PlacementGroup CreatePlacementGroup(
     const ray::PlacementGroupCreationOptions &create_options) {
@@ -306,6 +328,10 @@ inline PlacementGroup GetPlacementGroup(const std::string &name) {
 
 inline bool WasCurrentActorRestarted() {
   return ray::internal::GetRayRuntime()->WasCurrentActorRestarted();
+}
+
+inline std::string GetNamespace() {
+  return ray::internal::GetRayRuntime()->GetNamespace();
 }
 
 }  // namespace ray

@@ -3,6 +3,7 @@ import unittest
 
 import pytest
 import ray
+from ray.rllib.utils.test_utils import framework_iterator
 import ray.rllib.algorithms.ppo as ppo
 import ray.rllib.algorithms.sac as sac
 from ray.rllib.algorithms.callbacks import RE3UpdateCallbacks
@@ -48,17 +49,18 @@ class TestRE3(unittest.TestCase):
         }
 
         num_iterations = 60
-        algo = algo_cls(config=config)
-        learnt = False
-        for i in range(num_iterations):
-            result = algo.train()
-            print(result)
-            if result["episode_reward_max"] > -900.0:
-                print("Reached goal after {} iters!".format(i))
-                learnt = True
-                break
-        algo.stop()
-        self.assertTrue(learnt)
+        for _ in framework_iterator(config, frameworks=("tf", "tf2"), session=True):
+            algo = algo_cls(config=config)
+            learnt = False
+            for i in range(num_iterations):
+                result = algo.train()
+                print(result)
+                if result["episode_reward_max"] > -900.0:
+                    print("Reached goal after {} iters!".format(i))
+                    learnt = True
+                    break
+            algo.stop()
+            self.assertTrue(learnt)
 
     def test_re3_ppo(self):
         """Tests RE3 with PPO."""

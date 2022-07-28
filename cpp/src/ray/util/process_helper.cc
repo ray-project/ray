@@ -110,13 +110,9 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   RAY_CHECK(!ConfigInternal::Instance().plasma_store_socket_name.empty());
   RAY_CHECK(ConfigInternal::Instance().node_manager_port > 0);
 
-  std::string log_dir = ConfigInternal::Instance().logs_dir;
-  if (log_dir.empty()) {
-    std::string session_dir = ConfigInternal::Instance().session_dir;
-    if (session_dir.empty()) {
-      session_dir = *global_state_accessor->GetInternalKV("session", "session_dir");
-    }
-    log_dir = session_dir + "/logs";
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
+    auto session_dir = *global_state_accessor->GetInternalKV("session", "session_dir");
+    ConfigInternal::Instance().UpdateSessionDir(session_dir);
   }
 
   gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(bootstrap_address);
@@ -135,7 +131,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   }
   options.gcs_options = gcs_options;
   options.enable_logging = true;
-  options.log_dir = std::move(log_dir);
+  options.log_dir = ConfigInternal::Instance().logs_dir;
   options.install_failure_signal_handler = true;
   options.node_ip_address = node_ip;
   options.node_manager_port = ConfigInternal::Instance().node_manager_port;
@@ -144,12 +140,18 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   options.metrics_agent_port = -1;
   options.task_execution_callback = callback;
   options.startup_token = ConfigInternal::Instance().startup_token;
+  options.runtime_env_hash = ConfigInternal::Instance().runtime_env_hash;
   rpc::JobConfig job_config;
   job_config.set_default_actor_lifetime(
       ConfigInternal::Instance().default_actor_lifetime);
 
   for (const auto &path : ConfigInternal::Instance().code_search_path) {
     job_config.add_code_search_path(path);
+  }
+  job_config.set_ray_namespace(ConfigInternal::Instance().ray_namespace);
+  if (ConfigInternal::Instance().runtime_env) {
+    job_config.mutable_runtime_env_info()->set_serialized_runtime_env(
+        ConfigInternal::Instance().runtime_env->Serialize());
   }
   std::string serialized_job_config;
   RAY_CHECK(job_config.SerializeToString(&serialized_job_config));

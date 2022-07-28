@@ -1,12 +1,11 @@
 import asyncio
-import json
 import logging
 import re
+import time
 
 import aiohttp.web
 
 import ray._private.utils
-import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
@@ -22,6 +21,8 @@ from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
     LOG_PRUNE_THREASHOLD,
     MAX_LOGS_TO_CACHE,
+    FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
+    FREQUENT_UPDATE_TIMEOUT_SECONDS,
 )
 from ray.dashboard.utils import async_loop_forever
 
@@ -70,6 +71,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._gcs_node_info_stub = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
+        # Total number of node updates happened.
+        self._node_update_cnt = 0
+        # The time where the module is started.
+        self._module_start_time = time.time()
+        # The time it takes until the head node is registered. None means
+        # head node hasn't been registered.
+        self._head_node_registration_time_s = None
 
     async def _update_stubs(self, change):
         if change.old:
@@ -87,6 +95,15 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             )
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
+
+    def get_internal_states(self):
+        return {
+            "head_node_registration_time_s": self._head_node_registration_time_s,
+            "registered_nodes": len(DataSource.nodes),
+            "registered_agents": len(DataSource.agents),
+            "node_update_count": self._node_update_cnt,
+            "module_lifetime_s": time.time() - self._module_start_time,
+        }
 
     async def _get_nodes(self):
         """Read the client table.
@@ -112,32 +129,28 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             try:
                 nodes = await self._get_nodes()
 
-                alive_node_ids = []
-                alive_node_infos = []
                 node_id_to_ip = {}
                 node_id_to_hostname = {}
+                agents = dict(DataSource.agents)
                 for node in nodes.values():
                     node_id = node["nodeId"]
                     ip = node["nodeManagerAddress"]
                     hostname = node["nodeManagerHostname"]
+                    if (
+                        ip == self._dashboard_head.ip
+                        and not self._head_node_registration_time_s
+                    ):
+                        self._head_node_registration_time_s = (
+                            time.time() - self._module_start_time
+                        )
                     node_id_to_ip[node_id] = ip
                     node_id_to_hostname[node_id] = hostname
                     assert node["state"] in ["ALIVE", "DEAD"]
                     if node["state"] == "ALIVE":
-                        alive_node_ids.append(node_id)
-                        alive_node_infos.append(node)
-
-                agents = dict(DataSource.agents)
-                for node_id in alive_node_ids:
-                    key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" f"{node_id}"
-                    # TODO: Use async version if performance is an issue
-                    agent_port = ray.experimental.internal_kv._internal_kv_get(
-                        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-                    )
-                    if agent_port:
-                        agents[node_id] = json.loads(agent_port)
-                for node_id in agents.keys() - set(alive_node_ids):
-                    agents.pop(node_id, None)
+                        agents[node_id] = [
+                            node["agentInfo"]["httpPort"],
+                            node["agentInfo"]["grpcPort"],
+                        ]
 
                 DataSource.node_id_to_ip.reset(node_id_to_ip)
                 DataSource.node_id_to_hostname.reset(node_id_to_hostname)
@@ -146,7 +159,40 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception("Error updating nodes.")
             finally:
-                await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
+                self._node_update_cnt += 1
+                # _head_node_registration_time_s == None if head node is not
+                # registered.
+                head_node_not_registered = not self._head_node_registration_time_s
+                # Until the head node is registered, we update the
+                # node status more frequently.
+                # If the head node is not updated after 10 seconds, it just stops
+                # doing frequent update to avoid unexpected edge case.
+                if (
+                    head_node_not_registered
+                    and self._node_update_cnt * FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS
+                    < FREQUENT_UPDATE_TIMEOUT_SECONDS
+                ):
+                    logger.info("SANG-TODO a")
+                    await asyncio.sleep(FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS)
+                else:
+                    logger.info("SANG-TODO b")
+                    if head_node_not_registered:
+                        logger.warning(
+                            "Head node is not registered even after "
+                            f"{FREQUENT_UPDATE_TIMEOUT_SECONDS} seconds. "
+                            "The API server might not work correctly. Please "
+                            "report a Github issue. Internal states :"
+                            f"{self.get_internal_states()}"
+                        )
+                    await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
+
+    @routes.get("/internal/node_module")
+    async def get_node_module_internal_state(self, req) -> aiohttp.web.Response:
+        return dashboard_optional_utils.rest_response(
+            success=True,
+            message="",
+            **self.get_internal_states(),
+        )
 
     @routes.get("/nodes")
     @dashboard_optional_utils.aiohttp_cache
@@ -220,17 +266,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             success=True, message=f"Successfully set fetching to {should_fetch}"
         )
 
-    @routes.get("/node_logs")
-    async def get_logs(self, req) -> aiohttp.web.Response:
-        ip = req.query["ip"]
-        pid = str(req.query.get("pid", ""))
-        node_logs = DataSource.ip_and_pid_to_logs.get(ip, {})
-        if pid:
-            node_logs = {str(pid): node_logs.get(pid, [])}
-        return dashboard_optional_utils.rest_response(
-            success=True, message="Fetched logs.", logs=node_logs
-        )
-
     @routes.get("/node_errors")
     async def get_errors(self, req) -> aiohttp.web.Response:
         ip = req.query["ip"]
@@ -269,18 +304,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             ip = log_batch["ip"]
             pid = str(log_batch["pid"])
             if pid != "autoscaler":
-                logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
-                logs_for_pid = list(logs_for_ip.get(pid, []))
-                logs_for_pid.extend(log_batch["lines"])
-
-                # Only cache upto MAX_LOGS_TO_CACHE
-                logs_length = len(logs_for_pid)
-                if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
-                    offset = logs_length - MAX_LOGS_TO_CACHE
-                    del logs_for_pid[:offset]
-
-                logs_for_ip[pid] = logs_for_pid
-                DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
+                log_counts_for_ip = dict(
+                    DataSource.ip_and_pid_to_log_counts.get(ip, {})
+                )
+                log_counts_for_pid = log_counts_for_ip.get(pid, 0)
+                log_counts_for_pid += len(log_batch["lines"])
+                log_counts_for_ip[pid] = log_counts_for_pid
+                DataSource.ip_and_pid_to_log_counts[ip] = log_counts_for_ip
             logger.debug(f"Received a log for {ip} and {pid}")
 
         while True:
@@ -309,6 +339,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         "type": error_data.type,
                     }
                 )
+
+                # Only cache up to MAX_LOGS_TO_CACHE
+                pid_errors_length = len(pid_errors)
+                if pid_errors_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
+                    offset = pid_errors_length - MAX_LOGS_TO_CACHE
+                    del pid_errors[:offset]
+
                 errs_for_ip[pid] = pid_errors
                 DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
                 logger.info(f"Received error entry for {ip} {pid}")

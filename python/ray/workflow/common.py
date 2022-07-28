@@ -5,7 +5,7 @@ import json
 from ray import cloudpickle
 from enum import Enum, unique
 import hashlib
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, Tuple
 
 from dataclasses import dataclass
 
@@ -20,6 +20,7 @@ WorkflowOutputType = ObjectRef
 
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
+HTTP_EVENT_PROVIDER_NAME = "WorkflowHttpEventProvider"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
 WORKFLOW_OPTIONS = "workflow.io/options"
 
@@ -80,7 +81,7 @@ class WorkflowRef:
         return hash(self.task_id)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 @unique
 class WorkflowStatus(str, Enum):
     # No status is set for this workflow.
@@ -97,6 +98,12 @@ class WorkflowStatus(str, Enum):
     # The workflow failed with a system error, i.e., ray shutdown.
     # It can be resumed.
     RESUMABLE = "RESUMABLE"
+    # The workflow is queued and waited to be executed.
+    PENDING = "PENDING"
+
+    @classmethod
+    def non_terminating_status(cls) -> "Tuple[WorkflowStatus, ...]":
+        return cls.RUNNING, cls.PENDING
 
 
 @unique
@@ -152,10 +159,10 @@ class WorkflowStepRuntimeOptions:
     step_type: "StepType"
     # Whether the user want to handle the exception manually.
     catch_exceptions: bool
-    # The num of retry for application exception.
+    # Whether application-level errors should be retried.
+    retry_exceptions: bool
+    # The num of retry for application exceptions & system failures.
     max_retries: int
-    # Run the workflow step inplace.
-    allow_inplace: bool
     # Checkpoint mode.
     checkpoint: CheckpointModeType
     # ray_remote options
@@ -166,7 +173,7 @@ class WorkflowStepRuntimeOptions:
             "step_type": self.step_type,
             "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
-            "allow_inplace": self.allow_inplace,
+            "retry_exceptions": self.retry_exceptions,
             "checkpoint": self.checkpoint,
             "ray_options": self.ray_options,
         }
@@ -177,7 +184,7 @@ class WorkflowStepRuntimeOptions:
             step_type=StepType[value["step_type"]],
             max_retries=value["max_retries"],
             catch_exceptions=value["catch_exceptions"],
-            allow_inplace=value["allow_inplace"],
+            retry_exceptions=value["retry_exceptions"],
             checkpoint=value["checkpoint"],
             ray_options=value["ray_options"],
         )
@@ -195,20 +202,3 @@ class WorkflowExecutionMetadata:
 class WorkflowMetaData:
     # The current status of the workflow
     status: WorkflowStatus
-
-
-@PublicAPI(stability="beta")
-class WorkflowNotFoundError(Exception):
-    def __init__(self, workflow_id: str):
-        self.message = f"Workflow[id={workflow_id}] was referenced but doesn't exist."
-        super().__init__(self.message)
-
-
-@PublicAPI(stability="beta")
-class WorkflowRunningError(Exception):
-    def __init__(self, operation: str, workflow_id: str):
-        self.message = (
-            f"{operation} couldn't be completed becasue "
-            f"Workflow[id={workflow_id}] is still running."
-        )
-        super().__init__(self.message)

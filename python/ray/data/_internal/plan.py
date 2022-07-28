@@ -85,13 +85,22 @@ class ExecutionPlan:
     # execution, any future executions will only have to execute the "after the
     # snapshot" subchain, using the snapshot as the input to that subchain.
 
-    def __init__(self, in_blocks: BlockList, stats: DatasetStats, dataset_uuid=None):
+    def __init__(
+        self,
+        in_blocks: BlockList,
+        stats: DatasetStats,
+        dataset_uuid=None,
+        *,
+        run_by_consumer: bool,
+    ):
         """Create a plan with no transformation stages.
 
         Args:
             in_blocks: Base list of blocks.
             stats: Stats for the base blocks.
             dataset_uuid: Dataset's UUID.
+            run_by_consumer: Whether this plan is invoked to run by the consumption
+            APIs (e.g. .iter_batches()).
         """
         self._in_blocks = in_blocks
         self._in_stats = stats
@@ -107,6 +116,19 @@ class ExecutionPlan:
         self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
         if not stats.dataset_uuid:
             stats.dataset_uuid = self._dataset_uuid
+
+        self._run_by_consumer = run_by_consumer
+
+    def __repr__(self) -> str:
+        return (
+            f"ExecutionPlan("
+            f"dataset_uuid={self._dataset_uuid}, "
+            f"run_by_consumer={self._run_by_consumer}, "
+            f"in_blocks={self._in_blocks}, "
+            f"stages_before_snapshot={self._stages_before_snapshot}, "
+            f"stages_after_snapshot={self._stages_after_snapshot}, "
+            f"snapshot_blocks={self._snapshot_blocks})"
+        )
 
     def with_stage(self, stage: "Stage") -> "ExecutionPlan":
         """Return a copy of this plan with the given stage appended.
@@ -130,7 +152,9 @@ class ExecutionPlan:
         Returns:
             A shallow copy of this execution plan.
         """
-        plan_copy = ExecutionPlan(self._in_blocks, self._in_stats)
+        plan_copy = ExecutionPlan(
+            self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
+        )
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks
@@ -157,7 +181,10 @@ class ExecutionPlan:
         if isinstance(in_blocks, BlockList):
             in_blocks = in_blocks.copy()
         plan_copy = ExecutionPlan(
-            in_blocks, copy.copy(self._in_stats), dataset_uuid=dataset_uuid
+            in_blocks,
+            copy.copy(self._in_stats),
+            dataset_uuid=dataset_uuid,
+            run_by_consumer=self._run_by_consumer,
         )
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
@@ -194,6 +221,8 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
         if self._stages_after_snapshot:
             if fetch_if_missing:
                 if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
@@ -276,7 +305,9 @@ class ExecutionPlan:
                 else:
                     clear_input_blocks = False
                 stats_builder = stats.child_builder(stage.name)
-                blocks, stage_info = stage(blocks, clear_input_blocks)
+                blocks, stage_info = stage(
+                    blocks, clear_input_blocks, self._run_by_consumer
+                )
                 if stage_info:
                     stats = stats_builder.build_multistage(stage_info)
                 else:
@@ -396,6 +427,8 @@ class ExecutionPlan:
 
     def is_read_stage_equivalent(self) -> bool:
         """Return whether this plan can be executed as only a read stage."""
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
         context = DatasetContext.get_current()
         remaining_stages = self._stages_after_snapshot
         if (
@@ -614,12 +647,18 @@ class OneToOneStage(Stage):
         )
 
     def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
+        self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
     ) -> Tuple[BlockList, dict]:
         compute = get_compute(self.compute)
         assert (
             self.fn_constructor_args is None and self.fn_constructor_kwargs is None
         ) or isinstance(compute, ActorPoolStrategy)
+
+        if blocks._owned_by_consumer:
+            assert (
+                run_by_consumer
+            ), "Blocks owned by consumer can only be consumed by consumer"
+
         blocks = compute._apply(
             self.block_fn,
             self.ray_remote_args,
@@ -633,6 +672,7 @@ class OneToOneStage(Stage):
             fn_constructor_kwargs=self.fn_constructor_kwargs,
         )
         assert isinstance(blocks, BlockList), blocks
+        blocks._owned_by_consumer = run_by_consumer
         return blocks, {}
 
 
@@ -703,27 +743,28 @@ class AllToAllStage(Stage):
         )
 
     def __call__(
-        self, blocks: BlockList, clear_input_blocks: bool
+        self, blocks: BlockList, clear_input_blocks: bool, run_by_consumer: bool
     ) -> Tuple[BlockList, dict]:
+        from ray.data._internal.stage_impl import RandomizeBlocksStage
+
+        in_blocks_owned_by_consumer = blocks._owned_by_consumer
+        if in_blocks_owned_by_consumer:
+            assert (
+                run_by_consumer
+            ), "Blocks owned by consumer can only be consumed by consumer"
         blocks, stage_info = self.fn(
             blocks, clear_input_blocks, self.block_udf, self.ray_remote_args
         )
         assert isinstance(blocks, BlockList), blocks
+
+        # RandomizeBlocksStage is an in-place transformation, so the ownership
+        # of blocks doesn't change.
+        if isinstance(self, RandomizeBlocksStage):
+            blocks._owned_by_consumer = in_blocks_owned_by_consumer
+        else:
+            blocks._owned_by_consumer = run_by_consumer
+
         return blocks, stage_info
-
-
-class RandomizeBlocksStage(AllToAllStage):
-    def __init__(self, seed: Optional[int]):
-        self._seed = seed
-
-        super().__init__("randomize_block_order", None, self.do_randomize)
-
-    def do_randomize(self, block_list, *_):
-        num_blocks = block_list.initial_num_blocks()
-        if num_blocks == 0:
-            return block_list, {}
-        randomized_block_list = block_list.randomize_block_order(self._seed)
-        return randomized_block_list, {}
 
 
 def _rewrite_read_stages(
@@ -758,13 +799,17 @@ def _rewrite_read_stage(
         Non-lazy block list containing read tasks for not-yet-read block partitions,
         new stats for the block list, and the new list of stages.
     """
+    from ray.data._internal.stage_impl import RandomizeBlocksStage
+
     # Generate the "GetReadTasks" stage blocks.
     remote_args = in_blocks._remote_args
     blocks, metadata = [], []
     for read_task in in_blocks._tasks:
         blocks.append(ray.put(read_task._read_fn))
         metadata.append(read_task.get_metadata())
-    block_list = BlockList(blocks, metadata)
+    block_list = BlockList(
+        blocks, metadata, owned_by_consumer=in_blocks._owned_by_consumer
+    )
 
     def block_fn(read_fn: Callable[[], Iterator[Block]]) -> Iterator[Block]:
         for block in read_fn():
@@ -781,7 +826,12 @@ def _rewrite_read_stage(
             stages = stages[1:]
         name += "->randomize_block_order"
 
-    stage = OneToOneStage(name, block_fn, "tasks", remote_args)
+    stage = OneToOneStage(
+        name,
+        block_fn,
+        "tasks",
+        remote_args,
+    )
     stats = DatasetStats(stages={}, parent=None)
     stages.insert(0, stage)
     return block_list, stats, stages
@@ -798,6 +848,7 @@ def _reorder_stages(stages: List[Stage]) -> List[Stage]:
     Returns:
         Reordered stages.
     """
+    from ray.data._internal.stage_impl import RandomizeBlocksStage
 
     output: List[Stage] = []
     reorder_buf: List[RandomizeBlocksStage] = []

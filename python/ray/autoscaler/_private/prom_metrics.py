@@ -1,3 +1,5 @@
+from typing import Optional
+
 try:
 
     from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
@@ -5,7 +7,7 @@ try:
     # The metrics in this class should be kept in sync with
     # python/ray/tests/test_metrics_agent.py
     class AutoscalerPrometheusMetrics:
-        def __init__(self, registry: CollectorRegistry = None):
+        def __init__(self, registry: Optional[CollectorRegistry] = None):
             self.registry: CollectorRegistry = registry or CollectorRegistry(
                 auto_describe=True
             )
