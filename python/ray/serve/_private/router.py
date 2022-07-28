@@ -144,6 +144,7 @@ class ReplicaSet:
                         body=msgpack_serialize(arg)
                     ).SerializeToString(),
                 )
+                tracker_ref = user_ref
                 self.in_flight_queries[replica].add(user_ref)
             else:
                 # Directly passing args because it might contain an ObjectRef.
@@ -151,7 +152,7 @@ class ReplicaSet:
                     pickle.dumps(query.metadata), *query.args, **query.kwargs
                 )
                 self.in_flight_queries[replica].add(tracker_ref)
-            return user_ref
+            return tracker_ref, user_ref
         return None
 
     @property
@@ -250,10 +251,16 @@ class Router:
         """Assign a query and returns an object ref represent the result"""
 
         self.num_router_requests.inc()
-        return await self._replica_set.assign_replica(
-            Query(
-                args=list(request_args),
-                kwargs=request_kwargs,
-                metadata=request_meta,
-            )
-        )
+        for _ in range(min(4, len(self._replica_set.in_flight_queries))):
+            try:
+                tracker, result = await self._replica_set.assign_replica(
+                    Query(
+                        args=list(request_args),
+                        kwargs=request_kwargs,
+                        metadata=request_meta,
+                    )
+                )
+                await tracker
+                return result
+            except Exception:
+                pass
