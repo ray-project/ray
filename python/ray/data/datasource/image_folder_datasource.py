@@ -1,16 +1,22 @@
 import io
 import pathlib
-from typing import TYPE_CHECKING, Tuple, Optional
+import time
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
 
 from ray.data._internal.util import _check_import
+from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
+    _FileBasedDatasourceReader,
+    FileBasedDatasource,
     _resolve_paths_and_filesystem,
     FileExtensionFilter,
 )
+from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
+from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -18,6 +24,9 @@ if TYPE_CHECKING:
     from ray.data.block import T
 
 IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
+
+# The lower bound value to estimate Image encoding ratio.
+IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 
 @DeveloperAPI
@@ -119,10 +128,11 @@ class ImageFolderDatasource(BinaryDatasource):
         paths, filesystem = _resolve_paths_and_filesystem([root])
         root = paths[0]
 
-        return super().create_reader(
+        return _ImageFolderDatasourceReader(
+            delegate=self,
             paths=paths,
-            partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
             filesystem=filesystem,
+            partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
             root=root,
             size=size,
             mode=mode,
@@ -135,7 +145,7 @@ class ImageFolderDatasource(BinaryDatasource):
         root: str,
         size: Optional[Tuple[int, int]],
         mode: Optional[str],
-    ):
+    ) -> Block:
         import pandas as pd
         from PIL import Image
 
@@ -158,6 +168,91 @@ class ImageFolderDatasource(BinaryDatasource):
                 "label": [label],
             }
         )
+
+
+class _ImageFileMetadataProvider(DefaultFileMetadataProvider):
+    def _set_encoding_ratio(self, encoding_ratio: int):
+        """Set image file encoding ratio, to provide accurate size in bytes metadata."""
+        self._encoding_ratio = encoding_ratio
+
+    def _get_block_metadata(
+        self,
+        paths: List[str],
+        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+        *,
+        rows_per_file: Optional[int],
+        file_sizes: List[Optional[int]],
+    ) -> BlockMetadata:
+        metadata = super()._get_block_metadata(
+            paths, schema, rows_per_file=rows_per_file, file_sizes=file_sizes
+        )
+        if metadata.size_bytes is not None:
+            metadata.size_bytes = int(metadata.size_bytes * self._encoding_ratio)
+        return metadata
+
+
+class _ImageFolderDatasourceReader(_FileBasedDatasourceReader):
+    def __init__(
+        self,
+        delegate: FileBasedDatasource,
+        paths: List[str],
+        filesystem: "pyarrow.fs.FileSystem",
+        partition_filter: PathPartitionFilter,
+        meta_provider: _ImageFileMetadataProvider = _ImageFileMetadataProvider(),
+        **reader_args,
+    ):
+        super().__init__(
+            delegate=delegate,
+            paths=paths,
+            filesystem=filesystem,
+            schema=None,
+            open_stream_args=None,
+            meta_provider=meta_provider,
+            partition_filter=partition_filter,
+            **reader_args,
+        )
+        self._encoding_ratio = self._estimate_files_encoding_ratio()
+        meta_provider._set_encoding_ratio(self._encoding_ratio)
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        return sum(self._file_sizes) * self._encoding_ratio
+
+    def _estimate_files_encoding_ratio(self) -> float:
+        """Return an estimate of the image files encoding ratio."""
+        # Prefetch one image file into memory, and use it to estimate data size for
+        # all images, because all images are homogeneous with same size after resizing.
+        import pandas as pd
+
+        start_time = time.perf_counter()
+
+        # Filter out empty file to avoid noise.
+        non_empty_path_and_size = list(
+            filter(lambda p: p[1] > 0, zip(self._paths, self._file_sizes))
+        )
+        assert len(non_empty_path_and_size) > 0
+        # Prefetch first non-empty image file to do estimation.
+        path = non_empty_path_and_size[0][0]
+        single_image_block: pd.DataFrame = self._delegate._read_file(
+            self._filesystem.open_input_stream(path),
+            path,
+            self._reader_args.get("root"),
+            self._reader_args.get("size"),
+        )
+        single_image_memory_size = single_image_block.memory_usage().sum()
+        total_estimated_memory_size = single_image_memory_size * len(
+            non_empty_path_and_size
+        )
+        total_file_size = sum(p[1] for p in non_empty_path_and_size)
+        ratio = total_estimated_memory_size / total_file_size
+
+        sampling_duration = time.perf_counter() - start_time
+        if sampling_duration > 5:
+            logger.info(
+                "Image input size estimation took "
+                f"{round(sampling_duration, 2)} seconds."
+            )
+        logger.debug(f"Estimated image encoding ratio from sampling is {ratio}.")
+        return max(ratio, IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
 
 def _get_class_from_path(path: str, root: str) -> str:
