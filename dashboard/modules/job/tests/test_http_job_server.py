@@ -496,6 +496,27 @@ def test_submit_optional_args(job_sdk_client):
     )
 
 
+def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
+    """Check that job_id, runtime_env, and metadata are optional."""
+    client = job_sdk_client
+
+    client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls", "job_id": "raysubmit_12345"},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_12345")
+
+    client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls", "submission_id": "raysubmit_23456"},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_23456")
+
+
 def test_missing_resources(job_sdk_client):
     """Check that 404s are raised for resources that don't exist."""
     client = job_sdk_client

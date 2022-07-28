@@ -185,6 +185,8 @@ class JobSubmitRequest:
     # is not specified, one will be generated. If a job with the same
     # submission_id already exists, it will be rejected.
     submission_id: Optional[str] = None
+    # DEPRECATED. Use submission_id instead
+    job_id: Optional[str] = None
     # Dict to setup execution environment.
     runtime_env: Optional[Dict[str, Any]] = None
     # Metadata to pass in to the JobConfig.
@@ -198,6 +200,11 @@ class JobSubmitRequest:
             raise TypeError(
                 "submission_id must be a string if provided, "
                 f"got {type(self.submission_id)}"
+            )
+
+        if self.job_id is not None and not isinstance(self.job_id, str):
+            raise TypeError(
+                "job_id must be a string if provided, " f"got {type(self.job_id)}"
             )
 
         if self.runtime_env is not None:
