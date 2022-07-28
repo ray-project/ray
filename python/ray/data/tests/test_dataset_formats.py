@@ -43,6 +43,7 @@ from ray.data.datasource.parquet_datasource import (
     _SerializedPiece,
     _deserialize_pieces_with_retry,
 )
+from ray.data.extensions import TensorDtype
 from ray.data.preprocessors import BatchMapper
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -2781,9 +2782,7 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
         )
 
 
-def test_image_folder_datasource(
-    ray_start_regular_shared, enable_automatic_tensor_extension_cast
-):
+def test_image_folder_datasource(ray_start_regular_shared):
     root = os.path.join(os.path.dirname(__file__), "image-folder")
     ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
 
@@ -2791,9 +2790,8 @@ def test_image_folder_datasource(
 
     df = ds.to_pandas()
     assert sorted(df["label"]) == ["cat", "cat", "dog"]
-    assert df["image"].dtype.type is np.object_
-    tensors = df["image"]
-    assert all(tensor.shape == (64, 64, 3) for tensor in tensors)
+    assert type(df["image"].dtype) is TensorDtype
+    assert all(tensor.to_numpy().shape == (64, 64, 3) for tensor in df["image"])
 
 
 @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
@@ -2804,6 +2802,7 @@ def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
 
 
 def test_image_folder_datasource_e2e(ray_start_regular_shared):
+    from ray.air.util.tensor_extensions.pandas import TensorArray
     from ray.train.torch import TorchCheckpoint, TorchPredictor
     from ray.train.batch_predictor import BatchPredictor
 
@@ -2816,8 +2815,17 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     )
 
     def preprocess(df):
-        preprocess = transforms.Compose([transforms.ToTensor()])
-        df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
+        # We convert the `TensorArrayElement` to a NumPy array because `ToTensor`
+        # expects a NumPy array or PIL image. `ToTensor` is necessary because Torch
+        # expects images to have shape (C, H, W), and `ToTensor` changes the shape of
+        # the data from (H, W, C) to (C, H, W).
+        preprocess = transforms.Compose(
+            [
+                lambda ray_tensor: ray_tensor.to_numpy(),
+                transforms.ToTensor(),
+            ]
+        )
+        df["image"] = TensorArray([preprocess(image) for image in df["image"]])
         return df
 
     preprocessor = BatchMapper(preprocess)

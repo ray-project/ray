@@ -6,7 +6,6 @@ import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
@@ -113,7 +112,6 @@ class LightGBMPredictor(Predictor):
         feature_names = None
         if TENSOR_COLUMN_NAME in data:
             data = data[TENSOR_COLUMN_NAME].to_numpy()
-            data = _unwrap_ndarray_object_type_if_needed(data)
             if feature_columns:
                 # In this case feature_columns is a list of integers
                 data = data[:, feature_columns]

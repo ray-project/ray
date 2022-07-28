@@ -1,3 +1,4 @@
+import logging
 from typing import (
     Callable,
     Dict,
@@ -15,6 +16,7 @@ import collections
 import heapq
 import numpy as np
 
+import ray
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -24,7 +26,6 @@ from ray.data.block import (
     KeyType,
     U,
 )
-from ray.data.context import DatasetContext
 from ray.data.row import TableRow
 from ray.data._internal.table_block import (
     TableBlockAccessor,
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 _pandas = None
+logger = logging.getLogger(__name__)
 
 
 def lazy_import_pandas():
@@ -96,18 +98,31 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
 
     def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
-        from ray.air.util.data_batch_conversion import (
-            _cast_ndarray_columns_to_tensor_extension,
-        )
+        from ray.data.extensions.tensor_extension import TensorArray
 
         if len(tables) > 1:
             df = pandas.concat(tables, ignore_index=True)
         else:
             df = tables[0]
-        df.reset_index(drop=True, inplace=True)
-        ctx = DatasetContext.get_current()
-        if ctx.enable_tensor_extension_casting:
-            df = _cast_ndarray_columns_to_tensor_extension(df)
+        # Try to convert any ndarray columns to TensorArray columns.
+        # TODO(Clark): Once Pandas supports registering extension types for type
+        # inference on construction, implement as much for NumPy ndarrays and remove
+        # this. See https://github.com/pandas-dev/pandas/issues/41848
+        for col_name, col in df.items():
+            if (
+                col.dtype.type is np.object_
+                and not col.empty
+                and isinstance(col.iloc[0], np.ndarray)
+            ):
+                try:
+                    df.loc[:, col_name] = TensorArray(col)
+                except Exception as e:
+                    if ray.util.log_once("datasets_tensor_array_cast_warning"):
+                        logger.warning(
+                            f"Tried to transparently convert column {col_name} to a "
+                            "TensorArray but the conversion failed, leaving column "
+                            f"as-is: {e}"
+                        )
         return df
 
     @staticmethod
@@ -132,31 +147,21 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
-        from ray.data.extensions import TensorArrayElement
-
-        tensor = row[VALUE_COL_NAME].iloc[0]
-        if isinstance(tensor, TensorArrayElement):
-            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
-            # which we have to convert to an ndarray.
-            tensor = tensor.to_numpy()
-        return tensor
+        # Getting an item in a Pandas tensor column returns a TensorArrayElement, which
+        # we have to convert to an ndarray.
+        return row[VALUE_COL_NAME].iloc[0].to_numpy()
 
     def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
         view = self._table[start:end]
-        view.reset_index(drop=True, inplace=True)
         if copy:
             view = view.copy(deep=True)
         return view
 
     def take(self, indices: List[int]) -> "pandas.DataFrame":
-        table = self._table.take(indices)
-        table.reset_index(drop=True, inplace=True)
-        return table
+        return self._table.take(indices)
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
-        table = self._table.sample(frac=1, random_state=random_seed)
-        table.reset_index(drop=True, inplace=True)
-        return table
+        return self._table.sample(frac=1, random_state=random_seed)
 
     def schema(self) -> PandasBlockSchema:
         dtypes = self._table.dtypes
@@ -174,13 +179,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
-
-        ctx = DatasetContext.get_current()
-        table = self._table
-        if ctx.enable_tensor_extension_casting:
-            table = _cast_tensor_columns_to_ndarrays(table)
-        return table
+        return self._table
 
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None

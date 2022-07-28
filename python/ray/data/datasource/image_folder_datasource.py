@@ -1,8 +1,10 @@
+import logging
 import pathlib
 from typing import TYPE_CHECKING, Tuple
 
 import numpy as np
 
+import ray
 from ray.data._internal.util import _check_import
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
@@ -16,6 +18,7 @@ if TYPE_CHECKING:
     import pyarrow
     from ray.data.block import T
 
+logger = logging.getLogger(__name__)
 IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
 
@@ -113,6 +116,7 @@ class ImageFolderDatasource(BinaryDatasource):
     ):
         import imageio as iio
         import pandas as pd
+        from ray.data.extensions import TensorArray
         import skimage
 
         records = super()._read_file(f, path, include_paths=True)
@@ -123,11 +127,23 @@ class ImageFolderDatasource(BinaryDatasource):
         image = skimage.transform.resize(image, size)
         image = skimage.util.img_as_ubyte(image)
 
+        try:
+            # Try to convert image `ndarray` to `TensorArray`s.
+            image = TensorArray([np.array(image)])
+        except TypeError as e:
+            # Fall back to existing NumPy array.
+            if ray.util.log_once("datasets_tensor_array_cast_warning"):
+                logger.warning(
+                    "Tried to transparently convert image `ndarray` to a "
+                    "`TensorArray`, but the conversion failed. Left image ndarray "
+                    f" as-is: {e}"
+                )
+
         label = _get_class_from_path(path, root)
 
         return pd.DataFrame(
             {
-                "image": [np.array(image)],
+                "image": image,
                 "label": [label],
             }
         )
