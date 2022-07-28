@@ -12,56 +12,67 @@ from ray.data.preprocessor import Preprocessor
 class OrdinalEncoder(Preprocessor):
     """Encode values within columns as ordered integer values.
 
-    Currently, order within a column is based on the values from the fitted
-    dataset in sorted order.
+    :py:class:`OrdinalEncoder` encodes categorical features as integer that range from
+    :math:`0` to :math:`n - 1`, where :math:`n` is the number of categories.
 
-    Transforming values not included in the fitted dataset will be encoded as ``None``.
+    If you transform a value that isn't in the fitted datset, then the value is encoded
+    as ``float("nan")``.
 
-    All column values must be hashable scalars or lists of hashable values. Those
-    two types cannot be mixed.
-
-    Example:
-
-    .. code-block:: python
-
-        import ray.data
-        from ray.data.preprocessors import OrdinalEncoder
-        import pandas as pd
-        batch = pd.DataFrame(
-            {
-                "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
-                "B": ["warm", "cold", "hot", "cold"],
-            },
-        )
-        oe = OrdinalEncoder(columns=["A", "B"], encode_lists=True)
-        oe.fit(ray.data.from_pandas(batch))
-        transformed_batch = oe.transform_batch(batch)
-        expected_batch = pd.DataFrame(
-            {
-                "A": [[2], [], [1, 2, 0], [0, 0]],
-                "B": [2, 0, 1, 0],
-            }
-        )
-        assert transformed_batch.equals(expected_batch)
-
-        oe = OrdinalEncoder(columns=["A", "B"], encode_lists=False)
-        oe.fit(ray.data.from_pandas(batch))
-        transformed_batch = oe.transform_batch(batch)
-        expected_batch = pd.DataFrame(
-            {
-                "A": [3, 0, 2, 1],
-                "B": [2, 0, 1, 0],
-            }
-        )
-        assert transformed_batch.equals(expected_batch)
-
+    Columns must contain either hashable values or lists of hashable values. Also, you
+    can't have both scalars and lists in the same column.
 
     Args:
-        columns: The columns that will individually be encoded.
-        encode_lists: If True, each element of lists inside list
-            columns will be encoded. If False, each list will
-            be treated as a whole separate category. True
+        columns: The columns to separately encode.
+        encode_lists: If ``True``, encode list elements . If ``False``, encode
+            whole lists (i.e., replace each list with an integer). ``True``
             by default.
+
+    Examples:
+        Use :py:class:`OrdinalEncoder` to encode categorical features as integers.
+
+        >>> import pandas as pd
+        >>> import ray
+        >>> df = pd.DataFrame(
+        ... {
+        ...     "sex": ["male", "female", "male", "female"],
+        ...     "level": ["L4", "L5", "L3", "L4"],
+        ... })
+        >>> ds = ray.data.from_pandas(df)
+        >>> encoder = OrdinalEncoder(columns=["sex", "level"])
+        >>> encoder.fit_transform(ds).to_pandas()
+        sex  level
+        0    1      1
+        1    0      2
+        2    1      0
+        3    0      1
+
+        If you transform a value not present in the original dataset, then the value
+        is encoded as ``float("nan")``.
+
+        >>> df = pd.DataFrame({"sex": ["female"], "level": ["L6"]})
+        >>> ds = ray.data.from_pandas(df)
+        >>> encoder.transform(ds).to_pandas()
+        sex  level
+        0    0    NaN
+
+        :py:class:`OrdinalEncoder` can also encode categories in a list.
+
+        >>> df = pd.DataFrame(
+        >>> {
+        ...     "name": ["Shaolin Soccer", "Moana", "The Smartest Guys in the Room"],
+        ...     "genre": [
+        ...         ["comedy", "action", "sports"],
+        ...         ["animation", "comedy",  "action"],
+        ...         ["documentary"],
+        ...     ],
+        ... })
+        >>> ds = ray.data.from_pandas(df)
+        >>> encoder = OrdinalEncoder(columns=["genre"])
+        >>> encoder.fit_transform(ds).to_pandas()
+                                    name      genre
+        0                 Shaolin Soccer  [2, 0, 4]
+        1                          Moana  [1, 0, 2]
+        2  The Smartest Guys in the Room        [3]
     """
 
     def __init__(self, columns: List[str], *, encode_lists: bool = True):
@@ -331,7 +342,8 @@ class LabelEncoder(Preprocessor):
     .. seealso::
 
         :py:class:`OrdinalEncoder`
-            If you're encoding features, use :py:class:`OrdinalEncoder`.
+            If you're encoding features, use :py:class:`OrdinalEncoder` instead of
+            :py:class:`LabelEncoder`.
     """
 
     def __init__(self, label_column: str):
