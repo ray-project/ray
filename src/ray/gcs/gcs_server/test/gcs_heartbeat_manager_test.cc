@@ -87,7 +87,6 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicReport) {
   while (absl::Now() - start < absl::Seconds(3)) {
     absl::MutexLock lock(&mutex_);
     ASSERT_TRUE(dead_nodes.empty());
-    // std::function<void(ray::Status, std::function<void()>, std::function<void()>)>'
     io_service.post(
         [&]() {
           rpc::ReportHeartbeatReply reply;
@@ -97,6 +96,7 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicReport) {
               request, &reply, [](auto, auto, auto) {});
         },
         "HandleReportHeartbeat");
+    std::this_thread::sleep_for(0.1s);
   }
 }
 
@@ -154,6 +154,8 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicRestart2) {
               request, &reply, [](auto, auto, auto) {});
         },
         "HandleReportHeartbeat");
+    // Added a sleep to avoid io service overloaded.
+    std::this_thread::sleep_for(0.1s);
   }
 
   while (absl::Now() - start < absl::Seconds(1)) {
