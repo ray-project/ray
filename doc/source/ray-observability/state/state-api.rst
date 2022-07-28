@@ -106,16 +106,16 @@ You can get the state of a single task using the get API.
 
     .. code-block:: bash
 
-        ray get actors <ACTOR_ID> # In this case, 31405554844820381c2f0f8501000000
+        # In this case, 31405554844820381c2f0f8501000000
+        ray get actors <ACTOR_ID> 
     
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
         from ray.experimental.state.api import get_actor
-        
-        actor_id = "31405554844820381c2f0f8501000000" 
-        print(get_actor(id=actor_id))
+        # In this case, 31405554844820381c2f0f8501000000
+        print(get_actor(id=<ACTOR_ID>))
 
 
 .. code-block:: text
@@ -138,7 +138,8 @@ You can also access logs through ``ray logs`` API.
     .. code-block:: bash
 
         ray list actors
-        ray logs --actor-id <ACTOR_ID>
+        # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
+        ray logs --actor-id <ACTOR_ID> 
 
 .. tabbed:: Python SDK
 
@@ -146,8 +147,8 @@ You can also access logs through ``ray logs`` API.
 
         from ray.experimental.state.api import get_log
 
-        actor_id = "31405554844820381c2f0f8501000000"
-        for line in get_log(address="http://localhost:8265", actor_id=actor_id):
+        # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
+        for line in get_log(actor_id=<ACTOR_ID>):
             print(line)
 
 .. code-block:: text
@@ -190,7 +191,6 @@ E.g., Summarize all actors
     .. code-block:: python
 
         from ray.experimental.state.api import summarize_actors
-
         print(summarize_actors())
 
 E.g., Summarize all tasks  
@@ -207,7 +207,6 @@ E.g., Summarize all tasks
     .. code-block:: python
 
         from ray.experimental.state.api import summarize_tasks
-
         print(summarize_tasks())
 
 E.g., Summarize all objects  
@@ -231,7 +230,6 @@ E.g., Summarize all objects
     .. code-block:: python
 
         from ray.experimental.state.api import summarize_objects
-
         print(summarize_objects())
 
 List
@@ -290,14 +288,14 @@ E.g., List local referenced objects created by a process
 
     .. code-block:: bash
 
-        ray list objects -f pid=12345 -f reference_type=LOCAL_REFERENCE
+        ray list objects -f pid=<PID> -f reference_type=LOCAL_REFERENCE
 
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
         from ray.experimental.state.api import list_objects 
-        list_objects(filters=[("pid", "=", "12345"), ("reference_type", "=", "LOCAL_REFERENCE")])
+        list_objects(filters=[("pid", "=", <PID>), ("reference_type", "=", "LOCAL_REFERENCE")])
 
 E.g., List alive actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -338,7 +336,7 @@ E.g., List non-running tasks
 
     .. code-block:: bash
 
-        ray list tasks -f shceduling_state!=RUNNING
+        ray list tasks -f scheduling_state!=RUNNING
 
 .. tabbed:: Python SDK
 
@@ -391,14 +389,14 @@ E.g., Get a task info
 
     .. code-block:: bash
 
-        ray get tasks <task_id> 
+        ray get tasks <TASK_ID> 
 
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
         from ray.experimental.state.api import get_task 
-        get_task(id="<task_id>")
+        get_task(id=<TASK_ID>)
 
 E.g., Get a node info
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -407,14 +405,14 @@ E.g., Get a node info
 
     .. code-block:: bash
 
-        ray get nodes <node_id> 
+        ray get nodes <NODE_ID> 
 
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
         from ray.experimental.state.api import get_node 
-        get_node(id="<node_id>")
+        get_node(id=<NODE_ID>)
 
 Logs
 ----
@@ -437,7 +435,10 @@ E.g., Get all retrievable log file names from a head node
 
         # You could get the node id / node ip from `ray list nodes` 
         from ray.experimental.state.api import list_logs 
-        list_logs(node_id="<head_node_id>")
+        # `ray logs` by default print logs from a head node. 
+        # So in order to list the same logs, you should provide the head node id. 
+        # You could get the node id / node ip from `ray list nodes` 
+        list_logs(node_id=<HEAD_NODE_ID>)
 
 E.g., Get a particular log file from a node
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -447,18 +448,16 @@ E.g., Get a particular log file from a node
     .. code-block:: bash
 
         # You could get the node id / node ip from `ray list nodes` 
-        ray logs gcs_server.out --node-id <XYZ> 
+        ray logs gcs_server.out --node-id <NODE_ID> 
 
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
-        # You could get the node id / node ip from `ray list nodes` 
         from ray.experimental.state.api import get_log 
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
-        node_ip = "172.31.47.143" 
-        for line in get_log(address="http://localhost:8265", filename="gcs_server.out", node_ip=node_ip):
+        for line in get_log(filename="gcs_server.out", node_id=<NODE_ID>):
             print(line)
 
 E.g., Stream a log file from a node
@@ -468,18 +467,17 @@ E.g., Stream a log file from a node
 
     .. code-block:: bash
 
-        ray logs -f raylet.out --node-ip 172.31.47.143
+        # You could get the node id / node ip from `ray list nodes` 
+        ray logs -f raylet.out --node-ip <NODE_IP> 
 
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
-        # You could get the node id / node ip from `ray list nodes` 
         from ray.experimental.state.api import get_log 
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
-        node_ip = "172.31.47.143" 
-        for line in get_log(address="http://localhost:8265", filename="raylet.out", node_ip=node_ip, follow=True):
+        for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
             print(line)
 
 
@@ -490,23 +488,19 @@ E.g., Stream log from a pid
 
     .. code-block:: bash
 
-        ray logs --pid=<XXX> --follow
+        ray logs --pid=<PID> --follow
 
 .. tabbed:: Python SDK
 
     .. code-block:: python
 
-        # You could get the node id / node ip from `ray list nodes` 
-        import ray
         from ray.experimental.state.api import get_log 
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
-        node_ip = "172.31.47.143" 
         # You could get the pid of the worker running the actor easily when output
         # of worker being directed to the driver (default)
-        pid = "318158" 
         # The loop will block with `follow=True`
-        for line in get_log(address="http://localhost:8265", pid=pid, node_ip=node_ip, follow=True):
+        for line in get_log(pid=<PID>, node_ip=<NODE_IP>, follow=True):
             print(line)
 
 Failure Semantics

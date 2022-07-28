@@ -7,10 +7,6 @@ from typing import Dict, List, Optional, Tuple
 import click
 import yaml
 
-import ray
-import ray._private.ray_constants as ray_constants
-import ray._private.services as services
-from ray._private.gcs_utils import GcsClient
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.state.api import (
     StateApiClient,
@@ -110,30 +106,6 @@ def _get_available_resources(
         for e in StateResource
         if excluded is None or e not in excluded
     ]
-
-
-def get_api_server_url() -> str:
-    address = services.canonicalize_bootstrap_address_or_die(None)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    api_server_url = ray._private.utils.internal_kv_get_with_retry(
-        gcs_client,
-        ray_constants.DASHBOARD_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        num_retries=20,
-    )
-
-    if api_server_url is None:
-        raise ValueError(
-            (
-                "Couldn't obtain the API server address from GCS. It is likely that "
-                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
-                "still alive."
-            )
-        )
-
-    api_server_url = f"http://{api_server_url.decode()}"
-    return api_server_url
 
 
 def get_table_output(state_data: List, schema: StateSchema) -> str:
@@ -405,18 +377,10 @@ def ray_get(
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
 
-    # Get the state API server address from ray if not provided by user
-    address = address if address else get_api_server_url()
-
     # Create the State API server and put it into context
-    logger.debug(f"Create StateApiClient at {address}...")
-    client = StateApiClient(
-        address=address,
-    )
-
-    options = GetApiOptions(
-        timeout=timeout,
-    )
+    logger.debug(f"Create StateApiClient to ray instance at: {address}...")
+    client = StateApiClient(address=address)
+    options = GetApiOptions(timeout=timeout)
 
     # If errors occur, exceptions will be thrown.
     data = client.get(
@@ -550,9 +514,7 @@ def ray_list(
     format = AvailableFormat(format)
 
     # Create the State API server and put it into context
-    client = StateApiClient(
-        address=address if address else get_api_server_url(),
-    )
+    client = StateApiClient(address=address)
 
     filter = [_parse_filter(f) for f in filter]
 
@@ -589,8 +551,7 @@ def ray_list(
 @click.pass_context
 def summary_state_cli_group(ctx):
     """Return the summarized information of a given resource."""
-    ctx.ensure_object(dict)
-    ctx.obj["api_server_url"] = get_api_server_url()
+    pass
 
 
 @summary_state_cli_group.command(name="tasks")
@@ -610,7 +571,6 @@ def task_summary(ctx, timeout: float, address: str):
         :ref:`RayStateApiException <state-api-exceptions>`
             if the CLI is failed to query the data.
     """
-    address = address or ctx.obj["api_server_url"]
     print(
         format_summary_output(
             summarize_tasks(
@@ -642,7 +602,6 @@ def actor_summary(ctx, timeout: float, address: str):
         :ref:`RayStateApiException <state-api-exceptions>`
             if the CLI is failed to query the data.
     """
-    address = address or ctx.obj["api_server_url"]
     print(
         format_summary_output(
             summarize_actors(
@@ -693,7 +652,6 @@ def object_summary(ctx, timeout: float, address: str):
         :ref:`RayStateApiException <state-api-exceptions>`
             if the CLI is failed to query the data.
     """
-    address = address or ctx.obj["api_server_url"]
     print(
         format_object_summary_output(
             summarize_objects(

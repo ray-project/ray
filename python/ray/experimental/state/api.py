@@ -8,7 +8,6 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
 
-import ray
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.experimental.state.common import (
     DEFAULT_LIMIT,
@@ -28,6 +27,7 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     TaskState,
     WorkerState,
+    ray_address_to_api_server_url,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
@@ -91,7 +91,7 @@ If you have any feedback, you could do so at either way as below:
 Usage:
     1. [Recommended] With StateApiClient:
     ```
-        client = StateApiClient(address="localhost:8265")
+        client = StateApiClient(address="auto")
         data = client.list(StateResource.NODES)
         ...
     ```
@@ -101,7 +101,7 @@ Usage:
     invocations of listing are used, it is better to reuse the `StateApiClient`
     as suggested above.
     ```
-        data = list_nodes(address="localhost:8265")
+        data = list_nodes(address="auto")
     ```
 """
 
@@ -118,9 +118,9 @@ class StateApiClient(SubmissionClient):
         """Initialize a StateApiClient and check the connection to the cluster.
 
         Args:
-            address: The URL of Ray API server. E.g. `http://localhost:8265`.
-                If not provided, it will be configured automatically from querying
-                the GCS server.
+            address: Ray bootstrap address. E.g. `127.0.0.0`, `localhost`, `auto`.
+                If not provided, it will be detected automatically from any running
+                local ray cluster.
             cookies: Cookies to use when sending requests to the HTTP job server.
             headers: Headers to use when sending requests to the HTTP job server, used
                 for cases like authentication to a remote cluster.
@@ -132,8 +132,12 @@ class StateApiClient(SubmissionClient):
             )
         if not headers:
             headers = {"Content-Type": "application/json"}
+
+        # Resolve API server URL
+        api_server_url = ray_address_to_api_server_url(address)
+
         super().__init__(
-            address=address,
+            address=api_server_url,
             create_cluster_if_needed=False,
             headers=headers,
             cookies=cookies,
@@ -521,7 +525,7 @@ def get_actor(
 
     Args:
         id: Id of the actor
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state API requests made.
         _explain: Print the API information such as API latency or
@@ -560,7 +564,7 @@ def get_placement_group(
 
     Args:
         id: Id of the placement group
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -592,7 +596,7 @@ def get_node(
 
     Args:
         id: Id of the node.
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -624,7 +628,7 @@ def get_worker(
 
     Args:
         id: Id of the worker
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -656,7 +660,7 @@ def get_task(
 
     Args:
         id: Id of the task
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -691,7 +695,7 @@ def get_objects(
 
     Args:
         id: Id of the object
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -724,7 +728,7 @@ def list_actors(
     """List actors in the cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("id", "=", "abcd")`
@@ -771,7 +775,7 @@ def list_placement_groups(
     """List placement groups in the cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("state", "=", "abcd")`
@@ -815,7 +819,7 @@ def list_nodes(
     """List nodes in the cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_name", "=", "abcd")`
@@ -859,7 +863,7 @@ def list_jobs(
     """List jobs submitted to the cluster by :ref: `ray job submission <jobs-overview>`.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("status", "=", "abcd")`
@@ -903,7 +907,7 @@ def list_workers(
     """List workers in the cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
@@ -947,7 +951,7 @@ def list_tasks(
     """List tasks in the cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
@@ -991,7 +995,7 @@ def list_objects(
     """List objects in the cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("ip", "=", "0.0.0.0")`
@@ -1035,7 +1039,7 @@ def list_runtime_envs(
     """List runtime environments in the cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_id", "=", "abcdef")`
@@ -1099,7 +1103,7 @@ def get_log(
         >>>    print(l) # doctest: +SKIP
 
     Args:
-        address: URL of the API server (e.g. http://127.0.0.1:8265).
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If not specified, it will be retrieved from the initialized ray cluster.
         node_id: Id of the node containing the logs .
         node_ip: Ip of the node containing the logs. (At least one of the node_id and
@@ -1121,12 +1125,8 @@ def get_log(
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
             failed to query the data.
     """
-    if address is None:
-        assert ray.is_initialized()
-        address = (
-            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
-        )
 
+    api_server_url = ray_address_to_api_server_url(address)
     media_type = "stream" if follow else "file"
 
     options = GetLogOptions(
@@ -1148,7 +1148,7 @@ def get_log(
             options_dict[field.name] = option_val
 
     with requests.get(
-        f"{address}/api/v0/logs/{media_type}?"
+        f"{api_server_url}/api/v0/logs/{media_type}?"
         f"{urllib.parse.urlencode(options_dict)}",
         stream=True,
     ) as r:
@@ -1177,7 +1177,7 @@ def list_logs(
     """Listing log files available.
 
     Args:
-        address: URL of the API server (e.g. http://127.0.0.1:8265).
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If not specified, it will be retrieved from the initialized ray cluster.
         node_id: Id of the node containing the logs .
         node_ip: Ip of the node containing the logs. (At least one of the node_id and
@@ -1190,17 +1190,14 @@ def list_logs(
 
     Return:
         A dictionary where the keys are log groups (e.g. gcs, raylet, worker), and
-            values are list of log filenames.
+        values are list of log filenames.
 
     Raises:
         Exceptions: :ref:`RayStateApiException <state-api-exceptions>` if the CLI
             failed to query the data.
     """
-    if address is None:
-        assert ray.is_initialized()
-        address = (
-            f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
-        )
+
+    api_server_url = ray_address_to_api_server_url(address)
 
     if not glob_filter:
         glob_filter = "*"
@@ -1214,7 +1211,9 @@ def list_logs(
         options_dict["glob"] = glob_filter
     options_dict["timeout"] = timeout
 
-    r = requests.get(f"{address}/api/v0/logs?{urllib.parse.urlencode(options_dict)}")
+    r = requests.get(
+        f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}"
+    )
     r.raise_for_status()
 
     response = r.json()
@@ -1240,7 +1239,7 @@ def summarize_tasks(
     """Summarize the tasks in cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout for requests made when getting the states.
         raise_on_missing_output: When True, exceptions will be raised if
@@ -1272,7 +1271,7 @@ def summarize_actors(
     """Summarize the actors in cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout for requests made when getting the states.
         raise_on_missing_output: When True, exceptions will be raised if
@@ -1304,7 +1303,7 @@ def summarize_objects(
     """Summarize the objects in cluster.
 
     Args:
-        address: The URL of the API server. E.g., `http://localhost:8265`.
+        address: Ray boostrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout for requests made when getting the states.
         raise_on_missing_output: When True, exceptions will be raised if

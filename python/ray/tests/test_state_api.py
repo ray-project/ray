@@ -81,6 +81,7 @@ from ray.experimental.state.common import (
     TaskState,
     WorkerState,
     StateSchema,
+    ray_address_to_api_server_url,
     state_column,
 )
 from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
@@ -259,6 +260,25 @@ def create_api_options(
         _server_timeout_multiplier=1.0,
         detail=detail,
     )
+
+
+def test_ray_address_to_api_server_url(shutdown_only):
+    ctx = ray.init()
+    api_server_url = f'http://{ctx.address_info["webui_url"]}'
+    address = ctx.address_info["address"]
+    gcs_address = ctx.address_info["gcs_address"]
+
+    # None should auto detect current ray address
+    assert api_server_url == ray_address_to_api_server_url(None)
+    # 'auto' should get
+    assert api_server_url == ray_address_to_api_server_url("auto")
+    # ray address
+    assert api_server_url == ray_address_to_api_server_url(address)
+    # explicit head node gcs address
+    assert api_server_url == ray_address_to_api_server_url(gcs_address)
+    # localhost string
+    gcs_port = gcs_address.split(":")[1]
+    assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
 
 
 def test_state_schema():
@@ -1509,6 +1529,20 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     # Test get objects by id
     wait_for_condition(
         lambda: verify_output(ray_get, ["objects", obj.hex()], ["object_id", obj.hex()])
+    )
+
+    # Test address flag auto detection
+    wait_for_condition(
+        lambda: verify_output(
+            ray_get,
+            ["objects", obj.hex(), "--address", "auto"],
+            ["object_id", obj.hex()],
+        )
+    )
+    wait_for_condition(
+        lambda: verify_output(
+            ray_list, ["tasks", "--address", "auto"], ["Stats:", "Table:", "TASK_ID"]
+        )
     )
 
     # TODO(rickyyx:alpha-obs):
