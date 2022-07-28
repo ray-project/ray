@@ -285,17 +285,53 @@ class MultiHotEncoder(Preprocessor):
 
 
 class LabelEncoder(Preprocessor):
-    """Encode values within a label column as ordered integer values.
+    """Encode labels as integer targets.
 
-    Currently, order within a column is based on the values from the fitted
-    dataset in sorted order.
+    :py:class:`LabelEncoder` encodes labels as integer targets that range from
+    :math:`0` to :math:`n - 1`, where :math:`n` is the number of unique labels.
 
-    Transforming values not included in the fitted dataset will be encoded as ``None``.
-
-    All column values must be hashable.
+    If you transform a label that isn't in the fitted datset, then the label is encoded
+    as ``float("nan")``.
 
     Args:
-        label_column: The label column that will be encoded.
+        label_column: A column containing labels that you want to encode.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> df = pd.DataFrame({
+        ...     "sepal_width": [5.1, 7, 4.9, 6.2],
+        ...     "sepal_height": [3.5, 3.2, 3, 3.4],
+        ...     "species": ["setosa", "versicolor", "setosa", "virginica"]
+        ... })
+        >>> ds = ray.data.from_pandas(df)
+
+        >>> from ray.data.preprocessors import LabelEncoder
+        >>> encoder = LabelEncoder(label_column="species")
+        >>> encoder.fit_transform(ds)
+           sepal_width  sepal_height  species
+        0          5.1           3.5        0
+        1          7.0           3.2        1
+        2          4.9           3.0        0
+        3          6.2           3.4        2
+
+        If you transform a label not present in the original dataset, then the new
+        label is encoded as ``float("nan")``.
+
+        >>> df = pd.DataFrame({
+            "sepal_width": [4.2],
+            "sepal_height": [2.7],
+            "species": ["bracteata"]
+        })
+        >>> ds = ray.data.from_pandas(df)
+        >>> encoder.transform(ds).to_pandas()
+           sepal_width  sepal_height  species
+        0          4.2           2.7      NaN
+
+    .. seealso::
+
+        :py:class:`OrdinalEncoder`
+            If you're encoding features, use :py:class:`OrdinalEncoder` instead.
     """
 
     def __init__(self, label_column: str):
