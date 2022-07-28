@@ -1049,7 +1049,7 @@ def get_call_location(back: int = 1):
 
 def get_ray_doc_version():
     """Get the docs.ray.io version corresponding to the ray.__version__."""
-    if "dev" in ray.__version__:
+    if re.match("^\d+\.\d+\.\d+$", ray.__version__) == None:
         return "master"
     return f"releases-{ray.__version__}"
 
