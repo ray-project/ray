@@ -89,7 +89,12 @@ class ReplicaSet:
         )
 
     def _reset_replica_iterator(self):
-        # Shuffle the keys to avoid synchronization across clients.
+        """Reset the iterator used to load balance replicas.
+
+        This call is expected to be called after the replica membership has been updated.
+        It will shuffle the replicas randomly to avoid multiple handle sending requests
+        in the same order.
+        """
         replicas = list(self.in_flight_queries.keys())
         random.shuffle(replicas)
         self.replica_iterator = itertools.cycle(replicas)
