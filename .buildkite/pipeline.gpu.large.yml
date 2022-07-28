@@ -41,6 +41,7 @@
     - bash ./python/requirements/ml/install_alpa_requirements.sh
     - pip install -Ur ./python/requirements/ml/requirements_alpa.txt
     - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=alpa python/ray/train/...
     # --jobs 2 is necessary as we only need to have at least 2 gpus on the machine
     # and running tests in parallel would cause timeouts as the other scripts would
     # wait for the GPU to become available.

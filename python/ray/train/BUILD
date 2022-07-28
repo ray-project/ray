@@ -369,6 +369,14 @@ py_test(
     deps = [":train_lib"]
 )
 
+py_test(
+    name = "test_alpa",
+    size = "large",
+    srcs = ["tests/test_alpa.py"],
+    tags = ["team:ml", "exclusive", "alpa", "gpu"],
+    deps = [":train_lib"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
