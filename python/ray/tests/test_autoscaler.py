@@ -813,7 +813,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "init_cmd")
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
-        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        self.assertEqual(self.provider.mock_nodes[0].node_type, NODE_TYPE_LEGACY_HEAD)
         runner.assert_has_call("1.2.3.4", pattern="docker run")
         runner.assert_has_call("1.2.3.4", pattern=head_run_option)
         runner.assert_has_call("1.2.3.4", pattern=standard_run_option)
@@ -1006,7 +1006,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "init_cmd")
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
-        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        self.assertEqual(self.provider.mock_nodes[0].node_type, NODE_TYPE_LEGACY_HEAD)
         runner.assert_has_call("1.2.3.4", pattern="podman run")
 
         docker_mount_prefix = get_docker_host_mount_location(
@@ -1056,7 +1056,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "init_cmd")
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
-        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        self.assertEqual(self.provider.mock_nodes[0].node_type, NODE_TYPE_LEGACY_HEAD)
         runner.assert_has_call("1.2.3.4", pattern="docker run")
 
         docker_mount_prefix = get_docker_host_mount_location(
@@ -1168,7 +1168,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "init_cmd")
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
-        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        self.assertEqual(self.provider.mock_nodes[0].node_type, NODE_TYPE_LEGACY_HEAD)
         runner.assert_has_call("1.2.3.4", pattern="docker stop")
         runner.assert_has_call("1.2.3.4", pattern="docker run")
 
@@ -1220,7 +1220,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", "init_cmd")
         runner.assert_has_call("1.2.3.4", "head_setup_cmd")
         runner.assert_has_call("1.2.3.4", "start_ray_head")
-        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        self.assertEqual(self.provider.mock_nodes[0].node_type, NODE_TYPE_LEGACY_HEAD)
         # We only removed amount from the YAML, no changes should happen.
         runner.assert_not_has_call("1.2.3.4", pattern="docker stop")
         runner.assert_not_has_call("1.2.3.4", pattern="docker run")

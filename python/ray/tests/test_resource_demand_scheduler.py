@@ -1547,9 +1547,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinSanity(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = config[
-            "min_workers"
-        ]
+        config["available_node_types"]["m4.large"]["min_workers"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2178,9 +2176,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testUpdateConfig(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = config[
-            "min_workers"
-        ]
+        config["available_node_types"]["m4.large"]["min_workers"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
