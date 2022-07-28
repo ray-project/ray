@@ -64,7 +64,11 @@ class DLPredictor(Predictor):
     def _predict_pandas(
         self, data: pd.DataFrame, dtype: Union[TensorDtype, Dict[str, TensorDtype]]
     ) -> pd.DataFrame:
-        tensors = convert_pandas_to_batch_type(data, DataType.NUMPY)
+        tensors = convert_pandas_to_batch_type(
+            data,
+            DataType.NUMPY,
+            self._cast_tensor_columns,
+        )
         model_input = self._arrays_to_tensors(tensors, dtype)
 
         output = self.call_model(model_input)

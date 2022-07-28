@@ -309,14 +309,14 @@ class RuntimeEnvAgent(
             Create runtime env with retry times. This function won't raise exceptions.
 
             Args:
-                runtime_env(RuntimeEnv): The instance of RuntimeEnv class.
-                serialized_runtime_env(str): The serialized runtime env.
-                serialized_allocated_resource_instances(str): The serialized allocated
+                runtime_env: The instance of RuntimeEnv class.
+                serialized_runtime_env: The serialized runtime env.
+                serialized_allocated_resource_instances: The serialized allocated
                 resource instances.
-                setup_timeout_seconds(int): The timeout of runtime environment creation.
+                setup_timeout_seconds: The timeout of runtime environment creation.
 
             Returns:
-                a tuple which contains result(bool), runtime env context(str), error
+                a tuple which contains result (bool), runtime env context (str), error
                 message(str).
 
             """
