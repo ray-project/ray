@@ -202,7 +202,8 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                          int64_t metadata_size,
                          flatbuf::ObjectSource source,
                          int device_num,
-                         bool try_immediately) {
+                         bool try_immediately,
+                         const ray::ActorID &global_owner_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       fb::CreatePlasmaCreateRequest(fbb,
@@ -215,7 +216,8 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                                     metadata_size,
                                     source,
                                     device_num,
-                                    try_immediately);
+                                    try_immediately,
+                                    fbb.CreateString(global_owner_id.Binary()));
   return PlasmaSend(store_conn, MessageType::PlasmaCreateRequest, &fbb, message);
 }
 
@@ -234,6 +236,7 @@ void ReadCreateRequest(uint8_t *data,
   object_info->owner_ip_address = message->owner_ip_address()->str();
   object_info->owner_port = message->owner_port();
   object_info->owner_worker_id = WorkerID::FromBinary(message->owner_worker_id()->str());
+  object_info->global_owner_id = ray::ActorID::FromBinary(message->global_owner_id()->str());
   *source = message->source();
   *device_num = message->device_num();
   return;

@@ -1024,7 +1024,8 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                               *object_id,
                                               /* owner_address = */ real_owner_address,
                                               data,
-                                              created_by_worker);
+                                              created_by_worker,
+                                              global_owner_id);
     }
     if (!status.ok()) {
       RemoveLocalReference(*object_id);

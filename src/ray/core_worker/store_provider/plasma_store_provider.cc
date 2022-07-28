@@ -113,7 +113,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data,
-                                             bool created_by_worker) {
+                                             bool created_by_worker,
+                                             const ActorID &global_owner_id) {
   auto source = plasma::flatbuf::ObjectSource::CreatedByWorker;
   if (!created_by_worker) {
     source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
@@ -126,7 +127,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                            metadata ? metadata->Size() : 0,
                                            data,
                                            source,
-                                           /*device_num=*/0);
+                                           /*device_num=*/0,
+                                           /*global_owner_id=*/global_owner_id);
 
   if (status.IsObjectStoreFull()) {
     RAY_LOG(ERROR) << "Failed to put object " << object_id

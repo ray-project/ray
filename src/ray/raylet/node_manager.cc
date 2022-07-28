@@ -2207,6 +2207,51 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
           }
         });
   }
+
+  auto global_owner_id = object_info.global_owner_id;
+  if (global_owner_id.IsNil()) {
+    RAY_LOG(DEBUG) << "object(" << object_id << ") global owner is nil.";
+    return;
+  }
+
+  bool new_object = false;
+  rpc::Address init_owner_address;
+  init_owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
+  init_owner_address.set_ip_address(object_info.owner_ip_address);
+  init_owner_address.set_port(object_info.owner_port);
+  init_owner_address.set_worker_id(object_info.owner_worker_id.Binary());
+  {
+    absl::MutexLock guard(&objects_need_to_report_mutex_);
+    auto it = objects_need_to_report_.find(global_owner_id);
+    if (it == objects_need_to_report_.end()) {
+      it = objects_need_to_report_
+               .emplace(global_owner_id, absl::flat_hash_set<ObjectID>())
+               .first;
+    }
+    if (it->second.insert(object_id).second) {
+      new_object = true;
+    }
+  }
+  if (new_object) {
+    absl::MutexLock guard(&global_owner_mutex_);
+    auto addr_it = global_owner_address_.find(global_owner_id);
+    rpc::Address real_owner_address;
+    if (addr_it != global_owner_address_.end()) {
+      real_owner_address.CopyFrom(addr_it->second);
+    } else {
+      real_owner_address.CopyFrom(init_owner_address);
+    }
+    ObjectInfo new_object_info;
+    new_object_info.object_id = object_id;
+    new_object_info.owner_raylet_id =
+        NodeID::FromBinary(real_owner_address.raylet_id());
+    new_object_info.owner_ip_address = real_owner_address.ip_address();
+    new_object_info.owner_port = real_owner_address.port();
+    new_object_info.owner_worker_id =
+        WorkerID::FromBinary(real_owner_address.worker_id());
+    object_directory_->ReportObjectAdded(object_id, self_node_id_, new_object_info);
+  }
+  SubscribeGlobalOwnerAddress(global_owner_id, init_owner_address);
 }
 
 bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
@@ -2798,7 +2843,13 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   }
 }
 
-void NodeManager::SubscribeGlobalOwnerAddress(ActorID actor_id) {
+void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id, const rpc::Address &init_address) {
+  {
+    absl::MutexLock guard(&global_owner_mutex_);
+    auto it = global_owner_address_.find(actor_id);
+    if (it != global_owner_address_.end()) return;
+    global_owner_address_.emplace(actor_id, init_address);
+  }
   RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
       actor_id,
       [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
@@ -2807,20 +2858,26 @@ void NodeManager::SubscribeGlobalOwnerAddress(ActorID actor_id) {
                        << actor_data.address().port()
                        << ", actor_name: " << actor_data.address().actor_name();
         if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-          absl::MutexLock guard(&objects_need_to_report_mutex_);
-          auto it = objects_need_to_report_.find(actor_id);
-          if (it == objects_need_to_report_.end()) return;
-          for (const auto &object_id : it->second) {
-            ObjectInfo object_info;
-            object_info.object_id = object_id;
-            object_info.owner_raylet_id =
-                NodeID::FromBinary(actor_data.address().raylet_id());
-            object_info.owner_ip_address = actor_data.address().ip_address();
-            object_info.owner_port = actor_data.address().port();
-            object_info.owner_worker_id =
-                WorkerID::FromBinary(actor_data.address().worker_id());
-            RAY_LOG(DEBUG) << "try to report object add " << object_id;
-            object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+          {
+            absl::MutexLock guard(&global_owner_mutex_);
+            global_owner_address_.emplace(actor_id, actor_data.address());
+          }
+          {
+            absl::MutexLock guard(&objects_need_to_report_mutex_);
+            auto it = objects_need_to_report_.find(actor_id);
+            if (it == objects_need_to_report_.end()) return;
+            for (const auto &object_id : it->second) {
+              ObjectInfo object_info;
+              object_info.object_id = object_id;
+              object_info.owner_raylet_id =
+                  NodeID::FromBinary(actor_data.address().raylet_id());
+              object_info.owner_ip_address = actor_data.address().ip_address();
+              object_info.owner_port = actor_data.address().port();
+              object_info.owner_worker_id =
+                  WorkerID::FromBinary(actor_data.address().worker_id());
+              RAY_LOG(DEBUG) << "try to report object add " << object_id;
+              object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+            }
           }
         }
       },

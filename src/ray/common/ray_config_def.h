@@ -608,3 +608,5 @@ RAY_CONFIG(std::string, TLS_CA_CERT, "")
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
+
+RAY_CONFIG(bool, is_global_owner, false)

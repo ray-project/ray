@@ -4,6 +4,8 @@ import ray
 import time
 import numpy as np
 import json
+import os
+import sys
 from ray.tests.conftest import (
     mock_distributed_fs_object_spilling_config,
 )
@@ -116,7 +118,7 @@ def test_checkpoint(ray_start_cluster, actor_resources):
             return 0
 
         def exit(self):
-            raise RuntimeError
+            sys.exit(0)
 
     owner = Owner.remote()
     ray.get(owner.warmup.remote())
@@ -128,7 +130,7 @@ def test_checkpoint(ray_start_cluster, actor_resources):
     print("data:", ray.get(ref))
     try:
         ray.get(owner.exit.remote())
-    except RuntimeError:
+    except ray.exceptions.RayActorError:
         pass
     else:
         raise RuntimeError
@@ -163,7 +165,7 @@ def test_checkpoint(ray_start_cluster, actor_resources):
             ray.put(np.zeros((50 * 1024 * 1024, 1)).astype(np.uint8))
 
         def exit(self):
-            raise RuntimeError
+            sys.exit(0)
 
     owner = Owner.remote()
     ray.get(owner.warmup.remote())
@@ -187,7 +189,7 @@ def test_checkpoint(ray_start_cluster, actor_resources):
     ray.get(worker_2.evict_all_object.remote())
     try:
         ray.get(owner.exit.remote())
-    except RuntimeError:
+    except ray.exceptions.RayActorError:
         pass
     else:
         raise RuntimeError
@@ -197,13 +199,120 @@ def test_checkpoint(ray_start_cluster, actor_resources):
     ray.get(worker_2.evict_all_object.remote())
     try:
         ray.get(worker_1.exit.remote())
-    except RuntimeError:
+    except ray.exceptions.RayActorError:
         pass
     else:
         raise RuntimeError
     print("wait 5 seconds for creater died.")
     time.sleep(5)
     ray.get(owner.warmup.remote())
+    print("try get obj after kill:", ray.get(worker_2.try_get.remote()))
+
+@pytest.mark.parametrize(
+    "actor_resources",
+    [
+        dict(zip(["owner", "creator", "borrower"], [{f"node{i}": 1} for i in _]))
+        for _ in [
+            [1, 2, 3],  # None of them is on the same node.
+            # [1, 1, 3],  # Owner and creator are on the same node.
+            # [3, 2, 3],  # Owner and borrower are on the same node.
+            # [1, 3, 3],  # Creator and borrower are on the same node.
+            # [3, 3, 3],  # All of them are on the same node.
+        ]
+    ],
+)
+def test_object_location(ray_start_cluster, actor_resources):
+    cluster_node_config = [
+        {
+            "num_cpus": 10,
+            "resources": {f"node{i+1}": 10},
+            "object_store_memory": 75 * 1024 * 1024,
+        }
+        for i in range(3)
+    ]
+    cluster_node_config[0]["_system_config"] = {
+        "object_spilling_config": json.dumps(mock_distributed_fs_object_spilling_config)
+    }
+    cluster = ray_start_cluster
+    for kwargs in cluster_node_config:
+        cluster.add_node(**kwargs)
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources=actor_resources["owner"], num_cpus=0, max_restarts=100)
+    class Owner:
+        def __init__(self):
+            self.refs = None
+
+        def set_object_refs(self, refs):
+            self.refs = refs
+
+        def warmup(self):
+            return 0
+
+        def exit(self):
+            sys.exit(0)
+
+        def getpid(self):
+            return os.getpid()
+
+    class Worker:
+        def __init__(self):
+            self.refs = None
+
+        def create_obj(self, owner):
+            self.refs = [
+                ray.put(np.zeros((50 * 1024 * 1024, 1)).astype(np.uint8), _owner=owner)
+            ]
+            print("global owner: ", ray.ActorID(self.refs[0].global_owner_id()))
+            return self.refs
+
+        def send_refs(self, refs):
+            self.refs = refs
+
+        def try_get(self):
+            print("global owner in get: ", ray.ActorID(self.refs[0].global_owner_id()))
+            [data] = ray.get(self.refs)
+            return len(data)
+
+        def warmup(self):
+            return True
+
+        def evict_all_object(self):
+            ray.put(np.zeros((50 * 1024 * 1024, 1)).astype(np.uint8))
+            ray.put(np.zeros((50 * 1024 * 1024, 1)).astype(np.uint8))
+
+        def exit(self):
+            sys.exit(0)
+
+    owner = Owner.remote()
+    ray.get(owner.warmup.remote())
+    worker_1 = (
+        ray.remote(Worker)
+        .options(resources=actor_resources["creator"], num_cpus=0)
+        .remote()
+    )
+    ray.get(worker_1.warmup.remote())
+    worker_2 = (
+        ray.remote(Worker)
+        .options(resources=actor_resources["borrower"], num_cpus=0)
+        .remote()
+    )
+    ray.get(worker_2.warmup.remote())
+
+    refs = ray.get(worker_1.create_obj.remote(owner))
+    print("test object ref: ", refs[0], "global owner:", ray.ActorID(refs[0].global_owner_id()))
+    ray.get(worker_2.send_refs.remote(refs))
+    print("try get obj before kill:", ray.get(worker_2.try_get.remote()))
+    print("old owner pid:", ray.get(owner.getpid.remote()))
+    try:
+        ray.get(owner.exit.remote())
+    except ray.exceptions.RayActorError:
+        pass
+    else:
+        raise RuntimeError
+    print("wait 5 seconds for owner died.")
+    time.sleep(5)
+    print("new owner pid:", ray.get(owner.getpid.remote()))
     print("try get obj after kill:", ray.get(worker_2.try_get.remote()))
 
 

@@ -137,6 +137,7 @@ table PlasmaCreateRequest {
   // Try the creation request immediately. If this is not possible (due to
   // out-of-memory), the error will be returned immediately to the client.
   try_immediately: bool;
+  global_owner_id: string;
 }
 
 table PlasmaCreateRetryRequest {

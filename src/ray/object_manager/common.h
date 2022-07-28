@@ -49,6 +49,7 @@ struct ObjectInfo {
   int owner_port;
   /// Owner's worker ID.
   WorkerID owner_worker_id;
+  ActorID global_owner_id;
 
   int64_t GetObjectSize() const { return data_size + metadata_size; }
 

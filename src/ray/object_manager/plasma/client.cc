@@ -117,7 +117,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                                 int64_t metadata_size,
                                 std::shared_ptr<Buffer> *data,
                                 fb::ObjectSource source,
-                                int device_num = 0);
+                                int device_num = 0,
+                                const ray::ActorID &global_owner_id=ray::ActorID::Nil());
 
   Status RetryCreate(const ObjectID &object_id,
                      uint64_t request_id,
@@ -132,7 +133,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
                               int64_t metadata_size,
                               std::shared_ptr<Buffer> *data,
                               fb::ObjectSource source,
-                              int device_num);
+                              int device_num,
+                              const ray::ActorID &global_owner_id);
 
   Status Get(const std::vector<ObjectID> &object_ids,
              int64_t timeout_ms,
@@ -364,7 +366,8 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                                   int64_t metadata_size,
                                                   std::shared_ptr<Buffer> *data,
                                                   fb::ObjectSource source,
-                                                  int device_num) {
+                                                  int device_num,
+                                                  const ray::ActorID &global_owner_id) {
   std::unique_lock<std::recursive_mutex> guard(client_mutex_);
   uint64_t retry_with_request_id = 0;
 
@@ -377,7 +380,8 @@ Status PlasmaClient::Impl::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                       metadata_size,
                                       source,
                                       device_num,
-                                      /*try_immediately=*/false));
+                                      /*try_immediately=*/false,
+                                      /*global_owner_id=*/global_owner_id));
   Status status = HandleCreateReply(object_id, metadata, &retry_with_request_id, data);
 
   while (retry_with_request_id > 0) {
@@ -412,7 +416,8 @@ Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
                                                 int64_t metadata_size,
                                                 std::shared_ptr<Buffer> *data,
                                                 fb::ObjectSource source,
-                                                int device_num) {
+                                                int device_num,
+                                                const ray::ActorID &global_owner_id) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
   RAY_LOG(DEBUG) << "called plasma_create on conn " << store_conn_ << " with size "
@@ -424,7 +429,8 @@ Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
                                       metadata_size,
                                       source,
                                       device_num,
-                                      /*try_immediately=*/true));
+                                      /*try_immediately=*/true,
+                                      /*global_owner_id*/global_owner_id));
   return HandleCreateReply(object_id, metadata, nullptr, data);
 }
 
@@ -785,7 +791,8 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                             int64_t metadata_size,
                                             std::shared_ptr<Buffer> *data,
                                             fb::ObjectSource source,
-                                            int device_num) {
+                                            int device_num,
+                                            const ray::ActorID &global_owner_id) {
   return impl_->CreateAndSpillIfNeeded(object_id,
                                        owner_address,
                                        data_size,
@@ -793,7 +800,8 @@ Status PlasmaClient::CreateAndSpillIfNeeded(const ObjectID &object_id,
                                        metadata_size,
                                        data,
                                        source,
-                                       device_num);
+                                       device_num,
+                                       global_owner_id);
 }
 
 Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
@@ -803,7 +811,8 @@ Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
                                           int64_t metadata_size,
                                           std::shared_ptr<Buffer> *data,
                                           fb::ObjectSource source,
-                                          int device_num) {
+                                          int device_num,
+                                          const ray::ActorID &global_owner_id) {
   return impl_->TryCreateImmediately(object_id,
                                      owner_address,
                                      data_size,
@@ -811,7 +820,8 @@ Status PlasmaClient::TryCreateImmediately(const ObjectID &object_id,
                                      metadata_size,
                                      data,
                                      source,
-                                     device_num);
+                                     device_num,
+                                     global_owner_id);
 }
 
 Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,

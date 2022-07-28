@@ -89,7 +89,8 @@ Status SendCreateRequest(const std::shared_ptr<StoreConn> &store_conn,
                          int64_t metadata_size,
                          flatbuf::ObjectSource source,
                          int device_num,
-                         bool try_immediately);
+                         bool try_immediately,
+                         const ray::ActorID &global_owner_id);
 
 void ReadCreateRequest(uint8_t *data,
                        size_t size,

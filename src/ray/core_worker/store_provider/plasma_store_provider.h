@@ -126,7 +126,8 @@ class CoreWorkerPlasmaStoreProvider {
                 const ObjectID &object_id,
                 const rpc::Address &owner_address,
                 std::shared_ptr<Buffer> *data,
-                bool created_by_worker);
+                bool created_by_worker,
+                const ActorID &global_owner_id=ActorID::Nil());
 
   /// Seal an object buffer created with Create().
   ///

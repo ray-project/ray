@@ -823,7 +823,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   absl::flat_hash_map<ActorID, absl::flat_hash_set<ObjectID>> objects_need_to_report_
       GUARDED_BY(objects_need_to_report_mutex_);
 
-  void SubscribeGlobalOwnerAddress(ActorID actor_id);
+  mutable absl::Mutex global_owner_mutex_;
+  absl::flat_hash_map<ActorID, rpc::Address> global_owner_address_
+      GUARDED_BY(global_owner_mutex_);
+
+  void SubscribeGlobalOwnerAddress(const ActorID &actor_id, const rpc::Address &init_owner_address);
 };
 
 }  // namespace raylet

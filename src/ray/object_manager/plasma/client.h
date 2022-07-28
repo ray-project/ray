@@ -132,7 +132,8 @@ class PlasmaClientInterface {
                                         int64_t metadata_size,
                                         std::shared_ptr<Buffer> *data,
                                         plasma::flatbuf::ObjectSource source,
-                                        int device_num = 0) = 0;
+                                        int device_num = 0,
+                                        const ray::ActorID &global_owner_id=ray::ActorID::Nil()) = 0;
 
   /// Delete a list of objects from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,
@@ -198,7 +199,8 @@ class PlasmaClient : public PlasmaClientInterface {
                                 int64_t metadata_size,
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source,
-                                int device_num = 0);
+                                int device_num = 0,
+                                const ray::ActorID &global_owner_id=ray::ActorID::Nil());
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
@@ -233,7 +235,8 @@ class PlasmaClient : public PlasmaClientInterface {
                               int64_t metadata_size,
                               std::shared_ptr<Buffer> *data,
                               plasma::flatbuf::ObjectSource source,
-                              int device_num = 0);
+                              int device_num = 0,
+                              const ray::ActorID &global_owner_id=ray::ActorID::Nil());
 
   /// Get some objects from the Plasma Store. This function will block until the
   /// objects have all been created and sealed in the Plasma Store or the
