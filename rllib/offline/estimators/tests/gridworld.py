@@ -105,10 +105,10 @@ class GridWorldPolicy(Policy):
 
     @override(Policy)
     def compute_actions(
-        self, 
-        obs_batch: Union[List[TensorStructType], TensorStructType], 
+        self,
+        obs_batch: Union[List[TensorStructType], TensorStructType],
         state_batches: Optional[List[TensorType]] = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         obs = np.array(obs_batch, dtype=int)
         action_probs = self.action_dist[obs]

@@ -49,7 +49,7 @@ class TestFQE(unittest.TestCase):
             dones=dones,
             new_obs=new_obs,
         )
-    
+
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
@@ -95,7 +95,7 @@ class TestFQE(unittest.TestCase):
         check(action_probs, tmp_probs, decimals=3)
 
     def test_fqe_optimal_convergence(self):
-        # The optimal GridWorldPolicy with epsilon = 0.0 and GridWorldEnv are deterministic;
+        # Optimal GridWorldPolicy with epsilon = 0.0 and GridWorldEnv are deterministic;
         # check that FQE converges to the true Q-values for self.batch
         q_vals = [
             -2.50,

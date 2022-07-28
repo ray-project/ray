@@ -175,18 +175,18 @@ class TestDR(unittest.TestCase):
             self.random_std,
         )
 
-    # NOTE: Commented out due to flakiness; makes sense since expert episodes
-    #  are shorter than random ones, increasing the variance of the estimate
-    # def test_random_expert_data(self):
-    #     print("Test random policy on expert dataset")
-    #     self.check_estimate(
-    #         self.random_policy,
-    #         self.expert_batch,
-    #         self.random_reward,
-    #         self.random_std,
-    #     )
+    @pytest.mark.skip("Skipped out due to flakiness; makes sense since expert episodes"
+    "are shorter than random ones, increasing the variance of the estimate")
+    def test_random_policy_expert_data(self):
+        print("Test random policy on expert dataset")
+        self.check_estimate(
+            self.random_policy,
+            self.expert_batch,
+            self.random_reward,
+            self.random_std,
+        )
 
-    def test_mixed_random_data(self):
+    def test_mixed_policy_random_data(self):
         print("Test mixed policy on random dataset")
         self.check_estimate(
             self.mixed_policy,
@@ -195,7 +195,7 @@ class TestDR(unittest.TestCase):
             self.mixed_std,
         )
 
-    def test_mixed_mixed_data(self):
+    def test_mixed_policy_mixed_data(self):
         print("Test mixed policy on mixed dataset")
         self.check_estimate(
             self.mixed_policy,
@@ -204,7 +204,7 @@ class TestDR(unittest.TestCase):
             self.mixed_std,
         )
 
-    def test_mixed_expert_data(self):
+    def test_mixed_policy_expert_data(self):
         print("Test mixed policy on expert dataset")
         self.check_estimate(
             self.mixed_policy,
@@ -213,7 +213,7 @@ class TestDR(unittest.TestCase):
             self.mixed_std,
         )
 
-    def test_expert_random_data(self):
+    def test_expert_policy_random_data(self):
         print("Test expert policy on random dataset")
         self.check_estimate(
             self.expert_policy,
@@ -222,7 +222,7 @@ class TestDR(unittest.TestCase):
             self.expert_std,
         )
 
-    def test_expert_mixed_data(self):
+    def test_expert_policy_mixed_data(self):
         print("Test expert policy on mixed dataset")
         self.check_estimate(
             self.expert_policy,
@@ -231,7 +231,7 @@ class TestDR(unittest.TestCase):
             self.expert_std,
         )
 
-    def test_expert_expert_data(self):
+    def test_expert_policy_expert_data(self):
         print("Test expert policy on expert dataset")
         self.check_estimate(
             self.expert_policy,

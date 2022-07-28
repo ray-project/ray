@@ -64,77 +64,57 @@ class TestOPE(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_is(self):
-        # Test IS standalone
-        name = "is"
+    def test_ope_standalone(self):
+        # Test all OPE methods standalone
         estimator = ImportanceSampling(
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_target"]
-        self.std_ret[name] = estimates["v_target_std"]
+        assert estimates is not None, "IS estimator did not compute estimates"
 
-    def test_wis(self):
-        # Test WIS standalone
-        name = "wis"
         estimator = WeightedImportanceSampling(
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_target"]
-        self.std_ret[name] = estimates["v_target_std"]
+        assert estimates is not None, "WIS estimator did not compute estimates"
 
-    def test_dm_fqe(self):
-        # Test DM standalone
-        name = "dm_fqe"
         estimator = DirectMethod(
             policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_config=self.q_model_config,
         )
-        self.losses[name] = estimator.train(self.batch)
+        losses = estimator.train(self.batch)
+        assert losses, "DM estimator did not return mean loss"
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_target"]
-        self.std_ret[name] = estimates["v_target_std"]
+        assert estimates is not None, "DM estimator did not compute estimates"
 
-    def test_dr_fqe(self):
-        # Test DR standalone
-        name = "dr_fqe"
         estimator = DoublyRobust(
             policy=self.algo.get_policy(),
             gamma=self.gamma,
             q_model_config=self.q_model_config,
         )
-        self.losses[name] = estimator.train(self.batch)
+        losses = estimator.train(self.batch)
+        assert losses, "DM estimator did not return mean loss"
         estimates = estimator.estimate(self.batch)
-        self.mean_ret[name] = estimates["v_target"]
-        self.std_ret[name] = estimates["v_target_std"]
+        assert estimates is not None, "DM estimator did not compute estimates"
 
     def test_ope_in_algo(self):
         # Test OPE in DQN, during training as well as by calling evaluate()
-        results = self.algo.train()
+        ope_results = self.algo.train()["evaluation"]["off_policy_estimator"]
         # Check that key exists AND is not {}
-        assert results["evaluation"][
-            "off_policy_estimator"
-        ], "Did not run OPE during training!"
+        assert ope_results, "Did not run OPE in training!"
+        assert set(ope_results["evaluation"]["off_policy_estimator"].keys()) == set(
+            "is", "wis", "dm_fqe", "dr_fqe"
+        ), "Missing keys in OPE result dict"
+
         # Check algo.evaluate() manually as well
-        results = self.algo.evaluate()
-        print("OPE in Algorithm results")
-        estimates = results["evaluation"]["off_policy_estimator"]
-        mean_est = {k: v["v_target"] for k, v in estimates.items()}
-        std_est = {k: v["v_target_std"] for k, v in estimates.items()}
-
-        print("Mean:")
-        print(*list(mean_est.items()), sep="\n")
-        print("Stddev:")
-        print(*list(std_est.items()), sep="\n")
-        print("\n\n\n")
-
-    def test_multiple_inputs(self):
-        # TODO (Rohan138): Test with multiple input files
-        pass
+        ope_results = self.algo.evaluate()["evaluation"]["off_policy_estimator"]
+        assert ope_results, "Did not run OPE on call to Algorithm.evaluate()!"
+        assert set(ope_results["evaluation"]["off_policy_estimator"].keys()) == set(
+            "is", "wis", "dm_fqe", "dr_fqe"
+        ), "Missing keys in OPE result dict"
 
 
 if __name__ == "__main__":
