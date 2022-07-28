@@ -112,8 +112,8 @@ For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up t
 
 .. _shuffle_performance_tips:
 
-Push-Based Shuffle (experimental)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Enabling Push-Based Shuffle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
 These operations include ``Dataset.random_shuffle``, ``Dataset.sort`` and ``Dataset.groupby``.
