@@ -39,6 +39,13 @@ logger = logging.getLogger(__name__)
 # Syncing period for syncing checkpoints between nodes or to cloud.
 DEFAULT_SYNC_PERIOD = 300
 
+_EXCLUDE_FROM_SYNC = [
+    "./checkpoint_-00001",
+    "./checkpoint_tmp*",
+    "./save_to_object*",
+    "./rank_*",
+]
+
 
 def _validate_upload_dir(sync_config: "SyncConfig") -> bool:
     if not sync_config.upload_dir:
@@ -504,6 +511,7 @@ class SyncerCallback(Callback):
             source_path=self._remote_trial_logdir(trial),
             target_ip=ray.util.get_node_ip_address(),
             target_path=self._local_trial_logdir(trial),
+            exclude=_EXCLUDE_FROM_SYNC,
         )
         self._sync_times[trial.trial_id] = time.time()
         if wait:
