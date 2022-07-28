@@ -38,7 +38,7 @@ def run(smoke_test=False):
 
     # Run the experiment.
     # TODO(jungong) : maybe add checkpointing.
-    tune.Tuner(
+    return tune.Tuner(
         "APPO",
         param_space=config,
         run_config=air.RunConfig(

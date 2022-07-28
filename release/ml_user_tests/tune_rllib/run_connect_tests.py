@@ -19,7 +19,8 @@ if __name__ == "__main__":
         ray.init(address="auto")
 
     start_time = time.time()
-    exp_analysis = run()
+    results = run()
+    exp_analysis = results._experiment_analysis
     end_time = time.time()
 
     result = {
