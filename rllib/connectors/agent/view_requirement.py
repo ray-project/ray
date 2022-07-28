@@ -7,8 +7,12 @@ from ray.rllib.connectors.connector import (
     register_connector,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import AgentConnectorDataType, AgentConnectorsOutput
+from ray.rllib.utils.typing import (
+    AgentConnectorDataType,
+    AgentConnectorsOutput,
+)
 from ray.util.annotations import PublicAPI
+from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 
 
 @PublicAPI(stability="alpha")
@@ -32,11 +36,24 @@ class ViewRequirementAgentConnector(AgentConnector):
         super().__init__(ctx)
 
         self._view_requirements = ctx.view_requirements
-        self._agent_data = defaultdict(lambda: defaultdict(SampleBatch))
+
+        # a dict of env_id to a dict of agent_id to a list of agent_collector objects
+        env_default = defaultdict(
+            lambda: AgentCollector(
+                self._view_requirements,
+                max_seq_len=ctx.config["model"]["max_seq_len"],
+                intial_states=ctx.initial_states,
+                disable_action_flattening=ctx.config.get(
+                    "_disable_action_flattening", False
+                ),
+                is_policy_recurrent=ctx.is_policy_recurrent,
+            )
+        )
+        self.agent_collectors = defaultdict(lambda: env_default)
 
     def reset(self, env_id: str):
-        if env_id in self._agent_data:
-            del self._agent_data[env_id]
+        if env_id in self.agent_collectors:
+            del self.agent_collectors[env_id]
 
     def _get_sample_batch_for_action(
         self, view_requirements, agent_batch
@@ -61,6 +78,9 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         env_id = ac_data.env_id
         agent_id = ac_data.agent_id
+        # TODO: we don't keep episode_id around so use env_id as episode_id ?
+        episode_id = env_id if SampleBatch.EPS_ID not in d else d[SampleBatch.EPS_ID]
+
         assert env_id is not None and agent_id is not None, (
             f"ViewRequirementAgentConnector requires env_id({env_id}) "
             "and agent_id({agent_id})"
@@ -71,46 +91,28 @@ class ViewRequirementAgentConnector(AgentConnector):
 
         training_dict = None
         # Return full training_dict for env runner to construct episodes.
-        if self.is_training:
+        if self._is_training:
             # Note(jungong) : we need to keep the entire input dict here.
             # A column may be used by postprocessing (GAE) even if its
             # iew_requirement.used_for_training is False.
             training_dict = d
 
-        # Agent batch is our buffer of necessary history for computing
-        # a SampleBatch for policy forward pass.
-        # This is used by both training and inference.
-        agent_batch = self._agent_data[env_id][agent_id]
-        for col, req in vr.items():
-            # Not used for action computation.
-            if not req.used_for_compute_actions:
-                continue
+        agent_collector = self.agent_collectors[env_id][agent_id]
 
-            # Create the batch of data from the different buffers.
-            if col == SampleBatch.OBS:
-                # NEXT_OBS from the training sample is the current OBS
-                # to run Policy with.
-                data_col = SampleBatch.NEXT_OBS
-            else:
-                data_col = req.data_col or col
-            if data_col not in d:
-                continue
+        if SampleBatch.NEXT_OBS not in d:
+            raise ValueError(f"connector data {d} should contain next_obs.")
 
-            if col not in agent_batch:
-                agent_batch[col] = []
-            # Stack along batch dim.
-            agent_batch[col].append(d[data_col])
-
-            # Only keep the useful part of the history.
-            h = -1
-            if req.shift_from is not None:
-                h = req.shift_from
-            elif type(req.shift) == int:
-                h = req.shift
-            assert h <= 0, "Cannot use future data to compute action"
-            agent_batch[col] = agent_batch[col][h:]
-
-        sample_batch = self._get_sample_batch_for_action(vr, agent_batch)
+        if agent_collector.is_empty():
+            agent_collector.add_init_obs(
+                episode_id=episode_id,
+                agent_index=agent_id,
+                env_id=env_id,
+                t=-1,
+                init_obs=d[SampleBatch.NEXT_OBS],
+            )
+        else:
+            agent_collector.add_action_reward_next_obs(d)
+        sample_batch = agent_collector.build_for_inference()
 
         return_data = AgentConnectorDataType(
             env_id, agent_id, AgentConnectorsOutput(training_dict, sample_batch)

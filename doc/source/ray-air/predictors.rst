@@ -1,7 +1,7 @@
 .. _air-predictors:
 
-Inference with `Predictors`
-===========================
+Using Predictors for Inference
+==============================
 
 .. https://docs.google.com/presentation/d/1jfkQk0tGqgkLgl10vp4-xjcbYG9EEtlZV_Vnve_NenQ/edit
 
@@ -114,8 +114,8 @@ Coming soon!
 
 .. _pipelined-prediction:
 
-Lazy/Pipelined Prediction
--------------------------
+Lazy/Pipelined Prediction (experimental)
+----------------------------------------
 
 If you have a large dataset but not a lot of available memory, you can use the 
 :meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.

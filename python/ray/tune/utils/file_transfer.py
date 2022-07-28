@@ -6,13 +6,15 @@ import tarfile
 from typing import Optional, Tuple, Dict, Generator, Union
 
 import ray
-from ray.util.ml_utils.filelock import TempFileLock
+from ray.util.annotations import DeveloperAPI
+from ray.air._internal.filelock import TempFileLock
 
 
 _DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024  # 500 MiB
 _DEFAULT_MAX_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # 1 GiB
 
 
+@DeveloperAPI
 def sync_dir_between_nodes(
     source_ip: str,
     source_path: str,
@@ -174,6 +176,7 @@ def _sync_dir_between_different_nodes(
     return ray.get(unpack_future)
 
 
+@DeveloperAPI
 def delete_on_node(
     node_ip: str, path: str, return_future: bool = False
 ) -> Union[bool, ray.ObjectRef]:

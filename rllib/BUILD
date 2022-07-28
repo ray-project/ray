@@ -94,16 +94,6 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a2c"]
 )
 
-py_test(
-    name = "learning_tests_cartpole_a2c_fake_gpus",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
-    args = ["--yaml-dir=tuned_examples/a2c"]
-)
-
 # A3C
 
 # py_test(
@@ -762,6 +752,13 @@ py_test(
     tags = ["team:rllib", "tests_dir", "tests_dir_N"],
     size = "large",
     srcs = ["tests/test_node_failure.py"],
+)
+
+py_test(
+    name = "test_registry",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_registry.py"],
 )
 
 # Specific Algorithms
@@ -1560,6 +1557,12 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
+py_test(
+    name = "evaluation/tests/test_agent_collector",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_agent_collector.py"]
+)
 
 py_test(
     name = "evaluation/tests/test_envs_that_crash",
@@ -1573,6 +1576,13 @@ py_test(
     tags = ["team:rllib", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_episode.py"]
+)
+
+py_test(
+    name = "evaluation/tests/test_env_runner_v2",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_env_runner_v2.py"]
 )
 
 py_test(

@@ -2,21 +2,22 @@ import inspect
 from abc import abstractmethod
 from typing import Any, Callable, Optional, Type, Union
 from pydantic import BaseModel
-from ray.serve.utils import install_serve_encoders_to_fastapi
+from ray.serve._private.utils import install_serve_encoders_to_fastapi
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import starlette
 from fastapi import Body, Depends, FastAPI
 
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.http_util import ASGIHTTPSender
+from ray.serve._private.http_util import ASGIHTTPSender
 from ray import serve
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
 HTTPAdapterFn = Callable[[Any], Any]
 
 
-def load_http_adapter(
+def _load_http_adapter(
     http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]]
 ) -> HTTPAdapterFn:
     if http_adapter is None:
@@ -43,6 +44,7 @@ def load_http_adapter(
     return http_adapter
 
 
+@DeveloperAPI
 class SimpleSchemaIngress:
     def __init__(
         self, http_adapter: Optional[Union[str, HTTPAdapterFn, Type[BaseModel]]] = None
@@ -58,7 +60,7 @@ class SimpleSchemaIngress:
               Please refer to Serve HTTP adatper documentation to learn more.
         """
         install_serve_encoders_to_fastapi()
-        http_adapter = load_http_adapter(http_adapter)
+        http_adapter = _load_http_adapter(http_adapter)
         self.app = FastAPI()
 
         @self.app.get("/")
@@ -79,6 +81,7 @@ class SimpleSchemaIngress:
         return sender.build_asgi_response()
 
 
+@PublicAPI(stability="beta")
 @serve.deployment(route_prefix="/")
 class DAGDriver(SimpleSchemaIngress):
     def __init__(
