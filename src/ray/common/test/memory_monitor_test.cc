@@ -47,9 +47,19 @@ TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive) {
     auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
     ASSERT_GT(total_bytes, 0);
     ASSERT_GT(total_bytes, used_bytes);
+  }
+}
+
+TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
+  {
+    MemoryMonitor monitor(
+        0 /*usage_threshold*/,
+        0 /*refresh_interval_ms*/,
+        [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
+    auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
+    auto [cgroup_used_bytes, cgroup_total_bytes] = monitor.GetCGroupMemoryBytes();
 
     auto cmd_out = Process::Exec("free -b");
-
     std::string title;
     std::string total;
     std::string used;
@@ -61,11 +71,11 @@ TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive) {
     cmd_out_ss >> total >> used >> free >> shared >> cache >> available;
     cmd_out_ss >> title >> total >> used >> free >> shared >> cache >> available;
 
-    uint64_t free_total_bytes;
+    nuint64_t free_total_bytes;
     std::istringstream total_ss(total);
     total_ss >> free_total_bytes;
 
-    ASSERT_EQ(total_bytes, free_total_bytes);
+    ASSERT_TRUE(total_bytes == free_total_bytes || total_bytes == cgroup_total_bytes);
   }
 }
 

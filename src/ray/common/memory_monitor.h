@@ -69,6 +69,7 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroAlwaysAboveThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestThresholdOneAlwaysBelowThreshold);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive);
+  FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
 
   /// Memory usage fraction between [0, 1]
   const double usage_threshold_;
