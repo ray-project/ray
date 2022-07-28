@@ -348,8 +348,8 @@ class TuneReporterBase(ProgressReporter):
             self._metric_columns.update(user_metrics)
         messages = [
             "== Status ==",
-            time_passed_str(self._start_time, time.time()),
-            memory_debug_str(),
+            _time_passed_str(self._start_time, time.time()),
+            _memory_debug_str(),
             *sys_info,
         ]
         if done:
@@ -362,13 +362,13 @@ class TuneReporterBase(ProgressReporter):
         current_best_trial, metric = self._current_best_trial(trials)
         if current_best_trial:
             messages.append(
-                best_trial_str(current_best_trial, metric, self._parameter_columns)
+                _best_trial_str(current_best_trial, metric, self._parameter_columns)
             )
 
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             # Will filter the table in `trial_progress_str`
             messages.append(
-                trial_progress_str(
+                _trial_progress_str(
                     trials,
                     metric_columns=self._metric_columns,
                     parameter_columns=self._parameter_columns,
@@ -383,7 +383,7 @@ class TuneReporterBase(ProgressReporter):
                     sort_by_metric=self._sort_by_metric,
                 )
             )
-            messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
+            messages.append(_trial_errors_str(trials, fmt=fmt, max_rows=max_error))
 
         return delim.join(messages) + delim
 
@@ -641,7 +641,7 @@ class CLIReporter(TuneReporterBase):
         print(self._progress_str(trials, done, *sys_info))
 
 
-def memory_debug_str():
+def _memory_debug_str():
     try:
         import ray  # noqa F401
 
@@ -667,7 +667,7 @@ def memory_debug_str():
         return "Unknown memory usage. Please run `pip install psutil` to resolve)"
 
 
-def time_passed_str(start_time: float, current_time: float):
+def _time_passed_str(start_time: float, current_time: float):
     current_time_dt = datetime.datetime.fromtimestamp(current_time)
     start_time_dt = datetime.datetime.fromtimestamp(start_time)
     delta: datetime.timedelta = current_time_dt - start_time_dt
@@ -703,7 +703,7 @@ def _get_trials_by_state(trials: List[Trial]):
     return trials_by_state
 
 
-def trial_progress_str(
+def _trial_progress_str(
     trials: List[Trial],
     metric_columns: Union[List[str], Dict[str, str]],
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
@@ -776,7 +776,7 @@ def trial_progress_str(
     )
 
     if force_table or (has_verbosity(Verbosity.V2_TRIAL_NORM) and done):
-        messages += trial_progress_table(
+        messages += _trial_progress_table(
             trials=trials,
             metric_columns=metric_columns,
             parameter_columns=parameter_columns,
@@ -819,7 +819,7 @@ def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
     return result
 
 
-def trial_progress_table(
+def _trial_progress_table(
     trials: List[Trial],
     metric_columns: Union[List[str], Dict[str, str]],
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
@@ -939,7 +939,7 @@ def trial_progress_table(
     return messages
 
 
-def trial_errors_str(
+def _trial_errors_str(
     trials: List[Trial], fmt: str = "psql", max_rows: Optional[int] = None
 ):
     """Returns a readable message regarding trial errors.
@@ -973,7 +973,7 @@ def trial_errors_str(
     return delim.join(messages)
 
 
-def best_trial_str(
+def _best_trial_str(
     trial: Trial,
     metric: str,
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
@@ -1218,7 +1218,7 @@ class TrialProgressCallback(Callback):
         return print_result_str
 
 
-def detect_reporter(**kwargs) -> TuneReporterBase:
+def _detect_reporter(**kwargs) -> TuneReporterBase:
     """Detect progress reporter class.
 
     Will return a :class:`JupyterNotebookReporter` if a IPython/Jupyter-like
@@ -1234,7 +1234,7 @@ def detect_reporter(**kwargs) -> TuneReporterBase:
     return progress_reporter
 
 
-def detect_progress_metrics(
+def _detect_progress_metrics(
     trainable: Optional[Union["Trainable", Callable]]
 ) -> Optional[List[str]]:
     """Detect progress metrics to report."""
