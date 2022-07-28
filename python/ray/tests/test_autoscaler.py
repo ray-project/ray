@@ -17,7 +17,6 @@ from unittest.mock import (
 )
 
 import grpc
-import jsonschema
 import pytest
 import yaml
 from jsonschema.exceptions import ValidationError
@@ -1732,7 +1731,9 @@ class AutoscalingTest(unittest.TestCase):
         config["available_node_types"][NODE_TYPE_LEGACY_WORKER]["max_workers"] = 10
         config["max_workers"] = 10
         config["idle_timeout_minutes"] = 0
-        config["upscaling_speed"] = config["available_node_types"][NODE_TYPE_LEGACY_WORKER]["max_workers"]
+        config["upscaling_speed"] = config["available_node_types"][
+            NODE_TYPE_LEGACY_WORKER
+        ]["max_workers"]
         if foreground_node_launcher:
             config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
         config_path = self.write_config(config)
@@ -2073,7 +2074,9 @@ class AutoscalingTest(unittest.TestCase):
 
         # Update the config to change the node type
         new_config = copy.deepcopy(SMALL_CLUSTER)
-        new_config["available_node_types"][NODE_TYPE_LEGACY_WORKER]["node_config"]["InstanceType"] = "updated"
+        new_config["available_node_types"][NODE_TYPE_LEGACY_WORKER]["node_config"][
+            "InstanceType"
+        ] = "updated"
         self.write_config(new_config)
         self.provider.ready_to_create.clear()
         fill_in_raylet_ids(self.provider, lm)
