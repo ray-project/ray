@@ -106,7 +106,7 @@ def _split_single_block(
         in the following form. We return blocks in this way
         so that the owner of blocks could be the caller(driver)
         instead of worker itself.
-        Tuple(block_id, split_blocks_meta)), block0, block1 ...
+        Tuple(block_id, split_blocks_meta), block0, block1 ...
     """
     split_meta = []
     split_blocks = []
