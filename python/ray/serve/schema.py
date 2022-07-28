@@ -245,6 +245,23 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "and py_modules may contain only remote URIs."
         ),
     )
+    host: str = Field(
+        default="0.0.0.0",
+        description=(
+            "Host for HTTP servers to listen on. Defaults to "
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new host instead."
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        description=(
+            "Port for HTTP server. Defaults to 8000. Cannot be updated once "
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new port instead."
+        ),
+    )
     deployments: List[DeploymentSchema] = Field(
         default=[],
         description=("Deployment options that override options specified in the code."),

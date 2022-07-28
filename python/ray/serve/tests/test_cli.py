@@ -127,6 +127,49 @@ def test_deploy(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_with_http_options(ray_start_stop):
+    """Deploys config with host and port options specified"""
+
+    f1 = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph_http.yaml"
+    )
+    f2 = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
+    )
+    success_message_fragment = b"Sent deploy request successfully!"
+
+    with open(f1, "r") as config_file:
+        config = yaml.safe_load(config_file)
+
+    deploy_response = subprocess.check_output(["serve", "deploy", f1])
+    assert success_message_fragment in deploy_response
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
+        timeout=15,
+    )
+
+    # Config should contain matching host and port options
+    info_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(info_response)
+
+    assert config == info
+
+    with pytest.raises(subprocess.CalledProcessError):
+        subprocess.check_output(["serve", "deploy", f2])
+
+    assert requests.post("http://localhost:8005/").text == "wonderful world"
+
+    deploy_response = subprocess.check_output(["serve", "deploy", f1])
+    assert success_message_fragment in deploy_response
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8005/").text == "wonderful world",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_config(ray_start_stop):
     """Deploys config and checks that `serve config` returns correct response."""
 
