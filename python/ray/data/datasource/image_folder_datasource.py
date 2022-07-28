@@ -1,4 +1,5 @@
 import io
+import logging
 import pathlib
 import time
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
@@ -22,6 +23,9 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
     from ray.data.block import T
+
+
+logger = logging.getLogger(__name__)
 
 IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "tiff", "bmp", "gif"]
 
@@ -237,7 +241,8 @@ class _ImageFolderDatasourceReader(_FileBasedDatasourceReader):
         if len(non_empty_path_and_size) == 0:
             logger.warn(
                 "All input image files are empty. "
-                "Use on-disk file size to estimate images in-memory size.")
+                "Use on-disk file size to estimate images in-memory size."
+            )
             return IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
 
         # Prefetch first non-empty image file to do estimation.
