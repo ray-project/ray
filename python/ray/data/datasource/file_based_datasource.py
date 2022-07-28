@@ -352,9 +352,9 @@ class _FileBasedDatasourceReader(Reader):
         )
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
-            pathToSize = dict(zip(self._paths, self._file_sizes))
+            path_to_size = dict(zip(self._paths, self._file_sizes))
             self._paths = self._partition_filter(self._paths)
-            self._file_sizes = [pathToSize[p] for p in self._paths]
+            self._file_sizes = [path_to_size[p] for p in self._paths]
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
