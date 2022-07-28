@@ -211,8 +211,8 @@ def test_multi_dag(serve_instance):
     dag = DAGDriver.bind({"/my_D1": D1.bind(), "/my_D2": D2.bind()})
     handle = serve.run(dag)
 
-    assert ray.get(handle.multi_dag_predict.remote(route_path="/my_D1")) == "D1"
-    assert ray.get(handle.multi_dag_predict.remote(route_path="/my_D2")) == "D2"
+    assert ray.get(handle.predict_with_route.remote(route_path="/my_D1")) == "D1"
+    assert ray.get(handle.predict_with_route.remote(route_path="/my_D2")) == "D2"
     assert requests.post("http://127.0.0.1:8000/my_D1").json() == "D1"
     assert requests.post("http://127.0.0.1:8000/my_D2").json() == "D2"
 

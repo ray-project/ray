@@ -134,7 +134,7 @@ class DAGDriver:
         """Perform inference directly without HTTP."""
         return await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
 
-    async def multi_dag_predict(self, route_path, *args, **kwargs):
+    async def predict_with_route(self, route_path, *args, **kwargs):
         """Perform inference directly without HTTP for multi dags."""
         if route_path not in self.dags:
             raise RayServeException(f"{route_path} does not exist in dags routes")
