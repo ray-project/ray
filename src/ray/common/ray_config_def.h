@@ -76,6 +76,9 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// The duration between raylet check memory pressure and send gc request
 RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
+/// If the raylet fails to get agent info, we will retry after this interval.
+RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
+
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.

@@ -17,6 +17,8 @@ option cc_enable_arenas = true;
 
 package ray.rpc;
 
+import "src/ray/protobuf/common.proto";
+
 enum AgentRpcStatus {
   // OK.
   AGENT_RPC_STATUS_OK = 0;
@@ -25,9 +27,7 @@ enum AgentRpcStatus {
 }
 
 message RegisterAgentRequest {
-  int32 agent_id = 1;
-  int32 agent_port = 2;
-  string agent_ip_address = 3;
+  AgentInfo agent_info = 1;
 }
 
 message RegisterAgentReply {
