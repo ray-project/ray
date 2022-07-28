@@ -23,7 +23,7 @@ param_space = {
     "replay_buffer_config": {
         "type": "MultiAgentReplayBuffer",
         "storage_unit": "sequences",
-        "capacity": 100000,
+        "capacity_ts": 100000,
         "learning_starts": 1000,
         "replay_burn_in": 4,
     },
