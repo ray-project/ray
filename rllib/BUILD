@@ -1713,9 +1713,30 @@ py_test(
 py_test(
     name = "test_ope",
     tags = ["team:rllib", "offline", "torch_only", "gpu"],
-    size = "large",
+    size = "small",
     srcs = ["offline/estimators/tests/test_ope.py"],
-    data = ["tests/data/cartpole/large.json"],
+    data = ["tests/data/cartpole/small.json"],
+)
+
+py_test(
+    name = "test_fqe",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/estimators/tests/test_fqe.py"],
+)
+
+py_test(
+    name = "test_dm",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/estimators/tests/test_dm.py"],
+)
+
+py_test(
+    name = "test_dm",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/estimators/tests/test_dr.py"],
 )
 
 # --------------------------------------------------------------------
