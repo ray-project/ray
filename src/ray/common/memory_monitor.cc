@@ -17,6 +17,7 @@
 #include <fstream>  // std::ifstream
 #include <tuple>
 
+#include "ray/common/nullable_uint.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
@@ -34,8 +35,8 @@ MemoryMonitor::MemoryMonitor(float usage_threshold_,
       }),
       runner_(io_context_) {
   RAY_CHECK(monitor_callback_ != nullptr);
-  RAY_CHECK(usage_threshold_ >= 0);
-  RAY_CHECK(usage_threshold_ <= 1);
+  RAY_CHECK_GE(usage_threshold_, 0);
+  RAY_CHECK_LE(usage_threshold_, 1);
   if (monitor_interval_ms > 0) {
 #ifdef __linux__
     runner_.RunFnPeriodically(
@@ -57,10 +58,10 @@ MemoryMonitor::MemoryMonitor(float usage_threshold_,
 }
 
 bool MemoryMonitor::IsUsageAboveThreshold() {
-  auto [used_memory_bytes, total_memory_bytes] = GetLinuxNodeMemoryBytes();
-  if (total_memory_bytes == 0) {
-    RAY_LOG(ERROR) << "Unable to capture node memory. Monitor will not be able "
-                   << "to detect memory usage above threshold.";
+  auto [used_memory_bytes, total_memory_bytes] = GetMemoryBytes();
+  if (total_memory_bytes == kNull || used_memory_bytes == kNull) {
+    RAY_LOG(WARNING) << "Unable to capture node memory. Monitor will not be able "
+                     << "to detect memory usage above threshold.";
     return false;
   }
   auto usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
@@ -74,27 +75,63 @@ bool MemoryMonitor::IsUsageAboveThreshold() {
   return is_usage_above_threshold;
 }
 
-std::tuple<uint64_t, uint64_t> MemoryMonitor::GetLinuxNodeMemoryBytes() {
-#ifndef __linux__
-  RAY_LOG(ERROR) << "GetLinuxNodeMemoryBytes called on non-Linux system" return return {
-      0, 0};
-#endif
+std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetMemoryBytes() {
+  RAY_CHECK(__linux__) << "Memory monitor currently supports only linux";
+  auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
+  auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
+  system_total_bytes = NullableInt::min(system_total_bytes, cgroup_total_bytes);
+  if (system_total_bytes == cgroup_total_bytes) {
+    system_used_bytes = cgroup_used_bytes;
+  }
+  return std::tuple(system_used_bytes, system_total_bytes);
+}
+
+std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetCGroupMemoryBytes() {
+  nuint64_t total_bytes = kNull;
+  if (boost::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
+    std::ifstream mem_file(kCgroupsV2MemoryMaxPath, std::ios::in | std::ios::binary);
+    mem_file >> total_bytes;
+  } else if (boost::filesystem::exists(kCgroupsV1MemoryMaxPath)) {
+    std::ifstream mem_file(kCgroupsV1MemoryMaxPath, std::ios::in | std::ios::binary);
+    mem_file >> total_bytes;
+  }
+
+  nuint64_t used_bytes = kNull;
+  if (boost::filesystem::exists(kCgroupsV2MemoryUsagePath)) {
+    std::ifstream mem_file(kCgroupsV2MemoryUsagePath, std::ios::in | std::ios::binary);
+    mem_file >> used_bytes;
+  } else if (boost::filesystem::exists(kCgroupsV1MemoryUsagePath)) {
+    std::ifstream mem_file(kCgroupsV1MemoryUsagePath, std::ios::in | std::ios::binary);
+    mem_file >> used_bytes;
+  }
+
+  RAY_CHECK((total_bytes == kNull && used_bytes == kNull) ||
+            (total_bytes != kNull && used_bytes != kNull));
+  if (total_bytes != kNull) {
+    RAY_CHECK_GT(used_bytes, 0);
+    RAY_CHECK_GT(total_bytes, used_bytes);
+  }
+
+  return {used_bytes, total_bytes};
+}
+
+std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   std::string meminfo_path = "/proc/meminfo";
   std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
   if (!meminfo_ifs.is_open()) {
-    RAY_LOG(ERROR) << " file not found " << meminfo_path;
-    return {0, 0};
+    RAY_LOG(ERROR) << " file not found: " << meminfo_path;
+    return {kNull, kNull};
   }
   std::string line;
   std::string title;
   uint64_t value;
   std::string unit;
 
-  uint64_t mem_total_bytes = 0;
-  uint64_t mem_available_bytes = 0;
-  uint64_t mem_free_bytes = 0;
-  uint64_t cached_bytes = 0;
-  uint64_t buffer_bytes = 0;
+  nuint64_t mem_total_bytes = kNull;
+  nuint64_t mem_available_bytes = kNull;
+  nuint64_t mem_free_bytes = kNull;
+  nuint64_t cached_bytes = kNull;
+  nuint64_t buffer_bytes = kNull;
   while (std::getline(meminfo_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value >> unit;
@@ -113,24 +150,26 @@ std::tuple<uint64_t, uint64_t> MemoryMonitor::GetLinuxNodeMemoryBytes() {
       mem_total_bytes = value;
     }
   }
-  /// The following logic mimics psutil in python that is used in other parts of
-  /// the codebase.
-  if (mem_available_bytes > 0) {
-    if (mem_total_bytes < mem_available_bytes) {
-      RAY_LOG(ERROR) << " total bytes less than available bytes. "
-                     << "Monitor will assume zero usage.";
-      return {0, mem_total_bytes};
-    }
-    return {mem_total_bytes - mem_available_bytes, mem_total_bytes};
+  if (mem_total_bytes == kNull) {
+    RAY_LOG(ERROR) << "Unable to determine total bytes . Will return null";
+    return {kNull, kNull};
   }
-  auto available_bytes = mem_free_bytes + cached_bytes + buffer_bytes;
+
+  nuint64_t available_bytes = kNull;
+  /// Follows logic from psutil
+  if (mem_available_bytes > 0) {
+    available_bytes = mem_available_bytes;
+  } else if (mem_free_bytes != kNull && cached_bytes != kNull && buffer_bytes != kNull) {
+    available_bytes = mem_free_bytes + cached_bytes + buffer_bytes;
+  }
+
+  if (available_bytes == kNull) {
+    RAY_LOG(ERROR) << "Unable to determine available bytes. Will return null";
+    return {kNull, kNull};
+  }
   if (mem_total_bytes < available_bytes) {
-    available_bytes = mem_free_bytes;
-    if (mem_total_bytes < available_bytes) {
-      RAY_LOG(ERROR) << " total bytes less than available bytes. "
-                     << "Monitor will assume zero usage.";
-      return {0, mem_total_bytes};
-    }
+    RAY_LOG(ERROR) << "Total bytes less than available bytes. Will return null";
+    return {kNull, kNull};
   }
   auto used_bytes = mem_total_bytes - available_bytes;
   return {used_bytes, mem_total_bytes};

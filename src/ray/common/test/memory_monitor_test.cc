@@ -14,7 +14,10 @@
 
 #include "ray/common/memory_monitor.h"
 
+#include <sys/sysinfo.h>
+
 #include "gtest/gtest.h"
+#include "ray/util/process.h"
 
 namespace ray {
 class MemoryMonitorTest : public ::testing::Test {};
@@ -23,7 +26,7 @@ TEST_F(MemoryMonitorTest, TestThresholdZeroAlwaysAboveThreshold) {
   MemoryMonitor monitor(
       0 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
-      [](bool is_usage_above_threshold) { FAIL() << "Expected monitor not running"; });
+      [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
   ASSERT_TRUE(monitor.IsUsageAboveThreshold());
 }
 
@@ -31,25 +34,8 @@ TEST_F(MemoryMonitorTest, TestThresholdOneAlwaysBelowThreshold) {
   MemoryMonitor monitor(
       1 /*usage_threshold*/,
       0 /*refresh_interval_ms*/,
-      [](bool is_usage_above_threshold) { FAIL() << "Expected monitor not running"; });
+      [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
   ASSERT_FALSE(monitor.IsUsageAboveThreshold());
-}
-
-std::string exec(const char *cmd) {
-  char buffer[128];
-  std::string result = "";
-  FILE *pipe = popen(cmd, "r");
-  if (!pipe) throw std::runtime_error("popen() failed!");
-  try {
-    while (fgets(buffer, sizeof buffer, pipe) != NULL) {
-      result += buffer;
-    }
-  } catch (...) {
-    pclose(pipe);
-    throw;
-  }
-  pclose(pipe);
-  return result;
 }
 
 TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive) {
@@ -57,13 +43,12 @@ TEST_F(MemoryMonitorTest, TestGetNodeAvailableMemoryBytesAlwaysPositive) {
     MemoryMonitor monitor(
         0 /*usage_threshold*/,
         0 /*refresh_interval_ms*/,
-        [](bool is_usage_above_threshold) { FAIL() << "Expected monitor not running"; });
-    auto [used_bytes, total_bytes] = monitor.GetLinuxNodeMemoryBytes();
+        [](bool is_usage_above_threshold) { FAIL() << "Expected monitor to not run"; });
+    auto [used_bytes, total_bytes] = monitor.GetMemoryBytes();
     ASSERT_GT(total_bytes, 0);
     ASSERT_GT(total_bytes, used_bytes);
 
-    std::string cmd = "free -b";
-    auto cmd_out = exec(cmd.c_str());
+    auto cmd_out = Process::Exec("free -b");
 
     std::string title;
     std::string total;

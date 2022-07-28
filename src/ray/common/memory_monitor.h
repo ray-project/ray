@@ -16,8 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <boost/filesystem.hpp>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
+#include "ray/common/nullable_uint.h"
 
 namespace ray {
 /// Callback that runs at each monitoring interval.
@@ -34,7 +37,7 @@ class MemoryMonitor {
   ///
   /// \param usage_threshold a value in [0-1] to indicate the max usage.
   /// \param monitor_interval_ms the frequency to update the usage. 0 disables the
-  /// the monitor and callbacks own't fire.
+  /// the monitor and callbacks wown't fire.
   /// \param monitor_callback function to execute when usage is refreshed.
   MemoryMonitor(float usage_threshold,
                 uint64_t monitor_interval_ms,
@@ -43,11 +46,24 @@ class MemoryMonitor {
   ~MemoryMonitor();
 
  private:
+  static constexpr char kCgroupsV1MemoryMaxPath[] =
+      "/sys/fs/cgroup/memory/memory.limit_in_bytes";
+  static constexpr char kCgroupsV1MemoryUsagePath[] =
+      "/sys/fs/cgroup/memory/memory.usage_in_bytes";
+  static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
+  static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
+
   /// Returns true if the memory usage of this node is above the threshold.
   bool IsUsageAboveThreshold();
 
-  /// Returns the used and total node memory in bytes for linux OS.
-  std::tuple<uint64_t, uint64_t> GetLinuxNodeMemoryBytes();
+  /// Returns the used and total memory in bytes.
+  std::tuple<nuint64_t, nuint64_t> GetMemoryBytes();
+
+  /// Returns the used and total memory in bytes from Cgroup.
+  std::tuple<nuint64_t, nuint64_t> GetCGroupMemoryBytes();
+
+  /// Returns the used and total memory in bytes for linux OS.
+  std::tuple<nuint64_t, nuint64_t> GetLinuxMemoryBytes();
 
  private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroAlwaysAboveThreshold);

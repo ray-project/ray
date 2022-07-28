@@ -375,6 +375,23 @@ std::error_code Process::Call(const std::vector<std::string> &args,
   return ec;
 }
 
+std::string Process::Exec(const std::string command) {
+  char buffer[128];
+  std::string result = "";
+  FILE *pipe = popen(command.c_str(), "r");
+  RAY_CHECK(pipe) << "popen() failed for command " + command;
+  try {
+    while (fgets(buffer, sizeof buffer, pipe) != NULL) {
+      result += buffer;
+    }
+  } catch (int exception) {
+    pclose(pipe);
+    throw exception;
+  }
+  pclose(pipe);
+  return result;
+}
+
 Process Process::CreateNewDummy() {
   pid_t pid = -1;
   Process result(pid);
@@ -631,8 +648,8 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
              ? !y.IsNull()
                    ? x.IsValid()
                          ? y.IsValid() ? equal_to<pid_t>()(x.GetId(), y.GetId()) : false
-                     : y.IsValid() ? false
-                                   : equal_to<void const *>()(x.Get(), y.Get())
+                         : y.IsValid() ? false
+                                       : equal_to<void const *>()(x.Get(), y.Get())
                    : false
              : y.IsNull();
 }
