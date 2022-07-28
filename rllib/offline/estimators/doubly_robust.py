@@ -2,7 +2,6 @@ import logging
 from typing import Dict, Any, Optional
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import SampleBatchType
 import numpy as np
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -10,8 +9,6 @@ from ray.rllib.utils.policy import compute_log_likelihoods_from_input_dict
 
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
-
-torch, nn = try_import_torch()
 
 logger = logging.getLogger()
 

@@ -51,13 +51,16 @@ class GridWorldEnv(gym.Env):
             x = max(x - 1, 0)
         # RIGHT
         elif action == 1:
-            y = min(y + 1, 11)
+            if self.position != 36:
+                y = min(y + 1, 11)
         # DOWN
         elif action == 2:
-            x = min(x + 1, 3)
+            if self.position < 25 or self.position > 34:
+                x = min(x + 1, 3)
         # LEFT
         elif action == 3:
-            y = max(y - 1, 0)
+            if self.position != 47:
+                y = max(y - 1, 0)
         else:
             raise ValueError(f"action {action} not in {self.action_space}")
         self.position = x * 12 + y
@@ -109,7 +112,11 @@ class GridWorldPolicy(Policy):
         actions = np.zeros(len(obs), dtype=int)
         for i in range(len(obs)):
             actions[i] = np.random.choice(4, p=action_probs[i])
-        return actions, [], {SampleBatch.ACTION_PROB: np.take(action_probs, actions)}
+        return (
+            actions,
+            [],
+            {SampleBatch.ACTION_PROB: action_probs[np.arange(len(obs)), actions]},
+        )
 
     @override(Policy)
     def compute_log_likelihoods(
@@ -121,7 +128,7 @@ class GridWorldPolicy(Policy):
         obs = np.array(obs_batch, dtype=int)
         actions = np.array(actions, dtype=int)
         action_probs = self.action_dist[obs]
-        return np.log(np.take(action_probs, actions))
+        return np.log(action_probs[np.arange(len(obs)), actions])
 
     def update_epsilon(self, epsilon: float):
         # Epsilon-Greedy action selection
@@ -134,3 +141,59 @@ class GridWorldPolicy(Policy):
         obs = np.array(obs_batch[SampleBatch.OBS], dtype=int)
         action_probs = self.action_dist[obs]
         return np.log(action_probs), TorchCategorical, None
+
+
+if __name__ == "__main__":
+    from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
+
+    env = GridWorldEnv()
+    policy = GridWorldPolicy(
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        config={"epsilon": 0.1},
+    )
+    gamma = 0.99
+    q_model_config = {
+        "tau": 1.0,
+        "model": {
+            "fcnet_hiddens": [],
+            "activation": "linear",
+        },
+        "lr": 0.01,
+    }
+
+    fqe = FQETorchModel(
+        policy=policy,
+        gamma=gamma,
+        **q_model_config,
+    )
+    for _ in range(5000):
+        obs_batch = []
+        new_obs = []
+        actions = []
+        action_prob = []
+        rewards = []
+        dones = []
+        obs = env.reset()
+        done = False
+        while not done:
+            obs_batch.append(obs)
+            act, _, extra = policy.compute_single_action(obs)
+            actions.append(act)
+            action_prob.append(extra["action_prob"])
+            obs, rew, done, _ = env.step(act)
+            new_obs.append(obs)
+            rewards.append(rew)
+            dones.append(done)
+        batch = SampleBatch(
+            obs=obs_batch,
+            actions=actions,
+            action_prob=action_prob,
+            rewards=rewards,
+            dones=dones,
+            new_obs=new_obs,
+        )
+        losses = fqe.train(batch)
+        print(losses)
+        estimates = fqe.estimate_v(batch)
+        print(estimates)
