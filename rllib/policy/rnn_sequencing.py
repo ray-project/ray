@@ -171,7 +171,8 @@ def add_time_dimension(
         padded_inputs: a padded batch of sequences. That is,
             for seq_lens=[1, 2, 2], then inputs=[A, *, B, B, C, C], where
             A, B, C are sequence elements and * denotes padding.
-        max_seq_len: The max. sequence length in padded_inputs.
+        seq_lens: A 1D tensor of sequence lengths, denoting the non-padded length
+            in timesteps of each rollout in the batch.
         framework: The framework string ("tf2", "tf", "tfe", "torch").
         time_major: Whether data should be returned in time-major (TxB)
             format or not (BxT).
