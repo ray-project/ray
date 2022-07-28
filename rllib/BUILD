@@ -1713,7 +1713,7 @@ py_test(
 py_test(
     name = "test_ope",
     tags = ["team:rllib", "offline", "torch_only", "gpu"],
-    size = "small",
+    size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
     data = ["tests/data/cartpole/small.json"],
 )
@@ -1728,14 +1728,14 @@ py_test(
 py_test(
     name = "test_dm",
     tags = ["team:rllib", "offline"],
-    size = "small",
+    size = "medium",
     srcs = ["offline/estimators/tests/test_dm.py"],
 )
 
 py_test(
     name = "test_dr",
     tags = ["team:rllib", "offline"],
-    size = "small",
+    size = "medium",
     srcs = ["offline/estimators/tests/test_dr.py"],
 )
 

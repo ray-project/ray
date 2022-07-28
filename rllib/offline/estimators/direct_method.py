@@ -87,7 +87,7 @@ class DirectMethod(OffPolicyEstimator):
             v_behavior = 0.0
             v_target = 0.0
             for t in range(episode.count):
-                v_behavior += rewards[t] * self.gamma**t
+                v_behavior += rewards[t] * self.gamma ** t
 
             init_step = episode[0:1]
             v_target = self.model.estimate_v(init_step)
