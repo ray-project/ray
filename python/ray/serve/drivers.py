@@ -87,6 +87,9 @@ class SimpleSchemaIngress:
 @PublicAPI(stability="beta")
 @serve.deployment(route_prefix="/")
 class DAGDriver:
+
+    MATCH_ALL_ROUTE_PREFIX = "/{path:path}"
+
     def __init__(
         self,
         dags: Union[RayServeDAGHandle, Dict[str, RayServeDAGHandle]],
@@ -103,21 +106,20 @@ class DAGDriver:
                 def endpoint_create(handle):
                     @self.app.get(f"{route}")
                     @self.app.post(f"{route}")
-                    async def handle_request(
-                        request: starlette.requests.Request, inp=Depends(http_adapter)
-                    ):
+                    async def handle_request(inp=Depends(http_adapter)):
                         return await handle.remote(inp)
 
+                # bind current handle with endpoint creation function
                 endpoint_create_func = functools.partial(endpoint_create, handle)
                 endpoint_create_func()
 
         else:
             assert isinstance(dags, (RayServeDAGHandle, RayServeLazySyncHandle))
-            self.dag_handle = dags
+            self.dags = {self.MATCH_ALL_ROUTE_PREFIX: dags}
 
             # Single dag case, we will receive all prefix route
-            @self.app.get("/{path:path}")
-            @self.app.post("/{path:path}")
+            @self.app.get(self.MATCH_ALL_ROUTE_PREFIX)
+            @self.app.post(self.MATCH_ALL_ROUTE_PREFIX)
             async def handle_request(inp=Depends(http_adapter)):
                 return await self.predict(inp)
 
@@ -130,12 +132,10 @@ class DAGDriver:
 
     async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
-        return await self.dag_handle.remote(*args, **kwargs)
+        return await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
 
     async def multi_dag_predict(self, route_path, *args, **kwargs):
         """Perform inference directly without HTTP for multi dags."""
-        if self.dags is None:
-            raise RayServeException("No dags route found")
         if route_path not in self.dags:
             raise RayServeException(f"{route_path} does not exist in dags routes")
         return await self.dags[route_path].remote(*args, **kwargs)
