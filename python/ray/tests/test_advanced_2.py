@@ -21,7 +21,9 @@ def test_gpu_ids(shutdown_only):
     def get_gpu_ids(num_gpus_per_worker):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == num_gpus_per_worker
-        assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join([str(i) for i in gpu_ids])
+        assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+            [str(i) for i in gpu_ids]  # noqa
+        )
         for gpu_id in gpu_ids:
             assert gpu_id in range(num_gpus)
         return gpu_ids
@@ -59,7 +61,7 @@ def test_gpu_ids(shutdown_only):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
             assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]
+                [str(i) for i in gpu_ids]  # noqa
             )
             # Set self.x to make sure that we got here.
             self.x = 1
@@ -431,7 +433,7 @@ def test_many_custom_resources(shutdown_only):
     else:
         num_custom_resources = 10000
     total_resources = {
-        str(i): np.random.randint(1, 7) for i in range(num_custom_resources)
+        str(i): np.random.randint(1, 7) for i in range(num_custom_resources)  # noqa
     }
     ray.init(num_cpus=5, resources=total_resources)
 

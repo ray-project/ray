@@ -167,7 +167,7 @@ class _TrialInfo:
         self._trial_resources = new_resources
 
 
-def create_unique_logdir_name(root: str, relative_logdir: str) -> str:
+def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
     candidate = Path(root).expanduser().joinpath(relative_logdir)
     if candidate.exists():
         relative_logdir_old = relative_logdir
@@ -559,7 +559,7 @@ class Trial:
     def init_logdir(self):
         """Init logdir."""
         if not self.relative_logdir:
-            self.relative_logdir = create_unique_logdir_name(
+            self.relative_logdir = _create_unique_logdir_name(
                 self.local_dir, self._generate_dirname()
             )
         assert self.logdir

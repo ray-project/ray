@@ -14,7 +14,7 @@ from ray import air, tune
 from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, concat_samples
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 parser = argparse.ArgumentParser()
@@ -83,7 +83,7 @@ def training_workflow(config, reporter):
             w.set_weights.remote(weights)
 
         # Gather a batch of samples
-        T1 = SampleBatch.concat_samples(ray.get([w.sample.remote() for w in workers]))
+        T1 = concat_samples(ray.get([w.sample.remote() for w in workers]))
 
         # Update the remote policy replicas and gather another batch of samples
         new_value = policy.w * 2.0
@@ -91,7 +91,7 @@ def training_workflow(config, reporter):
             w.for_policy.remote(lambda p: p.update_some_value(new_value))
 
         # Gather another batch of samples
-        T2 = SampleBatch.concat_samples(ray.get([w.sample.remote() for w in workers]))
+        T2 = concat_samples(ray.get([w.sample.remote() for w in workers]))
 
         # Improve the policy using the T1 batch
         policy.learn_on_batch(T1)

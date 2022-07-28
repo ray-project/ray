@@ -1138,7 +1138,7 @@ def init(
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _metrics_export_port(int): Port number Ray exposes system metrics
+        _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
         _system_config: Configuration for overriding

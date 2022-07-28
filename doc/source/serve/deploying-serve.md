@@ -80,6 +80,8 @@ def my_func(request):
 my_func.deploy()
 ```
 
+(deploying-serve-on-kubernetes)=
+
 ## Deploying on Kubernetes
 
 In order to deploy Ray Serve on Kubernetes, we need to do the following:
