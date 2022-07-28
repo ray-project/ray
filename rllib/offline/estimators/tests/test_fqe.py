@@ -89,6 +89,23 @@ class TestFQE(unittest.TestCase):
         check(action_probs, tmp_probs, decimals=3)
 
     def test_fqe_optimal_convergence(self):
+        # The optimal GridWorldPolicy with epsilon = 0.0 and GridWorldEnv are deterministic;
+        # check that FQE converges to the true Q-values for self.batch
+        q_vals = [
+            -2.50,
+            -1.51,
+            -0.52,
+            0.49,
+            1.50,
+            2.53,
+            3.56,
+            4.61,
+            5.67,
+            6.73,
+            7.81,
+            8.90,
+            10.00,
+        ]
         q_model_config = {
             "tau": 1.0,
             "model": {
@@ -110,21 +127,6 @@ class TestFQE(unittest.TestCase):
         assert losses[-1] < fqe.delta, "FQE loss did not converge!"
         estimates = fqe.estimate_v(self.batch)
         print(estimates)
-        q_vals = [
-            -2.50,
-            -1.51,
-            -0.52,
-            0.49,
-            1.50,
-            2.53,
-            3.56,
-            4.61,
-            5.67,
-            6.73,
-            7.81,
-            8.90,
-            10.00,
-        ]
         check(
             estimates,
             q_vals,

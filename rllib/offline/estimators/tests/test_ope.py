@@ -1,5 +1,6 @@
 import unittest
 import ray
+from ray.data import read_json
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.offline.estimators import (
     ImportanceSampling,
@@ -7,7 +8,7 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.offline.json_reader import JsonReader
+from ray.rllib.offline.dataset_reader import DatasetReader
 from ray.rllib.policy.sample_batch import concat_samples
 from pathlib import Path
 import os
@@ -52,12 +53,8 @@ class TestOPE(unittest.TestCase):
         )
         cls.algo = config.build()
 
-        # Train DQN for evaluation policy
-        for _ in range(n_episodes):
-            cls.algo.train()
-
         # Read n_episodes of data, assuming that one line is one episode
-        reader = JsonReader(eval_data)
+        reader = DatasetReader(read_json(eval_data))
         batches = [reader.next() for _ in range(n_episodes)]
         cls.batch = concat_samples(batches)
         cls.n_episodes = len(cls.batch.split_by_episode())
@@ -123,6 +120,13 @@ class TestOPE(unittest.TestCase):
         self.std_ret[name] = estimates["v_target_std"]
 
     def test_ope_in_algo(self):
+        # Train DQN for evaluation policy; running OPE during training
+        results = self.algo.train()
+        # Check that key exist AND is not {}
+        assert results["evaluation"][
+            "off_policy_estimator"
+        ], "Did not run OPE during training!"
+        # Check algo.evaluate() manually as well
         results = self.algo.evaluate()
         print("OPE in Algorithm results")
         estimates = results["evaluation"]["off_policy_estimator"]

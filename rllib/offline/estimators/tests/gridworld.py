@@ -70,7 +70,7 @@ class GridWorldEnv(gym.Env):
 
 
 class GridWorldPolicy(Policy):
-    """Optimal RLLib policy for the GridWorld environment with
+    """Optimal RLlib policy for the GridWorld environment with
     epsilon-greedy exploration"""
 
     @override(Policy)
