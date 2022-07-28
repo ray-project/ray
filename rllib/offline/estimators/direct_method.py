@@ -4,12 +4,9 @@ from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.numpy import convert_to_numpy
 import numpy as np
-
-torch, nn = try_import_torch()
 
 logger = logging.getLogger()
 
@@ -51,9 +48,6 @@ class DirectMethod(OffPolicyEstimator):
             TODO (Rohan138): Unify this with RLModule API.
         """
 
-        assert (
-            policy.config["framework"] == "torch"
-        ), "DirectMethod estimator only works with torch!"
         super().__init__(policy, gamma)
 
         q_model_config = q_model_config or {}
@@ -93,7 +87,7 @@ class DirectMethod(OffPolicyEstimator):
             v_behavior = 0.0
             v_target = 0.0
             for t in range(episode.count):
-                v_behavior += rewards[t] * self.gamma ** t
+                v_behavior += rewards[t] * self.gamma**t
 
             init_step = episode[0:1]
             v_target = self.model.estimate_v(init_step)

@@ -7,17 +7,12 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.sample_batch import concat_samples
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.test_utils import check
 from pathlib import Path
 import os
 import numpy as np
 import gym
-import copy
-import torch
 
 
 class TestOPE(unittest.TestCase):
@@ -50,14 +45,8 @@ class TestOPE(unittest.TestCase):
                 off_policy_estimation_methods={
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
-                    "dm_fqe": {
-                        "type": DirectMethod,
-                        "q_model_config": {"type": FQETorchModel},
-                    },
-                    "dr_fqe": {
-                        "type": DoublyRobust,
-                        "q_model_config": {"type": FQETorchModel},
-                    },
+                    "dm_fqe": {"type": DirectMethod},
+                    "dr_fqe": {"type": DoublyRobust},
                 },
             )
         )
@@ -133,7 +122,7 @@ class TestOPE(unittest.TestCase):
         estimator = DirectMethod(
             policy=self.algo.get_policy(),
             gamma=self.gamma,
-            q_model_config={"type": FQETorchModel, **self.q_model_config},
+            q_model_config=self.q_model_config,
         )
         self.losses[name] = estimator.train(self.batch)
         estimates = estimator.estimate(self.batch)
@@ -145,7 +134,7 @@ class TestOPE(unittest.TestCase):
         estimator = DoublyRobust(
             policy=self.algo.get_policy(),
             gamma=self.gamma,
-            q_model_config={"type": FQETorchModel, **self.q_model_config},
+            q_model_config=self.q_model_config,
         )
         self.losses[name] = estimator.train(self.batch)
         estimates = estimator.estimate(self.batch)
@@ -168,47 +157,6 @@ class TestOPE(unittest.TestCase):
     def test_multiple_inputs(self):
         # TODO (Rohan138): Test with multiple input files
         pass
-
-    def test_fqe_compilation_and_stopping(self):
-        # Test FQETorchModel for:
-        # (1) Check that it does not modify the underlying batch during training
-        # (2) Check that the stopping criteria from FQE are working correctly
-        # (3) Check that using fqe._compute_action_probs equals brute force
-        # iterating over all actions with policy.compute_log_likelihoods
-        fqe = FQETorchModel(
-            policy=self.algo.get_policy(),
-            gamma=self.gamma,
-        )
-        tmp_batch = copy.deepcopy(self.batch)
-        losses = fqe.train(self.batch)
-
-        # Make sure FQETorchModel.train() does not modify the batch
-        check(tmp_batch, self.batch)
-
-        # Make sure FQE stopping criteria are respected
-        assert (
-            len(losses) == fqe.n_iters or losses[-1] < fqe.delta
-        ), f"FQE.train() terminated early in {len(losses)} steps with final loss"
-        f"{losses[-1]} for n_iters: {fqe.n_iters} and delta: {fqe.delta}"
-
-        # Test fqe._compute_action_probs against "brute force" method
-        # of computing log_prob for each possible action individually
-        # using policy.compute_log_likelihoods
-        obs = torch.tensor(self.batch["obs"], device=fqe.device)
-        action_probs = fqe._compute_action_probs(obs)
-        action_probs = convert_to_numpy(action_probs)
-
-        tmp_probs = []
-        for act in range(fqe.policy.action_space.n):
-            tmp_actions = np.zeros_like(self.batch["actions"]) + act
-            log_probs = fqe.policy.compute_log_likelihoods(
-                actions=tmp_actions,
-                obs_batch=self.batch["obs"],
-            )
-            tmp_probs.append(torch.exp(log_probs))
-        tmp_probs = torch.stack(tmp_probs).transpose(0, 1)
-        tmp_probs = convert_to_numpy(tmp_probs)
-        check(action_probs, tmp_probs, decimals=3)
 
 
 if __name__ == "__main__":

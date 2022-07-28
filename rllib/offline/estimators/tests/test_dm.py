@@ -4,7 +4,7 @@ from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.algorithms import AlgorithmConfig
 
 import numpy as np
-from ray.rllib.offline.estimators import DoublyRobust
+from ray.rllib.offline.estimators import DirectMethod
 from ray.rllib.offline.estimators.tests.utils import GridWorldPolicy, GridWorldEnv
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
@@ -15,7 +15,7 @@ import ray
 _, nn = try_import_torch()
 
 
-class TestDR(unittest.TestCase):
+class TestDM(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -27,7 +27,7 @@ class TestDR(unittest.TestCase):
         cls.gamma = 0.99
         num_workers = 8
 
-        # Config settings for FQE model used in DR estimator
+        # Config settings for FQE model used in DM estimator
         cls.q_model_config = {
             "n_iters": 600,
             "minibatch_size": 32,
@@ -135,7 +135,7 @@ class TestDR(unittest.TestCase):
         std_ret: float,
     ):
 
-        estimator = DoublyRobust(
+        estimator = DirectMethod(
             policy=policy,
             gamma=cls.gamma,
             q_model_config=cls.q_model_config,
@@ -151,7 +151,7 @@ class TestDR(unittest.TestCase):
         assert (
             est_mean - est_std <= mean_ret + std_ret
             and mean_ret - std_ret <= est_mean + est_std
-        ), f"DR estimate {est_mean:.2f} with stddev {est_std:.2f} does not "
+        ), f"DM estimate {est_mean:.2f} with stddev {est_std:.2f} does not "
         f"converge to true estimate {mean_ret:.2f} with stddev {std_ret:.2f}!"
 
     def test_random_random_data(self):
