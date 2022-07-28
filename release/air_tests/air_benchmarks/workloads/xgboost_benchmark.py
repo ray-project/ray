@@ -58,7 +58,7 @@ def run_and_time_it(f):
                     self._exception = self._pconn.recv()
                 return self._exception
 
-        p = MyProcess(target=f, *args, **kwargs)
+        p = MyProcess(target=f, args=args, kwargs=kwargs)
         start = time.monotonic()
         p.start()
         p.join()
