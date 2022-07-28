@@ -11,7 +11,6 @@ import torch.nn as nn
 import torch.optim as optim
 
 import ray
-from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.train.torch import TorchCheckpoint
 from ray.data.preprocessors import BatchMapper
 from ray import train
@@ -34,7 +33,7 @@ def preprocess_image_with_label(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df["image"] = TensorArray([preprocess(image.to_numpy()) for image in df["image"]])
+    df["image"] = [preprocess(image).numpy() for image in df["image"]]
     # Fix fixed synthetic value for perf benchmark purpose
     df["label"] = df["label"].map(lambda _: 1)
     return df
@@ -51,15 +50,11 @@ def train_loop_per_worker(config):
     for epoch in range(config["num_epochs"]):
         running_loss = 0.0
         for i, data in enumerate(
-            train_dataset_shard.iter_batches(
-                batch_size=config["batch_size"], batch_format="numpy"
-            )
+            train_dataset_shard.iter_torch_batches(batch_size=config["batch_size"])
         ):
             # get the inputs; data is a list of [inputs, labels]
-            inputs = torch.as_tensor(data["image"], dtype=torch.float32).to(
-                device="cuda"
-            )
-            labels = torch.as_tensor(data["label"], dtype=torch.int64).to(device="cuda")
+            inputs = data["image"].to(device="cuda")
+            labels = data["label"].to(device="cuda")
             # zero the parameter gradients
             optimizer.zero_grad()
 

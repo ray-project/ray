@@ -8,7 +8,6 @@ from torchvision import transforms
 from torchvision.models import resnet18
 
 import ray
-from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
@@ -28,7 +27,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df["image"] = TensorArray([preprocess(image.to_numpy()) for image in df["image"]])
+    df["image"] = [preprocess(image).numpy() for image in df["image"]]
     return df
 
 
