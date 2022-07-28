@@ -63,6 +63,8 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
+        if not uri:
+            return 0
         if is_jar_uri(uri):
             module_dir = await self._download_jars(uri=uri, logger=logger)
         else:

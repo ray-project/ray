@@ -21,7 +21,7 @@ from ray.tune.syncer import SyncerCallback
 logger = logging.getLogger(__name__)
 
 
-def create_default_callbacks(
+def _create_default_callbacks(
     callbacks: Optional[List[Callback]],
     sync_config: SyncConfig,
     metric: Optional[str] = None,

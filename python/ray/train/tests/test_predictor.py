@@ -70,10 +70,10 @@ def test_predict(convert_to_pandas_mock, convert_from_pandas_mock):
     predictor = DummyPredictor.from_checkpoint(checkpoint)
 
     actual_output = predictor.predict(input)
-    assert actual_output.equals(expected_output)
+    pd.testing.assert_frame_equal(actual_output, expected_output)
 
     # Ensure the proper conversion functions are called.
-    convert_to_pandas_mock.assert_called_once_with(input)
+    convert_to_pandas_mock.assert_called_once_with(input, False)
     convert_from_pandas_mock.assert_called_once()
 
     pd.testing.assert_frame_equal(

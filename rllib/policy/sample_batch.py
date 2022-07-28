@@ -406,7 +406,6 @@ class SampleBatch(dict):
         f"which should both have {self.count} timesteps!"
         return slices
 
-    @Deprecated(new="SampleBatch[start:stop]", error=False)
     def slice(
         self, start: int, end: int, state_start=None, state_end=None
     ) -> "SampleBatch":
