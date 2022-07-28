@@ -414,15 +414,17 @@ class ServeController:
         config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if config_checkpoint is not None:
             _, last_config_dict, last_version_dict = pickle.loads(config_checkpoint)
-            version_dict = self.version_config(
+            updated_version_dict = _version_config(
                 config_dict, last_config_dict, last_version_dict
             )
         else:
-            version_dict = self.version_config(config_dict, {}, {})
+            updated_version_dict = _version_config(config_dict, {}, {})
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
-            pickle.dumps((self.deployment_timestamp, config_dict, version_dict)),
+            pickle.dumps(
+                (self.deployment_timestamp, config_dict, updated_version_dict)
+            ),
         )
 
         deployment_override_options = config_dict.get("deployments", [])
@@ -440,56 +442,8 @@ class ServeController:
             config.import_path,
             config.runtime_env,
             deployment_override_options,
-            version_dict,
+            updated_version_dict,
         )
-
-    def version_config(
-        self, new_config: Dict, old_config: Dict, version_dict: Dict
-    ) -> Dict[str, str]:
-        """
-        When a deployment's options change, its version should generally change,
-        so old replicas are torn down. The only options which can be updated
-        without tearing down replicas (i.e. changing the version) are:
-
-        * num_replicas
-        * user_config
-        * autoscaling_config
-
-        This function determines whether each deployment's version
-        should be changed based on the updated options.
-        """
-
-        new_deployments = {d["name"]: d for d in new_config.get("deployments", [])}
-        old_deployments = {d["name"]: d for d in old_config.get("deployments", [])}
-
-        def exclude_lightweight_update_options(dict):
-            # Exclude config options from dict that qualify for a lightweight config
-            # update. Changes in any other config options are considered a code change,
-            # and require a version change to trigger an update that tears
-            # down existing replicas and replaces them with updated ones.
-            lightweight_update_options = [
-                "num_replicas",
-                "user_config",
-                "autoscaling_config",
-            ]
-            return {
-                option: dict[option]
-                for option in dict
-                if option not in lightweight_update_options
-            }
-
-        for name in new_deployments:
-            new_deployment = exclude_lightweight_update_options(new_deployments[name])
-            old_deployment = exclude_lightweight_update_options(
-                old_deployments.get(name, {})
-            )
-
-            # If config options haven't changed, version stays the same
-            # otherwise, generate a new random version
-            if old_deployment != new_deployment:
-                version_dict[name] = get_random_letters()
-
-        return version_dict
 
     def delete_deployment(self, name: str):
         self.endpoint_state.delete_endpoint(name)
@@ -620,6 +574,77 @@ class ServeController:
         else:
             _, config, _ = pickle.loads(checkpoint)
             return config
+
+
+def _version_config(
+    new_config: Dict, last_deployed_config: Dict, last_deployed_versions: Dict
+) -> Dict[str, str]:
+    """
+    This function determines whether each deployment's version
+    should be changed based on the updated options.
+
+    When a deployment's options change, its version should generally change,
+    so old replicas are torn down. The only options which can be changed
+    without tearing down replicas (i.e. changing the version) are:
+    * num_replicas
+    * user_config
+    * autoscaling_config
+
+    An option is considered changed when:
+    * it was not specified in last_deployed_config and is specified in new_config
+    * it was specified in last_deployed_config and is not specified in new_config
+    * it is specified in both last_deployed_config and new_config but the specified
+      value has changed
+
+    Args:
+        new_config: Newly deployed config dict that follows ServeApplicationSchema
+        last_deployed_config: Last deployed config dict that follows
+            ServeApplicationSchema, which is an empty dictionary if there is no previous
+            deployment
+        last_deployed_versions: Dictionary of {deployment_name: str -> version: str}
+            tracking the versions of deployments listed in the last deployed config
+
+    Returns:
+        Dictionary of {deployment_name: str -> version: str} containing updated
+        versions for deployments listed in the new config
+    """
+
+    new_deployments = {d["name"]: d for d in new_config.get("deployments", [])}
+    old_deployments = {
+        d["name"]: d for d in last_deployed_config.get("deployments", [])
+    }
+
+    def exclude_lightweight_update_options(dict):
+        # Exclude config options from dict that qualify for a lightweight config
+        # update. Changes in any other config options are considered a code change,
+        # and require a version change to trigger an update that tears
+        # down existing replicas and replaces them with updated ones.
+        lightweight_update_options = [
+            "num_replicas",
+            "user_config",
+            "autoscaling_config",
+        ]
+        return {
+            option: dict[option]
+            for option in dict
+            if option not in lightweight_update_options
+        }
+
+    updated_versions = {}
+    for name in new_deployments:
+        new_deployment = exclude_lightweight_update_options(new_deployments[name])
+        old_deployment = exclude_lightweight_update_options(
+            old_deployments.get(name, {})
+        )
+
+        # If config options haven't changed, version stays the same
+        # otherwise, generate a new random version
+        if old_deployment == new_deployment:
+            updated_versions[name] = last_deployed_versions[name]
+        else:
+            updated_versions[name] = get_random_letters()
+
+    return updated_versions
 
 
 @ray.remote(num_cpus=0, max_calls=1)
