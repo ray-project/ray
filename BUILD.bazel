@@ -1579,13 +1579,13 @@ cc_test(
     ],
     copts = COPTS,
     tags = ["team:core"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
     deps = [
         ":ray_common",
         "@com_google_googletest//:gtest_main",
     ],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ]
 )
 
 cc_test(
