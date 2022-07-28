@@ -55,6 +55,8 @@ class GcsHeartbeatManagerTest : public ::testing::Test {
   instrumented_io_context io_service;
   std::unique_ptr<GcsHeartbeatManager> heartbeat_manager;
   mutable absl::Mutex mutex_;
+  // This field needs to be protected because it is accessed
+  // by a different thread created by `heartbeat_manager`.
   std::vector<NodeID> dead_nodes GUARDED_BY(mutex_);
   ;
 };
