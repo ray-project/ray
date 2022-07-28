@@ -503,7 +503,8 @@ class WorkerPoolTest : public ::testing::Test {
         false);
     rpc::RegisterAgentRequest request;
     // Set agent port to a nonzero value to avoid invalid agent client.
-    request.set_agent_port(12345);
+    request.mutable_agent_info()->set_grpc_port(12345);
+    request.mutable_agent_info()->set_http_port(54321);
     rpc::RegisterAgentReply reply;
     auto send_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};

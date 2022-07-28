@@ -11,15 +11,23 @@ from ray._private.test_utils import wait_for_condition, run_string_as_driver_non
 
 
 def get_all_ray_worker_processes():
-    processes = [
-        p.info["cmdline"] for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])
-    ]
+    processes = psutil.process_iter(attrs=["pid", "name", "cmdline"])
 
     result = []
     for p in processes:
-        if p is not None and len(p) > 0 and "ray::" in p[0]:
+        cmd_line = p.info["cmdline"]
+        if cmd_line is not None and len(cmd_line) > 0 and "ray::" in cmd_line[0]:
             result.append(p)
     return result
+
+
+def kill_all_ray_worker_process():
+    ray_process = get_all_ray_worker_processes()
+    for p in ray_process:
+        try:
+            p.kill()
+        except Exception:
+            pass
 
 
 @pytest.fixture
@@ -31,6 +39,10 @@ def short_gcs_publish_timeout(monkeypatch):
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is done."""
+    # Avoiding the previous test doesn't kill the relevant process,
+    # thus making the current test fail.
+    kill_all_ray_worker_process()
+
     ray.init()
 
     @ray.remote
@@ -51,6 +63,10 @@ def test_ray_shutdown(short_gcs_publish_timeout, shutdown_only):
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_driver_dead(short_gcs_publish_timeout, shutdown_only):
     """Make sure all ray workers are shutdown when driver is killed."""
+    # Avoiding the previous test doesn't kill the relevant process,
+    # thus making the current test fail.
+    kill_all_ray_worker_process()
+
     driver = """
 import ray
 ray.init(_system_config={"gcs_rpc_server_reconnect_timeout_s": 1})
@@ -80,6 +96,10 @@ tasks = [f.remote() for _ in range(num_cpus)]
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_node_killed(short_gcs_publish_timeout, ray_start_cluster):
     """Make sure all ray workers when nodes are dead."""
+    # Avoiding the previous test doesn't kill the relevant process,
+    # thus making the current test fail.
+    kill_all_ray_worker_process()
+
     cluster = ray_start_cluster
     # head node.
     cluster.add_node(
@@ -112,6 +132,10 @@ def test_node_killed(short_gcs_publish_timeout, ray_start_cluster):
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
 def test_head_node_down(short_gcs_publish_timeout, ray_start_cluster):
     """Make sure all ray workers when head node is dead."""
+    # Avoiding the previous test doesn't kill the relevant process,
+    # thus making the current test fail.
+    kill_all_ray_worker_process()
+
     cluster = ray_start_cluster
     # head node.
     head = cluster.add_node(
