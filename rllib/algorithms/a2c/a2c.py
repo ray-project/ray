@@ -128,7 +128,11 @@ class A2C(A3C):
                     "Otherwise, microbatches of desired size won't be achievable."
                 )
         if config.get("num_gpus", 0) > 1:
-            raise ValueError("A2C with gpu learning enabled only supports 1 gpu.")
+            raise ValueError(
+                "A2C with gpu learning enabled only supports 1 "
+                "gpu. Currently, the methods by which mini-batch"
+                " gradients are computed doesn't support >1 gpus"
+            )
 
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
