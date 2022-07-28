@@ -296,7 +296,10 @@ class _TorchAccelerator(Accelerator):
             torch.cuda.set_device(device)
 
         if move_to_device:
-            logger.info(f"Moving model to device: {device}")
+            if rank == 0:
+                logger.info(f"Moving model to device: {device}")
+            else:
+                logger.debug(f"Moving model to device: {device}")
             model = model.to(device)
 
         def model_get_state(self):
@@ -340,7 +343,10 @@ class _TorchAccelerator(Accelerator):
             world_size = train.world_size()
 
         if wrap_ddp and world_size > 1:
-            logger.info("Wrapping provided model in DDP.")
+            if rank == 0:
+                logger.info("Wrapping provided model in DDP.")
+            else:
+                logger.debug("Wrapping provided model in DDP.")
             if torch.cuda.is_available():
                 model = DistributedDataParallel(
                     model, device_ids=[rank], output_device=rank, **ddp_kwargs
@@ -504,7 +510,10 @@ class _TorchAccelerator(Accelerator):
                     device_id = cuda_visible_list.index(gpu_id)
                 else:
                     raise RuntimeError(
-                        f"CUDA_VISIBLE_DEVICES set incorrectly: {cuda_visible_str}"
+                        "CUDA_VISIBLE_DEVICES set incorrectly. "
+                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                        "Did you override the `CUDA_VISIBLE_DEVICES` environment"
+                        " variable? If not, please help file an issue on Github."
                     )
             else:
                 # If called on the driver or outside of Ray Train, return the

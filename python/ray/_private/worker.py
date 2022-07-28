@@ -1226,7 +1226,15 @@ def init(
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
         builder._init_args(**passed_kwargs)
-        return builder.connect()
+        ctx = builder.connect()
+        from ray._private.usage import usage_lib
+
+        if passed_kwargs.get("allow_multiple") is True:
+            with ctx:
+                usage_lib.put_pre_init_usage_stats()
+        else:
+            usage_lib.put_pre_init_usage_stats()
+        return ctx
 
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
@@ -2036,7 +2044,7 @@ def connect(
             )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory)

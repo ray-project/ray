@@ -200,6 +200,13 @@ class Algorithm(Trainable):
     # List of keys that are always fully overridden if present in any dict or sub-dict
     _override_all_key_list = ["off_policy_estimation_methods"]
 
+    _progress_metrics = [
+        "episode_reward_mean",
+        "evaluation/episode_reward_mean",
+        "num_env_steps_sampled",
+        "num_env_steps_trained",
+    ]
+
     @PublicAPI
     def __init__(
         self,
