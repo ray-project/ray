@@ -65,6 +65,11 @@ def s3_path_with_special_chars(tmp_path, data_dir_with_special_chars):
 
 
 @pytest.fixture(scope="function")
+def s3_path_with_anonymous_crendential(tmp_path, data_dir):
+    yield "s3://" + "anonymous@" + posixpath.join(tmp_path, data_dir).lstrip("/")
+
+
+@pytest.fixture(scope="function")
 def s3_fs(aws_credentials, s3_server, s3_path):
     yield from _s3_fs(aws_credentials, s3_server, s3_path)
 
@@ -79,6 +84,13 @@ def s3_fs_with_special_chars(aws_credentials, s3_server, s3_path_with_special_ch
     yield from _s3_fs(aws_credentials, s3_server, s3_path_with_special_chars)
 
 
+@pytest.fixture(scope="function")
+def s3_fs_with_anonymous_crendential(
+    aws_credentials, s3_server, s3_path_with_anonymous_crendential
+):
+    yield from _s3_fs(aws_credentials, s3_server, s3_path_with_anonymous_crendential)
+
+
 def _s3_fs(aws_credentials, s3_server, s3_path):
     import urllib.parse
 
@@ -86,7 +98,10 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
         region="us-west-2", endpoint_override=s3_server, **aws_credentials
     )
     if s3_path.startswith("s3://"):
-        s3_path = s3_path[len("s3://") :]
+        if "@" in s3_path:
+            s3_path = s3_path.split("@")[-1]
+        else:
+            s3_path = s3_path[len("s3://") :]
     s3_path = urllib.parse.quote(s3_path)
     fs.create_dir(s3_path)
     yield fs

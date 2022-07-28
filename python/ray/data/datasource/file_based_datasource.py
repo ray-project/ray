@@ -642,7 +642,13 @@ def _unwrap_protocol(path):
     """
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
-    return parsed.netloc + parsed.path + query
+    netloc = parsed.netloc
+    if parsed.scheme == "s3" and "@" in parsed.netloc:
+        # If the path contains an @, it is assumed to be an anonymous
+        # credentialed path, and we need to strip off the credentials.
+        netloc = parsed.netloc.split("@")[-1]
+
+    return netloc + parsed.path + query
 
 
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
