@@ -8,7 +8,7 @@ from ray._private import signature
 
 from ray.dag import DAGNode
 from ray.workflow import workflow_context
-from ray.workflow.workflow_context import get_step_status_info
+from ray.workflow.workflow_context import get_task_status_info
 from ray.workflow import serialization_context
 from ray.workflow import workflow_storage
 
@@ -75,7 +75,7 @@ def _workflow_step_executor(
         try:
             store.save_step_prerun_metadata(task_id, {"start_time": time.time()})
             with workflow_context.workflow_execution():
-                logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}")
+                logger.info(f"{get_task_status_info(WorkflowStatus.RUNNING)}")
                 output = func(*args, **kwargs)
             store.save_step_postrun_metadata(task_id, {"end_time": time.time()})
         except Exception as e:

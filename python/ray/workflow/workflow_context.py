@@ -68,9 +68,9 @@ def get_name() -> str:
     return f"{get_current_workflow_id()}@{get_current_step_id()}"
 
 
-def get_step_status_info(status: WorkflowStatus) -> str:
+def get_task_status_info(status: WorkflowStatus) -> str:
     assert _context is not None
-    return f"Step status [{status}]\t[{get_name()}]"
+    return f"Task status [{status}]\t[{get_name()}]"
 
 
 _in_workflow_execution = False
