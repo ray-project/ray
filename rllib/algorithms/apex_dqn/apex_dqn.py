@@ -18,6 +18,7 @@ from collections import defaultdict
 from typing import Callable, Dict, List, Optional, Type
 
 import ray
+from ray._private.dict import merge_dicts
 from ray.actor import ActorHandle
 from ray.rllib import Policy
 from ray.rllib.algorithms import Algorithm
@@ -47,7 +48,6 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.trainable import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.util.ml_utils.dict import merge_dicts
 
 
 class ApexDQNConfig(DQNConfig):

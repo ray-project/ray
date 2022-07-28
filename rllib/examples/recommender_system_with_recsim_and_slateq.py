@@ -13,7 +13,7 @@ import numpy as np
 from scipy.stats import sem
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms import slateq
 from ray.rllib.algorithms import dqn
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
@@ -165,13 +165,17 @@ def main():
             "episode_reward_mean": args.stop_reward,
         }
 
-        results = tune.run(
+        results = tune.Tuner(
             args.run,
-            stop=stop,
-            config=config,
-            num_samples=args.tune_num_samples,
-            verbose=2,
-        )
+            run_config=air.RunConfig(
+                stop=stop,
+                verbose=2,
+            ),
+            param_space=config,
+            tune_config=tune.TuneConfig(
+                num_samples=args.tune_num_samples,
+            ),
+        ).fit()
 
         if args.as_test:
             check_learning_achieved(results, args.stop_reward)
@@ -181,7 +185,7 @@ def main():
         if args.run == "DQN":
             trainer = dqn.DQN(config=config)
         else:
-            trainer = slateq.SlateQTrainer(config=config)
+            trainer = slateq.SlateQ(config=config)
         for i in range(10):
             result = trainer.train()
             print(pretty_print(result))

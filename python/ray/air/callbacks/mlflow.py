@@ -2,10 +2,10 @@ import logging
 from typing import Dict, Optional
 
 import ray
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.tune.logger import LoggerCallback
 from ray.tune.result import TIMESTEPS_TOTAL, TRAINING_ITERATION
 from ray.tune.experiment import Trial
-from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 

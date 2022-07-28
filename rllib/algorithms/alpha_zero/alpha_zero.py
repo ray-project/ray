@@ -27,7 +27,7 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_torch
@@ -348,7 +348,7 @@ class AlphaZero(Algorithm):
                 self.config["train_batch_size"]
             )
         else:
-            train_batch = SampleBatch.concat_samples(new_sample_batches)
+            train_batch = concat_samples(new_sample_batches)
 
         # Learn on the training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other

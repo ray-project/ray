@@ -55,10 +55,8 @@ class HashingVectorizer(Preprocessor):
     def __repr__(self):
         fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
         return (
-            f"HashingVectorizer("
-            f"Columns={self.columns}, "
-            f"num_features={self.num_features}, "
-            f"tokenization_fn={fn_name})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"num_features={self.num_features!r}, tokenization_fn={fn_name})"
         )
 
 
@@ -100,7 +98,7 @@ class CountVectorizer(Preprocessor):
 
         value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
         total_counts = [Counter() for _ in self.columns]
-        for batch in value_counts.iter_batches():
+        for batch in value_counts.iter_batches(batch_size=None):
             for i, col_value_counts in enumerate(batch):
                 total_counts[i].update(col_value_counts)
 
@@ -134,8 +132,6 @@ class CountVectorizer(Preprocessor):
     def __repr__(self):
         fn_name = getattr(self.tokenization_fn, "__name__", self.tokenization_fn)
         return (
-            f"CountVectorizer("
-            f"columns={self.columns}, "
-            f"tokenization_fn={fn_name}, "
-            f"max_features={self.max_features})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"tokenization_fn={fn_name}, max_features={self.max_features!r})"
         )

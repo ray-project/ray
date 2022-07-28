@@ -43,13 +43,11 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.dashboard.modules.job.cli import job_cli_group
 from ray.experimental.state.api import get_log, list_logs
 from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
 from ray.experimental.state.state_cli import (
-    _alpha_doc,
     get as state_cli_get,
     list as state_cli_list,
     get_api_server_url,
@@ -699,46 +697,23 @@ def start(
                 cf.bold("RAY_REDIS_ADDRESS"),
                 address,
             )
-            cli_logger.print(
-                "Will use `{}` as external Redis server address(es). "
-                "If the primary one is not reachable, we starts new one(s) "
-                "with `{}` in local.",
-                cf.bold(address),
-                cf.bold("--port"),
-            )
             external_addresses = address.split(",")
 
             # We reuse primary redis as sharding when there's only one
             # instance provided.
             if len(external_addresses) == 1:
                 external_addresses.append(external_addresses[0])
-            reachable = False
-            try:
-                [primary_redis_ip, port] = external_addresses[0].split(":")
-                ray._private.services.wait_for_redis_to_start(
-                    primary_redis_ip, port, password=redis_password
+
+            ray_params.update_if_absent(external_addresses=external_addresses)
+            num_redis_shards = len(external_addresses) - 1
+            if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
+                cli_logger.warning(
+                    "`{}` should not be specified as empty string if "
+                    "external redis server(s) `{}` points to requires "
+                    "password.",
+                    cf.bold("--redis-password"),
+                    cf.bold("--address"),
                 )
-                reachable = True
-            # We catch a generic Exception here in case someone later changes
-            # the type of the exception.
-            except Exception:
-                cli_logger.print(
-                    "The primary external redis server `{}` is not reachable. "
-                    "Will starts new one(s) with `{}` in local.",
-                    cf.bold(external_addresses[0]),
-                    cf.bold("--port"),
-                )
-            if reachable:
-                ray_params.update_if_absent(external_addresses=external_addresses)
-                num_redis_shards = len(external_addresses) - 1
-                if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
-                    cli_logger.warning(
-                        "`{}` should not be specified as empty string if "
-                        "external redis server(s) `{}` points to requires "
-                        "password.",
-                        cf.bold("--redis-password"),
-                        cf.bold("--address"),
-                    )
 
         # Get the node IP address if one is not provided.
         ray_params.update_if_absent(node_ip_address=services.get_node_ip_address())
@@ -1981,7 +1956,7 @@ def local_dump(
     )
 
 
-@cli.command(hidden=True)
+@cli.command()
 @click.argument(
     "glob_filter",
     required=False,
@@ -2059,8 +2034,7 @@ def local_dump(
         "this option will be ignored."
     ),
 )
-@_alpha_doc()
-def logs(
+def ray_logs(
     glob_filter,
     node_ip: str,
     node_id: str,
@@ -2072,10 +2046,45 @@ def logs(
     interval: float,
     timeout: int,
 ):
-    # TODO: We will need to finalize on some example usage of the command.
-    """
-    Get logs from the ray cluster
+    """Print the log file that matches the GLOB_FILTER.
 
+    By default, it prints a list of log files that match the filter.
+    If there's only 1 match, it will print the log file.
+    By default, it prints the head node logs.
+
+    Usage:
+
+        Print the last 500 lines of raylet.out on a head node.
+
+        ```
+        ray logs raylet.out -tail 500
+        ```
+
+        Print the last 500 lines of raylet.out on a worker node id A.
+
+        ```
+        ray logs raylet.out -tail 500 —-node-id A
+        ```
+
+        Follow the log file with an actor id ABC.
+
+        ```
+        ray logs --actor-id ABC --follow
+        ```
+
+        Get the actor log from pid 123, ip ABC.
+        Note that this goes well with the driver log of Ray which prints
+        (ip=ABC, pid=123, class_name) logs.
+
+        ```
+        ray logs —ip=ABC pid=123
+        ```
+
+        Download the gcs_server.txt file to the local machine.
+
+        ```
+        ray logs gcs_server.out -tail -1 > gcs_server.txt
+        ```
     """
     if task_id is not None:
         raise NotImplementedError("--task-id is not yet supported")
@@ -2116,7 +2125,7 @@ def logs(
                 print(f"Node ID: {node_id}")
             elif node_ip:
                 print(f"Node IP: {node_ip}")
-            print(output_with_format(logs, format=AvailableFormat.YAML))
+            print(output_with_format(logs, schema=None, format=AvailableFormat.YAML))
 
     # If there's an unique match, print the log file.
     if match_unique:
@@ -2545,10 +2554,18 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-add_command_alias(job_cli_group, name="job", hidden=True)
+add_command_alias(ray_logs, name="logs", hidden=False)
 cli.add_command(state_cli_list)
 cli.add_command(state_cli_get)
-add_command_alias(summary_state_cli_group, name="summary", hidden=True)
+add_command_alias(summary_state_cli_group, name="summary", hidden=False)
+
+try:
+    from ray.dashboard.modules.job.cli import job_cli_group
+
+    add_command_alias(job_cli_group, name="job", hidden=True)
+except Exception as e:
+    logger.debug(f"Integrating ray jobs command line tool failed with {e}")
+
 
 try:
     from ray.serve.scripts import serve_cli

@@ -671,7 +671,7 @@ def test_equalize_randomized(ray_start_regular_shared):
     # verify the entries in the splits are in the range of 0 .. num_rows,
     # unique, and the total number matches num_rows if exact_num == True.
     def assert_unique_and_inrange(splits, num_rows, exact_num=False):
-        unique_set = set([])
+        unique_set = set()
         for split in splits:
             for block in split:
                 for entry in block:
@@ -719,3 +719,38 @@ def test_equalize_randomized(ray_start_regular_shared):
         equalized_splits = equalize_helper(input_splits)
         assert_unique_and_inrange(equalized_splits, num_rows)
         assert_equal_split(equalized_splits, num_rows, num_split)
+
+
+def test_train_test_split(ray_start_regular_shared):
+    ds = ray.data.range(8)
+
+    # float
+    train, test = ds.train_test_split(test_size=0.25)
+    assert train.take() == [0, 1, 2, 3, 4, 5]
+    assert test.take() == [6, 7]
+
+    # int
+    train, test = ds.train_test_split(test_size=2)
+    assert train.take() == [0, 1, 2, 3, 4, 5]
+    assert test.take() == [6, 7]
+
+    # shuffle
+    train, test = ds.train_test_split(test_size=0.25, shuffle=True, seed=1)
+    assert train.take() == [5, 7, 6, 3, 0, 4]
+    assert test.take() == [2, 1]
+
+    # error handling
+    with pytest.raises(TypeError):
+        ds.train_test_split(test_size=[1])
+
+    with pytest.raises(ValueError):
+        ds.train_test_split(test_size=-1)
+
+    with pytest.raises(ValueError):
+        ds.train_test_split(test_size=0)
+
+    with pytest.raises(ValueError):
+        ds.train_test_split(test_size=1.1)
+
+    with pytest.raises(ValueError):
+        ds.train_test_split(test_size=9)

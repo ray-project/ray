@@ -12,7 +12,7 @@ from ray.rllib.utils.replay_buffers import (
     ReplayBuffer,
     MultiAgentReplayBuffer,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
 from ray.util import log_once
 
@@ -127,7 +127,7 @@ def sample_min_n_steps_from_buffer(
         train_batches.append(batch)
         train_batch_size += batch_len
     # All batch types are the same type, hence we can use any concat_samples()
-    train_batch = SampleBatch.concat_samples(train_batches)
+    train_batch = concat_samples(train_batches)
     return train_batch
 
 
