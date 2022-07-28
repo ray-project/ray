@@ -45,8 +45,8 @@ params_object_store_memory = [10e9]
 
 use_oom_killer = False
 infinite_retries = True
-num_cpus = 5
-num_blocks = 400
+num_cpus = 10
+num_blocks = 300
 object_store_memory = 10e9
 reuse_worker = True
 
