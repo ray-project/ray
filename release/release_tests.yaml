@@ -1215,29 +1215,29 @@
 
   alert: default
 
-- name: ml_user_ray_lightning_user_test_master
-  group: ML user tests
-  working_dir: ml_user_tests
+# - name: ml_user_ray_lightning_user_test_master
+#   group: ML user tests
+#   working_dir: ml_user_tests
 
-  legacy:
-    test_name: ray_lightning_user_test_master
-    test_suite: ml_user_tests
+#   legacy:
+#     test_name: ray_lightning_user_test_master
+#     test_suite: ml_user_tests
 
-  frequency: nightly
-  team: ml
-  env: staging
+#   frequency: nightly
+#   team: ml
+#   env: staging
 
-  cluster:
-    cluster_env: ray-lightning/app_config_master.yaml
-    cluster_compute: ray-lightning/compute_tpl.yaml
+#   cluster:
+#     cluster_env: ray-lightning/app_config_master.yaml
+#     cluster_compute: ray-lightning/compute_tpl.yaml
 
-  driver_setup: ray-lightning/driver_setup.sh
-  run:
-    timeout: 1200
-    script: python ray-lightning/ray_lightning_user_test.py
-    type: client
+#   driver_setup: ray-lightning/driver_setup.sh
+#   run:
+#     timeout: 1200
+#     script: python ray-lightning/ray_lightning_user_test.py
+#     type: client
 
-  alert: default
+#   alert: default
 
 - name: ml_user_tune_rllib_connect_test
   group: ML user tests
