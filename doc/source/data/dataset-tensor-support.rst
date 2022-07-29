@@ -3,11 +3,11 @@
 ML Tensor Support
 =================
 
-Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support Tensor data types. To bridge this gap, Datasets provides a unified Tensor data type that can be used to represent and store Tensor data:
+Tensor (multi-dimensional array) data is ubiquitous in ML workloads. However, popular data formats such as Pandas, Parquet, and Arrow don't natively support tensor data types. To bridge this gap, Datasets provides a unified tensor data type that can be used to represent and store tensor data:
 
 * For Pandas, Datasets will transparently convert ``List[np.ndarray]`` columns to and from the :class:`TensorDtype <ray.data.extensions.tensor_extension.TensorDtype>` extension type.
 * For Parquet, the Datasets Arrow extension :class:`ArrowTensorType <ray.data.extensions.tensor_extension.ArrowTensorType>` allows Tensors to be loaded and stored in Parquet format.
-* In addition, single-column Tensor datasets can be created from image and Numpy (.npy) files.
+* In addition, single-column Tensor datasets can be created from NumPy (.npy) files.
 
 Datasets automatically converts between the extension types/arrays above. This means you can just think of "Tensors" as a single first-class data type in Datasets.
 
@@ -45,9 +45,9 @@ This section shows how to create single and multi-column Tensor datasets.
     :start-after: __create_pandas_2_begin__
     :end-before: __create_pandas_2_end__
 
-.. tabbed:: Numpy
+.. tabbed:: NumPy
 
-  Create from in-memory numpy data or from previously saved Numpy (.npy) files.
+  Create from in-memory numpy data or from previously saved NumPy (.npy) files.
 
   **Single-column only**:
 
@@ -101,13 +101,12 @@ This section shows how to create single and multi-column Tensor datasets.
 .. note::
 
   By convention, single-column Tensor datasets are represented with a single ``__value__`` column.
-  This kind of dataset can be converted directly to/from Numpy array format.
+  This kind of dataset will be converted automatically to/from NumPy array format in all transformation and consumption APIs.
 
+Transforming and Consuming Tensor Data
+--------------------------------------
 
-Consuming Tensor Datasets
--------------------------
-
-Like any other Dataset, Datasets with Tensor columns can be consumed / transformed in batches via the ``.iter_batches(batch_format=<format>)`` and ``.map_batches(batch_fn, batch_format=<format>)`` APIs. This section shows the available batch formats and their behavior:
+Like any other Dataset, Datasets with tensor columns can be consumed / transformed in batches via the :meth:`ds.iter_batches(batch_format=<format>) <ray.data.Dataset.iter_batches>` and :meth:`ds.map_batches(batch_fn, batch_format=<format>) <ray.data.Dataset.map_batches>` APIs. This section shows the available batch formats and their behavior:
 
 .. tabbed:: "native" (default)
 
@@ -176,7 +175,7 @@ Like any other Dataset, Datasets with Tensor columns can be consumed / transform
 Saving Tensor Datasets
 ----------------------
 
-Because Tensor datasets rely on Dataset-specific extension types, they can only be saved in formats that preserve Arrow metadata (currently only Parquet). In addition, single-column Tensor datasets can be saved in Numpy format.
+Because Tensor datasets rely on Datasets-specific extension types, they can only be saved in formats that preserve Arrow metadata (currently only Parquet). In addition, single-column Tensor datasets can be saved in NumPy format.
 
 .. tabbed:: Parquet
 
@@ -185,7 +184,7 @@ Because Tensor datasets rely on Dataset-specific extension types, they can only 
     :start-after: __write_1_begin_
     :end-before: __write_1_end__
 
-.. tabbed:: Numpy
+.. tabbed:: NumPy
 
   .. literalinclude:: ./doc_code/tensor.py
     :language: python
@@ -197,4 +196,4 @@ Limitations
 
 The following are current limitations of Tensor datasets.
 
-* All tensors in a tensor column must have the same shape; see GitHub issue `#18316 <https://github.com/ray-project/ray/issues/18316>`__. An error will be raised in the ragged tensor case.
+* All tensors in a tensor column must have the same shape; see GitHub issue `#18316 <https://github.com/ray-project/ray/issues/18316>`__. An error will be raised in the ragged tensor case. Automatic casting can be disabled with ``ray.data.context.DatasetContext.get_current().enable_tensor_extension_cast = False`` in the ragged tensor scenario.
