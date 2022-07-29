@@ -25,7 +25,7 @@ If you have suggestions on how to improve this tutorial,
 To run this example, you will need to install the following:
 
 ```bash
-$ pip install "ray[serve]" transformers requests
+pip install "ray[serve]" transformers requests
 ```
 
 
