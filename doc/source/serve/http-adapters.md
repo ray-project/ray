@@ -12,7 +12,7 @@ async def json_resolver(request: starlette.requests.Request):
     return await request.json()
 ```
 
-The input arguments to an HTTP adapter should be type-annotated. At at a minimum, the adapter should accept a `starlette.requests.Request` type,
+The input arguments to an HTTP adapter should be type-annotated. At a minimum, the adapter should accept a `starlette.requests.Request` type (https://www.starlette.io/requests/#request),
 but it can also accept any type that's recognized by [FastAPI's dependency injection framework](https://fastapi.tiangolo.com/tutorial/dependencies/).
 
 Here is an HTTP adapter that accepts two HTTP query parameters:
