@@ -286,7 +286,10 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.28.1, != 1.44.*, != 1.45.*, != 1.46.*, != 1.47.*",
+        (
+            "grpcio >= 1.28.1, != 1.44.*, != 1.45.*, != 1.46.*, != 1.47.*;"
+            " python_version < '3.10'"
+        ),
         (
             "grpcio >= 1.42.0, != 1.44.*, != 1.45.*, != 1.46.*, != 1.47.*;"
             " python_version >= '3.10'"
