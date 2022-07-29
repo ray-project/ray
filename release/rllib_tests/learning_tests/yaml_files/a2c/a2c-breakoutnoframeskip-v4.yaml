@@ -17,3 +17,5 @@ a2c-breakoutnoframeskip-v4:
             [0, 0.0007],
             [20000000, 0.000000000001],
         ]
+        train_batch_size: 256
+        microbatch_size: 64
