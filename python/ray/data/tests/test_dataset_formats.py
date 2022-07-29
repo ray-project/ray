@@ -2828,6 +2828,7 @@ def test_image_folder_datasource(
     root = "example://image-folder"
     ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
 
+    assert ds.size_bytes() >= 15000
     assert ds.count() == 3
 
     df = ds.to_pandas()
