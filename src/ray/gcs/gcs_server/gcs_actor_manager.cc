@@ -259,10 +259,18 @@ void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
       request,
       [reply, send_reply_callback, actor_id](const std::shared_ptr<gcs::GcsActor> &actor,
                                              const rpc::PushTaskReply &task_reply) {
-        RAY_LOG(INFO) << "Finished creating actor, job id = " << actor_id.JobId()
-                      << ", actor id = " << actor_id;
-        reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
-        reply->mutable_borrowed_refs()->CopyFrom(task_reply.borrowed_refs());
+        if (actor->GetState() == rpc::ActorTableData::DEAD) {
+          // Actor is marked dead-on-creation, which only happens when the actor
+          // creation is cancelled.
+          RAY_LOG(INFO) << "Actor creation was cancelled, job id = " << actor_id.JobId()
+                        << ", actor id = " << actor_id;
+          reply->set_cancelled(true);
+        } else {
+          RAY_LOG(INFO) << "Finished creating actor, job id = " << actor_id.JobId()
+                        << ", actor id = " << actor_id;
+          reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
+          reply->mutable_borrowed_refs()->CopyFrom(task_reply.borrowed_refs());
+        }
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
   if (!status.ok()) {
@@ -590,7 +598,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
     return Status::OK();
   }
   // Mark the callback as pending and invoke it after the actor has been successfully
-  // created.
+  // created or if the creation has been cancelled (e.g. via ray.kill() or the actor
+  // handle going out-of-scope).
   actor_to_create_callbacks_[actor_id].emplace_back(std::move(callback));
 
   // If GCS restarts while processing `CreateActor` request, GCS client will resend the
@@ -724,7 +733,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RAY_LOG(INFO) << "Destroying actor, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   actor_to_register_callbacks_.erase(actor_id);
-  actor_to_create_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO) << "Tried to destroy actor that does not exist " << actor_id;
@@ -801,6 +809,15 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         // Destroy placement group owned by this actor.
         destroy_owned_placement_group_if_needed_(actor_id);
       }));
+
+  // Inform all creation callbacks that the actor was cancelled, not created.
+  auto iter = actor_to_create_callbacks_.find(actor_id);
+  if (iter != actor_to_create_callbacks_.end()) {
+    for (auto &callback : iter->second) {
+      callback(actor, rpc::PushTaskReply());
+    }
+    actor_to_create_callbacks_.erase(iter);
+  }
 }
 
 absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>

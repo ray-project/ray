@@ -44,12 +44,19 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           task_spec,
           [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
             if (status.ok()) {
-              RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-              // Copy the actor's reply to the GCS for ref counting purposes.
-              rpc::PushTaskReply push_task_reply;
-              push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
-              task_finisher_->CompletePendingTask(
-                  task_id, push_task_reply, reply.actor_address());
+              if (reply.cancelled()) {
+                RAY_LOG(DEBUG) << "Actor creation cancelled, actor id = " << actor_id;
+                task_finisher_->MarkTaskCanceled(task_id);
+                RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+                    task_id, rpc::ErrorType::TASK_CANCELLED, nullptr));
+              } else {
+                RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
+                // Copy the actor's reply to the GCS for ref counting purposes.
+                rpc::PushTaskReply push_task_reply;
+                push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
+                task_finisher_->CompletePendingTask(
+                    task_id, push_task_reply, reply.actor_address());
+              }
             } else {
               RAY_LOG(INFO) << "Failed to create actor " << actor_id
                             << " with status: " << status.ToString();
