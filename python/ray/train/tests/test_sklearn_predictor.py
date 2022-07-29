@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 
 import numpy as np
@@ -11,12 +12,12 @@ from sklearn.ensemble import RandomForestClassifier
 
 import ray
 import ray.cloudpickle as cpickle
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import MODEL_KEY
+from ray.air.constants import MAX_REPR_LENGTH, MODEL_KEY
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.sklearn import SklearnCheckpoint, SklearnPredictor
+from typing import Tuple
 
 
 @pytest.fixture
@@ -40,18 +41,35 @@ model = RandomForestClassifier(n_estimators=10, random_state=0).fit(
 )
 
 
-def test_init():
+def test_repr():
+    predictor = SklearnPredictor(estimator=model)
+
+    representation = repr(predictor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile("^SklearnPredictor\\((.*)\\)$")
+    assert pattern.match(representation)
+
+
+def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     preprocessor = DummyPreprocessor()
     preprocessor.attr = 1
-    predictor = SklearnPredictor(estimator=model, preprocessor=preprocessor)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, MODEL_KEY), "wb") as f:
-            cpickle.dump(model, f)
-        save_preprocessor_to_dir(preprocessor, tmpdir)
+        checkpoint = SklearnCheckpoint.from_estimator(
+            estimator=model, path=tmpdir, preprocessor=preprocessor
+        )
+        # Serialize to dict so we can remove the temporary directory
+        checkpoint = SklearnCheckpoint.from_dict(checkpoint.to_dict())
 
-        checkpoint = Checkpoint.from_directory(tmpdir)
-        checkpoint_predictor = SklearnPredictor.from_checkpoint(checkpoint)
+    return checkpoint, preprocessor
+
+
+def test_init():
+    checkpoint, preprocessor = create_checkpoint_preprocessor()
+
+    predictor = SklearnPredictor(estimator=model, preprocessor=preprocessor)
+    checkpoint_predictor = SklearnPredictor.from_checkpoint(checkpoint)
 
     assert np.allclose(
         checkpoint_predictor.estimator.feature_importances_,
@@ -74,6 +92,28 @@ def test_predict(batch_type):
 
     assert len(predictions) == 3
     assert hasattr(predictor.get_preprocessor(), "_batch_transformed")
+
+
+@pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table])
+def test_predict_batch(ray_start_4_cpus, batch_type):
+    checkpoint, _ = create_checkpoint_preprocessor()
+    predictor = BatchPredictor.from_checkpoint(checkpoint, SklearnPredictor)
+
+    raw_batch = pd.DataFrame(dummy_data, columns=["A", "B"])
+    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+
+    if batch_type == np.ndarray:
+        dataset = ray.data.from_numpy(dummy_data)
+    elif batch_type == pd.DataFrame:
+        dataset = ray.data.from_pandas(data_batch)
+    elif batch_type == pa.Table:
+        dataset = ray.data.from_arrow(data_batch)
+    else:
+        raise RuntimeError("Invalid batch_type")
+
+    predictions = predictor.predict(dataset)
+
+    assert predictions.count() == 3
 
 
 def test_predict_set_cpus(ray_start_4_cpus):

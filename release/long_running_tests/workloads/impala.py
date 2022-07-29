@@ -38,7 +38,7 @@ assert (
 if "RAY_ADDRESS" in os.environ:
     del os.environ["RAY_ADDRESS"]
 
-ray.init(num_cpus=10)
+ray.init()
 # Run the workload.
 
 # Whitespace diff to test things.

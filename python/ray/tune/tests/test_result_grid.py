@@ -7,13 +7,13 @@ import pytest
 import pandas as pd
 
 import ray
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
 from ray.tune.tests.tune_test_util import create_tune_experiment_checkpoint
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 
 @pytest.fixture
@@ -210,7 +210,7 @@ def test_no_metric_mode(ray_start_2_cpus):
     def f(config):
         tune.report(x=1)
 
-    analysis = tune.run(f)
+    analysis = tune.run(f, num_samples=2)
     result_grid = ResultGrid(analysis)
     with pytest.raises(ValueError):
         result_grid.get_best_result()
@@ -220,6 +220,16 @@ def test_no_metric_mode(ray_start_2_cpus):
 
     with pytest.raises(ValueError):
         result_grid.get_best_result(mode="max")
+
+
+def test_no_metric_mode_one_trial(ray_start_2_cpus):
+    def f(config):
+        tune.report(x=1)
+
+    results = tune.Tuner(f, tune_config=tune.TuneConfig(num_samples=1)).fit()
+    # This should not throw any exception
+    best_result = results.get_best_result()
+    assert best_result
 
 
 def test_result_grid_df(ray_start_2_cpus):

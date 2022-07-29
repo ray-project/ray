@@ -10,6 +10,7 @@ from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
     SampleBatch,
+    concat_samples,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
@@ -298,7 +299,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
 
             # No replay desired
             if self.replay_ratio == 0.0:
-                return SampleBatch.concat_samples(output_batches)
+                return concat_samples(output_batches)
             # Only replay desired
             elif self.replay_ratio == 1.0:
                 return _buffer.sample(num_items, **kwargs)
