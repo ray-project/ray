@@ -63,7 +63,7 @@ steps:
 
 - label: ":mac: :apple: Ray Core Unit Tests and Dashboard"
   <<: *common
-  conditions: ["RAY_CI_SERVE_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
