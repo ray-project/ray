@@ -72,17 +72,14 @@ class ServeHandleDemo:
         return await self.run()
 
 
-rep_1_predictor = Predictor.options(
-    name="rep_1", num_replicas=2).bind("/model/rep-1.pkl")
-rep_2_predictor = Predictor.options(
-    name="rep_2", num_replicas=2).bind("/model/rep-2.pkl")
+predictor_1 = Predictor.options(num_replicas=2).bind("/model/model-1.pkl")
+predictor_2 = Predictor.options(num_replicas=2).bind("/model/model-2.pkl")
 
 # Pass in our deployments as arguments.  At runtime, these are resolved to ServeHandles.
-serve_handle_demo = ServeHandleDemo.bind(rep_1_predictor, rep_2_predictor)
+serve_handle_demo = ServeHandleDemo.bind(predictor_1, predictor_2)
 
 # Start a local single-node Ray cluster and start Ray Serve. These will shut down upon
 # exiting this script. 
-# TODO(architkulkarni): Actually, we are supposed to use DAGDriver here because it's a DAG with >1 node.
 serve.run(serve_handle_demo)
 
 print("ServeHandle API responses: " + "--" * 5)
@@ -92,10 +89,10 @@ response = requests.get(url)
 prediction = response.text
 print(f"prediction : {prediction}")
 
-# Output (info logs omitted for brevity):
+# Output ("INFO" logs omitted for brevity):
 
-# (ServeReplica:ServeHandleDemo pid=92100) prediction: (pid: 92096); path: /model/rep-1.pkl; data: 0.721; prediction: 1.442
-# (ServeReplica:ServeHandleDemo pid=92100) prediction: (pid: 92099); path: /model/rep-2.pkl; data: 0.204; prediction: 0.204
-# (ServeReplica:ServeHandleDemo pid=92100) prediction: (pid: 92097); path: /model/rep-1.pkl; data: 0.669; prediction: 1.390
-# (ServeReplica:ServeHandleDemo pid=92100) prediction: (pid: 92098); path: /model/rep-2.pkl; data: 0.791; prediction: 1.511
+# (ServeReplica:ServeHandleDemo pid=16062) prediction: (pid: 16059); path: /model/model-1.pkl; data: 0.166; prediction: 0.166
+# (ServeReplica:ServeHandleDemo pid=16062) prediction: (pid: 16061); path: /model/model-2.pkl; data: 0.820; prediction: 0.986
+# (ServeReplica:ServeHandleDemo pid=16062) prediction: (pid: 16058); path: /model/model-1.pkl; data: 0.691; prediction: 0.857
+# (ServeReplica:ServeHandleDemo pid=16062) prediction: (pid: 16060); path: /model/model-2.pkl; data: 0.948; prediction: 1.113
 # __serve_example_end__
