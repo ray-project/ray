@@ -10,7 +10,6 @@ import pytest
 import requests
 
 import ray
-import ray.actor
 import ray._private.state
 from ray import serve
 from ray._private.test_utils import wait_for_condition
@@ -649,39 +648,6 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
     finally:
         os.unlink(deploy_file.name)
         os.unlink(shutdown_file.name)
-
-
-def test_handle_early_detect_failure(shutdown_ray):
-    """Check that handle can be notified about replicas failure and take them out of the replicas set."""
-    ray.init()
-    serve.start(detached=True)
-
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
-    def f(do_crash: bool = False):
-        if do_crash:
-            os._exit(1)
-        return os.getpid()
-
-    handle = serve.run(f.bind())
-    pids = ray.get([handle.remote() for _ in range(2)])
-    assert len(set(pids)) == 2
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 2
-
-    client = get_global_client()
-    # Kill the controller so that the replicas membership won't be updated
-    # through controller health check + long polling.
-    ray.kill(client._controller, no_restart=True)
-
-    with pytest.raises(RayActorError):
-        ray.get(handle.remote(do_crash=True))
-
-    pids = ray.get([handle.remote() for _ in range(10)])
-    assert len(set(pids)) == 1
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 1
-
-    # Restart the controller, and then clean up all the replicas
-    serve.start(detached=True)
-    serve.shutdown()
 
 
 def test_autoscaler_shutdown_node_http_everynode(
