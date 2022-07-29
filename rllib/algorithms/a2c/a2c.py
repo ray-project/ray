@@ -130,7 +130,8 @@ class A2C(A3C):
 
             if config["num_gpus"] > 1:
                 raise AttributeError(
-                    "A2C does not support microbatching and multiple GPUs at the same time."
+                    "A2C does not support micro-batching and multiple GPUs "
+                    "at the same time."
                 )
 
     @override(Algorithm)
