@@ -78,6 +78,8 @@ rep_2_predictor = Predictor.options(
 # Pass in our deployments as arguments.  At runtime, these are resolved to ServeHandles.
 serve_handle_demo = ServeHandleDemo.bind(rep_1_predictor, rep_2_predictor)
 
+# Start a local single-node Ray cluster and start Ray Serve. These will shut down upon
+# exiting this script.
 serve.run(serve_handle_demo)
 
 print("ServeHandle API responses: " + "--" * 5)
