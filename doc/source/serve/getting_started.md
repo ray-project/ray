@@ -2,9 +2,20 @@
 
 # Getting Started
 
-This tutorial will walk you through the process of deploying a model with Ray Serve.
+This tutorial will walk you through the process of deploying models with Ray Serve. It will show you how to
 
-We'll use [HuggingFace's TranslationPipeline](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.TranslationPipeline) to deploy a text-translation model, and we'll test it with HTTP requests.
+* Expose your models over HTTP using Ray Serve `deployments`
+* Scale your deployments to meet your workload's requirements
+* Allocate resources like fractional GPUs and CPUs to your deployments
+* Compose multiple-model machine learning pipelines with Ray Serve `Deployment Graphs`
+* Port your FastAPI applications to Ray Serve
+
+We'll use two models in this tutorial:
+
+* [HuggingFace's TranslationPipeline](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.TranslationPipeline) as a text-translation model
+* [HuggingFace's SummarizationPipeline](https://huggingface.co/docs/transformers/v4.21.0/en/main_classes/pipelines#transformers.SummarizationPipeline) as a text-summarizer model
+
+After deploying these models, we'll test them with HTTP requests.
 
 :::{tip}
 If you have suggestions on how to improve this tutorial,
@@ -20,7 +31,7 @@ $ pip install "ray[serve]" transformers requests
 
 ## Example Model
 
-First, let's take a look at our model. Here's it's code:
+First, let's take a look at our text-translation model. Here's it's code:
 
 ```{literalinclude} ../serve/doc_code/getting_started/models.py
 :start-after: __start_translation_model__
@@ -60,9 +71,9 @@ PyTorch, and Tensorflow for more info and examples:
 (converting-to-ray-serve-deployment)=
 ## Converting to a Ray Serve Deployment
 
-This tutorial's goal is to deploy this model using Ray Serve, so it can be
-scaled up and queried over HTTP. We'll start by converting `Translator` into a
-Ray Serve deployment that runs locally on your computer.
+In this section, we'll deploy the text translation model using Ray Serve, so
+it can be scaled up and queried over HTTP. We'll start by converting
+`Translator` into a Ray Serve deployment that runs locally on your computer.
 
 First, we open a new Python file and import `ray` and `ray serve`:
 
@@ -162,7 +173,7 @@ and begin accepting HTTP requests:
 $ python model_on_ray_serve.py
 ```
 
-## Testing the Ray Serve Deployment
+## Testing Ray Serve Deployments
 
 We can now test our model over HTTP. It can be reached at `http://127.0.0.1:8000/`
 
@@ -187,53 +198,74 @@ $ python model_client.py
 Bonjour monde!
 ```
 
-## Deployment Graphs and HTTP Adapters
+## Scaling Ray Serve Deployments
 
-We can simplify our HTTP-handling code using Ray Serve's HTTP adapters, which
-provide out-of-the-box HTTP parsing. To use these adapters, we need to refactor
-the deployment graph code a bit:
+We can scale Ray Serve deployments up and down to meet our workload's requirements. Ray Serve offers a parameter in the `@serve.deployment` decorator called `num_replicas`. `num_replicas` is an integer that determines how many copies of our deployment process run in Ray. By default, it's set to 1. If we set it to a higher number, we can create more copies (called `replicas`) of our deployment. When many clients make requests to our deployments at the same time, their requests are routed to different replicas, allowing us to split our workload across the replicas. This lets us horizontally scale our deployments to take full advantage of our computing resources. Check out our guide on [scaling out a deployment](scaling-out-a-deployment) for more info.
+
+As an example, we can rewrite our `Translator` class to use 3 replicas to handle more client requests smoothly. All we need to do is set `num_replicas` in the decorator:
 
 ```python
-from ray.serve.drivers import DAGDriver
-from ray.serve.http_adapters import json_request
-from ray.serve.deployment_graph import InputNode
+...
 
-with InputNode() as json_data:
-  translator_node = Translator.bind()
-  translate_method_node = translator_node.translate.bind(json_data)
+@serve.deployment(
+  num_replicas=3
+)
+class Translator:
+    ...
 
-deployment_graph = DAGDriver.bind(translate_method_node, http_adapter=json_request)
-serve.run(deployment_graph)
+...
 ```
 
-Let's first take a closer look at the line where we set `deployment_graph`. The
-`DAGDriver` is a `DeploymentNode` provided out-of-the-box with Ray Serve. It's
-meant to be the root of your graph. It's the node that HTTP requests are
-sent to, and it forwards the requests to the node passed in as its first argument.
+We can also manually tune the number of replicas for our deployments in production. See the guide on [putting Ray Serve in production](serve-in-production) to learn more.
 
-The `DAGDriver`'s `http_adapter` keyword argument takes in
-a function that can preprocess the HTTP request before forwarding it to the next node.
-We're using Ray Serve's built-in `json_request` adapter, which returns the JSON data
-from the HTTP request. That way, the next node can process the JSON directly instead
-of munging the HTTP request.
+Ray Serve also offers autoscaling, allowing you to set `min_replicas` and `max_replicas` on your deployments. Ray Serve will automatically scale your deployments to fit their usage. This feature also lets you scale to zero, so your deployments can have 0 replicas during periods of zero usage, allowing you to automatically save resources. See the guide on [Ray Serve autoscaling](ray-serve-autoscaling) to learn more.
 
-Next, let's take a look at the context manager (i.e. the `with` statement). It
-initializes an `InputNode` object as `json_data`. `InputNode` represents the object that
-the `DAGDriver` will pass to the next node in the graph. Since `DAGDriver` is using a
-`json_request` adapter, it will pass JSON data to the next node, which is why we refer to
-the `InputNode` as `json_data` in this snippet.
+## Reserving Fine-Grained Resources including Fractional GPUs and CPUs
 
-Inside the context manager, we define the rest of the graph. First, we initialize any `DeploymentNodes` that contain Python classes by calling `bind` on their constructor's `args` and `kwargs`. Since our `Translator` class doesn't take in any `args` or `kwargs` in its `__init__` method, we call `bind` without passing anything in, and create a `translator_node`.
+Ray Serve allows us to reserve fine-grained resources for each of our deployment's replicas. These resources include the number of CPUs and GPUs that we'd like allocate per replica. The `@serve.deployment` decorator offers a parameter called `ray_actor_options`, which is a dictionary of settings for each of our replicas. Two of these settings are `num_cpus` and `num_gpus`, which control the number of CPUs and the number of GPUs reserved for each deployment replica.
 
-Similarly, we can `bind` method calls for these deployment nodes, which creates new nodes representing these calls. In the code snippet, we `bind` the `translator_node`'s `translate` method to the `json_data`. When the `DAGDriver` receives an HTTP request, it will retrieve the request's JSON data with the `json_request` and then call the `translator_node`'s `translate` method on the data. This means, we also don't need to add a new `__call__` method to the `Translate` class. This graph allows us to call the `translate` method directly.
+For example, we can rewrite `Translator`, so each replica has access to 2 CPUs and 1 GPU. All we need to do is set `num_cpus` and `num_gpus` in the decorator:
 
-Here's the full script with the refactored code:
+```python
+...
 
-```{literalinclude} ../serve/doc_code/getting_started/graph_and_adapter.py
-:start-after: __start__
-:end-before: __end__
-:language: python
+@serve.deployment(
+  ray_actor_options={
+    "num_cpus": 2,
+    "num_gpus": 1,
+  }
+)
+class Translator:
+    ...
+
+...
 ```
+
+Note that these settings represent logical CPUs and GPUs, so we can also set them to fractions. Fractional GPUs and CPUs allow us to pack multiple deployment replicas together on the same machine, so they can share the available GPUs and CPUs.
+
+For example, if we have a machine with 2 CPUs and 1 GPU, we can rewrite `Translator` to reserve all the available resources with 2 replicas:
+
+```python
+...
+
+@serve.deployment(
+  num_replicas=2,
+  ray_actor_options={
+    "num_cpus": 1,
+    "num_gpus": 0.5,
+  }
+)
+class Translator:
+    ...
+
+...
+```
+
+See the guide on [Ray Serve resource management](serve-cpus-gpus) and [Ray Serve's fractional resources](serve-fractional-resources-guide) to learn more about.
+
+## Composing Machine Learning Models with Deployment Graphs
+
+Ray Serve's Deployment Graph API allows us to compose multiple machine learning models together into a single Ray Serve application. We can use parameters like `num_replicas`, `num_cpus`, and `num_gpus` to independently configure and scale each deployment in the graph.
 
 ## Porting FastAPI Applications to Ray Serve
 

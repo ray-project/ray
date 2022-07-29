@@ -55,6 +55,8 @@ All of these options can be specified either in {mod}`@serve.deployment <ray.ser
 
 To update the config options for a running deployment, simply redeploy it with the new options set.
 
+(scaling-out-a-deployment)=
+
 ### Scaling Out
 
 To scale out a deployment to many processes, simply configure the number of replicas.
@@ -73,6 +75,8 @@ func.options(num_replicas=10).deploy()
 # Scale back down to 1 replica.
 func.options(num_replicas=1).deploy()
 ```
+
+(ray-serve-autoscaling)=
 
 #### Autoscaling
 
@@ -130,6 +134,8 @@ following:
 def func(*args):
     return do_something_with_my_gpu()
 ```
+
+(serve-fractional-resources-guide)=
 
 ### Fractional Resources
 

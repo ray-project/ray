@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __start_translation_model__
 # File name: model.py
 from transformers import pipeline
@@ -31,6 +33,7 @@ assert translation == "Bonjour monde!"
 # __start_summarization_model__
 # File name: summary_model.py
 from transformers import pipeline
+
 
 class Summarizer:
     def __init__(self):
