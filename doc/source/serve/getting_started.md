@@ -178,7 +178,8 @@ $ python model_on_ray_serve.py
 We can now test our model over HTTP. It can be reached at `http://127.0.0.1:8000/`
 
 Since the cluster is deployed locally in this tutorial, the `127.0.0.1:8000`
-refers to a localhost with port 8000.
+refers to a localhost with port 8000 (the default port where you can reach
+Serve deployments).
 
 We'll send a POST request with JSON data containing our English text.
 `Translator`'s `__call__` method will unpack this text and forward it to the
@@ -267,6 +268,74 @@ See the guide on [Ray Serve resource management](serve-cpus-gpus) and [Ray Serve
 
 Ray Serve's Deployment Graph API allows us to compose multiple machine learning models together into a single Ray Serve application. We can use parameters like `num_replicas`, `num_cpus`, and `num_gpus` to independently configure and scale each deployment in the graph.
 
+For example, let's deploy a machine learning pipeline with two steps:
+
+1. Summarize English text
+2. Translate the summary into French
+
+`Translator` already performs step 2. We can use [HuggingFace's SummarizationPipeline](https://huggingface.co/docs/transformers/v4.21.0/en/main_classes/pipelines#transformers.SummarizationPipeline) to accomplish step 1. Here's an example of the `SummarizationPipeline` that runs locally:
+
+```{literalinclude} ../serve/doc_code/getting_started/models.py
+:start-after: __start_summarization_model__
+:end-before: __end_summarization_model__
+:language: python
+```
+
+You can copy-paste this script and run it locally. It summarizes the snippet from _A Tale of Two Cities_ to `it was the best of times, it was worst of times .`
+
+```console
+$ python model.py
+
+it was the best of times, it was worst of times .
+```
+
+Here's a Ray Serve deployment graph that chains the two models together. The graph takes English text, summarizes it, and then translates it:
+
+```{literalinclude} ../serve/doc_code/getting_started/model_graph.py
+:start-after: __start_graph__
+:end-before: __end_graph__
+:language: python
+```
+
+This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code:
+
+```python
+translation_ref = self.translator.translate.remote(summary)
+translation = ray.get(translation_ref)
+```
+
+`self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method. Essentially, this line tells Ray to schedule a request to the `Translator` deployment's `translate` method, which can be fulfilled asynchronously. The line immediately returns a reference to the method's output. The next line `ray.get(translation_ref)` waits for `translate` to execute and returns the value of that execution.
+
+We compose our graph in the line
+
+```python
+deployment_graph = Summarizer.bind(Translator.bind())
+```
+
+Here, we bind `Translator` to its (empty) constructor arguments, and then we pass in the bound `Translator` as the constructor argument for the `Summarizer`. We can run this deployment graph using the `serve run` CLI command. Make sure to run this command from a directory containing a local copy of the `graph.py` code:
+
+```console
+$ serve run graph:deployment_graph
+```
+
+We can use this client script to make requests to the graph:
+
+```{literalinclude} ../serve/doc_code/getting_started/model_graph.py
+:start-after: __start_client__
+:end-before: __end_client__
+:language: python
+```
+
+While the graph is running, we can open a separate terminal window and run the client script:
+
+```console
+$ python graph_client.py
+
+c'était le meilleur des temps, c'était le pire des temps .
+```
+
+Deployment graphs are useful since they let you deploy each part of your Machine Learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources.
+
 ## Porting FastAPI Applications to Ray Serve
 
 Ray Serve also lets you port your existing
@@ -294,7 +363,7 @@ We can run this script and then send HTTP requests to the deployment:
 :language: python
 ```
 
-Congratulations! You just built and deployed a machine learning model on Ray
+Congratulations! You just built and deployed machine learning models on Ray
 Serve! You should now have enough context to dive into the {doc}`key-concepts` to
 get a deeper understanding of Ray Serve.
 
