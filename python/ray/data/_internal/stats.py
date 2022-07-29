@@ -420,6 +420,8 @@ class DatasetPipelineStats:
         """Return a human-readable summary of this pipeline's stats."""
         already_printed = set()
         out = ""
+        if not self.history_buffer:
+            return "No stats available: This pipeline hasn't been run yet."
         for i, stats in self.history_buffer:
             out += "== Pipeline Window {} ==\n".format(i)
             out += stats.summary_string(already_printed)
