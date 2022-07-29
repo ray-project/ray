@@ -222,6 +222,23 @@ def prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     return with_defaults
 
 
+def translate_trivial_legacy_config(config: Dict[str, Any]):
+    """
+    Drop empty deprecated fields ("head_node" and "worker_node").
+    """
+
+    REMOVABLE_FIELDS = ["head_node", "worker_nodes"]
+
+    for field in REMOVABLE_FIELDS:
+        if field in config and not config[field]:
+            logger.warning(
+                f"Dropping the empty legacy field {field}. {field}"
+                "is not supported for ray>=2.0.0. It is recommended to remove"
+                f"{field} from the cluster config."
+            )
+            del config[field]
+
+
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
     defaults.update(config)
@@ -246,6 +263,8 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     # Take care of this here, in case a config does not specify any of head,
     # workers, node types, but does specify min workers:
     merged_config.pop("min_workers", None)
+
+    translate_trivial_legacy_config(merged_config)
 
     return merged_config
 
