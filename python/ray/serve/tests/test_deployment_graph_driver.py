@@ -1,7 +1,4 @@
-import contextlib
-import io
 import sys
-import numpy as np
 from pydantic import BaseModel
 
 import pytest
@@ -10,11 +7,9 @@ import starlette.requests
 from starlette.testclient import TestClient
 
 from ray.serve.drivers import DAGDriver, SimpleSchemaIngress, _load_http_adapter
-from ray.serve.http_adapters import json_request
 from ray.serve.dag import InputNode
 from ray import serve
 import ray
-from ray._private.test_utils import wait_for_condition
 
 
 def my_resolver(a: int):
