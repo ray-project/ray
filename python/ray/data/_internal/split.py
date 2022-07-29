@@ -12,6 +12,7 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
 )
+from ray.data.context import DatasetContext
 from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,8 @@ def _split_single_block(
     split_indices: List[int],
 ) -> Tuple[int, BlockPartition]:
     """Split the provided block at the given indices."""
+    context = DatasetContext.get_current()
+    assert context.block_owner
     split_result = []
     block_accessor = BlockAccessor.for_block(block)
     prev_index = 0
@@ -113,7 +116,9 @@ def _split_single_block(
             input_files=meta.input_files,
             exec_stats=stats.build(),
         )
-        split_result.append((ray.put(split_block), split_meta))
+        split_result.append(
+            (ray.put(split_block, _owner=context.block_owner), split_meta)
+        )
         prev_index = index
     return (block_id, split_result)
 
