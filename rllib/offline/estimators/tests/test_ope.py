@@ -48,8 +48,7 @@ class TestOPE(unittest.TestCase):
         config = (
             DQNConfig()
             .environment(env=env_name)
-            .training(gamma=cls.gamma)
-            .rollouts(num_rollout_workers=3, batch_mode="complete_episodes")
+            .rollouts(batch_mode="complete_episodes")
             .framework("torch")
             .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0)))
             .offline_data(input_=train_data)
@@ -118,7 +117,8 @@ class TestOPE(unittest.TestCase):
 
     def test_ope_in_algo(self):
         # Test OPE in DQN, during training as well as by calling evaluate()
-        ope_results = self.algo.train()["evaluation"]["off_policy_estimator"]
+        results = self.algo.train()
+        ope_results = results["evaluation"]["off_policy_estimator"]
         # Check that key exists AND is not {}
         assert ope_results, "Did not run OPE in training!"
         assert set(ope_results.keys()) == {
@@ -129,7 +129,8 @@ class TestOPE(unittest.TestCase):
         }, "Missing keys in OPE result dict"
 
         # Check algo.evaluate() manually as well
-        ope_results = self.algo.evaluate()["evaluation"]["off_policy_estimator"]
+        results = self.algo.train()
+        ope_results = results["evaluation"]["off_policy_estimator"]
         assert ope_results, "Did not run OPE on call to Algorithm.evaluate()!"
         assert set(ope_results.keys()) == {
             "is",
@@ -274,15 +275,27 @@ def get_policy_batch_and_mean_std_ret(
     gamma: float,
     epsilon: float,
 ) -> (Policy, SampleBatch, float, float):
-    """Return a GridWorld policy, SampleBatch, and the mean and stddev of the
-    discounted episode returns over the batch.
+    """Collect a GridWorld policy and data with epsilon-greedy exploration.
+
+    Args:
+        num_episodes: Number of episodes to collect
+        gamma: discount factor
+        epsilon: epsilon-greedy exploration value
+
+    Returns:
+        A Tuple consisting of:
+          - A GridWorldPolicy with exploration parameter epsilon
+          - A SampleBatch of `num_episodes` GridWorld episodes collected using
+          epsilon-greedy exploration
+          - The mean of the discounted return over the collected episodes
+          - The stddev of the discounted return over the collected episodes
+
     """
     config = (
         AlgorithmConfig()
         .rollouts(batch_mode="complete_episodes")
         .environment(disable_env_checking=True)
         .experimental(_disable_preprocessor_api=True)
-        .to_dict()
     )
 
     env = GridWorldEnv()
@@ -292,7 +305,7 @@ def get_policy_batch_and_mean_std_ret(
     workers = WorkerSet(
         env_creator=lambda env_config: GridWorldEnv(),
         policy_class=GridWorldPolicy,
-        trainer_config=config,
+        trainer_config=config.to_dict(),
         num_workers=8,
     )
     workers.foreach_policy(func=lambda policy, _: policy.update_epsilon(epsilon))
@@ -313,6 +326,7 @@ def get_policy_batch_and_mean_std_ret(
 
 
 def check_estimate(
+    *,
     estimator_cls: Type[Union[DirectMethod, DoublyRobust]],
     gamma: float,
     q_model_config: Dict,
@@ -320,7 +334,7 @@ def check_estimate(
     batch: SampleBatch,
     mean_ret: float,
     std_ret: float,
-):
+) -> None:
     # Train and estimate an estimator using the given batch and policy.
     # Assert that the 1 stddev intervals for the estimated mean return
     # and the actual mean return overlap.
@@ -410,25 +424,25 @@ class TestOPELearning(unittest.TestCase):
     def test_dm_random_policy_random_data(self):
         print("Test DirectMethod on random policy on random dataset")
         check_estimate(
-            DirectMethod,
-            self.gamma,
-            self.q_model_config,
-            self.random_policy,
-            self.random_batch,
-            self.random_reward,
-            self.random_std,
+            estimator_cls=DirectMethod,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.random_policy,
+            batch=self.random_batch,
+            mean_ret=self.random_reward,
+            std_ret=self.random_std,
         )
 
     def test_dm_random_policy_mixed_data(self):
         print("Test DirectMethod on random policy on mixed dataset")
         check_estimate(
-            DirectMethod,
-            self.gamma,
-            self.q_model_config,
-            self.random_policy,
-            self.mixed_batch,
-            self.random_reward,
-            self.random_std,
+            estimator_cls=DirectMethod,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.random_policy,
+            batch=self.mixed_batch,
+            mean_ret=self.random_reward,
+            std_ret=self.random_std,
         )
 
     @unittest.skip(
@@ -438,109 +452,109 @@ class TestOPELearning(unittest.TestCase):
     def test_dm_random_policy_expert_data(self):
         print("Test DirectMethod on random policy on expert dataset")
         check_estimate(
-            DirectMethod,
-            self.gamma,
-            self.q_model_config,
-            self.random_policy,
-            self.expert_batch,
-            self.random_reward,
-            self.random_std,
+            estimator_cls=DirectMethod,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.random_policy,
+            batch=self.expert_batch,
+            mean_ret=self.random_reward,
+            std_ret=self.random_std,
         )
 
     def test_dm_mixed_policy_random_data(self):
         print("Test DirectMethod on mixed policy on random dataset")
         check_estimate(
-            DirectMethod,
-            self.gamma,
-            self.q_model_config,
-            self.mixed_policy,
-            self.random_batch,
-            self.mixed_reward,
-            self.mixed_std,
+            estimator_cls=DirectMethod,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.mixed_policy,
+            batch=self.random_batch,
+            mean_ret=self.mixed_reward,
+            std_ret=self.mixed_std,
         )
 
     def test_dm_mixed_policy_mixed_data(self):
         print("Test DirectMethod on mixed policy on mixed dataset")
         check_estimate(
-            DirectMethod,
-            self.gamma,
-            self.q_model_config,
-            self.mixed_policy,
-            self.mixed_batch,
-            self.mixed_reward,
-            self.mixed_std,
+            estimator_cls=DirectMethod,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.mixed_policy,
+            batch=self.mixed_batch,
+            mean_ret=self.mixed_reward,
+            std_ret=self.mixed_std,
         )
 
     def test_dm_mixed_policy_expert_data(self):
         print("Test DirectMethod on mixed policy on expert dataset")
         check_estimate(
-            DirectMethod,
-            self.gamma,
-            self.q_model_config,
-            self.mixed_policy,
-            self.expert_batch,
-            self.mixed_reward,
-            self.mixed_std,
+            estimator_cls=DirectMethod,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.mixed_policy,
+            batch=self.expert_batch,
+            mean_ret=self.mixed_reward,
+            std_ret=self.mixed_std,
         )
 
     def test_dm_expert_policy_random_data(self):
         print("Test DirectMethod on expert policy on random dataset")
         check_estimate(
-            DirectMethod,
-            self.gamma,
-            self.q_model_config,
-            self.expert_policy,
-            self.random_batch,
-            self.expert_reward,
-            self.expert_std,
+            estimator_cls=DirectMethod,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.expert_policy,
+            batch=self.random_batch,
+            mean_ret=self.expert_reward,
+            std_ret=self.expert_std,
         )
 
     def test_dm_expert_policy_mixed_data(self):
         print("Test DirectMethod on expert policy on mixed dataset")
         check_estimate(
-            DirectMethod,
-            self.gamma,
-            self.q_model_config,
-            self.expert_policy,
-            self.mixed_batch,
-            self.expert_reward,
-            self.expert_std,
+            estimator_cls=DirectMethod,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.expert_policy,
+            batch=self.mixed_batch,
+            mean_ret=self.expert_reward,
+            std_ret=self.expert_std,
         )
 
     def test_dm_expert_policy_expert_data(self):
         print("Test DirectMethod on expert policy on expert dataset")
         check_estimate(
-            DirectMethod,
-            self.gamma,
-            self.q_model_config,
-            self.expert_policy,
-            self.expert_batch,
-            self.expert_reward,
-            self.expert_std,
+            estimator_cls=DirectMethod,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.expert_policy,
+            batch=self.expert_batch,
+            mean_ret=self.expert_reward,
+            std_ret=self.expert_std,
         )
 
     def test_dr_random_policy_random_data(self):
         print("Test DoublyRobust on random policy on random dataset")
         check_estimate(
-            DoublyRobust,
-            self.gamma,
-            self.q_model_config,
-            self.random_policy,
-            self.random_batch,
-            self.random_reward,
-            self.random_std,
+            estimator_cls=DoublyRobust,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.random_policy,
+            batch=self.random_batch,
+            mean_ret=self.random_reward,
+            std_ret=self.random_std,
         )
 
     def test_dr_random_policy_mixed_data(self):
         print("Test DoublyRobust on random policy on mixed dataset")
         check_estimate(
-            DoublyRobust,
-            self.gamma,
-            self.q_model_config,
-            self.random_policy,
-            self.mixed_batch,
-            self.random_reward,
-            self.random_std,
+            estimator_cls=DoublyRobust,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.random_policy,
+            batch=self.mixed_batch,
+            mean_ret=self.random_reward,
+            std_ret=self.random_std,
         )
 
     @unittest.skip(
@@ -550,85 +564,85 @@ class TestOPELearning(unittest.TestCase):
     def test_dr_random_policy_expert_data(self):
         print("Test DoublyRobust on  random policy on expert dataset")
         check_estimate(
-            DoublyRobust,
-            self.gamma,
-            self.q_model_config,
-            self.random_policy,
-            self.expert_batch,
-            self.random_reward,
-            self.random_std,
+            estimator_cls=DoublyRobust,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.random_policy,
+            batch=self.expert_batch,
+            mean_ret=self.random_reward,
+            std_ret=self.random_std,
         )
 
     def test_dr_mixed_policy_random_data(self):
         print("Test DoublyRobust on  mixed policy on random dataset")
         check_estimate(
-            DoublyRobust,
-            self.gamma,
-            self.q_model_config,
-            self.mixed_policy,
-            self.random_batch,
-            self.mixed_reward,
-            self.mixed_std,
+            estimator_cls=DoublyRobust,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.mixed_policy,
+            batch=self.random_batch,
+            mean_ret=self.mixed_reward,
+            std_ret=self.mixed_std,
         )
 
     def test_dr_mixed_policy_mixed_data(self):
         print("Test DoublyRobust on  mixed policy on mixed dataset")
         check_estimate(
-            DoublyRobust,
-            self.gamma,
-            self.q_model_config,
-            self.mixed_policy,
-            self.mixed_batch,
-            self.mixed_reward,
-            self.mixed_std,
+            estimator_cls=DoublyRobust,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.mixed_policy,
+            batch=self.mixed_batch,
+            mean_ret=self.mixed_reward,
+            std_ret=self.mixed_std,
         )
 
     def test_dr_mixed_policy_expert_data(self):
         print("Test DoublyRobust on  mixed policy on expert dataset")
         check_estimate(
-            DoublyRobust,
-            self.gamma,
-            self.q_model_config,
-            self.mixed_policy,
-            self.expert_batch,
-            self.mixed_reward,
-            self.mixed_std,
+            estimator_cls=DoublyRobust,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.mixed_policy,
+            batch=self.expert_batch,
+            mean_ret=self.mixed_reward,
+            std_ret=self.mixed_std,
         )
 
     def test_dr_expert_policy_random_data(self):
         print("Test DoublyRobust on  expert policy on random dataset")
         check_estimate(
-            DoublyRobust,
-            self.gamma,
-            self.q_model_config,
-            self.expert_policy,
-            self.random_batch,
-            self.expert_reward,
-            self.expert_std,
+            estimator_cls=DoublyRobust,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.expert_policy,
+            batch=self.random_batch,
+            mean_ret=self.expert_reward,
+            std_ret=self.expert_std,
         )
 
     def test_dr_expert_policy_mixed_data(self):
         print("Test DoublyRobust on  expert policy on mixed dataset")
         check_estimate(
-            DoublyRobust,
-            self.gamma,
-            self.q_model_config,
-            self.expert_policy,
-            self.mixed_batch,
-            self.expert_reward,
-            self.expert_std,
+            estimator_cls=DoublyRobust,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.expert_policy,
+            batch=self.mixed_batch,
+            mean_ret=self.expert_reward,
+            std_ret=self.expert_std,
         )
 
     def test_dr_expert_policy_expert_data(self):
         print("Test DoublyRobust on  expert policy on expert dataset")
         check_estimate(
-            DoublyRobust,
-            self.gamma,
-            self.q_model_config,
-            self.expert_policy,
-            self.expert_batch,
-            self.expert_reward,
-            self.expert_std,
+            estimator_cls=DoublyRobust,
+            gamma=self.gamma,
+            q_model_config=self.q_model_config,
+            policy=self.expert_policy,
+            batch=self.expert_batch,
+            mean_ret=self.expert_reward,
+            std_ret=self.expert_std,
         )
 
 
