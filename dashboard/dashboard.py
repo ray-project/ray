@@ -16,6 +16,7 @@ import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
+from typing import Optional, Set
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -40,14 +41,15 @@ class Dashboard:
 
     def __init__(
         self,
-        host,
-        port,
-        port_retries,
-        gcs_address,
-        log_dir=None,
-        temp_dir=None,
-        session_dir=None,
-        minimal=False,
+        host: str,
+        port: int,
+        port_retries: int,
+        gcs_address: str,
+        log_dir: str = None,
+        temp_dir: str = None,
+        session_dir: str = None,
+        minimal: bool = False,
+        modules_to_load: Optional[Set[str]] = None,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
@@ -58,6 +60,7 @@ class Dashboard:
             temp_dir=temp_dir,
             session_dir=session_dir,
             minimal=minimal,
+            modules_to_load=modules_to_load,
         )
 
     async def run(self):
@@ -154,6 +157,16 @@ if __name__ == "__main__":
             "by `pip install ray[default]`."
         ),
     )
+    parser.add_argument(
+        "--modules-to-load",
+        required=False,
+        default=None,
+        help=(
+            "Specify the list of module names in [module_1],[module_2] format."
+            "E.g., JobHead,StateHead... "
+            "If nothing is specified, all modules are loaded."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -167,6 +180,12 @@ if __name__ == "__main__":
             backup_count=args.logging_rotate_backup_count,
         )
 
+        if args.modules_to_load:
+            modules_to_load = set(args.modules_to_load.strip(" ,").split(","))
+        else:
+            # None == default.
+            modules_to_load = None
+
         dashboard = Dashboard(
             args.host,
             args.port,
@@ -176,6 +195,7 @@ if __name__ == "__main__":
             temp_dir=args.temp_dir,
             session_dir=args.session_dir,
             minimal=args.minimal,
+            modules_to_load=modules_to_load,
         )
         loop = asyncio.get_event_loop()
 
