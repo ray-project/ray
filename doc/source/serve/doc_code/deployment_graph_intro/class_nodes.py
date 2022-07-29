@@ -6,14 +6,15 @@ import requests
 # File name: echo.py
 from ray import serve
 
+
 @serve.deployment
 class EchoClass:
-
     def __init__(self, echo_str: str):
         self.echo_str = echo_str
-    
+
     def __call__(self, request) -> str:
         return self.echo_str
+
 
 # You can create ClassNodes from the EchoClass deployment
 foo_node = EchoClass.bind("foo")
