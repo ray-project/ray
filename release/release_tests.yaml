@@ -1234,7 +1234,7 @@
   driver_setup: ray-lightning/driver_setup.sh
   run:
     timeout: 1200
-    script: python ray-lightning/ray_lightning_user_test.py
+    script: python ray-lightning/ray_lightning_user_test.py master
     type: client
 
   alert: default

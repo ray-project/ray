@@ -3,7 +3,11 @@ import os
 import time
 
 import ray
-from simple_example import main
+import sys
+if sys.args[1] == 'master':
+    from simple_example_master import master
+else: 
+    from simple_example import main
 
 if __name__ == "__main__":
     start = time.time()

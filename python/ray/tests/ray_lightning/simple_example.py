@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import transforms
 import pytorch_lightning as pl
 
-from ray_lightning import RayPlugin
+from ray_lightning import RayStrategy
 
 
 class LitAutoEncoder(pl.LightningModule):
@@ -48,7 +48,7 @@ def main(num_workers: int = 2, use_gpu: bool = False, max_steps: int = 10):
 
     autoencoder = LitAutoEncoder()
     trainer = pl.Trainer(
-        plugins=[RayPlugin(num_workers=num_workers, use_gpu=use_gpu)],
+        strategy=RayStrategy(num_workers=num_workers, use_gpu=use_gpu),
         max_steps=max_steps,
     )
     trainer.fit(autoencoder, DataLoader(train), DataLoader(val))
