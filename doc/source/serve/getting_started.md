@@ -135,7 +135,11 @@ This command will start running `Translator` and then block. It can be killed wi
 
 ## Testing Ray Serve Deployments
 
-We can now test our model over HTTP. It can be reached at `http://127.0.0.1:8000/`
+We can now test our model over HTTP. It can be reached at the following URL:
+
+```
+http://127.0.0.1:8000/
+```
 
 Since the cluster is deployed locally in this tutorial, the `127.0.0.1:8000`
 refers to a localhost with port 8000 (the default port where you can reach
