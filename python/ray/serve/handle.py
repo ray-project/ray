@@ -167,7 +167,7 @@ class RayServeHandle:
         """Set options for this handle.
 
         Args:
-            method_name(str): The method to invoke.
+            method_name: The method to invoke.
         """
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
