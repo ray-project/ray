@@ -172,10 +172,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     and self._node_update_cnt * FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS
                     < FREQUENT_UPDATE_TIMEOUT_SECONDS
                 ):
-                    logger.info("SANG-TODO a")
                     await asyncio.sleep(FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS)
                 else:
-                    logger.info("SANG-TODO b")
                     if head_node_not_registered:
                         logger.warning(
                             "Head node is not registered even after "
