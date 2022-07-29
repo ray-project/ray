@@ -103,10 +103,10 @@ This section shows how to create single and multi-column Tensor datasets.
   By convention, single-column Tensor datasets are represented with a single ``__value__`` column.
   This kind of dataset will be converted automatically to/from NumPy array format in all transformation and consumption APIs.
 
-Consuming and Transforming Tensor Data
---------------------------------------
+Transforming / Consuming Tensor Data
+------------------------------------
 
-Like any other Dataset, Datasets with tensor columns can be consumed / transformed in batches via the :meth:`ds.iter_batches(batch_format=<format>) <ray.data.Dataset.iter_batches>` and :meth:`ds.map_batches(batch_fn, batch_format=<format>) <ray.data.Dataset.map_batches>` APIs. This section shows the available batch formats and their behavior:
+Like any other Dataset, Datasets with tensor columns can be consumed / transformed in batches via the :meth:`ds.iter_batches(batch_format=\<format\>) <ray.data.Dataset.iter_batches>` and :meth:`ds.map_batches(fn, batch_format=\<format\>) <ray.data.Dataset.map_batches>` APIs. This section shows the available batch formats and their behavior:
 
 .. tabbed:: "native" (default)
 

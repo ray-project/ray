@@ -387,7 +387,6 @@ ds = ds.map_batches(add_one, batch_format="pyarrow")
 
 # This returns batches in pyarrow.Table format.
 next(ds.iter_batches(batch_format="pyarrow"))
-exit()
 # pyarrow.Table
 # image: extension<arrow.py_extension_type<ArrowTensorType>>
 # label: string
