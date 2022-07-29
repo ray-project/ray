@@ -185,6 +185,15 @@ def run_release_test(
         pip_package_string = "\n".join(pip_packages)
         logger.info(f"Installed python packages:\n{pip_package_string}")
 
+        # Catch cancel signal from buildkite. This will only trigger termination
+        # if a cluster is already created.
+        def signal_terminate(*args, **kwargs):
+            logger.exception("Caught job cancellation! Terminating cluster if running.")
+            cluster_manager.terminate_cluster()
+
+        signal.signal(signal.SIGINT, signal_terminate)
+        signal.signal(signal.SIGTERM, signal_terminate)
+
         # Start cluster
         if cluster_id:
             buildkite_group(":rocket: Using existing cluster")
@@ -214,13 +223,6 @@ def run_release_test(
 
             buildkite_group(":rocket: Starting up cluster")
             cluster_manager.start_cluster(timeout=cluster_timeout)
-
-        def signal_terminate(*args, **kwargs):
-            logger.exception("Caught job cancellation! Terminating cluster.")
-            cluster_manager.terminate_cluster()
-
-        signal.signal(signal.SIGINT, signal_terminate)
-        signal.signal(signal.SIGTERM, signal_terminate)
 
         result.cluster_url = cluster_manager.get_cluster_url()
 
