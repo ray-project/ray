@@ -7,6 +7,7 @@ import inspect
 import logging
 import multiprocessing
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -1049,8 +1050,13 @@ def get_call_location(back: int = 1):
 
 def get_ray_doc_version():
     """Get the docs.ray.io version corresponding to the ray.__version__."""
-    if "dev" in ray.__version__:
+    # The ray.__version__ can be official Ray release (such as 1.12.0), or
+    # dev (3.0.0dev0) or release candidate (2.0.0rc0). For the later we map
+    # to the master doc version at docs.ray.io.
+    if re.match(r"^\d+\.\d+\.\d+$", ray.__version__) is None:
         return "master"
+    # For the former (official Ray release), we have corresponding doc version
+    # released as well.
     return f"releases-{ray.__version__}"
 
 
