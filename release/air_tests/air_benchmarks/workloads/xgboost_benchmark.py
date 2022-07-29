@@ -122,17 +122,18 @@ def main(args):
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
-    if training_time > _TRAINING_TIME_THRESHOLD:
-        raise RuntimeError(
-            f"Training on XGBoost is taking {training_time} seconds, "
-            f"which is longer than expected ({_TRAINING_TIME_THRESHOLD} seconds)."
-        )
+    if not args.disable_check:
+        if training_time > _TRAINING_TIME_THRESHOLD:
+            raise RuntimeError(
+                f"Training on XGBoost is taking {training_time} seconds, "
+                f"which is longer than expected ({_TRAINING_TIME_THRESHOLD} seconds)."
+            )
 
-    if prediction_time > _PREDICTION_TIME_THRESHOLD:
-        raise RuntimeError(
-            f"Batch prediction on XGBoost is taking {prediction_time} seconds, "
-            f"which is longer than expected ({_PREDICTION_TIME_THRESHOLD} seconds)."
-        )
+        if prediction_time > _PREDICTION_TIME_THRESHOLD:
+            raise RuntimeError(
+                f"Batch prediction on XGBoost is taking {prediction_time} seconds, "
+                f"which is longer than expected ({_PREDICTION_TIME_THRESHOLD} seconds)."
+            )
 
 
 if __name__ == "__main__":
@@ -140,5 +141,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--size", type=str, choices=["10G", "100G"], default="100G")
+    # Add a flag for disabling the timeout error.
+    # Use case: running the benchmark as a documented example, in infra settings
+    # different from the formal benchmark's EC2 setup.
+    parser.add_argument(
+        "--disable-check",
+        action="store_true",
+        help="disable runtime error on benchmark timeout",
+    )
     args = parser.parse_args()
     main(args)
