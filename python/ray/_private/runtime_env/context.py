@@ -68,6 +68,18 @@ class RuntimeEnvContext:
 
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
+        # TODO(SongGuyang): We add this env to command for macOS because it doesn't
+        # work for the C++ process of `os.execvp`. We should find a better way to
+        # fix it.
+        MACOS_LIBRARY_PATH_ENV_NAME = "DYLD_LIBRARY_PATH"
+        if MACOS_LIBRARY_PATH_ENV_NAME in os.environ:
+            command_str = (
+                MACOS_LIBRARY_PATH_ENV_NAME
+                + "="
+                + os.environ.get(MACOS_LIBRARY_PATH_ENV_NAME)
+                + " "
+                + command_str
+            )
         logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
             subprocess.run([executable, *passthrough_args])
