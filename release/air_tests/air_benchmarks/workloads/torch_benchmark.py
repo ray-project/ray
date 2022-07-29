@@ -280,6 +280,7 @@ def train_torch_vanilla(
         upload_file_to_all_nodes,
         create_actors_with_resources,
         run_commands_on_actors,
+        run_fn_on_actors,
         get_ip_port_actors,
         get_gpu_ids_actors,
         map_ips_to_gpus,
@@ -298,6 +299,8 @@ def train_torch_vanilla(
             "GPU": int(use_gpu),
         },
     )
+
+    run_fn_on_actors(lambda: os.environ.pop("OMP_NUM_THREADS", None))
 
     # Get IPs and ports for all actors
     ip_ports = get_ip_port_actors(actors=actors)

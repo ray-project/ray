@@ -154,6 +154,7 @@ def train_tf_vanilla(
         upload_file_to_all_nodes,
         create_actors_with_resources,
         run_commands_on_actors,
+        run_fn_on_actors,
         get_ip_port_actors,
     )
 
@@ -169,6 +170,8 @@ def train_tf_vanilla(
             "GPU": int(use_gpu),
         },
     )
+
+    run_fn_on_actors(lambda: os.environ.pop("OMP_NUM_THREADS", None))
 
     ips_ports = get_ip_port_actors(actors=actors)
     ip_port_list = [f"{ip}:{port}" for ip, port in ips_ports]
