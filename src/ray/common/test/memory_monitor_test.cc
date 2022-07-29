@@ -71,7 +71,7 @@ TEST_F(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup) {
     cmd_out_ss >> total >> used >> free >> shared >> cache >> available;
     cmd_out_ss >> title >> total >> used >> free >> shared >> cache >> available;
 
-    nuint64_t free_total_bytes;
+    int64_t free_total_bytes;
     std::istringstream total_ss(total);
     total_ss >> free_total_bytes;
 
