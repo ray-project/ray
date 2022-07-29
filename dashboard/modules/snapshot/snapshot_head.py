@@ -401,6 +401,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             self._dashboard_head.aiogrpc_gcs_channel
         )
+        # Lazily constructed because dashboard_head's gcs_aio_client is lazily constructed
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(
                 self._dashboard_head.gcs_aio_client
