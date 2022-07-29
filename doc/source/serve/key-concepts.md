@@ -118,8 +118,8 @@ Here's a simple example combining a preprocess function and model.
 ```
 
 ## What's Next?
-Now you have learned about the key concepts. You can dive into our [User Guides](user-guide) for more details into:
-- [Creating, updating, and deleting deployments](managing-deployments)
+Now you have learned about the key concepts. You can dive into our [User Guides](user-guide) for more details about:
+- [Configuring Serve Deployments](configuring-serve-deployments)
 - [Configuring HTTP ingress and integrating with FastAPI](http-guide)
 - [Composing deployments using ServeHandle](handle-guide)
 - [Building Deployment Graphs](deployment-graph)
