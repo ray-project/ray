@@ -22,11 +22,11 @@ def parse_query_args(field_a: int, field_b: str):
     return YourDataClass(field_a, field_b)
 ```
 
-You can specify different type signatures to facilitate the extraction of HTTP fields, including:
-- [Query parameters](https://fastapi.tiangolo.com/tutorial/query-params/),
-- [Body parameters](https://fastapi.tiangolo.com/tutorial/body/),
+You can specify different type signatures to facilitate the extraction of HTTP fields, including
+- [query parameters](https://fastapi.tiangolo.com/tutorial/query-params/),
+- [body parameters](https://fastapi.tiangolo.com/tutorial/body/),
 and 
-- [Many other data types](https://fastapi.tiangolo.com/tutorial/extra-data-types/).
+- [many other data types](https://fastapi.tiangolo.com/tutorial/extra-data-types/).
 
 For more details, you can take a look at the [FastAPI documentation](https://fastapi.tiangolo.com/).
 
