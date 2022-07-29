@@ -1718,27 +1718,6 @@ py_test(
     data = ["tests/data/cartpole/small.json"],
 )
 
-py_test(
-    name = "test_fqe",
-    tags = ["team:rllib", "offline"],
-    size = "small",
-    srcs = ["offline/estimators/tests/test_fqe.py"],
-)
-
-py_test(
-    name = "test_dm",
-    tags = ["team:rllib", "offline"],
-    size = "small",
-    srcs = ["offline/estimators/tests/test_dm.py"],
-)
-
-py_test(
-    name = "test_dr",
-    tags = ["team:rllib", "offline"],
-    size = "small",
-    srcs = ["offline/estimators/tests/test_dr.py"],
-)
-
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
