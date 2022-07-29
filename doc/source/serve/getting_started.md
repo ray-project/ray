@@ -40,7 +40,7 @@ First, let's take a look at our text-translation model. Here's its code:
 :linenos: true
 ```
 
-The Python file, called `model.py` uses the `Translator` class to translate English text to French.
+The Python file, called `model.py`, uses the `Translator` class to translate English text to French.
 
 - The `self.model` variable on line 8 inside `Translator`'s `__init__` method
   stores a function that uses the [t5-small](https://huggingface.co/t5-small)
