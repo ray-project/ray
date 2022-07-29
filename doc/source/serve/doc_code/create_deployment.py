@@ -13,7 +13,6 @@ from random import random
 
 import requests
 import starlette.requests
-import ray
 from ray import serve
 
 #
@@ -60,6 +59,8 @@ class ServeHandleDemo:
         self.predictor_2 = predictor_2
 
     async def run(self):
+        # Query each deployment twice to demonstrate that the requests
+        # get forwarded to different replicas (two for each deployment).
         for i in range(2):
             for predictor in [self.predictor_1, self.predictor_2]:
                 # Call our deployments from Python using the ServeHandle API.
@@ -79,13 +80,14 @@ rep_2_predictor = Predictor.options(
 serve_handle_demo = ServeHandleDemo.bind(rep_1_predictor, rep_2_predictor)
 
 # Start a local single-node Ray cluster and start Ray Serve. These will shut down upon
-# exiting this script.
+# exiting this script. 
+# TODO(architkulkarni): Actually, we are supposed to use DAGDriver here because it's a DAG with >1 node.
 serve.run(serve_handle_demo)
 
 print("ServeHandle API responses: " + "--" * 5)
 
-url = f"http://127.0.0.1:8000/"
-response = requests.get("http://127.0.0.1:8000/")
+url = "http://127.0.0.1:8000/"
+response = requests.get(url)
 prediction = response.text
 print(f"prediction : {prediction}")
 
