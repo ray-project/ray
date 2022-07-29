@@ -182,7 +182,7 @@ EXTERNAL_MARKDOWN_FILES = [
     ),
     (
         "ray-project/ray_lightning",
-        "latest",
+        "6aed848f757a03c03166c1a9bddfeea5153e7b90",
         "README.md",
         "ray-more-libs/ray-lightning.md",
     ),
