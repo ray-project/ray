@@ -36,7 +36,7 @@ e.g. `deployment_1.bind(deployment_2)`.
 By default, HTTP requests will be forwarded to the `__call__` method of the class (or the function) and a `Starlette Request` object will be the sole argument.
 You can also define a deployment that wraps a FastAPI app for more flexible handling of HTTP requests. See {ref}`serve-fastapi-http` for details.
 
-To serve multiple deployments defined by the same class, use the `name` option:
+To deploy multiple deployments that serve the same class or function, use the `name` option:
 
 ```python
 MyFirstDeployment.options(name="hello_service").bind("Hello!")
