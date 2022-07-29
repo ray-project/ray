@@ -230,6 +230,9 @@ class _ImageFolderDatasourceReader(_FileBasedDatasourceReader):
         """Return an estimate of the image files encoding ratio."""
         # Prefetch one image file into memory, and use it to estimate data size for
         # all images, because all images are homogeneous with same size after resizing.
+        # Resizing is always enforced when reading every image in ImageFolderDatasource
+        # and we have to prefetch one image file into memory, to get 3rd dimension of
+        # image (RGB or grayscale).
         import pandas as pd
 
         start_time = time.perf_counter()
@@ -253,7 +256,7 @@ class _ImageFolderDatasourceReader(_FileBasedDatasourceReader):
             self._reader_args.get("root"),
             self._reader_args.get("size"),
         )
-        single_image_memory_size = single_image_block.memory_usage().sum()
+        single_image_memory_size = single_image_block.memory_usage(deep=True).sum()
         total_estimated_memory_size = single_image_memory_size * len(
             non_empty_path_and_size
         )
