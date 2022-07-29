@@ -258,30 +258,9 @@ If the trial/actor is placed on a different node, Tune will automatically push t
 Recovering From Failures
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune automatically persists the progress of your entire experiment (a ``Tuner.fit()`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed by passing one of True, False, "LOCAL", "REMOTE", or "PROMPT" to ``tune.run(resume=...)``. Note that this only works if trial checkpoints are detected, whether it be by manual or periodic checkpointing.
-
-**Settings:**
-
-- The default setting of ``resume=False`` creates a new experiment.
-- ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``.
-- ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``.
-- ``resume="ERRORED_ONLY"`` will look for errored trials in ``local_dir/[experiment_name]`` and only run these (and start from scratch).
-- ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
-- ``resume="AUTO"`` will automatically look for an existing experiment at ``local_dir/[experiment_name]``. If found, it will be continued (as if ``resume=True``), otherwise a new experiment is started.
-
-Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
-
-E.g.:
-
-.. code-block:: python
-
-    tune.run(
-        my_trainable,  # Function trainable that saves checkpoints
-        local_dir="~/path/to/results",
-        resume=True
-    )
-
-Upon a second run, this will restore the entire experiment state from ``~/path/to/results/my_experiment_name``. Importantly, any changes to the experiment specification upon resume will be ignored. For example, if the previous experiment has reached its termination, then resuming it with a new stop criterion will not run. The new experiment will terminate immediately after initialization. If you want to change the configuration, such as training more iterations, you can do so restore the checkpoint by setting ``restore=<path-to-checkpoint>`` - note that this only works for a single trial.
+Tune automatically persists the progress of your entire experiment (a ``Tuner.fit()`` session), so if an experiment crashes or is otherwise cancelled, it can be resumed through ``Tuner.restore()``.
+There are a few options for restoring an experiment:
+"resume_unfinished", "resume_errored" and "restart_errored". See ``Tuner.restore()`` for more details.
 
 .. _tune-distributed-common:
 
