@@ -238,7 +238,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 latest_job_end_time = latest_job_end_time / 1000
                 assert current_timestamp >= latest_job_end_time, (
                     f"Most recent job end time {latest_job_end_time} must be "
-                    f"after the current timestamp {current_timestamp}"
+                    f"before the current timestamp {current_timestamp}"
                 )
 
             is_active = (
