@@ -2426,7 +2426,7 @@ def wait(
                 "of objects provided to ray.wait."
             )
 
-        timeout = timeout if timeout is not None else 10**6
+        timeout = timeout if timeout is not None else 10 ** 6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
             object_refs,
