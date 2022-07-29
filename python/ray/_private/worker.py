@@ -1165,7 +1165,7 @@ def init(
             arguments is passed in.
     """
     if configure_logging:
-        setup_logger(logging_level, logging_format)
+        setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1192,8 +1192,6 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
-    if not logging_format:
-        logging_format = ray_constants.LOGGER_FORMAT
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -2428,7 +2426,7 @@ def wait(
                 "of objects provided to ray.wait."
             )
 
-        timeout = timeout if timeout is not None else 10 ** 6
+        timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
             object_refs,

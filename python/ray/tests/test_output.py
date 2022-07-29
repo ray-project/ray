@@ -14,6 +14,21 @@ from ray._private.test_utils import (
 )
 
 
+def test_logger_config():
+    script = """
+import ray
+
+ray.init(num_cpus=1)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "INFO worker.py:" in err_str, err_str
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_spill_logs():
     script = """
@@ -632,7 +647,7 @@ if __name__ == "__main__":
         # about low shm memory in Linux environment.
         # The test failures currently complain it only has 2 GB memory,
         # so let's set it much lower than that.
-        MB = 1000 ** 2
+        MB = 1000**2
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
