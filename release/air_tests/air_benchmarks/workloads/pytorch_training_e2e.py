@@ -6,7 +6,6 @@ import pandas as pd
 
 from torchvision import transforms
 from torchvision.models import resnet18
-import torch
 import torch.nn as nn
 import torch.optim as optim
 
