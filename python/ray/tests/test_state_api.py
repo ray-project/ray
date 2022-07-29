@@ -1939,7 +1939,7 @@ def test_network_failure(shutdown_only):
     # Kill raylet so that list_tasks will have network error on querying raylets.
     ray._private.worker._global_node.kill_raylet()
 
-    with pytest.raises(RayStateApiException):
+    with pytest.raises(ConnectionError):
         list_tasks(_explain=True)
 
 
@@ -2281,9 +2281,7 @@ def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None):
 )
 def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     import queue
-    import multiprocessing as mp
-    import os
-    import signal
+    import threading
 
     # Set environment
     with monkeypatch.context() as m:
@@ -2291,9 +2289,9 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "NodeManagerService.grpc_server.GetTasksInfo=10000000:10000000,"
-                "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=10000000:10000000,"
-                "ActorInfoGcsService.grpc_server.GetAllActorInfo=10000000:10000000"
+                "NodeManagerService.grpc_server.GetTasksInfo=3000000:3000000,"
+                "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=3000000:3000000,"
+                "ActorInfoGcsService.grpc_server.GetAllActorInfo=3000000:3000000"
             ),
         )
 
@@ -2324,10 +2322,10 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         wait_for_condition(lambda: len(list_objects()) > 0)
 
         # Running 3 slow apis to exhaust the limits
-        res_q = mp.Queue()
-        start_q = mp.Queue()  # not used
+        res_q = queue.Queue()
+        start_q = queue.Queue()  # used for sync
         procs = [
-            mp.Process(
+            threading.Thread(
                 target=_try_state_query_expect_rate_limit,
                 args=(
                     list_workers,
@@ -2335,7 +2333,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
                     start_q,
                 ),
             ),
-            mp.Process(
+            threading.Thread(
                 target=_try_state_query_expect_rate_limit,
                 args=(
                     list_tasks,
@@ -2343,7 +2341,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
                     start_q,
                 ),
             ),
-            mp.Process(
+            threading.Thread(
                 target=_try_state_query_expect_rate_limit,
                 args=(
                     list_actors,
@@ -2374,58 +2372,6 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         assert "Max" in str(
             e
         ), f"Expect an exception raised due to rate limit, but have {str(e)}"
-
-        # Kill the 3 slow running threads
-        [os.kill(p.pid, signal.SIGKILL) for p in procs]
-        [p.join() for p in procs]
-        for p in procs:
-            assert not p.is_alive(), "Slow queries should be killed"
-
-        # Running another 3 should return no error
-        q = mp.Queue()
-        procs = [
-            mp.Process(
-                target=_try_state_query_expect_rate_limit,
-                args=(
-                    list_objects,
-                    q,
-                ),
-            ),
-            mp.Process(
-                target=_try_state_query_expect_rate_limit,
-                args=(
-                    list_runtime_envs,
-                    q,
-                ),
-            ),
-            mp.Process(
-                target=_try_state_query_expect_rate_limit,
-                args=(
-                    list_placement_groups,
-                    q,
-                ),
-            ),
-        ]
-
-        [p.start() for p in procs]
-
-        max_concurrent_reqs_error = 0
-        for _ in range(len(procs)):
-            try:
-                res = q.get(timeout=10)
-                if isinstance(res, Exception):
-                    assert False, f"State API error: {res}"
-                elif isinstance(res, int):
-                    max_concurrent_reqs_error += res
-                else:
-                    raise ValueError(res)
-            except queue.Empty:
-                assert False, "Failed to get some results from a subprocess"
-
-        assert max_concurrent_reqs_error == 0, "All requests should be successful"
-        [p.join(5) for p in procs]
-        for proc in procs:
-            assert not proc.is_alive(), "All processes should exit"
 
 
 @pytest.mark.skipif(
