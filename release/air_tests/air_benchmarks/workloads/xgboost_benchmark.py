@@ -122,7 +122,7 @@ def main(args):
     with open(test_output_json, "wt") as f:
         json.dump(result, f)
 
-    if not args.no_timeout:
+    if not args.disable_check:
         if training_time > _TRAINING_TIME_THRESHOLD:
             raise RuntimeError(
                 f"Training on XGBoost is taking {training_time} seconds, "
@@ -145,7 +145,7 @@ if __name__ == "__main__":
     # Use case: running the benchmark as a documented example, in infra settings
     # different from the formal benchmark's EC2 setup.
     parser.add_argument(
-        "--no-timeout",
+        "--disable-check",
         action="store_true",
         help="disable runtime error on benchmark timeout",
     )
