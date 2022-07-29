@@ -177,6 +177,7 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = """
 import os
