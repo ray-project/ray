@@ -480,13 +480,26 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     )
 
 
-def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
+def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
+    """Upload a local package to GCS.
+
+    Args:
+        pkg_uri: The URI of the package, e.g. gcs://my_package.zip
+        pkg_bytes: The data to be uploaded.
+
+    Raises:
+        RuntimeError: If the upload fails.
+        ValueError: If the pkg_uri is a remote path or if the data's
+            size exceeds GCS_STORAGE_MAX_SIZE.
+        NotImplementedError: If the protocol of the URI is not supported.
+
+    """
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
-        raise RuntimeError(
-            "upload_package_to_gcs should not be called with remote path."
+        raise ValueError(
+            "upload_package_to_gcs should not be called with a remote path."
         )
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
@@ -538,6 +551,12 @@ def upload_package_if_needed(
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
+
+    Raises:
+        RuntimeError: If the upload fails.
+        ValueError: If the pkg_uri is a remote path or if the data's
+            size exceeds GCS_STORAGE_MAX_SIZE.
+        NotImplementedError: If the protocol of the URI is not supported.
     """
     if excludes is None:
         excludes = []
@@ -583,9 +602,25 @@ async def download_and_unpack_package(
 
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
+
+    Args:
+        pkg_uri: URI of the package to download.
+        base_directory: Directory to use as the parent directory of the target
+            directory for the unpacked files.
+        gcs_aio_client: Client to use for downloading from the GCS.
+        logger: The logger to use.
+
+    Returns:
+        Path to the local directory containing the unpacked package files.
+
+    Raises:
+        IOError: If the download fails.
+        ImportError: If smart_open is not installed and a remote URI is used.
+        NotImplementedError: If the protocol of the URI is not supported.
+
     """
     if os.environ.get(RAY_RUNTIME_ENV_FAIL_DOWNLOAD_FOR_TESTING_ENV_VAR):
-        raise RuntimeError("Simulating failure to download package for testing.")
+        raise IOError("Failed to download package. (Simulated failure for testing)")
 
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     with FileLock(str(pkg_file) + ".lock"):

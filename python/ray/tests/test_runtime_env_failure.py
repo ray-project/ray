@@ -7,6 +7,7 @@ from ray._private.runtime_env.packaging import (
     RAY_RUNTIME_ENV_FAIL_UPLOAD_FOR_TESTING_ENV_VAR,
 )
 import ray
+from ray.exceptions import RuntimeEnvSetupError
 
 from ray.runtime_env import RuntimeEnv
 
@@ -67,9 +68,23 @@ def fail_download():
         yield
 
 
+@pytest.fixture
+def client_connection_timeout_5s():
+    """Lower Ray Client ray.init() to 1 second (default 30) to save time"""
+    with mock.patch.dict(
+        os.environ,
+        {
+            "RAY_CLIENT_RECONNECT_GRACE_PERIOD": "1",
+        },
+    ):
+        yield
+
+
 class TestRuntimeEnvFailure:
     @pytest.mark.parametrize("plugin", ["working_dir", "py_modules"])
-    def test_fail_upload(self, tmpdir, monkeypatch, start_cluster, plugin):
+    def test_fail_upload(
+        self, tmpdir, monkeypatch, start_cluster, plugin, client_connection_timeout_5s
+    ):
         """Simulate failing to upload the working_dir to the GCS.
 
         Test that we raise an exception and don't hang.
@@ -81,26 +96,39 @@ class TestRuntimeEnvFailure:
         else:
             runtime_env = {"py_modules": [str(tmpdir)]}
 
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeEnvSetupError) as e:
             ray.init(address, runtime_env=runtime_env)
+        assert "Failed to upload" in str(e.value)
 
-    def test_fail_runtime_env_download(
-        self, tmpdir, monkeypatch, fail_download, start_cluster
+    @pytest.mark.parametrize("plugin", ["working_dir", "py_modules"])
+    def test_fail_download(
+        self,
+        tmpdir,
+        monkeypatch,
+        fail_download,
+        start_cluster,
+        plugin,
+        client_connection_timeout_5s,
     ):
         """Simulate failing to download the working_dir from the GCS.
 
         Test that we raise an exception and don't hang.
         """
         _, address = start_cluster
+        if plugin == "working_dir":
+            runtime_env = {"working_dir": str(tmpdir)}
+        else:
+            runtime_env = {"py_modules": [str(tmpdir)]}
 
         def init_ray():
-            ray.init(address, runtime_env={"working_dir": str(tmpdir)})
+            ray.init(address, runtime_env=runtime_env)
 
         if using_ray_client(address):
             # Fails at ray.init() because the working_dir is downloaded for the
             # Ray Client server.
-            with pytest.raises(Exception):
+            with pytest.raises(ConnectionAbortedError) as e:
                 init_ray()
+            assert "Failed to download" in str(e.value)
         else:
             init_ray()
             # TODO(architkulkarni): After #25972 is resolved, we should raise an
@@ -111,13 +139,16 @@ class TestRuntimeEnvFailure:
             def f():
                 pass
 
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeEnvSetupError) as e:
                 ray.get(f.remote())
+            assert "Failed to download" in str(e.value)
 
-    def test_eager_install_fail(self, tmpdir, monkeypatch, start_cluster):
+    def test_eager_install_fail(
+        self, tmpdir, monkeypatch, start_cluster, client_connection_timeout_5s
+    ):
         """Simulate failing to install a runtime_env in ray.init().
 
-        By default eager_install is set to true.  We should make sure
+        By default eager_install is set to True.  We should make sure
         the driver fails to start if the eager_install fails.
         """
         _, address = start_cluster
@@ -130,8 +161,11 @@ class TestRuntimeEnvFailure:
         if using_ray_client(address):
             # Fails at ray.init() because the `pip` package is downloaded for the
             # Ray Client server.
-            with pytest.raises(Exception):
+            with pytest.raises(ConnectionAbortedError) as e:
                 init_ray()
+            assert "No matching distribution found for ray-nonexistent-pkg" in str(
+                e.value
+            )
         else:
             init_ray()
 
@@ -142,8 +176,11 @@ class TestRuntimeEnvFailure:
             def f():
                 pass
 
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeEnvSetupError) as e:
                 ray.get(f.remote())
+            assert "No matching distribution found for ray-nonexistent-pkg" in str(
+                e.value
+            )
 
 
 if __name__ == "__main__":

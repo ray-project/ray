@@ -23,6 +23,7 @@ from ray._private.runtime_env.packaging import (
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
 
@@ -90,23 +91,35 @@ def upload_py_modules_if_needed(
                 excludes = runtime_env.get("excludes", None)
                 module_uri = get_uri_for_directory(module_path, excludes=excludes)
                 if upload_fn is None:
-                    upload_package_if_needed(
-                        module_uri,
-                        scratch_dir,
-                        module_path,
-                        excludes=excludes,
-                        include_parent_dir=True,
-                        logger=logger,
-                    )
+                    try:
+                        upload_package_if_needed(
+                            module_uri,
+                            scratch_dir,
+                            module_path,
+                            excludes=excludes,
+                            include_parent_dir=True,
+                            logger=logger,
+                        )
+                    except Exception as e:
+                        raise RuntimeEnvSetupError(
+                            f"Failed to upload module {module_path} to the Ray "
+                            f"cluster: {e}"
+                        ) from e
                 else:
                     upload_fn(module_path, excludes=excludes)
             elif Path(module_path).suffix == ".whl":
                 module_uri = get_uri_for_package(Path(module_path))
                 if upload_fn is None:
                     if not package_exists(module_uri):
-                        upload_package_to_gcs(
-                            module_uri, Path(module_path).read_bytes()
-                        )
+                        try:
+                            upload_package_to_gcs(
+                                module_uri, Path(module_path).read_bytes()
+                            )
+                        except Exception as e:
+                            raise RuntimeEnvSetupError(
+                                f"Failed to upload {module_path} to the Ray "
+                                f"cluster: {e}"
+                            ) from e
                 else:
                     upload_fn(module_path, excludes=None, is_file=True)
             else:
