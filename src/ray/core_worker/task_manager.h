@@ -87,6 +87,9 @@ using ForwardObjectCallback = std::function<Status(const ObjectID &object_id,
                                                    const rpc::Address &borrower_address,
                                                    const rpc::Address &owner_address,
                                                    const size_t object_size)>;
+using UpdateForwardedObjectCallback = std::function<Status(const rpc::PushTaskReply &reply,
+                                                           const std::string &pinned_at_raylet_id,
+                                                           const rpc::Address &owner_address)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
@@ -96,6 +99,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
               ForwardObjectCallback forward_object_callback,
+              UpdateForwardedObjectCallback update_forwarded_object_callback,
               int64_t max_lineage_bytes)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
@@ -103,6 +107,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         retry_task_callback_(retry_task_callback),
         push_error_callback_(push_error_callback),
         forward_object_callback_(forward_object_callback),
+        update_forwarded_object_callback_(update_forwarded_object_callback),
         max_lineage_bytes_(max_lineage_bytes) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -380,6 +385,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   // Called to forward a returned object to another worker
   const ForwardObjectCallback forward_object_callback_;
+
+  // Called to forward a returned object to another worker
+  const UpdateForwardedObjectCallback update_forwarded_object_callback_;
 
   const int64_t max_lineage_bytes_;
 

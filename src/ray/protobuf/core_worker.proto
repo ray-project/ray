@@ -353,9 +353,20 @@ message AssignObjectOwnerRequest {
   Address borrower_address = 4;
   // Description of the call site where the reference was created.
   string call_site = 5;
+  // whether the object is reconstrutable
+  bool is_reconstructable = 6;
 }
 
 message AssignObjectOwnerReply {}
+
+message UpdateForwardedObjectRequest {
+  // The returned objects.
+  repeated ReturnObject return_objects = 1;
+  //
+  string pinned_at_raylet_id = 2;
+}
+
+message UpdateForwardedObjectReply {}
 
 message RayletNotifyGCSRestartRequest {}
 
@@ -414,4 +425,6 @@ service CoreWorkerService {
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
+  // 
+  rpc UpdateForwardedObject(UpdateForwardedObjectRequest) returns (UpdateForwardedObjectReply);
 }

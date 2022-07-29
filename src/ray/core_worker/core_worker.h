@@ -272,6 +272,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                               const rpc::Address &owner_address,
                               const size_t object_size);
 
+  Status UpdateForwardedObject(const rpc::PushTaskReply &reply,
+                               const std::string &pinned_at_raylet_id,
+                               const rpc::Address &owner_address);
+
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `SealOwned()` to
   /// finalize the object. The `CreateOwnedAndIncrementLocalRef()` and
@@ -791,6 +795,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::AssignObjectOwnerReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleUpdateForwardedObject(const rpc::UpdateForwardedObjectRequest &request,
+                                   rpc::UpdateForwardedObjectReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.

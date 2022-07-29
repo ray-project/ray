@@ -193,6 +193,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
                                  const ClientCallback<AssignObjectOwnerReply> &callback) {
   }
 
+  virtual void UpdateForwardedObject(const UpdateForwardedObjectRequest &request,
+                                     const ClientCallback<UpdateForwardedObjectReply> &callback) {
+  }
+
   virtual void RayletNotifyGCSRestart(
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) {}
@@ -327,6 +331,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          AssignObjectOwner,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         UpdateForwardedObject,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

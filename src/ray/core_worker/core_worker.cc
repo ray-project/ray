@@ -288,6 +288,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                 owner_address,
                                 object_size);
   };
+  auto update_forwarded_object_callback = [this](const rpc::PushTaskReply &reply,
+                                                 const std::string &pinned_at_raylet_id,
+                                                 const rpc::Address &owner_address) {
+    return UpdateForwardedObject(reply,
+                                 pinned_at_raylet_id,
+                                 owner_address);
+  };
   task_manager_.reset(new TaskManager(
       memory_store_,
       reference_counter_,
@@ -320,6 +327,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       },
       push_error_callback,
       forward_object_callback,
+      update_forwarded_object_callback,
       RayConfig::instance().max_lineage_bytes()));
 
   // Create an entry for the driver task in the task table. This task is
@@ -960,6 +968,25 @@ Status CoreWorker::Put(const RayObject &object,
     return Status::OK();
   }
   return PutInLocalPlasmaStore(object, object_id, pin_object);
+}
+
+Status CoreWorker::UpdateForwardedObject(const rpc::PushTaskReply &reply,
+                                         const std::string &pinned_at_raylet_id,
+                                         const rpc::Address &owner_address) {
+  rpc::UpdateForwardedObjectRequest request;
+  for (int i = 0; i < reply.return_objects_size(); i++) {
+    request.add_return_objects()->CopyFrom(reply.return_objects(i));
+  }
+  request.set_pinned_at_raylet_id(pinned_at_raylet_id);
+  auto conn = core_worker_client_pool_->GetOrConnect(owner_address);
+  std::promise<Status> status_promise;
+  conn->UpdateForwardedObject(request,
+                          [&status_promise](const Status &returned_status,
+                                            const rpc::UpdateForwardedObjectReply &reply) {
+                            status_promise.set_value(returned_status);
+                          });
+  // Block until the remote call `UpdateForwardedObject` returns.
+  return status_promise.get_future().get();
 }
 
 Status CoreWorker::ForwardToOtherWorker(const ObjectID &object_id,
@@ -3256,11 +3283,24 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
       rpc_address_,
       call_site,
       request.object_size(),
-      /*is_reconstructable=*/false,
+      request.is_reconstructable(),
       /*add_local_ref=*/false,
       /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorker::HandleUpdateForwardedObject(const rpc::UpdateForwardedObjectRequest &request,
+                                             rpc::UpdateForwardedObjectReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  auto pinned_at_raylet_id = NodeID::FromBinary(request.pinned_at_raylet_id());
+  for (int i = 0; i < request.return_objects_size(); i++) {
+    const auto &return_object = request.return_objects(i);
+    ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
+    reference_counter_->UpdateObjectSize(object_id, return_object.size());
+    reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

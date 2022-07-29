@@ -241,6 +241,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   // reference holders that are already scheduled at the raylet can retrieve
   // these objects through plasma.
   absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
+  bool forward_to_parent = false;
+  rpc::Address caller_address;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -249,12 +251,18 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (it->second.num_successful_executions > 0) {
       store_in_plasma_ids = it->second.reconstructable_return_ids;
     }
+    forward_to_parent = it->second.spec.ForwardToParent();
+    caller_address = it->second.spec.CallerAddress();
   }
-
   std::vector<ObjectID> direct_return_ids;
+  if (forward_to_parent) {
+    update_forwarded_object_callback_(reply, worker_addr.raylet_id(), caller_address);
+  } else {
+
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
+    // in rpc
     reference_counter_->UpdateObjectSize(object_id, return_object.size());
     RAY_LOG(DEBUG) << "Task return object " << object_id << " has size "
                    << return_object.size();
@@ -266,6 +274,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       // it as local in the in-memory store so that the data locality policy
       // will choose the right raylet for any queued dependent tasks.
       const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
+      // in rpc
       reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
       // Mark it as in plasma with a dummy object.
       RAY_CHECK(
@@ -310,6 +319,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       }
       reference_counter_->AddNestedObjectIds(object_id, nested_ids, owner_address);
     }
+  }
   }
 
   TaskSpecification spec;
