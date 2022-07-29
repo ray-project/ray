@@ -5,25 +5,29 @@ from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
 
+
 @serve.deployment
 class AddCls:
-
     def __init__(self, addend: float):
         self.addend = addend
-    
+
     def add(self, number: float) -> float:
         return number + self.addend
-    
+
     async def unpack_request(self, http_request) -> float:
         return await http_request.json()
+
 
 @serve.deployment
 def subtract_one_fn(number: float) -> float:
     return number - 1
 
+
 @serve.deployment
 async def unpack_request(http_request) -> float:
     return await http_request.json()
+
+
 # __deployments_end__
 
 
