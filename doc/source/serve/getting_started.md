@@ -29,7 +29,7 @@ pip install "ray[serve]" transformers requests
 ```
 
 
-## Example Model
+## Model Example: Before Ray Serve
 
 First, let's take a look at our text-translation model. Here's its code:
 
