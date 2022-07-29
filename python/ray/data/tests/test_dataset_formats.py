@@ -2884,14 +2884,13 @@ def test_image_folder_datasource_size_parameter(
     assert all(tensor.shape == (32, 32, 3) for tensor in tensors)
 
 
-def test_image_folder_datasource_retains_shape_no_cast(
+def test_image_folder_datasource_retains_shape_without_cast(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
 ):
     """Test `ImageFolderDatasource` retains image shapes if casting is disabled.
 
-    The folder "different-sizes" contains two cat images and one dog image. Each image
-    has a different size, with the size described in file names (e.g., 32x32.png). All
-    images are RGB images.
+    The folder "different-sizes" contains two cat images and one dog image. The image
+    sizes are 16x16, 32x32, and 64x32. All images are RGB images.
     """
     if enable_automatic_tensor_extension_cast:
         return
