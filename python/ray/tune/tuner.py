@@ -1,24 +1,27 @@
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import ray
 
 from ray.air.config import RunConfig
-from ray.train.trainer import BaseTrainer
 from ray.tune import TuneError
 from ray.tune.execution.trial_runner import _ResumeConfig
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.impl.tuner_internal import TunerInternal
 from ray.tune.tune_config import TuneConfig
+from ray.tune.utils.node import _force_on_current_node
 from ray.util import PublicAPI
-from ray.util.ml_utils.node import force_on_current_node
+
+if TYPE_CHECKING:
+    from ray.train.trainer import BaseTrainer
 
 ClientActorHandle = Any
 
-try:
-    from ray.util.client.common import ClientActorHandle
-except Exception:
-    pass
+# try:
+#     # Breaks lint right now.
+#     from ray.util.client.common import ClientActorHandle
+# except Exception:
+#     pass
 
 # The magic key that is used when instantiating Tuner during resume.
 _TUNER_INTERNAL = "_tuner_internal"
@@ -112,7 +115,7 @@ class Tuner:
                 str,
                 Callable,
                 Type[Trainable],
-                BaseTrainer,
+                "BaseTrainer",
             ]
         ] = None,
         *,
@@ -140,7 +143,7 @@ class Tuner:
             if not self._is_ray_client:
                 self._local_tuner = TunerInternal(**kwargs)
             else:
-                self._remote_tuner = force_on_current_node(
+                self._remote_tuner = _force_on_current_node(
                     ray.remote(num_cpus=0)(TunerInternal)
                 ).remote(**kwargs)
 
@@ -201,7 +204,7 @@ class Tuner:
             )
             return Tuner(_tuner_internal=tuner_internal)
         else:
-            tuner_internal = force_on_current_node(
+            tuner_internal = _force_on_current_node(
                 ray.remote(num_cpus=0)(TunerInternal)
             ).remote(restore_path=path, resume_config=resume_config)
             return Tuner(_tuner_internal=tuner_internal)

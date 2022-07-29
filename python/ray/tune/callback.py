@@ -5,9 +5,9 @@ import warnings
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
+    from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
     from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
-    from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 
 class _CallbackMeta(ABCMeta):
@@ -80,7 +80,7 @@ class Callback(metaclass=_CallbackMeta):
 
     .. code-block:: python
 
-        from ray import tune
+        from ray import air, tune
         from ray.tune import Callback
 
 
@@ -94,10 +94,13 @@ class Callback(metaclass=_CallbackMeta):
             for i in range(10):
                 tune.report(metric=i)
 
-
-        tune.run(
+        tuner = tune.Tuner(
             train,
-            callbacks=[MyCallback()])
+            run_config=air.RunConfig(
+                callbacks=[MyCallback()]
+            )
+        )
+        tuner.fit()
 
     """
 
@@ -116,7 +119,7 @@ class Callback(metaclass=_CallbackMeta):
 
         Arguments:
             stop: Stopping criteria.
-                If ``time_budget_s`` was passed to ``tune.run``, a
+                If ``time_budget_s`` was passed to ``air.RunConfig``, a
                 ``TimeoutStopper`` will be passed here, either by itself
                 or as a part of a ``CombinedStopper``.
             num_samples: Number of times to sample from the

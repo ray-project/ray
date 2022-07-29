@@ -45,4 +45,6 @@ class Normalizer(Preprocessor):
         return df
 
     def __repr__(self):
-        return f"Normalizer(columns={self.columns}, norm={self.norm})>"
+        return (
+            f"{self.__class__.__name__}(columns={self.columns!r}, norm={self.norm!r})"
+        )
