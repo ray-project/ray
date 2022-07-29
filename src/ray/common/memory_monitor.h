@@ -20,7 +20,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
-#include "ray/common/nullable_uint.h"
 
 namespace ray {
 /// Callback that runs at each monitoring interval.
@@ -55,18 +54,23 @@ class MemoryMonitor {
   static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
   static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
   static constexpr uint32_t kLogIntervalMs = 5000;
+  static constexpr int64_t kNull = -1;
 
   /// Returns true if the memory usage of this node is above the threshold.
   bool IsUsageAboveThreshold();
 
   /// Returns the used and total memory in bytes.
-  std::tuple<nuint64_t, nuint64_t> GetMemoryBytes();
+  std::tuple<int64_t, int64_t> GetMemoryBytes();
 
   /// Returns the used and total memory in bytes from Cgroup.
-  std::tuple<nuint64_t, nuint64_t> GetCGroupMemoryBytes();
+  std::tuple<int64_t, int64_t> GetCGroupMemoryBytes();
 
   /// Returns the used and total memory in bytes for linux OS.
-  std::tuple<nuint64_t, nuint64_t> GetLinuxMemoryBytes();
+  std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
+
+  /// Returns the smaller of the two integers, kNull if both are kNull,
+  /// or one of the values if the other is kNull.
+  static int64_t NullableMin(int64_t left, int64_t right);
 
  private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);

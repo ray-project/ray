@@ -17,7 +17,6 @@
 #include <fstream>  // std::ifstream
 #include <tuple>
 
-#include "ray/common/nullable_uint.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
@@ -76,14 +75,14 @@ bool MemoryMonitor::IsUsageAboveThreshold() {
   return is_usage_above_threshold;
 }
 
-std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetMemoryBytes() {
+std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   RAY_CHECK(__linux__) << "Memory monitor currently supports only linux";
   auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
   auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
   /// cgroup memory limit can be higher than system memory limit when it is
   /// not used. We take its value only when it is less than or equal to system memory
   /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
-  system_total_bytes = NullableInt::min(system_total_bytes, cgroup_total_bytes);
+  system_total_bytes = NullableMin(system_total_bytes, cgroup_total_bytes);
   /// This assumes cgroup total bytes will look different than system (meminfo)
   if (system_total_bytes == cgroup_total_bytes) {
     system_used_bytes = cgroup_used_bytes;
@@ -91,8 +90,8 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetMemoryBytes() {
   return std::tuple(system_used_bytes, system_total_bytes);
 }
 
-std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetCGroupMemoryBytes() {
-  nuint64_t total_bytes = kNull;
+std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
+  int64_t total_bytes = kNull;
   if (boost::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
     std::ifstream mem_file(kCgroupsV2MemoryMaxPath, std::ios::in | std::ios::binary);
     mem_file >> total_bytes;
@@ -101,7 +100,7 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     mem_file >> total_bytes;
   }
 
-  nuint64_t used_bytes = kNull;
+  int64_t used_bytes = kNull;
   if (boost::filesystem::exists(kCgroupsV2MemoryUsagePath)) {
     std::ifstream mem_file(kCgroupsV2MemoryUsagePath, std::ios::in | std::ios::binary);
     mem_file >> used_bytes;
@@ -120,7 +119,7 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   return {used_bytes, total_bytes};
 }
 
-std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetLinuxMemoryBytes() {
+std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   std::string meminfo_path = "/proc/meminfo";
   std::ifstream meminfo_ifs(meminfo_path, std::ios::in | std::ios::binary);
   if (!meminfo_ifs.is_open()) {
@@ -132,11 +131,11 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   uint64_t value;
   std::string unit;
 
-  nuint64_t mem_total_bytes = kNull;
-  nuint64_t mem_available_bytes = kNull;
-  nuint64_t mem_free_bytes = kNull;
-  nuint64_t cached_bytes = kNull;
-  nuint64_t buffer_bytes = kNull;
+  int64_t mem_total_bytes = kNull;
+  int64_t mem_available_bytes = kNull;
+  int64_t mem_free_bytes = kNull;
+  int64_t cached_bytes = kNull;
+  int64_t buffer_bytes = kNull;
   while (std::getline(meminfo_ifs, line)) {
     std::istringstream iss(line);
     iss >> title >> value >> unit;
@@ -161,7 +160,7 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetLinuxMemoryBytes() {
     return {kNull, kNull};
   }
 
-  nuint64_t available_bytes = kNull;
+  int64_t available_bytes = kNull;
   /// Follows logic from psutil
   if (mem_available_bytes > 0) {
     available_bytes = mem_available_bytes;
@@ -181,6 +180,19 @@ std::tuple<nuint64_t, nuint64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   }
   auto used_bytes = mem_total_bytes - available_bytes;
   return {used_bytes, mem_total_bytes};
+}
+
+int64_t MemoryMonitor::NullableMin(int64_t left, int64_t right) {
+  RAY_CHECK_GE(left, kNull);
+  RAY_CHECK_GE(right, kNull);
+
+  if (left == kNull) {
+    return right;
+  } else if (right == kNull) {
+    return left;
+  } else {
+    return std::min(left, right);
+  }
 }
 
 MemoryMonitor::~MemoryMonitor() {
