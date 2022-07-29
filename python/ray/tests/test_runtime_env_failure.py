@@ -29,8 +29,8 @@ def fail_download():
 
 
 @pytest.fixture
-def client_connection_timeout_5s():
-    """Lower Ray Client ray.init() to 1 second (default 30) to save time"""
+def client_connection_timeout_1s():
+    """Lower Ray Client ray.init() timeout to 1 second (default 30s) to save time"""
     with mock.patch.dict(
         os.environ,
         {
@@ -43,7 +43,7 @@ def client_connection_timeout_5s():
 class TestRuntimeEnvFailure:
     @pytest.mark.parametrize("plugin", ["working_dir", "py_modules"])
     def test_fail_upload(
-        self, tmpdir, monkeypatch, start_cluster, plugin, client_connection_timeout_5s
+        self, tmpdir, monkeypatch, start_cluster, plugin, client_connection_timeout_1s
     ):
         """Simulate failing to upload the working_dir to the GCS.
 
@@ -68,7 +68,7 @@ class TestRuntimeEnvFailure:
         fail_download,
         start_cluster,
         plugin,
-        client_connection_timeout_5s,
+        client_connection_timeout_1s,
     ):
         """Simulate failing to download the working_dir from the GCS.
 
@@ -104,7 +104,7 @@ class TestRuntimeEnvFailure:
             assert "Failed to download" in str(e.value)
 
     def test_eager_install_fail(
-        self, tmpdir, monkeypatch, start_cluster, client_connection_timeout_5s
+        self, tmpdir, monkeypatch, start_cluster, client_connection_timeout_1s
     ):
         """Simulate failing to install a runtime_env in ray.init().
 
