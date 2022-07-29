@@ -18,12 +18,18 @@ The basic building block of deployment graphs is the `DeploymentNode`. There are
 three types of `DeploymentNodes`:
 
 * `ClassNode`: a `DeploymentNode` containing a Python class bound to its constructor's arguments
-* `MethodNode`: a `DeploymentNode` representing a `ClassNode`'s method bound to arguments will be used to invoke the method
-* `FunctionNode`: a `DeploymentNode` containing a Python function bound to its arguments
+* `MethodNode`: a `DeploymentNode` representing a `ClassNode`'s method bound to arguments that will be used to invoke the method
+* `FunctionNode`: a `DeploymentNode` containing a Python function bound to arguments that will be used to invoke the function
 
 The next two sections will discuss how to construct and connects these nodes to form deployment graphs.
 
 ## ClassNodes
 
+## The Call Graph: MethodNodes and FunctionNodes
 
+## Drivers and HTTP Adapters
+
+### Parsing the InputNode
+
+## Next Steps
 
