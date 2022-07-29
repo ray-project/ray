@@ -30,7 +30,7 @@ AIR User Guides
     +++
     .. link-button:: /ray-air/tuner
         :type: ref
-        :text: How to use AIR Tuner?
+        :text: Hyperparameter Tuning
         :classes: btn-link btn-block stretched-link
 
 
