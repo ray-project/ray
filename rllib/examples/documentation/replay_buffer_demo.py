@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 
 
@@ -107,7 +107,7 @@ while not done:
     one_step_batch = SampleBatch(
         {"obs": [obs], "t": [t], "reward": [reward], "dones": [done]}
     )
-    batch = SampleBatch.concat_samples([batch, one_step_batch])
+    batch = concat_samples([batch, one_step_batch])
     t += 1
 
 less_sampled_buffer.add(batch)
