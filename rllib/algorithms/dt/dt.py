@@ -34,7 +34,7 @@ class DTConfig(AlgorithmConfig):
         self.shuffle_buffer_size = 32
         self.max_seq_len = 20
         self.lr = 1e-4
-        self.horizon = 1000
+        self.max_ep_len = self.horizon
 
         # __sphinx_doc_end__
         # fmt: on
@@ -49,6 +49,7 @@ class DTConfig(AlgorithmConfig):
         self.attn_pdrop = 0.1
         self.use_obs_output = False
         self.use_return_output = False
+        self.target_return = None
 
         # overriding the trainer config default
         # If data ingestion/sample_time is slow, increase this
@@ -64,6 +65,7 @@ class DTConfig(AlgorithmConfig):
         weight_decay: Optional[float] = None,
         betas: Optional[Tuple[float, float]] = None,
         max_seq_len: Optional[int] = None,
+        max_ep_len: Optional[int] = None,
         embed_dim: Optional[int] = None,
         num_layers: Optional[int] = None,
         num_heads: Optional[int] = None,
@@ -72,6 +74,7 @@ class DTConfig(AlgorithmConfig):
         attn_pdrop: Optional[float] = None,
         use_obs_output: Optional[bool] = None,
         use_return_output: Optional[bool] = None,
+        target_return: Optional[float] = None,
         **kwargs,
     ) -> "DTConfig":
         """
@@ -95,6 +98,8 @@ class DTConfig(AlgorithmConfig):
             self.betas = betas
         if max_seq_len is not None:
             self.max_seq_len = max_seq_len
+        if max_ep_len is not None:
+            self.max_ep_len = max_ep_len
         if embed_dim is not None:
             self.embed_dim = embed_dim
         if num_layers is not None:
@@ -111,6 +116,8 @@ class DTConfig(AlgorithmConfig):
             self.use_obs_output = use_obs_output
         if use_return_output is not None:
             self.use_return_output = use_return_output
+        if target_return is not None:
+            self.target_return = target_return
 
         return self
 
@@ -128,6 +135,27 @@ class DT(Algorithm):
         self.buffer = SegmentationBuffer(
             self.config["shuffle_buffer_size"],
             self.config["max_seq_len"],
+        )
+
+    @override(Algorithm)
+    def validate_config(self, config: AlgorithmConfigDict) -> None:
+        """Validates the Trainer's config dict.
+
+        Args:
+            config: The Trainer's config to check.
+
+        Raises:
+            ValueError: In case something is wrong with the config.
+        """
+        # Call super's validation method.
+        super().validate_config(config)
+
+        assert self.config["target_return"] is not None, (
+            "Must specify a target return (total sum of rewards)."
+        )
+
+        assert self.config["max_seq_len"] >= 2, (
+            "max_seq_len must be at least 2."
         )
 
     @classmethod
@@ -155,6 +183,8 @@ class DT(Algorithm):
 
         # TODO(charlesjsun): better control over batch sizes
         batch_size = train_batch[SampleBatch.OBS].shape[0]
+
+        # TODO(charlesjsun): Action normalization?
 
         self.buffer.add(train_batch)
         train_batch = self.buffer.sample(batch_size)

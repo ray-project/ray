@@ -24,6 +24,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
     TorchDeterministic,
 )
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
@@ -62,7 +63,7 @@ class DTTorchPolicy(TorchPolicyV2):
             dict(
                 embed_dim=self.config["embed_dim"],
                 max_seq_len=self.config["max_seq_len"],
-                max_ep_len=self.config["horizon"],
+                max_ep_len=self.config["max_ep_len"],
                 num_layers=self.config["num_layers"],
                 num_heads=self.config["num_heads"],
                 embed_pdrop=self.config["embed_pdrop"],
@@ -70,6 +71,7 @@ class DTTorchPolicy(TorchPolicyV2):
                 attn_pdrop=self.config["attn_pdrop"],
                 use_obs_output=self.config["use_obs_output"],
                 use_return_output=self.config["use_return_output"],
+                target_return=self.config["target_return"],
             )
         )
 
@@ -118,6 +120,8 @@ class DTTorchPolicy(TorchPolicyV2):
     ) -> SampleBatch:
         # TODO(charlesjsun): check this is only ran with one episode?
         # TODO(charlesjsun): custom discount factor
+        assert len(sample_batch.split_by_episode()) == 1
+
         rewards = sample_batch[SampleBatch.REWARDS].reshape(-1)
         sample_batch[SampleBatch.RETURNS_TO_GO] = discount_cumsum(rewards, 1.0)
 
@@ -133,13 +137,58 @@ class DTTorchPolicy(TorchPolicyV2):
         **kwargs,
     ) -> Tuple[TensorType, type, List[TensorType]]:
 
+        # Note: this doesn't create a new SampleBatch, so changes to obs_batch persists
         obs_batch = self._lazy_tensor_dict(obs_batch)
+
+        batch_size = obs_batch[SampleBatch.OBS].shape[0]
+
+        # Add current timestep (+1 because -1 is first observation)
+        timesteps = obs_batch[SampleBatch.T]
+        new_timestep = timesteps[:, -1:] + 1
+        obs_batch[SampleBatch.T] = torch.cat([timesteps, new_timestep], dim=1)
+
+        # mask out any padded value at start of rollout
+        obs_batch[SampleBatch.ATTENTION_MASKS] = torch.where(obs_batch[SampleBatch.T] >= 0, 1.0, 0.0)
+
+        # remove out of bound -1 timesteps after attention mask is calculated
+        obs_batch[SampleBatch.T] = torch.where(obs_batch[SampleBatch.T] < 0, 0, obs_batch[SampleBatch.T])
+
+        # compute returns to go
+        rtg = obs_batch[SampleBatch.RETURNS_TO_GO]
+        last_rtg = rtg[:, -1]
+        last_reward = obs_batch[SampleBatch.REWARDS]
+        updated_rtg = last_rtg - last_reward
+
+        initial_rtg = torch.full((batch_size, 1), fill_value=self.config["target_return"], dtype=rtg.dtype, device=rtg.device)
+
+        new_rtg = torch.where(new_timestep == 0, initial_rtg, updated_rtg[:, None])
+        obs_batch[SampleBatch.RETURNS_TO_GO] = torch.cat([rtg, new_rtg], dim=1)[..., None]
+
+        # Pad current action (is not actually attended to and used during inference)
+        actions = obs_batch[SampleBatch.ACTIONS]
+        action_pad = torch.zeros((batch_size, 1, *actions.shape[2:]), dtype=actions.dtype, device=actions.device)
+        obs_batch[SampleBatch.ACTIONS] = torch.cat([actions, action_pad], dim=1)
+
+        # Run inference on model
         model_out, _ = model(obs_batch)
         preds = self.model.get_prediction(model_out, obs_batch)
-        actions = preds[SampleBatch.ACTIONS]
-        last_action = actions[:, -1]  # TODO
+        pred_action = preds[SampleBatch.ACTIONS][:, -1]
 
-        return last_action, self.dist_class, []
+        return pred_action, self.dist_class, []
+
+    @override(TorchPolicyV2)
+    def extra_action_out(
+        self,
+        input_dict: Dict[str, TensorType],
+        state_batches: List[TensorType],
+        model: TorchModelV2,
+        action_dist: TorchDistributionWrapper,
+    ) -> Dict[str, TensorType]:
+        # Note: input_dict contains the updated values from action_distribution_fn
+        return {
+            # rtg still has the leftover extra 3rd dimension for inference
+            SampleBatch.RETURNS_TO_GO: input_dict[SampleBatch.RETURNS_TO_GO][:, -1, 0],
+        }
 
     @override(TorchPolicyV2)
     def loss(
@@ -169,7 +218,7 @@ class DTTorchPolicy(TorchPolicyV2):
         else:
             raise NotImplementedError
         losses.append(action_loss)
-        self.log(f"action_loss", action_loss)
+        self.log("action_loss", action_loss)
 
         # obs losses
         if preds.get(SampleBatch.OBS) is not None:
@@ -177,7 +226,7 @@ class DTTorchPolicy(TorchPolicyV2):
                 preds[SampleBatch.OBS], targets[SampleBatch.OBS], masks
             )
             losses.append(obs_loss)
-            self.log(f"obs_loss", obs_loss)
+            self.log("obs_loss", obs_loss)
 
         # return to go losses
         if preds.get(SampleBatch.RETURNS_TO_GO) is not None:
@@ -187,7 +236,7 @@ class DTTorchPolicy(TorchPolicyV2):
                 masks,
             )
             losses.append(rtg_loss)
-            self.log(f"rtg_loss", rtg_loss)
+            self.log("rtg_loss", rtg_loss)
 
         loss = sum(losses)
         return loss

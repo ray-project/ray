@@ -10,6 +10,7 @@ from ray.rllib.models.torch.mingpt import (
     GPT,
 )
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import (
@@ -49,6 +50,9 @@ class DTTorchModel(TorchModelV2, nn.Module):
         self.max_ep_len = self.model_config["max_ep_len"]
         self.block_size = self.model_config["max_seq_len"] * 3
 
+        # Evaluation parameter
+        self.target_return = self.model_config["target_return"]
+
         # Build all the nn modules
         self.transformer = self.build_transformer()
         self.position_encoder = self.build_position_encoder()
@@ -58,6 +62,15 @@ class DTTorchModel(TorchModelV2, nn.Module):
         self.action_head = self.build_action_head()
         self.obs_head = self.build_obs_head()
         self.return_head = self.build_return_head()
+
+        # Update view requirement
+        self.view_requirements = {
+            SampleBatch.OBS: ViewRequirement(space=obs_space, shift=f"-{self.max_seq_len-1}:0"),
+            SampleBatch.ACTIONS: ViewRequirement(space=action_space, shift=f"-{self.max_seq_len-1}:-1"),
+            SampleBatch.REWARDS: ViewRequirement(shift=-1),
+            SampleBatch.T: ViewRequirement(shift=f"-{self.max_seq_len-2}:0"),
+            SampleBatch.RETURNS_TO_GO: ViewRequirement(shift=f"-{self.max_seq_len-1}:-1"),
+        }
 
     def build_transformer(self):
         # build the model
@@ -102,6 +115,10 @@ class DTTorchModel(TorchModelV2, nn.Module):
         if not self.model_config["use_return_output"]:
             return None
         return nn.Linear(self.embed_dim, 1)
+
+    @override(ModelV2)
+    def get_initial_state(self) -> List[np.ndarray]:
+        return []
 
     @override(ModelV2)
     def forward(
