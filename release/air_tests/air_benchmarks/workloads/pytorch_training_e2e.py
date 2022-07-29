@@ -22,8 +22,7 @@ from ray.air.config import ScalingConfig
 
 def preprocess_image_with_label(df: pd.DataFrame) -> pd.DataFrame:
     """
-    User Pytorch code to transform user image. Note we still use TensorArray as
-    intermediate format to hold images for now.
+    User Pytorch code to transform user image.
     """
     preprocess = transforms.Compose(
         [
@@ -33,9 +32,9 @@ def preprocess_image_with_label(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df["image"] = [preprocess(image).numpy() for image in df["image"]]
+    df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
     # Fix fixed synthetic value for perf benchmark purpose
-    df["label"] = df["label"].map(lambda _: 1)
+    df.loc[:, "label"] = df["label"].map(lambda _: 1)
     return df
 
 

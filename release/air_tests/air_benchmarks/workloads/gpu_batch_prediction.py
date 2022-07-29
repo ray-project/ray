@@ -16,8 +16,7 @@ from ray.data.datasource import ImageFolderDatasource
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     """
-    User Pytorch code to transform user image. Note we still use TensorArray as
-    intermediate format to hold images for now.
+    User Pytorch code to transform user image.
     """
     preprocess = transforms.Compose(
         [
@@ -27,7 +26,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df["image"] = [preprocess(image).numpy() for image in df["image"]]
+    df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
     return df
 
 
