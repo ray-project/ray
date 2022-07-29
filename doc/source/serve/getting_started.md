@@ -106,42 +106,13 @@ Deployments receive Starlette HTTP `request` objects [^f1]. If your deployment s
 
 This is why `Translator` needs a new `__call__` method. The method processes the incoming HTTP request by reading its JSON data and forwarding it to the `translate` method. The translated text is returned and sent back through the HTTP response. You can also use Ray Serve's FastAPI integration to avoid working with raw HTTP requests. Check out {ref}`serve-fastapi-http` for more info about FastAPI with Serve.
 
-
-Next, we need to connect to a Ray cluster that can run our Ray Serve application.
-`ray.init(address=auto)` will try connecting to a local Ray cluster:
-
-```{literalinclude} ../serve/doc_code/getting_started/model_deployment.py
-:start-after: __connect_to_ray_cluster_start__
-:end-before: __connect_to_ray_cluster_end__
-:language: python
-```
-
-Later, we'll discuss how to start a local Ray cluster, so we can run this script.
-
-:::{note}
-`ray.init()` connects to or starts a single-node Ray cluster on your
-local machine,  which allows you to use all your CPU cores to serve
-requests in parallel. To start a multi-node cluster, see
-{ref}`serve-deploy-tutorial`.
-:::
-
-Lastly, we need to run our `Translator` deployment on the Ray cluster,
-so it can receive and serve HTTP traffic:
+Next, we need to `bind` our `Translator` deployment to arguments that Ray Serve can pass into its constructor. This will let Ray Serve initialize a `Translator` object that can serve requests. Since `Translator`'s constructor doesn't take in any arguments, we can call the deployment's `bind` method without passing anything in:
 
 ```{literalinclude} ../serve/doc_code/getting_started/model_deployment.py
 :start-after: __model_deploy_start__
 :end-before: __model_deploy_end__
 :language: python
 ```
-
-`translator = Translator.bind()` binds our deployment to constructor `args` and
-`kwargs`. Ray Serve uses these to initialize the `Translator` class using its
-`__init__` method before it starts serving traffic. The `translator` variable
-is a `DeploymentNode` object. As we'll see later in the tutorial, you can also
-connect `DeploymentNodes` together to form a `Deployment Graph`
-that serves multiple models instead of just one.
-
-Then, `serve.run(translator)` deploys `Translator` to the Ray cluster.
 
 With that, we can run our model on Ray Serve!
 Here's the full Ray Serve script that we built:
@@ -153,25 +124,14 @@ Here's the full Ray Serve script that we built:
 :linenos: true
 ```
 
-To run our script, we first start a local Ray cluster:
+We can run our script with the `serve run` CLI command. This command takes in an import path
+to our deployment formatted as `module:bound_deployment`. Make sure to run the command from a directory containing a local copy of this script, so it can find the bound deployment:
 
-```bash
-$ ray start --head
+```console
+$ serve run serve_deployment:translator
 ```
 
-The Ray cluster that this command launches is the cluster that the
-Python code connects to with `ray.init(address="auto")`.
-
-:::{tip}
-To stop the Ray cluster, run the command `ray stop`.
-:::
-
-After starting the Ray cluster, we can run the Python file to deploy `Translator`
-and begin accepting HTTP requests:
-
-```bash
-$ python model_on_ray_serve.py
-```
+This command will start running `Translator` and then block. It can be killed with `ctrl-C` in the terminal.
 
 ## Testing Ray Serve Deployments
 
@@ -191,7 +151,13 @@ We'll send a POST request with JSON data containing our English text.
 :language: python
 ```
 
-We can run this script while the model is deployed to get a response over HTTP:
+To test our deployment, first make sure `Translator` is running:
+
+```
+$ serve run serve_deployment:translator
+```
+
+While `Translator` is running, we can open a separate terminal window and run the client script. This will get a response over HTTP:
 
 ```console
 $ python model_client.py

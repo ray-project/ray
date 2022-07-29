@@ -32,23 +32,11 @@ class Translator:
 
 # __model_end__
 
-
-def stub(*args, **kwargs):
-    pass
-
-
-# Stub ray.init for testing
-ray.init()
-ray.init = stub
-
-# __connect_to_ray_cluster_start__
-ray.init(address="auto")
-# __connect_to_ray_cluster_end__
-
 # __model_deploy_start__
 translator = Translator.bind()
-serve.run(translator)
 # __model_deploy_end__
+
+serve.run(translator)
 
 # __client_function_start__
 # File name: model_client.py

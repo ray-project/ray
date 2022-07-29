@@ -49,6 +49,7 @@ class Summarizer:
 
         return translation
 
+
 deployment_graph = Summarizer.bind(Translator.bind())
 # __end_graph__
 

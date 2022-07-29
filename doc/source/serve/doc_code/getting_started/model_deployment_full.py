@@ -1,19 +1,7 @@
 # flake8: noqa
 
-# Stub functions for testing
-import ray
-
-ray.init()
-
-
-def stub(*args, **kwargs):
-    pass
-
-
-ray.init = stub
-
 # __deployment_full_start__
-# File name: model_on_ray_serve.py
+# File name: serve_deployment.py
 import ray
 from ray import serve
 from transformers import pipeline
@@ -39,13 +27,10 @@ class Translator:
         return self.translate(english_text)
 
 
-ray.init(address="auto")
-
-serve.start(detached=True)
-
 translator = Translator.bind()
-serve.run(translator)
 # __deployment_full_end__
+
+serve.run(translator)
 
 import requests
 
