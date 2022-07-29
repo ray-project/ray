@@ -9,6 +9,8 @@ from ray.data import read_json
 from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.examples.env.cliff_walking_wall_env import CliffWalkingWallEnv
+from ray.rllib.examples.policy.cliff_walking_wall_policy import CliffWalkingWallPolicy
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.offline.dataset_reader import DatasetReader
 from ray.rllib.offline.estimators import (
@@ -18,7 +20,6 @@ from ray.rllib.offline.estimators import (
     WeightedImportanceSampling,
 )
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
-from ray.rllib.offline.estimators.tests.gridworld import GridWorldEnv, GridWorldPolicy
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.framework import try_import_torch
@@ -146,8 +147,8 @@ class TestFQE(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
-        env = GridWorldEnv()
-        cls.policy = GridWorldPolicy(
+        env = CliffWalkingWallEnv()
+        cls.policy = CliffWalkingWallPolicy(
             observation_space=env.observation_space,
             action_space=env.action_space,
             config={},
@@ -225,7 +226,8 @@ class TestFQE(unittest.TestCase):
         check(action_probs, tmp_probs, decimals=3)
 
     def test_fqe_optimal_convergence(self):
-        # Optimal GridWorldPolicy with epsilon = 0.0 and GridWorldEnv are deterministic;
+        # Optimal CliffWalkingWallPolicy with epsilon = 0.0
+        # and CliffWalkingWallEnv are deterministic;
         # check that FQE converges to the true Q-values for self.batch
         q_vals = [
             -2.50,
@@ -270,12 +272,12 @@ class TestFQE(unittest.TestCase):
         )
 
 
-def get_policy_batch_and_mean_std_ret(
+def get_cliff_walking_wall_policy_and_data(
     num_episodes: int,
     gamma: float,
     epsilon: float,
 ) -> Tuple[Policy, SampleBatch, float, float]:
-    """Collect a GridWorld policy and data with epsilon-greedy exploration.
+    """Collect a cliff_walking_wall policy and data with epsilon-greedy exploration.
 
     Args:
         num_episodes: Number of episodes to collect
@@ -284,8 +286,8 @@ def get_policy_batch_and_mean_std_ret(
 
     Returns:
         A Tuple consisting of:
-          - A GridWorldPolicy with exploration parameter epsilon
-          - A SampleBatch of `num_episodes` GridWorld episodes collected using
+          - A CliffWalkingWallPolicy with exploration parameter epsilon
+          - A SampleBatch of `num_episodes` CliffWalkingWall episodes collected using
           epsilon-greedy exploration
           - The mean of the discounted return over the collected episodes
           - The stddev of the discounted return over the collected episodes
@@ -298,13 +300,13 @@ def get_policy_batch_and_mean_std_ret(
         .experimental(_disable_preprocessor_api=True)
     )
 
-    env = GridWorldEnv()
-    policy = GridWorldPolicy(
+    env = CliffWalkingWallEnv()
+    policy = CliffWalkingWallPolicy(
         env.observation_space, env.action_space, {"epsilon": epsilon}
     )
     workers = WorkerSet(
-        env_creator=lambda env_config: GridWorldEnv(),
-        policy_class=GridWorldPolicy,
+        env_creator=lambda env_config: CliffWalkingWallEnv(),
+        policy_class=CliffWalkingWallPolicy,
         trainer_config=config.to_dict(),
         num_workers=8,
     )
@@ -389,7 +391,7 @@ class TestOPELearning(unittest.TestCase):
             cls.random_batch,
             cls.random_reward,
             cls.random_std,
-        ) = get_policy_batch_and_mean_std_ret(num_episodes, cls.gamma, random_eps)
+        ) = get_cliff_walking_wall_policy_and_data(num_episodes, cls.gamma, random_eps)
         print(
             f"Collected random batch of {cls.random_batch.count} steps "
             f"with return {cls.random_reward} stddev {cls.random_std}"
@@ -400,7 +402,7 @@ class TestOPELearning(unittest.TestCase):
             cls.mixed_batch,
             cls.mixed_reward,
             cls.mixed_std,
-        ) = get_policy_batch_and_mean_std_ret(num_episodes, cls.gamma, mixed_eps)
+        ) = get_cliff_walking_wall_policy_and_data(num_episodes, cls.gamma, mixed_eps)
         print(
             f"Collected mixed batch of {cls.mixed_batch.count} steps "
             f"with return {cls.mixed_reward} stddev {cls.mixed_std}"
@@ -411,7 +413,7 @@ class TestOPELearning(unittest.TestCase):
             cls.expert_batch,
             cls.expert_reward,
             cls.expert_std,
-        ) = get_policy_batch_and_mean_std_ret(num_episodes, cls.gamma, expert_eps)
+        ) = get_cliff_walking_wall_policy_and_data(num_episodes, cls.gamma, expert_eps)
         print(
             f"Collected expert batch of {cls.expert_batch.count} steps "
             f"with return {cls.expert_reward} stddev {cls.expert_std}"

@@ -6,71 +6,10 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 import numpy as np
 import gym
-from gym import spaces
 
 
-class GridWorldEnv(gym.Env):
-    """Modified version of the CliffWalking environment from OpenAI Gym
-    with walls instead of a cliff.
-
-    ### Description
-    The board is a 4x12 matrix, with (using NumPy matrix indexing):
-    - [3, 0] or obs==36 as the start at bottom-left
-    - [3, 11] or obs==47 as the goal at bottom-right
-    - [3, 1..10] or obs==37...46 as the cliff at bottom-center
-
-    An episode terminates when the agent reaches the goal.
-
-    ### Actions
-    There are 4 discrete deterministic actions:
-    - 0: move up
-    - 1: move right
-    - 2: move down
-    - 3: move left
-
-    ### Observations
-    There are 3x12 + 2 possible states, not including the walls.
-
-    ### Reward
-    Each time step incurs -1 reward, except reaching the goal which gives +10 reward.
-    """
-
-    def __init__(self) -> None:
-        self.observation_space = spaces.Discrete(48)
-        self.action_space = spaces.Discrete(4)
-
-    def reset(self):
-        self.position = 36
-        return self.position
-
-    def step(self, action):
-        x = self.position // 12
-        y = self.position % 12
-        # UP
-        if action == 0:
-            x = max(x - 1, 0)
-        # RIGHT
-        elif action == 1:
-            if self.position != 36:
-                y = min(y + 1, 11)
-        # DOWN
-        elif action == 2:
-            if self.position < 25 or self.position > 34:
-                x = min(x + 1, 3)
-        # LEFT
-        elif action == 3:
-            if self.position != 47:
-                y = max(y - 1, 0)
-        else:
-            raise ValueError(f"action {action} not in {self.action_space}")
-        self.position = x * 12 + y
-        done = self.position == 47
-        reward = -1 if not done else 10
-        return self.position, reward, done, {}
-
-
-class GridWorldPolicy(Policy):
-    """Optimal RLlib policy for the GridWorld environment with
+class CliffWalkingPolicy(Policy):
+    """Optimal RLlib policy for the CliffWalking environment with
     epsilon-greedy exploration"""
 
     @override(Policy)
