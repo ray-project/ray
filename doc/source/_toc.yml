@@ -275,7 +275,7 @@ parts:
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/kuberay-vs-legacy.md
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples
               sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/examples/ml-example.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples/ml-example.md
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/references
           - file: cluster/cluster_under_construction/ray-clusters-on-vms/index
             title: Ray Clusters on VMs
