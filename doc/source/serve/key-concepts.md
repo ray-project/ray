@@ -57,7 +57,7 @@ class HTTPDeployment:
       return "Hello world!"
 ```
 
-After binding the deployment and running Serve, it is now exposed by the HTTP server and handles requests using the specified class.
+After binding the deployment and running `serve.run()`, it is now exposed by the HTTP server and handles requests using the specified class.
 We can query the model to verify that it's working.
 
 ```python
