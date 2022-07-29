@@ -159,8 +159,6 @@ ray.init(address="auto", namespace="{namespace}")
     # Validate ray_activity_response field can be cast to RayActivityResponse object
     driver_ray_activity_response = RayActivityResponse(**data["driver"])
 
-    response = requests.get(f"{webui_url}/api/snapshot")
-
     assert driver_ray_activity_response.is_active == "ACTIVE"
     # Drivers with namespace starting with "_ray_internal" are not
     # considered active drivers. Two active drivers are the second one
