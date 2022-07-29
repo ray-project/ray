@@ -102,7 +102,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py37 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py38 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -118,7 +118,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu111 cu112 cu113 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py38 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py39 (1/2)"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -134,7 +134,7 @@
     - LINUX_WHEELS=1 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu111 cu112 cu113 --build-type BUILDKITE --build-base
+    - python ./ci/build/build-docker-images.py --py-versions py39 --device-types cu111 cu112 cu113 cu116 --build-type BUILDKITE --build-base
 
 - label: ":docker: Build Images: py310"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
@@ -204,7 +204,7 @@
       --jobs=2
       -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
-      -//:gcs_server_rpc_test -//:gcs_client_test
+      -//:gcs_server_rpc_test -//:gcs_client_test -//:gcs_heartbeat_manager_test
       -//:metric_exporter_client_test -//:stats_test -//:worker_pool_test
       -//:ray_syncer_test
 
@@ -427,7 +427,7 @@
     - |
       cleanup() {
         if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi
-        python python/ray/tests/kuberay/setup/teardown_kuberay.py
+        python python/ray/tests/kuberay/setup/teardown_kuberay.py || true
         kind delete cluster
       }
       trap cleanup EXIT

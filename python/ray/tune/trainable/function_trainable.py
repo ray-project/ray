@@ -9,12 +9,14 @@ import uuid
 import warnings
 from functools import partial
 from numbers import Number
-from typing import Any, Callable, Dict, Optional, Type
+from typing import Any, Callable, Dict, Optional, Type, Union
 
+from ray.tune.resources import Resources
 from six.moves import queue
 
 from ray.air.checkpoint import Checkpoint
 from ray.tune import TuneError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
 from ray.tune.result import (
     DEFAULT_METRIC,
@@ -24,9 +26,9 @@ from ray.tune.result import (
 )
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.utils import (
-    detect_checkpoint_function,
-    detect_config_single,
-    detect_reporter,
+    _detect_checkpoint_function,
+    _detect_config_single,
+    _detect_reporter,
 )
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -345,7 +347,7 @@ class FunctionTrainable(Trainable):
         )
         self._last_result = {}
 
-        session.init(self._status_reporter)
+        session._init(self._status_reporter)
         self._runner = None
         self._restore_tmpdir = None
         self.temp_checkpoint_dir = None
@@ -549,7 +551,7 @@ class FunctionTrainable(Trainable):
 
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
-        session.shutdown()
+        session._shutdown()
 
         if self.temp_checkpoint_dir is not None and os.path.exists(
             self.temp_checkpoint_dir
@@ -589,6 +591,7 @@ class FunctionTrainable(Trainable):
             pass
 
 
+@DeveloperAPI
 def wrap_function(
     train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
 ) -> Type["FunctionTrainable"]:
@@ -598,9 +601,9 @@ def wrap_function(
         inherit_from = train_func.__mixins__ + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
-    use_checkpoint = detect_checkpoint_function(train_func)
-    use_config_single = detect_config_single(train_func)
-    use_reporter = detect_reporter(train_func)
+    use_checkpoint = _detect_checkpoint_function(train_func)
+    use_config_single = _detect_config_single(train_func)
+    use_reporter = _detect_reporter(train_func)
 
     if not any([use_checkpoint, use_config_single, use_reporter]):
         # use_reporter is hidden
@@ -640,6 +643,8 @@ def wrap_function(
                     warning_msg,
                     DeprecationWarning,
                 )
+
+    resources = getattr(train_func, "_resources", None)
 
     class ImplicitFunc(*inherit_from):
         _name = name or (
@@ -684,5 +689,13 @@ def wrap_function(
             # with the keyword RESULT_DUPLICATE -- see tune/trial_runner.py.
             reporter(**{RESULT_DUPLICATE: True})
             return output
+
+        @classmethod
+        def default_resource_request(
+            cls, config: Dict[str, Any]
+        ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+            if not isinstance(resources, PlacementGroupFactory) and callable(resources):
+                return resources(config)
+            return resources
 
     return ImplicitFunc
