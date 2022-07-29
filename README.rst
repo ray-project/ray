@@ -27,7 +27,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 As well as libraries for taking ML and distributed apps to production:
 
 - `Serve`_: Scalable and Programmable Serving
-- `Workflows`_: Fast, Durable Application Flows (alpha)
+- `Workflow`_: Fast, Durable Application Flows (alpha)
 
 There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
 
@@ -42,7 +42,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Scikit-learn`: https://docs.ray.io/en/master/joblib.html
 .. _`Serve`: https://docs.ray.io/en/master/serve/index.html
 .. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
-.. _`Workflows`: https://docs.ray.io/en/master/workflows/concepts.html
+.. _`Workflow`: https://docs.ray.io/en/master/workflows/concepts.html
 .. _`Train`: https://docs.ray.io/en/master/train/train.html
 
 
