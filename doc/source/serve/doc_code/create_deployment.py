@@ -60,7 +60,8 @@ class ServeHandleDemo:
 
     async def run(self):
         # Query each deployment twice to demonstrate that the requests
-        # get forwarded to different replicas (two for each deployment).
+        # get forwarded to different replicas (below, we will set
+        # num_replicas to 2 for each deployment).
         for i in range(2):
             for predictor in [self.predictor_1, self.predictor_2]:
                 # Call our deployments from Python using the ServeHandle API.
