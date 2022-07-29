@@ -147,7 +147,7 @@ prepare_docker() {
     COPY ./*.whl /
     EXPOSE 8000
     EXPOSE 10001
-    RUN pip install ray[serve] --no-index --find-links=/ && pip install redis
+    RUN pip install ray[serve] --find-links=/ && pip install redis
     RUN sudo apt update && sudo apt install curl -y
     " > $tmp_dir/Dockerfile
 
