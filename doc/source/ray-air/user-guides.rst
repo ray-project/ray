@@ -28,16 +28,6 @@ AIR User Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: /ray-air/tuner
-        :type: ref
-        :text: Hyperparameter Tuning
-        :classes: btn-link btn-block stretched-link
-
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
     .. link-button:: /ray-air/checkpoints
         :type: ref
         :text: Using Checkpoints
@@ -60,6 +50,15 @@ AIR User Guides
     .. link-button:: air-scaling-config
         :type: ref
         :text: Configuring Trainer Scaling
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: /ray-air/tuner
+        :type: ref
+        :text: Hyperparameter Tuning
         :classes: btn-link btn-block stretched-link
 
     ---
