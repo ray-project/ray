@@ -110,12 +110,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Whether we have warned of Datasets containing multiple epochs of data.
-_epoch_warned = False
-
-# Whether we have warned about using slow Dataset transforms.
-_slow_warned = False
-
 TensorflowFeatureTypeSpec = Union[
     "tf.TypeSpec", List["tf.TypeSpec"], Dict[str, "tf.TypeSpec"]
 ]
@@ -1116,7 +1110,7 @@ class Dataset(Generic[T]):
 
         A common use case for this would be splitting the dataset into train
         and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
-        See also :func:`ray.air.train_test_split` for a higher level abstraction.
+        See also ``Dataset.train_test_split`` for a higher level abstraction.
 
         The indices to split at will be calculated in such a way so that all splits
         always contains at least one element. If that is not possible,
@@ -1139,7 +1133,7 @@ class Dataset(Generic[T]):
         Time complexity: O(num splits)
 
         See also: ``Dataset.split``, ``Dataset.split_at_indices``,
-        :func:`ray.air.train_test_split`
+        ``Dataset.train_test_split``
 
         Args:
             proportions: List of proportions to split the dataset according to.
@@ -1176,6 +1170,63 @@ class Dataset(Generic[T]):
             )
 
         return self.split_at_indices(split_indices)
+
+    def train_test_split(
+        self,
+        test_size: Union[int, float],
+        *,
+        shuffle: bool = False,
+        seed: Optional[int] = None,
+    ) -> Tuple["Dataset[T]", "Dataset[T]"]:
+        """Split the dataset into train and test subsets.
+
+        Example:
+            .. code-block:: python
+
+                import ray
+
+                ds = ray.data.range(8)
+                train, test = ds.train_test_split(test_size=0.25)
+                print(train.take())  # [0, 1, 2, 3, 4, 5]
+                print(test.take())  # [6, 7]
+
+        Args:
+            test_size: If float, should be between 0.0 and 1.0 and represent the
+                proportion of the dataset to include in the test split. If int,
+                represents the absolute number of test samples. The train split will
+                always be the compliment of the test split.
+            shuffle: Whether or not to globally shuffle the dataset before splitting.
+                Defaults to False. This may be a very expensive operation with large
+                datasets.
+            seed: Fix the random seed to use for shuffle, otherwise one will be chosen
+                based on system randomness. Ignored if ``shuffle=False``.
+
+        Returns:
+            Train and test subsets as two Datasets.
+        """
+        dataset = self
+
+        if shuffle:
+            dataset = dataset.random_shuffle(seed=seed)
+
+        if not isinstance(test_size, (int, float)):
+            raise TypeError(f"`test_size` must be int or float got {type(test_size)}.")
+        if isinstance(test_size, float):
+            if test_size <= 0 or test_size >= 1:
+                raise ValueError(
+                    "If `test_size` is a float, it must be bigger than 0 and smaller "
+                    f"than 1. Got {test_size}."
+                )
+            return dataset.split_proportionately([1 - test_size])
+        else:
+            dataset_length = dataset.count()
+            if test_size <= 0 or test_size >= dataset_length:
+                raise ValueError(
+                    "If `test_size` is an int, it must be bigger than 0 and smaller "
+                    f"than the size of the dataset ({dataset_length}). "
+                    f"Got {test_size}."
+                )
+            return dataset.split_at_indices([dataset_length - test_size])
 
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
@@ -1235,15 +1286,13 @@ class Dataset(Generic[T]):
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
         if len(set(epochs)) > 1:
-            global _epoch_warned
-            if not _epoch_warned:
+            if ray.util.log_once("datasets_epoch_warned"):
                 logger.warning(
                     "Dataset contains data from multiple epochs: {}, "
                     "likely due to a `rewindow()` call. The higher epoch "
                     "number {} will be used. This warning will not "
                     "be shown again.".format(set(epochs), max_epoch)
                 )
-                _epoch_warned = True
         dataset_stats = DatasetStats(
             stages={"union": []},
             parent=[d._plan.stats() for d in datasets],
@@ -3590,7 +3639,7 @@ class Dataset(Generic[T]):
             for n, t in zip(schema.names, schema.types):
                 if hasattr(t, "__name__"):
                     t = t.__name__
-                schema_str.append("{}: {}".format(n, t))
+                schema_str.append(f"{n}: {t}")
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
         count = self._meta_count()
@@ -3638,9 +3687,7 @@ class Dataset(Generic[T]):
         self._epoch = epoch
 
     def _warn_slow(self):
-        global _slow_warned
-        if not _slow_warned:
-            _slow_warned = True
+        if ray.util.log_once("datasets_slow_warned"):
             logger.warning(
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
                 "can be very slow. Consider using `.map_batches()` instead."

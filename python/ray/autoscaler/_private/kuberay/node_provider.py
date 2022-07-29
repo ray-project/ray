@@ -8,6 +8,8 @@ from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
+    WORKER_LIVENESS_CHECK_KEY,
+    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
@@ -172,6 +174,12 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         assert (
             provider_config.get(FOREGROUND_NODE_LAUNCH_KEY, False) is True
         ), f"To use KuberayNodeProvider, must set `{FOREGROUND_NODE_LAUNCH_KEY}:True`."
+        assert (
+            provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
+        ), f"To use KuberayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
+        assert (
+            provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
+        ), f"To use KuberayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
         provider_exists = True
 
         super().__init__(provider_config, cluster_name)

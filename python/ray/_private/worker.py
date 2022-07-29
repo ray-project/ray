@@ -1138,7 +1138,7 @@ def init(
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _metrics_export_port(int): Port number Ray exposes system metrics
+        _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
         _system_config: Configuration for overriding
@@ -1226,7 +1226,15 @@ def init(
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
         builder._init_args(**passed_kwargs)
-        return builder.connect()
+        ctx = builder.connect()
+        from ray._private.usage import usage_lib
+
+        if passed_kwargs.get("allow_multiple") is True:
+            with ctx:
+                usage_lib.put_pre_init_usage_stats()
+        else:
+            usage_lib.put_pre_init_usage_stats()
+        return ctx
 
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
@@ -2036,7 +2044,7 @@ def connect(
             )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory)
@@ -2719,7 +2727,6 @@ def remote(
     resources: Dict[str, float] = Undefined,
     accelerator_type: str = Undefined,
     memory: Union[int, float] = Undefined,
-    object_store_memory: int = Undefined,
     max_calls: int = Undefined,
     max_restarts: int = Undefined,
     max_task_retries: int = Undefined,
@@ -2801,7 +2808,6 @@ def remote(*args, **kwargs):
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
         memory: The heap memory request for this task/actor.
-        object_store_memory: The object store memory request for actors only.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
