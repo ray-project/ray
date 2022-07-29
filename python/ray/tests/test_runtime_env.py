@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 from unittest import mock
 
 import pytest
-from ray.runtime_env.runtime_env import RuntimeEnvConfig
+from ray.runtime_env import RuntimeEnvConfig
 import requests
 
 import ray

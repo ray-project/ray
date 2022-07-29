@@ -16,7 +16,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import enable_external_redis, wait_for_condition
 from ray.exceptions import RuntimeEnvSetupError
-from ray.runtime_env.runtime_env import RuntimeEnv
+from ray.runtime_env import RuntimeEnv
 
 MY_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.MyPlugin"
 MY_PLUGIN_NAME = "MyPlugin"
