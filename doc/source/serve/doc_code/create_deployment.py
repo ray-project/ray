@@ -62,7 +62,7 @@ class ServeHandleDemo:
         # Query each deployment twice to demonstrate that the requests
         # get forwarded to different replicas (below, we will set
         # num_replicas to 2 for each deployment).
-        for i in range(2):
+        for _ in range(2):
             for predictor in [self.predictor_1, self.predictor_2]:
                 # Call our deployments from Python using the ServeHandle API.
                 random_prediction = await predictor.predict.remote(random())
