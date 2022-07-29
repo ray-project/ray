@@ -48,7 +48,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
       pubsub::SubscriberInterface *object_location_subscriber,
       rpc::CoreWorkerClientPool *owner_client_pool,
       int64_t max_object_report_batch_size,
-      std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed);
+      std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed,
+      std::function<absl::optional<rpc::Address>(const ActorID &)> global_owner_address);
 
   virtual ~OwnershipBasedObjectDirectory() {}
 
@@ -132,6 +133,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   const int64_t kMaxObjectReportBatchSize;
   /// The callback used to mark an object as failed.
   std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed_;
+
+  std::function<absl::optional<rpc::Address>(const ActorID &)> get_owner_address_;
 
   /// A buffer for batch object location updates.
   /// owner id -> {(FIFO object queue (to avoid starvation), map for the latest update of

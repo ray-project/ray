@@ -59,7 +59,8 @@ struct ObjectInfo {
             (owner_raylet_id == other.owner_raylet_id) &&
             (owner_ip_address == other.owner_ip_address) &&
             (owner_port == other.owner_port) &&
-            (owner_worker_id == other.owner_worker_id));
+            (owner_worker_id == other.owner_worker_id) &&
+            (global_owner_id == other.global_owner_id));
   }
 };
 

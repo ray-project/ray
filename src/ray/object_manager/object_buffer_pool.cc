@@ -98,10 +98,11 @@ ray::Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
                                           const rpc::Address &owner_address,
                                           uint64_t data_size,
                                           uint64_t metadata_size,
-                                          uint64_t chunk_index) {
+                                          uint64_t chunk_index,
+                                          const ActorID &global_owner_id) {
   absl::MutexLock lock(&pool_mutex_);
   RAY_RETURN_NOT_OK(EnsureBufferExists(
-      object_id, owner_address, data_size, metadata_size, chunk_index));
+      object_id, owner_address, data_size, metadata_size, chunk_index, global_owner_id));
   auto &state = create_buffer_state_.at(object_id);
   if (chunk_index >= state.chunk_state.size()) {
     return ray::Status::IOError("Object size mismatch");
@@ -188,7 +189,8 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
                                                  const rpc::Address &owner_address,
                                                  uint64_t data_size,
                                                  uint64_t metadata_size,
-                                                 uint64_t chunk_index) {
+                                                 uint64_t chunk_index,
+                                                 const ActorID &global_owner_id) {
   while (true) {
     // Buffer for object_id already exists and the size matches ours.
     {
@@ -245,7 +247,9 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
       nullptr,
       static_cast<int64_t>(metadata_size),
       &data,
-      plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet);
+      plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet,
+      0,
+      global_owner_id);
   pool_mutex_.Lock();
 
   // No other thread could have created the buffer.

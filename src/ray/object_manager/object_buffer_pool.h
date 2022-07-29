@@ -112,7 +112,8 @@ class ObjectBufferPool {
                           const rpc::Address &owner_address,
                           uint64_t data_size,
                           uint64_t metadata_size,
-                          uint64_t chunk_index) LOCKS_EXCLUDED(pool_mutex_);
+                          uint64_t chunk_index,
+                          const ActorID &global_owner_id) LOCKS_EXCLUDED(pool_mutex_);
 
   /// Write to a Chunk of an object. If all chunks of an object is written,
   /// it seals the object.
@@ -162,7 +163,8 @@ class ObjectBufferPool {
                                  const rpc::Address &owner_address,
                                  uint64_t data_size,
                                  uint64_t metadata_size,
-                                 uint64_t chunk_index)
+                                 uint64_t chunk_index,
+                                 const ActorID &global_owner_id)
       EXCLUSIVE_LOCKS_REQUIRED(pool_mutex_);
 
   void AbortCreateInternal(const ObjectID &object_id)

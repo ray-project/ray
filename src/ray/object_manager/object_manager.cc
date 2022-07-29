@@ -193,7 +193,9 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
+  RAY_LOG(DEBUG) << "hejialing test1: " << object_info.global_owner_id;
   object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
+  RAY_LOG(DEBUG) << "hejialing test2: " << object_info.global_owner_id;
 
   // Give the pull manager a chance to pin actively pulled objects.
   pull_manager_->PinNewObjectIfNeeded(object_id);
@@ -423,10 +425,11 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
 void ObjectManager::PushFromFilesystem(const ObjectID &object_id,
                                        const NodeID &node_id,
                                        const std::string &spilled_url) {
+  auto global_owner_id = local_objects_[object_id].object_info;
   // SpilledObjectReader::CreateSpilledObjectReader does synchronous IO; schedule it off
   // main thread.
   rpc_service_.post(
-      [this, object_id, node_id, spilled_url, chunk_size = config_.object_chunk_size]() {
+      [this, object_id, node_id, spilled_url, chunk_size = config_.object_chunk_size, global_owner_id = std::move(global_owner_id)]() {
         auto optional_spilled_object =
             SpilledObjectReader::CreateSpilledObjectReader(spilled_url);
         if (!optional_spilled_object.has_value()) {
@@ -460,6 +463,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                                        const NodeID &node_id,
                                        std::shared_ptr<ChunkObjectReader> chunk_reader,
                                        bool from_disk) {
+  const ActorID &global_owner_id = local_objects_[object_id].object_info.global_owner_id;
   auto rpc_client = GetRpcClient(node_id);
   if (!rpc_client) {
     // Push is best effort, so do nothing here.
@@ -495,7 +499,8 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                         "ObjectManager.Push");
                   },
                   chunk_reader,
-                  from_disk);
+                  from_disk,
+                  global_owner_id);
             },
             "ObjectManager.Push");
       });
@@ -508,7 +513,8 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
                                     std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
                                     std::function<void(const Status &)> on_complete,
                                     std::shared_ptr<ChunkObjectReader> chunk_reader,
-                                    bool from_disk) {
+                                    bool from_disk,
+                                    const ActorID &global_owner_id) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
@@ -520,6 +526,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
   push_request.set_data_size(chunk_reader->GetObject().GetObjectSize());
   push_request.set_metadata_size(chunk_reader->GetObject().GetMetadataSize());
   push_request.set_chunk_index(chunk_index);
+  push_request.set_global_owner_id(global_owner_id.Binary());
 
   // read a chunk into push_request and handle errors.
   auto optional_chunk = chunk_reader->GetChunk(chunk_index);
@@ -567,9 +574,10 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request,
   uint64_t data_size = request.data_size();
   const rpc::Address &owner_address = request.owner_address();
   const std::string &data = request.data();
+  const auto global_owner_id = ActorID::FromBinary(request.global_owner_id());
 
   bool success = ReceiveObjectChunk(
-      node_id, object_id, owner_address, data_size, metadata_size, chunk_index, data);
+      node_id, object_id, owner_address, data_size, metadata_size, chunk_index, data, global_owner_id);
   num_chunks_received_total_++;
   if (!success) {
     num_chunks_received_total_failed_++;
@@ -588,7 +596,8 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                        uint64_t data_size,
                                        uint64_t metadata_size,
                                        uint64_t chunk_index,
-                                       const std::string &data) {
+                                       const std::string &data,
+                                       const ActorID &global_owner_id) {
   num_bytes_received_total_ += data.size();
   RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
                  << " of object " << object_id << " chunk index: " << chunk_index
@@ -601,7 +610,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     return false;
   }
   auto chunk_status = buffer_pool_.CreateChunk(
-      object_id, owner_address, data_size, metadata_size, chunk_index);
+      object_id, owner_address, data_size, metadata_size, chunk_index, global_owner_id);
   if (!pull_manager_->IsObjectActive(object_id)) {
     num_chunks_received_cancelled_++;
     // This object is no longer being actively pulled. Abort the object. We

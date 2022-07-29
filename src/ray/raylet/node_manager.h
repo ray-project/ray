@@ -819,13 +819,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;
 
-  mutable absl::Mutex objects_need_to_report_mutex_;
-  absl::flat_hash_map<ActorID, absl::flat_hash_set<ObjectID>> objects_need_to_report_
-      GUARDED_BY(objects_need_to_report_mutex_);
+  absl::flat_hash_map<ActorID, absl::flat_hash_map<ObjectID, ObjectInfo>> objects_need_to_report_;
 
-  mutable absl::Mutex global_owner_mutex_;
-  absl::flat_hash_map<ActorID, rpc::Address> global_owner_address_
-      GUARDED_BY(global_owner_mutex_);
+  absl::flat_hash_map<ActorID, absl::optional<rpc::Address>> global_owner_address_;
 
   void SubscribeGlobalOwnerAddress(const ActorID &actor_id, const rpc::Address &init_owner_address);
 };

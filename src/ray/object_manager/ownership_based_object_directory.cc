@@ -24,14 +24,16 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     pubsub::SubscriberInterface *object_location_subscriber,
     rpc::CoreWorkerClientPool *owner_client_pool,
     int64_t max_object_report_batch_size,
-    std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed)
+    std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed,
+    std::function<absl::optional<rpc::Address>(const ActorID &)> get_owner_address)
     : io_service_(io_service),
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
       object_location_subscriber_(object_location_subscriber),
       owner_client_pool_(owner_client_pool),
       kMaxObjectReportBatchSize(max_object_report_batch_size),
-      mark_as_failed_(mark_as_failed) {}
+      mark_as_failed_(mark_as_failed),
+      get_owner_address_(get_owner_address) {}
 
 namespace {
 
@@ -126,8 +128,9 @@ void OwnershipBasedObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
                                                       const NodeID &node_id,
                                                       const ObjectInfo &object_info) {
   const WorkerID &worker_id = object_info.owner_worker_id;
-  const auto owner_address = GetOwnerAddressFromObjectInfo(object_info);
-  auto owner_client = GetClient(owner_address);
+  const auto owner_address = object_info.global_owner_id.IsNil() ? absl::optional<rpc::Address>(GetOwnerAddressFromObjectInfo(object_info)) : get_owner_address_(object_info.global_owner_id);
+  if (!owner_address.has_value()) return;
+  auto owner_client = GetClient(owner_address.value());
   if (owner_client == nullptr) {
     RAY_LOG(DEBUG) << "Object " << object_id << " does not have owner. "
                    << "ReportObjectAdded becomes a no-op."
@@ -142,7 +145,7 @@ void OwnershipBasedObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
   if (!existing_object) {
     location_buffers_[worker_id].first.emplace_back(object_id);
   }
-  SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
+  SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address.value());
 }
 
 void OwnershipBasedObjectDirectory::ReportObjectRemoved(const ObjectID &object_id,

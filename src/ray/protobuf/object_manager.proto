@@ -37,6 +37,7 @@ message PushRequest {
   uint64 metadata_size = 7;
   // The chunk data
   bytes data = 8;
+  bytes global_owner_id = 9;
 }
 
 message PullRequest {

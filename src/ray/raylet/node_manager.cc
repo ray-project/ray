@@ -108,7 +108,21 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithSpilledURL
 
 namespace ray {
 
+
 namespace raylet {
+
+namespace {
+
+rpc::Address GetOwnerAddressFromObjectInfo(const ObjectInfo &object_info) {
+  rpc::Address owner_address;
+  owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
+  owner_address.set_ip_address(object_info.owner_ip_address);
+  owner_address.set_port(object_info.owner_port);
+  owner_address.set_worker_id(object_info.owner_worker_id.Binary());
+  return owner_address;
+}
+
+} // namespace
 
 // A helper function to print the leased workers.
 std::string LeasedWorkersSring(
@@ -252,6 +266,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             rpc::ObjectReference ref;
             ref.set_object_id(obj_id.Binary());
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
+          },
+          /*get_owner_address=*/
+          [this](const ActorID &actor_id) -> absl::optional<rpc::Address> {
+            return global_owner_address_[actor_id];
           })),
       object_manager_(
           io_service,
@@ -2213,45 +2231,10 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
     RAY_LOG(DEBUG) << "object(" << object_id << ") global owner is nil.";
     return;
   }
+  objects_need_to_report_[global_owner_id][object_id] = object_info;
 
-  bool new_object = false;
-  rpc::Address init_owner_address;
-  init_owner_address.set_raylet_id(object_info.owner_raylet_id.Binary());
-  init_owner_address.set_ip_address(object_info.owner_ip_address);
-  init_owner_address.set_port(object_info.owner_port);
-  init_owner_address.set_worker_id(object_info.owner_worker_id.Binary());
-  {
-    absl::MutexLock guard(&objects_need_to_report_mutex_);
-    auto it = objects_need_to_report_.find(global_owner_id);
-    if (it == objects_need_to_report_.end()) {
-      it = objects_need_to_report_
-               .emplace(global_owner_id, absl::flat_hash_set<ObjectID>())
-               .first;
-    }
-    if (it->second.insert(object_id).second) {
-      new_object = true;
-    }
-  }
-  if (new_object) {
-    absl::MutexLock guard(&global_owner_mutex_);
-    auto addr_it = global_owner_address_.find(global_owner_id);
-    rpc::Address real_owner_address;
-    if (addr_it != global_owner_address_.end()) {
-      real_owner_address.CopyFrom(addr_it->second);
-    } else {
-      real_owner_address.CopyFrom(init_owner_address);
-    }
-    ObjectInfo new_object_info;
-    new_object_info.object_id = object_id;
-    new_object_info.owner_raylet_id =
-        NodeID::FromBinary(real_owner_address.raylet_id());
-    new_object_info.owner_ip_address = real_owner_address.ip_address();
-    new_object_info.owner_port = real_owner_address.port();
-    new_object_info.owner_worker_id =
-        WorkerID::FromBinary(real_owner_address.worker_id());
-    object_directory_->ReportObjectAdded(object_id, self_node_id_, new_object_info);
-  }
-  SubscribeGlobalOwnerAddress(global_owner_id, init_owner_address);
+  const auto owner_address = GetOwnerAddressFromObjectInfo(object_info);
+  SubscribeGlobalOwnerAddress(global_owner_id, owner_address);
 }
 
 bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
@@ -2278,6 +2261,16 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     }
   }
   RAY_LOG(DEBUG) << result.str();
+
+  ActorID global_owner_id = ActorID::Nil();
+  for (auto [actor_id, object_map] : objects_need_to_report_) {
+    if (object_map.count(object_id) > 0) {
+      global_owner_id = actor_id;
+      break;
+    }
+  }
+  objects_need_to_report_[global_owner_id].erase(object_id);
+  if (objects_need_to_report_[global_owner_id].size() == 0) objects_need_to_report_.erase(global_owner_id);
 }
 
 void NodeManager::ProcessSubscribePlasmaReady(
@@ -2845,10 +2838,9 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
 
 void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id, const rpc::Address &init_address) {
   {
-    absl::MutexLock guard(&global_owner_mutex_);
     auto it = global_owner_address_.find(actor_id);
     if (it != global_owner_address_.end()) return;
-    global_owner_address_.emplace(actor_id, init_address);
+    global_owner_address_.emplace(actor_id, absl::optional<rpc::Address>(init_address));
   }
   RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
       actor_id,
@@ -2858,27 +2850,16 @@ void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id, const rpc
                        << actor_data.address().port()
                        << ", actor_name: " << actor_data.address().actor_name();
         if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-          {
-            absl::MutexLock guard(&global_owner_mutex_);
-            global_owner_address_.emplace(actor_id, actor_data.address());
+          global_owner_address_.emplace(actor_id, absl::optional<rpc::Address>(actor_data.address()));
+
+          auto it = objects_need_to_report_.find(actor_id);
+          if (it == objects_need_to_report_.end()) return;
+          for (auto [object_id, object_info] : it->second) {
+            RAY_LOG(DEBUG) << "try to report object add " << object_id;
+            object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
           }
-          {
-            absl::MutexLock guard(&objects_need_to_report_mutex_);
-            auto it = objects_need_to_report_.find(actor_id);
-            if (it == objects_need_to_report_.end()) return;
-            for (const auto &object_id : it->second) {
-              ObjectInfo object_info;
-              object_info.object_id = object_id;
-              object_info.owner_raylet_id =
-                  NodeID::FromBinary(actor_data.address().raylet_id());
-              object_info.owner_ip_address = actor_data.address().ip_address();
-              object_info.owner_port = actor_data.address().port();
-              object_info.owner_worker_id =
-                  WorkerID::FromBinary(actor_data.address().worker_id());
-              RAY_LOG(DEBUG) << "try to report object add " << object_id;
-              object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
-            }
-          }
+        } else {
+          global_owner_address_.emplace(actor_id, absl::optional<rpc::Address>());
         }
       },
       [](Status status) {

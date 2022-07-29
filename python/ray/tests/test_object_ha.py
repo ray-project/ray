@@ -13,10 +13,7 @@ from ray.tests.conftest import (
 
 def test_owner_failed(ray_start_cluster):
     cluster_node_config = [
-        {
-            "num_cpus": 1,
-            "resources": {f"node{i+1}": 10}
-        } for i in range(3)
+        {"num_cpus": 1, "resources": {f"node{i+1}": 10}} for i in range(3)
     ]
     cluster_node_config[0]["_system_config"] = {
         "object_spilling_config": json.dumps(mock_distributed_fs_object_spilling_config)
@@ -183,7 +180,12 @@ def test_checkpoint(ray_start_cluster, actor_resources):
     ray.get(worker_2.warmup.remote())
 
     refs = ray.get(worker_1.create_obj.remote(owner))
-    print("test object ref: ", refs[0], "global owner:", ray.ActorID(refs[0].global_owner_id()))
+    print(
+        "test object ref: ",
+        refs[0],
+        "global owner:",
+        ray.ActorID(refs[0].global_owner_id()),
+    )
     ray.get(worker_2.send_refs.remote(refs))
     print("try get obj before kill:", ray.get(worker_2.try_get.remote()))
     ray.get(worker_2.evict_all_object.remote())
@@ -207,6 +209,7 @@ def test_checkpoint(ray_start_cluster, actor_resources):
     time.sleep(5)
     ray.get(owner.warmup.remote())
     print("try get obj after kill:", ray.get(worker_2.try_get.remote()))
+
 
 @pytest.mark.parametrize(
     "actor_resources",
@@ -300,7 +303,12 @@ def test_object_location(ray_start_cluster, actor_resources):
     ray.get(worker_2.warmup.remote())
 
     refs = ray.get(worker_1.create_obj.remote(owner))
-    print("test object ref: ", refs[0], "global owner:", ray.ActorID(refs[0].global_owner_id()))
+    print(
+        "test object ref: ",
+        refs[0],
+        "global owner:",
+        ray.ActorID(refs[0].global_owner_id()),
+    )
     ray.get(worker_2.send_refs.remote(refs))
     print("try get obj before kill:", ray.get(worker_2.try_get.remote()))
     print("old owner pid:", ray.get(owner.getpid.remote()))
