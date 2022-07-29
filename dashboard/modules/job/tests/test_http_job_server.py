@@ -10,7 +10,7 @@ from typing import Optional
 from unittest.mock import patch
 
 import pytest
-from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 import ray
