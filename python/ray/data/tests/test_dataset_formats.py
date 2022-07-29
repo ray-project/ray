@@ -3046,7 +3046,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
 
 
 def test_read_s3_file_error(ray_start_regular_shared, s3_path):
-    dummy_path = s3_path + "_dummy"
+    dummy_path = s3_path + "_dummy_trigger_test"
     error_message = "Please check that file exists and has properly configured access."
     with pytest.raises(OSError) as e:
         ray.data.read_parquet(dummy_path)
