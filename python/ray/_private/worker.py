@@ -1355,7 +1355,9 @@ def init(
         else:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
 
-        # assign a default storage if there is no storage.
+        # Assign a default storage if there is no storage.
+        # It only sets a default storage when calling "ray.init()" locally without
+        # connecting to a cluster.
         if storage is None:
             if _temp_dir is None:
                 storage_parent = ray._private.utils.get_ray_temp_dir()
