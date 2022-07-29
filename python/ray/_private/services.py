@@ -1185,8 +1185,9 @@ def start_log_monitor(
     return process_info
 
 
-def start_dashboard(
-    require_dashboard: bool,
+def start_api_server(
+    include_dashboard: bool,
+    raise_on_failure: bool,
     host: str,
     gcs_address: str,
     temp_dir: str,
@@ -1198,12 +1199,15 @@ def start_dashboard(
     backup_count: int = 0,
     redirect_logging: bool = True,
 ):
-    """Start a dashboard process.
+    """Start a API server process.
 
     Args:
-        require_dashboard: If true, this will raise an exception if we
-            fail to start the dashboard. Otherwise it will print a warning if
-            we fail to start the dashboard.
+        include_dashboard: If true, this will load all dashboard-related modules
+            when starting the API server. Otherwise, it will only
+            start the modules that are not relevant to the dashboard.
+        raise_on_failure: If true, this will raise an exception
+            if we fail to start the API server. Otherwise it will print
+            a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
         temp_dir: The temporary directory used for log files and
@@ -1293,6 +1297,13 @@ def start_dashboard(
         if minimal:
             command.append("--minimal")
 
+        if not include_dashboard:
+            # If dashboard is not included, load modules
+            # that are irrelevant to the dashboard.
+            # TODO(sang): Modules like job or state APIs should be
+            # loaded although dashboard is disabled. Fix it.
+            command.append("--modules-to-load=UsageStatsHead")
+
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1326,6 +1337,7 @@ def start_dashboard(
                 if dashboard_returncode is not None
                 else ""
             )
+            # TODO(sang): Change it to the API server.
             err_msg = "Failed to start the dashboard" + returncode_str
             if logdir:
                 dashboard_log = os.path.join(logdir, "dashboard.log")
@@ -1357,9 +1369,10 @@ def start_dashboard(
             dashboard_url = ""
         return dashboard_url, process_info
     except Exception as e:
-        if require_dashboard:
+        if raise_on_failure:
             raise e from e
         else:
+            # TODO(sang): Change it to the API server.
             logger.error(f"Failed to start the dashboard: {e}")
             logger.exception(e)
             return None, None
