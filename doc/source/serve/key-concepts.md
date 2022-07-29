@@ -80,7 +80,7 @@ deployment_2 = Deployment2.bind(deployment_1)
 
 As noted above, there are two ways to expose deployments. The first is by using the {mod}`ServeHandle <ray.serve.handle.RayServeHandle>`
 interface. This method allows you to access deployments from within other deployments in Python code, making it convenient for a
-Python developer composing models together. And the second is by using the HTTP request, allowing access to deployments via a web client application.
+Python developer to compose models together. The second is by using an HTTP request, allowing access to deployments via a web client application.
 
 :::{note}
   Let's look at a simple end-to-end example using ServeHandle to query intermediate deployments. Your output may
