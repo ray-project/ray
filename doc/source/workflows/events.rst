@@ -4,7 +4,7 @@ Events
 Introduction
 ------------
 
-In order to allow an event to trigger a workflow, workflows support pluggable event systems. Using the event framework provides a few properties.
+In order to allow an event to trigger a workflow, Ray Workflow support pluggable event systems. Using the event framework provides a few properties.
 
 1. Waits for events efficiently (without requiring a running workflow task while waiting).
 2. Supports exactly-once event delivery semantics while providing fault tolerance.

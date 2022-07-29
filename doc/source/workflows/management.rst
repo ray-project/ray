@@ -76,11 +76,11 @@ Bulk workflow management APIs
 Recurring workflows
 -------------------
 
-Ray workflows currently has no built-in job scheduler. You can however easily use any external job scheduler to interact with your Ray cluster (via :ref:`job submission <jobs-overview>` or :ref:`client connection <ray-client>`) trigger workflow runs.
+Ray Workflow currently has no built-in job scheduler. You can however easily use any external job scheduler to interact with your Ray cluster (via :ref:`job submission <jobs-overview>` or :ref:`client connection <ray-client>`) trigger workflow runs.
 
 Storage Configuration
 ---------------------
-Workflows supports two types of storage backends out of the box:
+Ray Workflow supports two types of storage backends out of the box:
 
 *  Local file system: the data is stored locally. This is only for single node testing. It needs to be a NFS to work with multi-node clusters. To use local storage, specify ``ray.init(storage="/path/to/storage_dir")``.
 *  S3: Production users should use S3 as the storage backend. Enable S3 storage with ``ray.init(storage="s3://bucket/path")``.
@@ -91,7 +91,7 @@ If left unspecified, ``/tmp/ray/workflow_data`` will be used for temporary stora
 
 Concurrency Control
 -------------------
-Ray workflow supports concurrency control. You can support the maximum running workflows and maximum pending workflows via ``workflow.init()``
+Ray Workflow supports concurrency control. You can support the maximum running workflows and maximum pending workflows via ``workflow.init()``
 before executing any workflow. ``workflow.init()`` again with a different configuration would raise an error.
 
 For example, ``workflow.init(max_running_workflows=10, max_pending_workflows=50)`` means there will be at most 10 workflows running, 50 workflows pending.
@@ -112,5 +112,3 @@ Handling Dependencies
 Ray logs the runtime environment (code and dependencies) of the workflow to storage at submission time. This ensures that the workflow can be resumed at a future time on a different Ray cluster.
 
 You can also explicitly set the runtime environment for a particular task (e.g., specify conda environment, container image, etc.).
-
-For virtual actors, the runtime environment of the actor can be upgraded via the virtual actor management API.
