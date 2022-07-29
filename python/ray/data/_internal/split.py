@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Union, Iterable, Tuple, List
+from typing import Iterable, Tuple, List
 
 import ray
 from ray.data._internal.block_list import BlockList
@@ -93,23 +93,9 @@ def _split_single_block(
     block: Block,
     meta: BlockMetadata,
     split_indices: List[int],
-) -> Tuple[Union[Tuple[int, List[BlockMetadata]], Block], ...]:
-    """Split the provided block at the given indices.
-
-    Args:
-        block_id: the id of this block in the block list.
-        block: block to be split.
-        meta: metadata of the block, we expect meta.num is valid.
-        split_indices: the indices where the block should be split.
-    Returns:
-        returns block_id, split blocks metadata, and a list of blocks
-        in the following form. We return blocks in this way
-        so that the owner of blocks could be the caller(driver)
-        instead of worker itself.
-        Tuple(block_id, split_blocks_meta), block0, block1 ...
-    """
-    split_meta = []
-    split_blocks = []
+) -> Tuple[int, BlockPartition]:
+    """Split the provided block at the given indices."""
+    split_result = []
     block_accessor = BlockAccessor.for_block(block)
     prev_index = 0
     # append one more entry at the last so we don't
@@ -120,19 +106,16 @@ def _split_single_block(
         stats = BlockExecStats.builder()
         split_block = block_accessor.slice(prev_index, index, copy=True)
         accessor = BlockAccessor.for_block(split_block)
-        _meta = BlockMetadata(
+        split_meta = BlockMetadata(
             num_rows=accessor.num_rows(),
             size_bytes=accessor.size_bytes(),
             schema=meta.schema,
             input_files=meta.input_files,
             exec_stats=stats.build(),
         )
-        split_meta.append(_meta)
-        split_blocks.append(split_block)
+        split_result.append((ray.put(split_block), split_meta))
         prev_index = index
-    results = [(block_id, split_meta)]
-    results.extend(split_blocks)
-    return tuple(results)
+    return (block_id, split_result)
 
 
 def _drop_empty_block_split(block_split_indices: List[int], num_rows: int) -> List[int]:
@@ -162,10 +145,8 @@ def _split_all_blocks(
     blocks_with_metadata = block_list.get_blocks_with_metadata()
     all_blocks_split_results: List[BlockPartition] = [None] * len(blocks_with_metadata)
 
-    per_block_split_metadata_futures = []
-    per_block_split_block_refs = []
+    split_single_block_futures = []
 
-    # tracking splitted blocks for gc.
     blocks_splitted = []
     for block_id, block_split_indices in enumerate(per_block_split_indices):
         (block_ref, meta) = blocks_with_metadata[block_id]
@@ -177,27 +158,19 @@ def _split_all_blocks(
             all_blocks_split_results[block_id] = [(block_ref, meta)]
         else:
             # otherwise call split remote function.
-            object_refs = split_single_block.options(
-                scheduling_strategy="SPREAD", num_returns=2 + len(block_split_indices)
-            ).remote(
-                block_id,
-                block_ref,
-                meta,
-                block_split_indices,
+            split_single_block_futures.append(
+                split_single_block.options(scheduling_strategy="SPREAD").remote(
+                    block_id,
+                    block_ref,
+                    meta,
+                    block_split_indices,
+                )
             )
-            per_block_split_metadata_futures.append(object_refs[0])
-            per_block_split_block_refs.append(object_refs[1:])
-
             blocks_splitted.append(block_ref)
-
-    if per_block_split_metadata_futures:
-        # only get metadata.
-        per_block_split_metadata = ray.get(per_block_split_metadata_futures)
-        for (block_id, meta), block_refs in zip(
-            per_block_split_metadata, per_block_split_block_refs
-        ):
-            assert len(meta) == len(block_refs)
-            all_blocks_split_results[block_id] = zip(block_refs, meta)
+    if split_single_block_futures:
+        split_single_block_results = ray.get(split_single_block_futures)
+        for block_id, block_split_result in split_single_block_results:
+            all_blocks_split_results[block_id] = block_split_result
 
     # We make a copy for the blocks that have been splitted, so the input blocks
     # can be cleared if they are owned by consumer (consumer-owned blocks will
