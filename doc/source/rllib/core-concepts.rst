@@ -91,7 +91,7 @@ which implements the proximal policy optimization algorithm in RLlib.
         # Train via Ray Tune.
         # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
         # we need to convert back to old-style config dicts.
-        tune.run(PPO, param_space=config.to_dict())
+        tune.Tuner(PPO, param_space=config.to_dict()).fit()
 
 
 .. tabbed:: RLlib Command Line
