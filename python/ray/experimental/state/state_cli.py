@@ -669,6 +669,17 @@ def object_summary(ctx, timeout: float, address: str):
     )
 
 
+class LogGroup(click.Group):
+    def get_command(self, ctx, cmd_name):
+        rv = click.Group.get_command(self, ctx, cmd_name)
+        # Happy path - trying to find a command
+        if rv is not None:
+            return rv
+
+        # Default to `ray logs file` command
+        return click.Group.get_command(self, ctx, log_file.__name__)
+
+
 @click.group("logs", invoke_without_command=True)
 @click.pass_context
 def logs_state_cli_group(ctx):

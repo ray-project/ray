@@ -460,26 +460,6 @@ E.g., Get a particular log file from a node
         for line in get_log(filename="gcs_server.out", node_id=<NODE_ID>):
             print(line)
 
-E.g., Stream a log file from a node
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. tabbed:: CLI
-
-    .. code-block:: bash
-
-        # You could get the node id / node ip from `ray list nodes` 
-        ray logs -f raylet.out --node-ip <NODE_IP> 
-
-.. tabbed:: Python SDK
-
-    .. code-block:: python
-
-        from ray.experimental.state.api import get_log 
-
-        # Node IP could be retrieved from list_nodes() or ray.nodes()
-        for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
-            print(line)
-
 E.g., Stream log from a pid 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -499,6 +479,26 @@ E.g., Stream log from a pid
         # of worker being directed to the driver (default)
         # The loop will block with `follow=True`
         for line in get_log(pid=<PID>, node_ip=<NODE_IP>, follow=True):
+            print(line)
+
+E.g., Stream a log file from a node
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabbed:: CLI
+
+    .. code-block:: bash
+
+        # You could get the node id / node ip from `ray list nodes` 
+        ray logs -f raylet.out --node-ip <NODE_IP> 
+
+.. tabbed:: Python SDK
+
+    .. code-block:: python
+
+        from ray.experimental.state.api import get_log 
+
+        # Node IP could be retrieved from list_nodes() or ray.nodes()
+        for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
             print(line)
 
 Failure Semantics
