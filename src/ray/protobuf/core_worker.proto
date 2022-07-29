@@ -363,7 +363,7 @@ message UpdateForwardedObjectRequest {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
   //
-  string pinned_at_raylet_id = 2;
+  bytes pinned_at_raylet_id = 2;
 }
 
 message UpdateForwardedObjectReply {}
