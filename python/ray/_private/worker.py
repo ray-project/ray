@@ -1355,6 +1355,14 @@ def init(
         else:
             usage_lib.set_usage_stats_enabled_via_env_var(False)
 
+        # assign a default storage if there is no storage.
+        if storage is None:
+            if _temp_dir is None:
+                storage_parent = ray._private.utils.get_ray_temp_dir()
+            else:
+                storage_parent = _temp_dir
+            storage = "file://" + os.path.join(storage_parent, "storage")
+
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
