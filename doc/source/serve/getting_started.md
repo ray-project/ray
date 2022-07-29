@@ -4,10 +4,10 @@
 
 This tutorial will walk you through the process of deploying models with Ray Serve. It will show you how to
 
-* Expose your models over HTTP using Ray Serve `deployments`
+* Expose your models over HTTP using Ray Serve [deployments](serve-managing-deployments-guide)
 * Scale your deployments to meet your workload's requirements
 * Allocate resources like fractional GPUs and CPUs to your deployments
-* Compose multiple-model machine learning pipelines with Ray Serve `deployment graphs`
+* Compose multiple-model machine learning pipelines with Ray Serve [deployment graphs](deployment-graph-e2e-tutorial)
 * Port your FastAPI applications to Ray Serve
 
 We'll use two models in this tutorial:
