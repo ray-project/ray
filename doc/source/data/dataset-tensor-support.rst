@@ -439,6 +439,22 @@ If working with in-memory Pandas DataFrames that you want to analyze, manipulate
     print(read_df.equals(df))
     # -> True
 
+.. _disable_tensor_extension_casting:
+
+Disabling Tensor Extension Casting
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To disable automatic casting of Pandas and Arrow arrays to
+:class:`TensorArray <ray.data.extensions.tensor_extension.TensorArray>`, run the code
+below.
+
+.. code-block::
+
+    from ray.data.context import DatasetContext
+
+    ctx = DatasetContext.get_current()
+    ctx.enable_tensor_extension_casting = False
+
 Limitations
 ~~~~~~~~~~~
 
