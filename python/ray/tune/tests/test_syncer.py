@@ -128,7 +128,7 @@ class CustomCommandSyncer(Syncer):
     ) -> bool:
         cmd_str = self.sync_down_template.format(
             source=remote_dir,
-            local_dir=local_dir,
+            target=local_dir,
         )
         subprocess.check_call(cmd_str, shell=True)
         return True
@@ -189,6 +189,38 @@ def test_syncer_sync_up_down(temp_data_dirs):
     assert_file(True, tmp_target, "subdir/nested/level2.txt")
     assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
     assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+def test_syncer_sync_up_down_custom(temp_data_dirs):
+    """Check that syncing up and down works"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    syncer = CustomCommandSyncer(
+        sync_up_template="cp -rf {source} `echo '{target}' | cut -c 8-`",
+        sync_down_template="cp -rf `echo '{source}' | cut -c 8-` {target}",
+        delete_template="rm -rf `echo '{target}' | cut -c 8-`",
+    )
+
+    # remove target dir (otherwise OS will copy into)
+    shutil.rmtree(tmp_target)
+
+    syncer.sync_up(local_dir=tmp_source, remote_dir=f"file://{tmp_target}")
+    syncer.wait()
+
+    # remove target dir to test sync down
+    shutil.rmtree(tmp_source)
+
+    syncer.sync_down(remote_dir=f"file://{tmp_target}", local_dir=tmp_source)
+    syncer.wait()
+
+    # Target dir should have all files
+    assert_file(True, tmp_source, "level0.txt")
+    assert_file(True, tmp_source, "level0_exclude.txt")
+    assert_file(True, tmp_source, "subdir/level1.txt")
+    assert_file(True, tmp_source, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_source, "subdir/nested/level2.txt")
+    assert_file(True, tmp_source, "subdir_nested_level2_exclude.txt")
+    assert_file(True, tmp_source, "subdir_exclude/something/somewhere.txt")
 
 
 def test_syncer_sync_exclude(temp_data_dirs):
