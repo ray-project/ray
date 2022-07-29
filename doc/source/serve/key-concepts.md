@@ -86,7 +86,7 @@ Python developer to compose models together. The second is by using an HTTP requ
   Let's look at a simple end-to-end example using ServeHandle to query intermediate deployments. Your output may
   vary due to random nature of how the prediction is computed; however, the example illustrates two things:
   1) how to expose and use deployments and 2) how to use replicas, to which requests are sent. Note that each PID
-  is a separate replica associated with each deployment name, `rep-1` and `rep-2` respectively.
+  is a separate replica associated with each deployment.
 
   To run this code, first run `ray start --head` to start a single-node Ray cluster on your machine, then run the following script.
 
