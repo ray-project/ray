@@ -253,16 +253,6 @@ parts:
       - file: cluster/key-concepts
       - file: cluster/user-guide
       - file: cluster/cloud
-      - file: cluster/kuberay
-        sections:
-          - file: cluster/kuberay/quickstart
-          - file: cluster/kuberay/config
-          - file: cluster/kuberay/k8s-cluster-setup
-          - file: cluster/kuberay/logging
-          - file: cluster/kuberay/networking
-          - file: cluster/kuberay/gpu
-          - file: cluster/kuberay/ml-example
-          - file: cluster/kuberay/kuberay-vs-legacy
       - file: cluster/deploy
       - file: cluster/api
       - file: cluster/usage-stats
@@ -278,7 +268,14 @@ parts:
             sections:
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/getting-started
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides
+              sections:
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/config.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/gpu.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/networking.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/kuberay-vs-legacy.md
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples
+              sections:
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples/ml-example.md
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/references
           - file: cluster/cluster_under_construction/ray-clusters-on-vms/index
             title: Ray Clusters on VMs
