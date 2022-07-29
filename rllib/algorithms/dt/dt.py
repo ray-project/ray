@@ -150,13 +150,11 @@ class DT(Algorithm):
         # Call super's validation method.
         super().validate_config(config)
 
-        assert self.config["target_return"] is not None, (
-            "Must specify a target return (total sum of rewards)."
-        )
+        assert (
+            self.config["target_return"] is not None
+        ), "Must specify a target return (total sum of rewards)."
 
-        assert self.config["max_seq_len"] >= 2, (
-            "max_seq_len must be at least 2."
-        )
+        assert self.config["max_seq_len"] >= 2, "max_seq_len must be at least 2."
 
     @classmethod
     @override(Algorithm)

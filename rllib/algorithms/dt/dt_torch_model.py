@@ -65,11 +65,17 @@ class DTTorchModel(TorchModelV2, nn.Module):
 
         # Update view requirement
         self.view_requirements = {
-            SampleBatch.OBS: ViewRequirement(space=obs_space, shift=f"-{self.max_seq_len-1}:0"),
-            SampleBatch.ACTIONS: ViewRequirement(space=action_space, shift=f"-{self.max_seq_len-1}:-1"),
+            SampleBatch.OBS: ViewRequirement(
+                space=obs_space, shift=f"-{self.max_seq_len-1}:0"
+            ),
+            SampleBatch.ACTIONS: ViewRequirement(
+                space=action_space, shift=f"-{self.max_seq_len-1}:-1"
+            ),
             SampleBatch.REWARDS: ViewRequirement(shift=-1),
             SampleBatch.T: ViewRequirement(shift=f"-{self.max_seq_len-2}:0"),
-            SampleBatch.RETURNS_TO_GO: ViewRequirement(shift=f"-{self.max_seq_len-1}:-1"),
+            SampleBatch.RETURNS_TO_GO: ViewRequirement(
+                shift=f"-{self.max_seq_len-1}:-1"
+            ),
         }
 
     def build_transformer(self):

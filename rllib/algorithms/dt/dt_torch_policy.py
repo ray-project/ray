@@ -148,10 +148,14 @@ class DTTorchPolicy(TorchPolicyV2):
         obs_batch[SampleBatch.T] = torch.cat([timesteps, new_timestep], dim=1)
 
         # mask out any padded value at start of rollout
-        obs_batch[SampleBatch.ATTENTION_MASKS] = torch.where(obs_batch[SampleBatch.T] >= 0, 1.0, 0.0)
+        obs_batch[SampleBatch.ATTENTION_MASKS] = torch.where(
+            obs_batch[SampleBatch.T] >= 0, 1.0, 0.0
+        )
 
         # remove out of bound -1 timesteps after attention mask is calculated
-        obs_batch[SampleBatch.T] = torch.where(obs_batch[SampleBatch.T] < 0, 0, obs_batch[SampleBatch.T])
+        obs_batch[SampleBatch.T] = torch.where(
+            obs_batch[SampleBatch.T] < 0, 0, obs_batch[SampleBatch.T]
+        )
 
         # compute returns to go
         rtg = obs_batch[SampleBatch.RETURNS_TO_GO]
@@ -159,14 +163,25 @@ class DTTorchPolicy(TorchPolicyV2):
         last_reward = obs_batch[SampleBatch.REWARDS]
         updated_rtg = last_rtg - last_reward
 
-        initial_rtg = torch.full((batch_size, 1), fill_value=self.config["target_return"], dtype=rtg.dtype, device=rtg.device)
+        initial_rtg = torch.full(
+            (batch_size, 1),
+            fill_value=self.config["target_return"],
+            dtype=rtg.dtype,
+            device=rtg.device,
+        )
 
         new_rtg = torch.where(new_timestep == 0, initial_rtg, updated_rtg[:, None])
-        obs_batch[SampleBatch.RETURNS_TO_GO] = torch.cat([rtg, new_rtg], dim=1)[..., None]
+        obs_batch[SampleBatch.RETURNS_TO_GO] = torch.cat([rtg, new_rtg], dim=1)[
+            ..., None
+        ]
 
         # Pad current action (is not actually attended to and used during inference)
         actions = obs_batch[SampleBatch.ACTIONS]
-        action_pad = torch.zeros((batch_size, 1, *actions.shape[2:]), dtype=actions.dtype, device=actions.device)
+        action_pad = torch.zeros(
+            (batch_size, 1, *actions.shape[2:]),
+            dtype=actions.dtype,
+            device=actions.device,
+        )
         obs_batch[SampleBatch.ACTIONS] = torch.cat([actions, action_pad], dim=1)
 
         # Run inference on model
