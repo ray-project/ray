@@ -2,7 +2,7 @@ import copy
 import os
 import unittest
 from pathlib import Path
-from typing import Type, Union, Dict
+from typing import Type, Union, Dict, Tuple
 
 import numpy as np
 from ray.data import read_json
@@ -274,7 +274,7 @@ def get_policy_batch_and_mean_std_ret(
     num_episodes: int,
     gamma: float,
     epsilon: float,
-) -> (Policy, SampleBatch, float, float):
+) -> Tuple[Policy, SampleBatch, float, float]:
     """Collect a GridWorld policy and data with epsilon-greedy exploration.
 
     Args:
