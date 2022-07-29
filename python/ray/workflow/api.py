@@ -37,8 +37,10 @@ def init(
 ) -> None:
     """Initialize workflow.
 
-    If Ray is not initialized, we will initialize Ray and
-    use ``/tmp/ray/workflow_data`` as the default storage.
+    Ray will be initialized during getting/creating the workflow management actor.
+    If we start a local Ray cluster and connect to it during initialization
+    (i.e. "ray.init()" without connecting to an existing cluster),
+    the default storage will be "file:///tmp/ray/storage".
 
     Args:
         max_running_workflows: The maximum number of concurrently running workflows.
@@ -67,27 +69,15 @@ def init(
                 "or use -1 as infinity."
             )
 
-    if not ray.is_initialized():
-        # We should use get_temp_dir_path, but for ray client, we don't
-        # have this one. We need a flag to tell whether it's a client
-        # or a driver to use the right dir.
-        # For now, just use /tmp/ray/workflow_data
-        ray.init(storage="file:///tmp/ray/workflow_data")
     workflow_access.init_management_actor(max_running_workflows, max_pending_workflows)
     serialization.init_manager()
 
 
 def _ensure_workflow_initialized() -> None:
-    # NOTE: Trying to get the actor has a side effect: it initializes Ray with
-    # default arguments. This is different in "init()": it assigns a temporary
-    # storage. This is why we need to check "ray.is_initialized()" first.
-    if not ray.is_initialized():
+    try:
+        workflow_access.get_management_actor()
+    except ValueError:
         init()
-    else:
-        try:
-            workflow_access.get_management_actor()
-        except ValueError:
-            init()
 
 
 def client_mode_wrap(func):

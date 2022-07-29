@@ -68,6 +68,12 @@ def test_no_init_api(shutdown_only):
     workflow.list_all()
 
 
+def test_ray_init_api(shutdown_only):
+    """Test if Ray connects to a local temporary storage."""
+    ray.init()
+    workflow.list_all()
+
+
 if __name__ == "__main__":
     import sys
 

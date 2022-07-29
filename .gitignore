@@ -207,9 +207,6 @@ project-id
 .anyscale.yaml
 test_state.json
 
-# workflow storage
-workflow_data/
-
 # vscode java extention generated
 .factorypath
 

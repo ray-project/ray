@@ -41,7 +41,7 @@ submitting a workflow. No code changes are required for Ray Workflow afterwards.
 
     try:
         subprocess.check_call(
-            ["ray", "start", "--head", "--ray-client-server-port=10001", "--storage=file:///tmp/ray/workflow_data"])
+            ["ray", "start", "--head", "--ray-client-server-port=10001", "--storage=file:///tmp/ray/storage"])
         ray.init("ray://127.0.0.1:10001")
         assert workflow.run(hello.bind(3)) == ["hello world"] * 3
     finally:

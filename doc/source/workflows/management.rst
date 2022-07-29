@@ -85,9 +85,7 @@ Workflows supports two types of storage backends out of the box:
 *  Local file system: the data is stored locally. This is only for single node testing. It needs to be a NFS to work with multi-node clusters. To use local storage, specify ``ray.init(storage="/path/to/storage_dir")``.
 *  S3: Production users should use S3 as the storage backend. Enable S3 storage with ``ray.init(storage="s3://bucket/path")``.
 
-Additional storage backends can be written by subclassing the ``Storage`` class and passing a storage instance to ``ray.init()`` [TODO: note that the Storage API is not currently stable].
-
-If left unspecified, ``/tmp/ray/workflow_data`` will be used for temporary storage. This default setting *will only work for single-node Ray clusters*.
+If left unspecified, ``/tmp/ray/storage`` will be used for temporary storage. This default setting *will only work for a local Ray cluster*.
 
 Concurrency Control
 -------------------
