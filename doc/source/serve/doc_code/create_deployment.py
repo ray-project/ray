@@ -70,10 +70,6 @@ class ServeHandleDemo:
         return await self.run()
 
 
-# Connect to an existing Ray cluster.  Make sure to start a Ray cluster before
-# running this script to avoid `ConnectionError: Could not find any running Ray instance.`
-ray.init(address="auto")
-
 rep_1_predictor = Predictor.options(
     name="rep_1", num_replicas=2).bind("/model/rep-1.pkl")
 rep_2_predictor = Predictor.options(
