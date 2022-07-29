@@ -31,7 +31,7 @@ pip install "ray[serve]" transformers requests
 
 ## Example Model
 
-First, let's take a look at our text-translation model. Here's it's code:
+First, let's take a look at our text-translation model. Here's its code:
 
 ```{literalinclude} ../serve/doc_code/getting_started/models.py
 :start-after: __start_translation_model__
