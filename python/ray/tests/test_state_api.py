@@ -2256,13 +2256,13 @@ def test_detail(shutdown_only):
         yaml.load(result.output, Loader=yaml.FullLoader)
 
 
-def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None):
+def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None, **kwargs):
     """Utility functions for rate limit related e2e tests below"""
     try:
         # Indicate start of the process
         if start_q is not None:
             start_q.put(1)
-        api_func()
+        api_func(**kwargs)
     except RayStateApiException as e:
         # Other exceptions will be thrown
         if "Max number of in-progress requests" in str(e):
@@ -2286,12 +2286,13 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
     # Set environment
     with monkeypatch.context() as m:
         m.setenv("RAY_STATE_SERVER_MAX_HTTP_REQUEST", "3")
+        # These make list_nodes, list_workers, list_actors never return in 20secs
         m.setenv(
             "RAY_testing_asio_delay_us",
             (
-                "NodeManagerService.grpc_server.GetTasksInfo=3000000:3000000,"
-                "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=3000000:3000000,"
-                "ActorInfoGcsService.grpc_server.GetAllActorInfo=3000000:3000000"
+                "NodeManagerService.grpc_server.GetTasksInfo=20000000:20000000,"
+                "WorkerInfoGcsService.grpc_server.GetAllWorkerInfo=20000000:20000000,"
+                "ActorInfoGcsService.grpc_server.GetAllActorInfo=20000000:20000000"
             ),
         )
 
@@ -2332,6 +2333,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
                     res_q,
                     start_q,
                 ),
+                kwargs={"timeout": 3},
             ),
             threading.Thread(
                 target=_try_state_query_expect_rate_limit,
@@ -2340,6 +2342,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
                     res_q,
                     start_q,
                 ),
+                kwargs={"timeout": 3},
             ),
             threading.Thread(
                 target=_try_state_query_expect_rate_limit,
@@ -2348,6 +2351,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
                     res_q,
                     start_q,
                 ),
+                kwargs={"timeout": 3},
             ),
         ]
 
@@ -2372,6 +2376,15 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
         assert "Max" in str(
             e
         ), f"Expect an exception raised due to rate limit, but have {str(e)}"
+
+        # Consecutive APIs should be successful after the previous delay ones timeout
+        def verify():
+            assert len(list_objects()) > 0, "non-delay APIs should be successful"
+            "after previous ones timeout"
+
+            return True
+
+        wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
