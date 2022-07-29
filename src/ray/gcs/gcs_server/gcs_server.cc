@@ -647,6 +647,7 @@ void GcsServer::InstallEventListeners() {
                                          worker_failure_data->exit_type(),
                                          worker_failure_data->exit_detail(),
                                          creation_task_exception);
+        gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
       });
 
   // Install job event listeners.
@@ -661,7 +662,8 @@ void GcsServer::InstallEventListeners() {
       main_service_.post(
           [this] {
             // Because resources have been changed, we need to try to schedule the
-            // pending actors.
+            // pending placement groups and actors.
+            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
             cluster_task_manager_->ScheduleAndDispatchTasks();
           },
           "GcsServer.SchedulePendingActors");
@@ -670,8 +672,9 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_scheduler_->AddResourcesChangedListener([this] {
       main_service_.post(
           [this] {
-            // Because placement group resources have been committed or deleted, we need
-            // to try to schedule the pending actors.
+            // Because some placement group resources have been committed or deleted, we
+            // need to try to schedule the pending placement groups and actors.
+            gcs_placement_group_manager_->SchedulePendingPlacementGroups();
             cluster_task_manager_->ScheduleAndDispatchTasks();
           },
           "GcsServer.SchedulePendingPGActors");
