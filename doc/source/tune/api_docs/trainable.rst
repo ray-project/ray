@@ -102,18 +102,6 @@ You can save and load checkpoint in Ray Tune in the following manner:
 .. note:: ``checkpoint_freq`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
 
 In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
-You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``:
-
-.. code-block:: python
-
-        analysis = tune.run(
-            train,
-            config={
-                "max_iter": 5
-            },
-        ).trials
-        last_ckpt = trial.checkpoint.dir_or_data
-        analysis = tune.run(train, config={"max_iter": 10}, restore=last_ckpt)
 
 Tune also may copy or move checkpoints during the course of tuning. For this purpose,
 it is important not to depend on absolute paths in the implementation of ``save``.
