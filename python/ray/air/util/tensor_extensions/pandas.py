@@ -29,6 +29,7 @@
 # - Added support for logical operators to TensorArray(Element).
 # - Miscellaneous small bug fixes and optimizations.
 
+import itertools
 import numbers
 import os
 from distutils.version import LooseVersion
@@ -712,13 +713,15 @@ class TensorArray(
                     # ndarrays.
                     self._tensor = np.array([np.asarray(v) for v in values])
                     if self._tensor.dtype.type is np.object_:
-                        subndarray_types = [v.dtype for v in self._tensor]
+                        subndarray_types = [
+                            v.dtype for v in itertools.islice(self._tensor, 5)
+                        ]
                         raise TypeError(
                             "Tried to convert an ndarray of ndarray pointers (object "
                             "dtype) to a well-typed ndarray but this failed; convert "
                             "the ndarray to a well-typed ndarray before casting it as "
                             "a TensorArray, and note that ragged tensors are NOT "
-                            "supported by TensorArray. subndarray types: "
+                            "supported by TensorArray. First 5 subndarray types: "
                             f"{subndarray_types}"
                         )
                 else:
