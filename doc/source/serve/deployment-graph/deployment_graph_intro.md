@@ -25,6 +25,48 @@ The next two sections will discuss how to construct and connects these nodes to 
 
 ## ClassNodes
 
+You can create class nodes by binding class deployments to their constructor's arguments. For example:
+
+```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+:start-after: __echo_class_start__
+:end-before: __echo_class_end__
+:language: python
+```
+
+`echo.py` defines three `ClassNodes`: `foo_node`, `bar_node`, and `baz_node`. The nodes are defined by invoking `bind` on the `EchoClass` deployment. They have different behaviors because they use different arguments in the `bind` call.
+
+Note that all three of these nodes were created from the same `EchoClass` deployment. Class deployments are essentially factories for `ClassNodes`. A single class deployment can produce multiple `ClassNodes` through multiple `bind` statements.
+
+There are two options to run a node:
+
+1. `serve.run(node)`: This Python call can be added to your Python script to run a particular node. This call will start a Ray cluster (if one isn't already running), deploy the node to it, and then return. You can call this function multiple times in the same script on different nodes. Each time, it will tear down any deployments it previously deployed and deploy the passed-in node's deployment. After the script exits, the cluster and any nodes deployed by `serve.run` will be torn down.
+
+2. `serve run module:node`: This CLI command will start a Ray cluster and run the node contained at the import path `module:node`. It will then block, allowing you to open a separate terminal window and issue requests to the running deployment. You can stop the `serve run` command with `ctrl-c`.
+
+When you run a node, you are deploying the node's deployment and its bound arguments. Ray Serve will create a deployment in Ray and instantiate your deployment's class using the arguments. By default, you can send requests to your deployment at `http://localhost:8000`. These requests will be converted to Starlette `request` objects and passed to your class's `__call__` method.
+
+You can copy the `echo.py` script above and run it with `serve run`. Make sure to run the command from a directory containing `echo.py`, so it can locate the script:
+
+```console
+$ serve run echo:foo_node
+```
+
+Here's a client script that can send requests to your node:
+
+```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+:start-after: __echo_client_start__
+:end-before: __echo_client_end__
+:language: python
+```
+
+While the deployment is running with `serve run`, open a separate terminal window and issue a request to it with the `echo_client.py` script:
+
+```
+$ python echo_client.py
+
+foo
+```
+
 ## The Call Graph: MethodNodes and FunctionNodes
 
 ## Drivers and HTTP Adapters
