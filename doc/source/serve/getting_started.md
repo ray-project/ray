@@ -7,7 +7,7 @@ This tutorial will walk you through the process of deploying models with Ray Ser
 * Expose your models over HTTP using Ray Serve `deployments`
 * Scale your deployments to meet your workload's requirements
 * Allocate resources like fractional GPUs and CPUs to your deployments
-* Compose multiple-model machine learning pipelines with Ray Serve `Deployment Graphs`
+* Compose multiple-model machine learning pipelines with Ray Serve `deployment graphs`
 * Port your FastAPI applications to Ray Serve
 
 We'll use two models in this tutorial:
@@ -228,7 +228,7 @@ class Translator:
 ...
 ```
 
-See the guide on [Ray Serve resource management](serve-cpus-gpus) and [Ray Serve's fractional resources](serve-fractional-resources-guide) to learn more about.
+See the guides on [Ray Serve resource management](serve-cpus-gpus) and [Ray Serve's fractional resources](serve-fractional-resources-guide) to learn more.
 
 ## Composing Machine Learning Models with Deployment Graphs
 
@@ -261,9 +261,10 @@ Here's a Ray Serve deployment graph that chains the two models together. The gra
 :start-after: __start_graph__
 :end-before: __end_graph__
 :language: python
+:linenos: true
 ```
 
-This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code:
+This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code on lines 44 and 45:
 
 ```python
 translation_ref = self.translator.translate.remote(summary)
@@ -272,7 +273,7 @@ translation = ray.get(translation_ref)
 
 `self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method. Essentially, this line tells Ray to schedule a request to the `Translator` deployment's `translate` method, which can be fulfilled asynchronously. The line immediately returns a reference to the method's output. The next line `ray.get(translation_ref)` waits for `translate` to execute and returns the value of that execution.
 
-We compose our graph in the line
+We compose our graph in line 50:
 
 ```python
 deployment_graph = Summarizer.bind(Translator.bind())
@@ -337,6 +338,7 @@ get a deeper understanding of Ray Serve.
 
 - Dive into the {doc}`key-concepts` to get a deeper understanding of Ray Serve.
 - Learn more about how to deploy your Ray Serve application to a multi-node cluster: {ref}`serve-deploy-tutorial`.
+- See the guide on [putting Ray Serve in production](serve-in-production) to learn more about how to manage your deployments.
 - Check more in-depth tutorials for popular machine learning frameworks: {doc}`tutorials/index`.
 
 ```{rubric} Footnotes
