@@ -1708,14 +1708,14 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             data.get("pid") == "raylet"
             and ray_constants.LOG_PREFIX_INFO_MESSAGE not in line
         ):
-            return colorama.Fore.YELLOW
+            return colorama.Fore.RED
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
-                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+                return colorama.Style.BRIGHT + colorama.Fore.RED
             else:
-                return colorama.Style.BRIGHT + colorama.Fore.CYAN
+                return colorama.Style.BRIGHT + colorama.Fore.BLUE
         else:
-            return colorama.Fore.CYAN
+            return colorama.Fore.BLUE
 
     if data.get("pid") == "autoscaler":
         pid = "scheduler +{}".format(time_string())
