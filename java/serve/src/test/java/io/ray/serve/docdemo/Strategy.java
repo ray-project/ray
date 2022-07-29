@@ -7,28 +7,27 @@ import java.util.Map.Entry;
 
 public class Strategy {
 
-  public List<Result> calc(long time, Map<String, BankIndicator> banksAndIndicator) {
-    List<Result> results = new ArrayList<>();
-    for (Entry<String, BankIndicator> e : banksAndIndicator.entrySet()) {
+  public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+    List<String> results = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
       String bank = e.getKey();
-      for (List<String> indicators : e.getValue().getIndicators()) {
+      for (List<String> indicators : e.getValue()) {
         results.addAll(calcBankIndicators(time, bank, indicators));
       }
     }
     return results;
   }
 
-  public List<Result> calcBankIndicators(long time, String bank, List<String> indicators) {
-    List<Result> results = new ArrayList<>();
+  public List<String> calcBankIndicators(long time, String bank, List<String> indicators) {
+    List<String> results = new ArrayList<>();
     for (String indicator : indicators) {
       results.add(calcIndicator(time, bank, indicator));
     }
     return results;
   }
 
-  public Result calcIndicator(long time, String bank, String indicator) {
-    Result result = new Result();
+  public String calcIndicator(long time, String bank, String indicator) {
     // do bank data calculation
-    return result;
+    return bank + "-" + indicator + "-" + time; // Demo;
   }
 }

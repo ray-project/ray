@@ -4,6 +4,8 @@ import io.ray.api.ObjectRef;
 import io.ray.serve.api.Serve;
 import io.ray.serve.deployment.Deployment;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -11,10 +13,8 @@ import java.util.Map.Entry;
 public class StrategyCalcOnRayServe {
 
   public void deploy() {
-    // Start Ray Serve instance.
     Serve.start(true, false, null, null);
 
-    // Deploy counter.
     Deployment deployment =
         Serve.deployment()
             .setName("strategy")
@@ -24,16 +24,16 @@ public class StrategyCalcOnRayServe {
     deployment.deploy(true);
   }
 
-  public List<Result> calc(long time, Map<String, BankIndicator> banksAndIndicator) {
+  public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
     Deployment deployment = Serve.getDeployment("strategy");
 
-    List<Result> results = new ArrayList<>();
-    for (Entry<String, BankIndicator> e : banksAndIndicator.entrySet()) {
+    List<String> results = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
       String bank = e.getKey();
-      for (List<String> indicators : e.getValue().getIndicators()) {
+      for (List<String> indicators : e.getValue()) {
         for (String indicator : indicators) {
           results.add(
-              (Result)
+              (String)
                   deployment
                       .getHandle()
                       .method("calcIndicator")
@@ -45,31 +45,40 @@ public class StrategyCalcOnRayServe {
     return results;
   }
 
-  public List<Result> parallelCalc(long time, Map<String, BankIndicator> banksAndIndicator) {
+  public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
     Deployment deployment = Serve.getDeployment("strategy");
 
-    List<Result> results = new ArrayList<>();
+    List<String> results = new ArrayList<>();
     List<ObjectRef<Object>> refs = new ArrayList<>();
-    for (Entry<String, BankIndicator> e : banksAndIndicator.entrySet()) {
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
       String bank = e.getKey();
-      for (List<String> indicators : e.getValue().getIndicators()) {
+      for (List<String> indicators : e.getValue()) {
         for (String indicator : indicators) {
           refs.add(deployment.getHandle().method("calcIndicator").remote(time, bank, indicator));
         }
       }
     }
     for (ObjectRef<Object> ref : refs) {
-      results.add((Result) ref.get());
+      results.add((String) ref.get());
     }
     return results;
   }
 
   public static void main(String[] args) {
-    long time = 0;
-    Map<String, BankIndicator> banksAndIndicator = null;
+    long time = System.currentTimeMillis();
+    String bank1 = "demo_bank_1";
+    String bank2 = "demo_bank_2";
+    String indicator1 = "demo_indicator_1";
+    String indicator2 = "demo_indicator_2";
+    Map<String, List<List<String>>> banksAndIndicators = new HashMap<>();
+    banksAndIndicators.put(bank1, Arrays.asList(Arrays.asList(indicator1, indicator2)));
+    banksAndIndicators.put(
+        bank2, Arrays.asList(Arrays.asList(indicator1), Arrays.asList(indicator2)));
 
     StrategyCalcOnRayServe strategy = new StrategyCalcOnRayServe();
     strategy.deploy();
-    strategy.parallelCalc(time, banksAndIndicator);
+    List<String> results = strategy.parallelCalc(time, banksAndIndicators);
+
+    System.out.println(results);
   }
 }

@@ -1,18 +1,18 @@
 package io.ray.serve.docdemo;
 
 import com.google.gson.Gson;
+import java.util.Map;
 
 public class HttpStrategyOnRayServe {
 
   private Gson gson = new Gson();
 
-  public String calcIndicator(String indicatorJson) {
-    IndicatorModel indicatorModel = gson.fromJson(indicatorJson, IndicatorModel.class);
-  	long time = indicatorModel.getTime();
-  	String bank = indicatorModel.getBank();
-  	String indicator = indicatorModel.getIndicator();
-    Result result = new Result();
+  public String call(String dataJson) {
+    Map<String, Object> data = gson.fromJson(dataJson, Map.class);
+    long time = (long) data.get("time");
+    String bank = (String) data.get("bank");
+    String indicator = (String) data.get("indicator");
     // do bank data calculation
-    return gson.toJson(result);
+    return bank + "-" + indicator + "-" + time; // Demo;
   }
 }

@@ -1,63 +1,67 @@
 package io.ray.serve.docdemo;
 
-import com.google.common.collect.ImmutableMap;
 import io.ray.serve.api.Serve;
 import io.ray.serve.deployment.Deployment;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ManageDeployment {
 
-  public class SimpleDeployment1 {
+  public static class Counter {
 
-    public String call(String data) {
-      return "SimpleDeployment1";
+    private AtomicInteger value;
+
+    public Counter(Integer value) {
+      this.value = new AtomicInteger(value);
+    }
+
+    public String call(String delta) {
+      return String.valueOf(value.addAndGet(Integer.valueOf(delta)));
     }
   }
 
-  public class SimpleDeployment2 {
+  public void create() {
+    Serve.deployment()
+        .setName("counter")
+        .setDeploymentDef(Counter.class.getName())
+        .setInitArgs(new Object[] {1})
+        .setNumReplicas(2)
+        .create()
+        .deploy(true);
+  }
 
-    public String call(String data) {
-      return "SimpleDeployment2";
-    }
+  public void query() {
+    Deployment deployment = Serve.getDeployment("counter");
   }
 
   public void update() {
     Serve.deployment()
-        .setName("my_deployment")
-        .setDeploymentDef(SimpleDeployment1.class.getName())
-        .setNumReplicas(1)
-        .create()
-        .deploy(true);
-
-    Serve.deployment()
-        .setName("my_deployment")
-        .setDeploymentDef(SimpleDeployment2.class.getName())
-        .setNumReplicas(1)
+        .setName("counter")
+        .setDeploymentDef(Counter.class.getName())
+        .setInitArgs(new Object[] {2})
+        .setNumReplicas(2)
         .create()
         .deploy(true);
   }
 
   public void scaleOut() {
-    // Create with a single replica.
-    Deployment deployment =
-        Serve.deployment()
-            .setName("my_deployment")
-            .setDeploymentDef(SimpleDeployment1.class.getName())
-            .setNumReplicas(1)
-            .create();
-    deployment.deploy(true);
+    Deployment deployment = Serve.getDeployment("counter");
 
     // Scale up to 10 replicas.
     deployment.options().setNumReplicas(10).create().deploy(true);
 
-    // Scale back down to 1 replica.
+    // Scale down to 1 replica.
     deployment.options().setNumReplicas(1).create().deploy(true);
   }
 
   public void manageResouce() {
+    Map<String, Object> rayActorOptions = new HashMap<>();
+    rayActorOptions.put("num_gpus", 1);
     Serve.deployment()
-        .setName("my_deployment")
-        .setDeploymentDef(SimpleDeployment1.class.getName())
-        .setRayActorOptions(ImmutableMap.of("num_gpus", 1))
+        .setName("counter")
+        .setDeploymentDef(Counter.class.getName())
+        .setRayActorOptions(rayActorOptions)
         .create()
         .deploy(true);
   }

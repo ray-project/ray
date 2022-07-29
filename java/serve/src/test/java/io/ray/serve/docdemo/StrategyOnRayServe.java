@@ -2,9 +2,8 @@ package io.ray.serve.docdemo;
 
 public class StrategyOnRayServe {
 
-  public Result calcIndicator(long time, String bank, String indicator) {
-    Result result = new Result();
+  public String calcIndicator(long time, String bank, String indicator) {
     // do bank data calculation
-    return result;
+    return bank + "-" + indicator + "-" + time; // Demo;
   }
 }

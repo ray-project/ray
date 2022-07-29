@@ -13,14 +13,11 @@ First of all, using Java Ray Serve needs the following dependency in you `pom.xm
 </dependency>
 ```
 
-.. note::
-
-After installing Ray, the Java jar of Ray Serve has been included locally. The `provided` scope could  ensure the Java code using Ray Serve can be compiled and will not cause version conflicts when deployed on the cluster.
-
+> NOTE: After installing Ray, the Java jar of Ray Serve has been included locally. The `provided` scope could  ensure the Java code using Ray Serve can be compiled and will not cause version conflicts when deployed on the cluster.
 
 ## Example Model
 
-This is a real user scenario we encountered. The use's class is as follows:
+This is a real user scenario we encountered. The user's class is as follows:
 
 ```java
 import java.util.ArrayList;
@@ -30,35 +27,34 @@ import java.util.Map.Entry;
 
 public class Strategy {
 
-  public List<Result> calc(long time, Map<String, BankIndicator> banksAndIndicator) {
-    List<Result> results = new ArrayList<>();
-    for (Entry<String, BankIndicator> e : banksAndIndicator.entrySet()) {
+  public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+    List<String> results = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
       String bank = e.getKey();
-      for (List<String> indicators : e.getValue().getIndicators()) {
+      for (List<String> indicators : e.getValue()) {
         results.addAll(calcBankIndicators(time, bank, indicators));
       }
     }
     return results;
   }
 
-  public List<Result> calcBankIndicators(long time, String bank, List<String> indicators) {
-    List<Result> results = new ArrayList<>();
+  public List<String> calcBankIndicators(long time, String bank, List<String> indicators) {
+    List<String> results = new ArrayList<>();
     for (String indicator : indicators) {
       results.add(calcIndicator(time, bank, indicator));
     }
     return results;
   }
 
-  public Result calcIndicator(long time, String bank, String indicator) {
-    Result result = new Result();
+  public String calcIndicator(long time, String bank, String indicator) {
     // do bank data calculation
-    return result;
+    return bank + "-" + indicator + "-" + time; // Demo;
   }
 }
 
 ```
 
-The `Strategy` class is used to calculate the indicators of a number of banks.
+This `Strategy` class is used to calculate the indicators of a number of banks.
 
 * The `calc` method is the entry of the calculation. The input parameters are the time interval of calculation and the map of the banks and their indicators. As we can see, the `calc` method contains a two-tier `for` loop, traversing each indicator list of each bank, and calling the `calcBankIndicators` method to calculate the indicators of the specified bank.
 
@@ -68,8 +64,31 @@ The `Strategy` class is used to calculate the indicators of a number of banks.
 This is the code that uses the `Strategy` class:
 
 ```java
-Strategy strategy = new Strategy();
-strategy.calc(time, banksAndIndicator);
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class StrategyCalc {
+
+  public static void main(String[] args) {
+    long time = System.currentTimeMillis();
+    String bank1 = "demo_bank_1";
+    String bank2 = "demo_bank_2";
+    String indicator1 = "demo_indicator_1";
+    String indicator2 = "demo_indicator_2";
+    Map<String, List<List<String>>> banksAndIndicators = new HashMap<>();
+    banksAndIndicators.put(bank1, Arrays.asList(Arrays.asList(indicator1, indicator2)));
+    banksAndIndicators.put(
+        bank2, Arrays.asList(Arrays.asList(indicator1), Arrays.asList(indicator2)));
+
+    Strategy strategy = new Strategy();
+    List<String> results = strategy.calc(time, banksAndIndicators);
+
+    System.out.println(results);
+  }
+}
+
 ```
 
 When the scale of banks and indicators expands, the three-tier `for` loop will slow down the calculation. Even if the thread pool is used to calculate each indicator in parallel, we may encounter a single machine performance bottleneck. Moreover, this `Strategy`  object cannot be reused as a resident service.
@@ -83,10 +102,9 @@ First, we can extract the indicator calculation of each institution into a separ
 ```java
 public class StrategyOnRayServe {
 
-  public Result calcIndicator(long time, String bank, String indicator) {
-    Result result = new Result();
+  public String calcIndicator(long time, String bank, String indicator) {
     // do bank data calculation
-    return result;
+    return bank + "-" + indicator + "-" + time; // Demo;
   }
 }
 
@@ -101,10 +119,8 @@ import io.ray.serve.deployment.Deployment;
 public class StrategyCalcOnRayServe {
 
   public void deploy() {
-    // Start Ray Serve instance.
     Serve.start(true, false, null, null);
 
-    // Deploy counter.
     Deployment deployment =
         Serve.deployment()
             .setName("strategy")
@@ -133,16 +149,16 @@ import java.util.Map.Entry;
 
 public class StrategyCalcOnRayServe {
 
-  public List<Result> calc(long time, Map<String, BankIndicator> banksAndIndicator) {
+  public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
     Deployment deployment = Serve.getDeployment("strategy");
 
-    List<Result> results = new ArrayList<>();
-    for (Entry<String, BankIndicator> e : banksAndIndicator.entrySet()) {
+    List<String> results = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
       String bank = e.getKey();
-      for (List<String> indicators : e.getValue().getIndicators()) {
+      for (List<String> indicators : e.getValue()) {
         for (String indicator : indicators) {
           results.add(
-              (Result)
+              (String)
                   deployment
                       .getHandle()
                       .method("calcIndicator")
@@ -156,7 +172,7 @@ public class StrategyCalcOnRayServe {
 }
 ```
 
-At present, the calculation of each bank's each indicator is still in series, but only send the calculation task to ray for execution. We can change the calculation to concurrency, which not only improves the calculation efficiency, but also solves the bottleneck of single machine.
+At present, the calculation of each bank's each indicator is still in series, and just sended to Ray for execution. We can make the calculation concurrent, which not only improves the calculation efficiency, but also solves the bottleneck of single machine.
 
 ```java
 import io.ray.api.ObjectRef;
@@ -169,60 +185,140 @@ import java.util.Map.Entry;
 
 public class StrategyCalcOnRayServe {
 
-  public List<Result> parallelCalc(long time, Map<String, BankIndicator> banksAndIndicator) {
+  public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
     Deployment deployment = Serve.getDeployment("strategy");
 
-    List<Result> results = new ArrayList<>();
+    List<String> results = new ArrayList<>();
     List<ObjectRef<Object>> refs = new ArrayList<>();
-    for (Entry<String, BankIndicator> e : banksAndIndicator.entrySet()) {
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
       String bank = e.getKey();
-      for (List<String> indicators : e.getValue().getIndicators()) {
+      for (List<String> indicators : e.getValue()) {
         for (String indicator : indicators) {
           refs.add(deployment.getHandle().method("calcIndicator").remote(time, bank, indicator));
         }
       }
     }
     for (ObjectRef<Object> ref : refs) {
-      results.add((Result) ref.get());
+      results.add((String) ref.get());
     }
     return results;
   }
 }
 ```
 
-Now, we can use `StrategyCalcOnRayServe` like this:
+Now, we can use `StrategyCalcOnRayServe` like the example in the `main` method:
 
 ```java
-StrategyCalcOnRayServe strategy = new StrategyCalcOnRayServe();
-strategy.deploy();
-strategy.parallelCalc(time, banksAndIndicator);
+import io.ray.api.ObjectRef;
+import io.ray.serve.api.Serve;
+import io.ray.serve.deployment.Deployment;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+
+public class StrategyCalcOnRayServe {
+
+  public void deploy() {
+    Serve.start(true, false, null, null);
+
+    Deployment deployment =
+        Serve.deployment()
+            .setName("strategy")
+            .setDeploymentDef(StrategyOnRayServe.class.getName())
+            .setNumReplicas(4)
+            .create();
+    deployment.deploy(true);
+  }
+
+  public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+    Deployment deployment = Serve.getDeployment("strategy");
+
+    List<String> results = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
+      String bank = e.getKey();
+      for (List<String> indicators : e.getValue()) {
+        for (String indicator : indicators) {
+          results.add(
+              (String)
+                  deployment
+                      .getHandle()
+                      .method("calcIndicator")
+                      .remote(time, bank, indicator)
+                      .get());
+        }
+      }
+    }
+    return results;
+  }
+
+  public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+    Deployment deployment = Serve.getDeployment("strategy");
+
+    List<String> results = new ArrayList<>();
+    List<ObjectRef<Object>> refs = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
+      String bank = e.getKey();
+      for (List<String> indicators : e.getValue()) {
+        for (String indicator : indicators) {
+          refs.add(deployment.getHandle().method("calcIndicator").remote(time, bank, indicator));
+        }
+      }
+    }
+    for (ObjectRef<Object> ref : refs) {
+      results.add((String) ref.get());
+    }
+    return results;
+  }
+
+  public static void main(String[] args) {
+    long time = System.currentTimeMillis();
+    String bank1 = "demo_bank_1";
+    String bank2 = "demo_bank_2";
+    String indicator1 = "demo_indicator_1";
+    String indicator2 = "demo_indicator_2";
+    Map<String, List<List<String>>> banksAndIndicators = new HashMap<>();
+    banksAndIndicators.put(bank1, Arrays.asList(Arrays.asList(indicator1, indicator2)));
+    banksAndIndicators.put(
+        bank2, Arrays.asList(Arrays.asList(indicator1), Arrays.asList(indicator2)));
+
+    StrategyCalcOnRayServe strategy = new StrategyCalcOnRayServe();
+    strategy.deploy();
+    List<String> results = strategy.parallelCalc(time, banksAndIndicators);
+
+    System.out.println(results);
+  }
+}
+
 ```
 
 ## Calling Ray Serve Deployment with HTTP
 
-For a deployment that has been deployed on Ray Serve, another way to call it is through the HTTP request. But there are two limitations now in Java Ray Serve:
+Another way to call a deployment is through the HTTP request. But there are now two limitations for the Java deployments:
 
-(1) The HTTP requests can only be processed by the `call` method of the user class.
+- The HTTP requests can only be processed by the `call` method of the user class.
 
-(2) The `call` method could only have one input parameter, and the type of the input parameter and the returned value can only be string type.
+- The `call` method could only have one input parameter, and the type of the input parameter and the returned value can only be `String`.
 
 If we want to call the "strategy" deployment via HTTP, the class can be rewritten like this: 
 
 ```java
 import com.google.gson.Gson;
+import java.util.Map;
 
 public class HttpStrategyOnRayServe {
 
   private Gson gson = new Gson();
 
-  public String calcIndicator(String indicatorJson) {
-    IndicatorModel indicatorModel = gson.fromJson(indicatorJson, IndicatorModel.class);
-  	long time = indicatorModel.getTime();
-  	String bank = indicatorModel.getBank();
-  	String indicator = indicatorModel.getIndicator();
-    Result result = new Result();
+  public String call(String dataJson) {
+    Map<String, Object> data = gson.fromJson(dataJson, Map.class);
+    long time = (long) data.get("time");
+    String bank = (String) data.get("bank");
+    String indicator = (String) data.get("indicator");
     // do bank data calculation
-    return gson.toJson(result);
+    return bank + "-" + indicator + "-" + time; // Demo;
   }
 }
 
@@ -239,27 +335,273 @@ It can also be accessed using HTTP Client in Java code:
 ```java
 import com.google.gson.Gson;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.hc.client5.http.fluent.Request;
 
 public class HttpStrategyCalcOnRayServe {
 
   private Gson gson = new Gson();
 
-  public Result httpCalc(long time, String bank, String indicator) throws IOException {
-    IndicatorModel indicatorModel = new IndicatorModel();
-    indicatorModel.setTime(time);
-    indicatorModel.setBank(bank);
-    indicatorModel.setIndicator(indicator);
+  public String httpCalc(long time, String bank, String indicator) {
+    Map<String, Object> data = new HashMap<>();
+    data.put("time", time);
+    data.put("bank", bank);
+    data.put("indicator", indicator);
 
-    String resultJson =
-        Request.post("http://127.0.0.1:8000/strategy")
-            .bodyString(gson.toJson(indicatorModel), null)
-            .execute()
-            .returnContent()
-            .asString();
-    return gson.fromJson(resultJson, Result.class);
+    String result;
+    try {
+      result =
+          Request.post("http://127.0.0.1:8000/strategy")
+              .bodyString(gson.toJson(data), null)
+              .execute()
+              .returnContent()
+              .asString();
+    } catch (IOException e) {
+      result = "error";
+    }
+
+    return result;
   }
 }
 
 ```
 
+The example of strategy calculation using HTTP to access deployment is as follows:
+
+```java
+package io.ray.serve.docdemo;
+
+import com.google.gson.Gson;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import org.apache.hc.client5.http.fluent.Request;
+
+public class HttpStrategyCalcOnRayServe {
+
+  private Gson gson = new Gson();
+
+  public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+
+    List<String> results = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
+      String bank = e.getKey();
+      for (List<String> indicators : e.getValue()) {
+        for (String indicator : indicators) {
+          results.add(httpCalc(time, bank, indicator));
+        }
+      }
+    }
+    return results;
+  }
+
+  public String httpCalc(long time, String bank, String indicator) {
+    Map<String, Object> data = new HashMap<>();
+    data.put("time", time);
+    data.put("bank", bank);
+    data.put("indicator", indicator);
+
+    String result;
+    try {
+      result =
+          Request.post("http://127.0.0.1:8000/strategy")
+              .bodyString(gson.toJson(data), null)
+              .execute()
+              .returnContent()
+              .asString();
+    } catch (IOException e) {
+      result = "error";
+    }
+
+    return result;
+  }
+}
+```
+
+This code can also be rewritten to support concurrency:
+
+```java
+package io.ray.serve.docdemo;
+
+import com.google.gson.Gson;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import org.apache.hc.client5.http.fluent.Request;
+
+public class HttpStrategyCalcOnRayServe {
+
+  private Gson gson = new Gson();
+
+  private ExecutorService executorService = Executors.newFixedThreadPool(4);;
+
+  public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+
+    List<String> results = new ArrayList<>();
+    List<Future<String>> futures = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
+      String bank = e.getKey();
+      for (List<String> indicators : e.getValue()) {
+        for (String indicator : indicators) {
+          futures.add(executorService.submit(() -> httpCalc(time, bank, indicator)));
+        }
+      }
+    }
+    for (Future<String> future : futures) {
+      try {
+        results.add(future.get());
+      } catch (InterruptedException | ExecutionException e1) {
+        results.add("error");
+      }
+    }
+    return results;
+  }
+
+  public String httpCalc(long time, String bank, String indicator) {
+    Map<String, Object> data = new HashMap<>();
+    data.put("time", time);
+    data.put("bank", bank);
+    data.put("indicator", indicator);
+
+    String result;
+    try {
+      result =
+          Request.post("http://127.0.0.1:8000/strategy")
+              .bodyString(gson.toJson(data), null)
+              .execute()
+              .returnContent()
+              .asString();
+    } catch (IOException e) {
+      result = "error";
+    }
+
+    return result;
+  }
+}
+```
+
+Now, the complete usage of `HttpStrategyCalcOnRayServe` is like this:
+
+```java
+import com.google.gson.Gson;
+import io.ray.serve.api.Serve;
+import io.ray.serve.deployment.Deployment;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import org.apache.hc.client5.http.fluent.Request;
+
+public class HttpStrategyCalcOnRayServe {
+
+  private Gson gson = new Gson();
+
+  private ExecutorService executorService = Executors.newFixedThreadPool(4);;
+
+  public void deploy() {
+    Serve.start(true, false, null, null);
+
+    Deployment deployment =
+        Serve.deployment()
+            .setName("http-strategy")
+            .setDeploymentDef(HttpStrategyOnRayServe.class.getName())
+            .setNumReplicas(4)
+            .create();
+    deployment.deploy(true);
+  }
+
+  public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+
+    List<String> results = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
+      String bank = e.getKey();
+      for (List<String> indicators : e.getValue()) {
+        for (String indicator : indicators) {
+          results.add(httpCalc(time, bank, indicator));
+        }
+      }
+    }
+    return results;
+  }
+
+  public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
+
+    List<String> results = new ArrayList<>();
+    List<Future<String>> futures = new ArrayList<>();
+    for (Entry<String, List<List<String>>> e : banksAndIndicators.entrySet()) {
+      String bank = e.getKey();
+      for (List<String> indicators : e.getValue()) {
+        for (String indicator : indicators) {
+          futures.add(executorService.submit(() -> httpCalc(time, bank, indicator)));
+        }
+      }
+    }
+    for (Future<String> future : futures) {
+      try {
+        results.add(future.get());
+      } catch (InterruptedException | ExecutionException e1) {
+        results.add("error");
+      }
+    }
+    return results;
+  }
+
+  public String httpCalc(long time, String bank, String indicator) {
+    Map<String, Object> data = new HashMap<>();
+    data.put("time", time);
+    data.put("bank", bank);
+    data.put("indicator", indicator);
+
+    String result;
+    try {
+      result =
+          Request.post("http://127.0.0.1:8000/strategy")
+              .bodyString(gson.toJson(data), null)
+              .execute()
+              .returnContent()
+              .asString();
+    } catch (IOException e) {
+      result = "error";
+    }
+
+    return result;
+  }
+
+  public static void main(String[] args) {
+    long time = System.currentTimeMillis();
+    String bank1 = "demo_bank_1";
+    String bank2 = "demo_bank_2";
+    String indicator1 = "demo_indicator_1";
+    String indicator2 = "demo_indicator_2";
+    Map<String, List<List<String>>> banksAndIndicators = new HashMap<>();
+    banksAndIndicators.put(bank1, Arrays.asList(Arrays.asList(indicator1, indicator2)));
+    banksAndIndicators.put(
+        bank2, Arrays.asList(Arrays.asList(indicator1), Arrays.asList(indicator2)));
+
+    HttpStrategyCalcOnRayServe strategy = new HttpStrategyCalcOnRayServe();
+    strategy.deploy();
+    List<String> results = strategy.parallelCalc(time, banksAndIndicators);
+
+    System.out.println(results);
+  }
+}
+
+```
