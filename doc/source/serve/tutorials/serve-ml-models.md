@@ -1,6 +1,6 @@
 (serve-ml-models-tutorial)=
 
-# Serving ML Models (Tensorflow, PyTorch, XGBoost, others)
+# Serving ML Models (Tensorflow, PyTorch, Scikit-Learn, others)
 
 In this guide, we will show you how to train models from various machine learning frameworks and deploy them to Ray Serve.
 
