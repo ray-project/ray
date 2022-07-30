@@ -22,10 +22,10 @@
 
 namespace ray {
 
-MemoryMonitor::MemoryMonitor(float usage_threshold_,
+MemoryMonitor::MemoryMonitor(float usage_threshold,
                              uint64_t monitor_interval_ms,
                              MemoryUsageRefreshCallback monitor_callback)
-    : usage_threshold_(usage_threshold_),
+    : usage_threshold_(usage_threshold),
       monitor_callback_(monitor_callback),
       io_context_(),
       monitor_thread_([this] {
