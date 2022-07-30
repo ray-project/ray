@@ -1,3 +1,5 @@
+import re
+
 import lightgbm as lgbm
 import numpy as np
 import pandas as pd
@@ -6,6 +8,7 @@ import pytest
 import ray
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
@@ -35,6 +38,16 @@ model = lgbm.LGBMClassifier(n_estimators=10).fit(dummy_data, dummy_target).boost
 
 def get_num_trees(booster: lgbm.Booster) -> int:
     return booster.current_iteration()
+
+
+def test_repr():
+    predictor = LightGBMPredictor(model=model)
+
+    representation = repr(predictor)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile("^LightGBMPredictor\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
