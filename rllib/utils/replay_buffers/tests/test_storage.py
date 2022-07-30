@@ -206,36 +206,6 @@ class TestStorage(unittest.TestCase):
         assert m_storage.size_bytes == d_storage.size_bytes
         check(list(m_storage), list(d_storage))
 
-    def test_allocation_plans(self):
-        """Apply same operations to `InMemoryStorage` with `one-time`
-        and `dynamic` allocation plan and check if both storages behave
-        the same.
-        """
-        m_storage = InMemoryStorage(capacity_ts=100, allocation_plan="one-time")
-        d_storage = InMemoryStorage(capacity_ts=100, allocation_plan="dynamic")
-
-        self._add_data_to_storage(m_storage, batch_size=10, num_batches=3)
-        for b in m_storage:
-            d_storage.add(b)
-
-        check(list(m_storage), list(d_storage))
-
-        self._add_data_to_storage(m_storage, batch_size=15, num_batches=4)
-        assert m_storage.eviction_started is False
-        for i in range(3, len(m_storage)):
-            d_storage.add(m_storage[i])
-
-        self._add_data_to_storage(m_storage, batch_size=15, num_batches=1)
-        assert m_storage.eviction_started is True
-        d_storage.add(m_storage[len(m_storage) - 1])
-
-        assert m_storage._oldest_item_idx == d_storage._oldest_item_idx
-        assert m_storage._num_timesteps_added == d_storage._num_timesteps_added
-        assert m_storage._num_timesteps == d_storage._num_timesteps
-        assert m_storage.eviction_started == d_storage.eviction_started
-        assert m_storage.size_bytes == d_storage.size_bytes
-        check(list(m_storage), list(d_storage))
-
     def test_slicing(self):
         """Create slices of a storage."""
         storage = InMemoryStorage(capacity_ts=100)

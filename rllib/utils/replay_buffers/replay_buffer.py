@@ -174,17 +174,17 @@ class ReplayBuffer(ParallelIteratorWorker):
 
     @property
     def capacity_ts(self) -> int:
-        """Maximum number of timesteps the storage may contain"""
+        """Maximum number of timesteps the storage may contain."""
         return self._storage._capacity_ts
 
     @property
     def capacity_items(self) -> int:
-        """Maximum number of items the storage may contain"""
+        """Maximum number of items the storage may contain."""
         return self._storage._capacity_items
 
     @property
     def capacity_bytes(self) -> int:
-        """Maximum number of bytes the storage may contain"""
+        """Maximum number of bytes the storage may contain."""
         return self._storage._capacity_bytes
 
     @DeveloperAPI
