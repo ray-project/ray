@@ -270,6 +270,8 @@ parts:
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides
               sections:
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/config.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/k8s-cluster-setup.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/logging.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/gpu.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/networking.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/kuberay-vs-legacy.md
