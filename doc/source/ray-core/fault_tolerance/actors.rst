@@ -1,7 +1,12 @@
-.. _actor-fault-tolerance:
-
-Fault Tolerance
+Actor tolerance
 ===============
+
+Similar to objects, there are two kinds of failures in actors, 1) the actor
+process dies; 2) the owner of the actor dies.
+
+
+Actor process dies
+------------------
 
 Ray will automatically restart actors that crash unexpectedly.
 This behavior is controlled using ``max_restarts``,
@@ -13,39 +18,6 @@ constructor.
 After the specified number of restarts, subsequent actor methods will
 raise a ``RayActorError``.
 You can experiment with this behavior by running the following code.
-
-.. code-block:: python
-
-    import os
-    import ray
-    import time
-
-    ray.init(ignore_reinit_error=True)
-
-    @ray.remote(max_restarts=5)
-    class Actor:
-        def __init__(self):
-            self.counter = 0
-
-        def increment_and_possibly_fail(self):
-            self.counter += 1
-            time.sleep(0.2)
-            if self.counter == 10:
-                os._exit(0)
-            return self.counter
-
-    actor = Actor.remote()
-
-    # The actor will be restarted up to 5 times. After that, methods will
-    # always raise a `RayActorError` exception. The actor is restarted by
-    # rerunning its constructor. Methods that were sent or executing when the
-    # actor died will also raise a `RayActorError` exception.
-    for _ in range(100):
-        try:
-            counter = ray.get(actor.increment_and_possibly_fail.remote())
-            print(counter)
-        except ray.exceptions.RayActorError:
-            print('FAILURE')
 
 By default, actor tasks execute with at-most-once semantics
 (``max_task_retries=0`` in the ``@ray.remote`` decorator). This means that if an
@@ -73,7 +45,7 @@ You can experiment with this behavior by running the following code.
     import os
     import ray
 
-    ray.init(ignore_reinit_error=True)
+    ray.init()
 
     @ray.remote(max_restarts=5, max_task_retries=-1)
     class Actor:
@@ -111,7 +83,8 @@ For at-least-once actors, the system will still guarantee execution ordering
 according to the initial submission order. For example, any tasks submitted
 after a failed actor task will not execute on the actor until the failed actor
 task has been successfully retried. The system will not attempt to re-execute
-any tasks that executed successfully before the failure (unless :ref:`object reconstruction <object-reconstruction>` is enabled).
+any tasks that executed successfully before the failure
+(unless :ref:`object reconstruction <object-reconstruction>` is enabled). 
 
 At-least-once execution is best suited for read-only actors or actors with
 ephemeral state that does not need to be rebuilt after a failure. For actors
@@ -126,3 +99,91 @@ checkpoint.
     be executed out of order. Upon actor restart, the system will only retry
     *incomplete* tasks. Previously completed tasks will not be
     re-executed.
+
+
+One thing needed to point out is that When the actor is restarting, by default
+the task will fail immediately, but if the ``max_task_retries`` doesn't equal 0,
+it'll wail until the actor is ready:
+
+.. code-block:: python
+
+    import os
+    import signal
+    from filelock import FileLock
+
+    import ray
+    ray.init()
+
+    l = FileLock("tmp.lock")
+
+    @ray.remote(max_restarts=1)
+    class Actor:
+        def __init__(self):
+            l = FileLock("tmp.lock")
+            with l:
+                pass
+        def pid(self):
+            return os.getpid()
+
+    a = Actor.remote()
+    # Get the pid of the actor
+    pid = ray.get(a.pid.remote())
+
+    # Actuire the lock the that the actor will be in restarting
+    # status forever
+    l.acquire()
+
+    os.kill(pid, signal.SIGKILL)
+
+    # This will fail immediately since the actor is in restarting
+    # status.
+    # But if we change to `max_task_retries=1`, it'll wait
+    # until the actor is created.
+    ray.get(a.pid.remote())
+
+
+The owner of the actor dies
+---------------------------
+
+The :ref:`owner <fault-tolerance_ownership>` is the worker which creates the
+actor, except for the detached actors whose owner is the GCS. Similar to
+objects, if the owner died, the actor will be dead, even if the actor is alive
+when the owner died. Ray can't recover an actor whose owner is dead.
+
+.. code-block:: python
+
+    import ray
+    import os
+    import signal
+    ray.init()
+
+    @ray.remote(max_restarts=-1)
+    class Actor:
+        def pid(self):
+            return "hello"
+
+    @ray.remote
+    def gen_actors():
+        actor = Actor.remote()
+        detached_actor = Actor.options(name="actor", lifetime="detached").remote()
+
+
+        return actor, detached_actor, os.getpid()
+
+    actor, detached_actor, pid = ray.get(gen_actors.remote())
+
+    os.kill(pid, signal.SIGKILL)
+
+    try:
+        print("actor.pid:", ray.get(actor.pid.remote()))
+    except ray.exceptions.RayActorError as e:
+        print("failed to submit actor call", e)
+
+    try:
+        print("detached_actor.pid:", ray.get(detached_actor.pid.remote()))
+    except ray.exceptions.RayActorError as e:
+        print("failed to submit detached actor call", e)
+
+
+In the above example, we can see, if the owner died, even if the actor itself is
+still alive, it'll fail.

@@ -1,7 +1,5 @@
-.. _task-fault-tolerance:
-
-Fault Tolerance
-===============
+Task fault tolerance
+====================
 
 When a worker is executing a task, if the worker dies unexpectedly, either
 because the process crashed or because the machine failed, Ray will rerun
@@ -22,7 +20,7 @@ You can experiment with this behavior by running the following code.
     import ray
     import time
 
-    ray.init(ignore_reinit_error=True)
+    ray.init()
 
     @ray.remote(max_retries=1)
     def potentially_fail(failure_probability):
@@ -42,23 +40,37 @@ You can experiment with this behavior by running the following code.
         except ray.exceptions.WorkerCrashedError:
             print('FAILURE')
 
-.. _object-reconstruction:
 
-Ray also implements *lineage reconstruction* to recover task outputs that are
-lost from the distributed object store. This can occur during node failures.
-Ray will first automatically attempt to recover the value by looking for copies
-of the same object on other nodes. If none are found, then Ray will
-automatically recover the value by re-executing the task that created the
-value. Arguments to the task are recursively reconstructed with the same
-method.
+By default, Ray will not retry any failure in the application layer, for example,
+the function itself throws some exceptions, unless ``retry_exceptions`` is set:
 
-Note that lineage reconstruction can cause higher than usual driver memory
-usage because the driver keeps the descriptions of any tasks that may be
-re-executed in case of a failure. To limit the amount of memory used by
-lineage, set the environment variable ``RAY_max_lineage_bytes`` (default 1GB)
-to evict lineage if the threshold is exceeded.
+.. code-block:: python
 
-To disable this behavior, set the environment variable
-``RAY_lineage_pinning_enabled=0`` during ``ray start`` or ``ray.init``.  With
-this setting, if there are no copies of an object left, an ``ObjectLostError``
-will be raised.
+    import ray
+
+    ray.init()
+
+    @ray.remote(max_retries=1)
+    def raise_exception(tag):
+        print(tag, "potentially_fail")
+        raise Exception()
+
+    try:
+        # it can also be set with the @ray.remote decorator
+        # Here the raise_exception will run 2 times
+        ray.get(raise_exception.options(retry_exceptions=True).remote(
+            "retry_exceptions=True"))
+    except Exception:
+        pass
+
+    try:
+        # raise_exception will run 1 time only.
+        ray.get(raise_exception.remote("retry_exceptions=False"))
+    except Exception:
+        pass        
+
+
+In the code above, once ``retry_exceptions`` is set to be ``True``, Ray will
+also retry the failures caused by the user's code. In the end, if it still
+fails, the error will be stored into the object ref and raised when ``ray.get``
+is called.
