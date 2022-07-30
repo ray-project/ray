@@ -288,13 +288,13 @@ class LocalStorage(Sized, Iterable):
         the internal index space of the circular buffer.
 
         Args:
-            idx: External storage index (0 <= idx < len(storage)).
+            idx: External storage index from (0, self._capacity_items].
 
         Returns:
-            Internal index from interval [0, max_items)
+            Internal index from interval [0, self._num_items)
         """
         if idx < 0:
-            raise IndexError("Buffer index out of range")
+            raise IndexError("Storage index {} < 0.".format(idx))
         return (self._oldest_item_idx + idx) % max(1, self._capacity_items)
 
     def _get_external_index(self, idx: int):
@@ -302,13 +302,13 @@ class LocalStorage(Sized, Iterable):
         the external index space of the storage.
 
         Args:
-            idx: Internal circular Buffer index (0 <= idx < max_items).
+            idx: Internal circular buffer index from (0, self._num_items].
 
         Returns:
-            External index from interval [0, len(storage))
+            External index from interval [0, self._capacity_items)
         """
         if idx < 0:
-            raise IndexError("Buffer index out of range")
+            raise IndexError("Storage index {} < 0.".format(idx))
         if idx >= self._oldest_item_idx:
             return idx - self._oldest_item_idx
         else:
