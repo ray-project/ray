@@ -1,4 +1,4 @@
-Ray Workflows API
+Ray Workflow API
 =================
 
 Workflow Execution API
