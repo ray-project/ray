@@ -68,7 +68,8 @@ py_test_module_list(
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
-    "test_protobuf_compatibility.py"
+    "test_protobuf_compatibility.py",
+    "test_scheduling_performance.py"
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
@@ -112,7 +113,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_usage_stats.py",
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -121,7 +121,6 @@ py_test_module_list(
     "test_multi_node_2.py",
     "test_multinode_failures.py",
     "test_multinode_failures_2.py",
-    "test_multiprocessing.py",
     "test_object_assign_owner.py",
     "test_placement_group.py",
     "test_placement_group_2.py",
@@ -139,11 +138,9 @@ py_test_module_list(
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",
-    "test_state_api.py",
     "test_state_api_log.py",
     "test_state_api_summary.py",
     "test_stress.py",
-    "test_storage.py",
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
@@ -187,7 +184,6 @@ py_test_module_list(
     "test_cross_language.py",
     "test_environ.py",
     "test_raylet_output.py",
-    "test_scheduling_performance.py",
     "test_get_or_create_actor.py",
   ],
   size = "small",
@@ -264,8 +260,11 @@ py_test_module_list(
     "test_failure_2.py",
     "test_failure_3.py",
     "test_chaos.py",
+    "test_storage.py",
     "test_reference_counting_2.py",
     "test_exit_observability.py",
+    "test_state_api.py",
+    "test_usage_stats.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],
@@ -295,6 +294,7 @@ py_test_module_list(
     "test_placement_group_mini_integration.py",
     "test_scheduling_2.py",
     "test_multi_node_3.py",
+    "test_multiprocessing.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],

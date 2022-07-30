@@ -1,6 +1,6 @@
 import pytest
 
-from ray.serve.storage.kv_store import RayInternalKVStore
+from ray.serve._private.storage.kv_store import RayInternalKVStore
 
 
 def test_ray_internal_kv(serve_instance):  # noqa: F811
