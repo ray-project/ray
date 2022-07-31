@@ -2,23 +2,22 @@
 
 # XGBoost-Ray on Kubernetes
 
+:::{note}
+To learn the basics of Ray on Kubernetes, we recommend taking a look
+at the {ref}`introductory guide<kuberay-quickstart>` first.
+:::
+
 In this guide, we show you how to run a sample Ray machine learning
 workload on Kubernetes infrastructure.
 
 We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
 * Learn more about [XGBoost-Ray](https://github.com/ray-project/xgboost_ray).
 
-:::{note}
-To learn the basics of Ray on Kubernetes, we recommend taking a look
-at the {ref}`introductory guide<kuberay-quickstart>` first.
-:::
+## A note on autoscaling
+This guide will show how to run an XGBoost workload with and without optional Ray Autoscaler support.
+Some considerations to keep in mind when choosing whether or not to use autoscaling functionality.
 
-## Autoscaling: Pros and Cons
-
-This guide will show how to run XGBoost workload with and without optional Ray Autoscaler support.
-Here are some considerations when choosing whether or not to use the autoscaling functionality.
-
-### Pros of autoscaling
+### Autoscaling: Pros
 
 #### Cope with unknown resource requirements.
 If you don't know how much compute your Ray workload will require,
@@ -27,20 +26,21 @@ autoscaling will adjust your Ray cluster to the right size.
 #### Save on costs.
 Idle compute is automatically scaled down, potentially leading to cost savings.
 
-### Cons of autoscaling:
+### Autoscaling: Cons
 
 #### Less predictable when resource requirements are known.
-If you already know exactly how much compute your workload requires, it may make
+If you already know exactly how much compute your workload requires, it makes
 sense to provision a statically-sized Ray cluster.
 In this guide's example, we know that we need 1 Ray head and 9 Ray workers,
 so autoscaling is not strictly required.
 
 #### Longer end-to-end runtime.
 Autoscaling entails provisioning compute for Ray workers while the Ray application
-is running. Pre-provisioning static compute resources allows all required compute
-to be started in parallel before the application executes, potentially reducing the application's runtime.
+is running. On the other hand, if you pre-provision a fixed number of Ray nodes,
+all of the Ray nodes can be started in parallel, potentially reducing your application's
+runtime.
 
-## Kubernetes infrastructure setup.
+## Kubernetes infrastructure setup
 
 For the workload in this guide, it is recommended to use a pool (group) of Kubernetes nodes
 with the following properties:
@@ -57,6 +57,7 @@ with the following properties:
 node group or pool with
 - 1 node minimum
 - 10 nodes maximum
+
 The 1 static node will be used to run the Ray head pod. This node may also host the KubeRay
 operator and Kubernetes system components. After the workload is submitted, 9 additional nodes will
 scale up to accommodate Ray worker pods. These nodes will scale back down after the workload is complete.
@@ -64,7 +65,7 @@ scale up to accommodate Ray worker pods. These nodes will scale back down after 
 ### Learn more about node pools
 
 To learn about node group or node pool setup with managed Kubernetes services,
-refer to the cloud provider documentation.
+refer to you cloud provider's documentation.
 - [AKS (Azure)](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools)
 - [EKS (Amazon Web Services)](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html)
 - [GKE (Google Cloud)](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools)
@@ -88,10 +89,12 @@ Ray cluster. Run one of the two commands below to deploy your Ray cluster.
 This option is most appropriate if you have set up a statically sized Kubernetes
 node pool or group.
 
+We recommend taking a look at the config file applied in the following command.
 ```shell
-# We recommend taking a look at the config file applied in this command.
-# From the parent of cloned Ray master:
-kubectl apply -f ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/xgboost-benchmark.yaml
+# Starting from the parent directory of cloned Ray master,
+pushd ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/
+kubectl apply -f xgboost-benchmark.yaml
+popd
 ```
 
 A Ray head pod and 9 Ray worker pods will be created.
@@ -101,10 +104,12 @@ A Ray head pod and 9 Ray worker pods will be created.
 This option is most appropriate if you have set up an autoscaling Kubernetes
 node pool or group.
 
+We recommend taking a look at the config file applied in the following command.
 ```shell
-# We recommend taking a look at the config file applied in this command.
-# From the parent of cloned Ray master:
-kubectl apply -f ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/xgboost-benchmark-autoscaler.yaml
+# Starting from the parent directory of cloned Ray master,
+pushd ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/
+kubectl apply -f xgboost-benchmark-autoscaler.yaml
+popd
 ```
 
 One Ray head pod will be created. Once the workload is run, the Ray autoscaler will trigger
@@ -134,7 +139,7 @@ kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
 
 We'll use the Python Job client to submit the xgboost workload:
 
-```{literalinclude} ../../ray-clusters-on-kubernetes/doc_code/xgboost_submit.py
+```{literalinclude} ../doc_code/xgboost_submit.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
@@ -155,9 +160,9 @@ Use the following tools to observe its progress.
 
 #### Job logs
 
-Use the command displayed by the submission script executed above to follow the job logs.
+To follow the job's logs, use the command printed by the above submission script.
 ```shell
-ray job logs 'raysubmit_ebfPPZv1kByG9t8V' --follow
+`ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow`
 ```
 
 #### Kubectl
@@ -192,9 +197,9 @@ and re-run the job log command.
 
 ### Job completion.
 
-#### Benchmarks results
+#### Benchmark results
 
-Once the benchmarks is complete, the job log will display the results:
+Once the benchmark is complete, the job log will display the results:
 
 ```
 Results: {'training_time': 1338.488839321999, 'prediction_time': 403.36653568099973}
