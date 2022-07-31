@@ -72,6 +72,11 @@ class A2CConfig(A3CConfig):
         self.rollout_fragment_length = 20
         self.sample_async = False
         self.min_time_s_per_iteration = 10
+        self.train_batch_size = (
+            self.rollout_fragment_length
+            * self.num_workers
+            * self.num_envs_per_worker
+        )
         # __sphinx_doc_end__
         # fmt: on
 
