@@ -5,7 +5,12 @@
 In this guide, we show you how to run a sample Ray machine learning
 workload on Kubernetes infrastructure.
 
-We will run Ray's XGBoost benchmark with a 100 gigabyte training set.
+We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
+
+:::{note}
+To learn the basics of Ray on Kubernetes, we recommend taking a look
+at the {ref}`introductory guide<kuberay-quickstart>` first.
+:::
 
 ## Autoscaling: Pros and Cons
 
@@ -39,7 +44,7 @@ to be provisioned in parallel before the application executes, potentially reduc
 For the workload in this guide, it is recommended to use a pool (group) of Kubernetes nodes
 with the following properties:
 - 10 nodes total
-- A capacity of 16 CPU and 64 Gi memory per node. For the major cloud providers, the suitable instance types are
+- A capacity of 16 CPU and 64 Gi memory per node. For the major cloud providers, suitable instance types include
     * m5.4xlarge (Amazon Web Services)
     * Standard_D5_v2 (Azure)
     * e2-standard-16 (Google Cloud)
@@ -107,12 +112,18 @@ creation of Ray worker pods. Kubernetes autoscaling will then create nodes to pl
 
 ## Running the workload
 
-Once the Ray head pod enters Running state, we are ready to execute the XGBoost workload.
+To observe the startup progress of the Ray head pod, run the following command.
+```shell
+# If you're on MacOS, first `brew install watch`.
+watch -n 1 kubectl get pod
+```
+
+Once the Ray head pod enters `Running` state, we are ready to execute the XGBoost workload.
 We will use Ray Job Submission to kick off the workload.
 
 ### Connect to the cluster.
 
-First, we connect to the job server. Run the following blocking command
+First, we connect to the Job server. Run the following blocking command
 in a separate shell.
 ```shell
 kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
@@ -148,7 +159,7 @@ Use the command displayed by the submission script executed above to follow the 
 ray job logs 'raysubmit_ebfPPZv1kByG9t8V' --follow
 ```
 
-#### Ray cluster state
+#### Kubectl
 
 Observe the pods in your cluster with
 ```shell
@@ -156,16 +167,16 @@ Observe the pods in your cluster with
 watch -n 1 kubectl get pod
 ```
 
-#### Ray dashboard
+#### Ray Dashboard
 
-View `localhost:8265` in your browser.
+View `localhost:8265` in your browser to access the Ray Dashboard.
 
 #### Ray Status
 
 Observe autoscaling status and Ray resource usage with
 ```shell
 # Substitute the name of your Ray cluster's head pod.
-watch -n 1 kubectl exec -it -- ray status
+watch -n 1 kubectl exec -it raycluster-xgboost-benchmark-head-xxxxx -- ray status
 ```
 
 :::{note}
@@ -173,21 +184,23 @@ Under some circumstances and for certain cloud providers,
 the K8s API server may become briefly unavailable during Kuberentes
 cluster resizing events.
 
-Don't worry if that happens -- the workload should be uninterrupted.
-For the example in this guide, simply restart the port-forwarding process and
-re-run the job log command.
+Don't worry if that happens -- the Ray workload should be uninterrupted.
+For the example in this guide, wait until the API server is back up, restart the port-forwarding process,
+and re-run the job log command.
 :::
 
-### Job complete.
+### Job completion.
 
 #### Benchmarks results
+
+Once the benchmarks is complete, the job log will display the results:
 
 ```
 Results: {'training_time': 1338.488839321999, 'prediction_time': 403.36653568099973}
 ```
 
 The performance of the benchmark is sensitive to the underlying cloud infrastructure --
-you might not match [the numbers quoted in the benchmark docs]().
+you might not match {ref}`the numbers quoted in the benchmark docs<xgboost-benchmark>`.
 
 #### Model parameters
 
