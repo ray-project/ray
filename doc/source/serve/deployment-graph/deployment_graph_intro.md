@@ -21,7 +21,7 @@ three types of `DeploymentNodes`:
 * `MethodNode`: a `DeploymentNode` representing a `ClassNode`'s method bound to arguments that will be used to invoke the method
 * `FunctionNode`: a `DeploymentNode` containing a Python function bound to arguments that will be used to invoke the function
 
-The next two sections will discuss how to construct and connects these nodes to form deployment graphs.
+The next two sections will discuss how to construct and connect these nodes to form deployment graphs.
 
 ## ClassNodes
 
@@ -68,6 +68,55 @@ foo
 ```
 
 ## The Call Graph: MethodNodes and FunctionNodes
+
+### Invoking ClassNodes from within other ClassNodes
+
+You can also invoke `ClassNode` methods from other `ClassNodes`. This is especially useful when implementing conditional logic in your graph. You can encode the conditional logic in one of your deployments and invoke another deployment from there.
+
+Here's an example:
+
+```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+:start-after: __hello_start__
+:end-before: __hello_end__
+:language: python
+:linenos: true
+```
+
+In line 40, the `LanguageClassifier` deployment takes in the `spanish_responder` and `french_responder` `ClassNodes` as constructor arguments. Its `__call__` method uses the request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `SpanishResponder` or the `FrenchResponder` on lines 17 and 19. The calls are formatted as:
+
+```python
+self.spanish_responder.say_hello.remote(name)
+```
+
+This call has a few parts:
+* `self.spanish_responder` is the `SpanishResponder` node taken in through the constructor.
+* `say_hello` is the `SpanishResponder` method to invoke on this node.
+* `remote` indicates that this is a remote call to another deployment. This is required when invoking a deployment's method through another deployment. It needs to be added to the method name.
+* `name` is the argument for `say_hello`. You can pass any number of arguments or keyword arguments here.
+
+This call returns a reference to the result– not the result itself. This pattern allows the call to execute asynchronously. To get the actual result, call `ray.get` on the result. This function blocks until the asynchronous call executes and then returns the result. In this example, line 23 calls `ray.get(ref)` and returns the resulting string.
+
+You can try this example out using the `serve run` CLI:
+
+```console
+$ serve run hello:language_classifier
+```
+
+You can use this client script to interact with the example:
+
+```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+:start-after: __hello_client_start__
+:end-before: __hello_client_end__
+:language: python
+```
+
+While the `serve run` is running, open a separate terminal window and run this script:
+
+```console
+$ python hello_client.py
+
+Hola Dora
+```
 
 ## Drivers and HTTP Adapters
 
