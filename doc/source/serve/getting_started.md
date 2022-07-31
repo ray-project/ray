@@ -102,7 +102,7 @@ Each deployment stores a single Python function or class that you write and uses
 it to serve requests. You can scale and configure each of your deployments independently using
 parameters in the `@serve.deployment` decorator.
 
-Deployments receive Starlette HTTP `request` objects [^f1]. If your deployment stores a Python function, the function is called on this `request` object. If you deployment stores a class, the class's `__call__` method is called on this `request` object. The return value is sent back in the HTTP response body.
+Deployments receive Starlette HTTP `request` objects [^f1]. If your deployment stores a Python function, the function is called on this `request` object. If your deployment stores a class, the class's `__call__` method is called on this `request` object. The return value is sent back in the HTTP response body.
 
 This is why `Translator` needs a new `__call__` method. The method processes the incoming HTTP request by reading its JSON data and forwarding it to the `translate` method. The translated text is returned and sent back through the HTTP response. You can also use Ray Serve's FastAPI integration to avoid working with raw HTTP requests. Check out {ref}`serve-fastapi-http` for more info about FastAPI with Serve.
 
@@ -193,7 +193,7 @@ Ray Serve also offers autoscaling, allowing you to set `min_replicas` and `max_r
 
 ## Reserving Fine-Grained Resources including Fractional GPUs and CPUs
 
-Ray Serve allows us to reserve fine-grained resources for each of our deployment's replicas. These resources include the number of CPUs and GPUs that we'd like allocate per replica. The `@serve.deployment` decorator offers a parameter called `ray_actor_options`, which is a dictionary of settings for each of our replicas. Two of these settings are `num_cpus` and `num_gpus`, which control the number of CPUs and the number of GPUs reserved for each deployment replica.
+Ray Serve allows us to reserve fine-grained resources for each of our deployment's replicas. These resources include the number of CPUs and GPUs that we'd like to allocate per replica. The `@serve.deployment` decorator offers a parameter called `ray_actor_options`, which is a dictionary of settings for each of our replicas. Two of these settings are `num_cpus` and `num_gpus`, which control the number of CPUs and the number of GPUs reserved for each deployment replica.
 
 For example, we can rewrite `Translator`, so each replica has access to 2 CPUs and 1 GPU. All we need to do is set `num_cpus` and `num_gpus` in the decorator:
 
