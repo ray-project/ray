@@ -1,4 +1,4 @@
-a2c-breakoutnoframeskip-v4_MASTER_SAME_AS_TUNED_EXAMPLES:
+a2c-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: A2C
     # Minimum reward and total ts (in given time_total_s) to pass this test.
