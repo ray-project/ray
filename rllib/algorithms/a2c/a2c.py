@@ -142,7 +142,7 @@ class A2C(A3C):
                 raise AttributeError(
                     "`train_batch_size` cannot be smaller than sample_batch_size "
                     "(`rollout_fragment_length` x `num_workers` x "
-                    "`num_envs_per_worker`) when micro-batching is not set. This is to" 
+                    "`num_envs_per_worker`) when micro-batching is not set. This is to"
                     " ensure that only on gradient update is applied to policy in every"
                     " iteration on the entire collected batch. As a result of we do not"
                     " change the policy too much before we sample again and stay on"
@@ -152,7 +152,8 @@ class A2C(A3C):
 
             if "sgd_minibatch_size" in config:
                 raise AttributeError(
-                    "A2C does not support sgd mini batching as it will instabilize the" " training. Use `train_batch_size` instead."
+                    "A2C does not support sgd mini batching as it will instabilize the"
+                    " training. Use `train_batch_size` instead."
                 )
 
     @override(Algorithm)
