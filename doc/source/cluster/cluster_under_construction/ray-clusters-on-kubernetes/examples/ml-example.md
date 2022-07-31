@@ -11,11 +11,11 @@ In this guide, we show you how to run a sample Ray machine learning
 workload on Kubernetes infrastructure.
 
 We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
-* Learn more about [XGBoost-Ray](https://github.com/ray-project/xgboost_ray).
+* Learn more about {ref}`XGBoost-Ray<xgboost-ray>`.
 
 ## A note on autoscaling
-This guide will show how to run an XGBoost workload with and without optional Ray Autoscaler support.
-Some considerations to keep in mind when choosing whether or not to use autoscaling functionality.
+This guide will show you how to run an XGBoost workload with and without optional Ray Autoscaler support.
+When choosing whether or not to use autoscaling functionality, keep the following considerations in mind.
 
 ### Autoscaling: Pros
 
@@ -81,6 +81,12 @@ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?re
 
 Now we're ready to deploy the Ray cluster that will execute our workload.
 
+:::{tip}
+The Ray cluster we'll deploy is configured such that one Ray pod will be scheduled
+per Kubernetes node. The pattern of one Ray pod per Kubernetes node is encouraged, but not required.
+Broadly speaking, it is more efficient to use a few large Ray pods than many small ones.
+:::
+
 You may choose to deploy either a statically-sized Ray cluster or an autoscaling
 Ray cluster. Run one of the two commands below to deploy your Ray cluster.
 
@@ -125,7 +131,7 @@ watch -n 1 kubectl get pod
 ```
 
 Once the Ray head pod enters `Running` state, we are ready to execute the XGBoost workload.
-We will use Ray Job Submission to kick off the workload.
+We will use {ref}`Ray Job Submission<jobs-overview>` to kick off the workload.
 
 ### Connect to the cluster.
 
@@ -137,12 +143,10 @@ kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
 
 ### Submit the workload.
 
-We'll use the Python Job client to submit the xgboost workload:
+We'll use the Ray Job {ref}`Python SDK<ray-job-sdk>` to submit the xgboost workload:
 
 ```{literalinclude} ../doc_code/xgboost_submit.py
 :language: python
-:start-after: __serve_example_begin__
-:end-before: __serve_example_end__
 ```
 
 To submit the workload, run the above Python script.
@@ -150,7 +154,9 @@ This script is available as a file in the Ray repository.
 
 ```shell
 # From the parent directory of cloned Ray master.
-python ray/doc/source/submit_xgboost.py
+pushd ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/doc_code/
+python xgboost_submit.py
+popd
 ```
 
 ### Observe progress.
@@ -162,7 +168,8 @@ Use the following tools to observe its progress.
 
 To follow the job's logs, use the command printed by the above submission script.
 ```shell
-`ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow`
+# Subsitute the Ray Job's submission id.
+ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 ```
 
 #### Kubectl
@@ -195,7 +202,7 @@ For the example in this guide, wait until the API server is back up, restart the
 and re-run the job log command.
 :::
 
-### Job completion.
+### Job completion
 
 #### Benchmark results
 
@@ -211,17 +218,17 @@ you might not match {ref}`the numbers quoted in the benchmark docs<xgboost-bench
 #### Model parameters
 The file `model.json` in the head pod contains the parameters for the trained model.
 Other result data will be available in the directory `ray_results` in the head pod.
-Refer to the [XGBoost-Ray documentation](https://github.com/ray-project/xgboost_ray) for further info.
+Refer to the `XGBoost-Ray documentation<xgboost-ray>` for details.
 
 #### Scale-down
 If autoscaling is enabled, Ray worker pods will scale down after 60 seconds.
-The Kubernetes nodes in your autoscaling pool will be scaled down after a configurable timeout.
+After the Ray worker pods are gone, your Kubernetes infrastructure should scale down the nodes
+that hosted these pods.
 
 #### Clean-up
 Delete your Ray cluster with the following command:
 ```shell
 kubectl delete raycluster raycluster-xgboost-benchmark
 ```
-
 If you're on a public cloud, don't forget to clean up the underlying
 node group and/or Kubernetes cluster.
