@@ -1,12 +1,14 @@
 (serve-deployment-graph)=
 
-# Intro to Deployment Graphs
+# Deployment Graph
+
+## Intro to Deployment Graphs
 
 Get an introduction to designing deployment graphs:
 
 - [Intro to Deployment Graphs](serve-intro-to-deployment-graphs)
 
-# Deployment Graph Walkthrough
+## Deployment Graph Walkthrough
 
 Learn more about deployment graphs in an end-to-end walkthrough:
 
