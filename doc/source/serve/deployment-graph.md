@@ -1,15 +1,21 @@
 (serve-deployment-graph)=
 
-# Deployment Graph
+# Intro to Deployment Graphs
 
-To learn more about deployment graph in an end-to-end walkthrough:
+Get an introduction to designing deployment graphs:
+
+- [Intro to Deployment Graphs](serve-intro-to-deployment-graphs)
+
+# Deployment Graph Walkthrough
+
+Learn more about deployment graphs in an end-to-end walkthrough:
 
 - [E2E Tutorials](./deployment-graph/deployment-graph-e2e-tutorial.md)
 
 (serve-deployment-graph-patterns)=
 ## Patterns
 
-Jump striaght into a common design patterns using deployment graph:
+Jump straight into common deployment graph design patterns:
 
 - [Chain nodes with same class and different args](deployment-graph/chain_nodes_same_class_different_args.md)
 - [Combine two nodes with passing same input in parallel](deployment-graph/combine_two_nodes_with_passing_input_parallel.md)

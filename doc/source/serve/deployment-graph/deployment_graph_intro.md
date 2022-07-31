@@ -1,3 +1,5 @@
+(serve-intro-to-deployment-graphs)=
+
 # Intro to Deployment Graphs
 
 ```{note}
