@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -185,21 +186,26 @@ class ResourceID : public BaseSchedulingID<SchedulingIDTag::Resource> {
   /// "ClusterResourceSchedulerTest" have different namespaces.
   friend void SetUnitInstanceResourceIds(absl::flat_hash_set<ResourceID> ids);
 
-  bool IsPlacementGroupWildcardResource() const {
-    auto resource_name = this->Binary();
-    std::string pattern("_group_");
-    auto idx = resource_name.find(pattern);
-    if (idx != std::string::npos &&
-        resource_name.find("_", idx + pattern.size()) == std::string::npos) {
-      return true;
-    }
-    return false;
-  }
-
  private:
   /// Return the IDs of all unit-instance resources.
   static absl::flat_hash_set<int64_t> &UnitInstanceResources();
 };
+
+/// Help function to check if the resource_name is like
+/// {original_resource_name}_group_{placement_group_id}.
+inline bool IsPlacementGroupWildcardResource(const std::string &resource_name) {
+  std::string_view resource_name_view(resource_name);
+  std::string_view pattern("_group_");
+
+  // The length of {placement_group_id} is fixed, so we just need to check that if the
+  // length and the pos of `_group_` match.
+  if (resource_name_view.size() > pattern.size() + 2 * PlacementGroupID::Size()) {
+    return false;
+  }
+
+  auto idx = resource_name_view.size() - (pattern.size() + PlacementGroupID::Size());
+  return resource_name_view.substr(idx, pattern.size()) == pattern;
+}
 
 }  // namespace scheduling
 }  // namespace ray

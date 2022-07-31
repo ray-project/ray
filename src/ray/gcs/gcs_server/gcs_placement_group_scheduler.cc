@@ -620,12 +620,12 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
   auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
   for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
     for (const auto &[resource_id, capacity] : node_bundle_resources.ToMap()) {
-      if (resource_id.IsPlacementGroupWildcardResource()) {
-        auto current_capacity = cluster_resource_manager.GetNodeResources(node_id)
-                                    .total.Get(resource_id)
-                                    .Double();
+      if (scheduling::IsPlacementGroupWildcardResource(resource_id.Binary())) {
+        auto new_capacity =
+            capacity +
+            cluster_resource_manager.GetNodeResources(node_id).total.Get(resource_id);
         cluster_resource_manager.UpdateResourceCapacity(
-            node_id, resource_id, current_capacity + capacity.Double());
+            node_id, resource_id, new_capacity.Double());
       } else {
         cluster_resource_manager.UpdateResourceCapacity(
             node_id, resource_id, capacity.Double());
@@ -667,23 +667,22 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
   auto node_id = scheduling::NodeID(bundle.first.Binary());
   const auto &bundle_spec = bundle.second;
   std::vector<scheduling::ResourceID> bundle_resource_ids;
-  absl::flat_hash_map<std::string, double> wildcard_resources;
+  absl::flat_hash_map<std::string, FixedPoint> wildcard_resources;
   // Subtract wildcard resources and delete bundle resources.
   for (const auto &entry : bundle_spec->GetFormattedResources()) {
     auto resource_id = scheduling::ResourceID(entry.first);
     auto capacity =
         cluster_resource_manager.GetNodeResources(node_id).total.Get(resource_id);
-    if (resource_id.IsPlacementGroupWildcardResource()) {
-      wildcard_resources[entry.first] = capacity.Double() - entry.second;
+    if (scheduling::IsPlacementGroupWildcardResource(entry.first)) {
+      wildcard_resources[entry.first] = capacity - entry.second;
     } else {
       if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
         auto available_amount =
             cluster_resource_manager.GetNodeResources(node_id).available.Get(resource_id);
-        if (available_amount < capacity) {
+        if (available_amount != capacity) {
           RAY_LOG(WARNING)
               << "The resource " << entry.first
-              << " now has less available amount than the total one when removing bundle "
-              << bundle_spec->Index()
+              << " now is still in use when removing bundle " << bundle_spec->Index()
               << " from placement group: " << bundle_spec->PlacementGroupId()
               << ", maybe some workers depending on this bundle have not released the "
                  "resource yet."
@@ -696,25 +695,27 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
     }
   }
 
-  if (!bundle_resource_ids.empty()) {  // This bundle is eligible for returning.
-    for (const auto &[resource_name, capacity] : wildcard_resources) {
-      if (capacity > 0) {
-        cluster_resource_manager.UpdateResourceCapacity(
-            node_id, scheduling::ResourceID(resource_name), capacity);
-      } else {
-        bundle_resource_ids.emplace_back(scheduling::ResourceID(resource_name));
-      }
-    }
-
-    // It will affect nothing if the resource_id to be deleted does not exist in the
-    // cluster_resource_manager_.
-    cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
-    // Add reserved bundle resources back to the node.
-    cluster_resource_manager.AddNodeAvailableResources(
-        node_id, bundle_spec->GetRequiredResources());
-    return true;
+  // This bundle is eligible for returning.
+  if (bundle_resource_ids.empty()) {
+    return false;
   }
-  return false;
+
+  for (const auto &[resource_name, capacity] : wildcard_resources) {
+    if (capacity == 0) {
+      bundle_resource_ids.emplace_back(scheduling::ResourceID(resource_name));
+    } else {
+      cluster_resource_manager.UpdateResourceCapacity(
+          node_id, scheduling::ResourceID(resource_name), capacity.Double());
+    }
+  }
+
+  // It will affect nothing if the resource_id to be deleted does not exist in the
+  // cluster_resource_manager_.
+  cluster_resource_manager.DeleteResources(node_id, bundle_resource_ids);
+  // Add reserved bundle resources back to the node.
+  cluster_resource_manager.AddNodeAvailableResources(node_id,
+                                                     bundle_spec->GetRequiredResources());
+  return true;
 }
 
 void GcsPlacementGroupScheduler::HandleWaitingRemovedBundles() {
