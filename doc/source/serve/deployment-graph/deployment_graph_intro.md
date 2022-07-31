@@ -67,6 +67,7 @@ $ python echo_client.py
 foo
 ```
 
+(deployment-graph-intro-call-graph)=
 ## The Call Graph: MethodNodes and FunctionNodes
 
 After defining your `ClassNodes`, you can specify how HTTP requests should be routed through them using the call graph. As an example, let's look at a deployment graph that implements this chain of arithmetic operations:
@@ -77,6 +78,7 @@ output = request + 2 - 1 + 3
 
 Here's the graph:
 
+(deployment-graph-intro-arithmetic-graph)=
 ```{literalinclude} ../doc_code/deployment_graph_intro/arithmetic.py
 :start-after: __graph_start__
 :end-before: __graph_end__
@@ -188,7 +190,28 @@ Hola Dora
 (deployment-graph-drivers-http-adapters-intro)=
 ## Drivers and HTTP Adapters
 
-### Parsing the InputNode
+Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-intro-call-graph), the `DAGDriver` has one required argument: the `FunctionNode` or `MethodNode` representing your call graph's final output.
+
+The `DAGDriver` also has one more optional keyword argument: `http_adapter`. `http_adapters` are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
+
+For instance, we can use the Ray Serve-provided `json_request` adapter to simplify our [arithmetic call graph](deployment-graph-intro-arithmetic-graph) by eliminating the `unpack_request` function. Here's the revised call graph and driver:
+
+```python
+from ray.serve.http_adapters import json_request
+
+with InputNode() as request_number:
+    add_2_output = add_2.add.bind(request_number)
+    subtract_1_output = subtract_one_fn.bind(add_2_output)
+    add_3_output = add_3.add.bind(subtract_1_output)
+
+graph = DAGDriver.bind(add_3_output, http_adapter=json_request)
+```
+
+Note that the `http_adapter`'s output type becomes what the `InputNode` represents. Without the `json_request` adapter, the `InputNode` represented an HTTP request. With the adapter, it now represents the number packaged inside the request's JSON body. You can work directly with that body's contents in the graph instead of first processing it.
 
 ## Next Steps
 
+To learn more about deployment graphs, check out these resources:
+
+* [Deployment graph patterns](serve-deployment-graph-patterns): a cookbook of common graph examples you can incorporate into your own graph
+* [End-to-end tutorial](deployment-graph-e2e-tutorial): an in-depth example that walks you through building a large deployment graph

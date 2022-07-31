@@ -6,6 +6,7 @@ To learn more about deployment graph in an end-to-end walkthrough:
 
 - [E2E Tutorials](./deployment-graph/deployment-graph-e2e-tutorial.md)
 
+(serve-deployment-graph-patterns)=
 ## Patterns
 
 Jump striaght into a common design patterns using deployment graph:
