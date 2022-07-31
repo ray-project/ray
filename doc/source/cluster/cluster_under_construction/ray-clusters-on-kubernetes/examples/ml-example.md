@@ -10,15 +10,15 @@ We will run Ray's XGBoost benchmark with a 100 gigabyte training set.
 ## Autoscaling: Pros and Cons
 
 This guide will show how to run XGBoost workload with and without optional Ray Autoscaler support.
-Here are some considerations when choosing whether or not to use autoscaling functionality.
+Here are some considerations when choosing whether or not to use the autoscaling functionality.
 
 ### Pros of autoscaling
 
-#### Deal with unknown resource requirements.
+#### Cope with unknown resource requirements.
 If you don't know how much compute your Ray workload will require,
 autoscaling will adjust your Ray cluster to the right size.
 
-#### Cost-savings.
+#### Save on costs.
 Idle compute is automatically scaled down, potentially leading to cost savings.
 
 ### Cons of autoscaling:
@@ -39,7 +39,10 @@ to be provisioned in parallel before the application executes, potentially reduc
 For the workload in this guide, it is recommended to use a pool (group) of Kubernetes nodes
 with the following properties:
 - 10 nodes total
-- A capacity of 16 CPU and 64 Gi memory per node.
+- A capacity of 16 CPU and 64 Gi memory per node. For the major cloud providers, the suitable instance types are
+    * m5.4xlarge (Amazon Web Services)
+    * Standard_D5_v2 (Azure)
+    * e2-standard-16 (Google Cloud)
 - Each node should be configured with 1000 gigabytes of disk space (to store the training set).
 
 ### Kubernetes infrastructure and autoscaling
@@ -56,8 +59,8 @@ scale up to accommodate Ray worker pods. These nodes will scale back down after 
 
 To learn about node group or node pool setup with managed Kubernetes services,
 refer to the cloud provider documentation.
-- [EKS (Amazon Web Services)](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html)
 - [AKS (Azure)](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools)
+- [EKS (Amazon Web Services)](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html)
 - [GKE (Google Cloud)](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools)
 
 ## Deploying the KubeRay operator
@@ -81,7 +84,8 @@ node pool or group.
 
 ```shell
 # We recommend taking a look at the config file applied in this command.
-kubectl apply -f ...
+# From the parent of cloned Ray master:
+kubectl apply -f ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/xgboost-benchmark.yaml
 ```
 
 A Ray head pod and 9 Ray worker pods will be created.
@@ -93,7 +97,8 @@ node pool or group.
 
 ```shell
 # We recommend taking a look at the config file applied in this command.
-kubectl apply -f ...
+# From the parent of cloned Ray master:
+kubectl apply -f ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/xgboost-benchmark-autoscaler.yaml
 ```
 
 One Ray head pod will be created. Once the workload is run, the Ray autoscaler will trigger
@@ -115,13 +120,16 @@ kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
 
 ### Submit the workload.
 
-We'll use the Python Job client to submit the xgboost workload.
+We'll use the Python Job client to submit the xgboost workload:
 
-```{literalinclude} ../serve/doc_code/sklearn_quickstart.py
+```{literalinclude} ../../ray-clusters-on-kubernetes/doc_code/xgboost_submit.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
 ```
+
+To submit the workload, run the above Python script.
+This script is available as a file in the Ray repository.
 
 ```shell
 # From the parent directory of cloned Ray master.
