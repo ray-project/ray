@@ -130,8 +130,29 @@ class A2C(A3C):
 
             if config["num_gpus"] > 1:
                 raise AttributeError(
-                    "A2C does not support micro-batching and multiple GPUs "
-                    "at the same time."
+                    "A2C does not support multiple GPUs when micro-batching is set."
+                )
+        else:
+            sample_batch_size = (
+                config["rollout_fragment_length"]
+                * config["num_workers"]
+                * config["num_envs_per_worker"]
+            )
+            if config["train_batch_size"] < sample_batch_size:
+                raise AttributeError(
+                    "`train_batch_size` cannot be smaller than sample_batch_size "
+                    "(`rollout_fragment_length` x `num_workers` x "
+                    "`num_envs_per_worker`) when micro-batching is not set. This is to" 
+                    " ensure that only on gradient update is applied to policy in every"
+                    " iteration on the entire collected batch. As a result of we do not"
+                    " change the policy too much before we sample again and stay on"
+                    " policy as much as possible. This will help the learning"
+                    " stability."
+                )
+
+            if "sgd_minibatch_size" in config:
+                raise AttributeError(
+                    "A2C does not support sgd mini batching as it will instabilize the" " training. Use `train_batch_size` instead."
                 )
 
     @override(Algorithm)
