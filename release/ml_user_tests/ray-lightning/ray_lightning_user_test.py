@@ -4,9 +4,10 @@ import time
 
 import ray
 import sys
-if sys.args[1] == 'master':
-    from simple_example_master import master
-else: 
+
+if sys.args[1] == "master":
+    from simple_example_master import main
+else:
     from simple_example import main
 
 if __name__ == "__main__":
