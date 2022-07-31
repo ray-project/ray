@@ -37,7 +37,7 @@ so autoscaling is not strictly required.
 #### Longer end-to-end runtime.
 Autoscaling entails provisioning compute for Ray workers while the Ray application
 is running. Pre-provisioning static compute resources allows all required compute
-to be provisioned in parallel before the application executes, potentially reducing the application's runtime.
+to be started in parallel before the application executes, potentially reducing the application's runtime.
 
 ## Kubernetes infrastructure setup.
 
