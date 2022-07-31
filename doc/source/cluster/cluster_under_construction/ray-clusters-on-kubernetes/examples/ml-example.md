@@ -99,6 +99,7 @@ kubectl apply -f ...
 One Ray head pod will be created. Once the workload is run, the Ray autoscaler will trigger
 creation of Ray worker pods. Kubernetes autoscaling will then create nodes to place the Ray pods.
 
+
 ## Running the workload
 
 Once the Ray head pod enters Running state, we are ready to execute the XGBoost workload.
@@ -155,6 +156,16 @@ Observe autoscaling status and Ray resource usage with
 # Substitute the name of your Ray cluster's head pod.
 watch -n 1 kubectl exec -it -- ray status
 ```
+
+:::{note}
+Under some circumstances and for certain cloud providers,
+the K8s API server may become briefly unavailable during Kuberentes
+cluster resizing events.
+
+Don't worry if that happens -- the workload should be uninterrupted.
+For the example in this guide, simply restart the port-forwarding process and
+re-run the job log command.
+:::
 
 ### Job complete.
 
