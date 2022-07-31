@@ -10,7 +10,7 @@ Get an introduction to designing deployment graphs:
 
 Learn more about deployment graphs in an end-to-end walkthrough:
 
-- [E2E Tutorials](./deployment-graph/deployment-graph-e2e-tutorial.md)
+- [E2E Tutorials](./deployment-graph/deployment_graph_e2e_tutorial.md)
 
 (serve-deployment-graph-patterns)=
 ## Patterns
