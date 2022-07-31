@@ -49,23 +49,23 @@ We collect some helpful links for users who are getting started with a managed K
 
 #### Landing pages
 Landing pages for the major cloud providers' Kubernetes services can be found at the following links.
-- [AKS landing page (Azure)](https://azure.microsoft.com/en-us/services/kubernetes-service/)
-- [EKS landing page (Amazon Web Services)](https://aws.amazon.com/eks/)
 - [GKE landing page (Google Cloud)](https://cloud.google.com/kubernetes-engine)
+- [EKS landing page (Amazon Web Services)](https://aws.amazon.com/eks/)
+- [AKS landing page (Azure)](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 
 #### General documentation
 For documentation on managed Kubernetes services, see the following links.
-- [AKS docs](https://docs.microsoft.com/en-us/azure/aks/)
-- [EKS docs](https://docs.aws.amazon.com/eks/latest/userguide/)
 - [GKE docs](https://cloud.google.com/kubernetes-engine/docs/)
+- [EKS docs](https://docs.aws.amazon.com/eks/latest/userguide/)
+- [AKS docs](https://docs.microsoft.com/en-us/azure/aks/)
 
 #### Setting up node pools
 Running the example workload in this guide requires setting up a pool or group of Kubernetes nodes.
 To learn about node group or node pool setup with managed Kubernetes services, see
 the following links.
-- [AKS node pools](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools)
-- [EKS node groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html)
 - [GKE node pools](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools)
+- [EKS node groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html)
+- [AKS node pools](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools)
 
 ### Set up a node pool for the XGBoost benchmark
 
