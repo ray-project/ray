@@ -69,6 +69,73 @@ foo
 
 ## The Call Graph: MethodNodes and FunctionNodes
 
+After defining your `ClassNodes`, you can specify how HTTP requests should be routed through them using the call graph. As an example, let's look at a deployment graph that implements this chain of arithmetic operations:
+
+```
+output = request + 2 - 1 + 3
+```
+
+Here's the graph:
+
+```{literalinclude} ../doc_code/deployment_graph_intro/arithmetic.py
+:start-after: __graph_start__
+:end-before: __graph_end__
+:language: python
+:linenos: true
+```
+
+In lines 29 and 30, we bind two `ClassNodes` from the `AddCls` deployment. In line 32, we start our call graph:
+
+```python
+with InputNode() as http_request:
+    request_number = unpack_request.bind(http_request)
+    add_2_output = add_2.add.bind(request_number)
+    subtract_1_output = subtract_one_fn.bind(add_2_output)
+    add_3_output = add_3.add.bind(subtract_1_output)
+```
+
+The `with` statement (know as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it represents the input of our graph. In this case, that input will be an HTTP request. In [a future section](deployment-graph-drivers-http-adapters-intro), we'll show how you can change this input type using another Ray Serve-provided object called the driver.
+
+:::{note}
+It's important to note that the `InputNode` is merely a representation of the future graph input. In this example, for instance, `http_request`'s type is `InputNode`, not an actual HTTP request.
+:::
+
+We use the `InputNode` to indicate which node(s) the graph input should be passed to by passing the `InputNode` into `bind` calls within the context manager. In this case, the `http_request` is passed to only one node, `unpack_request`. The output of that bind call, `request_number` is a `FunctionNode`. `FunctionNodes` are produced when deployments containing functions are bound to arguments for that function using `bind`. In this case `request_number` represents the output of `unpack_request` when called on incoming HTTP requests. `unpack_request`, which is defined on line 26, processes the HTTP request's JSON body and returns a number that can be passed into arithmetic operations.
+
+The graph then passes `request_number` into a `bind` call on `add_2`'s `add` method. The output of this call, `add_2_output` is a `MethodNode`. `MethodNodes` are produced when `ClassNode` methods are bound to arguments using `bind`. In this case, `add_2_output` represents the result of adding 2 to the number in the request.
+
+The rest of the call graph uses another `FunctionNode` and `MethodNode` to finish the chain of arithmetic. `add_2_output` is bound to the `subtract_one_fn` deployment, producing the `subtract_1_output` `FunctionNode`. Then, the `subtract_1_output` is bound to the `add_3.add` method, producing the `add_3_output` `MethodNode`. This `add_3_output` `MethodNode` represents the final output from our chain of arithmetic operations.
+
+To run the call graph, you need to use a driver. Drivers are deployments that process the call graph that you've written and route incoming requests through your deployments based on that graph. Ray Serve provides a driver called `DAGDriver` used on line 38:
+
+```python
+deployment_graph = DAGDriver.bind(add_3_output)
+```
+
+The `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of our graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` will also deploy the rest of the graph's deployments.
+
+You can test this example using this client script:
+
+```{literalinclude} ../doc_code/deployment_graph_intro/arithmetic.py
+:start-after: __graph_client_start__
+:end-before: __graph_client_end__
+:language: python
+```
+
+Start the graph in the terminal:
+
+```console
+$ serve run arithmetic:graph
+```
+
+In a separate terminal window, run the client script to make requests to the graph:
+
+```console
+$ python arithmetic_client.py
+
+9
+```
+
 ### Invoking ClassNodes from within other ClassNodes
 
 You can also invoke `ClassNode` methods from other `ClassNodes`. This is especially useful when implementing conditional logic in your graph. You can encode the conditional logic in one of your deployments and invoke another deployment from there.
@@ -118,6 +185,7 @@ $ python hello_client.py
 Hola Dora
 ```
 
+(deployment-graph-drivers-http-adapters-intro)=
 ## Drivers and HTTP Adapters
 
 ### Parsing the InputNode

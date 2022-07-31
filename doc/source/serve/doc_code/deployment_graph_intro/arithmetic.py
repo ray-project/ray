@@ -1,6 +1,7 @@
 # flake8: noqa
 
-# __deployments_start__
+# __graph_start__
+# File name: arithmetic.py
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
@@ -28,31 +29,27 @@ async def unpack_request(http_request) -> float:
     return await http_request.json()
 
 
-# __deployments_end__
-
-
-# __graph_start__
-# Bind class-based DeploymentNodes to their constructor's args and kwargs
 add_2 = AddCls.bind(2)
 add_3 = AddCls.bind(3)
 
-# Write the call graph inside the InputNode context manager
 with InputNode() as http_request:
     request_number = unpack_request.bind(http_request)
     add_2_output = add_2.add.bind(request_number)
     subtract_1_output = subtract_one_fn.bind(add_2_output)
     add_3_output = add_3.add.bind(subtract_1_output)
 
-# Bind graph root to an HTTP driver that accepts and forwards HTTP requests
-deployment_graph = DAGDriver.bind(request_number)
-
-# Run the graph
-serve.run(deployment_graph)
+graph = DAGDriver.bind(add_3_output)
 # __graph_end__
 
-# __test_graph_start__
+serve.run(graph)
+
+# __graph_client_start__
+# File name: arithmetic_client.py
 import requests
 
 response = requests.post("http://localhost:8000/", json=5)
-print(response.json())
-# __test_graph_end__
+output = response.json()
+print(output)
+# __graph_client_end__
+
+assert output == 9
