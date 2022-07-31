@@ -80,6 +80,8 @@ def my_func(request):
 my_func.deploy()
 ```
 
+(deploying-serve-on-kubernetes)=
+
 ## Deploying on Kubernetes
 
 In order to deploy Ray Serve on Kubernetes, we need to do the following:
@@ -266,7 +268,6 @@ Feel free to open new github issues if you hit any problems from Failure Recover
 
 [ingress]: https://kubernetes.io/docs/concepts/services-networking/ingress/
 [kubernetes default config]: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/example-full.yaml
-[kvstorebase]: https://github.com/ray-project/ray/blob/master/python/ray/serve/storage/kv_store_base.py
 [nodeport]: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 [persistent volumes]: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
 [service]: https://kubernetes.io/docs/concepts/services-networking/service/

@@ -19,6 +19,7 @@ from ray.tune import CLIReporter, run_experiments
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray import tune
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -463,7 +464,9 @@ def check_compute_single_action(
                             )
 
 
-def check_learning_achieved(tune_results, min_reward, evaluation=False):
+def check_learning_achieved(
+    tune_results: "tune.ResultGrid", min_reward, evaluation=False
+):
     """Throws an error if `min_reward` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
@@ -480,11 +483,11 @@ def check_learning_achieved(tune_results, min_reward, evaluation=False):
     # (check if at least one trial achieved some learning)
     avg_rewards = [
         (
-            trial.last_result["episode_reward_mean"]
+            row["episode_reward_mean"]
             if not evaluation
-            else trial.last_result["evaluation"]["episode_reward_mean"]
+            else row["evaluation/episode_reward_mean"]
         )
-        for trial in tune_results.trials
+        for _, row in tune_results.get_dataframe().iterrows()
     ]
     best_avg_reward = max(avg_rewards)
     if best_avg_reward < min_reward:
