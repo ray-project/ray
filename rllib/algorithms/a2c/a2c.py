@@ -72,11 +72,6 @@ class A2CConfig(A3CConfig):
         self.rollout_fragment_length = 20
         self.sample_async = False
         self.min_time_s_per_iteration = 10
-        self.train_batch_size = (
-            self.rollout_fragment_length
-            * self.num_workers
-            * self.num_envs_per_worker
-        )
         # __sphinx_doc_end__
         # fmt: on
 
@@ -144,16 +139,20 @@ class A2C(A3C):
                 * config["num_envs_per_worker"]
             )
             if config["train_batch_size"] < sample_batch_size:
-                raise AttributeError(
-                    "`train_batch_size` cannot be smaller than sample_batch_size "
+                logger.warning(
+                    f"`train_batch_size` ({config['train_batch_size']}) "
+                    "cannot be smaller than sample_batch_size "
                     "(`rollout_fragment_length` x `num_workers` x "
-                    "`num_envs_per_worker`) when micro-batching is not set. This is to"
+                    f"`num_envs_per_worker`) ({sample_batch_size}) when micro-batching"
+                    " is not set. This is to"
                     " ensure that only on gradient update is applied to policy in every"
                     " iteration on the entire collected batch. As a result of we do not"
                     " change the policy too much before we sample again and stay on"
                     " policy as much as possible. This will help the learning"
                     " stability."
+                    f" Setting train_batch_size = {sample_batch_size}."
                 )
+                config["train_batch_size"] = sample_batch_size
 
             if "sgd_minibatch_size" in config:
                 raise AttributeError(
