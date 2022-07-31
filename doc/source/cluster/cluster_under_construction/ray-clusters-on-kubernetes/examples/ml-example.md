@@ -117,7 +117,10 @@ kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
 
 We'll use the Python Job client to submit the xgboost workload.
 
-```python
+```{literalinclude} ../serve/doc_code/sklearn_quickstart.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
 ```
 
 ```shell
