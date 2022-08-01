@@ -17,7 +17,7 @@ if the cluster was started previously.
 
 **Example**: If you have a file ``baz.py`` in the directory you are running Ray in, and you run the following command:
 
-.. literalinclude:: doc_code/gotchas.py
+.. literalinclude:: ../doc_code/gotchas.py
   :language: python
   :start-after: __env_var_start__
   :end-before: __env_var_end__
@@ -29,7 +29,7 @@ If you call ``ray.init(runtime_env=...)``,
 then the workers will have the environment variable set.
 
 
-.. literalinclude:: doc_code/gotchas.py
+.. literalinclude:: ../doc_code/gotchas.py
   :language: python
   :start-after: __env_var_fix_start__
   :end-before: __env_var_fix_end__
@@ -126,3 +126,92 @@ called by ``create_task_that_uses_resources()`` , include a
   def create_task_that_uses_resources():
   +     @ray.remote(num_cpus=10, placement_group=None)
   -     @ray.remote(num_cpus=10)
+
+Outdated Function Definitions
+-----------------------------
+
+Due to subtleties of Python, if you redefine a remote function, you may not
+always get the expected behavior. In this case, it may be that Ray is not
+running the newest version of the function.
+
+Suppose you define a remote function ``f`` and then redefine it. Ray should use
+the newest version.
+
+.. code-block:: python
+
+  @ray.remote
+  def f():
+      return 1
+
+  @ray.remote
+  def f():
+      return 2
+
+  ray.get(f.remote())  # This should be 2.
+
+However, the following are cases where modifying the remote function will
+not update Ray to the new version (at least without stopping and restarting
+Ray).
+
+- **The function is imported from an external file:** In this case,
+  ``f`` is defined in some external file ``file.py``. If you ``import file``,
+  change the definition of ``f`` in ``file.py``, then re-``import file``,
+  the function ``f`` will not be updated.
+
+  This is because the second import gets ignored as a no-op, so ``f`` is
+  still defined by the first import.
+
+  A solution to this problem is to use ``reload(file)`` instead of a second
+  ``import file``. Reloading causes the new definition of ``f`` to be
+  re-executed, and exports it to the other machines. Note that in Python 3, you
+  need to do ``from importlib import reload``.
+
+- **The function relies on a helper function from an external file:**
+  In this case, ``f`` can be defined within your Ray application, but relies
+  on a helper function ``h`` defined in some external file ``file.py``. If the
+  definition of ``h`` gets changed in ``file.py``, redefining ``f`` will not
+  update Ray to use the new version of ``h``.
+
+  This is because when ``f`` first gets defined, its definition is shipped to
+  all of the workers, and is unpickled. During unpickling, ``file.py`` gets
+  imported in the workers. Then when ``f`` gets redefined, its definition is
+  again shipped and unpickled in all of the workers. But since ``file.py``
+  has been imported in the workers already, it is treated as a second import
+  and is ignored as a no-op.
+
+  Unfortunately, reloading on the driver does not update ``h``, as the reload
+  needs to happen on the worker.
+
+  A solution to this problem is to redefine ``f`` to reload ``file.py`` before
+  it calls ``h``. For example, if inside ``file.py`` you have
+
+  .. code-block:: python
+
+    def h():
+        return 1
+
+  And you define remote function ``f`` as
+
+  .. code-block:: python
+
+    @ray.remote
+    def f():
+        return file.h()
+
+  You can redefine ``f`` as follows.
+
+  .. code-block:: python
+
+    @ray.remote
+    def f():
+        reload(file)
+        return file.h()
+
+  This forces the reload to happen on the workers as needed. Note that in
+  Python 3, you need to do ``from importlib import reload``.
+
+This document discusses some common problems that people run into when using Ray
+as well as some known problems. If you encounter other problems, please
+`let us know`_.
+
+.. _`let us know`: https://github.com/ray-project/ray/issues

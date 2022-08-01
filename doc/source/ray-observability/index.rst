@@ -1,3 +1,5 @@
+.. _ray-observability-ref:
+
 Observability
 ===============
 

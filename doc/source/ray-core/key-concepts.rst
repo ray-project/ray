@@ -1,3 +1,5 @@
+.. _key_concepts:
+
 Key Concepts
 ============
 

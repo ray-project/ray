@@ -1,3 +1,5 @@
+.. _core-use-guide:
+
 User Guides
 ===========
 
@@ -14,3 +16,4 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     placement-group
     handling-dependencies
     more-topics
+    monitoring-debugging/monitoring-debugging
