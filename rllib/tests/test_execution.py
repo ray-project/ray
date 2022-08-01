@@ -213,14 +213,11 @@ class TestExecution(unittest.TestCase):
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=0.0001,
         )
-        assert len(buf.sample(100)) == 0
 
         workers = make_workers(0)
         a = ParallelRollouts(workers, mode="bulk_sync")
         b = a.for_each(StoreToReplayBuffer(local_buffer=buf))
 
-        next(b)
-        assert len(buf.sample(100)) == 0  # learning hasn't started yet
         next(b)
         assert buf.sample(100).count == 100
 
