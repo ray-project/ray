@@ -13,7 +13,7 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
 )
 
-SIGKILL = SIGKILL if sys.platform != "win32" else signal.SIGTERM
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
 def test_worker_exit_after_parent_raylet_dies(ray_start_cluster):
