@@ -124,6 +124,7 @@ or it will automatically run when the Python process exits.
 If you run this tutorial, you will see output like:
 
 .. code-block:: text
+
  Progress: 0%
  Progress: 15%
  Progress: 28%
