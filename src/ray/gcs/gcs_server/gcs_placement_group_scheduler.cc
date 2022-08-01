@@ -620,7 +620,7 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
   auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
   for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
     for (const auto &[resource_id, capacity] : node_bundle_resources.ToMap()) {
-      if (scheduling::IsPlacementGroupWildcardResource(resource_id.Binary())) {
+      if (IsPlacementGroupWildcardResource(resource_id.Binary())) {
         auto new_capacity =
             capacity +
             cluster_resource_manager.GetNodeResources(node_id).total.Get(resource_id);
@@ -673,7 +673,7 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
     auto resource_id = scheduling::ResourceID(entry.first);
     auto capacity =
         cluster_resource_manager.GetNodeResources(node_id).total.Get(resource_id);
-    if (scheduling::IsPlacementGroupWildcardResource(entry.first)) {
+    if (IsPlacementGroupWildcardResource(entry.first)) {
       wildcard_resources[entry.first] = capacity - entry.second;
     } else {
       if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
