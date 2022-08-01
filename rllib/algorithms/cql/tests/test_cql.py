@@ -55,6 +55,7 @@ class TestCQL(unittest.TestCase):
                 clip_actions=False,
                 train_batch_size=2000,
                 twin_q=True,
+                num_steps_sampled_before_learning_starts=0,
                 bc_iters=2,
             )
             .evaluation(

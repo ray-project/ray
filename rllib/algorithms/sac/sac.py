@@ -64,10 +64,6 @@ class SACConfig(AlgorithmConfig):
             "_enable_replay_buffer_api": True,
             "type": "MultiAgentPrioritizedReplayBuffer",
             "capacity": int(1e6),
-            # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size is reached,
-            # sample() will return an empty batch and no learning will happen.
-            "min_size": 1500,
             # If True prioritized replay buffer will be used.
             "prioritized_replay": False,
             "prioritized_replay_alpha": 0.6,
@@ -92,6 +88,9 @@ class SACConfig(AlgorithmConfig):
 
         # .training()
         self.train_batch_size = 256
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 1500
 
         # .reporting()
         self.min_time_s_per_iteration = 1
@@ -125,6 +124,7 @@ class SACConfig(AlgorithmConfig):
         target_network_update_freq: Optional[int] = None,
         _deterministic_loss: Optional[bool] = None,
         _use_beta_distribution: Optional[bool] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "SACConfig":
         """Sets the training related configuration.
@@ -168,7 +168,6 @@ class SACConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_size": 1000,
                 "capacity": 50000,
                 "replay_batch_size": 32,
                 "replay_sequence_length": 1,
@@ -269,6 +268,10 @@ class SACConfig(AlgorithmConfig):
             self._deterministic_loss = _deterministic_loss
         if _use_beta_distribution is not None:
             self._use_beta_distribution = _use_beta_distribution
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 

@@ -1,4 +1,4 @@
-from typing import Optional, Type
+from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -13,18 +13,24 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.typing import (
-    ResultDict,
-    AlgorithmConfigDict,
-)
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
+    EnvType,
+    ResultDict,
+)
+from ray.tune.logger import Logger
 
 
 class MARWILConfig(AlgorithmConfig):
@@ -84,15 +90,14 @@ class MARWILConfig(AlgorithmConfig):
             # Specify prioritized replay by supplying a buffer type that supports
             # prioritization
             "prioritized_replay": DEPRECATED_VALUE,
-            # Number of timesteps in the replay buffer(s) to reach before sample()
-            # returns a batch. Before min_size is reached,
-            # sample() will return an empty batch and no learning will happen.
-            "min_size": 0,
             "replay_sequence_length": 1
         }
         self.use_gae = True
         self.vf_coeff = 1.0
         self.grad_clip = None
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 0
 
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
 
@@ -105,17 +110,20 @@ class MARWILConfig(AlgorithmConfig):
         # discounted returns. It is ok, though, to have multiple episodes in
         # the same line.
         self.input_ = "sampler"
-        # Use importance sampling estimators for reward.
-        self.evaluation_config["off_policy_estimation_methods"] = {
-            "is": {"type": ImportanceSampling},
-            "wis": {"type": WeightedImportanceSampling},
-        }
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
         self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
+
+        # TODO: Delete this and change off_policy_estimation_methods to {}
+        # Also remove the same section from BC
+        self.off_policy_estimation_methods = {
+            "is": {"type": ImportanceSampling},
+            "wis": {"type": WeightedImportanceSampling},
+        }
+        self._set_off_policy_estimation_methods = False
 
     @override(AlgorithmConfig)
     def training(
@@ -129,6 +137,7 @@ class MARWILConfig(AlgorithmConfig):
         use_gae: Optional[bool] = True,
         vf_coeff: Optional[float] = None,
         grad_clip: Optional[float] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "MARWILConfig":
         """Sets the training related configuration.
@@ -146,7 +155,6 @@ class MARWILConfig(AlgorithmConfig):
                 {
                 "_enable_replay_buffer_api": True,
                 "type": "MultiAgentReplayBuffer",
-                "min_size": 1000,
                 "capacity": 50000,
                 "replay_sequence_length": 1,
                 }
@@ -182,6 +190,9 @@ class MARWILConfig(AlgorithmConfig):
                 moving_average_sqd_adv_norm_update_rate: Update rate for the
                 squared moving average advantage norm (c^2).
             grad_clip: If specified, clip the global norm of gradients by this amount.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -206,7 +217,45 @@ class MARWILConfig(AlgorithmConfig):
             self.vf_coeff = vf_coeff
         if grad_clip is not None:
             self.grad_clip = grad_clip
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
         return self
+
+    def evaluation(
+        self,
+        **kwargs,
+    ) -> "MARWILConfig":
+        """Sets the evaluation related configuration.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        # Pass kwargs onto super's `evaluation()` method.
+        super().evaluation(**kwargs)
+
+        if "off_policy_estimation_methods" in kwargs:
+            # User specified their OPE methods.
+            self._set_off_policy_estimation_methods = True
+
+        return self
+
+    def build(
+        self,
+        env: Optional[Union[str, EnvType]] = None,
+        logger_creator: Optional[Callable[[], Logger]] = None,
+    ) -> "Algorithm":
+        if not self._set_off_policy_estimation_methods:
+            deprecation_warning(
+                old="MARWIL currently uses off_policy_estimation_methods: "
+                f"{self.off_policy_estimation_methods} by default. This will"
+                "change to off_policy_estimation_methods: {} in a future release."
+                "If you want to use an off-policy estimator, specify it in"
+                ".evaluation(off_policy_estimation_methods=...)",
+                error=False,
+            )
+        return super().build(env, logger_creator)
 
 
 class MARWIL(Algorithm):

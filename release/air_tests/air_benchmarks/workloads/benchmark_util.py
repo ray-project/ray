@@ -1,5 +1,8 @@
 import os
+import socket
 import subprocess
+from collections import defaultdict
+from contextlib import closing
 from pathlib import Path
 
 import ray
@@ -13,7 +16,7 @@ def _schedule_remote_fn_on_node(node_ip: str, remote_fn, *args, **kwargs):
     )
 
 
-def _schedule_remote_fn_on_all_nodes(
+def schedule_remote_fn_on_all_nodes(
     remote_fn, exclude_head: bool = False, *args, **kwargs
 ):
     head_ip = ray.util.get_node_ip_address()
@@ -47,7 +50,7 @@ def upload_file_to_all_nodes(path: str):
     with open(path, "rb") as f:
         stream = f.read()
 
-    futures = _schedule_remote_fn_on_all_nodes(
+    futures = schedule_remote_fn_on_all_nodes(
         _write, exclude_head=True, stream=stream, path=path
     )
     return ray.get(futures)
@@ -59,21 +62,7 @@ def _run_command(cmd: str):
 
 
 def run_command_on_all_nodes(cmd: List[str]):
-    futures = _schedule_remote_fn_on_all_nodes(_run_command, cmd=cmd)
-    return ray.get(futures)
-
-
-def run_commands_with_resources(
-    cmds: List[List[str]], resources: Dict[str, Union[float, int]]
-):
-    num_cpus = resources.pop("CPU", 1)
-    num_gpus = resources.pop("GPU", 0)
-    futures = []
-    for cmd in cmds:
-        future = _run_command.options(
-            num_cpus=num_cpus, num_gpus=num_gpus, resources=resources
-        ).remote(cmd=cmd)
-        futures.append(future)
+    futures = schedule_remote_fn_on_all_nodes(_run_command, cmd=cmd)
     return ray.get(futures)
 
 
@@ -115,3 +104,56 @@ def run_fn_on_actors(
     for actor in actors:
         futures.append(actor.run_fn.remote(fn, *args, **kwargs))
     return ray.get(futures)
+
+
+def get_ip_port_actors(actors: List[ray.actor.ActorHandle]) -> List[str]:
+    # We need this wrapper to avoid deserialization issues with benchmark_util.py
+
+    def get_ip_port():
+        ip = ray.util.get_node_ip_address()
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            s.bind(("localhost", 0))
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            port = s.getsockname()[1]
+        return ip, port
+
+    return run_fn_on_actors(actors=actors, fn=get_ip_port)
+
+
+def get_gpu_ids_actors(actors: List[ray.actor.ActorHandle]) -> List[List[int]]:
+    # We need this wrapper to avoid deserialization issues with benchmark_util.py
+
+    def get_gpu_ids():
+        return ray.get_gpu_ids()
+
+    return run_fn_on_actors(actors=actors, fn=get_gpu_ids)
+
+
+def map_ips_to_gpus(ips: List[str], gpus: List[List[int]]):
+    assert len(ips) == len(gpus)
+
+    map = defaultdict(set)
+    for ip, gpu in zip(ips, gpus):
+        map[ip].update(set(gpu))
+    return {ip: sorted(gpus) for ip, gpus in map.items()}
+
+
+def set_cuda_visible_devices(
+    actors: List[ray.actor.ActorHandle],
+    actor_ips: List[str],
+    ip_to_gpus: Dict[str, set],
+):
+    assert len(actors) == len(actor_ips)
+
+    def set_env(key: str, val: str):
+        os.environ[key] = val
+
+    futures = []
+    for actor, ip in zip(actors, actor_ips):
+        assert ip in ip_to_gpus
+
+        gpu_str = ",".join([str(device) for device in sorted(ip_to_gpus[ip])])
+        future = actor.run_fn.remote(set_env, "CUDA_VISIBLE_DEVICES", gpu_str)
+        futures.append(future)
+
+    ray.get(futures)

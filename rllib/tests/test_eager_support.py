@@ -46,7 +46,7 @@ class TestEagerSupportPG(unittest.TestCase):
             "SimpleQ",
             {
                 "num_workers": 0,
-                "replay_buffer_config": {"min_size": 0},
+                "num_steps_sampled_before_learning_starts": 0,
             },
         )
 
@@ -55,7 +55,7 @@ class TestEagerSupportPG(unittest.TestCase):
             "DQN",
             {
                 "num_workers": 0,
-                "replay_buffer_config": {"min_size": 0},
+                "num_steps_sampled_before_learning_starts": 0,
             },
         )
 
@@ -100,7 +100,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
             "SimpleQ",
             {
                 "num_workers": 0,
-                "replay_buffer_config": {"min_size": 0},
+                "replay_buffer_config": {"num_steps_sampled_before_learning_starts": 0},
             },
         )
 
@@ -109,7 +109,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
             "DQN",
             {
                 "num_workers": 0,
-                "replay_buffer_config": {"min_size": 0},
+                "num_steps_sampled_before_learning_starts": 0,
             },
         )
 
@@ -127,7 +127,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
             "APEX",
             {
                 "num_workers": 2,
-                "replay_buffer_config": {"min_size": 0},
+                "replay_buffer_config": {"num_steps_sampled_before_learning_starts": 0},
                 "num_gpus": 0,
                 "min_time_s_per_iteration": 1,
                 "min_sample_timesteps_per_iteration": 100,
@@ -142,7 +142,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
             "SAC",
             {
                 "num_workers": 0,
-                "replay_buffer_config": {"min_size": 0},
+                "num_steps_sampled_before_learning_starts": 0,
             },
         )
 

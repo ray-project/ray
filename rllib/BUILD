@@ -731,7 +731,8 @@ py_test(
     name = "test_algorithm",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "large",
-    srcs = ["algorithms/tests/test_algorithm.py"]
+    srcs = ["algorithms/tests/test_algorithm.py"],
+    data = ["tests/data/cartpole/small.json"],
 )
 
 py_test(
@@ -754,6 +755,13 @@ py_test(
     tags = ["team:rllib", "tests_dir", "algorithms_dir_generic"],
     size = "large",
     srcs = ["algorithms/tests/test_worker_failures.py"]
+)
+
+py_test(
+    name = "test_registry",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_registry.py"],
 )
 
 # Specific Algorithms
@@ -845,6 +853,7 @@ py_test(
     name = "test_cql",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
+    data = ["tests/data/pendulum/small.json"],
     srcs = ["algorithms/cql/tests/test_cql.py"]
 )
 
@@ -853,7 +862,8 @@ py_test(
     name = "test_crr",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/crr/tests/test_crr.py"]
+    srcs = ["algorithms/crr/tests/test_crr.py"],
+    data = ["tests/data/pendulum/large.json"],
 )
 
 # DDPG
@@ -916,7 +926,11 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
+    data = [
+        "tests/data/cartpole/large.json",
+        "tests/data/pendulum/large.json",
+        "tests/data/cartpole/small.json",
+    ],
     srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
 
@@ -1177,7 +1191,7 @@ py_test(
         "--env", "Pendulum-v1",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"replay_buffer_config\": {\"min_size\": 100}, \"min_time_s_per_iteration\": 1, \"batch_mode\": \"complete_episodes\"}'",
+        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"num_steps_sampled_before_learning_starts\": 100, \"min_time_s_per_iteration\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1234,7 +1248,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"min_size\": 0}, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"num_steps_sampled_before_learning_starts\": 0, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -1246,7 +1260,7 @@ py_test(
         "--env", "PongDeterministic-v4",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000, \"min_size\": 10000}, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
+        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000}, \"num_steps_sampled_before_learning_starts\": 10000, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
         ]
 )
 
@@ -1546,6 +1560,12 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
+py_test(
+    name = "evaluation/tests/test_agent_collector",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_agent_collector.py"]
+)
 
 py_test(
     name = "evaluation/tests/test_envs_that_crash",
@@ -1559,6 +1579,13 @@ py_test(
     tags = ["team:rllib", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_episode.py"]
+)
+
+py_test(
+    name = "evaluation/tests/test_env_runner_v2",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_env_runner_v2.py"]
 )
 
 py_test(
@@ -1671,7 +1698,11 @@ py_test(
     name = "test_dataset_reader",
     tags = ["team:rllib", "offline"],
     size = "medium",
-    srcs = ["offline/tests/test_dataset_reader.py"]
+    srcs = ["offline/tests/test_dataset_reader.py"],
+    data = [
+        "tests/data/pendulum/large.json",
+        "tests/data/pendulum/enormous.zip",
+    ],
 )
 
 py_test(
@@ -3099,7 +3130,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "examples_R"],
     size = "large",
     srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--stop-iters=2", "--min-size-for-sampling=100", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
+    args = ["--stop-iters=2", "--num-steps-sampled-before-learning_starts=100", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
 )
 
 py_test(

@@ -80,9 +80,9 @@ class TestSAC(unittest.TestCase):
                 n_step=3,
                 twin_q=True,
                 replay_buffer_config={
-                    "min_size": 0,
                     "capacity": 40000,
                 },
+                num_steps_sampled_before_learning_starts=0,
                 store_buffer_in_checkpoints=True,
                 train_batch_size=10,
             )
@@ -175,7 +175,7 @@ class TestSAC(unittest.TestCase):
                 _deterministic_loss=True,
                 q_model_config={"fcnet_hiddens": [10]},
                 policy_model_config={"fcnet_hiddens": [10]},
-                replay_buffer_config={"min_size": 0},
+                num_steps_sampled_before_learning_starts=0,
             )
             .rollouts(num_rollout_workers=0)
             .reporting(
@@ -527,9 +527,9 @@ class TestSAC(unittest.TestCase):
             sac.SACConfig()
             .training(
                 replay_buffer_config={
-                    "min_size": 0,
                     "capacity": 10,
                 },
+                num_steps_sampled_before_learning_starts=0,
                 train_batch_size=5,
             )
             .rollouts(

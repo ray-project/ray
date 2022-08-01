@@ -13,7 +13,7 @@ from ray.rllib.utils.replay_buffers import (
     ReplayBuffer,
     MultiAgentReplayBuffer,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
 from ray.util import log_once
 
@@ -128,7 +128,7 @@ def sample_min_n_steps_from_buffer(
         train_batches.append(batch)
         train_batch_size += batch_len
     # All batch types are the same type, hence we can use any concat_samples()
-    train_batch = SampleBatch.concat_samples(train_batches)
+    train_batch = concat_samples(train_batches)
     return train_batch
 
 
@@ -245,10 +245,10 @@ def validate_buffer_config(config: dict) -> None:
         deprecation_warning(
             old="config['learning_starts'] or"
             "config['replay_buffer_config']['learning_starts']",
-            help="config['replay_buffer_config']['min_size']",
+            help="config['num_steps_sampled_before_learning_starts']",
             error=False,
         )
-        config["replay_buffer_config"]["min_size"] = learning_starts
+        config["num_steps_sampled_before_learning_starts"] = learning_starts
 
     # Can't use DEPRECATED_VALUE here because this is also a deliberate
     # value set for some algorithms
