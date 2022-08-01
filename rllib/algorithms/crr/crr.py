@@ -59,7 +59,7 @@ class CRRConfig(AlgorithmConfig):
         # If data ingestion/sample_time is slow, increase this
         self.num_workers = 4
         self.offline_sampling = True
-        self.min_iter_time_s = 10.0
+        self.min_time_s_per_iteration = 10.0
 
     def training(
         self,
