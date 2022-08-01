@@ -278,7 +278,7 @@ const Nodes = () => {
                   )
                   .map((node, i) => (
                     <NodeRows
-                      key={node.hostname + i}
+                      key={node.raylet.nodeId}
                       node={node}
                       isRefreshing={isRefreshing}
                     />

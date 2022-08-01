@@ -1,5 +1,6 @@
 import os
 import pickle
+import re
 import shutil
 import tempfile
 import unittest
@@ -8,7 +9,7 @@ from typing import Any
 import ray
 from ray.air._internal.remote_storage import delete_at_uri, _ensure_directory
 from ray.air.checkpoint import Checkpoint, _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY
-from ray.air.constants import PREPROCESSOR_KEY
+from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 from ray.data import Preprocessor
 
 
@@ -18,6 +19,16 @@ class DummyPreprocessor(Preprocessor):
 
     def transform_batch(self, df):
         return df * self.multiplier
+
+
+def test_repr():
+    checkpoint = Checkpoint(data_dict={"foo": "bar"})
+
+    representation = repr(checkpoint)
+
+    assert len(representation) < MAX_REPR_LENGTH
+    pattern = re.compile("^Checkpoint\\((.*)\\)$")
+    assert pattern.match(representation)
 
 
 class CheckpointsConversionTest(unittest.TestCase):

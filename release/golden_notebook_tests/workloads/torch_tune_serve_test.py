@@ -13,7 +13,7 @@ import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune, train
 from ray.train import Trainer
-from ray.tune.utils.node import force_on_current_node
+from ray.tune.utils.node import _force_on_current_node
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
 from torchvision.models import resnet18
@@ -118,7 +118,7 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
 def get_remote_model(remote_model_checkpoint_path):
     if ray.util.client.ray.is_connected():
         remote_load = ray.remote(get_model)
-        remote_load = force_on_current_node(remote_load)
+        remote_load = _force_on_current_node(remote_load)
         return ray.get(remote_load.remote(remote_model_checkpoint_path))
     else:
         get_best_model_remote = ray.remote(get_model)
