@@ -167,7 +167,8 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 .. _ray-install-cpp:
 
 Install Ray C++
----------------------------
+---------------
+
 You can install and use Ray C++ API as follows.
 
 .. code-block:: bash
