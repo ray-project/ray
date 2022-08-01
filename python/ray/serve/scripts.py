@@ -17,8 +17,7 @@ from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.api import build as build_app
 from ray.serve.config import DeploymentMode
-from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
+from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     SERVE_NAMESPACE,
@@ -26,6 +25,7 @@ from ray.serve.constants import (
 from ray.serve.deployment import deployment_to_schema
 from ray.serve.deployment_graph import ClassNode, FunctionNode
 from ray.serve.schema import ServeApplicationSchema
+from ray.serve._private import api as _private_api
 
 APP_DIR_HELP_STR = (
     "Local directory to look for the IMPORT_PATH (will be inserted into "
@@ -133,20 +133,7 @@ def cli():
     type=click.Choice(list(DeploymentMode)),
     help="Location of the HTTP servers. Defaults to HeadOnly.",
 )
-@click.option(
-    "--checkpoint-path",
-    default=DEFAULT_CHECKPOINT_PATH,
-    required=False,
-    type=str,
-    hidden=True,
-)
-def start(
-    address,
-    http_host,
-    http_port,
-    http_location,
-    checkpoint_path,
-):
+def start(address, http_host, http_port, http_location):
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
@@ -158,7 +145,6 @@ def start(
             port=http_port,
             location=http_location,
         ),
-        _checkpoint_path=checkpoint_path,
     )
 
 
@@ -311,7 +297,15 @@ def run(
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-    client = serve.start(detached=True)
+
+    if is_config:
+        client = _private_api.serve_start(
+            detached=True, http_options={"host": config.host, "port": config.port}
+        )
+    else:
+        client = _private_api.serve_start(
+            detached=True, http_options={"host": host, "port": port}
+        )
 
     try:
         if is_config:
@@ -452,6 +446,8 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         deployments=[deployment_to_schema(d) for d in app.deployments.values()]
     ).dict()
     config["import_path"] = import_path
+    config["host"] = "0.0.0.0"
+    config["port"] = 8000
 
     config_str = (
         "# This file was generated using the `serve build` command "
