@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Dict, Tuple, Union, Any, TYPE_CHECKING
+from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
 
 from ray.train.jax import JaxConfig
 from ray.train.trainer import GenDataset
@@ -9,6 +9,7 @@ from ray.util import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
 
 @PublicAPI(stability="alpha")
 class JaxTrainer(DataParallelTrainer):

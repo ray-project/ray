@@ -1,50 +1,17 @@
-import os
-from timeit import default_timer as timer
-from collections import Counter
-
-from unittest.mock import patch
 import pytest
-import torch
-import torchvision
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import DataLoader, DistributedSampler
-
 import ray
-from ray.cluster_utils import Cluster
-
-import ray.train as train
-from ray.train import Trainer, TrainingCallback
 from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
-from ray.train.examples.horovod.horovod_example import (
-    train_func as horovod_torch_train_func,
-)
-from ray.train.examples.tensorflow_mnist_example import (
-    train_func as tensorflow_mnist_train_func,
-)
 from ray.train.examples.jax_mnist_example import (
     train_func as jax_mnist_train_func,
 )
-from ray.train.examples.torch_linear_example import LinearDataset
-from ray.train.horovod.horovod_trainer import HorovodTrainer
-from ray.train.tests.test_tune import (
-    torch_fashion_mnist,
-    tune_tensorflow_mnist,
-)
-from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
-from ray.train.torch import TorchConfig
-from ray.train.torch.torch_trainer import TorchTrainer
-
-from ray.air import session, Checkpoint, RunConfig
-
-from ray.train.jax import JaxTrainer 
+from ray.air import session
+from ray.train.jax import JaxTrainer
 
 import jax
 import numpy as np
 
-from ray.train.examples.jax_mnist_example import (
-    train_func as jax_mnist_train_func,
-)
+
 from ray import tune
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
@@ -56,7 +23,8 @@ def ray_start_8_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
-    
+
+
 @pytest.fixture
 def ray_start_4_cpus_2_gpus():
     address_info = ray.init(num_cpus=4, num_gpus=2)
@@ -72,15 +40,15 @@ def ray_start_1_cpu_1_gpu():
     ray.shutdown()
 
 
-
 def test_jax_get_device(ray_start_4_cpus_2_gpus):
     def _train_fn(x):
         return jax.lax.psum(x, "i")
 
     def train_fn():
         """Creates a barrier across all hosts/devices."""
-        session.report(dict(
-            devices=jax.pmap(_train_fn, "i")(np.ones(jax.local_device_count()))))
+        session.report(
+            dict(devices=jax.pmap(_train_fn, "i")(np.ones(jax.local_device_count())))
+        )
 
     num_gpus_per_worker = 2
     trainer = JaxTrainer(
@@ -89,11 +57,11 @@ def test_jax_get_device(ray_start_4_cpus_2_gpus):
             num_workers=1,
             use_gpu=True,
             resources_per_worker={"GPU": num_gpus_per_worker},
-        )
+        ),
     )
 
     results = trainer.fit()
-    devices = results.metrics['devices']
+    devices = results.metrics["devices"]
     assert devices[0] == 2 and devices[1] == 2 and len(devices) == 2
 
 
@@ -102,20 +70,20 @@ def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
     num_epochs = 2
     num_gpus_per_worker = 2
     trainer = JaxTrainer(
-            train_loop_per_worker=jax_mnist_train_func,
-            train_loop_config={
-                "num_epochs": num_epochs,
-                "learning_rate": 1e-3,
-                "momentum": 0.9,
-                "batch_size": 8192,
-            },
-            scaling_config=ScalingConfig(
-                num_workers=num_workers,
-                use_gpu=True,
-                resources_per_worker={"GPU": num_gpus_per_worker},
-            )
-        )
-    
+        train_loop_per_worker=jax_mnist_train_func,
+        train_loop_config={
+            "num_epochs": num_epochs,
+            "learning_rate": 1e-3,
+            "momentum": 0.9,
+            "batch_size": 8192,
+        },
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            use_gpu=True,
+            resources_per_worker={"GPU": num_gpus_per_worker},
+        ),
+    )
+
     results = trainer.fit()
     result = results.metrics
     assert result[TRAINING_ITERATION] == num_workers
@@ -148,6 +116,7 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples):
 
 def test_tune_jax_mnist(ray_start_8_cpus):
     tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
+
 
 def test_tune_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
     tune_jax_mnist(num_workers=1, use_gpu=True, num_samples=1, num_gpus_per_worker=2)

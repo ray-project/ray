@@ -74,6 +74,7 @@ def release_tpu_lock(try_remove_tpulib_lock: bool = False):
                 "set ``RAY_TPU_DEV=1`` to release it."
             )
 
+
 class _JaxBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: JaxConfig):
         # get the master address

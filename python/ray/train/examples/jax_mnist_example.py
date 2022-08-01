@@ -35,7 +35,7 @@ def get_datasets():
     test_ds = tfds.as_numpy(ds_builder.as_dataset(split="test", batch_size=-1))
     train_ds = tfds.as_numpy(ds_builder.as_dataset(split="train", batch_size=-1))
 
-    # TODO: warning about the sharding dimension 
+    # TODO: warning about the sharding dimension
     # train_ds["image"] = train_ds["image"][
     #     : len(train_ds["image"]) // jax.device_count() * jax.device_count()
     # ]
@@ -119,7 +119,7 @@ def train_func(config: Dict):
         for i in range(steps_per_epoch):
             batch_images = train_ds["image"][i * batch_size : (i + 1) * batch_size]
             batch_labels = train_ds["label"][i * batch_size : (i + 1) * batch_size]
-            # shard the dataset for each local device on one node / process 
+            # shard the dataset for each local device on one node / process
             batch_images = shard(batch_images)
             batch_labels = shard(batch_labels)
             state, loss, accuracy = train_step(state, batch_images, batch_labels)
@@ -158,7 +158,6 @@ def train_func(config: Dict):
             "epoch:% 3d, train_loss: %.4f, train_accuracy: %.2f, epoch_time: %.3f"
             % (epoch, train_loss, train_accuracy * 100, epoch_time)
         )
-        
 
         session.report(dict(train_loss=train_loss, train_accuracy=train_accuracy))
 
@@ -175,7 +174,8 @@ def train_mnist(num_workers=4, use_gpu=True, num_gpu_per_worker=1):
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             use_gpu=use_gpu,
-            resources_per_worker={"GPU": num_gpu_per_worker})
+            resources_per_worker={"GPU": num_gpu_per_worker},
+        ),
     )
     result = trainer.fit()
     print(f"Results: {result.metrics}")
@@ -215,4 +215,3 @@ if __name__ == "__main__":
         num_gpu_per_worker=args.num_gpu_per_worker,
     )
     ray.shutdown()
-    
