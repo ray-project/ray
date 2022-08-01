@@ -3,30 +3,39 @@
 Ray AI Runtime (AIR)
 ====================
 
-Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual ML workloads, end-to-end ML workflows, and popular ecosystem frameworks, all in just Python.
+Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks, all in just Python.
 
 .. image:: images/air.png
 
-AIR comes with built-in libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Reinforcement Learning <rllib-index>`, and :ref:`Serving <rayserve>`, as well as ecosystem integrations.
+AIR comes with built-in libraries for :ref:`Data Prep <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Reinforcement Learning <rllib-index>`, :ref:`Serving <rayserve>`, and :ref:`Batch Scoring <air-predictors>`, as well as ecosystem integrations.
 
-To get started, install Ray AIR via ``pip install -U "ray[air]"``
+Get started by installing Ray AIR:
+
+.. code:: bash
+
+    pip install -U ray[air]
 
 Why Ray AIR?
 ------------
 
-Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by enabling a simple, scalable approach to ML infrastructure:
+Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by enabling a scalable, single-system approach to ML infrastructure:
 
 **1. Seamless Dev to Prod**: AIR reduces friction going from development to production. Traditional orchestration approaches introduce separate systems and operational overheads. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
 
-**2. Unified API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new framework like HuggingFace? AIR lets you accomplish this by just swapping out a single class. This level of flexibility and integration is only possible with a general-purpose distributed system like Ray.
+**2. Unified API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new library like HuggingFace? Thanks to the flexibility of AIR, you can do this by just swapping out a single class, without needing to set up new systems or change other aspects of your workflow.
 
 **3. Open and Evolvable**: Ray core and libraries are fully open-source and can run on any cluster, cloud, or Kubernetes, reducing the costs of platform lock-in. Want to go out of the box? Run any framework you want using AIR's integration APIs, or build advanced use cases directly on Ray core.
+
+AIR is for both ML practitioners and ML engineers. Consider using AIR when you want to:
+ * Scale a single workload.
+ * Scale end-to-end ML applications.
+ * Build a custom ML platform for your organization.
 
 Quick Start
 -----------
 
-Below, we demonstrate how you can use the Ray libraries in a seamless flow
-between distributed frameworks (e.g., XGBoost, Pytorch, and Tensorflow):
+Below, we demonstrate how AIR enables simple scaling of end-to-end ML workflows
+involving multiple distributed frameworks (here showing XGBoost, Pytorch, and Tensorflow):
 
 Preprocessing
 ~~~~~~~~~~~~~
@@ -147,17 +156,17 @@ Use the trained model for scalable batch prediction with a ``BatchPredictor``.
         :end-before: __air_tf_batchpred_end__
 
 
-See the :ref:`Key Concepts <air-key-concepts>` for more that Ray AIR has to offer.
-
 AIR Ecosystem
 -------------
 
-AIR is currently in *beta*, but some components are more stable. The following diagram provides an overview of the AIR components, ecosystem integrations, and their readiness.
+AIR comes with built-in integrations with the most popular ecosystem libraries. The following diagram provides an overview of the AIR libraries, ecosystem integrations, and their readiness.
 
 ..
   https://docs.google.com/drawings/d/1pZkRrkAbRD8jM-xlGlAaVo3T66oBQ_HpsCzomMT7OIc/edit
 
 .. image:: images/air-ecosystem.svg
+
+AIR also includes integration APIs for adding new integrations, as well the option to build custom scalable components using Ray core.
 
 Next Steps
 ----------
