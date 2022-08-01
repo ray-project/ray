@@ -26,6 +26,12 @@ Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms
 
 **3. Open and Evolvable**: Ray core and libraries are fully open-source and can run on any cluster, cloud, or Kubernetes, reducing the costs of platform lock-in. Want to go out of the box? Run any framework you want using AIR's integration APIs, or build advanced use cases directly on Ray core.
 
+.. figure:: images/why-air.png
+
+  AIR enables a single-system / single-script approach to scaling ML. By eliminating
+  the need for setting up and orchestrating separate distributed systems, AIR greatly
+  reduces the friction of moving from development to production.
+
 AIR is for both ML practitioners and ML engineers. Consider using AIR when you want to:
  * Scale a single workload.
  * Scale end-to-end ML applications.
@@ -166,7 +172,7 @@ AIR comes with built-in integrations with the most popular ecosystem libraries. 
 
 .. image:: images/air-ecosystem.svg
 
-AIR also includes integration APIs for adding new integrations, as well the option to build custom scalable components using Ray core.
+AIR also includes developer APIs for adding new integrations, and for advanced use cases, the option to build custom scalable components using Ray core.
 
 Next Steps
 ----------
