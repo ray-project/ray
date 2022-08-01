@@ -266,7 +266,7 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
         >>> start_trip = ... # doctest: +SKIP
         >>> trip = start_trip.bind() # doctest: +SKIP
         >>> res1 = workflow.run_async(trip, workflow_id="trip1") # doctest: +SKIP
-        >>> res2 = workflow.resume("trip1") # doctest: +SKIP
+        >>> res2 = workflow.resume_async("trip1") # doctest: +SKIP
         >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
 
     Args:
@@ -341,7 +341,8 @@ def get_output_async(
         raise ValueError(
             "Failed to connect to the workflow management "
             "actor. The workflow could have already failed. You can use "
-            "workflow.resume() to resume the workflow."
+            "workflow.resume() or workflow.resume_async() to resume the "
+            "workflow."
         ) from e
     return workflow_manager.get_output.remote(workflow_id, task_id)
 
@@ -623,7 +624,7 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
         >>> from ray import workflow
         >>> trip = ... # doctest: +SKIP
         >>> workflow_task = trip.options( # doctest: +SKIP
-        ...     name="trip", metadata={"k1": "v1"}).bind()
+        ...     **workflow.options(name="trip", metadata={"k1": "v1"})).bind()
         >>> workflow.run(workflow_task, # doctest: +SKIP
         ...     workflow_id="trip1", metadata={"k2": "v2"})
         >>> workflow_metadata = workflow.get_metadata("trip1") # doctest: +SKIP
