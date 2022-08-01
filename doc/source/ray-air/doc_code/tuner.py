@@ -25,17 +25,13 @@ tuner.fit()
 
 # __xgboost_start__
 
-from ray.data import from_pandas
-from sklearn.datasets import load_breast_cancer
-
 
 # Function that returns the training dataset
+import ray
+
+
 def get_dataset():
-    data_raw = load_breast_cancer(as_frame=True)
-    dataset_df = data_raw["data"]
-    dataset_df["target"] = data_raw["target"]
-    dataset = from_pandas(dataset_df)
-    return dataset
+    return ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 
 from ray.train.xgboost import XGBoostTrainer
@@ -169,3 +165,37 @@ for result in result_grid:
 
     print("The trial finished successfully with the metrics:", result.metrics)
 # __result_grid_inspection_end__
+
+# __run_config_start__
+from ray import air, tune
+from ray.air.config import RunConfig
+from ray.tune import Callback
+
+
+class MyCallback(Callback):  # Tuner expose callbacks for customer logics.
+    def on_trial_result(self, iteration, trials, trial, result, **info):
+        print(f"Got result: {result['metric']}")
+
+
+run_config = RunConfig(
+    name="MyExperiment",
+    callbacks=[MyCallback()],
+    sync_config=tune.SyncConfig(upload_dir="s3://..."),
+    checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2),
+)
+
+# __run_config_end__
+
+# __tune_config_start__
+from ray.tune import TuneConfig
+from ray.tune.search.bayesopt import BayesOptSearch
+
+algo = BayesOptSearch(random_search_steps=4)
+
+tune_config = TuneConfig(
+    metric="score",
+    mode="min",
+    search_alg=algo,
+)
+
+# __tune_config_end__
