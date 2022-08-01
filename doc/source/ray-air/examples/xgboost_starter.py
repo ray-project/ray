@@ -4,13 +4,13 @@
 # __air_generic_preprocess_start__
 import ray
 from ray.data.preprocessors import StandardScaler
-from ray.air import train_test_split
+from ray.air.config import ScalingConfig
 
 # Load data.
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
-train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
+train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 
 # Create a test dataset by dropping the target column.
 test_dataset = valid_dataset.map_batches(
@@ -25,14 +25,15 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 
 # __air_xgb_train_start__
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 
 trainer = XGBoostTrainer(
-    scaling_config={
+    scaling_config=ScalingConfig(
         # Number of workers to use for data parallelism.
-        "num_workers": 2,
+        num_workers=2,
         # Whether to use GPU acceleration.
-        "use_gpu": False,
-    },
+        use_gpu=False,
+    ),
     label_column="target",
     num_boost_round=20,
     params={
@@ -71,7 +72,8 @@ print("Best result:", best_result)
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.xgboost import XGBoostPredictor
 
-# You can also create a checkpoint from a trained model using `to_air_checkpoint`.
+# You can also create a checkpoint from a trained model using
+# `XGBoostCheckpoint.from_model`.
 checkpoint = best_result.checkpoint
 
 batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)

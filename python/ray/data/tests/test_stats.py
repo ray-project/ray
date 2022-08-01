@@ -49,6 +49,7 @@ Stage N map: N/N blocks executed in T
 Dataset iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
+* In next_batch(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -200,6 +201,8 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
     ds = ds.map_batches(lambda x: x)
     pipe = ds.repeat(5)
     pipe = pipe.map(lambda x: x)
+    stats = canonicalize(pipe.stats())
+    assert "No stats available" in stats, stats
     for batch in pipe.iter_batches():
         pass
     stats = canonicalize(pipe.stats())
@@ -251,6 +254,7 @@ DatasetPipeline iterator time breakdown:
 * Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
+* In next_batch(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -320,6 +324,7 @@ DatasetPipeline iterator time breakdown:
 * Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
+* In next_batch(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T

@@ -4,7 +4,7 @@ import ray
 from ray import serve
 from ray.dag import InputNode
 from ray.serve.handle import RayServeLazySyncHandle
-from ray.serve.deployment_graph_build import (
+from ray.serve._private.deployment_graph_build import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     transform_serve_dag_to_serve_executor_dag,

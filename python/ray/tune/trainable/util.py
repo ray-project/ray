@@ -3,16 +3,24 @@ import inspect
 import logging
 import os
 import shutil
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
 
 import pandas as pd
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.execution.placement_groups import (
+    PlacementGroupFactory,
+    resource_dict_to_pg_factory,
+)
 from ray.tune.registry import _ParameterRegistry
-from ray.tune.utils import detect_checkpoint_function
+from ray.tune.resources import Resources
+from ray.tune.utils import _detect_checkpoint_function
 from ray.util import placement_group
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.tune.trainable import Trainable
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +234,8 @@ class PlacementGroupUtil:
         return options, pg
 
 
-def with_parameters(trainable, **kwargs):
+@PublicAPI(stability="beta")
+def with_parameters(trainable: Union[Type["Trainable"], Callable], **kwargs):
     """Wrapper for trainables to pass arbitrary large data objects.
 
     This wrapper function will store all passed parameters in the Ray
@@ -263,10 +272,11 @@ def with_parameters(trainable, **kwargs):
 
         data = HugeDataset(download=True)
 
-        tune.run(
+        tuner = Tuner(
             tune.with_parameters(train, data=data),
             # ...
         )
+        tuner.fit()
 
     Class API example:
 
@@ -290,7 +300,7 @@ def with_parameters(trainable, **kwargs):
 
         data = HugeDataset(download=True)
 
-        tune.run(
+        tuner = Tuner(
             tune.with_parameters(MyTrainable, data=data),
             # ...
         )
@@ -332,7 +342,7 @@ def with_parameters(trainable, **kwargs):
         return _Inner
     else:
         # Function trainable
-        use_checkpoint = detect_checkpoint_function(trainable, partial=True)
+        use_checkpoint = _detect_checkpoint_function(trainable, partial=True)
         keys = list(kwargs.keys())
 
         def inner(config, checkpoint_dir=None):
@@ -367,3 +377,86 @@ def with_parameters(trainable, **kwargs):
             inner.__mixins__ = trainable.__mixins__
 
         return inner
+
+
+@PublicAPI(stability="beta")
+def with_resources(
+    trainable: Union[Type["Trainable"], Callable],
+    resources: Union[
+        Dict[str, float], PlacementGroupFactory, Callable[[dict], PlacementGroupFactory]
+    ],
+):
+    """Wrapper for trainables to specify resource requests.
+
+    This wrapper allows specification of resource requirements for a specific
+    trainable. It will override potential existing resource requests (use
+    with caution!).
+
+    The main use case is to request resources for function trainables when used
+    with the Tuner() API.
+
+    Class trainables should usually just implement the ``default_resource_request()``
+    method.
+
+    Args:
+        trainable: Trainable to wrap.
+        resources: Resource dict, placement group factory, or callable that takes
+            in a config dict and returns a placement group factory.
+
+    Example:
+
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune.tuner import Tuner
+
+        def train(config):
+            return len(ray.get_gpu_ids())  # Returns 2
+
+        tuner = Tuner(
+            tune.with_resources(train, resources={"gpu": 2}),
+            # ...
+        )
+        results = tuner.fit()
+
+    """
+    from ray.tune.trainable import Trainable
+
+    if not callable(trainable) or (
+        inspect.isclass(trainable) and not issubclass(trainable, Trainable)
+    ):
+        raise ValueError(
+            f"`tune.with_parameters() only works with function trainables "
+            f"or classes that inherit from `tune.Trainable()`. Got type: "
+            f"{type(trainable)}."
+        )
+
+    if isinstance(resources, PlacementGroupFactory):
+        pgf = resources
+    elif isinstance(resources, dict):
+        pgf = resource_dict_to_pg_factory(resources)
+    elif callable(resources):
+        pgf = resources
+    else:
+        raise ValueError(
+            f"Invalid resource type for `with_resources()`: {type(resources)}"
+        )
+
+    if not inspect.isclass(trainable):
+        # Just set an attribute. This will be resolved later in `wrap_function()`.
+        trainable._resources = pgf
+    else:
+
+        class ResourceTrainable(trainable):
+            @classmethod
+            def default_resource_request(
+                cls, config: Dict[str, Any]
+            ) -> Optional[Union[Resources, PlacementGroupFactory]]:
+                if not isinstance(pgf, PlacementGroupFactory) and callable(pgf):
+                    return pgf(config)
+                return pgf
+
+        ResourceTrainable.__name__ = trainable.__name__
+        trainable = ResourceTrainable
+
+    return trainable

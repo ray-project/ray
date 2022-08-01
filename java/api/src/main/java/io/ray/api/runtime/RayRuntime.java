@@ -7,6 +7,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
+import io.ray.api.exception.RuntimeEnvException;
 import io.ray.api.function.CppActorClass;
 import io.ray.api.function.CppActorMethod;
 import io.ray.api.function.CppFunction;
@@ -295,7 +296,10 @@ public interface RayRuntime {
   List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda);
 
   /** Create runtime env instance at runtime. */
-  RuntimeEnv createRuntimeEnv(Map<String, String> envVars, List<String> jars);
+  RuntimeEnv createRuntimeEnv();
+
+  /** Deserialize runtime env instance at runtime. */
+  RuntimeEnv deserializeRuntimeEnv(String serializedRuntimeEnv) throws RuntimeEnvException;
 
   /// Get the parallel actor context at runtime.
   ParallelActorContext getParallelActorContext();

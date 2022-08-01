@@ -14,7 +14,7 @@ from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
 from ray.tune.syncer import SyncConfig
-from ray.tune.utils import date_str, detect_checkpoint_function
+from ray.tune.utils import date_str, _detect_checkpoint_function
 
 from ray.util.annotations import DeveloperAPI
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def _validate_log_to_file(log_to_file):
-    """Validate ``tune.run``'s ``log_to_file`` parameter. Return
+    """Validate ``air.RunConfig``'s ``log_to_file`` parameter. Return
     validated relative stdout and stderr filenames."""
     if not log_to_file:
         stdout_file = stderr_file = None
@@ -144,7 +144,7 @@ class Experiment:
         if (
             callable(run)
             and not inspect.isclass(run)
-            and detect_checkpoint_function(run)
+            and _detect_checkpoint_function(run)
         ):
             if checkpoint_at_end:
                 raise ValueError(
@@ -198,7 +198,7 @@ class Experiment:
                 stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
-                    "`tune.run()`, each element must be an instance of "
+                    "`air.RunConfig()`, each element must be an instance of "
                     f"`tune.stopper.Stopper`. Got {stopper_types}."
                 )
             self._stopper = CombinedStopper(*stop)
@@ -424,7 +424,7 @@ class Experiment:
         return {k: v for k, v in self.spec.items() if k in self.PUBLIC_KEYS}
 
 
-def convert_to_experiment_list(experiments: Union[Experiment, List[Experiment], Dict]):
+def _convert_to_experiment_list(experiments: Union[Experiment, List[Experiment], Dict]):
     """Produces a list of Experiment objects.
 
     Converts input from dict, single experiment, or list of

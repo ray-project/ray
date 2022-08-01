@@ -111,7 +111,10 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
         return pyarrow.Table.from_pydict(columns)
 
     def _concat_tables(self, tables: List[Block]) -> Block:
-        return pyarrow.concat_tables(tables, promote=True)
+        if len(tables) > 1:
+            return pyarrow.concat_tables(tables, promote=True)
+        else:
+            return tables[0]
 
     @staticmethod
     def _empty_table() -> "pyarrow.Table":

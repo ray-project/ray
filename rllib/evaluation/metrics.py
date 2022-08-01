@@ -1,12 +1,11 @@
 import collections
 import logging
 import numpy as np
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import ray
 from ray import ObjectRef
 from ray.actor import ActorHandle
-from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimate
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
@@ -28,10 +27,11 @@ RolloutMetrics = DeveloperAPI(
             "perf_stats",
             "hist_data",
             "media",
+            "episode_faulty",
         ],
     )
 )
-RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {})
+RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False)
 
 
 def _extract_stats(stats: Dict, key: str) -> Dict[str, Any]:
@@ -99,7 +99,7 @@ def collect_episodes(
     remote_workers: Optional[List[ActorHandle]] = None,
     to_be_collected: Optional[List[ObjectRef]] = None,
     timeout_seconds: int = 180,
-) -> Tuple[List[Union[RolloutMetrics, OffPolicyEstimate]], List[ObjectRef]]:
+) -> Tuple[List[RolloutMetrics], List[ObjectRef]]:
     """Gathers new episodes metrics tuples from the given RolloutWorkers.
 
     Args:
@@ -139,8 +139,8 @@ def collect_episodes(
 
 @DeveloperAPI
 def summarize_episodes(
-    episodes: List[Union[RolloutMetrics, OffPolicyEstimate]],
-    new_episodes: List[Union[RolloutMetrics, OffPolicyEstimate]] = None,
+    episodes: List[RolloutMetrics],
+    new_episodes: List[RolloutMetrics] = None,
     keep_custom_metrics: bool = False,
 ) -> ResultDict:
     """Summarizes a set of episode metrics tuples.
@@ -155,9 +155,6 @@ def summarize_episodes(
     if new_episodes is None:
         new_episodes = episodes
 
-    episodes, _ = _partition(episodes)
-    new_episodes, estimates = _partition(new_episodes)
-
     episode_rewards = []
     episode_lengths = []
     policy_rewards = collections.defaultdict(list)
@@ -165,14 +162,23 @@ def summarize_episodes(
     perf_stats = collections.defaultdict(list)
     hist_stats = collections.defaultdict(list)
     episode_media = collections.defaultdict(list)
+    num_faulty_episodes = 0
 
     for episode in episodes:
+        # Faulty episodes may still carry perf_stats data.
+        for k, v in episode.perf_stats.items():
+            perf_stats[k].append(v)
+
+        # Continue if this is a faulty episode.
+        # There should be other meaningful stats to be collected.
+        if episode.episode_faulty:
+            num_faulty_episodes += 1
+            continue
+
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
         for k, v in episode.custom_metrics.items():
             custom_metrics[k].append(v)
-        for k, v in episode.perf_stats.items():
-            perf_stats[k].append(v)
         for (_, policy_id), reward in episode.agent_rewards.items():
             if policy_id != DEFAULT_POLICY_ID:
                 policy_rewards[policy_id].append(reward)
@@ -180,6 +186,7 @@ def summarize_episodes(
             hist_stats[k] += v
         for k, v in episode.media.items():
             episode_media[k].append(v)
+
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
@@ -225,18 +232,6 @@ def summarize_episodes(
     for k, v_list in perf_stats.copy().items():
         perf_stats[k] = np.mean(v_list)
 
-    estimators = collections.defaultdict(lambda: collections.defaultdict(list))
-    for e in estimates:
-        acc = estimators[e.estimator_name]
-        for k, v in e.metrics.items():
-            acc[k].append(v)
-    for name, metrics in estimators.items():
-        out = {}
-        for k, v_list in metrics.items():
-            out[k + "_mean"] = np.mean(v_list)
-            out[k + "_std"] = np.std(v_list)
-        estimators[name] = out
-
     return dict(
         episode_reward_max=max_reward,
         episode_reward_min=min_reward,
@@ -250,21 +245,5 @@ def summarize_episodes(
         custom_metrics=dict(custom_metrics),
         hist_stats=dict(hist_stats),
         sampler_perf=dict(perf_stats),
-        off_policy_estimator=dict(estimators),
+        num_faulty_episodes=num_faulty_episodes,
     )
-
-
-def _partition(
-    episodes: List[RolloutMetrics],
-) -> Tuple[List[RolloutMetrics], List[OffPolicyEstimate]]:
-    """Divides metrics data into true rollouts vs off-policy estimates."""
-
-    rollouts, estimates = [], []
-    for e in episodes:
-        if isinstance(e, RolloutMetrics):
-            rollouts.append(e)
-        elif isinstance(e, OffPolicyEstimate):
-            estimates.append(e)
-        else:
-            raise ValueError("Unknown metric type: {}".format(e))
-    return rollouts, estimates

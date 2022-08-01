@@ -922,6 +922,17 @@ cc_test(
 )
 
 cc_test(
+    name = "gcs_heartbeat_manager_test",
+    srcs = ["src/ray/gcs/gcs_server/test/gcs_heartbeat_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "dependency_resolver_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/dependency_resolver_test.cc"],
@@ -1554,6 +1565,23 @@ cc_test(
     ],
     copts = COPTS,
     tags = ["team:core"],
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "memory_monitor_test",
+    size = "small",
+    srcs = [
+        "src/ray/common/test/memory_monitor_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
     deps = [
         ":ray_common",
         "@com_google_googletest//:gtest_main",

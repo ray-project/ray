@@ -89,6 +89,8 @@ ray::ActorHandle<Counter> Counter::CreateChildActor(std::string actor_name) {
   return child_actor;
 }
 
+std::string Counter::GetNamespaceInActor() { return ray::GetNamespace(); }
+
 RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
            Counter::FactoryCreateException,
            RAY_FUNC(Counter::FactoryCreate, int),
@@ -100,9 +102,18 @@ RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
            &Counter::ExceptionFunc,
            &Counter::CheckRestartInActorCreationTask,
            &Counter::CheckRestartInActorTask,
+           &Counter::GetNamespaceInActor,
            &Counter::GetVal,
            &Counter::GetIntVal,
            &Counter::Initialized,
-           &Counter::CreateChildActor);
+           &Counter::CreateChildActor,
+           &Counter::GetEnvVar);
 
 RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);
+
+std::string GetEnvVar(std::string key) {
+  auto value = std::getenv(key.c_str());
+  return value == NULL ? "" : std::string(value);
+}
+
+RAY_REMOTE(GetEnvVar);
