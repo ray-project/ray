@@ -248,6 +248,10 @@ class AlphaZeroConfig(AlgorithmConfig):
             self.mcts_config = mcts_config
         if ranked_rewards is not None:
             self.ranked_rewards = ranked_rewards
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 

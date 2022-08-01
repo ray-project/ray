@@ -166,6 +166,7 @@ class SimpleQConfig(AlgorithmConfig):
         lr_schedule: Optional[List[List[Union[int, float]]]] = None,
         adam_epsilon: Optional[float] = None,
         grad_clip: Optional[int] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "SimpleQConfig":
         """Sets the training related configuration.
@@ -220,6 +221,9 @@ class SimpleQConfig(AlgorithmConfig):
                 timestep 0.
             adam_epsilon: Adam optimizer's epsilon hyper parameter.
             grad_clip: If not None, clip gradients during optimization at this value.
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -248,6 +252,10 @@ class SimpleQConfig(AlgorithmConfig):
             self.adam_epsilon = adam_epsilon
         if grad_clip is not None:
             self.grad_clip = grad_clip
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 

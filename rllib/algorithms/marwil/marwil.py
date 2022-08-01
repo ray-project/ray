@@ -217,6 +217,10 @@ class MARWILConfig(AlgorithmConfig):
             self.vf_coeff = vf_coeff
         if grad_clip is not None:
             self.grad_clip = grad_clip
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
         return self
 
     def evaluation(

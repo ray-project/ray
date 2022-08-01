@@ -269,7 +269,9 @@ class SACConfig(AlgorithmConfig):
         if _use_beta_distribution is not None:
             self._use_beta_distribution = _use_beta_distribution
         if num_steps_sampled_before_learning_starts is not None:
-            self.num_steps_sampled_before_learning_starts = num_steps_sampled_before_learning_starts
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 

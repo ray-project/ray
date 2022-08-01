@@ -140,6 +140,7 @@ class SlateQConfig(AlgorithmConfig):
         rmsprop_epsilon: Optional[float] = None,
         grad_clip: Optional[float] = None,
         n_step: Optional[int] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "SlateQConfig":
         """Sets the training related configuration.
@@ -203,6 +204,10 @@ class SlateQConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         if n_step is not None:
             self.n_step = n_step
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 

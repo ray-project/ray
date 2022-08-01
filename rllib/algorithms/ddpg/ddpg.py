@@ -151,7 +151,6 @@ class DDPGConfig(SimpleQConfig):
         huber_threshold: Optional[float] = None,
         l2_reg: Optional[float] = None,
         training_intensity: Optional[float] = None,
-        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "DDPGConfig":
         """Sets the training related configuration.
@@ -208,9 +207,6 @@ class DDPGConfig(SimpleQConfig):
                     often as rollout+insert op (4 * 250 = 1000).
                 See: rllib/algorithms/dqn/dqn.py::calculate_rr_weights for further
                 details.
-            num_steps_sampled_before_learning_starts: Number of timesteps to collect
-                from rollout workers before we start sampling from replay buffers for
-                learning.
 
         Returns:
             This updated DDPGConfig object.
@@ -253,10 +249,6 @@ class DDPGConfig(SimpleQConfig):
             self.l2_reg = l2_reg
         if training_intensity is not None:
             self.training_intensity = training_intensity
-        if num_steps_sampled_before_learning_starts is not None:
-            self.num_steps_sampled_before_learning_starts = (
-                num_steps_sampled_before_learning_starts
-            )
 
         return self
 
