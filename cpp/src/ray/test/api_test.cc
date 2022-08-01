@@ -15,12 +15,11 @@
 #include <gtest/gtest.h>
 #include <ray/api.h>
 
-#include <filesystem>
-#include <fstream>
 #include <future>
 #include <thread>
 
 #include "../config_internal.h"
+#include "boost/filesystem.hpp"
 #include "ray/util/logging.h"
 
 // using namespace ray;
@@ -110,7 +109,7 @@ RAY_REMOTE(Counter::FactoryCreate,
            &Counter::GetList);
 
 TEST(RayApiTest, LogTest) {
-  auto log_path = std::filesystem::current_path().string() + "/tmp/";
+  auto log_path = boost::filesystem::current_path().string() + "/tmp/";
   ray::RayLog::StartRayLog("cpp_worker", ray::RayLogLevel::DEBUG, log_path);
   std::array<std::string, 3> str_arr{"debug test", "info test", "warning test"};
   RAYLOG(DEBUG) << str_arr[0];
@@ -118,8 +117,8 @@ TEST(RayApiTest, LogTest) {
   RAYLOG(WARNING) << str_arr[2];
   RAY_CHECK(true);
 
-  for (auto &it : std::filesystem::directory_iterator(log_path)) {
-    if (!std::filesystem::is_directory(it)) {
+  for (auto &it : boost::filesystem::directory_iterator(log_path)) {
+    if (!boost::filesystem::is_directory(it)) {
       std::ifstream in(it.path().string(), std::ios::binary);
       std::string line;
       for (int i = 0; i < 3; i++) {
@@ -129,7 +128,7 @@ TEST(RayApiTest, LogTest) {
     }
   }
 
-  std::filesystem::remove_all(log_path);
+  boost::filesystem::remove_all(log_path);
 }
 
 TEST(RayApiTest, TaskOptionsCheckTest) {
