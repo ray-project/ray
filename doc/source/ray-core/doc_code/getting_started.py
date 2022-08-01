@@ -7,6 +7,7 @@ import random
 ray.init()
 # __starting_ray_end__
 
+
 # __defining_actor_start__
 @ray.remote
 class ProgressActor:
@@ -21,6 +22,8 @@ class ProgressActor:
         return (
             sum(self.num_samples_completed_per_task.values()) / self.total_num_samples
         )
+
+
 # __defining_actor_end__
 
 
@@ -41,6 +44,8 @@ def sampling_task(num_samples, task_id, progress_actor):
     # Report the final progress.
     progress_actor.report_progress.remote(task_id, num_samples)
     return num_inside
+
+
 # __defining_task_end__
 
 

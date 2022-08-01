@@ -108,11 +108,12 @@ Finally, we get number of samples inside the circle returned from sampling tasks
     :start-after: __calculating_pi_start__
     :end-before: __calculating_pi_end__
 
-As we can see, beside a single ``ObjectRef``, :ref:`ray.get() <ray-get-ref>` can also take a list of ``ObjectRef``s and return a list of results.
+As we can see, besides a single ``ObjectRef``, :ref:`ray.get() <ray-get-ref>` can also take a list of ``ObjectRef`` and return a list of results.
 
 Shutting Down Ray
 -----------------
-After we are done, we can shutdown the local Ray cluster.
+After we are done, we can shutdown the local Ray cluster with :ref:`ray.shutdown() <ray-shutdown-ref>`
+or it will automatically run when the Python process exits.
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
@@ -121,6 +122,7 @@ After we are done, we can shutdown the local Ray cluster.
 
 
 If you run this tutorial, you will see output like:
+
 .. code-block:: text
  Progress: 0%
  Progress: 15%
