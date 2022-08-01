@@ -300,7 +300,7 @@ def train_torch_vanilla(
         },
     )
 
-    run_fn_on_actors(lambda: os.environ.pop("OMP_NUM_THREADS", None))
+    run_fn_on_actors(actors=actors, fn=lambda: os.environ.pop("OMP_NUM_THREADS", None))
 
     # Get IPs and ports for all actors
     ip_ports = get_ip_port_actors(actors=actors)

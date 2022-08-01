@@ -171,7 +171,7 @@ def train_tf_vanilla(
         },
     )
 
-    run_fn_on_actors(lambda: os.environ.pop("OMP_NUM_THREADS", None))
+    run_fn_on_actors(actors=actors, fn=lambda: os.environ.pop("OMP_NUM_THREADS", None))
 
     ips_ports = get_ip_port_actors(actors=actors)
     ip_port_list = [f"{ip}:{port}" for ip, port in ips_ports]
