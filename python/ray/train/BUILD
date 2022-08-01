@@ -362,6 +362,14 @@ py_test(
 )
 
 py_test(
+    name = "test_jax",
+    size = "large",
+    srcs = ["tests/test_jax.py"],
+    tags = ["team:ml", "exclusive", "jax"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_xgboost_trainer",
     size = "medium",
     srcs = ["tests/test_xgboost_trainer.py"],

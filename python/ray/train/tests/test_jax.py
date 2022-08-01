@@ -92,8 +92,11 @@ def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
 def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
     trainer = JaxTrainer(
         jax_mnist_train_func,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu,
-                                     resources_per_worker={"GPU": num_gpus_per_worker} if use_gpu else None),
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            resources_per_worker={"GPU": num_gpus_per_worker} if use_gpu else None,
+        ),
     )
     tuner = Tuner(
         trainer,
