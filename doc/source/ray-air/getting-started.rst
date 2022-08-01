@@ -3,13 +3,9 @@
 Ray AI Runtime (AIR)
 ====================
 
-Ray AI Runtime (AIR) is an open-source toolkit for building end-to-end ML applications. By leveraging Ray, its distributed compute capabilities, and its library ecosystem, Ray AIR brings scalability and programmability to ML platforms.
+Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. With AIR, you can easily scale individual ML workloads, end-to-end ML workflows, and the most popular ecosystem frameworks, all in just Python.
 
-.. tip::
-    **Getting involved with Ray AIR.** Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved. We'll be holding office hours, development sprints, and other activities as we get closer to the Ray AIR Beta/GA release. Join us!
-
-.. image:: images/ai_runtime.jpg
-
+.. image:: images/air.png
 
 Ray AIR focuses on two functional aspects:
 
