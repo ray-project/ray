@@ -18,7 +18,7 @@ from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.resources import Resources
 from ray.util import PublicAPI
-from ray.util.ml_utils.dict import merge_dicts
+from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.air.preprocessor import Preprocessor
