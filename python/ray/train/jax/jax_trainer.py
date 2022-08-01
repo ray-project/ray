@@ -1,6 +1,6 @@
 from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
 
-from ray.train.jax import JaxConfig
+from ray.train.jax.config import JaxConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
