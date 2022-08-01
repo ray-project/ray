@@ -3,33 +3,30 @@
 Ray AI Runtime (AIR)
 ====================
 
-Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. With AIR, you can easily scale individual ML workloads, end-to-end ML workflows, and the most popular ecosystem frameworks, all in just Python.
+Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual ML workloads, end-to-end ML workflows, and popular ecosystem frameworks, all in just Python.
 
 .. image:: images/air.png
 
-Ray AIR focuses on two functional aspects:
-
-* It provides scalability by leveraging Ray’s distributed compute layer for ML workloads.
-* It is designed to interoperate with other systems for storage and metadata needs.
-
-Ray AIR consists of five key components:
-
-- Data processing (:ref:`Ray Data <datasets>`)
-- Model Training (:ref:`Ray Train <train-docs>`)
-- Reinforcement Learning (:ref:`Ray RLlib <rllib-index>`)
-- Hyperparameter Tuning (:ref:`Ray Tune <tune-main>`)
-- Model Serving (:ref:`Ray Serve <rayserve>`).
-
-Users can use these libraries interchangeably to scale different parts of standard ML workflows.
+AIR comes with built-in libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Reinforcement Learning <rllib-index>`, and :ref:`Serving <rayserve>`, as well as ecosystem integrations.
 
 To get started, install Ray AIR via ``pip install -U "ray[air]"``
 
+Why Ray AIR?
+------------
+
+Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by enabling a simple, scalable approach to ML infrastructure:
+
+**1. Seamless Dev to Prod**: AIR reduces friction going from development to production. Traditional orchestration approaches introduce separate systems and operational overheads. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
+
+**2. Unified API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new framework like HuggingFace? AIR lets you accomplish this by just swapping out a single class. This level of flexibility and integration is only possible with a general-purpose distributed system like Ray.
+
+**3. Open and Evolvable**: Ray core and libraries are fully open-source and can run on any cluster, cloud, or Kubernetes, reducing the costs of platform lock-in. Want to go out of the box? Run any framework you want using AIR's integration APIs, or build advanced use cases directly on Ray core.
 
 Quick Start
 -----------
 
 Below, we demonstrate how you can use the Ray libraries in a seamless flow
-between distributed frameworks (e.g., XGBoost, Pytorch, and Tensorflow): 
+between distributed frameworks (e.g., XGBoost, Pytorch, and Tensorflow):
 
 Preprocessing
 ~~~~~~~~~~~~~
@@ -151,21 +148,6 @@ Use the trained model for scalable batch prediction with a ``BatchPredictor``.
 
 
 See the :ref:`Key Concepts <air-key-concepts>` for more that Ray AIR has to offer.
-
-
-Why Ray AIR?
-------------
-
-Today, there are a myriad of machine learning frameworks, platforms, and tools. Why would you choose Ray AIR and what makes it different? Ray AIR provides three 
-unique functional values derived from Ray. Let's examine each.
-
-**1. Seamless development to production**: Ray AIR reduces development friction going from development to production. Unlike in other frameworks, scaling Ray applications from a laptop to large clusters doesn't require a separate way of running -- the same code scales up seamlessly.
-This means data scientists and ML practitioners spend less time fighting YAMLs and refactoring code. Smaller teams and companies that don’t have the resources to invest heavily on MLOps can now deploy ML models at a much faster rate with Ray AIR.
-
-
-**2. Multi-cloud and Framework-interoperable**: Ray AIR is multi-cloud and framework-interoperable. The Ray compute layer and libraries freely operate with common public cloud platforms and frameworks in the ecosystem, reducing lock-in to any particular choices of ML tech. Framework interoperability is unique to Ray--- it's easy to run Torch distributed or elastic Horovod within Ray, but not vice versa.
-
-**3. Future-proof via flexibility and scalability**: Ray's scalability and flexibility make Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common model deployment patterns are being incorporated into libraries like Ray Serve.
 
 AIR Ecosystem
 -------------
