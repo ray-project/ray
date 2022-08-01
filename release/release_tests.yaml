@@ -119,6 +119,7 @@
 
   alert: default
 
+
 #########################
 # AIR release tests
 #########################
@@ -151,6 +152,7 @@
       timeout: 1800
 
   alert: default
+
 
 - name: air_benchmark_data_bulk_ingest
   group: AIR tests
@@ -268,6 +270,7 @@
 
   alert: default
 
+
 - name: air_benchmark_torch_mnist_cpu_1x4
   group: AIR tests
   working_dir: air_tests/air_benchmarks
@@ -289,6 +292,7 @@
 
   alert: default
 
+
 - name: air_benchmark_torch_batch_prediction_gpu_1x1_20gb
   group: AIR tests
   working_dir: air_tests/air_benchmarks
@@ -309,6 +313,7 @@
     file_manager: job
 
   alert: default
+
 
 # TODO(jiaodong): This leads to CUDA OOM on release tool but succeeds on
 # workspaces, re-enabled it once inline conversions are fixed
@@ -335,6 +340,7 @@
 
 #   alert: default
 
+
 - name: air_benchmark_torch_mnist_cpu_4x4
   group: AIR tests
   working_dir: air_tests/air_benchmarks
@@ -358,6 +364,7 @@
     file_manager: job
 
   alert: default
+
 
 - name: air_benchmark_tune_torch_mnist
   group: AIR tests
@@ -431,6 +438,7 @@
 
   alert: default
 
+
 # Ray AIR distributed Tensorflow benchmarks
 - name: air_benchmark_tensorflow_mnist_cpu_4x1
   group: AIR tests
@@ -456,6 +464,7 @@
 
   alert: default
 
+
 - name: air_benchmark_tensorflow_mnist_cpu_1x4
   group: AIR tests
   working_dir: air_tests/air_benchmarks
@@ -476,6 +485,7 @@
     file_manager: job
 
   alert: default
+
 
 - name: air_benchmark_tensorflow_mnist_cpu_4x4
   group: AIR tests
@@ -502,6 +512,7 @@
     file_manager: job
 
   alert: default
+
 
 - name: air_benchmark_tensorflow_mnist_gpu_4x4
   group: AIR tests
@@ -539,6 +550,7 @@
 
   alert: default
 
+
 - name: air_benchmark_pytorch_training_e2e_gpu_1x1_20gb
   group: AIR tests
   working_dir: air_tests/air_benchmarks
@@ -559,6 +571,7 @@
     file_manager: job
 
   alert: default
+
 
 - name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
   group: AIR tests
@@ -1032,6 +1045,7 @@
 
   alert: default
 
+
 #######################
 # ML user tests
 #######################
@@ -1363,8 +1377,7 @@
   run:
     timeout: 600
 
-    script:
-      python workloads/run_cloud_test.py durable_upload --trainable rllib_str
+    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
       --bucket s3://tune-cloud-tests/durable_upload_rllib_str
 
     wait_for_nodes:
@@ -1395,8 +1408,7 @@
 
   run:
     timeout: 600
-    script:
-      python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer
+    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer
       --bucket s3://tune-cloud-tests/durable_upload_rllib_trainer
 
     wait_for_nodes:
@@ -1424,7 +1436,7 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
-    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM # anyscale_k8s_gcp_cloud
+    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
     autosuspend_mins: 60
 
   run:
@@ -1454,7 +1466,7 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
-    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM # anyscale_k8s_gcp_cloud
+    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
     autosuspend_mins: 60
 
   run:
@@ -1484,7 +1496,7 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: tpl_gcp_k8s_4x8.yaml
-    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM # anyscale_k8s_gcp_cloud
+    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
     autosuspend_mins: 60
 
   run:
@@ -1496,6 +1508,7 @@
       num_nodes: 4
 
   alert: tune_tests
+
 
 ########################
 # Tune scalability tests
@@ -1702,6 +1715,7 @@
 
   alert: tune_tests
 
+
 ########################
 # Golden Notebook tests
 ########################
@@ -1779,6 +1793,7 @@
     type: client
 
   alert: default
+
 
 #######################
 # Long running tests
@@ -2306,6 +2321,7 @@
     type: client
 
   alert: default
+
 
 ########################
 # Serve tests
@@ -2853,6 +2869,7 @@
 
   alert: default
 
+
 - name: rllib_learning_tests_sac
   group: RLlib tests
   working_dir: rllib_tests
@@ -2901,6 +2918,7 @@
 
   alert: default
 
+
 - name: rllib_learning_tests_td3
   group: RLlib tests
   working_dir: rllib_tests
@@ -2924,6 +2942,7 @@
     file_manager: job
 
   alert: default
+
 
 - name: rllib_multi_gpu_learning_tests
   group: RLlib tests
@@ -3132,8 +3151,7 @@
 
   run:
     timeout: 3000
-    script:
-      python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6
+    script: python shuffle/shuffle_test.py --num-partitions=200 --partition-size=500e6
       --no-streaming
 
     wait_for_nodes:
@@ -3157,8 +3175,7 @@
 
   run:
     timeout: 3000
-    script:
-      python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6
+    script: python shuffle/shuffle_test.py --num-partitions=500 --partition-size=100e6
       --no-streaming
 
     type: sdk_command
@@ -3179,8 +3196,7 @@
 
   run:
     timeout: 3000
-    script:
-      python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9
+    script: python shuffle/shuffle_test.py --num-partitions=50 --partition-size=1e9
       --no-streaming
 
     type: sdk_command
@@ -3242,8 +3258,7 @@
 
   run:
     timeout: 3000
-    script:
-      python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
+    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
       --no-streaming
 
     wait_for_nodes:
@@ -3327,8 +3342,7 @@
 
   run:
     timeout: 4000
-    script:
-      python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
+    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
       --no-streaming
 
     type: sdk_command
@@ -3349,8 +3363,7 @@
 
   run:
     timeout: 3600
-    script:
-      python placement_group_tests/long_running_performance_test.py --num-stages
+    script: python placement_group_tests/long_running_performance_test.py --num-stages
       2000
 
     wait_for_nodes:
@@ -3380,6 +3393,7 @@
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
+
 - name: microbenchmark_staging
   group: core-daily-test
   team: core
@@ -3396,6 +3410,7 @@
   run:
     timeout: 1800
     script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
+
 
 - name: microbenchmark_38
   group: core-daily-test
@@ -3428,8 +3443,7 @@
 
   run:
     timeout: 7200
-    script:
-      python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 10_000_000_000 --npartitions
       50 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
     type: sdk_command
@@ -3450,8 +3464,7 @@
 
   run:
     timeout: 7200
-    script:
-      python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 100_000_000_000 --npartitions
       200 --num-nodes 1 --ray --data-dir /tmp/ray --file-path /tmp/ray
 
     type: sdk_command
@@ -3472,8 +3485,7 @@
 
   run:
     timeout: 7200
-    script:
-      python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
+    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
       20 --error_rate 0  --data_save_path /tmp/ray
 
     wait_for_nodes:
@@ -3490,8 +3502,7 @@
 
     run:
       timeout: 7200
-      script:
-        python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb
+      script: python dask_on_ray/large_scale_test.py --num_workers 4 --worker_obj_store_size_in_gb
         20 --error_rate 0  --data_save_path /tmp/ray
 
       wait_for_nodes:
@@ -3512,8 +3523,7 @@
 
   run:
     timeout: 7200
-    script:
-      python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
+    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
       70 --error_rate 0  --data_save_path /tmp/ray
 
     wait_for_nodes:
@@ -3530,8 +3540,7 @@
 
     run:
       timeout: 7200
-      script:
-        python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb
+      script: python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb
         70 --error_rate 0  --data_save_path /tmp/ray
 
       wait_for_nodes:
@@ -3593,8 +3602,7 @@
 
     run:
       timeout: 3600
-      script:
-        python stress_tests/test_dead_actors.py --num-nodes=4 --num-parents=3
+      script: python stress_tests/test_dead_actors.py --num-nodes=4 --num-parents=3
         --num-children=3
 
 # The full test is not stable, so run the smoke test only.
@@ -3614,8 +3622,7 @@
 
   run:
     timeout: 3600
-    script:
-      python stress_tests/test_threaded_actors.py --test-runtime 1800 --kill-interval_s
+    script: python stress_tests/test_threaded_actors.py --test-runtime 1800 --kill-interval_s
       30
 
     wait_for_nodes:
@@ -3676,8 +3683,7 @@
 
   run:
     timeout: 7200
-    script:
-      python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions
+    script: python dask_on_ray/dask_on_ray_sort.py --nbytes 1_000_000_000_000 --npartitions
       1000 --num-nodes 31 --ray --data-dir /tmp/ray --s3-bucket core-nightly-test
 
     wait_for_nodes:
@@ -3707,6 +3713,7 @@
 
     type: sdk_command
     file_manager: sdk
+
 
 - name: pg_autoscaling_regression_test
   group: core-daily-test
@@ -3748,6 +3755,7 @@
 
     type: sdk_command
     file_manager: sdk
+
 
 #########################
 # Core Scalability Tests
@@ -3872,6 +3880,7 @@
       wait_for_nodes:
         num_nodes: 2
 
+
 - name: many_pgs
   group: core-scalability-test
   working_dir: benchmarks
@@ -3955,8 +3964,7 @@
 
   run:
     timeout: 3600
-    script:
-      python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
       --task-duration-s=0 --total-num-actors=1 --num-actors-per-nodes=1
 
     wait_for_nodes:
@@ -3980,8 +3988,7 @@
 
   run:
     timeout: 3600
-    script:
-      python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
+    script: python distributed/test_scheduling.py --total-num-task=1984000 --num-cpu-per-task=1
       --task-duration-s=0 --total-num-actors=32 --num-actors-per-nodes=1
 
     wait_for_nodes:
@@ -4166,8 +4173,7 @@
 
   run:
     timeout: 9600
-    script:
-      python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
+    script: python pipelined_training.py --epochs 2 --num-windows 5 --num-files 915
       --debug
 
     wait_for_nodes:
@@ -4191,8 +4197,7 @@
 
   run:
     timeout: 14400
-    script:
-      python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu
+    script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu
       --large-dataset
 
     wait_for_nodes:
@@ -4228,8 +4233,7 @@
 
   run:
     timeout: 7200
-    script:
-      python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu
+    script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu
       --large-dataset --debug
 
     wait_for_nodes:
@@ -4432,8 +4436,7 @@
     wait_for_nodes:
       num_nodes: 21
     prepare: python setup_chaos.py --node-kill-interval 100
-    script:
-      python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
+    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
       20 --error_rate 0  --data_save_path /tmp/ray
 
     type: sdk_command
@@ -4457,8 +4460,7 @@
     wait_for_nodes:
       num_nodes: 21
     prepare: python setup_chaos.py --node-kill-interval 100
-    script:
-      python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
+    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
       70 --error_rate 0  --data_save_path /tmp/ray
 
     type: sdk_command
@@ -4481,9 +4483,8 @@
     timeout: 7200
     wait_for_nodes:
       num_nodes: 21
-    prepare: " python setup_chaos.py --node-kill-interval 300"
-    script:
-      python dataset/pipelined_training.py --epochs 1 --num-windows 15  --num-files
+    prepare: ' python setup_chaos.py --node-kill-interval 300'
+    script: python dataset/pipelined_training.py --epochs 1 --num-windows 15  --num-files
       915 --debug
 
     type: sdk_command
@@ -4504,7 +4505,7 @@
 
   run:
     timeout: 7200
-    prepare: " python setup_chaos.py --node-kill-interval 1200 --max-nodes-to-kill 3"
+    prepare: ' python setup_chaos.py --node-kill-interval 1200 --max-nodes-to-kill 3'
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
@@ -4526,7 +4527,7 @@
 
   run:
     timeout: 7200
-    prepare: " python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3"
+    prepare: ' python setup_chaos.py --node-kill-interval 900 --max-nodes-to-kill 3'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
@@ -4550,7 +4551,7 @@
 
   run:
     timeout: 7200
-    prepare: " python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2"
+    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
@@ -4574,7 +4575,7 @@
 
   run:
     timeout: 7200
-    prepare: " python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2"
+    prepare: ' python setup_chaos.py --node-kill-interval 600 --max-nodes-to-kill 2'
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
