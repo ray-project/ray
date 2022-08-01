@@ -14,6 +14,7 @@
 
 #include "function_helper.h"
 
+#include <boost/filesystem.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <memory>
 
@@ -22,7 +23,7 @@
 namespace ray {
 namespace internal {
 
-void FunctionHelper::LoadDll(const std::filesystem::path &lib_path) {
+void FunctionHelper::LoadDll(const boost::filesystem::path &lib_path) {
   RAY_LOG(INFO) << "Start loading the library " << lib_path << ".";
 
   auto it = libraries_.find(lib_path.string());
@@ -30,7 +31,7 @@ void FunctionHelper::LoadDll(const std::filesystem::path &lib_path) {
     return;
   }
 
-  RAY_CHECK(std::filesystem::exists(lib_path))
+  RAY_CHECK(boost::filesystem::exists(lib_path))
       << lib_path << " dynamic library not found.";
 
   std::shared_ptr<boost::dll::shared_library> lib = nullptr;
@@ -118,8 +119,8 @@ std::string FunctionHelper::LoadAllRemoteFunctions(const std::string lib_path,
   return names_str;
 }
 
-void FindDynamicLibrary(std::filesystem::path path,
-                        std::list<std::filesystem::path> &dynamic_libraries) {
+void FindDynamicLibrary(boost::filesystem::path path,
+                        std::list<boost::filesystem::path> &dynamic_libraries) {
 #if defined(_WIN32)
   static const std::unordered_set<std::string> dynamic_library_extension = {".dll"};
 #elif __APPLE__
@@ -128,23 +129,22 @@ void FindDynamicLibrary(std::filesystem::path path,
 #else
   static const std::unordered_set<std::string> dynamic_library_extension = {".so"};
 #endif
-  auto extension = path.extension();
-  if (dynamic_library_extension.find(extension.string()) !=
-      dynamic_library_extension.end()) {
+  auto extension = boost::filesystem::extension(path);
+  if (dynamic_library_extension.find(extension) != dynamic_library_extension.end()) {
     dynamic_libraries.emplace_back(path);
   }
 }
 
 void FunctionHelper::LoadFunctionsFromPaths(const std::vector<std::string> &paths) {
-  std::list<std::filesystem::path> dynamic_libraries;
+  std::list<boost::filesystem::path> dynamic_libraries;
   // Lookup dynamic libraries from paths.
   for (auto path : paths) {
-    if (std::filesystem::is_directory(path)) {
+    if (boost::filesystem::is_directory(path)) {
       for (auto &entry :
-           boost::make_iterator_range(std::filesystem::directory_iterator(path), {})) {
+           boost::make_iterator_range(boost::filesystem::directory_iterator(path), {})) {
         FindDynamicLibrary(entry, dynamic_libraries);
       }
-    } else if (std::filesystem::exists(path)) {
+    } else if (boost::filesystem::exists(path)) {
       FindDynamicLibrary(path, dynamic_libraries);
     } else {
       RAY_LOG(FATAL) << path << " dynamic library not found.";
