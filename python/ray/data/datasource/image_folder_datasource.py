@@ -99,11 +99,17 @@ class ImageFolderDatasource(BinaryDatasource):
                 `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
 
         Raises:
-            ValueError: if ``size`` contains non-positive numbers.
+            ValueError: if ``size`` isn't a tuple containing two positive integers.
+            ValueError: if this datasource can't convert an image to ``mode``.
         """  # noqa: E501
+        if size is not None and len(size) != 2:
+            raise ValueError(
+                f"Expected `size` to contain 2 numbers, but got {len(size)} numbers "
+                "instead."
+            )
         if size is not None and (size[0] < 0 or size[1] < 0):
             raise ValueError(
-                "Expected `size` to contain positive integers, but got {size}."
+                f"Expected `size` to contain positive integers, but got {size} instead."
             )
 
         _check_import(self, module="PIL", package="Pillow")
