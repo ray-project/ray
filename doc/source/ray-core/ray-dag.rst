@@ -42,10 +42,10 @@ of the DAG, where all other non-reachable nodes from the root will be igored.
 
 .. tabbed:: Python
 
-  .. literalinclude:: ./doc_code/dag.py
-    :language: python
-    :start-after: __dag_tasks_begin__
-    :end-before: __dag_tasks_end__
+    .. literalinclude:: ./doc_code/dag.py
+      :language: python
+      :start-after: __dag_tasks_begin__
+      :end-before: __dag_tasks_end__
 
 
 Ray DAG with classes and class methods
@@ -65,7 +65,7 @@ together to form a DAG.
       :language: python
       :start-after: __dag_actors_begin__
       :end-before: __dag_actors_end__
-        
+          
 
 
 Ray DAG with custom InputNode
