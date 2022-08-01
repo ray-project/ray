@@ -201,6 +201,8 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
     ds = ds.map_batches(lambda x: x)
     pipe = ds.repeat(5)
     pipe = pipe.map(lambda x: x)
+    stats = canonicalize(pipe.stats())
+    assert "No stats available" in stats, stats
     for batch in pipe.iter_batches():
         pass
     stats = canonicalize(pipe.stats())
