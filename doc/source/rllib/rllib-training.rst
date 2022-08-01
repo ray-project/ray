@@ -755,19 +755,19 @@ All RLlib algorithms are compatible with the :ref:`Tune API <tune-60-seconds>`. 
 .. code-block:: python
 
     import ray
-    from ray import air, tune
+    from ray import tune
 
     ray.init()
-    tune.Tuner(
+    tune.run(
         "PPO",
-        run_config=air.RunConfig(stop={"episode_reward_mean": 200},),
-        param_space={
+        stop={"episode_reward_mean": 200},
+        config={
             "env": "CartPole-v0",
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         },
-    ).fit()
+    )
 
 Tune will schedule the trials to run in parallel on your Ray cluster:
 
@@ -783,21 +783,19 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
-``Tuner.fit()`` returns an ``ResultGrid`` object that allows further analysis of the training results and retrieving the checkpoint(s) of the trained agent.
+``tune.run()`` returns an ExperimentAnalysis object that allows further analysis of the training results and retrieving the checkpoint(s) of the trained agent.
 It also simplifies saving the trained agent. For example:
 
 .. code-block:: python
 
-    # ``Tuner.fit()`` allows setting a custom log directory (other than ``~/ray-results``)
+    # tune.run() allows setting a custom log directory (other than ``~/ray-results``)
     # and automatically saving the trained agent
-    results = ray.tune.Tuner(
+    analysis = ray.tune.run(
         ppo.PPO,
-        param_space=config,
-        run_config=air.RunConfig(
-            local_dir=log_dir,
-            stop=stop_criteria,
-            checkpoint_config=air.CheckpointConfig(checkpoint_at_end=True),
-        )).fit()
+        config=config,
+        local_dir=log_dir,
+        stop=stop_criteria,
+        checkpoint_at_end=True)
 
     # list of lists: one list per checkpoint; each checkpoint list contains
     # 1st the path, 2nd the metric value
@@ -805,7 +803,7 @@ It also simplifies saving the trained agent. For example:
         trial=analysis.get_best_trial("episode_reward_mean"),
         metric="episode_reward_mean")
 
-    # or simply get the last checkpoint (with highest "training_iteration")
+    # or simply get the last checkpoint (with highest "training_step")
     last_checkpoint = analysis.get_last_checkpoint()
     # if there are multiple trials, select a specific trial or automatically
     # choose the best one according to a given metric
@@ -1354,7 +1352,7 @@ which receives the last training results and returns a new task for the env to b
         "env": MyEnv,
         "env_task_fn": curriculum_fn,
     }
-    # Train using `Tuner.fit()` or `Algorithm.train()` and the above config stub.
+    # Train using `tune.run` or `Algorithm.train()` and the above config stub.
     # ...
 
 There are two more ways to use the RLlib's other APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__.
@@ -1388,15 +1386,16 @@ customizations to your training loop.
     num_workers = 2
 
     ray.init()
-    tune.Tuner(
-        tune.with_resources(train, resources=tune.PlacementGroupFactory(
-            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
-        ),)
-        param_space={
+    tune.run(
+        train,
+        config={
             "num_gpus": num_gpus,
             "num_workers": num_workers,
         },
-    ).fit()
+        resources_per_trial=tune.PlacementGroupFactory(
+            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_workers
+        ),
+    )
 
 You could also use RLlib's callbacks API to update the environment on new training results:
 
@@ -1419,13 +1418,13 @@ You could also use RLlib's callbacks API to update the environment on new traini
                     lambda env: env.set_task(task)))
 
     ray.init()
-    tune.Tuner(
+    tune.run(
         "PPO",
-        param_space={
+        config={
             "env": YourEnv,
             "callbacks": MyCallbacks,
         },
-    ).fit()
+    )
 
 Debugging
 ---------
