@@ -1,5 +1,7 @@
+import functools
 import logging
 from typing import Dict, Set, List, Tuple, Union, Optional, Any
+import os
 import time
 import uuid
 
@@ -16,7 +18,6 @@ from ray.workflow.common import (
     asyncio_run,
     validate_user_metadata,
 )
-from ray.workflow.exceptions import WorkflowRunningError, WorkflowNotFoundError
 from ray.workflow import serialization, workflow_access, workflow_context
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
 from ray.workflow.workflow_storage import WorkflowStorage
@@ -28,7 +29,7 @@ from ray._private.usage import usage_lib
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def init(
     *,
     max_running_workflows: Optional[int] = None,
@@ -89,7 +90,33 @@ def _ensure_workflow_initialized() -> None:
             init()
 
 
-@PublicAPI(stability="beta")
+def client_mode_wrap(func):
+    """Wraps a function called during client mode for execution as a remote task.
+
+    Adopted from "ray._private.client_mode_hook.client_mode_wrap". Some changes are made
+    (e.g., init the workflow instead of init Ray; the latter does not specify a storage
+    during Ray init and will result in workflow failures).
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        from ray._private.client_mode_hook import client_mode_should_convert
+
+        if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
+            _ensure_workflow_initialized()
+
+        # `is_client_mode_enabled_by_default` is used for testing with
+        # `RAY_CLIENT_MODE=1`. This flag means all tests run with client mode.
+        if client_mode_should_convert(auto_init=False):
+            f = ray.remote(num_cpus=0)(func)
+            ref = f.remote(*args, **kwargs)
+            return ray.get(ref)
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+@PublicAPI(stability="alpha")
 def run(
     dag: DAGNode,
     *args,
@@ -135,7 +162,7 @@ def run(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def run_async(
     dag: DAGNode,
     *args,
@@ -168,41 +195,40 @@ def run_async(
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
 
+    workflow_manager = workflow_access.get_management_actor()
+    if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
+        raise RuntimeError(f"Workflow '{workflow_id}' is already running or pending.")
+
     state = workflow_state_from_dag(dag, input_data, workflow_id)
     logger.info(f'Workflow job created. [id="{workflow_id}"].')
-
     context = workflow_context.WorkflowStepContext(workflow_id=workflow_id)
     with workflow_context.workflow_step_context(context):
         # checkpoint the workflow
-        ws = WorkflowStorage(workflow_id)
-        ws.save_workflow_user_metadata(metadata)
+        @client_mode_wrap
+        def _try_checkpoint_workflow(workflow_state) -> bool:
+            ws = WorkflowStorage(workflow_id)
+            ws.save_workflow_user_metadata(metadata)
+            try:
+                ws.get_entrypoint_step_id()
+                return True
+            except Exception:
+                # The workflow does not exist. We must checkpoint entry workflow.
+                ws.save_workflow_execution_state("", workflow_state)
+                return False
 
-        job_id = ray.get_runtime_context().job_id.hex()
-
-        try:
-            ws.get_entrypoint_step_id()
-            wf_exists = True
-        except Exception:
-            # The workflow does not exist. We must checkpoint entry workflow.
-            ws.save_workflow_execution_state("", state)
-            wf_exists = False
-        workflow_manager = workflow_access.get_management_actor()
-        if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
-            raise RuntimeError(
-                f"Workflow '{workflow_id}' is already running or pending."
-            )
+        wf_exists = _try_checkpoint_workflow(state)
         if wf_exists:
             return resume_async(workflow_id)
-        ignore_existing = ws.load_workflow_status() == WorkflowStatus.NONE
         ray.get(
             workflow_manager.submit_workflow.remote(
-                workflow_id, state, ignore_existing=ignore_existing
+                workflow_id, state, ignore_existing=False
             )
         )
+        job_id = ray.get_runtime_context().job_id.hex()
         return workflow_manager.execute_workflow.remote(job_id, context)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def resume(workflow_id: str) -> Any:
     """Resume a workflow.
 
@@ -227,7 +253,7 @@ def resume(workflow_id: str) -> Any:
     return ray.get(resume_async(workflow_id))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def resume_async(workflow_id: str) -> ray.ObjectRef:
     """Resume a workflow asynchronously.
 
@@ -267,7 +293,7 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
     return result
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
     """Get the output of a running workflow.
 
@@ -293,7 +319,8 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
     return ray.get(get_output_async(workflow_id, task_id=name))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
+@client_mode_wrap
 def get_output_async(
     workflow_id: str, *, task_id: Optional[str] = None
 ) -> ray.ObjectRef:
@@ -316,22 +343,11 @@ def get_output_async(
             "actor. The workflow could have already failed. You can use "
             "workflow.resume() to resume the workflow."
         ) from e
-
-    try:
-        # check storage first
-        wf_store = WorkflowStorage(workflow_id)
-        tid = wf_store.inspect_output(task_id)
-        if tid is not None:
-            return workflow_access.load_step_output_from_storage.remote(
-                workflow_id, task_id
-            )
-    except ValueError:
-        pass
-
     return workflow_manager.get_output.remote(workflow_id, task_id)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
+@client_mode_wrap
 def list_all(
     status_filter: Optional[
         Union[Union[WorkflowStatus, str], Set[Union[WorkflowStatus, str]]]
@@ -446,7 +462,8 @@ def list_all(
     return ret
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
+@client_mode_wrap
 def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     """Resume all resumable workflow jobs.
 
@@ -510,7 +527,7 @@ def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     return results
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def get_status(workflow_id: str) -> WorkflowStatus:
     """Get the status for a given workflow.
 
@@ -534,7 +551,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     return ray.get(workflow_manager.get_workflow_status.remote(workflow_id))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def wait_for_event(
     event_listener_type: EventListenerType, *args, **kwargs
 ) -> "DAGNode[Event]":
@@ -562,7 +579,7 @@ def wait_for_event(
     )
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def sleep(duration: float) -> "DAGNode[Event]":
     """
     A workfow that resolves after sleeping for a given duration.
@@ -575,7 +592,8 @@ def sleep(duration: float) -> "DAGNode[Event]":
     return wait_for_event(TimerListener, end_time.bind())
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
+@client_mode_wrap
 def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]:
     """Get the metadata of the workflow.
 
@@ -632,7 +650,7 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
         return store.load_step_metadata(name)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def cancel(workflow_id: str) -> None:
     """Cancel a workflow. Workflow checkpoints will still be saved in storage. To
        clean up saved checkpoints, see `workflow.delete()`.
@@ -660,17 +678,18 @@ def cancel(workflow_id: str) -> None:
     ray.get(workflow_manager.cancel_workflow.remote(workflow_id))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def delete(workflow_id: str) -> None:
     """Delete a workflow, its checkpoints, and other information it may have
        persisted to storage. To stop a running workflow, see
        `workflow.cancel()`.
 
-        NOTE: The caller should ensure that the workflow is not currently
-        running before deleting it.
-
     Args:
         workflow_id: The workflow to delete.
+
+    Raises:
+        WorkflowStillActiveError: The workflow is still active.
+        WorkflowNotFoundError: The workflow does not exist.
 
     Examples:
         >>> from ray import workflow
@@ -679,25 +698,13 @@ def delete(workflow_id: str) -> None:
         >>> output = workflow_step.run_async(workflow_id="some_job") # doctest: +SKIP
         >>> workflow.delete(workflow_id="some_job") # doctest: +SKIP
         >>> assert [] == workflow.list_all() # doctest: +SKIP
-
-    Returns:
-        None
-
     """
-
     _ensure_workflow_initialized()
-    try:
-        status = get_status(workflow_id)
-        if status == WorkflowStatus.RUNNING:
-            raise WorkflowRunningError("DELETE", workflow_id)
-    except ValueError:
-        raise WorkflowNotFoundError(workflow_id)
-
-    wf_storage = WorkflowStorage(workflow_id)
-    wf_storage.delete_workflow()
+    workflow_manager = workflow_access.get_management_actor()
+    ray.get(workflow_manager.delete_workflow.remote(workflow_id))
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 def continuation(dag_node: "DAGNode") -> Union["DAGNode", Any]:
     """Converts a DAG into a continuation.
 
@@ -718,7 +725,7 @@ def continuation(dag_node: "DAGNode") -> Union["DAGNode", Any]:
     return ray.get(dag_node.execute())
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class options:
     """This class serves both as a decorator and options for workflow.
 
@@ -743,7 +750,6 @@ class options:
             "name",
             "metadata",
             "catch_exceptions",
-            "allow_inplace",
             "checkpoint",
         }
         invalid_keywords = set(workflow_options.keys()) - valid_options

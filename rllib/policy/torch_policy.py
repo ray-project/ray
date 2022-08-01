@@ -143,6 +143,7 @@ class TorchPolicy(Policy):
                 divisibility requirement for sample batches given the Policy.
         """
         self.framework = config["framework"] = "torch"
+        self._loss_initialized = False
         super().__init__(observation_space, action_space, config)
 
         # Create multi-GPU model towers, if necessary.

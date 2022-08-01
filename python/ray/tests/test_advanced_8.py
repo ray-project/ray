@@ -165,8 +165,15 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.shutdown()
     del os.environ["RAY_ADDRESS"]
 
-    # Make sure we start a new cluster if RAY_ADDRESS is not set.
+    # Make sure we connect to the existing cluster with on args and RAY_ADDRESS
+    # is not set.
     ray.init()
+    assert "CPU" not in ray._private.state.cluster_resources()
+    ray.shutdown()
+
+    # Make sure we start a new cluster if "local" is explicitly passed.
+    # is not set.
+    ray.init(address="local")
     assert "CPU" in ray._private.state.cluster_resources()
     ray.shutdown()
 

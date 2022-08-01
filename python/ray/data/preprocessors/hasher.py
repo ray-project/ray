@@ -56,5 +56,6 @@ class FeatureHasher(Preprocessor):
 
     def __repr__(self):
         return (
-            f"FeatureHasher(columns={self.columns}, num_features={self.num_features})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"num_features={self.num_features!r})"
         )

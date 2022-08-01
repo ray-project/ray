@@ -30,7 +30,7 @@ from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
 from ray.tune.trainable import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
-from ray.tune.execution.ray_trial_executor import noop_logger_creator
+from ray.tune.execution.ray_trial_executor import _noop_logger_creator
 from ray.tune.resources import Resources
 from ray.tune.result import (
     TIMESTEPS_TOTAL,
@@ -960,7 +960,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
         remote_checkpoint_dir = "memory:///unit-test/bucket"
         _ensure_directory(remote_checkpoint_dir)
 
-        log_creator = partial(noop_logger_creator, logdir="~/tmp/ray_results/exp/trial")
+        log_creator = partial(
+            _noop_logger_creator, logdir="~/tmp/ray_results/exp/trial"
+        )
         test_trainable = trainable(
             logger_creator=log_creator, remote_checkpoint_dir=remote_checkpoint_dir
         )
@@ -981,7 +983,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertEqual(test_trainable.state["hi"], 1)
         else:
             # Cannot re-use function trainable, create new
-            tune.trainable.session.shutdown()
+            tune.trainable.session._shutdown()
             test_trainable = trainable(
                 logger_creator=log_creator,
                 remote_checkpoint_dir=remote_checkpoint_dir,

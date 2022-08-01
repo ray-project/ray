@@ -29,6 +29,7 @@
 # - Added support for logical operators to TensorArray(Element).
 # - Miscellaneous small bug fixes and optimizations.
 
+import itertools
 import numbers
 import os
 from distutils.version import LooseVersion
@@ -355,14 +356,18 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
             )
         # Upstream code uses exceptions as part of its normal control flow and
         # will pass this method bogus class names.
-        regex = r"^TensorDtype\(shape=(\(\d+,(?:\s\d+,?)*\)), dtype=(\w+)\)$"
+        regex = r"^TensorDtype\(shape=(\((?:\d+,?\s?)*\)), dtype=(\w+)\)$"
         m = re.search(regex, string)
+        err_msg = (
+            f"Cannot construct a '{cls.__name__}' from '{string}'; expected a string "
+            "like 'TensorDtype(shape=(1, 2, 3), dtype=int64)'."
+        )
         if m is None:
-            raise TypeError(
-                f"Cannot construct a '{cls.__name__}' from '{string}'; expected a "
-                "string like 'TensorDtype(shape=(1, 2, 3), dtype=int64)'."
-            )
-        shape, dtype = m.groups()
+            raise TypeError(err_msg)
+        groups = m.groups()
+        if len(groups) != 2:
+            raise TypeError(err_msg)
+        shape, dtype = groups
         shape = ast.literal_eval(shape)
         dtype = np.dtype(dtype)
         return cls(shape, dtype)
@@ -708,13 +713,15 @@ class TensorArray(
                     # ndarrays.
                     self._tensor = np.array([np.asarray(v) for v in values])
                     if self._tensor.dtype.type is np.object_:
-                        subndarray_types = [v.dtype for v in self._tensor]
+                        subndarray_types = [
+                            v.dtype for v in itertools.islice(self._tensor, 5)
+                        ]
                         raise TypeError(
                             "Tried to convert an ndarray of ndarray pointers (object "
                             "dtype) to a well-typed ndarray but this failed; convert "
                             "the ndarray to a well-typed ndarray before casting it as "
                             "a TensorArray, and note that ragged tensors are NOT "
-                            "supported by TensorArray. subndarray types: "
+                            "supported by TensorArray. First 5 subndarray types: "
                             f"{subndarray_types}"
                         )
                 else:
