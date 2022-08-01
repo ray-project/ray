@@ -94,7 +94,7 @@ export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
       <Tooltip title={gpu.name}>
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
       </Tooltip>
-      {gpu.utilizationGpu ? (
+      {gpu.utilizationGpu !== undefined ? (
         <UsageBar
           percent={gpu.utilizationGpu}
           text={`${gpu.utilizationGpu.toFixed(1)}%`}
