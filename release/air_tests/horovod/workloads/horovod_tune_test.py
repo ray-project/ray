@@ -40,9 +40,10 @@ def train_loop_per_worker(config):
 
     checkpoint = session.get_checkpoint()
     if checkpoint:
-        model_state = checkpoint["model_state"]
-        optimizer_state = checkpoint["optimizer_state"]
-        epoch = checkpoint["epoch"]
+        checkpoint_dict = checkpoint.to_dict()
+        model_state = checkpoint_dict["model_state"]
+        optimizer_state = checkpoint_dict["optimizer_state"]
+        epoch = checkpoint_dict["epoch"]
 
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
