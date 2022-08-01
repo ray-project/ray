@@ -1759,9 +1759,40 @@ class Dataset(Generic[T]):
         Returns:
             The truncated dataset.
         """
-
-        left, _ = self._split(limit, return_right_half=False)
-        return left
+        start_time = time.perf_counter()
+        # Truncate the block list to the minimum number of blocks that contains at least
+        # `limit` rows.
+        block_list = self._plan.execute().truncate_by_rows(limit)
+        blocks, metadata, _, _ = _split_at_index(block_list, limit)
+        split_duration = time.perf_counter() - start_time
+        meta_for_stats = [
+            BlockMetadata(
+                num_rows=m.num_rows,
+                size_bytes=m.size_bytes,
+                schema=m.schema,
+                input_files=m.input_files,
+                exec_stats=None,
+            )
+            for m in metadata
+        ]
+        dataset_stats = DatasetStats(
+            stages={"limit": meta_for_stats},
+            parent=self._plan.stats(),
+        )
+        dataset_stats.time_total_s = split_duration
+        return Dataset(
+            ExecutionPlan(
+                BlockList(
+                    blocks,
+                    metadata,
+                    owned_by_consumer=block_list._owned_by_consumer,
+                ),
+                dataset_stats,
+                run_by_consumer=block_list._owned_by_consumer,
+            ),
+            self._epoch,
+            self._lazy,
+        )
 
     def take(self, limit: int = 20) -> List[T]:
         """Take up to the given number of records from the dataset.
@@ -3458,7 +3489,6 @@ class Dataset(Generic[T]):
         left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
             block_list,
             index,
-            return_right_half,
         )
         split_duration = time.perf_counter() - start_time
         left_meta_for_stats = [
