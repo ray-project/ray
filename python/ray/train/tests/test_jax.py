@@ -86,13 +86,14 @@ def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
 
     results = trainer.fit()
     result = results.metrics
-    assert result[TRAINING_ITERATION] == num_workers
+    assert result[TRAINING_ITERATION] == num_epochs
 
 
-def tune_jax_mnist(num_workers, use_gpu, num_samples):
+def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
     trainer = JaxTrainer(
         jax_mnist_train_func,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu,
+                                     resources_per_worker={"GPU": num_gpus_per_worker}),
     )
     tuner = Tuner(
         trainer,
