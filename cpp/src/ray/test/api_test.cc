@@ -16,6 +16,7 @@
 #include <ray/api.h>
 
 #include <filesystem>
+#include <fstream>
 #include <future>
 #include <thread>
 

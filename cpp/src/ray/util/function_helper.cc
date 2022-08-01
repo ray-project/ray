@@ -129,7 +129,8 @@ void FindDynamicLibrary(std::filesystem::path path,
   static const std::unordered_set<std::string> dynamic_library_extension = {".so"};
 #endif
   auto extension = path.extension();
-  if (dynamic_library_extension.find(extension) != dynamic_library_extension.end()) {
+  if (dynamic_library_extension.find(extension.string()) !=
+      dynamic_library_extension.end()) {
     dynamic_libraries.emplace_back(path);
   }
 }
