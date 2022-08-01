@@ -652,7 +652,10 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
 
 
 def test_handle_early_detect_failure(shutdown_ray):
-    """Check that handle can be notified about replicas failure and take them out of the replicas set."""
+    """Check that handle can be notified about replicas failure.
+
+    It should detect replica raises ActorError and take them out of the replicas set.
+    """
     ray.init()
     serve.start(detached=True)
 
