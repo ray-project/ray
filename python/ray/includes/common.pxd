@@ -185,6 +185,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         const c_string &call_site() const
         const c_string &spilled_url() const
         const c_string &spilled_node_id() const
+        const c_string &global_owner_id() const
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.

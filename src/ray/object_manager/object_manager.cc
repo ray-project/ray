@@ -193,9 +193,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
-  RAY_LOG(DEBUG) << "hejialing test1: " << object_info.global_owner_id;
   object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
-  RAY_LOG(DEBUG) << "hejialing test2: " << object_info.global_owner_id;
 
   // Give the pull manager a chance to pin actively pulled objects.
   pull_manager_->PinNewObjectIfNeeded(object_id);
@@ -218,6 +216,7 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
 }
 
 void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Try delete objct: " << object_id << " from local_objects_";
   auto it = local_objects_.find(object_id);
   RAY_CHECK(it != local_objects_.end());
   auto object_info = it->second.object_info;
@@ -256,7 +255,9 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
     // no ordering guarantee between notifications.
     auto object_id = ObjectRefToId(ref);
     RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id, ref.owner_address(), ref.spilled_url(), NodeID::FromBinary(ref.spilled_node_id()), callback));
+        object_directory_pull_callback_id_, object_id,
+        ref.owner_address(), ref.spilled_url(), NodeID::FromBinary(ref.spilled_node_id()),
+        ActorID::FromBinary(ref.global_owner_id()), callback));
   }
 
   return request_id;
@@ -336,7 +337,7 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
 
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   RAY_LOG(DEBUG) << "Push on " << self_node_id_ << " to " << node_id << " of object "
-                 << object_id;
+                 << object_id << ", object in local: " << (local_objects_.count(object_id) != 0);
   if (local_objects_.count(object_id) != 0) {
     return PushLocalObject(object_id, node_id);
   }

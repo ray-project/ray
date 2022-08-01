@@ -219,7 +219,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CObjectID &object_id,
                                   const CAddress &owner_address,
                                   shared_ptr[CBuffer] *data,
-                                  c_bool created_by_worker)
+                                  c_bool created_by_worker,
+                                  const CActorID &c_global_owner_id)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address,
                              const CActorID &global_owner_id,

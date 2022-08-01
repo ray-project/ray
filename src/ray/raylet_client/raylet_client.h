@@ -53,6 +53,7 @@ class PinObjectsInterface {
   virtual void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
+      const std::vector<bool> &owner_is_global_owner,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) = 0;
 
   virtual ~PinObjectsInterface(){};
@@ -391,6 +392,7 @@ class RayletClient : public RayletClientInterface {
   /// object spilling (or it fails).
   void RequestObjectSpillage(
       const ObjectID &object_id,
+      const ActorID &global_owner_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
   std::shared_ptr<grpc::Channel> GetChannel() const override;
@@ -449,6 +451,7 @@ class RayletClient : public RayletClientInterface {
   void PinObjectIDs(
       const rpc::Address &caller_address,
       const std::vector<ObjectID> &object_ids,
+      const std::vector<bool> &owner_is_global_owner,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
 
   void ShutdownRaylet(

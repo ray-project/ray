@@ -390,7 +390,7 @@ message ObjectReference {
   string spilled_url = 4;
   // The node id of a node where the object is spilled.
   bytes spilled_node_id = 5;
-  string global_owner_id = 6;
+  bytes global_owner_id = 6;
 }
 
 message ObjectReferenceCount {

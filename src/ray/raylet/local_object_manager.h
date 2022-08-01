@@ -83,6 +83,7 @@ class LocalObjectManager {
   /// be kept in scope until the object can be released.
   /// \param owner_address The owner of the objects to be pinned.
   void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
+                                const std::vector<bool> &owner_is_global_owner,
                                 std::vector<std::unique_ptr<RayObject>> &&objects,
                                 const rpc::Address &owner_address);
 
@@ -97,6 +98,7 @@ class LocalObjectManager {
   /// \param callback A callback to call once the objects have been spilled, or
   /// there is an error.
   void SpillObjects(const std::vector<ObjectID> &objects_ids,
+                    const std::vector<ActorID> &global_owner_ids,
                     std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback);
 
   /// Restore a spilled object from external storage back into local memory.
@@ -177,6 +179,7 @@ class LocalObjectManager {
 
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
+                            const std::vector<ActorID> &global_owner_ids,
                             std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback);
 
   /// Release an object that has been freed by its owner.

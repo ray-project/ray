@@ -914,6 +914,7 @@ Status CoreWorker::PutInLocalPlasmaStore(const RayObject &object,
       local_raylet_client_->PinObjectIDs(
           rpc_address_,
           {object_id},
+          {false},
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
@@ -1045,14 +1046,15 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
                                   const ObjectID &object_id,
                                   const rpc::Address &owner_address,
                                   std::shared_ptr<Buffer> *data,
-                                  bool created_by_worker) {
+                                  bool created_by_worker,
+                                  const ActorID &global_owner_id) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
         "Creating an object with a pre-existing ObjectID is not supported in local "
         "mode");
   } else {
     return plasma_store_provider_->Create(
-        metadata, data_size, object_id, owner_address, data, created_by_worker);
+        metadata, data_size, object_id, owner_address, data, created_by_worker, global_owner_id);
   }
 }
 
@@ -1089,6 +1091,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     local_raylet_client_->PinObjectIDs(
         real_owner_address,
         {object_id},
+        {!global_owner_id.IsNil()},
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
@@ -1104,10 +1107,12 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
 
   if (spilled_url) {
+    RAY_CHECK(!global_owner_id.IsNil());
     std::promise<std::string> sync_promise;
     auto future = sync_promise.get_future();
     local_raylet_client_->RequestObjectSpillage(
       object_id,
+      global_owner_id,
       [object_id, &sync_promise](const Status &status,
                             const rpc::RequestObjectSpillageReply &reply) {
         if (!status.ok() || !reply.success()) {
@@ -1484,6 +1489,7 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
                                          *client_call_manager_));
   raylet_client->RequestObjectSpillage(
       object_id,
+      ActorID::Nil(),
       [object_id, callback](const Status &status,
                             const rpc::RequestObjectSpillageReply &reply) {
         if (!status.ok() || !reply.success()) {
@@ -2528,6 +2534,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     local_raylet_client_->PinObjectIDs(
         owner_address,
         {return_id},
+        {false},
         [return_id, pinned_return_object](const Status &status,
                                           const rpc::PinObjectIDsReply &reply) {
           if (!status.ok()) {

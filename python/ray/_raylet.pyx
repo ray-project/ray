@@ -204,7 +204,8 @@ cdef VectorToObjectRefs(const c_vector[CObjectReference] &object_refs,
             object_refs[i].call_site(),
             object_refs[i].spilled_url(),
             object_refs[i].spilled_node_id(),
-            skip_adding_local_ref=skip_adding_local_ref))
+            skip_adding_local_ref=skip_adding_local_ref,
+            global_owner_id=object_refs[i].global_owner_id()))
     return result
 
 
@@ -1266,7 +1267,7 @@ cdef class CoreWorker:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                             metadata, data_size, c_object_id[0],
                             dereference(c_owner_address), data,
-                            created_by_worker))
+                            created_by_worker, CActorID.Nil()))
 
         # If data is nullptr, that means the ObjectRef already existed,
         # which we ignore.
@@ -1301,7 +1302,7 @@ cdef class CoreWorker:
 
     def put_file_like_object(
             self, metadata, data_size, file_like, ObjectRef object_ref,
-            owner_address):
+            owner_address, global_owner_id):
         """Directly create a new Plasma Store object from a file like
         object. This avoids extra memory copy.
 
@@ -1320,6 +1321,7 @@ cdef class CoreWorker:
             int64_t put_threshold
             unique_ptr[CAddress] c_owner_address = move(self._convert_python_address(
                     object_ref.owner_address()))
+            CActorID c_global_owner_id = CActorID.FromBinary(global_owner_id)
 
         # TODO(suquark): This method does not support put objects to
         # in memory store currently.
@@ -1328,7 +1330,7 @@ cdef class CoreWorker:
         status = CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                     metadata_buf, data_size, object_ref.native(),
                     dereference(c_owner_address), &data_buf,
-                    False)
+                    False, c_global_owner_id)
         if not status.ok():
             logger.debug("Error putting restored object into plasma.")
             return
@@ -1349,7 +1351,7 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().SealExisting(
                             c_object_id, pin_object=False,
                             owner_address=c_owner_address,
-                            global_owner_id=CActorID.Nil(),
+                            global_owner_id=c_global_owner_id,
                             spilled_url=NULL))
 
     def put_serialized_object_and_increment_local_ref(self, serialized_object,

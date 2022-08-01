@@ -1,4 +1,3 @@
-import resource
 import pytest
 import ray
 import time
@@ -34,7 +33,7 @@ def test_owner_failed(ray_start_cluster):
             ray.get(owner.set_object_refs.remote(refs))
             return refs
 
-    @ray.remote(resources={"node2": 1}, num_cpus=0)
+    @ray.remote(resources={"node2": 1}, num_cpus=0, max_restarts=-1)
     class Owner:
         def __init__(self):
             self.refs = None
@@ -54,8 +53,7 @@ def test_owner_failed(ray_start_cluster):
             self.refs = refs
 
         def get_objects(self):
-            for ref in self.refs:
-                ray.get(ref)
+            ray.get(self.refs)
             return True
 
     owner = Owner.remote()
@@ -68,9 +66,9 @@ def test_owner_failed(ray_start_cluster):
     refs = ray.get(creator.gen_object_refs.remote(owner))
     ray.get(borrower.set_object_refs.remote(refs))
 
-    ray.kill(owner)
+    ray.kill(owner, no_restart=True)
 
-    assert ray.get(borrower.get_objects.remote(), timeout=60)
+    assert ray.get(borrower.get_objects.remote(), timeout=120)
 
 
 @pytest.mark.parametrize(
@@ -264,7 +262,7 @@ def test_object_location(ray_start_cluster, actor_resources):
 
         def create_obj(self, owner):
             self.refs = [
-                ray.put(np.zeros((50 * 1024 * 1024, 1)).astype(np.uint8), _owner=owner)
+                ray.put(np.zeros((30 * 1024 * 1024, 1)).astype(np.uint8), _owner=owner)
             ]
             print("global owner: ", ray.ActorID(self.refs[0].global_owner_id()))
             return self.refs
@@ -308,10 +306,14 @@ def test_object_location(ray_start_cluster, actor_resources):
         refs[0],
         "global owner:",
         ray.ActorID(refs[0].global_owner_id()),
+        "checkout url:",
+        refs[0].spilled_url().decode("utf-8"),
     )
     ray.get(worker_2.send_refs.remote(refs))
     print("try get obj before kill:", ray.get(worker_2.try_get.remote()))
     print("old owner pid:", ray.get(owner.getpid.remote()))
+    ray.get(worker_2.evict_all_object.remote())
+    print("try get obj after kill:", ray.get(worker_2.try_get.remote()))
     try:
         ray.get(owner.exit.remote())
     except ray.exceptions.RayActorError:
@@ -319,6 +321,8 @@ def test_object_location(ray_start_cluster, actor_resources):
     else:
         raise RuntimeError
     print("wait 5 seconds for owner died.")
+    checkout_url = refs[0].spilled_url().decode("utf-8").split("?")[0]
+    os.remove(checkout_url)
     time.sleep(5)
     print("new owner pid:", ray.get(owner.getpid.remote()))
     print("try get obj after kill:", ray.get(worker_2.try_get.remote()))
@@ -326,6 +330,5 @@ def test_object_location(ray_start_cluster, actor_resources):
 
 if __name__ == "__main__":
     import pytest
-    import sys
 
     sys.exit(pytest.main(["-v", __file__]))

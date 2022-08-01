@@ -353,9 +353,11 @@ void raylet::RayletClient::RequestWorkerLease(
 /// Spill objects to external storage.
 void raylet::RayletClient::RequestObjectSpillage(
     const ObjectID &object_id,
+    const ActorID &global_owner_id,
     const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback) {
   rpc::RequestObjectSpillageRequest request;
   request.set_object_id(object_id.Binary());
+  request.set_global_owner_id(global_owner_id.Binary());
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
@@ -480,11 +482,14 @@ void raylet::RayletClient::ReleaseUnusedBundles(
 void raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address,
     const std::vector<ObjectID> &object_ids,
+    const std::vector<bool> &owner_is_global_owner,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
+  RAY_CHECK(object_ids.size() == owner_is_global_owner.size());
   rpc::PinObjectIDsRequest request;
   request.mutable_owner_address()->CopyFrom(caller_address);
-  for (const ObjectID &object_id : object_ids) {
-    request.add_object_ids(object_id.Binary());
+  for (size_t index = 0; index < object_ids.size(); index++) {
+    request.add_object_ids(object_ids[index].Binary());
+    request.add_owner_is_global_owner(owner_is_global_owner[index]);
   }
   pins_in_flight_++;
   auto rpc_callback = [this, callback = std::move(callback)](

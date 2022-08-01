@@ -92,6 +92,7 @@ class IObjectDirectory {
                                                const rpc::Address &owner_address,
                                                const std::string &spilled_url,
                                                const NodeID &spilled_node_id,
+                                               const ActorID &global_owner_id,
                                                const OnLocationsFound &callback) = 0;
 
   /// Unsubscribe to object location notifications.

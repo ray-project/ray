@@ -84,7 +84,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             the external storage is invalid.
     """
 
-    HEADER_LENGTH = 24
+    HEADER_LENGTH = 32
 
     def _get_objects_from_store(self, object_refs):
         worker = ray.worker.global_worker
@@ -96,11 +96,11 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         return ray_object_pairs
 
     def _put_object_to_store(
-        self, metadata, data_size, file_like, object_ref, owner_address
+        self, metadata, data_size, file_like, object_ref, owner_address, global_owner_id
     ):
         worker = ray.worker.global_worker
         worker.core_worker.put_file_like_object(
-            metadata, data_size, file_like, object_ref, owner_address
+            metadata, data_size, file_like, object_ref, owner_address, global_owner_id
         )
 
     def _write_multiple_objects(
@@ -136,18 +136,26 @@ class ExternalStorage(metaclass=abc.ABCMeta):
                     error += " This is probably since its owner has failed."
                 raise ValueError(error)
             buf_len = len(buf)
+            global_owner_id_len = len(ref.global_owner_id())
             payload = (
                 address_len.to_bytes(8, byteorder="little")
                 + metadata_len.to_bytes(8, byteorder="little")
                 + buf_len.to_bytes(8, byteorder="little")
+                + global_owner_id_len.to_bytes(8, byteorder="little")
                 + owner_address
                 + metadata
+                + ref.global_owner_id()
                 + memoryview(buf)
             )
             # 24 bytes to store owner address, metadata, and buffer lengths.
             payload_len = len(payload)
             assert (
-                self.HEADER_LENGTH + address_len + metadata_len + buf_len == payload_len
+                self.HEADER_LENGTH
+                + address_len
+                + metadata_len
+                + buf_len
+                + global_owner_id_len
+                == payload_len
             )
             written_bytes = f.write(payload)
             assert written_bytes == payload_len
@@ -160,7 +168,14 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         f.flush()
         return keys
 
-    def _size_check(self, address_len, metadata_len, buffer_len, obtained_data_size):
+    def _size_check(
+        self,
+        address_len,
+        metadata_len,
+        buffer_len,
+        global_owner_id_len,
+        obtained_data_size,
+    ):
         """Check whether or not the obtained_data_size is as expected.
 
         Args:
@@ -175,7 +190,11 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             24 (first 8 bytes to store length).
         """
         data_size_in_bytes = (
-            address_len + metadata_len + buffer_len + self.HEADER_LENGTH
+            address_len
+            + metadata_len
+            + buffer_len
+            + global_owner_id_len
+            + self.HEADER_LENGTH
         )
         if data_size_in_bytes != obtained_data_size:
             raise ValueError(
@@ -324,13 +343,21 @@ class FileSystemStorage(ExternalStorage):
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
-                self._size_check(address_len, metadata_len, buf_len, parsed_result.size)
+                global_owner_id_len = int.from_bytes(f.read(8), byteorder="little")
+                self._size_check(
+                    address_len,
+                    metadata_len,
+                    buf_len,
+                    global_owner_id_len,
+                    parsed_result.size,
+                )
                 total += buf_len
                 owner_address = f.read(address_len)
                 metadata = f.read(metadata_len)
+                global_owner_id = f.read(global_owner_id_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(
-                    metadata, buf_len, f, object_ref, owner_address
+                    metadata, buf_len, f, object_ref, owner_address, global_owner_id
                 )
         return total
 
@@ -415,13 +442,21 @@ class ExternalStorageRayStorageImpl(ExternalStorage):
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
-                self._size_check(address_len, metadata_len, buf_len, parsed_result.size)
+                global_owner_id_len = int.from_bytes(f.read(8), byteorder="little")
+                self._size_check(
+                    address_len,
+                    metadata_len,
+                    buf_len,
+                    global_owner_id_len,
+                    parsed_result.size,
+                )
                 total += buf_len
                 owner_address = f.read(address_len)
                 metadata = f.read(metadata_len)
+                global_owner_id = f.read(global_owner_id_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(
-                    metadata, buf_len, f, object_ref, owner_address
+                    metadata, buf_len, f, object_ref, owner_address, global_owner_id
                 )
         return total
 
@@ -565,13 +600,21 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 address_len = int.from_bytes(f.read(8), byteorder="little")
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
-                self._size_check(address_len, metadata_len, buf_len, parsed_result.size)
+                global_owner_id_len = int.from_bytes(f.read(8), byteorder="little")
+                self._size_check(
+                    address_len,
+                    metadata_len,
+                    buf_len,
+                    global_owner_id_len,
+                    parsed_result.size,
+                )
                 owner_address = f.read(address_len)
                 total += buf_len
                 metadata = f.read(metadata_len)
+                global_owner_id = f.read(global_owner_id_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(
-                    metadata, buf_len, f, object_ref, owner_address
+                    metadata, buf_len, f, object_ref, owner_address, global_owner_id
                 )
         return total
 
@@ -636,7 +679,9 @@ def setup_external_storage(config, session_name):
         elif storage_type == "mock_distributed_fs":
             # This storage is used to unit test distributed external storages.
             # TODO(sang): Delete it after introducing the mock S3 test.
-            _external_storage = FileSystemStorage(**config["params"], enable_delete=False)
+            _external_storage = FileSystemStorage(
+                **config["params"], enable_delete=False
+            )
         elif storage_type == "unstable_fs":
             # This storage is used to unit test unstable file system for fault
             # tolerance.

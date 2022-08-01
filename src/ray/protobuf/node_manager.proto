@@ -167,6 +167,7 @@ message PinObjectIDsRequest {
   Address owner_address = 1;
   // ObjectIDs to pin.
   repeated bytes object_ids = 2;
+  repeated bool owner_is_global_owner = 3;
 }
 
 message PinObjectIDsReply {}
@@ -247,6 +248,7 @@ message FormatGlobalMemoryInfoReply {
 message RequestObjectSpillageRequest {
   // ObjectID to spill.
   bytes object_id = 1;
+  bytes global_owner_id = 2;
 }
 
 message RequestObjectSpillageReply {

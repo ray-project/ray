@@ -1206,6 +1206,7 @@ bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
     it = object_id_refs_.emplace(object_id, Reference()).first;
   }
   AddObjectLocationInternal(it, node_id);
+
   return true;
 }
 

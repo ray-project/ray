@@ -24,8 +24,10 @@ namespace raylet {
 
 void LocalObjectManager::PinObjectsAndWaitForFree(
     const std::vector<ObjectID> &object_ids,
+    const std::vector<bool> &owner_is_global_owner,
     std::vector<std::unique_ptr<RayObject>> &&objects,
     const rpc::Address &owner_address) {
+  RAY_CHECK(object_ids.size() == owner_is_global_owner.size());
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];
@@ -56,6 +58,9 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       }
       continue;
     }
+
+    // if owner is global_owner, the current object not need to wait free.
+    if (owner_is_global_owner[i]) continue;
 
     // Create a object eviction subscription message.
     auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
@@ -206,8 +211,13 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   RAY_LOG(DEBUG) << "Spilling objects of total size " << bytes_to_spill << " num objects "
                  << objects_to_spill.size();
   auto start_time = absl::GetCurrentTimeNanos();
+  std::vector<ActorID> global_owner_ids;
+  for (size_t index = 0; index < objects_to_spill.size(); index++) {
+    global_owner_ids.push_back(ActorID::Nil());
+  }
   SpillObjectsInternal(
       objects_to_spill,
+      global_owner_ids,
       [this, bytes_to_spill, objects_to_spill, start_time](const Status &status, const std::unordered_map<ObjectID, std::string> &) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Failed to spill objects: " << status.ToString();
@@ -252,16 +262,22 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
 }
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
+                                      const std::vector<ActorID> &global_owner_ids,
                                       std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback) {
-  SpillObjectsInternal(object_ids, callback);
+  SpillObjectsInternal(object_ids, global_owner_ids, callback);
 }
 
 void LocalObjectManager::SpillObjectsInternal(
     const std::vector<ObjectID> &object_ids,
+    const std::vector<ActorID> &global_owner_ids,
     std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback) {
   std::vector<ObjectID> objects_to_spill;
+  std::vector<ActorID> spill_object_global_owner_ids;
   // Filter for the objects that can be spilled.
-  for (const auto &id : object_ids) {
+  RAY_CHECK(object_ids.size() == global_owner_ids.size());
+  for (size_t index = 0; index < object_ids.size(); index++) {
+    const ObjectID &id = object_ids[index];
+    const ActorID &global_owner_id = global_owner_ids[index];
     // We should not spill an object that we are not the primary copy for, or
     // objects that are already being spilled.
     if (pinned_objects_.count(id) == 0 && objects_pending_spill_.count(id) == 0) {
@@ -279,6 +295,7 @@ void LocalObjectManager::SpillObjectsInternal(
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;
       objects_to_spill.push_back(id);
+      spill_object_global_owner_ids.push_back(global_owner_id);
 
       // Move a pinned object to the pending spill object.
       auto object_size = it->second->GetSize();
@@ -297,10 +314,13 @@ void LocalObjectManager::SpillObjectsInternal(
     return;
   }
   io_worker_pool_.PopSpillWorker(
-      [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
+      [this, objects_to_spill, spill_object_global_owner_ids, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
         std::vector<ObjectID> requested_objects_to_spill;
-        for (const auto &object_id : objects_to_spill) {
+        RAY_CHECK(objects_to_spill.size() == spill_object_global_owner_ids.size());
+        for (size_t index = 0; index < objects_to_spill.size(); index++) {
+          const ObjectID &object_id = objects_to_spill[index];
+          const ActorID &global_owner_id = spill_object_global_owner_ids[index];
           RAY_CHECK(objects_pending_spill_.count(object_id));
           auto freed_it = local_objects_.find(object_id);
           // If the object hasn't already been freed, spill it.
@@ -309,6 +329,7 @@ void LocalObjectManager::SpillObjectsInternal(
           } else {
             auto ref = request.add_object_refs_to_spill();
             ref->set_object_id(object_id.Binary());
+            ref->set_global_owner_id(global_owner_id.Binary());
             ref->mutable_owner_address()->CopyFrom(freed_it->second.first);
             RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
             requested_objects_to_spill.push_back(object_id);

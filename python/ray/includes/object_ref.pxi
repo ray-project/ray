@@ -45,7 +45,7 @@ cdef class ObjectRef(BaseID):
             # TOBE_SOLVED: @qingwu: Node.nil() will failed.
             spilled_url="", spilled_node_id="",
             skip_adding_local_ref=False,
-            global_owner_id=b""):
+            global_owner_id=""):
         self._set_id(id)
         self.owner_addr = owner_addr
         self.in_core_worker = False

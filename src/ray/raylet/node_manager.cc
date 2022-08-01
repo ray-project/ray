@@ -268,8 +268,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           },
           /*get_owner_address=*/
-          [this](const ActorID &actor_id) -> absl::optional<rpc::Address> {
-            return global_owner_address_[actor_id];
+          [this](const ActorID &actor_id,
+                 const rpc::Address &init_address,
+                 absl::optional<rpc::Address> *output) -> bool {
+            if (actor_id.IsNil()) return false;
+            SubscribeGlobalOwnerAddress(actor_id, init_address);
+            auto it = global_owner_address_.find(actor_id);
+            RAY_CHECK(it != global_owner_address_.end());
+            *output = it->second;
+            return true;
           })),
       object_manager_(
           io_service,
@@ -703,9 +710,11 @@ void NodeManager::HandleRequestObjectSpillage(
     rpc::RequestObjectSpillageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto &object_id = ObjectID::FromBinary(request.object_id());
+  const auto &global_owner_id = ActorID::FromBinary(request.global_owner_id());
   RAY_LOG(DEBUG) << "Received RequestObjectSpillage for object " << object_id;
   local_object_manager_.SpillObjects(
-      {object_id}, [object_id, reply, send_reply_callback](const ray::Status &status, const std::unordered_map<ObjectID, std::string> &object_to_spilled_url) {
+      {object_id}, {global_owner_id},
+      [object_id, reply, send_reply_callback](const ray::Status &status, const std::unordered_map<ObjectID, std::string> &object_to_spilled_url) {
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Object " << object_id
                          << " has been spilled, replying to owner";
@@ -2232,6 +2241,8 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
     return;
   }
   objects_need_to_report_[global_owner_id][object_id] = object_info;
+  RAY_LOG(DEBUG) << "Add global_owner_id(" << global_owner_id << ") to objects_need_to_report_"
+                 << ", object_id: " << object_id << ", try: global owner: " << objects_need_to_report_[global_owner_id][object_id].global_owner_id;
 
   const auto owner_address = GetOwnerAddressFromObjectInfo(object_info);
   SubscribeGlobalOwnerAddress(global_owner_id, owner_address);
@@ -2422,6 +2433,11 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
+  std::vector<bool> owner_is_global_owner;
+  for (const auto &flag : request.owner_is_global_owner()) {
+    owner_is_global_owner.push_back(flag);
+  }
+  RAY_CHECK(owner_is_global_owner.size() == object_ids.size());
   std::vector<std::unique_ptr<RayObject>> results;
   if (!GetObjectsFromPlasma(object_ids, &results)) {
     RAY_LOG(WARNING)
@@ -2433,7 +2449,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   }
   // Wait for the object to be freed by the owner, which keeps the ref count.
   local_object_manager_.PinObjectsAndWaitForFree(
-      object_ids, std::move(results), owner_address);
+      object_ids, owner_is_global_owner, std::move(results), owner_address);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2837,11 +2853,11 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
 }
 
 void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id, const rpc::Address &init_address) {
-  {
-    auto it = global_owner_address_.find(actor_id);
-    if (it != global_owner_address_.end()) return;
-    global_owner_address_.emplace(actor_id, absl::optional<rpc::Address>(init_address));
-  }
+
+  auto it = global_owner_address_.find(actor_id);
+  if (it != global_owner_address_.end()) return;
+  global_owner_address_[actor_id] = absl::optional<rpc::Address>(init_address);
+
   RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
       actor_id,
       [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
@@ -2850,16 +2866,25 @@ void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id, const rpc
                        << actor_data.address().port()
                        << ", actor_name: " << actor_data.address().actor_name();
         if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-          global_owner_address_.emplace(actor_id, absl::optional<rpc::Address>(actor_data.address()));
+          global_owner_address_[actor_id] = absl::optional<rpc::Address>(actor_data.address());
 
           auto it = objects_need_to_report_.find(actor_id);
           if (it == objects_need_to_report_.end()) return;
           for (auto [object_id, object_info] : it->second) {
+            RAY_CHECK(object_info.global_owner_id == actor_id)
+                     << "object_info.global_owner_id = " << object_info.global_owner_id
+                     << ", actor_id: " << actor_id;
+
+            object_info.owner_raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
+            object_info.owner_ip_address = actor_data.address().ip_address();
+            object_info.owner_port = actor_data.address().port();
+            object_info.owner_worker_id = WorkerID::FromBinary(actor_data.address().worker_id());
+
             RAY_LOG(DEBUG) << "try to report object add " << object_id;
             object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
           }
         } else {
-          global_owner_address_.emplace(actor_id, absl::optional<rpc::Address>());
+          global_owner_address_[actor_id] = absl::optional<rpc::Address>();
         }
       },
       [](Status status) {
