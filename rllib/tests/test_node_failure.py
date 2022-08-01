@@ -1,13 +1,12 @@
 # This workload tests RLlib's ability to recover from failing workers nodes
+import threading
 import time
 import unittest
-import threading
-from ray.exceptions import RayActorError
 
 import ray
-from ray.cluster_utils import Cluster
 from ray._private.test_utils import get_other_nodes
-
+from ray.cluster_utils import Cluster
+from ray.exceptions import RayActorError
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 
 num_redis_shards = 5
@@ -15,14 +14,13 @@ redis_max_memory = 10 ** 8
 object_store_memory = 10 ** 8
 num_nodes = 3
 
-message = (
-    "Make sure there is enough memory on this machine to run this "
-    "workload. We divide the system memory by 2 to provide a buffer."
-)
 assert (
     num_nodes * object_store_memory + num_redis_shards * redis_max_memory
     < ray._private.utils.get_system_memory() / 2
-), message
+), (
+    "Make sure there is enough memory on this machine to run this "
+    "workload. We divide the system memory by 2 to provide a buffer."
+)
 
 
 class NodeFailureTests(unittest.TestCase):
@@ -73,11 +71,8 @@ class NodeFailureTests(unittest.TestCase):
         self.assertEqual(len(ppo.workers._remote_workers), 6)
 
         # Fail with a node down, resource requirements not satisfied anymore
-        try:
+        with self.assertRaise(RayActorError):
             ppo.step()
-        except RayActorError:
-            return
-        raise ValueError("Expected algorithm to not step here")
 
     def test_continue_training_on_failure(self):
         # We tolerate failing workers and don't pause training
@@ -150,8 +145,7 @@ class NodeFailureTests(unittest.TestCase):
             dashboard_host="0.0.0.0",
         )
 
-        # One step with a node down, resource requirements not satisfied anymore
-        # step() should hang trying to restore the missing workers.
+        # step() should restore the missing workers on the added node.
         ppo.step()
 
         # Workers should be back up, everything back to normal.
@@ -209,10 +203,9 @@ class NodeFailureTests(unittest.TestCase):
 
         td = time.time() - time_before_step
 
-        assert 30 < td < 60, (
-            "Node came back up after 30 seconds, but algorithm ended up finishing"
-            "an iteration in {} seconds.".format(td)
-        )  # TODO: Find out what values make sense here
+        # TODO: Find out what values make sense here
+        self.assertGreaterEqual(td, 30, msg="Stepped before node was added.")
+        self.assertLess(td, 60, msg="Took too long to step after node was added.")
 
         # Workers should be back up
         self.assertEqual(len(ppo.workers._worker_health_check()), 0)

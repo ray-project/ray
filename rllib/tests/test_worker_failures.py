@@ -1,8 +1,9 @@
-from collections import defaultdict
-import gym
-import numpy as np
 import time
 import unittest
+from collections import defaultdict
+
+import gym
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.pg import PG, PGConfig
