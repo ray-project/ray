@@ -14,12 +14,12 @@
 
 #include "ray/common/memory_monitor.h"
 
+#include <filesystem>
 #include <fstream>  // std::ifstream
 #include <tuple>
 
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
-#include <filesystem>
 
 namespace ray {
 
@@ -79,7 +79,7 @@ bool MemoryMonitor::IsUsageAboveThreshold() {
 std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
 #ifndef __linux__
-  RAY_CHECK(false) << "Memory monitor currently supports only linux";  
+  RAY_CHECK(false) << "Memory monitor currently supports only linux";
 #endif
   auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
   /// cgroup memory limit can be higher than system memory limit when it is
