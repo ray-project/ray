@@ -15,6 +15,7 @@ prelude_commands: &prelude_commands |-
   ./ci/ci.sh init && source ~/.zshrc
   ./ci/ci.sh build
   ./ci/env/install-dependencies.sh
+  ./ci/env/env_info.sh
 
 epilogue_commands: &epilogue_commands |-
   # Cleanup runtime environment to save storage
@@ -63,7 +64,7 @@ steps:
 
 - label: ":mac: :apple: Ray Core Unit Tests and Dashboard"
   <<: *common
-  conditions: ["RAY_CI_SERVE_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
+  conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
     - *prelude_commands
     - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh

@@ -204,6 +204,11 @@ def test_deploy_change_route_prefix(serve_instance):
 
 @pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
 def test_deploy_nullify_route_prefix(serve_instance, prefixes):
+    # With multi dags support, dag driver will receive all route
+    # prefix when route_prefix is "None", since "None" will be converted
+    # to "/" internally.
+    # Note: the expose http endpoint will still be removed for internal
+    # dag node by setting "None" to route_prefix
     @serve.deployment
     def f(*args):
         return "got me"
@@ -211,10 +216,8 @@ def test_deploy_nullify_route_prefix(serve_instance, prefixes):
     for prefix in prefixes:
         dag = DAGDriver.options(route_prefix=prefix).bind(f.bind())
         handle = serve.run(dag)
-        if prefix is None:
-            assert requests.get("http://localhost:8000/f").status_code == 404
-        else:
-            assert requests.get("http://localhost:8000/f").text == '"got me"'
+        assert requests.get("http://localhost:8000/f").status_code == 200
+        assert requests.get("http://localhost:8000/f").text == '"got me"'
         assert ray.get(handle.predict.remote()) == "got me"
 
 
