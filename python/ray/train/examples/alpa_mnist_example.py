@@ -130,7 +130,7 @@ def train_func(config: Dict):
 
 
 
-def train_mnist():
+def train_mnist(num_workers, use_gpu, num_gpu_per_worker):
     config = {
         "learning_rate": 0.1,
         "momentum": 0.9,
@@ -143,12 +143,12 @@ def train_mnist():
     trainer = AlpaTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=True, resources_per_worker={'CPU': 1, 'GPU': 1}),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'CPU': 1, 'GPU': num_gpu_per_worker}),
     )
 
     results = trainer.fit()
     print()
-    print(f"Loss results: {results}")
+    print(f"Results: {results.metrics}")
 
 
 def tune_mnist(num_samples):
@@ -186,12 +186,33 @@ if __name__ == "__main__":
     parser.add_argument(
         "--address", required=False, type=str, help="the address to use for Ray"
     )
-
+    parser.add_argument(
+        "--num-workers",
+        "-n",
+        type=int,
+        default=4,
+        help="Sets number of workers for training.",
+    )
+    parser.add_argument(
+        "--use-gpu", action="store_true", default=True, help="Enables GPU training"
+    )
+    parser.add_argument(
+        "--num-gpu-per-worker",
+        "-ngpu",
+        type=int,
+        default=1,
+        help="Sets the number of gpus on each node for training.",
+    )
     args, _ = parser.parse_known_args()
 
     import ray
 
-    ray.init('auto')
-    # train_mnist()
-
-    tune_mnist(num_samples=8)
+    ray.init(address=args.address)
+    train_mnist(
+        num_workers=args.num_workers,
+        use_gpu=args.use_gpu,
+        num_gpu_per_worker=args.num_gpu_per_worker,
+    )
+    ray.shutdown()
+    
+    # tune_mnist(num_samples=8)
