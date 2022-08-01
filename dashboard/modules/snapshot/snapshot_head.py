@@ -226,7 +226,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
                     "_ray_internal_"
                 )
-                latest_job_end_time = max(latest_job_end_time, job_table_entry.end_time)
+                latest_job_end_time = (
+                    max(latest_job_end_time, job_table_entry.end_time)
+                    if job_table_entry.end_time
+                    else latest_job_end_time
+                )
                 if not is_dead and not in_internal_namespace:
                     num_active_drivers += 1
 
@@ -238,7 +242,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 latest_job_end_time = latest_job_end_time / 1000
                 assert current_timestamp >= latest_job_end_time, (
                     f"Most recent job end time {latest_job_end_time} must be "
-                    f"before the current timestamp {current_timestamp}"
+                    f"before or equal to the current timestamp {current_timestamp}"
                 )
 
             is_active = (

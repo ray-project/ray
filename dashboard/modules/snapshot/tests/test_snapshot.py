@@ -138,7 +138,7 @@ ray.init(address="auto", namespace="{namespace}")
         driver_template.format(namespace="_ray_internal_dashboard")
     )
 
-    # Wait 1 sec for drivers to start (but not finish)
+    # Wait 1.5 sec for drivers to start (but not finish)
     time.sleep(1.5)
 
     # Verify drivers are considered active after running script
