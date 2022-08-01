@@ -99,8 +99,8 @@ class ImageFolderDatasource(BinaryDatasource):
                 `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
 
         Raises:
-            ValueError: if ``size`` isn't a tuple containing two positive integers.
-            ValueError: if this datasource can't convert an image to ``mode``.
+            ValueError: if ``size`` contains non-positive numbers.
+            ValueError: if ``mode`` is unsupported.
         """  # noqa: E501
         if size is not None and len(size) != 2:
             raise ValueError(

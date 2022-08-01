@@ -2902,21 +2902,27 @@ def test_image_folder_datasource_retains_shape_without_cast(
     assert shapes == [(16, 16, 3), (32, 32, 3), (64, 64, 3)]
 
 
+@pytest.mark.parametrize(
+    "mode, expected_shape", [("L", (32, 32)), ("RGB", (32, 32, 3))]
+)
 def test_image_folder_datasource_mode_parameter(
-    ray_start_regular_shared, enable_automatic_tensor_extension_cast
+    mode,
+    expected_shape,
+    ray_start_regular_shared,
+    enable_automatic_tensor_extension_cast,
 ):
     """Test `ImageFolderDatasource` works with images from different colorspaces.
 
     The folder "different-modes" contains two cat images and one dog image. Their modes
-    are "1", "L", and "RGB". All images are 32x32.
+    are "CMYK", "L", and "RGB". All images are 32x32.
     """
     root = os.path.join(
         os.path.dirname(__file__), "image-folders", "different-extensions"
     )
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, mode="L")
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, mode=mode)
 
     tensors = ds.to_pandas()["image"]
-    assert all(tensor.shape == (32, 32) for tensor in tensors)
+    assert all([tensor.shape == expected_shape for tensor in tensors])
 
 
 @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
