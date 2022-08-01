@@ -6,18 +6,13 @@ import numpy as np
 
 import alpa
 
-import ray.train as train
 
 from typing import Dict
 import argparse
 import time
 import numpy as np
 import ray
-from ray.data.datasource import SimpleTensorFlowDatasource
-import pandas as pd
-from ray.data.extensions import TensorArray
 from ray.air import session
-from icecream import ic
 import os
 
 def get_datasets():
@@ -122,10 +117,7 @@ def train_func(config: Dict):
     # Create model & optimizer.
     state = create_train_state(init_rng, learning_rate, momentum)
 
-    print(jax.devices(), )
-    acc_results = []
     for epoch in range(1, num_epochs + 1):
-        rng, input_rng = jax.random.split(rng)
         tic = time.time()
         state, train_loss, train_accuracy = train_epoch(state, train_ds, batch_size)
         epoch_time = time.time() - tic
@@ -135,9 +127,7 @@ def train_func(config: Dict):
         )
 
         session.report({"train_loss": train_loss, "train_accuracy": train_accuracy})
-        acc_results.append(train_accuracy)
 
-    return acc_results
 
 
 def train_mnist():
