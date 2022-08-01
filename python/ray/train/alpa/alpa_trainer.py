@@ -1,46 +1,24 @@
-import inspect
 import os
-from typing import Optional, Dict, Tuple, Type, Union, Callable, Any, TYPE_CHECKING
+from typing import Optional, Dict, Type, Union, Callable, TYPE_CHECKING
 
-import ray.cloudpickle as cpickle
+
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import ScalingConfig, RunConfig
 from ray.train.trainer import BaseTrainer, GenDataset
-from ray.air._internal.checkpointing import (
-    load_preprocessor_from_dir,
-    save_preprocessor_to_dir,
-)
-from ray.air.result import Result
+
 from ray.train.alpa.config import AlpaConfig
  
-from ray.tune import Trainable, PlacementGroupFactory
-from ray.tune.logger import Logger
-from ray.tune.registry import get_trainable_cls
-from ray.tune.resources import Resources
+from ray.tune import Trainable
 from ray.util import PublicAPI
 from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
+    from ray.data.preprocessor import Preprocessor
 from ray.tune.trainable import wrap_function
 
-import inspect
 import logging
-from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-    Type,
-    TYPE_CHECKING,
-)
 
 import ray
-from ray import tune
-from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.constants import (
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
@@ -49,13 +27,6 @@ from ray.train.trainer import BaseTrainer
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.train.trainer import GenDataset
 from ray.air.checkpoint import Checkpoint
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
-from ray.train import BackendConfig, TrainingIterator
-from ray.train._internal.backend_executor import BackendExecutor
-from ray.train._internal.checkpoint import TuneCheckpointManager
-from ray.train._internal.utils import construct_train_func
-from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import CheckpointStrategy, _TrackedCheckpoint
 
 try:
     import alpa
@@ -64,14 +35,8 @@ except ModuleNotFoundError:
         "alpa isn't installed. To install alpa, run 'pip install " "alpa'."
     )
 
-if TYPE_CHECKING:
-    from ray.air.preprocessor import Preprocessor
-
-from ray.train.data_parallel_trainer import DataParallelTrainer, _load_checkpoint
-
 from ray.train.alpa.utils import is_ray_node_resource, ScalingConfigWithIPs, update_jax_platform
 
-from icecream import ic 
 
 import alpa
 from alpa.util import update_jax_platform
