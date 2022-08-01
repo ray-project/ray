@@ -266,7 +266,13 @@ class Worker:
         self._load_code_from_local = load_code_from_local
 
     def put_object(
-        self, value, object_ref=None, owner_address=None, owner_actor_id=None, *, _ha=False
+        self,
+        value,
+        object_ref=None,
+        owner_address=None,
+        owner_actor_id=None,
+        *,
+        _ha=False,
     ):
         """Put value in the local object store with object reference `object_ref`.
 
@@ -1910,12 +1916,16 @@ def _get_global_owner():
     try:
         actor = ray.get_actor(actor_name)
     except Exception as error:
-        logger.info(f"global owner not create yet. try to create it.")
-        actor = ray.remote(GlobalOwner).options(
-            name = actor_name,
-            runtime_env={"env_vars": {"RAY_is_global_owner": "true"}},
-            max_restarts=-1,
-        ).remote()
+        logger.info(f"global owner not create yet. try to create it. error: {error}")
+        actor = (
+            ray.remote(GlobalOwner)
+            .options(
+                name=actor_name,
+                runtime_env={"env_vars": {"RAY_is_global_owner": "true"}},
+                max_restarts=-1,
+            )
+            .remote()
+        )
         ray.get(actor.warmup.remote())
     return actor
 
@@ -1929,8 +1939,10 @@ def get_global_owner():
 @PublicAPI
 @client_mode_hook(auto_init=True)
 def put(
-    value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None,
-    _ha = False,
+    value: Any,
+    *,
+    _owner: Optional["ray.actor.ActorHandle"] = None,
+    _ha=False,
 ) -> ray.ObjectRef:
     """Store an object in the object store.
 
@@ -1976,7 +1988,7 @@ def put(
                 value,
                 owner_address=serialize_owner_address,
                 owner_actor_id=owner_actor_id,
-                _ha = _ha,
+                _ha=_ha,
             )
         except ObjectStoreFullError:
             logger.info(
@@ -2362,4 +2374,3 @@ def remote(*args, **kwargs):
         return _make_remote(args[0], {})
     assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
     return functools.partial(_make_remote, options=kwargs)
-
