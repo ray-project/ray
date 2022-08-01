@@ -159,7 +159,10 @@ class AlpaTrainer(BaseTrainer):
         # needs to add this to the head node
         # otherwise RuntimeError: Backend 'gpu' failed to initialize: FAILED_PRECONDITION: No visible GPU devices.
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-        self._train_loop(self._train_loop_config)
+        if self._train_loop_config: 
+            self._train_loop(self._train_loop_config)
+        else: 
+            self._train_loop()
         
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
