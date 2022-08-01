@@ -49,6 +49,7 @@ a2 = Actor.bind(10) # Instantiate another Actor with init_value 10.
 a1.inc.bind(2)  # Call inc() on the actor created with increment of 2.
 a1.inc.bind(4)  # Call inc() on the actor created with increment of 4.
 a2.inc.bind(6)  # Call inc() on the actor created with increment of 6.
+
 # Combine outputs from a1.get() and a2.get()
 dag = combine.bind(a1.get.bind(), a2.get.bind())
 
@@ -86,6 +87,7 @@ with InputNode() as dag_input:
 #   a(2)  +   b(2)  = c
 # (2 * 2) + (2 * 1)
 assert ray.get(dag.execute(2)) == 7
+
 #   a(3)  +   b(3)  = c
 # (3 * 2) + (3 * 1)
 assert ray.get(dag.execute(3)) == 10
