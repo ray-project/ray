@@ -6,7 +6,7 @@ from ray.train.examples.alpa_mnist_example import (
     train_func as alpa_mnist_train_func,
 )
 from ray.air import session
-from ray.train.jax import AlpaTrainer
+from ray.train.alpa import AlpaTrainer
 
 import jax
 import numpy as np
