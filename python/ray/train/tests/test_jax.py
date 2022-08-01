@@ -45,9 +45,18 @@ import numpy as np
 from ray.train.examples.jax_mnist_example import (
     train_func as jax_mnist_train_func,
 )
-from test_tune import tune_jax_mnist
+from ray import tune
+from ray.tune.tune_config import TuneConfig
+from ray.tune.tuner import Tuner
 
 
+@pytest.fixture
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    
 @pytest.fixture
 def ray_start_4_cpus_2_gpus():
     address_info = ray.init(num_cpus=4, num_gpus=2)
@@ -110,6 +119,35 @@ def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
     results = trainer.fit()
     result = results.metrics
     assert result[TRAINING_ITERATION] == num_workers
+
+
+def tune_jax_mnist(num_workers, use_gpu, num_samples):
+    trainer = JaxTrainer(
+        jax_mnist_train_func,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+    )
+    tuner = Tuner(
+        trainer,
+        param_space={
+            "train_loop_config": {
+                "lr": tune.loguniform(1e-4, 1e-1),
+                "batch_size": tune.choice([32, 64, 128]),
+                "epochs": 2,
+            }
+        },
+        tune_config=TuneConfig(
+            num_samples=num_samples,
+        ),
+    )
+    analysis = tuner.fit()._experiment_analysis
+
+    # Check that loss decreases in each trial.
+    for path, df in analysis.trial_dataframes.items():
+        assert df.loc[1, "loss"] < df.loc[0, "loss"]
+
+
+def test_tune_jax_mnist(ray_start_8_cpus):
+    tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 def test_tune_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
     tune_jax_mnist(num_workers=1, use_gpu=True, num_samples=1, num_gpus_per_worker=2)
