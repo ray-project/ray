@@ -366,22 +366,6 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   uint8_t id_[kLength];
 };
 
-/// Help function to check if the resource_name is like
-/// {original_resource_name}_group_{placement_group_id}.
-inline bool IsPlacementGroupWildcardResource(const std::string &resource_name) {
-  std::string_view resource_name_view(resource_name);
-  std::string_view pattern("_group_");
-
-  // The length of {placement_group_id} is fixed, so we just need to check that if the
-  // length and the pos of `_group_` match.
-  if (resource_name_view.size() > pattern.size() + 2 * PlacementGroupID::Size()) {
-    return false;
-  }
-
-  auto idx = resource_name_view.size() - (pattern.size() + PlacementGroupID::Size());
-  return resource_name_view.substr(idx, pattern.size()) == pattern;
-}
-
 typedef std::pair<PlacementGroupID, int64_t> BundleID;
 
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
