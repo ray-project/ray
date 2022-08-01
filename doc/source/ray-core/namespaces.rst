@@ -11,10 +11,10 @@ first connect to the cluster.
 
 .. tabbed:: Python
 
-  .. literalinclude:: ./doc_code/namespaces.py
-    :language: python
-    :start-after: __implicit_start_begin__
-    :end-before: __implicit_start_end__
+    .. code-block:: python
+      ray.init(namespace="hello")
+      # or using ray client
+      ray.init("ray://<head_node_host>:10001", namespace="world")
 
 
 .. tabbed:: Java
