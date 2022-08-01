@@ -313,8 +313,6 @@ class MultiAgentReplayBuffer(ReplayBuffer):
         # Merge kwargs, overwriting standard call arguments
         kwargs = merge_dicts_with_warning(self.underlying_buffer_call_args, kwargs)
 
-        if self._num_added < self.replay_starts:
-            return MultiAgentBatch({}, 0)
         with self.replay_timer:
             # Lockstep mode: Sample from all policies at the same time an
             # equal amount of steps.

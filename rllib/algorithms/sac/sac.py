@@ -124,6 +124,7 @@ class SACConfig(AlgorithmConfig):
         target_network_update_freq: Optional[int] = None,
         _deterministic_loss: Optional[bool] = None,
         _use_beta_distribution: Optional[bool] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "SACConfig":
         """Sets the training related configuration.
@@ -267,6 +268,8 @@ class SACConfig(AlgorithmConfig):
             self._deterministic_loss = _deterministic_loss
         if _use_beta_distribution is not None:
             self._use_beta_distribution = _use_beta_distribution
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = num_steps_sampled_before_learning_starts
 
         return self
 

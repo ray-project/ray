@@ -175,7 +175,7 @@ class TestSAC(unittest.TestCase):
                 _deterministic_loss=True,
                 q_model_config={"fcnet_hiddens": [10]},
                 policy_model_config={"fcnet_hiddens": [10]},
-                replay_buffer_config={"num_steps_sampled_before_learning_starts": 0},
+                num_steps_sampled_before_learning_starts=0,
             )
             .rollouts(num_rollout_workers=0)
             .reporting(
