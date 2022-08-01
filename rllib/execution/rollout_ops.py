@@ -17,6 +17,7 @@ from ray.rllib.policy.sample_batch import (
     SampleBatch,
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
+    concat_samples,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
@@ -108,7 +109,7 @@ def synchronous_parallel_sample(
         all_sample_batches.extend(sample_batches)
 
     if concat is True:
-        full_batch = SampleBatch.concat_samples(all_sample_batches)
+        full_batch = concat_samples(all_sample_batches)
         # Discard collected incomplete episodes in episode mode.
         # if max_episodes is not None and episodes >= max_episodes:
         #    last_complete_ep_idx = len(full_batch) - full_batch[
@@ -183,7 +184,7 @@ def ParallelRollouts(
     if mode == "bulk_sync":
         return (
             rollouts.batch_across_shards()
-            .for_each(lambda batches: SampleBatch.concat_samples(batches))
+            .for_each(lambda batches: concat_samples(batches))
             .for_each(report_timesteps)
         )
     elif mode == "async":

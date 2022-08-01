@@ -92,6 +92,7 @@ class RayRuntime {
   virtual PlacementGroup GetPlacementGroupById(const std::string &id) = 0;
   virtual PlacementGroup GetPlacementGroup(const std::string &name) = 0;
   virtual bool IsLocalMode() { return false; }
+  virtual std::string GetNamespace() = 0;
 };
 }  // namespace internal
 }  // namespace ray

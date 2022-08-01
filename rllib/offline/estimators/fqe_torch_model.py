@@ -18,7 +18,7 @@ torch, nn = try_import_torch()
 @DeveloperAPI
 class FQETorchModel:
     """Pytorch implementation of the Fitted Q-Evaluation (FQE) model from
-    https://arxiv.org/pdf/1911.06854.pdf
+    https://arxiv.org/abs/1911.06854
     """
 
     def __init__(
@@ -44,9 +44,9 @@ class FQETorchModel:
                     "vf_share_layers": True,
                 },
             n_iters: Number of gradient steps to run on batch, defaults to 1
-            lr: Learning rate for Q-model optimizer
+            lr: Learning rate for Adam optimizer
             delta: Early stopping threshold if the mean loss < delta
-            clip_grad_norm: Clip gradients to this maximum value
+            clip_grad_norm: Clip loss gradients to this maximum value
             minibatch_size: Minibatch size for training Q-function;
                 if None, train on the whole batch
             tau: Polyak averaging factor for target Q-function

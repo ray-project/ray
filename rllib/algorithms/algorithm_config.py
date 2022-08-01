@@ -126,6 +126,8 @@ class AlgorithmConfig:
         self.observation_filter = "NoFilter"
         self.synchronize_filters = True
         self.compress_observations = False
+        self.enable_tf1_exec_eagerly = False
+        self.sampler_perf_stats_ema_coef = None
 
         # `self.training()`
         self.gamma = 0.99
@@ -550,6 +552,8 @@ class AlgorithmConfig:
         observation_filter: Optional[str] = None,
         synchronize_filter: Optional[bool] = None,
         compress_observations: Optional[bool] = None,
+        enable_tf1_exec_eagerly: Optional[bool] = None,
+        sampler_perf_stats_ema_coef: Optional[float] = None,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -660,6 +664,14 @@ class AlgorithmConfig:
             synchronize_filter: Whether to synchronize the statistics of remote filters.
             compress_observations: Whether to LZ4 compress individual observations
                 in the SampleBatches collected during rollouts.
+            enable_tf1_exec_eagerly: Explicitly tells the rollout worker to enable
+                TF eager execution. This is useful for example when framework is
+                "torch", but a TF2 policy needs to be restored for evaluation or
+                league-based purposes.
+            sampler_perf_stats_ema_coef: If specified, perf stats are in EMAs. This
+                is the coeff of how much new data points contribute to the averages.
+                Default is None, which uses simple global average instead.
+                The EMA update rule is: updated = (1 - ema_coef) * old + ema_coef * new
 
         Returns:
             This updated AlgorithmConfig object.
@@ -712,6 +724,10 @@ class AlgorithmConfig:
             self.synchronize_filters = synchronize_filter
         if compress_observations is not None:
             self.compress_observations = compress_observations
+        if enable_tf1_exec_eagerly is not None:
+            self.enable_tf1_exec_eagerly = enable_tf1_exec_eagerly
+        if sampler_perf_stats_ema_coef is not None:
+            self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         return self
 

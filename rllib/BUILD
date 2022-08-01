@@ -757,6 +757,13 @@ py_test(
     srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
+py_test(
+    name = "test_registry",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_registry.py"],
+)
+
 # Specific Algorithms
 
 # A2C
@@ -1553,6 +1560,12 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
+py_test(
+    name = "evaluation/tests/test_agent_collector",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_agent_collector.py"]
+)
 
 py_test(
     name = "evaluation/tests/test_envs_that_crash",
@@ -1566,6 +1579,13 @@ py_test(
     tags = ["team:rllib", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_episode.py"]
+)
+
+py_test(
+    name = "evaluation/tests/test_env_runner_v2",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_env_runner_v2.py"]
 )
 
 py_test(

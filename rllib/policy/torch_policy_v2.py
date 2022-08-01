@@ -75,6 +75,7 @@ class TorchPolicyV2(Policy):
         """
         self.framework = config["framework"] = "torch"
 
+        self._loss_initialized = False
         super().__init__(observation_space, action_space, config)
 
         # Create model.
@@ -195,6 +196,9 @@ class TorchPolicyV2(Policy):
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
+
+    def loss_initialized(self):
+        return self._loss_initialized
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -897,7 +901,11 @@ class TorchPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Then the Policy's (NN) weights.
+
+        # Restore glbal timestep.
+        self.global_timestep = state["global_timestep"]
+
+        # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @override(Policy)

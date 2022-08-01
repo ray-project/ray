@@ -63,9 +63,9 @@ class AssertingXGBoostTrainer(XGBoostTrainer):
     @property
     def _ray_params(self):
         scaling_config = self._validate_scaling_config(self.scaling_config)
-        assert (
-            scaling_config.as_placement_group_factory() == session.get_trial_resources()
-        )
+        pgf = scaling_config.as_placement_group_factory()
+        tr = session.get_trial_resources()
+        assert pgf == tr, (scaling_config, pgf, tr)
         return super()._ray_params
 
 

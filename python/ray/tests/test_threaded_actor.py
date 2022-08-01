@@ -252,11 +252,11 @@ def test_threaded_actor_integration_test_stress(
         loop_times.append(time.time() - loop_start)
     result = {}
     print("Finished in: {}s".format(time.time() - start))
-    print("Average iteration time: {}s".format(sum(loop_times) / len(loop_times)))
+    print("Average iteration time: {}s".format(np.mean(loop_times)))
     print("Max iteration time: {}s".format(max(loop_times)))
     print("Min iteration time: {}s".format(min(loop_times)))
     result["total_time"] = time.time() - start
-    result["avg_iteration_time"] = sum(loop_times) / len(loop_times)
+    result["avg_iteration_time"] = np.mean(loop_times)
     result["max_iteration_time"] = max(loop_times)
     result["min_iteration_time"] = min(loop_times)
     result["success"] = 1

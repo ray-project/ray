@@ -1,10 +1,11 @@
 import gym
 from gym.spaces import Discrete, MultiDiscrete
+import logging
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
@@ -19,6 +20,7 @@ from ray.rllib.utils.typing import (
 if TYPE_CHECKING:
     from ray.rllib.policy.tf_policy import TFPolicy
 
+logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
 
@@ -259,7 +261,7 @@ def get_tf_eager_cls_if_necessary(
             pass
         else:
             raise ValueError(
-                "This policy does not support eager " "execution: {}".format(orig_cls)
+                "This policy does not support eager execution: {}".format(orig_cls)
             )
 
         # Now that we know, policy is an eager one, add tracing, if necessary.
@@ -466,11 +468,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     if isinstance(space, Discrete):
         return tf.one_hot(x, space.n, dtype=tf.float32)
     elif isinstance(space, MultiDiscrete):
+        if isinstance(space.nvec[0], np.ndarray):
+            nvec = np.ravel(space.nvec)
+            x = tf.reshape(x, (x.shape[0], -1))
+        else:
+            nvec = space.nvec
         return tf.concat(
-            [
-                tf.one_hot(x[:, i], n, dtype=tf.float32)
-                for i, n in enumerate(space.nvec)
-            ],
+            [tf.one_hot(x[:, i], n, dtype=tf.float32) for i, n in enumerate(nvec)],
             axis=-1,
         )
     else:
@@ -541,3 +545,26 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
     while len(logp_.shape) > 1:
         logp_ = logp_[:, 0]
     return logp_
+
+
+@DeveloperAPI
+def warn_if_infinite_kl_divergence(
+    policy: Type["TFPolicy"], mean_kl_loss: TensorType
+) -> None:
+    def print_warning():
+        logger.warning(
+            "KL divergence is non-finite, this will likely destabilize your model and"
+            " the training process. Action(s) in a specific state have near-zero"
+            " probability. This can happen naturally in deterministic environments"
+            " where the optimal policy has zero mass for a specific action. To fix this"
+            " issue, consider setting the coefficient for the KL loss term to zero or"
+            " increasing policy entropy."
+        )
+        return tf.constant(0.0)
+
+    if policy.loss_initialized():
+        tf.cond(
+            tf.math.is_inf(mean_kl_loss),
+            false_fn=lambda: tf.constant(0.0),
+            true_fn=lambda: print_warning(),
+        )
