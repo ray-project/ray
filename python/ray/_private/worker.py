@@ -1138,7 +1138,7 @@ def init(
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _metrics_export_port(int): Port number Ray exposes system metrics
+        _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
         _system_config: Configuration for overriding
@@ -1165,7 +1165,7 @@ def init(
             arguments is passed in.
     """
     if configure_logging:
-        setup_logger(logging_level, logging_format)
+        setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1192,8 +1192,6 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
-    if not logging_format:
-        logging_format = ray_constants.LOGGER_FORMAT
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -2044,7 +2042,7 @@ def connect(
             )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory)

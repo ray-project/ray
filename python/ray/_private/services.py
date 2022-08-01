@@ -114,7 +114,7 @@ def propagate_jemalloc_env_var(
     Params:
         jemalloc_path: The path to the jemalloc shared library.
         jemalloc_conf: `,` separated string of jemalloc config.
-        jemalloc_comps List(str): The list of Ray components
+        jemalloc_comps: The list of Ray components
             that we will profile.
         process_type: The process type that needs jemalloc
             env var for memory profiling. If it doesn't match one of
@@ -1182,8 +1182,9 @@ def start_log_monitor(
     return process_info
 
 
-def start_dashboard(
-    require_dashboard: bool,
+def start_api_server(
+    include_dashboard: bool,
+    raise_on_failure: bool,
     host: str,
     gcs_address: str,
     temp_dir: str,
@@ -1195,12 +1196,15 @@ def start_dashboard(
     backup_count: int = 0,
     redirect_logging: bool = True,
 ):
-    """Start a dashboard process.
+    """Start a API server process.
 
     Args:
-        require_dashboard: If true, this will raise an exception if we
-            fail to start the dashboard. Otherwise it will print a warning if
-            we fail to start the dashboard.
+        include_dashboard: If true, this will load all dashboard-related modules
+            when starting the API server. Otherwise, it will only
+            start the modules that are not relevant to the dashboard.
+        raise_on_failure: If true, this will raise an exception
+            if we fail to start the API server. Otherwise it will print
+            a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
         temp_dir: The temporary directory used for log files and
@@ -1290,6 +1294,13 @@ def start_dashboard(
         if minimal:
             command.append("--minimal")
 
+        if not include_dashboard:
+            # If dashboard is not included, load modules
+            # that are irrelevant to the dashboard.
+            # TODO(sang): Modules like job or state APIs should be
+            # loaded although dashboard is disabled. Fix it.
+            command.append("--modules-to-load=UsageStatsHead")
+
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1323,6 +1334,7 @@ def start_dashboard(
                 if dashboard_returncode is not None
                 else ""
             )
+            # TODO(sang): Change it to the API server.
             err_msg = "Failed to start the dashboard" + returncode_str
             if logdir:
                 dashboard_log = os.path.join(logdir, "dashboard.log")
@@ -1354,9 +1366,10 @@ def start_dashboard(
             dashboard_url = ""
         return dashboard_url, process_info
     except Exception as e:
-        if require_dashboard:
+        if raise_on_failure:
             raise e from e
         else:
+            # TODO(sang): Change it to the API server.
             logger.error(f"Failed to start the dashboard: {e}")
             logger.exception(e)
             return None, None
@@ -1387,7 +1400,7 @@ def start_gcs_server(
         config: Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port: Port number of the gcs server.
-        metrics_agent_port(int): The port where metrics agent is bound to.
+        metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
 
     Returns:
@@ -1467,7 +1480,7 @@ def start_raylet(
         redis_address: The address of the primary Redis server.
         gcs_address: The address of GCS server.
         node_ip_address: The IP address of this node.
-        node_manager_port(int): The port to use for the node manager. If it's
+        node_manager_port: The port to use for the node manager. If it's
             0, a random port will be used.
         raylet_name: The name of the raylet socket to create.
         plasma_store_name: The name of the plasma store socket to connect
@@ -1479,7 +1492,7 @@ def start_raylet(
         storage: The persistent storage URI.
         temp_dir: The path of the temporary directory Ray will use.
         session_dir: The path of this session.
-        resource_dir(str): The path of resource of this session .
+        resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
         resource_spec: Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
@@ -1981,7 +1994,7 @@ def start_monitor(
     Args:
         redis_address: The address that the Redis server is listening on.
         gcs_address: The address of GCS server.
-        logs_dir(str): The path to the log directory.
+        logs_dir: The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
