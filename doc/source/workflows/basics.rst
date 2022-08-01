@@ -6,11 +6,12 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
 Ray DAG
 -------
 
-Normally, Ray tasks are executed eagerly.
-Ray DAG provides a way to build the DAG without execution, and Ray Workflow is based on Ray DAGs.
+Normally, Ray tasks are executed eagerly. Ray DAG provides a way to build the
+DAG without execution, and Ray Workflow is based on Ray DAGs. 
 
-It is simple to build a Ray DAG: you just replace all ``.remote(...)`` with ``.bind(...)`` in a Ray application.
-Ray DAGs can be composed in arbitrarily like normal Ray tasks.
+It is simple to build a Ray DAG: just replace all ``.remote(...)`` with
+``.bind(...)`` in a Ray application. Ray DAGs can be composed arbitrarily
+like normal Ray tasks.
 
 Here is a single three-node DAG:
 
@@ -32,10 +33,21 @@ Here is a single three-node DAG:
     def aggregate(data: List[float]) -> float:
         return sum(data)
 
-    # Build the DAG.
+    # Build the DAG:
+    # data -> preprocessed_data -> aggregate
     data = read_data.bind(10)
     preprocessed_data = preprocessing.bind(data)
     output = aggregate.bind(preprocessed_data)
+
+    # Plot the DAG
+    ray.dag.vis_utils.plot(output, "output.jpg")
+
+
+Here this figure visualizes the DAG we created:
+
+.. image:: basic.png
+   :width: 500px
+   :align: center
 
 
 The Ray DAG will not be executed until further actions are taken on it.
@@ -53,26 +65,22 @@ A single line is all you need to run the workflow DAG:
     # Execute the workflow and print the result.
     print(workflow.run(output))
 
-    # You can also run the workflow asynchronously and fetching the output via 'ray.get'
+    # You can also run the workflow asynchronously and fetch the output via
+    # 'ray.get'
     output_ref = workflow.run_async(dag)
     print(ray.get(output_ref))
 
-Here this figure visualizes the workflow we created:
 
-.. image:: basic.png
-   :width: 500px
-   :align: center
-
-Each node in the original DAG becomes a workflow task.
-Workflow tasks behave similarly to Ray tasks. They are executed in a parallel and distributed way.
+Each node in the original DAG becomes a workflow task. Workflow tasks behave
+similarly to Ray tasks. They are executed in a parallel and distributed way.
 
 
 Setting workflow options
 ------------------------
 
-You can directly set Ray options to a workflow task just like to a normal
+You can directly set Ray options to a workflow task just like a normal
 Ray remote function. To set workflow-specific options, you can use ``workflow.options``
-either as a decorator or as a option feeding dictionary:
+either as a decorator or as an option feeding dictionary:
 
 .. code-block:: python
 
@@ -99,9 +107,10 @@ To retrieve a workflow result, you can assign ``workflow_id`` when running a wor
     from ray import workflow
 
     try:
-        # cleanup previous workflows
+        # Cleanup previous workflows
+        # An exception will be raised if it doesn't exist.
         workflow.delete("add_example")
-    except Exception:
+    except workflow.WorkflowNotFoundError:
         pass
 
     @ray.remote
@@ -116,8 +125,10 @@ To retrieve a workflow result, you can assign ``workflow_id`` when running a wor
 
     assert workflow.run(ret, workflow_id="add_example") == 30
 
-Then workflow results can be retrieved with ``workflow.get_output(workflow_id)``.
-If a workflow is not given ``workflow_id``, a random string is set as the ``workflow_id``. To confirm ``workflow_id`` in the situation, call ``ray.workflow.list_all()``.
+The workflow results can be retrieved with
+``workflow.get_output(workflow_id)``. If a workflow is not given
+``workflow_id``, a random string is set as the ``workflow_id``. To confirm
+``workflow_id`` in the situation, call ``ray.workflow.list_all()``. 
 
 .. code-block:: python
 
@@ -130,7 +141,7 @@ We can retrieve the results for individual workflow tasks too with *named tasks*
  2) via decorator ``@workflow.options(name="task_name")``
 
 If tasks are not given ``task_name``, the function name of the steps is set as the ``task_name``.
-The ID of the task would be same as the name. If there are multiple tasks with the same name, a suffix with a counter ``_n`` will be added automatically.
+The ID of the task would be the same as the name. If there are multiple tasks with the same name, a suffix with a counter ``_n`` will be added automatically.
 
 The suffix with a counter ``_n`` is a sequential number (1,2,3,...) of the tasks to be executed.
 (Note that the first task does not have the suffix.)
@@ -147,7 +158,7 @@ If the task with the given ``task_id`` hasn't been executed before the workflow 
     try:
         # cleanup previous workflows
         workflow.delete(workflow_id)
-    except Exception:
+    except workflow.WorkflowNotFoundError:
         pass
 
     @ray.remote
@@ -165,9 +176,6 @@ If the task with the given ``task_id`` hasn't been executed before the workflow 
     assert ray.get(outer) == 4
     assert ray.get(result_ref) == 4
 
-
-# TODO(suquark): make sure Ray DAG does not depend on Ray Serve and PyArrow.
-
 For example,
 (Note that before trying the following, install Ray Serve and PyArrow ``pip install "ray[serve]" pyarrow``.)
 
@@ -180,7 +188,7 @@ For example,
     try:
         # cleanup previous workflows
         workflow.delete(workflow_id)
-    except Exception:
+    except workflow.WorkflowNotFoundError:
         pass
 
     @ray.remote
@@ -203,12 +211,12 @@ For example,
 
 By default, each task will be given a name generated by the library, ``<MODULE_NAME>.<FUNC_NAME>``. In the example above, ``step`` is given as the task name for function ``simple``.
 
-When the task name duplicates, we append ``_n`` to the name by the order of execution as it task ID. So the initial task get the ID ``step``, the second one get ``step_1``, and this goes on for all later tasks.
+When the task name duplicates, we append ``_n`` to the name by the order of execution as its task ID. So the initial task gets the ID ``step``, the second one gets ``step_1``, and this goes on for all later tasks.
 
 Error handling
 --------------
 
-Workflows provides two ways to handle application-level exceptions: (1) automatic retry (as in normal Ray tasks), and (2) the ability to catch and handle exceptions.
+Workflow provides two ways to handle application-level exceptions: (1) automatic retry (as in normal Ray tasks), and (2) the ability to catch and handle exceptions.
 
 - If ``max_retries`` is given, the task will be retried for the given number of times if the workflow task failed.
 - If ``retry_exceptions`` is True, then the workflow task retries both task crashes and application-level errors;
@@ -274,10 +282,10 @@ Workflow tasks provide *exactly-once* execution semantics. What this means is th
 
 Failure model
 ~~~~~~~~~~~~~
-- If the cluster fails, any workflows running on the cluster enter RESUMABLE state. The workflows can be resumed on another cluster (see the management API section).
+- If the cluster fails, any workflows running on the cluster enter ``RESUMABLE`` state. The workflows can be resumed on another cluster (see the management API section).
 - The lifetime of the workflow is not coupled with the driver. If the driver exits, the workflow will continue running in the background of the cluster.
 
-Note that tasks that have side-effects still need to be idempotent. This is because the task could always fail prior to its result being logged.
+Note that tasks that have side effects still need to be idempotent. This is because the task could always fail before its result is logged.
 
 .. code-block:: python
     :caption: Non-idempotent workflow:
@@ -317,7 +325,7 @@ Additional tasks can be dynamically created and inserted into the workflow DAG d
 
 This is achieved by returning a continuation of a DAG.
 
-In our context, a continuation is basically a tail function call returned by a function. For example:
+In our context, a continuation is a tail function call returned by a function. For example:
 
 .. code-block:: python
 
@@ -362,6 +370,8 @@ The following example shows how to implement the recursive ``factorial`` program
         if n == 1:
             return 1
         else:
+            # Here a DAG is passed to the continuation.
+            # The DAG will continue to be executed after this task.
             return workflow.continuation(multiply.bind(n, factorial.bind(n - 1)))
 
     @ray.remote
@@ -423,15 +433,17 @@ Workflows are compatible with Ray tasks and actors. There are two methods of usi
 
 Passing nested arguments
 ~~~~~~~~~~~~~~~~~~~~~~~~
-Like Ray tasks, when you pass a list of task outputs to a task, the values are not resolved.
-But we ensure that all ancestors of a task are fully executed prior to the task starting:
+Like Ray tasks, when you pass a list of task outputs to a task, the values are
+not resolved. But we ensure that all ancestors of a task are fully executed
+before the task starts which is different from passing them into a Ray remote
+function whether they have been executed or not is not defined.
 
 .. code-block:: python
 
     @ray.remote
     def add(values: List[ray.ObjectRef[int]]) -> int:
-        # although those value are not resolved, they have been
-        # fully executed and checkpointed. This guarantees exactly-once
+        # although those values are not resolved, they have been
+        # *fully executed and checkpointed*. This guarantees exactly-once
         # execution semantics.
         return sum(ray.get(values))
 
@@ -445,7 +457,11 @@ But we ensure that all ancestors of a task are fully executed prior to the task 
 Passing object references between tasks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray object references and data structures composed of them (e.g., ``ray.Dataset``) can be passed into and returned from workflow tasks. To ensure recoverability, their contents will be logged to durable storage. However, an object will not be checkpointed more than once, even if it is passed to many different tasks.
+Ray object references and data structures composed of them (e.g.,
+``ray.Dataset``) can be passed into and returned from workflow tasks. To ensure
+recoverability, their contents will be logged to durable storage before
+executing. However, an object will not be checkpointed more than once, even if
+it is passed to many different tasks.
 
 .. code-block:: python
 
@@ -471,6 +487,6 @@ You can assign resources (e.g., CPUs, GPUs to tasks via the same ``num_cpus``, `
 
     @ray.remote(num_gpus=1)
     def train_model() -> Model:
-        pass  # This task is assigned a GPU by Ray.
+        pass  # This task is assigned to a GPU by Ray.
 
     workflow.run(train_model.bind())

@@ -207,6 +207,16 @@ parts:
       - file: ray-more-libs/index
         title: More Libraries
         sections:
+          - file: workflows/concepts
+            title: Ray Workflows (Alpha)
+            sections:
+              - file: workflows/basics
+              - file: workflows/management
+              - file: workflows/metadata
+              - file: workflows/events
+              - file: workflows/comparison
+              - file: workflows/advanced
+              - file: workflows/package-ref
           - file: ray-more-libs/joblib
           - file: ray-more-libs/lightgbm-ray
           - file: ray-more-libs/multiprocessing
@@ -216,16 +226,6 @@ parts:
           - file: ray-more-libs/xgboost-ray
           - file: ray-core/examples/dask_xgboost/dask_xgboost
           - file: ray-core/examples/modin_xgboost/modin_xgboost
-          - file: workflows/concepts
-            title: Ray Workflows
-            sections:
-              - file: workflows/basics
-              - file: workflows/management
-              - file: workflows/metadata
-              - file: workflows/events
-              - file: workflows/comparison
-              - file: workflows/advanced
-              - file: workflows/package-ref
 
   - caption: Ray Core
     chapters:
