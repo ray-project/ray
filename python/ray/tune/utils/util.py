@@ -29,7 +29,6 @@ from ray._private.dict import (  # noqa: F401
     unflatten_list_dict,
     unflattened_lookup,
 )
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -160,9 +159,7 @@ def _get_checkpoint_from_remote_node(
     fut = _serialize_checkpoint.options(
         resources={f"node:{node_ip}": 0.01},
         num_cpus=0,
-        scheduling_strategy=PlacementGroupSchedulingStrategy(
-            placement_group=None, placement_group_capture_child_tasks=True
-        ),
+        placement_group=None,
     ).remote(checkpoint_path)
     try:
         checkpoint_data = ray.get(fut, timeout=timeout)
