@@ -266,7 +266,7 @@ class Worker:
         self._load_code_from_local = load_code_from_local
 
     def put_object(
-        self, value, object_ref=None, owner_address=None, owner_actor_id=None
+        self, value, object_ref=None, owner_address=None, owner_actor_id=None, *, _ha=False
     ):
         """Put value in the local object store with object reference `object_ref`.
 
@@ -306,6 +306,12 @@ class Worker:
                 object_ref is None
             ), "Local Mode does not support inserting with an ObjectRef"
 
+        if _ha:
+            assert owner_actor_id is not None
+            global_owner_id = owner_actor_id
+        else:
+            global_owner_id = None
+
         serialized_value = self.get_serialization_context().serialize(value)
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
@@ -320,14 +326,14 @@ class Worker:
             serialized_value,
             object_ref=object_ref,
             owner_address=owner_address,
-            owner_actor_id=owner_actor_id,
+            owner_actor_id=global_owner_id,
         )
 
         return ray.ObjectRef(
             object_id,
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
-            global_owner_id=owner_actor_id,
+            global_owner_id=global_owner_id,
             spilled_url=spilled_url,
         )
 
@@ -1888,10 +1894,43 @@ def get(
         return values
 
 
+def _get_global_owner():
+    actor_name = "_ray_global_owner_"
+
+    class GlobalOwner:
+        def warmup(self):
+            return 0
+
+        def exit(self):
+            sys.exit(0)
+
+        def getpid(self):
+            return os.getpid()
+
+    try:
+        actor = ray.get_actor(actor_name)
+    except Exception as error:
+        logger.info(f"global owner not create yet. try to create it.")
+        actor = ray.remote(GlobalOwner).options(
+            name = actor_name,
+            runtime_env={"env_vars": {"RAY_is_global_owner": "true"}},
+            max_restarts=-1,
+        ).remote()
+        ray.get(actor.warmup.remote())
+    return actor
+
+
+@PublicAPI
+@client_mode_hook(auto_init=True)
+def get_global_owner():
+    return _get_global_owner()
+
+
 @PublicAPI
 @client_mode_hook(auto_init=True)
 def put(
-    value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
+    value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None,
+    _ha = False,
 ) -> ray.ObjectRef:
     """Store an object in the object store.
 
@@ -1910,6 +1949,10 @@ def put(
     """
     worker = global_worker
     worker.check_connected()
+
+    if _ha:
+        assert _owner is None
+        _owner = _get_global_owner()
 
     if _owner is None:
         serialize_owner_address = None
@@ -1933,6 +1976,7 @@ def put(
                 value,
                 owner_address=serialize_owner_address,
                 owner_actor_id=owner_actor_id,
+                _ha = _ha,
             )
         except ObjectStoreFullError:
             logger.info(
@@ -2319,17 +2363,3 @@ def remote(*args, **kwargs):
     assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
     return functools.partial(_make_remote, options=kwargs)
 
-
-@PublicAPI
-@client_mode_hook(auto_init=True)
-def create_global_owners(size: int):
-    @ray.remote
-    class DummyActor:
-        def ping(self):
-            return True
-
-    global_owners = [
-        DummyActor.options(name=f"_ray_global_owner_{i}", max_restarts=-1).remote()
-        for i in range(size)
-    ]
-    ray.get([o.ping.remote() for o in global_owners])
