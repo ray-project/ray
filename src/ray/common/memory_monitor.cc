@@ -19,6 +19,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
+#include <filesystem>
 
 namespace ray {
 
@@ -94,19 +95,19 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
 
 std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   int64_t total_bytes = kNull;
-  if (boost::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
+  if (std::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
     std::ifstream mem_file(kCgroupsV2MemoryMaxPath, std::ios::in | std::ios::binary);
     mem_file >> total_bytes;
-  } else if (boost::filesystem::exists(kCgroupsV1MemoryMaxPath)) {
+  } else if (std::filesystem::exists(kCgroupsV1MemoryMaxPath)) {
     std::ifstream mem_file(kCgroupsV1MemoryMaxPath, std::ios::in | std::ios::binary);
     mem_file >> total_bytes;
   }
 
   int64_t used_bytes = kNull;
-  if (boost::filesystem::exists(kCgroupsV2MemoryUsagePath)) {
+  if (std::filesystem::exists(kCgroupsV2MemoryUsagePath)) {
     std::ifstream mem_file(kCgroupsV2MemoryUsagePath, std::ios::in | std::ios::binary);
     mem_file >> used_bytes;
-  } else if (boost::filesystem::exists(kCgroupsV1MemoryUsagePath)) {
+  } else if (std::filesystem::exists(kCgroupsV1MemoryUsagePath)) {
     std::ifstream mem_file(kCgroupsV1MemoryUsagePath, std::ios::in | std::ios::binary);
     mem_file >> used_bytes;
   }
