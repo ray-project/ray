@@ -218,7 +218,7 @@ class HTTPListener(EventListener):
     >>> event_node = workflow.wait_for_event( # doctest: +SKIP
     ...     HTTPListener, event_key='')
     >>> handle_event = ... # doctest: +SKIP
-    >>> handle_event.bind(event_node).run() # doctest: +SKIP
+    >>> workflow.run(handle_event.bind(event_node)) # doctest: +SKIP
     >>>
 
     """
