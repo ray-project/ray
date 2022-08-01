@@ -384,6 +384,8 @@ class SimpleQ(Algorithm):
             # on all remote workers.
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
+        else:
+            train_results = {}
 
         # Return all collected metrics for the iteration.
         return train_results
