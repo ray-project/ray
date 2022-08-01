@@ -182,8 +182,6 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
         "head_start_ray_commands": [],
         "worker_start_ray_commands": [],
         "auth": {},
-        "head_node": {},
-        "worker_nodes": {},
     }
 
 

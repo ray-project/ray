@@ -389,7 +389,7 @@ class ActorReplicaWrapper:
                     - replica __init__() failed.
                 SUCCEEDED:
                     - replica __init__() and reconfigure() succeeded.
-            version (DeploymentVersion):
+            version:
                 None:
                     - replica reconfigure() haven't returned OR
                     - replica __init__() failed.
@@ -851,9 +851,9 @@ class ReplicaStateContainer:
         """Get the total count of replicas of the given states.
 
         Args:
-            exclude_version(DeploymentVersion): version to exclude. If not
+            exclude_version: version to exclude. If not
                 specified, all versions are considered.
-            version(DeploymentVersion): version to filter to. If not specified,
+            version: version to filter to. If not specified,
                 all versions are considered.
             states: states to consider. If not specified, all replicas
                 are considered.

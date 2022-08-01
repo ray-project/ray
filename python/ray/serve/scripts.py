@@ -297,7 +297,15 @@ def run(
 
     # Setting the runtime_env here will set defaults for the deployments.
     ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-    client = _private_api.serve_start(detached=True)
+
+    if is_config:
+        client = _private_api.serve_start(
+            detached=True, http_options={"host": config.host, "port": config.port}
+        )
+    else:
+        client = _private_api.serve_start(
+            detached=True, http_options={"host": host, "port": port}
+        )
 
     try:
         if is_config:
@@ -438,6 +446,8 @@ def build(import_path: str, app_dir: str, output_path: Optional[str]):
         deployments=[deployment_to_schema(d) for d in app.deployments.values()]
     ).dict()
     config["import_path"] = import_path
+    config["host"] = "0.0.0.0"
+    config["port"] = 8000
 
     config_str = (
         "# This file was generated using the `serve build` command "
