@@ -292,8 +292,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
 
     rpc::Address owner_address;
-    if (reference_counter_->GetOwner(object_id, &owner_address) &&
-        !nested_refs.empty()) {
+    if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
       std::vector<ObjectID> nested_ids;
       for (const auto &nested_ref : nested_refs) {
         nested_ids.emplace_back(ObjectRefToId(nested_ref));

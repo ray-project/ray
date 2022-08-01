@@ -234,13 +234,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// byte string).
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] serialized_object_status The serialized object status protobuf.
-  void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
-                                             const ObjectID &outer_object_id,
-                                             const rpc::Address &owner_address,
-                                             const std::string &spilled_url,
-                                             const NodeID &spilled_node_id,
-                                             const std::string &serialized_object_status,
-                                             const ActorID &global_owner_id = ActorID::Nil());
+  void RegisterOwnershipInfoAndResolveFuture(
+      const ObjectID &object_id,
+      const ObjectID &outer_object_id,
+      const rpc::Address &owner_address,
+      const std::string &spilled_url,
+      const NodeID &spilled_node_id,
+      const std::string &serialized_object_status,
+      const ActorID &global_owner_id = ActorID::Nil());
 
   ///
   /// Public methods related to storing and retrieving objects.

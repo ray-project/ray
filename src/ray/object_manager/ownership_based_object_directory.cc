@@ -25,7 +25,9 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
     rpc::CoreWorkerClientPool *owner_client_pool,
     int64_t max_object_report_batch_size,
     std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed,
-    std::function<bool(const ActorID &, const rpc::Address &, absl::optional<rpc::Address>*)> get_owner_address)
+    std::function<bool(const ActorID &,
+                       const rpc::Address &,
+                       absl::optional<rpc::Address> *)> get_owner_address)
     : io_service_(io_service),
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
@@ -130,7 +132,8 @@ void OwnershipBasedObjectDirectory::ReportObjectAdded(const ObjectID &object_id,
   const WorkerID &worker_id = object_info.owner_worker_id;
   absl::optional<rpc::Address> owner_address;
   rpc::Address init_owner_address = GetOwnerAddressFromObjectInfo(object_info);
-  if (!get_owner_address_(object_info.global_owner_id, init_owner_address, &owner_address)) {
+  if (!get_owner_address_(
+          object_info.global_owner_id, init_owner_address, &owner_address)) {
     owner_address = absl::optional<rpc::Address>(init_owner_address);
   }
 
@@ -238,7 +241,8 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
     object_map.erase(object_id);
     batch_size++;
     object_queue_it++;
-    RAY_LOG(DEBUG) << "Try to report object(" << object_id << ") to " << owner_address.ip_address() << ":" << owner_address.port();
+    RAY_LOG(DEBUG) << "Try to report object(" << object_id << ") to "
+                   << owner_address.ip_address() << ":" << owner_address.port();
   }
   object_queue.erase(object_queue.begin(), object_queue_it);
 
@@ -347,37 +351,40 @@ void OwnershipBasedObjectDirectory::ReSubscribeObjectLocations(
     const NodeID &spilled_node_id,
     const ActorID &global_owner_id,
     const OnLocationsFound &callback) {
- RAY_CHECK(!global_owner_id.IsNil());
- absl::optional<rpc::Address> real_owner_address;
- RAY_CHECK(get_owner_address_(global_owner_id, owner_address, &real_owner_address));
- if (real_owner_address.has_value()) {
-    RAY_LOG(DEBUG) << "Resubscribe owner: " << real_owner_address.value().ip_address() << ":" << real_owner_address.value().port();
+  RAY_CHECK(!global_owner_id.IsNil());
+  absl::optional<rpc::Address> real_owner_address;
+  RAY_CHECK(get_owner_address_(global_owner_id, owner_address, &real_owner_address));
+  if (real_owner_address.has_value()) {
+    RAY_LOG(DEBUG) << "Resubscribe owner: " << real_owner_address.value().ip_address()
+                   << ":" << real_owner_address.value().port();
     UnsubscribeObjectLocations(callback_id, object_id);
-    SubscribeObjectLocations(
-      callback_id,
-      object_id,
-      real_owner_address.value(),
-      spilled_url,
-      spilled_node_id,
-      global_owner_id,
-      callback);
+    SubscribeObjectLocations(callback_id,
+                             object_id,
+                             real_owner_address.value(),
+                             spilled_url,
+                             spilled_node_id,
+                             global_owner_id,
+                             callback);
   } else {
     std::this_thread::sleep_for(std::chrono::seconds(1));
     io_service_.post(
-      [this, callback_id, object_id, owner_address, spilled_url,
-       spilled_node_id, global_owner_id, callback]() {
-         ReSubscribeObjectLocations(
-           callback_id,
-           object_id,
-           owner_address,
-           spilled_url,
-           spilled_node_id,
-           global_owner_id,
-           callback
-         );
-      },
-      "ObjectDirectory.ResubscribeLocationCallback"
-    );
+        [this,
+         callback_id,
+         object_id,
+         owner_address,
+         spilled_url,
+         spilled_node_id,
+         global_owner_id,
+         callback]() {
+          ReSubscribeObjectLocations(callback_id,
+                                     object_id,
+                                     owner_address,
+                                     spilled_url,
+                                     spilled_node_id,
+                                     global_owner_id,
+                                     callback);
+        },
+        "ObjectDirectory.ResubscribeLocationCallback");
   }
 }
 
@@ -389,7 +396,10 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     const NodeID &spilled_node_id,
     const ActorID &global_owner_id,
     const OnLocationsFound &callback) {
-  RAY_LOG(INFO) << "SubscribeObjectLocations: " << object_id << " owner address: " << owner_address.ip_address() << ":" << owner_address.port() << ", worker_id: " << WorkerID::FromBinary(owner_address.worker_id());
+  RAY_LOG(INFO) << "SubscribeObjectLocations: " << object_id
+                << " owner address: " << owner_address.ip_address() << ":"
+                << owner_address.port()
+                << ", worker_id: " << WorkerID::FromBinary(owner_address.worker_id());
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
     // Create an object eviction subscription message.
@@ -400,8 +410,12 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     auto msg_published_callback = [this, object_id](const rpc::PubMessage &pub_message) {
       RAY_CHECK(pub_message.has_worker_object_locations_message());
       const auto &location_info = pub_message.worker_object_locations_message();
-      for (size_t index = 0; index < static_cast<size_t>(location_info.node_ids().size()); index++){
-        RAY_LOG(DEBUG) << "Get Location Info, object_id: " << object_id << ", node_id: " << NodeID::FromBinary(location_info.node_ids()[index]) << ", spilled_url: " << location_info.spilled_url() << ", location_lookup_failed: " << (!location_info.ref_removed());
+      for (size_t index = 0; index < static_cast<size_t>(location_info.node_ids().size());
+           index++) {
+        RAY_LOG(DEBUG) << "Get Location Info, object_id: " << object_id << ", node_id: "
+                       << NodeID::FromBinary(location_info.node_ids()[index])
+                       << ", spilled_url: " << location_info.spilled_url()
+                       << ", location_lookup_failed: " << (!location_info.ref_removed());
       }
       ObjectLocationSubscriptionCallback(
           location_info,
@@ -409,28 +423,37 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
           /*location_lookup_failed*/ !location_info.ref_removed());
     };
 
-    auto failure_callback = [this, owner_address, spilled_url, spilled_node_id, global_owner_id, callback_id, callback](
-                                const std::string &object_id_binary,
-                                const Status &status) {
+    auto failure_callback = [this,
+                             owner_address,
+                             spilled_url,
+                             spilled_node_id,
+                             global_owner_id,
+                             callback_id,
+                             callback](const std::string &object_id_binary,
+                                       const Status &status) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
-      RAY_LOG(INFO) << "failure_callback " << object_id << " with global_owner_id: " << global_owner_id;
+      RAY_LOG(INFO) << "failure_callback " << object_id
+                    << " with global_owner_id: " << global_owner_id;
 
       if (!global_owner_id.IsNil()) {
         io_service_.post(
-          [this, callback_id, object_id, owner_address, spilled_url,
-          spilled_node_id, global_owner_id, callback]() {
-            ReSubscribeObjectLocations(
-              callback_id,
-              object_id,
-              owner_address,
-              spilled_url,
-              spilled_node_id,
-              global_owner_id,
-              callback
-            );
-          },
-          "ObjectDirectory.ResubscribeLocationCallback"
-        );
+            [this,
+             callback_id,
+             object_id,
+             owner_address,
+             spilled_url,
+             spilled_node_id,
+             global_owner_id,
+             callback]() {
+              ReSubscribeObjectLocations(callback_id,
+                                         object_id,
+                                         owner_address,
+                                         spilled_url,
+                                         spilled_node_id,
+                                         global_owner_id,
+                                         callback);
+            },
+            "ObjectDirectory.ResubscribeLocationCallback");
       }
 
       rpc::WorkerObjectLocationsPubMessage location_info;

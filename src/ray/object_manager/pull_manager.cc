@@ -58,7 +58,8 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       seen.insert(id);
       deduplicated.emplace_back(ref);
     }
-    RAY_LOG(INFO) << "Pull object " << id << ", spilled_url: " << ref.spilled_url() << ",spilled_node_id: " << ref.spilled_node_id();
+    RAY_LOG(INFO) << "Pull object " << id << ", spilled_url: " << ref.spilled_url()
+                  << ",spilled_node_id: " << ref.spilled_node_id();
   }
 
   BundlePullRequest bundle_pull_request(ObjectRefsToIds(deduplicated));

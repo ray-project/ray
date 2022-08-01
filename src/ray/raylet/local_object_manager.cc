@@ -218,7 +218,8 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   SpillObjectsInternal(
       objects_to_spill,
       global_owner_ids,
-      [this, bytes_to_spill, objects_to_spill, start_time](const Status &status, const std::unordered_map<ObjectID, std::string> &) {
+      [this, bytes_to_spill, objects_to_spill, start_time](
+          const Status &status, const std::unordered_map<ObjectID, std::string> &) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Failed to spill objects: " << status.ToString();
         } else {
@@ -261,16 +262,19 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   return true;
 }
 
-void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
-                                      const std::vector<ActorID> &global_owner_ids,
-                                      std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback) {
+void LocalObjectManager::SpillObjects(
+    const std::vector<ObjectID> &object_ids,
+    const std::vector<ActorID> &global_owner_ids,
+    std::function<void(const ray::Status &,
+                       const std::unordered_map<ObjectID, std::string> &)> callback) {
   SpillObjectsInternal(object_ids, global_owner_ids, callback);
 }
 
 void LocalObjectManager::SpillObjectsInternal(
     const std::vector<ObjectID> &object_ids,
     const std::vector<ActorID> &global_owner_ids,
-    std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback) {
+    std::function<void(const ray::Status &,
+                       const std::unordered_map<ObjectID, std::string> &)> callback) {
   std::vector<ObjectID> objects_to_spill;
   std::vector<ActorID> spill_object_global_owner_ids;
   // Filter for the objects that can be spilled.
@@ -282,9 +286,9 @@ void LocalObjectManager::SpillObjectsInternal(
     // objects that are already being spilled.
     if (pinned_objects_.count(id) == 0 && objects_pending_spill_.count(id) == 0) {
       if (callback) {
-        callback(
-            Status::Invalid("Requested spill for object that is not marked as "
-                            "the primary copy."), {});
+        callback(Status::Invalid("Requested spill for object that is not marked as "
+                                 "the primary copy."),
+                 {});
       }
       return;
     }
@@ -314,7 +318,8 @@ void LocalObjectManager::SpillObjectsInternal(
     return;
   }
   io_worker_pool_.PopSpillWorker(
-      [this, objects_to_spill, spill_object_global_owner_ids, callback](std::shared_ptr<WorkerInterface> io_worker) {
+      [this, objects_to_spill, spill_object_global_owner_ids, callback](
+          std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
         std::vector<ObjectID> requested_objects_to_spill;
         RAY_CHECK(objects_to_spill.size() == spill_object_global_owner_ids.size());
@@ -368,7 +373,8 @@ void LocalObjectManager::SpillObjectsInternal(
               }
               if (callback) {
                 std::unordered_map<ObjectID, std::string> object_to_spilled_url;
-                for (size_t i = 0; i < static_cast<size_t>(r.spilled_objects_url_size()); ++i) {
+                for (size_t i = 0; i < static_cast<size_t>(r.spilled_objects_url_size());
+                     ++i) {
                   const ObjectID &object_id = requested_objects_to_spill[i];
                   const std::string &spilled_url = r.spilled_objects_url(i);
                   object_to_spilled_url.emplace(object_id, spilled_url);

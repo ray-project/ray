@@ -19,6 +19,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -26,7 +27,6 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/logging.h"
-#include "ray/common/ray_config.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {

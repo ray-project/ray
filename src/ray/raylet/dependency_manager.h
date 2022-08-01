@@ -166,8 +166,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// Metadata for an object that is needed by at least one executing worker
   /// and/or one queued task.
   struct ObjectDependencies {
-    ObjectDependencies(const rpc::ObjectReference &ref)
-        : ref(ref) {}
+    ObjectDependencies(const rpc::ObjectReference &ref) : ref(ref) {}
     /// The tasks that depend on this object, either because the object is a task argument
     /// or because the task called `ray.get` on the object.
     std::unordered_set<TaskID> dependent_tasks;

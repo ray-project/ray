@@ -130,8 +130,8 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet
     global_owner_ids.push_back(ActorID::Nil().Binary());
   }
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status =
-      CoreWorkerProcess::GetCoreWorker().Get(object_ids, spilled_urls, global_owner_ids, (int64_t)timeoutMs, &results);
+  auto status = CoreWorkerProcess::GetCoreWorker().Get(
+      object_ids, spilled_urls, global_owner_ids, (int64_t)timeoutMs, &results);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeVectorToJavaList<std::shared_ptr<RayObject>>(
       env, results, NativeRayObjectToJavaNativeRayObject);

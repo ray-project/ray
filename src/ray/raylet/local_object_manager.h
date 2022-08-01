@@ -97,9 +97,11 @@ class LocalObjectManager {
   /// \param objects_ids_to_spill The objects to be spilled.
   /// \param callback A callback to call once the objects have been spilled, or
   /// there is an error.
-  void SpillObjects(const std::vector<ObjectID> &objects_ids,
-                    const std::vector<ActorID> &global_owner_ids,
-                    std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback);
+  void SpillObjects(
+      const std::vector<ObjectID> &objects_ids,
+      const std::vector<ActorID> &global_owner_ids,
+      std::function<void(const ray::Status &,
+                         const std::unordered_map<ObjectID, std::string> &)> callback);
 
   /// Restore a spilled object from external storage back into local memory.
   /// Note: This is no-op if the same restoration request is in flight or the requested
@@ -178,9 +180,11 @@ class LocalObjectManager {
   bool SpillObjectsOfSize(int64_t num_bytes_to_spill);
 
   /// Internal helper method for spilling objects.
-  void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
-                            const std::vector<ActorID> &global_owner_ids,
-                            std::function<void(const ray::Status &, const std::unordered_map<ObjectID, std::string> &)> callback);
+  void SpillObjectsInternal(
+      const std::vector<ObjectID> &objects_ids,
+      const std::vector<ActorID> &global_owner_ids,
+      std::function<void(const ray::Status &,
+                         const std::unordered_map<ObjectID, std::string> &)> callback);
 
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);

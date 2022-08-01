@@ -110,15 +110,16 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
 
   Status SetClientOptions(const std::string &client_name, int64_t output_memory_quota);
 
-  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address,
-                                int64_t data_size,
-                                const uint8_t *metadata,
-                                int64_t metadata_size,
-                                std::shared_ptr<Buffer> *data,
-                                fb::ObjectSource source,
-                                int device_num = 0,
-                                const ray::ActorID &global_owner_id=ray::ActorID::Nil());
+  Status CreateAndSpillIfNeeded(
+      const ObjectID &object_id,
+      const ray::rpc::Address &owner_address,
+      int64_t data_size,
+      const uint8_t *metadata,
+      int64_t metadata_size,
+      std::shared_ptr<Buffer> *data,
+      fb::ObjectSource source,
+      int device_num = 0,
+      const ray::ActorID &global_owner_id = ray::ActorID::Nil());
 
   Status RetryCreate(const ObjectID &object_id,
                      uint64_t request_id,
@@ -430,7 +431,7 @@ Status PlasmaClient::Impl::TryCreateImmediately(const ObjectID &object_id,
                                       source,
                                       device_num,
                                       /*try_immediately=*/true,
-                                      /*global_owner_id*/global_owner_id));
+                                      /*global_owner_id*/ global_owner_id));
   return HandleCreateReply(object_id, metadata, nullptr, data);
 }
 

@@ -862,8 +862,13 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const ActorID &global_owner_id) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
-  reference_counter_->AddBorrowedObject(
-      object_id, outer_object_id, owner_address, spilled_url, spilled_node_id, false, global_owner_id);
+  reference_counter_->AddBorrowedObject(object_id,
+                                        outer_object_id,
+                                        owner_address,
+                                        spilled_url,
+                                        spilled_node_id,
+                                        false,
+                                        global_owner_id);
 
   rpc::GetObjectStatusReply object_status;
   object_status.ParseFromString(serialized_object_status);
@@ -989,7 +994,7 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                                               /*spilled_url=*/"",
                                               /*spilled_node_id=*/NodeID::Nil(),
                                               /*foreign_owner_already_monitoring=*/true,
-                                              /*global_owner_id*/global_owner_id));
+                                              /*global_owner_id*/ global_owner_id));
 
     // Remote call `AssignObjectOwner()`.
     rpc::AssignObjectOwnerRequest request;
@@ -1053,8 +1058,13 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
         "Creating an object with a pre-existing ObjectID is not supported in local "
         "mode");
   } else {
-    return plasma_store_provider_->Create(
-        metadata, data_size, object_id, owner_address, data, created_by_worker, global_owner_id);
+    return plasma_store_provider_->Create(metadata,
+                                          data_size,
+                                          object_id,
+                                          owner_address,
+                                          data,
+                                          created_by_worker,
+                                          global_owner_id);
   }
 }
 
@@ -1111,19 +1121,21 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     std::promise<std::string> sync_promise;
     auto future = sync_promise.get_future();
     local_raylet_client_->RequestObjectSpillage(
-      object_id,
-      global_owner_id,
-      [object_id, &sync_promise](const Status &status,
-                            const rpc::RequestObjectSpillageReply &reply) {
-        if (!status.ok() || !reply.success()) {
-          RAY_LOG(FATAL) << "Failed to spill object " << object_id
-                         << ", raylet unreachable or object could not be spilled. Status: "
-                         << status;
-        }
-        sync_promise.set_value(reply.object_url());
-      });
+        object_id,
+        global_owner_id,
+        [object_id, &sync_promise](const Status &status,
+                                   const rpc::RequestObjectSpillageReply &reply) {
+          if (!status.ok() || !reply.success()) {
+            RAY_LOG(FATAL)
+                << "Failed to spill object " << object_id
+                << ", raylet unreachable or object could not be spilled. Status: "
+                << status;
+          }
+          sync_promise.set_value(reply.object_url());
+        });
     *spilled_url = future.get();
-    RAY_CHECK(reference_counter_->HandleObjectSpilled(object_id, *spilled_url, NodeID::Nil()));
+    RAY_CHECK(
+        reference_counter_->HandleObjectSpilled(object_id, *spilled_url, NodeID::Nil()));
     RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
   }
 

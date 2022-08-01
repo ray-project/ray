@@ -49,7 +49,9 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
       rpc::CoreWorkerClientPool *owner_client_pool,
       int64_t max_object_report_batch_size,
       std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed,
-      std::function<bool(const ActorID &, const rpc::Address &, absl::optional<rpc::Address>*)> global_owner_address);
+      std::function<bool(const ActorID &,
+                         const rpc::Address &,
+                         absl::optional<rpc::Address> *)> global_owner_address);
 
   virtual ~OwnershipBasedObjectDirectory() {}
 
@@ -92,14 +94,13 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   std::string DebugString() const override;
 
  private:
-  void ReSubscribeObjectLocations(
-    const UniqueID &callback_id,
-    const ObjectID &object_id,
-    const rpc::Address &owner_address,
-    const std::string &spilled_url,
-    const NodeID &spilled_node_id,
-    const ActorID &global_owner_id,
-    const OnLocationsFound &callback);
+  void ReSubscribeObjectLocations(const UniqueID &callback_id,
+                                  const ObjectID &object_id,
+                                  const rpc::Address &owner_address,
+                                  const std::string &spilled_url,
+                                  const NodeID &spilled_node_id,
+                                  const ActorID &global_owner_id,
+                                  const OnLocationsFound &callback);
 
   friend class OwnershipBasedObjectDirectoryTest;
 
@@ -144,7 +145,9 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   /// The callback used to mark an object as failed.
   std::function<void(const ObjectID &, const rpc::ErrorType &)> mark_as_failed_;
 
-  std::function<bool(const ActorID &, const rpc::Address &, absl::optional<rpc::Address>*)> get_owner_address_;
+  std::function<bool(
+      const ActorID &, const rpc::Address &, absl::optional<rpc::Address> *)>
+      get_owner_address_;
 
   /// A buffer for batch object location updates.
   /// owner id -> {(FIFO object queue (to avoid starvation), map for the latest update of

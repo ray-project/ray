@@ -125,15 +125,16 @@ class PlasmaClientInterface {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  virtual Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                        const ray::rpc::Address &owner_address,
-                                        int64_t data_size,
-                                        const uint8_t *metadata,
-                                        int64_t metadata_size,
-                                        std::shared_ptr<Buffer> *data,
-                                        plasma::flatbuf::ObjectSource source,
-                                        int device_num = 0,
-                                        const ray::ActorID &global_owner_id=ray::ActorID::Nil()) = 0;
+  virtual Status CreateAndSpillIfNeeded(
+      const ObjectID &object_id,
+      const ray::rpc::Address &owner_address,
+      int64_t data_size,
+      const uint8_t *metadata,
+      int64_t metadata_size,
+      std::shared_ptr<Buffer> *data,
+      plasma::flatbuf::ObjectSource source,
+      int device_num = 0,
+      const ray::ActorID &global_owner_id = ray::ActorID::Nil()) = 0;
 
   /// Delete a list of objects from the object store. This currently assumes that the
   /// object is present, has been sealed and not used by another client. Otherwise,
@@ -192,15 +193,16 @@ class PlasmaClient : public PlasmaClientInterface {
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  Status CreateAndSpillIfNeeded(const ObjectID &object_id,
-                                const ray::rpc::Address &owner_address,
-                                int64_t data_size,
-                                const uint8_t *metadata,
-                                int64_t metadata_size,
-                                std::shared_ptr<Buffer> *data,
-                                plasma::flatbuf::ObjectSource source,
-                                int device_num = 0,
-                                const ray::ActorID &global_owner_id=ray::ActorID::Nil());
+  Status CreateAndSpillIfNeeded(
+      const ObjectID &object_id,
+      const ray::rpc::Address &owner_address,
+      int64_t data_size,
+      const uint8_t *metadata,
+      int64_t metadata_size,
+      std::shared_ptr<Buffer> *data,
+      plasma::flatbuf::ObjectSource source,
+      int device_num = 0,
+      const ray::ActorID &global_owner_id = ray::ActorID::Nil());
 
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
@@ -236,7 +238,7 @@ class PlasmaClient : public PlasmaClientInterface {
                               std::shared_ptr<Buffer> *data,
                               plasma::flatbuf::ObjectSource source,
                               int device_num = 0,
-                              const ray::ActorID &global_owner_id=ray::ActorID::Nil());
+                              const ray::ActorID &global_owner_id = ray::ActorID::Nil());
 
   /// Get some objects from the Plasma Store. This function will block until the
   /// objects have all been created and sealed in the Plasma Store or the

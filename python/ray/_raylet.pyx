@@ -1192,8 +1192,8 @@ cdef class CoreWorker:
     def get_plasma_event_handler(self):
         return self.plasma_event_handler
 
-    def get_objects(self, object_refs, spilled_urls, global_owner_ids, TaskID current_task_id,
-                    int64_t timeout_ms=-1):
+    def get_objects(self, object_refs, spilled_urls, global_owner_ids,
+                    TaskID current_task_id, int64_t timeout_ms=-1):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
@@ -1371,7 +1371,6 @@ cdef class CoreWorker:
             CActorID c_owner_actor_id
             c_string spilled_url
             c_string* spilled_url_ptr
-
 
         metadata = string_to_buffer(serialized_object.metadata)
         put_threshold = RayConfig.instance().max_direct_call_object_size()

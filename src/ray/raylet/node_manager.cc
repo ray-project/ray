@@ -108,7 +108,6 @@ std::vector<ray::rpc::ObjectReference> FlatbufferToObjectReferenceWithSpilledURL
 
 namespace ray {
 
-
 namespace raylet {
 
 namespace {
@@ -122,7 +121,7 @@ rpc::Address GetOwnerAddressFromObjectInfo(const ObjectInfo &object_info) {
   return owner_address;
 }
 
-} // namespace
+}  // namespace
 
 // A helper function to print the leased workers.
 std::string LeasedWorkersSring(
@@ -713,8 +712,11 @@ void NodeManager::HandleRequestObjectSpillage(
   const auto &global_owner_id = ActorID::FromBinary(request.global_owner_id());
   RAY_LOG(DEBUG) << "Received RequestObjectSpillage for object " << object_id;
   local_object_manager_.SpillObjects(
-      {object_id}, {global_owner_id},
-      [object_id, reply, send_reply_callback](const ray::Status &status, const std::unordered_map<ObjectID, std::string> &object_to_spilled_url) {
+      {object_id},
+      {global_owner_id},
+      [object_id, reply, send_reply_callback](
+          const ray::Status &status,
+          const std::unordered_map<ObjectID, std::string> &object_to_spilled_url) {
         if (status.ok()) {
           RAY_LOG(DEBUG) << "Object " << object_id
                          << " has been spilled, replying to owner";
@@ -725,7 +727,8 @@ void NodeManager::HandleRequestObjectSpillage(
           reply->set_spilled_node_id(NodeID::Nil().Binary());
           send_reply_callback(Status::OK(), nullptr, nullptr);
         } else {
-          RAY_LOG(ERROR) << "Failed to spill object " << object_id << ". Status: " << status;
+          RAY_LOG(ERROR) << "Failed to spill object " << object_id
+                         << ". Status: " << status;
           send_reply_callback(status, nullptr, nullptr);
         }
       });
@@ -1549,11 +1552,14 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
   const auto refs =
       FlatbufferToObjectReferenceWithSpilledURLs(*message->object_ids(),
-                                                    *message->owner_addresses(),
-                                                    *message->spilled_urls(),
-                                                    *message->global_owner_ids());
-  for (const auto &ref: refs) {
-    RAY_LOG(INFO) << "ProcessFetchOrReconstructMessage " << ObjectID::FromBinary(ref.object_id()) << ", spilled_url: " << ref.spilled_url() << ", fetch_only: " << message->fetch_only();
+                                                 *message->owner_addresses(),
+                                                 *message->spilled_urls(),
+                                                 *message->global_owner_ids());
+  for (const auto &ref : refs) {
+    RAY_LOG(INFO) << "ProcessFetchOrReconstructMessage "
+                  << ObjectID::FromBinary(ref.object_id())
+                  << ", spilled_url: " << ref.spilled_url()
+                  << ", fetch_only: " << message->fetch_only();
   }
   // TODO(ekl) we should be able to remove the fetch only flag along with the legacy
   // non-direct call support.
@@ -2241,8 +2247,10 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
     return;
   }
   objects_need_to_report_[global_owner_id][object_id] = object_info;
-  RAY_LOG(DEBUG) << "Add global_owner_id(" << global_owner_id << ") to objects_need_to_report_"
-                 << ", object_id: " << object_id << ", try: global owner: " << objects_need_to_report_[global_owner_id][object_id].global_owner_id;
+  RAY_LOG(DEBUG) << "Add global_owner_id(" << global_owner_id
+                 << ") to objects_need_to_report_"
+                 << ", object_id: " << object_id << ", try: global owner: "
+                 << objects_need_to_report_[global_owner_id][object_id].global_owner_id;
 
   const auto owner_address = GetOwnerAddressFromObjectInfo(object_info);
   SubscribeGlobalOwnerAddress(global_owner_id, owner_address);
@@ -2281,7 +2289,8 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     }
   }
   objects_need_to_report_[global_owner_id].erase(object_id);
-  if (objects_need_to_report_[global_owner_id].size() == 0) objects_need_to_report_.erase(global_owner_id);
+  if (objects_need_to_report_[global_owner_id].size() == 0)
+    objects_need_to_report_.erase(global_owner_id);
 }
 
 void NodeManager::ProcessSubscribePlasmaReady(
@@ -2852,8 +2861,8 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   }
 }
 
-void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id, const rpc::Address &init_address) {
-
+void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id,
+                                              const rpc::Address &init_address) {
   auto it = global_owner_address_.find(actor_id);
   if (it != global_owner_address_.end()) return;
   global_owner_address_[actor_id] = absl::optional<rpc::Address>(init_address);
@@ -2866,19 +2875,22 @@ void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id, const rpc
                        << actor_data.address().port()
                        << ", actor_name: " << actor_data.address().actor_name();
         if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-          global_owner_address_[actor_id] = absl::optional<rpc::Address>(actor_data.address());
+          global_owner_address_[actor_id] =
+              absl::optional<rpc::Address>(actor_data.address());
 
           auto it = objects_need_to_report_.find(actor_id);
           if (it == objects_need_to_report_.end()) return;
           for (auto [object_id, object_info] : it->second) {
             RAY_CHECK(object_info.global_owner_id == actor_id)
-                     << "object_info.global_owner_id = " << object_info.global_owner_id
-                     << ", actor_id: " << actor_id;
+                << "object_info.global_owner_id = " << object_info.global_owner_id
+                << ", actor_id: " << actor_id;
 
-            object_info.owner_raylet_id = NodeID::FromBinary(actor_data.address().raylet_id());
+            object_info.owner_raylet_id =
+                NodeID::FromBinary(actor_data.address().raylet_id());
             object_info.owner_ip_address = actor_data.address().ip_address();
             object_info.owner_port = actor_data.address().port();
-            object_info.owner_worker_id = WorkerID::FromBinary(actor_data.address().worker_id());
+            object_info.owner_worker_id =
+                WorkerID::FromBinary(actor_data.address().worker_id());
 
             RAY_LOG(DEBUG) << "try to report object add " << object_id;
             object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);

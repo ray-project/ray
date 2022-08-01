@@ -255,9 +255,13 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
     // no ordering guarantee between notifications.
     auto object_id = ObjectRefToId(ref);
     RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id,
-        ref.owner_address(), ref.spilled_url(), NodeID::FromBinary(ref.spilled_node_id()),
-        ActorID::FromBinary(ref.global_owner_id()), callback));
+        object_directory_pull_callback_id_,
+        object_id,
+        ref.owner_address(),
+        ref.spilled_url(),
+        NodeID::FromBinary(ref.spilled_node_id()),
+        ActorID::FromBinary(ref.global_owner_id()),
+        callback));
   }
 
   return request_id;
@@ -337,7 +341,8 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
 
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   RAY_LOG(DEBUG) << "Push on " << self_node_id_ << " to " << node_id << " of object "
-                 << object_id << ", object in local: " << (local_objects_.count(object_id) != 0);
+                 << object_id
+                 << ", object in local: " << (local_objects_.count(object_id) != 0);
   if (local_objects_.count(object_id) != 0) {
     return PushLocalObject(object_id, node_id);
   }
@@ -430,7 +435,12 @@ void ObjectManager::PushFromFilesystem(const ObjectID &object_id,
   // SpilledObjectReader::CreateSpilledObjectReader does synchronous IO; schedule it off
   // main thread.
   rpc_service_.post(
-      [this, object_id, node_id, spilled_url, chunk_size = config_.object_chunk_size, global_owner_id = std::move(global_owner_id)]() {
+      [this,
+       object_id,
+       node_id,
+       spilled_url,
+       chunk_size = config_.object_chunk_size,
+       global_owner_id = std::move(global_owner_id)]() {
         auto optional_spilled_object =
             SpilledObjectReader::CreateSpilledObjectReader(spilled_url);
         if (!optional_spilled_object.has_value()) {
@@ -577,8 +587,14 @@ void ObjectManager::HandlePush(const rpc::PushRequest &request,
   const std::string &data = request.data();
   const auto global_owner_id = ActorID::FromBinary(request.global_owner_id());
 
-  bool success = ReceiveObjectChunk(
-      node_id, object_id, owner_address, data_size, metadata_size, chunk_index, data, global_owner_id);
+  bool success = ReceiveObjectChunk(node_id,
+                                    object_id,
+                                    owner_address,
+                                    data_size,
+                                    metadata_size,
+                                    chunk_index,
+                                    data,
+                                    global_owner_id);
   num_chunks_received_total_++;
   if (!success) {
     num_chunks_received_total_failed_++;
