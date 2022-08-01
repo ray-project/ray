@@ -53,11 +53,18 @@ Landing pages for the major cloud providers' Kubernetes services can be found at
 - [EKS landing page (Amazon Web Services)](https://aws.amazon.com/eks/)
 - [AKS landing page (Azure)](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 
+
 #### General documentation
 For documentation on managed Kubernetes services, see the following links.
 - [GKE docs](https://cloud.google.com/kubernetes-engine/docs/)
 - [EKS docs](https://docs.aws.amazon.com/eks/latest/userguide/)
 - [AKS docs](https://docs.microsoft.com/en-us/azure/aks/)
+
+#### Quickstart guides
+See the following links for guides on getting started with your managed Kubernetes service.
+- [GKE docs](https://cloud.google.com/kubernetes-engine/docs/deploy-app-cluster)
+- [EKS docs](https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html)
+- [AKS docs](https://docs.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-portal?tabs=azure-cli)
 
 #### Setting up node pools
 Running the example workload in this guide requires setting up a pool or group of Kubernetes nodes.
