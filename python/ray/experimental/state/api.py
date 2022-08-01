@@ -118,7 +118,7 @@ class StateApiClient(SubmissionClient):
         """Initialize a StateApiClient and check the connection to the cluster.
 
         Args:
-            address: Ray bootstrap address. E.g. `127.0.0.0`, `localhost`, `auto`.
+            address: Ray bootstrap address. E.g. `127.0.0.0:6379`, `auto`.
                 If not provided, it will be detected automatically from any running
                 local ray cluster.
             cookies: Cookies to use when sending requests to the HTTP job server.
@@ -180,7 +180,7 @@ class StateApiClient(SubmissionClient):
         params: Dict,
         timeout: float,
         _explain: bool = False,
-    ):
+    ) -> Dict:
         with warnings_on_slow_request(
             address=self._address, endpoint=endpoint, timeout=timeout, explain=_explain
         ):
@@ -525,7 +525,7 @@ def get_actor(
 
     Args:
         id: Id of the actor
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state API requests made.
         _explain: Print the API information such as API latency or
@@ -564,7 +564,7 @@ def get_placement_group(
 
     Args:
         id: Id of the placement group
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -596,7 +596,7 @@ def get_node(
 
     Args:
         id: Id of the node.
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -628,7 +628,7 @@ def get_worker(
 
     Args:
         id: Id of the worker
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -660,7 +660,7 @@ def get_task(
 
     Args:
         id: Id of the task
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -695,7 +695,7 @@ def get_objects(
 
     Args:
         id: Id of the object
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
         _explain: Print the API information such as API latency or
@@ -728,7 +728,7 @@ def list_actors(
     """List actors in the cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("id", "=", "abcd")`
@@ -771,11 +771,11 @@ def list_placement_groups(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
     """List placement groups in the cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("state", "=", "abcd")`
@@ -815,11 +815,11 @@ def list_nodes(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
     """List nodes in the cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_name", "=", "abcd")`
@@ -859,11 +859,11 @@ def list_jobs(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
     """List jobs submitted to the cluster by :ref: `ray job submission <jobs-overview>`.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("status", "=", "abcd")`
@@ -903,11 +903,11 @@ def list_workers(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
     """List workers in the cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
@@ -947,11 +947,11 @@ def list_tasks(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
     """List tasks in the cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
@@ -991,11 +991,11 @@ def list_objects(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
     """List objects in the cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("ip", "=", "0.0.0.0")`
@@ -1035,11 +1035,11 @@ def list_runtime_envs(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> List[Dict]:
     """List runtime environments in the cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_id", "=", "abcdef")`
@@ -1103,7 +1103,7 @@ def get_log(
         >>>    print(l) # doctest: +SKIP
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If not specified, it will be retrieved from the initialized ray cluster.
         node_id: Id of the node containing the logs .
         node_ip: Ip of the node containing the logs. (At least one of the node_id and
@@ -1177,7 +1177,7 @@ def list_logs(
     """Listing log files available.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If not specified, it will be retrieved from the initialized ray cluster.
         node_id: Id of the node containing the logs .
         node_ip: Ip of the node containing the logs. (At least one of the node_id and
@@ -1239,7 +1239,7 @@ def summarize_tasks(
     """Summarize the tasks in cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout for requests made when getting the states.
         raise_on_missing_output: When True, exceptions will be raised if
@@ -1267,11 +1267,11 @@ def summarize_actors(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-):
+) -> Dict:
     """Summarize the actors in cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout for requests made when getting the states.
         raise_on_missing_output: When True, exceptions will be raised if
@@ -1303,7 +1303,7 @@ def summarize_objects(
     """Summarize the objects in cluster.
 
     Args:
-        address: Ray boostrap address, could be `auto`, `localhost:6379`.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout for requests made when getting the states.
         raise_on_missing_output: When True, exceptions will be raised if

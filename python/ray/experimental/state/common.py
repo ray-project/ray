@@ -904,7 +904,7 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
 
 
 def ray_address_to_api_server_url(address: Optional[str]) -> str:
-    """Parse a ray cluster bootstrap address into API server URL
+    """Parse a ray cluster bootstrap address into API server URL.
 
     When an address is provided, it will be used to query GCS for
     API server address from GCS.
@@ -913,10 +913,10 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     a running ray instance, or look for local GCS process.
 
     Args:
-        - address: Ray cluster bootstrap address. Could also be `auto`.
+        address: Ray cluster bootstrap address. Could also be `auto`.
 
     Return:
-        - API server HTTP URL
+        API server HTTP URL.
     """
     address = services.canonicalize_bootstrap_address_or_die(address)
     gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
