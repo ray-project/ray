@@ -954,9 +954,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
 
-  absl::flat_hash_map<ActorID, rpc::Address> global_owner_address_map_
-      GUARDED_BY(global_owner_mutex_);
-
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is
   /// removed from this set once its Reference has been deleted
