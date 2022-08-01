@@ -12,9 +12,10 @@ We need to set :ref:`code_search_path` in your driver.
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-      ray.init(job_config=ray.job_config.JobConfig(code_search_path="/path/to/code"))
+    .. literalinclude:: ./doc_code/cross_language.py
+        :language: python
+        :start-after: __crosslang_init_start__
+        :end-before: __crosslang_init_end__
 
 .. tabbed:: Java
 
@@ -29,9 +30,10 @@ You may want to include multiple directories to load both Python and Java code f
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-      ray.init(job_config=ray.job_config.JobConfig(code_search_path="/path/to/jars:/path/to/pys"))
+    .. literalinclude:: ./doc_code/cross_language.py
+        :language: python
+        :start-after: __crosslang_multidir_start__
+        :end-before: __crosslang_multidir_end__
 
 .. tabbed:: Java
 
@@ -76,56 +78,20 @@ Suppose we have a Java static method and a Java class as follows:
 Then, in Python, we can call the above Java remote function, or create an actor
 from the above Java class.
 
-.. code-block:: python
-
-  import ray
-
-  ray.init(address="auto")
-
-  # Define a Java class.
-  counter_class = ray.cross_language.java_actor_class(
-        "io.ray.demo.Counter")
-
-  # Create a Java actor and call actor method.
-  counter = counter_class.remote()
-  obj_ref1 = counter.increment.remote()
-  assert ray.get(obj_ref1) == 1
-  obj_ref2 = counter.increment.remote()
-  assert ray.get(obj_ref2) == 2
-
-  # Define a Java function.
-  add_function = ray.cross_language.java_function(
-        "io.ray.demo.Math", "add")
-
-  # Call the Java remote function.
-  obj_ref3 = add_function.remote(1, 2)
-  assert ray.get(obj_ref3) == 3
-
-  ray.shutdown()
+.. literalinclude:: ./doc_code/cross_language.py
+  :language: python
+  :start-after: __python_call_java_start__
+  :end-before: __python_call_java_end__
 
 Java calling Python
 -------------------
 
 Suppose we have a Python module as follows:
 
-.. code-block:: python
-
-  # ray_demo.py
-
-  import ray
-
-  @ray.remote
-  class Counter(object):
-    def __init__(self):
-        self.value = 0
-
-    def increment(self):
-        self.value += 1
-        return self.value
-
-  @ray.remote
-  def add(a, b):
-      return a + b
+.. literalinclude:: ./doc_code/cross_language.py
+  :language: python
+  :start-after: __python_module_start__
+  :end-before: __python_module_end__
 
 .. note::
 
