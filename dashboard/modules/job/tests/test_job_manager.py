@@ -10,6 +10,7 @@ import psutil
 import pytest
 
 import ray
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
 from ray._private.test_utils import (
     SignalActor,
@@ -33,8 +34,9 @@ TEST_NAMESPACE = "jobs_test_namespace"
 async def test_submit_no_ray_address(call_ray_start):  # noqa: F811
     """Test that a job script with an unspecified Ray address works."""
 
-    ray.init(address=call_ray_start)
-    job_manager = JobManager()
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(address=address_info['gcs_address'], nums_reconnect_retry=0)
+    job_manager = JobManager(gcs_aio_client)
 
     init_ray_no_address_script = """
 import ray
@@ -72,9 +74,12 @@ def shared_ray_instance():
         os.environ[RAY_ADDRESS_ENVIRONMENT_VARIABLE] = old_ray_address
 
 
+@pytest.mark.asyncio
 @pytest.fixture
-def job_manager(shared_ray_instance):
-    yield JobManager()
+async def job_manager(shared_ray_instance):
+    address_info = shared_ray_instance
+    gcs_aio_client = GcsAioClient(address=address_info['gcs_address'], nums_reconnect_retry=0)
+    yield JobManager(gcs_aio_client)
 
 
 def _driver_script_path(file_name: str) -> str:
@@ -466,7 +471,7 @@ class TestRuntimeEnv:
         """
         run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
         runtime_env = {"env_vars": env_vars}
-        job_id = job_manager.submit_job(entrypoint=run_cmd, runtime_env=runtime_env)
+        job_id = await job_manager.submit_job(entrypoint=run_cmd, runtime_env=runtime_env)
 
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
@@ -635,7 +640,8 @@ class TestTailLogs:
 
             # TODO(edoakes): check we get no logs before actor starts (not sure
             # how to timeout the iterator call).
-            assert await job_manager.get_job_status(job_id) == JobStatus.PENDING
+            job_status = await job_manager.get_job_status(job_id)
+            assert job_status == JobStatus.PENDING
 
             # Signal job to start.
             ray.get(start_signal_actor.send.remote())

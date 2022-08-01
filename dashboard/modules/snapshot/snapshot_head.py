@@ -279,11 +279,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         """Info for Ray job submission.  Here a job can have 0 or many drivers."""
 
         jobs = {}
-
+        fetched_jobs = await self._job_info_client.get_all_jobs()
         for (
             job_submission_id,
             job_info,
-        ) in await self._job_info_client.get_all_jobs().items():
+        ) in fetched_jobs.items():
             if job_info is not None:
                 entry = {
                     "job_submission_id": job_submission_id,

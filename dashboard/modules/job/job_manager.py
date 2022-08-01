@@ -370,7 +370,8 @@ class JobManager:
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
-                if await self._job_info_client.get_status(job_id).is_terminal():
+                job_status = await self._job_info_client.get_status(job_id)
+                if job_status.is_terminal():
                     # If the job is already in a terminal state, then the actor
                     # exiting is expected.
                     pass
