@@ -1529,16 +1529,5 @@ void ReferenceCounter::Reference::ToProto(rpc::ObjectReferenceCount *ref,
   }
 }
 
-void ReferenceCounter::ModifyGlobalOwnerAddress(
-    const ActorID &actor_id, const rpc::Address &global_owner_address) {
-  absl::MutexLock lock(&global_owner_mutex_);
-  RAY_UNUSED(global_owner_address_map_.emplace(actor_id, global_owner_address));
-}
-
-bool ReferenceCounter::AlreadyWatchActor(const ActorID &actor_id) {
-  absl::MutexLock lock(&global_owner_mutex_);
-  return global_owner_address_map_.find(actor_id) != global_owner_address_map_.end();
-}
-
 }  // namespace core
 }  // namespace ray

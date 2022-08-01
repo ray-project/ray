@@ -499,12 +499,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
 
-  void ModifyGlobalOwnerAddress(const ActorID &actor_id,
-                                const rpc::Address &global_owner_address)
-      LOCKS_EXCLUDED(global_owner_mutex_);
-
-  bool AlreadyWatchActor(const ActorID &actor_id) LOCKS_EXCLUDED(global_owner_mutex_);
-
  private:
   /// Contains information related to nested object refs only.
   struct NestedReferenceCount {

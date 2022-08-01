@@ -829,8 +829,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// interface with language bindings.
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
-  void SubscribeGlobalOwnerAddress(ActorID actor_id);
-
  private:
   static rpc::RuntimeEnv OverrideRuntimeEnv(
       const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent);

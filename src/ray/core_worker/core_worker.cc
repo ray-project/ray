@@ -1018,7 +1018,6 @@ Status CoreWorker::CreateOwnedAndIncrementLocalRef(
                             });
     // Block until the remote call `AssignObjectOwner` returns.
     status = status_promise.get_future().get();
-    SubscribeGlobalOwnerAddress(global_owner_id);
   }
 
   if (options_.is_local_mode && owned_by_us && inline_small_object) {
@@ -3593,25 +3592,6 @@ std::vector<ObjectID> CoreWorker::GetCurrentReturnIds(int num_returns,
     return_ids[i] = ObjectID::FromIndex(task_id, i + 1);
   }
   return return_ids;
-}
-
-void CoreWorker::SubscribeGlobalOwnerAddress(ActorID actor_id) {
-  if (reference_counter_->AlreadyWatchActor(actor_id)) return;
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-      actor_id,
-      [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
-        RAY_LOG(DEBUG) << "Actor(" << actor_id << ") state: " << actor_data.state()
-                       << ", address: " << actor_data.address().ip_address() << ":"
-                       << actor_data.address().port()
-                       << ", actor_name: " << actor_data.address().actor_name();
-        if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-          reference_counter_->ModifyGlobalOwnerAddress(actor_id, actor_data.address());
-        }
-      },
-      [](Status status) {
-        // TO_BE_SOLVED(buniu): handler subscribe failed.
-        RAY_CHECK(status.ok()) << "CoreWorker Subscribe failed!";
-      }));
 }
 
 }  // namespace core
