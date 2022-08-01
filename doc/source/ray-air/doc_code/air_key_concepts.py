@@ -5,13 +5,12 @@
 import ray
 import pandas as pd
 from sklearn.datasets import load_breast_cancer
-from ray.air import train_test_split
 
 from ray.data.preprocessors import *
 
 # Split data into train and validation.
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
-train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
+train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 test_dataset = valid_dataset.drop_columns(["target"])
 
 columns_to_scale = ["mean radius", "mean texture"]
@@ -20,6 +19,7 @@ preprocessor = StandardScaler(columns=columns_to_scale)
 
 # __air_trainer_start__
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 
 num_workers = 2
 use_gpu = False
@@ -32,10 +32,10 @@ params = {
 }
 
 trainer = XGBoostTrainer(
-    scaling_config={
-        "num_workers": num_workers,
-        "use_gpu": use_gpu,
-    },
+    scaling_config=ScalingConfig(
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+    ),
     label_column="target",
     params=params,
     datasets={"train": train_dataset, "valid": valid_dataset},

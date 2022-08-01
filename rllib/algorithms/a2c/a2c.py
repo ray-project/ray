@@ -128,6 +128,12 @@ class A2C(A3C):
                     "Otherwise, microbatches of desired size won't be achievable."
                 )
 
+            if config["num_gpus"] > 1:
+                raise AttributeError(
+                    "A2C does not support micro-batching and multiple GPUs "
+                    "at the same time."
+                )
+
     @override(Algorithm)
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
@@ -144,6 +150,7 @@ class A2C(A3C):
 
     @override(A3C)
     def training_step(self) -> ResultDict:
+        # Fallback to Algorithm.training_step() and A3C policies (loss_fn etc).
         # W/o microbatching: Identical to Algorithm's default implementation.
         # Only difference to a default Algorithm being the value function loss term
         # and its value computations alongside each action.

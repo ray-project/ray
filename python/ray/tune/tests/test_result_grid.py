@@ -1,17 +1,19 @@
 import json
 import os
 import pickle
+import shutil
 
 import pytest
 import pandas as pd
 
 import ray
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
 from ray.tune.experiment import Trial
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.tune.tests.tune_test_util import create_tune_experiment_checkpoint
 
 
 @pytest.fixture
@@ -188,11 +190,27 @@ def test_best_result_no_report(ray_start_2_cpus):
         result_grid.get_best_result(metric="x", mode="max")
 
 
+def test_result_repr(ray_start_2_cpus):
+    def f(config):
+        from ray.air import session
+
+        session.report({"loss": 1})
+
+    tuner = tune.Tuner(f, param_space={"x": tune.grid_search([1, 2])})
+    result_grid = tuner.fit()
+    result = result_grid[0]
+
+    from ray.tune.result import AUTO_RESULT_KEYS
+
+    representation = result.__repr__()
+    assert not any(key in representation for key in AUTO_RESULT_KEYS)
+
+
 def test_no_metric_mode(ray_start_2_cpus):
     def f(config):
         tune.report(x=1)
 
-    analysis = tune.run(f)
+    analysis = tune.run(f, num_samples=2)
     result_grid = ResultGrid(analysis)
     with pytest.raises(ValueError):
         result_grid.get_best_result()
@@ -202,6 +220,16 @@ def test_no_metric_mode(ray_start_2_cpus):
 
     with pytest.raises(ValueError):
         result_grid.get_best_result(mode="max")
+
+
+def test_no_metric_mode_one_trial(ray_start_2_cpus):
+    def f(config):
+        tune.report(x=1)
+
+    results = tune.Tuner(f, tune_config=tune.TuneConfig(num_samples=1)).fit()
+    # This should not throw any exception
+    best_result = results.get_best_result()
+    assert best_result
 
 
 def test_result_grid_df(ray_start_2_cpus):
@@ -228,6 +256,31 @@ def test_result_grid_df(ray_start_2_cpus):
     assert sorted(df["metric"]) == [1, 2]
 
     assert sorted(df["config/nested/param"]) == [1, 2]
+
+
+def test_num_errors_terminated(tmpdir):
+    error_file = tmpdir / "error.txt"
+    with open(error_file, "w") as fp:
+        fp.write("Test error\n")
+
+    trials = [Trial("foo", stub=True) for i in range(10)]
+    trials[4].status = Trial.ERROR
+    trials[6].status = Trial.ERROR
+    trials[8].status = Trial.ERROR
+
+    trials[4].error_file = error_file
+    trials[6].error_file = error_file
+    trials[8].error_file = error_file
+
+    trials[3].status = Trial.TERMINATED
+    trials[5].status = Trial.TERMINATED
+
+    experiment_dir = create_tune_experiment_checkpoint(trials)
+    result_grid = ResultGrid(tune.ExperimentAnalysis(experiment_dir))
+    assert len(result_grid.errors) == 3
+    assert result_grid.num_errors == 3
+    assert result_grid.num_terminated == 2
+    shutil.rmtree(experiment_dir)
 
 
 if __name__ == "__main__":

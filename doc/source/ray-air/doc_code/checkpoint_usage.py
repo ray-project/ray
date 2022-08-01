@@ -2,7 +2,7 @@
 # isort: skip_file
 
 # __checkpoint_quick_start__
-from ray.train.tensorflow import to_air_checkpoint
+from ray.train.tensorflow import TensorflowCheckpoint
 import tensorflow as tf
 
 # This can be a trained model.
@@ -18,23 +18,23 @@ def build_model() -> tf.keras.Model:
 
 model = build_model()
 
-checkpoint = to_air_checkpoint(model)
+checkpoint = TensorflowCheckpoint.from_model(model)
 # __checkpoint_quick_end__
 
 
 # __use_trainer_checkpoint_start__
 import ray
-from ray.air import train_test_split
 from ray.train.xgboost import XGBoostTrainer
+from ray.air.config import ScalingConfig
 
 
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
-train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
+train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 
 trainer = XGBoostTrainer(
-    scaling_config={"num_workers": 2},
+    scaling_config=ScalingConfig(num_workers=2),
     label_column="target",
     params={
         "objective": "binary:logistic",

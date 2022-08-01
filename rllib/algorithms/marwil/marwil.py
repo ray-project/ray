@@ -1,4 +1,4 @@
-from typing import Optional, Type
+from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -13,18 +13,24 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.offline.estimators import ImportanceSampling, WeightedImportanceSampling
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.typing import (
-    ResultDict,
-    AlgorithmConfigDict,
-)
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
+from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
+    EnvType,
+    ResultDict,
+)
+from ray.tune.logger import Logger
 
 
 class MARWILConfig(AlgorithmConfig):
@@ -104,17 +110,20 @@ class MARWILConfig(AlgorithmConfig):
         # discounted returns. It is ok, though, to have multiple episodes in
         # the same line.
         self.input_ = "sampler"
-        # Use importance sampling estimators for reward.
-        self.evaluation_config["off_policy_estimation_methods"] = {
-            "is": {"type": ImportanceSampling},
-            "wis": {"type": WeightedImportanceSampling},
-        }
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
         self.num_workers = 0
         # __sphinx_doc_end__
         # fmt: on
+
+        # TODO: Delete this and change off_policy_estimation_methods to {}
+        # Also remove the same section from BC
+        self.off_policy_estimation_methods = {
+            "is": {"type": ImportanceSampling},
+            "wis": {"type": WeightedImportanceSampling},
+        }
+        self._set_off_policy_estimation_methods = False
 
     @override(AlgorithmConfig)
     def training(
@@ -209,6 +218,40 @@ class MARWILConfig(AlgorithmConfig):
         if grad_clip is not None:
             self.grad_clip = grad_clip
         return self
+
+    def evaluation(
+        self,
+        **kwargs,
+    ) -> "MARWILConfig":
+        """Sets the evaluation related configuration.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        # Pass kwargs onto super's `evaluation()` method.
+        super().evaluation(**kwargs)
+
+        if "off_policy_estimation_methods" in kwargs:
+            # User specified their OPE methods.
+            self._set_off_policy_estimation_methods = True
+
+        return self
+
+    def build(
+        self,
+        env: Optional[Union[str, EnvType]] = None,
+        logger_creator: Optional[Callable[[], Logger]] = None,
+    ) -> "Algorithm":
+        if not self._set_off_policy_estimation_methods:
+            deprecation_warning(
+                old="MARWIL currently uses off_policy_estimation_methods: "
+                f"{self.off_policy_estimation_methods} by default. This will"
+                "change to off_policy_estimation_methods: {} in a future release."
+                "If you want to use an off-policy estimator, specify it in"
+                ".evaluation(off_policy_estimation_methods=...)",
+                error=False,
+            )
+        return super().build(env, logger_creator)
 
 
 class MARWIL(Algorithm):

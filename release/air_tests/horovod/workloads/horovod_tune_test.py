@@ -4,18 +4,19 @@ import numpy as np
 import torchvision
 from ray.air import RunConfig, session
 from ray.train.horovod import HorovodTrainer
+from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from torch.utils.data import DataLoader
 
 import torchvision.transforms as transforms
+from torchvision.models import resnet18
 
 import ray
 from ray import tune
 from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import create_scheduler
 
-from ray.util.ml_utils.resnet import ResNet18
 
 from ray.tune.utils.release_test_util import ProgressCallback
 
@@ -30,7 +31,7 @@ def train_loop_per_worker(config):
 
     hvd.init()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = ResNet18(None).to(device)
+    net = resnet18().to(device)
     optimizer = torch.optim.SGD(
         net.parameters(),
         lr=config["lr"],
@@ -127,10 +128,10 @@ if __name__ == "__main__":
 
     horovod_trainer = HorovodTrainer(
         train_loop_per_worker=train_loop_per_worker,
-        scaling_config={
-            "use_gpu": False if args.smoke_test else True,
-            "num_workers": 2 if args.smoke_test else 4,
-        },
+        scaling_config=ScalingConfig(
+            use_gpu=False if args.smoke_test else True,
+            num_workers=2 if args.smoke_test else 4,
+        ),
         train_loop_config={"batch_size": 64, "data": ray.put(dataset)},
     )
 
