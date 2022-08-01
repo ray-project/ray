@@ -77,11 +77,10 @@ bool MemoryMonitor::IsUsageAboveThreshold() {
 
 std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
-#ifdef __linux__
-  auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
-#else
-  RAY_CHECK(false) << "Memory monitor currently supports only linux";
+#ifndef __linux__
+  RAY_CHECK(false) << "Memory monitor currently supports only linux";  
 #endif
+  auto [system_used_bytes, system_total_bytes] = GetLinuxMemoryBytes();
   /// cgroup memory limit can be higher than system memory limit when it is
   /// not used. We take its value only when it is less than or equal to system memory
   /// limit. TODO(clarng): find a better way to detect cgroup memory limit is used.
