@@ -15,6 +15,7 @@ prelude_commands: &prelude_commands |-
   ./ci/ci.sh init && source ~/.zshrc
   ./ci/ci.sh build
   ./ci/env/install-dependencies.sh
+  ./ci/env/env_info.sh
 
 epilogue_commands: &epilogue_commands |-
   # Cleanup runtime environment to save storage
