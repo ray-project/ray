@@ -264,7 +264,7 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
     Examples:
         >>> from ray import workflow
         >>> start_trip = ... # doctest: +SKIP
-        >>> trip = start_trip.task() # doctest: +SKIP
+        >>> trip = start_trip.bind() # doctest: +SKIP
         >>> res1 = trip.run_async(workflow_id="trip1") # doctest: +SKIP
         >>> res2 = workflow.resume("trip1") # doctest: +SKIP
         >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
@@ -305,7 +305,7 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
     Examples:
         >>> from ray import workflow
         >>> start_trip = ... # doctest: +SKIP
-        >>> trip = start_trip.options(name="trip").task() # doctest: +SKIP
+        >>> trip = start_trip.options(name="trip").bind() # doctest: +SKIP
         >>> res1 = trip.run_async(workflow_id="trip1") # doctest: +SKIP
         >>> # you could "get_output()" in another machine
         >>> res2 = workflow.get_output_async("trip1") # doctest: +SKIP
@@ -365,7 +365,7 @@ def list_all(
     Examples:
         >>> from ray import workflow
         >>> long_running_job = ... # doctest: +SKIP
-        >>> workflow_task = long_running_job.task() # doctest: +SKIP
+        >>> workflow_task = long_running_job.bind() # doctest: +SKIP
         >>> wf = workflow_task.run_async( # doctest: +SKIP
         ...     workflow_id="long_running_job")
         >>> jobs = workflow.list_all() # doctest: +SKIP
@@ -475,7 +475,7 @@ def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     Examples:
         >>> from ray import workflow
         >>> failed_job = ... # doctest: +SKIP
-        >>> workflow_task = failed_job.task() # doctest: +SKIP
+        >>> workflow_task = failed_job.bind() # doctest: +SKIP
         >>> output = workflow_task.run_async(workflow_id="failed_job") # doctest: +SKIP
         >>> try: # doctest: +SKIP
         >>>     ray.get(output) # doctest: +SKIP
@@ -537,7 +537,7 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     Examples:
         >>> from ray import workflow
         >>> trip = ... # doctest: +SKIP
-        >>> workflow_task = trip.task() # doctest: +SKIP
+        >>> workflow_task = trip.bind() # doctest: +SKIP
         >>> output = workflow_task.run(workflow_id="trip") # doctest: +SKIP
         >>> assert workflow.SUCCESSFUL == workflow.get_status("trip") # doctest: +SKIP
 
@@ -622,7 +622,7 @@ def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]
         >>> from ray import workflow
         >>> trip = ... # doctest: +SKIP
         >>> workflow_task = trip.options( # doctest: +SKIP
-        ...     name="trip", metadata={"k1": "v1"}).task()
+        ...     name="trip", metadata={"k1": "v1"}).bind()
         >>> workflow_task.run( # doctest: +SKIP
         ...     workflow_id="trip1", metadata={"k2": "v2"})
         >>> workflow_metadata = workflow.get_metadata("trip1") # doctest: +SKIP
@@ -661,7 +661,7 @@ def cancel(workflow_id: str) -> None:
     Examples:
         >>> from ray import workflow
         >>> some_job = ... # doctest: +SKIP
-        >>> workflow_task = some_job.task() # doctest: +SKIP
+        >>> workflow_task = some_job.bind() # doctest: +SKIP
         >>> output = workflow_task.run_async(workflow_id="some_job") # doctest: +SKIP
         >>> workflow.cancel(workflow_id="some_job") # doctest: +SKIP
         >>> assert [ # doctest: +SKIP
@@ -694,7 +694,7 @@ def delete(workflow_id: str) -> None:
     Examples:
         >>> from ray import workflow
         >>> some_job = ... # doctest: +SKIP
-        >>> workflow_task = some_job.task() # doctest: +SKIP
+        >>> workflow_task = some_job.bind() # doctest: +SKIP
         >>> output = workflow_task.run_async(workflow_id="some_job") # doctest: +SKIP
         >>> workflow.delete(workflow_id="some_job") # doctest: +SKIP
         >>> assert [] == workflow.list_all() # doctest: +SKIP

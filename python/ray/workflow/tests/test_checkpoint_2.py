@@ -129,16 +129,16 @@ def test_checkpoint_dag_validation(workflow_start_regular):
 
     @workflow.task
     def invalid_checkpoint_dag_2():
-        y = valid_checkpoint_dag_1.options(checkpoint=False).task()
+        y = valid_checkpoint_dag_1.options(checkpoint=False).bind()
         return average.options(checkpoint=True).task(y)
 
-    valid_checkpoint_dag_1.options(checkpoint=False).task().run()
+    valid_checkpoint_dag_1.options(checkpoint=False).bind().run()
     # check invalid configuration
     with pytest.raises(workflow.WorkflowExecutionError):
-        invalid_checkpoint_dag_1.options(checkpoint=False).task().run()
+        invalid_checkpoint_dag_1.options(checkpoint=False).bind().run()
     # check invalid configuration
     with pytest.raises(workflow.WorkflowExecutionError):
-        invalid_checkpoint_dag_2.options(checkpoint=False).task().run()
+        invalid_checkpoint_dag_2.options(checkpoint=False).bind().run()
 
 
 if __name__ == "__main__":
