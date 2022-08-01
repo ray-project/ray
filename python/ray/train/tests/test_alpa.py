@@ -56,7 +56,7 @@ def test_jax_get_device(ray_start_4_cpus_2_gpus):
         scaling_config=ScalingConfig(
             num_workers=1,
             use_gpu=True,
-            resources_per_worker={"GPU": num_gpus_per_worker},
+            resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
         ),
     )
 
@@ -80,7 +80,7 @@ def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             use_gpu=True,
-            resources_per_worker={"GPU": num_gpus_per_worker},
+            resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
         ),
     )
 
@@ -95,7 +95,7 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             use_gpu=use_gpu,
-            resources_per_worker={"GPU": num_gpus_per_worker} if use_gpu else None,
+            resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker} if use_gpu else None,
         ),
     )
     tuner = Tuner(
