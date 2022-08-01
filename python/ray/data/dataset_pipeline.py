@@ -1123,8 +1123,15 @@ class DatasetPipeline(Generic[T]):
         return DatasetPipeline(iterable, False, length=length)
 
     def __repr__(self) -> str:
-        return "DatasetPipeline(num_windows={}, num_stages={})".format(
-            self._length, 1 + len(self._stages)
+        if self._executed[0]:
+            return (
+                f"DatasetPipeline(num_windows={self._length}, "
+                f"num_stages_unoptimized={len(self._stages)}, "
+                f"num_stages_optimized={len(self._optimized_stages)})"
+            )
+        return (
+            f"DatasetPipeline(num_windows={self._length}, "
+            f"num_stages_unoptimized={len(self._stages)})"
         )
 
     def __str__(self) -> str:
