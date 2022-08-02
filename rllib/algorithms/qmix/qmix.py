@@ -245,72 +245,67 @@ class QMix(SimpleQ):
         Returns:
             The results dict from executing the training iteration.
         """
-        # Possibly collect samples multiple times at the beginning of training before
-        # learning starts
-        sampled_this_step = False
-        while (
-            self.current_timestep
-            < self.config["num_steps_sampled_before_learning_starts"]
-            or not sampled_this_step
-        ):
-            # Sample n batches from n workers.
-            new_sample_batches = synchronous_parallel_sample(
-                worker_set=self.workers, concat=False
-            )
-
-            for batch in new_sample_batches:
-                # Update counters.
-                self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-                # Store new samples in the replay buffer.
-                self.local_replay_buffer.add(batch)
-
-            sampled_this_step = True
-
-        # Sample n batches from replay buffer until the total number of timesteps
-        # reaches `train_batch_size`.
-        train_batch = sample_min_n_steps_from_buffer(
-            replay_buffer=self.local_replay_buffer,
-            min_steps=self.config["train_batch_size"],
-            count_by_agent_steps=self._by_agent_steps,
+        # Sample n batches from n workers.
+        new_sample_batches = synchronous_parallel_sample(
+            worker_set=self.workers, concat=False
         )
-        if train_batch is None:
-            return {}
 
-        # Learn on the training batch.
-        # Use simple optimizer (only for multi-agent or tf-eager; all other
-        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-        if self.config.get("simple_optimizer") is True:
-            train_results = train_one_step(self, train_batch)
-        else:
-            train_results = multi_gpu_train_one_step(self, train_batch)
+        for batch in new_sample_batches:
+            # Update counters.
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+            # Store new samples in the replay buffer.
+            self.local_replay_buffer.add(batch)
 
         # Update target network every `target_network_update_freq` sample steps.
-        last_update = self._counters[LAST_TARGET_UPDATE_TS]
-        if (
-            self.current_timestep - last_update
-            >= self.config["target_network_update_freq"]
-        ):
-            to_update = self.workers.local_worker().get_policies_to_train()
-            self.workers.local_worker().foreach_policy_to_train(
-                lambda p, pid: pid in to_update and p.update_target()
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
+
+        train_results = {}
+
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            # Sample n batches from replay buffer until the total number of timesteps
+            # reaches `train_batch_size`.
+            train_batch = sample_min_n_steps_from_buffer(
+                replay_buffer=self.local_replay_buffer,
+                min_steps=self.config["train_batch_size"],
+                count_by_agent_steps=self._by_agent_steps,
             )
-            self._counters[NUM_TARGET_UPDATES] += 1
-            self._counters[LAST_TARGET_UPDATE_TS] = self.current_timestep
+            if train_batch is None:
+                return {}
 
-        update_priorities_in_replay_buffer(
-            self.local_replay_buffer, self.config, train_batch, train_results
-        )
+            # Learn on the training batch.
+            # Use simple optimizer (only for multi-agent or tf-eager; all other
+            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+            if self.config.get("simple_optimizer") is True:
+                train_results = train_one_step(self, train_batch)
+            else:
+                train_results = multi_gpu_train_one_step(self, train_batch)
 
-        # Update weights and global_vars - after learning on the local worker -
-        # on all remote workers.
-        global_vars = {
-            "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
-        }
-        # Update remote workers' weights and global vars after learning on local
-        # worker.
-        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            self.workers.sync_weights(global_vars=global_vars)
+            # Update target network every `target_network_update_freq` sample steps.
+            last_update = self._counters[LAST_TARGET_UPDATE_TS]
+            if cur_ts - last_update >= self.config["target_network_update_freq"]:
+                to_update = self.workers.local_worker().get_policies_to_train()
+                self.workers.local_worker().foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
+                self._counters[NUM_TARGET_UPDATES] += 1
+                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+            update_priorities_in_replay_buffer(
+                self.local_replay_buffer, self.config, train_batch, train_results
+            )
+
+            # Update weights and global_vars - after learning on the local worker -
+            # on all remote workers.
+            global_vars = {
+                "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
+            }
+            # Update remote workers' weights and global vars after learning on local
+            # worker.
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                self.workers.sync_weights(global_vars=global_vars)
 
         # Return all collected metrics for the iteration.
         return train_results
