@@ -3,7 +3,14 @@ import os
 import time
 
 import ray
-from simple_example import main
+import sys
+
+# add a switch here because master and latest branch
+# diverge; this will be called in `release/release_tests.yaml`
+if sys.argv[1] == "master":
+    from simple_example_master import main
+else:
+    from simple_example import main
 
 if __name__ == "__main__":
     start = time.time()
