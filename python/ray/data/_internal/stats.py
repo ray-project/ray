@@ -200,9 +200,10 @@ class DatasetStats:
             already_printed = set()
 
         if self.needs_stats_actor:
+            ac = self.stats_actor
             # XXX this is a super hack, clean it up.
             stats_map, self.time_total_s = ray.get(
-                self.stats_actor.get.remote(self.stats_uuid)
+                ac.get.remote(self.stats_uuid)
             )
             for i, metadata in stats_map.items():
                 self.stages["read"][i] = metadata
