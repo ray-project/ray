@@ -1,8 +1,10 @@
 (serve-monitoring)=
 
-# Debugging & Monitoring
+# Monitoring Ray Serve
 
 This section should help you understand how to debug and monitor your Serve application.
+There are three main ways to do this:
+Using the Ray Dashboard, using Ray logging, and using built-in Ray Serve metrics.
 
 ## Ray Dashboard
 
