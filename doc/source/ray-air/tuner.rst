@@ -8,29 +8,29 @@ The Ray AIR :class:`Tuner <ray.tune.Tuner>` is the recommended way to tune hyper
 .. image:: images/tuner.svg
     :align: center
 
-The `Tuner` provides an interface that works with AIR Trainers to perform distributed
-hyperparameter tuning. The `Tuner` component is part of Ray Tune and provides
+`Tuner` provides an interface that works with AIR Trainers to perform distributed
+hyperparameter tuning. `Tuner` is part of Ray Tune and provides
 a variety of state-of-the-art hyperparameter tuning algorithms for optimizing model
 performance.
 
-This guide will demonstrate basic usage of the Tuner. If you are interested in
+This page will cover basic usage examples of a Tuner. If you are interested in
 reading more, please take a look at the :ref:`Ray Tune documentation <tune-main>`.
 
 Key Concepts
 ------------
 
-There are a couple key concepts for using the Tuner:
+There are a couple key concepts for using a Tuner:
 
 * First, you need to specify the hyperparameters you want to tune in a `search space`.
 * You select a `search algorithm` to effectively optimize your parameters and optionally use a
   `scheduler` to stop searches early and speed up your experiments.
-* Pass in the above objects with a `Trainer` into `Tuner`,
+* Pass in the above objects with a `Trainer` into a `Tuner`,
   which runs the hyperparameter tuning workload by evaluating multiple hyperparameters in parallel.
 * Each individual hyperparameter evaluation run is called a `trial`.
 * The results are returned in a `ResultGrid`.
 
 .. note::
-   The Tuner API can also be used to launch hyperparameter tuning without using Ray AIR Trainers. See
+   Tuners can also be used to launch hyperparameter tuning without using Ray AIR Trainers. See
    :ref:`the Ray Tune documentation <tune-main>` for more guides examples.
 
 Basic usage
@@ -47,7 +47,7 @@ Below, we demonstrate how you can use a Trainer object with a Tuner.
 How do I configure a search space?
 ----------------------------------
 
-`Tuner` takes in a `param_space` argument where you can define the search space
+A `Tuner` takes in a `param_space` argument where you can define the search space
 from which hyperparameter configurations will be sampled.
 
 Depending on the model and dataset, you may want to tune:
@@ -74,7 +74,7 @@ The following shows some example code on how to specify the ``param_space``.
 
 Read more about :ref:`Tune search spaces here <tune-search-space-tutorial>`.
 
-You can use the Tuner to tune most arguments and configurations in Ray AIR, including but
+You can use a Tuner to tune most arguments and configurations in Ray AIR, including but
 not limited to:
 
 - Ray Datasets
@@ -85,14 +85,14 @@ not limited to:
 There are a couple gotchas about parameter specification when using Tuners with Trainers:
 
 - By default, configuration dictionaries and config objects will be deep-merged
-- Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner specification
+- Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``
 - **Exception:** all arguments of the :class:`RunConfig <ray.air.config.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
 
 
-Configuring the Tuner
----------------------
+How to configure a Tuner
+------------------------
 
-There are two main configuration objects that can be passed into the Tuner: the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` and the :class:`RunConfig <ray.air.config.RunConfig>`.
+There are two main configuration objects that can be passed into a Tuner: the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` and the :class:`RunConfig <ray.air.config.RunConfig>`.
 
 The :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` contains tuning specific settings, including:
 

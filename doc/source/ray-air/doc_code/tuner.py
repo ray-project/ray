@@ -218,7 +218,6 @@ run_config = RunConfig(
     sync_config=tune.SyncConfig(upload_dir="s3://..."),
     checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2),
 )
-
 # __run_config_end__
 
 # __tune_config_start__
@@ -232,5 +231,4 @@ tune_config = TuneConfig(
     num_samples=100,
     search_alg=BayesOptSearch(),
 )
-
 # __tune_config_end__
