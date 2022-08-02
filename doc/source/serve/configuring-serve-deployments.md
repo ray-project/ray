@@ -76,6 +76,7 @@ func.options(num_replicas=10).deploy()
 func.options(num_replicas=1).deploy()
 ```
 
+(ray-serve-autoscaling)=
 
 ## Autoscaling
 
