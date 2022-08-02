@@ -9,7 +9,7 @@ from ray.air.checkpoint import Checkpoint
 
 
 @PublicAPI(stability="alpha")
-class PytorchLightningTrainer(TorchTrainer):
+class LightningTrainer(TorchTrainer):
     def __init__(
         self,
         lightning_module: Type[pytorch_lightning.LightningModule]
@@ -26,7 +26,7 @@ class PytorchLightningTrainer(TorchTrainer):
     ):
         # TODO (s10a): check PTL version
 
-        # TODO (s10a): validate that 
+        # TODO (s10a): validate `lightning_module` is a class object, not instance 
 
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
         if "_lightning_module" in trainer_init_config:
@@ -41,7 +41,7 @@ class PytorchLightningTrainer(TorchTrainer):
         trainer_init_config["_lightning_module_init_config"] = lightning_module_init_config
 
         super().__init__(
-            train_loop_per_worker=_ptl_train_loop_per_worker,
+            train_loop_per_worker=_lightning_train_loop_per_worker,
             train_loop_config=trainer_init_config,
             torch_config=torch_config,
             scaling_config=scaling_config,
@@ -52,7 +52,7 @@ class PytorchLightningTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-def _ptl_train_loop_per_worker(config):
+def _lightning_train_loop_per_worker(config):
     lightning_module = config.pop("_lightning_module")
     lightning_module_init_config = config.pop("_lightning_module_init_config")
     # TODO (s10a)
