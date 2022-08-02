@@ -982,10 +982,11 @@ class Algorithm(Trainable):
         self._evaluation_weights_seq_number += 1
         weights_ref = ray.put(self.workers.local_worker().get_weights())
         self._sync_filters_if_needed(
-            self.evaluation_workers,
-            timeout_seconds=self.config[
+            from_worker=self.workers.local_worker(),
+            workers=self.evaluation_workers,
+            timeout_seconds=eval_cfg.get(
                 "sync_filters_on_rollout_workers_timeout_s"
-            ],
+            ),
         )
 
         if self.config["custom_eval_function"]:
