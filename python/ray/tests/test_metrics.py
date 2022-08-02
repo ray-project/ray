@@ -91,16 +91,15 @@ def test_worker_stats(shutdown_only):
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
 
-    if _WIN32:
-        timeout_seconds = 40
-    else:
-        timeout_seconds = 20
+    timeout_seconds = 30
     start_time = time.time()
     while True:
         if time.time() - start_time > timeout_seconds:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for worker processes"
+            err_msg = (
+                f"Timeout({time.time() - start_time}) waiting for worker processes."
             )
+            print(err_msg)
+            raise RayTestTimeoutException(err_msg)
 
         # Wait for the workers to start.
         if len(reply.core_workers_stats) < num_cpus + 2:
