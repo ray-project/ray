@@ -3,7 +3,7 @@
 Ray AI Runtime (AIR)
 ====================
 
-Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks, all in just Python.
+Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks. Unlike other toolkits, AIR can scale workloads with just Python by leveraging the Ray unified compute framework.
 
 .. image:: images/air.png
 
@@ -18,7 +18,7 @@ Get started by installing Ray AIR:
 Why Ray AIR?
 ------------
 
-Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by taking a scalable, single-system approach to ML infrastructure:
+Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by taking a scalable, single-system approach to ML infrastructure (i.e., leveraging Ray as a unified compute framework):
 
 **1. Seamless Dev to Prod**: AIR reduces friction going from development to production. Traditional orchestration approaches introduce separate systems and operational overheads. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
 
@@ -28,9 +28,10 @@ Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms
 
 .. figure:: images/why-air.png
 
-  AIR enables a single-system / single-script approach to scaling ML. By eliminating
-  the need for setting up and orchestrating separate distributed systems, AIR greatly
-  reduces the friction of moving from development to production.
+  AIR enables a single-system / single-script approach to scaling ML. Ray's APIs for
+  distributed computation allow ML workloads to be scaled without needing
+  to set up or orchestrate separate systems, reducing the friction of moving from
+  development to production.
 
 AIR is for both ML practitioners and ML engineers. Consider using AIR when you want to:
  * Scale a single workload.
