@@ -8,9 +8,21 @@ To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup
 
 To learn about GPU usage on different clouds, see instructions for `GKE`_, for `EKS`_, and for `AKS`_.
 
-The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based images packaged with Ray for use in Kubernetes pods.
+Dependencies for GPU-based machine learning
+___________________________________________
+The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based container images packaged
+with Ray and certain machine learning libraries.
 For example, the image ``rayproject/ray-ml:2.0.0-gpu`` is ideal for running GPU-based ML workloads with Ray 2.0.0.
-Read :ref:`here<docker-images>` for further details on Ray images.
+The Ray ML images are packaged with dependencies (such as TensorFlow and PyTorch) needed to use the :ref:`Ray AI Runtime<air>`
+and the Ray Libraries covered in these docs.
+To add custom dependencies, we recommend one, or both, of the following methods:
+
+* Building a docker image using one of the official :ref:`Ray docker images<docker-images>` as base.
+* Using :ref:`Ray Runtime environments<runtime-environments>`.
+
+
+Configuring Ray pods for GPU usage
+__________________________________
 
 Using Nvidia GPUs requires specifying `nvidia.com/gpu` resource `limits` in the container fields of your `RayCluster`'s
 `headGroupSpec` and/or `workerGroupSpecs`.
@@ -52,15 +64,17 @@ Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instanc
     as demonstrated with the `minReplicas:0` and `maxReplicas:5` settings above.
     To enable autoscaling, remember also to set `enableInTreeAutoscaling:True` in your RayCluster's `spec`
     Finally, make sure your group or pool of GPU Kubernetes nodes are configured to autoscale.
+    Refer to your :ref:`cloud provider's documentation<kuberay-k8s-setup>` for details on autoscaling node pools.
 
 GPUs and Ray
 ____________
 
+This section discuss GPU usage for Ray applications running on Kubernetes.
+For general guidance on GPU usage with Ray, see also :ref:`gpu-support`.
+
 The KubeRay operator advertises container GPU resource limits to
 the Ray scheduler and the Ray autoscaler. In particular, the Ray container's
 `ray start` entrypoint will be automatically configured with the appropriate `--num-gpus` option.
-
-* Learn more about Ray's :ref:`gpu-support`.
 
 GPU workload scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -74,9 +88,10 @@ GPU autoscaling
 ~~~~~~~~~~~~~~~
 The Ray autoscaler is aware of each Ray worker group's GPU capacity.
 Say we have a RayCluster configured as in the config snippet above:
-- There is a worker group of Ray pods with 1 unit of GPU capacity each
-- The Ray cluster does not currently have any workers from that group
-- `maxReplicas` for the group is at least 2
+
+- There is a worker group of Ray pods with 1 unit of GPU capacity each.
+- The Ray cluster does not currently have any workers from that group.
+- `maxReplicas` for the group is at least 2.
 
 Then the following Ray program will trigger upscaling of 2 GPU workers.
 
@@ -111,7 +126,7 @@ You can also make a :ref:`direct request to the autoscaler<ref-autoscaler-sdk-re
     import ray
 
     ray.init()
-    ray.autoscaler.sdk.request_resources(bundles=[{"GPU": 1} * 2])
+    ray.autoscaler.sdk.request_resources(bundles=[{"GPU": 1}] * 2)
 
 After the nodes are scaled up, they will persist until the request is explicitly overridden.
 The following program will remove the resource request.
@@ -177,7 +192,7 @@ If this admission controller is not enabled for your Kubernetes cluster, you may
 Node selectors and node labels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To ensure Ray pods are bound to Kubernetes nodes satisfying specific
-conditions (such as presence of GPU hardware), you may wish to use
+conditions (such as the presence of GPU hardware), you may wish to use
 the `nodeSelector` field of your `workerGroup`'s pod template `spec`.
 See the `Kubernetes docs`_ for more about Pod-to-Node assignment.
 
