@@ -96,10 +96,10 @@ Learn more about [Ray AIR](ray-air/getting-started) and its libraries:
 - [RLlib](rllib/index): Scalable Reinforcement Learning
 - [Serve](serve/index): Scalable and Programmable Serving
 
-## Who is Ray for?
-
-- Ray core: systems software engineers, ML library and system developers
-- Ray AIR: ML practitioners and ML platform builders
+Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
+- [Tasks](ray-core/tasks): Stateless tasks executed in the cluster.
+- [Actors](ray-core/actors): Stateful worker processes created in the cluster.
+- [Objects](ray-core/objects): Shared-memory objects accessible across the cluster.
 
 ## How to get involved?
 
