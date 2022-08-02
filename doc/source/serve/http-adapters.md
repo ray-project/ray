@@ -3,48 +3,48 @@
 
 # HTTP Adapters
 
-HTTP adapters are functions that convert raw HTTP request to Python types that you know and recognize.
-Its input arguments should be type annotated. At minimal, it should accept a `starlette.requests.Request` type.
-But it can also accept any type that's recognized by the FastAPI's dependency injection framework.
+HTTP adapters are functions that convert raw HTTP requests to basic Python types that you know and recognize.
 
-For example, here is an adapter that extra the json content from request.
+For example, here is an adapter that extracts the JSON content from a request:
 
 ```python
 async def json_resolver(request: starlette.requests.Request):
     return await request.json()
 ```
 
-Here is an adapter that accept two HTTP query parameters.
+The input arguments to an HTTP adapter should be type-annotated. At a minimum, the adapter should accept a `starlette.requests.Request` type (https://www.starlette.io/requests/#request),
+but it can also accept any type that's recognized by [FastAPI's dependency injection framework](https://fastapi.tiangolo.com/tutorial/dependencies/).
+
+Here is an HTTP adapter that accepts two HTTP query parameters:
 
 ```python
 def parse_query_args(field_a: int, field_b: str):
     return YourDataClass(field_a, field_b)
 ```
 
-You can specify different type signatures to facilitate HTTP fields extraction
-include
-[query parameters](https://fastapi.tiangolo.com/tutorial/query-params/),
-[body parameters](https://fastapi.tiangolo.com/tutorial/body/),
-and [many other data types](https://fastapi.tiangolo.com/tutorial/extra-data-types/).
-For more detail, you can take a look at [FastAPI documentation](https://fastapi.tiangolo.com/).
+You can specify different type signatures to facilitate the extraction of HTTP fields, including
+- [query parameters](https://fastapi.tiangolo.com/tutorial/query-params/),
+- [body parameters](https://fastapi.tiangolo.com/tutorial/body/),
+and 
+- [many other data types](https://fastapi.tiangolo.com/tutorial/extra-data-types/).
 
-You can use adapters in different scenarios within Serve:
+For more details, you can take a look at the [FastAPI documentation](https://fastapi.tiangolo.com/).
+
+You can use adapters in different scenarios within Serve, which we will go over one by one:
 
 - Ray AIR `Predictor`
 - Serve Deployment Graph `DAGDriver`
 - Embedded in Bring Your Own `FastAPI` Application
 
-Let's go over them one by one.
-
 ## Ray AIR `Predictor`
 
 Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
-You can use it with [Ray AI Runtime (AIR) model wrapper](air-serving-guide) feature
-to one click deploy pre-trained models.
+You can use them together with the [Ray AI Runtime (AIR) model wrapper](air-serving-guide) feature
+to one-click deploy pre-trained models.
 
-For example, we provide a simple adapter for n-dimensional array.
+As an example, we provide a simple adapter for an *n*-dimensional array.
 
-With [model wrappers](air-serving-guide), you can specify it via the `http_adapter` field.
+When using [model wrappers](air-serving-guide), you can specify your HTTP adapter via the `http_adapter` field:
 
 ```python
 from ray import serve
@@ -58,29 +58,12 @@ PredictorDeployment.options(name="my_model").deploy(
 )
 ```
 
-:::{note}
-Serve also supports pydantic models as a short-hand for HTTP adapters in model wrappers. Instead of functions,
-you can directly pass in a pydantic model class to mean "validate the HTTP body with this schema".
-Once validated, the model instance will passed to the predictor.
-
-```python
-from pydantic import BaseModel
-
-class User(BaseModel):
-    user_id: int
-    user_name: str
-
-...
-PredictorDeployment.deploy(..., http_adapter=User)
-```
-:::
-
 ## Serve Deployment Graph `DAGDriver`
 
-In [Serve Deployment Graph](serve-deployment-graph), you can configure
-`ray.serve.drivers.DAGDriver` to accept an http adapter via it's `http_adapter` field.
+When using a [Serve Deployment Graph](serve-deployment-graph), you can configure
+`ray.serve.drivers.DAGDriver` to accept an HTTP adapter via its `http_adapter` field.
 
-For example, the json request adapters parse JSON in HTTP body:
+For example, the `json_request` adapter parses JSON in the HTTP body:
 
 ```python
 from ray.serve.drivers import DAGDriver
@@ -88,28 +71,11 @@ from ray.serve.http_adapters import json_request
 from ray.dag.input_node import InputNode
 
 with InputNode() as input_node:
-    ...
+    # ...
     dag = DAGDriver.bind(other_node, http_adapter=json_request)
 ```
 
-:::{note}
-Serve also supports pydantic models as a short-hand for HTTP adapters in model wrappers. Instead of functions,
-you can directly pass in a pydantic model class to mean "validate the HTTP body with this schema".
-Once validated, the model instance will passed as `input_node` variable.
-
-```python
-from pydantic import BaseModel
-
-class User(BaseModel):
-    user_id: int
-    user_name: str
-
-...
-DAGDriver.bind(other_node, http_adapter=User)
-```
-:::
-
-## Embedded in Bring Your Own `FastAPI` Application
+## Embedded in your existing `FastAPI` Application
 
 You can also bring the adapter to your own FastAPI app using
 [Depends](https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends).
@@ -135,9 +101,29 @@ It has the following schema for input:
 
 ```
 
+## Pydantic models as adapters
+
+Serve also supports [pydantic models](https://pydantic-docs.helpmanual.io/usage/models/) as a shorthand for HTTP adapters in model wrappers. Instead of using a function to define your HTTP adapter as in the examples above,
+you can directly pass in a pydantic model class to effectively tell Ray Serve "validate the HTTP body with this schema."
+Once validated, the model instance will passed to the predictor.
+
+```python
+from pydantic import BaseModel
+
+class User(BaseModel):
+    user_id: int
+    user_name: str
+
+# ...
+
+PredictorDeployment.deploy(..., http_adapter=User)
+# Or:
+DAGDriver.bind(other_node, http_adapter=User)
+
+```
 ## List of Built-in Adapters
 
-Here is a list of adapters and please feel free to [contribute more](https://github.com/ray-project/ray/issues/new/choose)!
+Here is a list of adapters; please feel free to [contribute more](https://github.com/ray-project/ray/issues/new/choose)!
 
 ```{eval-rst}
 .. automodule:: ray.serve.http_adapters
