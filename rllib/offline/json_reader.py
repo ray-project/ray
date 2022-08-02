@@ -84,6 +84,78 @@ def _adjust_obs_actions_for_policy(json_data: dict, policy: Policy) -> dict:
 
 
 @DeveloperAPI
+def postprocess_actions(batch: SampleBatchType, ioctx: IOContext) -> SampleBatchType:
+    # Clip actions (from any values into env's bounds), if necessary.
+    cfg = ioctx.config
+    # TODO(jungong) : we should not clip_action in input reader.
+    # Use connector to handle this.
+    if cfg.get("clip_actions"):
+        if ioctx.worker is None:
+            raise ValueError(
+                "clip_actions is True but cannot clip actions since no workers exist"
+            )
+
+        if isinstance(batch, SampleBatch):
+            default_policy = ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
+            batch[SampleBatch.ACTIONS] = clip_action(
+                batch[SampleBatch.ACTIONS], default_policy.action_space_struct
+            )
+        else:
+            for pid, b in batch.policy_batches.items():
+                b[SampleBatch.ACTIONS] = clip_action(
+                    b[SampleBatch.ACTIONS],
+                    ioctx.worker.policy_map[pid].action_space_struct,
+                )
+    # Re-normalize actions (from env's bounds to zero-centered), if
+    # necessary.
+    if (
+        cfg.get("actions_in_input_normalized") is False
+        and cfg.get("normalize_actions") is True
+    ):
+        if ioctx.worker is None:
+            raise ValueError(
+                "actions_in_input_normalized is False but"
+                "cannot normalize actions since no workers exist"
+            )
+
+        # If we have a complex action space and actions were flattened
+        # and we have to normalize -> Error.
+        error_msg = (
+            "Normalization of offline actions that are flattened is not "
+            "supported! Make sure that you record actions into offline "
+            "file with the `_disable_action_flattening=True` flag OR "
+            "as already normalized (between -1.0 and 1.0) values. "
+            "Also, when reading already normalized action values from "
+            "offline files, make sure to set "
+            "`actions_in_input_normalized=True` so that RLlib will not "
+            "perform normalization on top."
+        )
+
+        if isinstance(batch, SampleBatch):
+            pol = ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
+            if isinstance(
+                pol.action_space_struct, (tuple, dict)
+            ) and not pol.config.get("_disable_action_flattening"):
+                raise ValueError(error_msg)
+            batch[SampleBatch.ACTIONS] = normalize_action(
+                batch[SampleBatch.ACTIONS], pol.action_space_struct
+            )
+        else:
+            for pid, b in batch.policy_batches.items():
+                pol = ioctx.worker.policy_map[pid]
+                if isinstance(
+                    pol.action_space_struct, (tuple, dict)
+                ) and not pol.config.get("_disable_action_flattening"):
+                    raise ValueError(error_msg)
+                b[SampleBatch.ACTIONS] = normalize_action(
+                    b[SampleBatch.ACTIONS],
+                    ioctx.worker.policy_map[pid].action_space_struct,
+                )
+
+    return batch
+
+
+@DeveloperAPI
 def from_json_data(json_data: Any, worker: Optional["RolloutWorker"]):
     # Try to infer the SampleBatchType (SampleBatch or MultiAgentBatch).
     if "type" in json_data:
@@ -290,61 +362,8 @@ class JsonReader(InputReader):
             )
             return None
 
-        # Clip actions (from any values into env's bounds), if necessary.
-        cfg = self.ioctx.config
-        # TODO(jungong) : we should not clip_action in input reader.
-        # Use connector to handle this.
-        if cfg.get("clip_actions") and self.ioctx.worker is not None:
-            if isinstance(batch, SampleBatch):
-                batch[SampleBatch.ACTIONS] = clip_action(
-                    batch[SampleBatch.ACTIONS], self.default_policy.action_space_struct
-                )
-            else:
-                for pid, b in batch.policy_batches.items():
-                    b[SampleBatch.ACTIONS] = clip_action(
-                        b[SampleBatch.ACTIONS],
-                        self.ioctx.worker.policy_map[pid].action_space_struct,
-                    )
-        # Re-normalize actions (from env's bounds to zero-centered), if
-        # necessary.
-        if (
-            cfg.get("actions_in_input_normalized") is False
-            and self.ioctx.worker is not None
-        ):
+        batch = postprocess_actions(batch, self.ioctx)
 
-            # If we have a complex action space and actions were flattened
-            # and we have to normalize -> Error.
-            error_msg = (
-                "Normalization of offline actions that are flattened is not "
-                "supported! Make sure that you record actions into offline "
-                "file with the `_disable_action_flattening=True` flag OR "
-                "as already normalized (between -1.0 and 1.0) values. "
-                "Also, when reading already normalized action values from "
-                "offline files, make sure to set "
-                "`actions_in_input_normalized=True` so that RLlib will not "
-                "perform normalization on top."
-            )
-
-            if isinstance(batch, SampleBatch):
-                pol = self.default_policy
-                if isinstance(
-                    pol.action_space_struct, (tuple, dict)
-                ) and not pol.config.get("_disable_action_flattening"):
-                    raise ValueError(error_msg)
-                batch[SampleBatch.ACTIONS] = normalize_action(
-                    batch[SampleBatch.ACTIONS], pol.action_space_struct
-                )
-            else:
-                for pid, b in batch.policy_batches.items():
-                    pol = self.policy_map[pid]
-                    if isinstance(
-                        pol.action_space_struct, (tuple, dict)
-                    ) and not pol.config.get("_disable_action_flattening"):
-                        raise ValueError(error_msg)
-                    b[SampleBatch.ACTIONS] = normalize_action(
-                        b[SampleBatch.ACTIONS],
-                        self.ioctx.worker.policy_map[pid].action_space_struct,
-                    )
         return batch
 
     def _next_line(self) -> str:

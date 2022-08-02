@@ -20,7 +20,7 @@ pendulum_crr:
         actor_hidden_activation: 'relu'
         actor_hiddens: [256, 256]
         actor_lr: 0.0003
-        actions_in_input_normalized: True
+        actions_in_input_normalized: False
         clip_actions: True
         # Q function update setting
         twin_q: True
