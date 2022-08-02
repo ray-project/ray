@@ -76,6 +76,17 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 /// The duration between raylet check memory pressure and send gc request
 RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
+/// Threshold when the node is beyond the memory capacity.
+/// Ranging from [0, 1]
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
+
+/// The interval between runs of the memory usage monitor.
+/// Monitor is disabled when this value is 0.
+RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
+
+/// If the raylet fails to get agent info, we will retry after this interval.
+RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
+
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
 /// handler is drifting.
@@ -165,7 +176,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
-RAY_CONFIG(int64_t, max_grpc_message_size, 250 * 1024 * 1024)
+RAY_CONFIG(int64_t, max_grpc_message_size, 500 * 1024 * 1024)
 
 // Retry timeout for trying to create a gRPC server. Only applies if the number
 // of retries is non zero.

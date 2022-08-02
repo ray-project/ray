@@ -14,7 +14,7 @@ from ray.tune.integration.mlflow import (
 from ray.air.callbacks.mlflow import (
     MLflowLoggerCallback,
 )
-from ray.util.ml_utils.mlflow import _MLflowLoggerUtil
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 
 
 class MockTrial(

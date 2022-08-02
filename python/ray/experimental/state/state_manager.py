@@ -73,7 +73,6 @@ def handle_grpc_network_errors(func):
                 or there's a slow network issue causing timeout.
             Otherwise, the raw network exceptions (e.g., gRPC) will be raised.
         """
-        # TODO(sang): Add a retry policy.
         try:
             return await func(*args, **kwargs)
         except grpc.aio.AioRpcError as e:

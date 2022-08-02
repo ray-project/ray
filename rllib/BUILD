@@ -94,6 +94,16 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a2c"]
 )
 
+py_test(
+    name = "learning_tests_cartpole_a2c_fake_gpus",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/a2c"]
+)
+
 # A3C
 
 # py_test(
@@ -745,6 +755,13 @@ py_test(
     tags = ["team:rllib", "tests_dir", "algorithms_dir_generic"],
     size = "large",
     srcs = ["algorithms/tests/test_worker_failures.py"]
+)
+
+py_test(
+    name = "test_registry",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_registry.py"],
 )
 
 # Specific Algorithms

@@ -119,8 +119,8 @@ Some Dataset operations require a *shuffle* operation, meaning that data is shuf
 These operations include ``Dataset.random_shuffle``, ``Dataset.sort`` and ``Dataset.groupby``.
 Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size cannot fit into memory.
 
-Starting in Ray v1.13, Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
-We recommend trying this out if your dataset has more than 1k partitions (input files) or 1TB of data.
+Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
+We recommend trying this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
 
 To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for ``Dataset.random_shuffle`` and ``Dataset.sort``.
 To get an idea of the performance you can expect, here are some run time results for ``Dataset.random_shuffle`` on 1-10TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
@@ -155,5 +155,3 @@ setting the ``DatasetContext.use_push_based_shuffle`` flag:
     ds = ray.data.range(n, parallelism=parallelism)
     print(ds.random_shuffle().take(10))
     # [954, 405, 434, 501, 956, 762, 488, 920, 657, 834]
-
-Push-based shuffle is available as **alpha** in Ray 1.13+. Expect some rough edges, and please file any feature requests and bug reports on GitHub Issues.
