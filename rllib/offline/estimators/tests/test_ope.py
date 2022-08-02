@@ -1,6 +1,7 @@
 import copy
 import os
 import unittest
+from pathlib import Path
 from typing import Type, Union, Dict, Tuple
 
 import numpy as np
@@ -36,7 +37,8 @@ class TestOPE(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-        train_data = "s3://air-example-data/rllib/cartpole/small.json"
+        rllib_dir = Path(__file__).parent.parent.parent.parent
+        train_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99

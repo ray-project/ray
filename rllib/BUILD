@@ -1722,7 +1722,7 @@ py_test(
 
 py_test(
     name = "test_ope",
-    tags = ["team:rllib", "offline", "torch_only", "gpu"],
+    tags = ["team:rllib", "offline"],
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
     data = ["tests/data/cartpole/small.json"],
