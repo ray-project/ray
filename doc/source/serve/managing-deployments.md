@@ -1,3 +1,5 @@
+(serve-managing-deployments-guide)=
+
 # Managing Deployments
 
 This section should help you:
@@ -55,6 +57,8 @@ All of these options can be specified either in {mod}`@serve.deployment <ray.ser
 
 To update the config options for a running deployment, simply redeploy it with the new options set.
 
+(scaling-out-a-deployment)=
+
 ### Scaling Out
 
 To scale out a deployment to many processes, simply configure the number of replicas.
@@ -74,25 +78,22 @@ func.options(num_replicas=10).deploy()
 func.options(num_replicas=1).deploy()
 ```
 
+(ray-serve-autoscaling)=
+
 #### Autoscaling
 
-Serve also has experimental support for a demand-based replica autoscaler.
+Serve also has the support for a demand-based replica autoscaler.
 It reacts to traffic spikes via observing queue sizes and making scaling decisions.
-To configure it, you can set the `_autoscaling` field in deployment options.
+To configure it, you can set the `autoscaling` field in deployment options.
 
-:::{warning}
-The API is experimental and subject to change. We welcome you to test it out
-and leave us feedback through [Github Issues](https://github.com/ray-project/ray/issues) or our [discussion forum](https://discuss.ray.io/)!
-:::
 
 ```python
 @serve.deployment(
-    _autoscaling_config={
+    autoscaling_config={
         "min_replicas": 1,
         "max_replicas": 5,
         "target_num_ongoing_requests_per_replica": 10,
-    },
-    version="v1")
+    })
 def func(_):
     time.sleep(1)
     return ""
@@ -110,10 +111,6 @@ and the latency constraint is `100ms`, you can have at most `10` requests ongoin
 the last requests can finish within the latency constraint. We recommend you benchmark your application
 code and set this number based on end to end latency objective.
 
-:::{note}
-The `version` field is required for autoscaling. We are actively working on removing
-this limitation.
-:::
 
 :::{note}
 The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the [Ray Autoscaler](cluster-index).
@@ -139,6 +136,8 @@ following:
 def func(*args):
     return do_something_with_my_gpu()
 ```
+
+(serve-fractional-resources-guide)=
 
 ### Fractional Resources
 
@@ -184,6 +183,8 @@ Some other libraries may not respect `OMP_NUM_THREADS` and have their own way to
 For example, if you're using OpenCV, you'll need to manually set the number of threads using `cv2.setNumThreads(num_threads)` (set to 0 to disable multi-threading).
 You can check the configuration using `cv2.getNumThreads()` and `cv2.getNumberOfCPUs()`.
 :::
+
+(managing-deployments-user-configuration)=
 
 ### User Configuration (Experimental)
 

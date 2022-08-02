@@ -3,11 +3,12 @@ import sklearn.datasets
 import sklearn.metrics
 import os
 import numpy as np
-from ray.tune.schedulers import ASHAScheduler
 from sklearn.model_selection import train_test_split
 import xgboost as xgb
 
+import ray
 from ray import tune
+from ray.tune.schedulers import ASHAScheduler
 from ray.tune.integration.xgboost import (
     TuneReportCheckpointCallback,
     TuneReportCallback,
@@ -60,11 +61,12 @@ def train_breast_cancer_cv(config: dict):
     )
 
 
-def get_best_model_checkpoint(analysis):
+def get_best_model_checkpoint(best_result: "ray.air.Result"):
     best_bst = xgb.Booster()
-    best_bst.load_model(os.path.join(analysis.best_checkpoint, "model.xgb"))
-    accuracy = 1.0 - analysis.best_result["test-error"]
-    print(f"Best model parameters: {analysis.best_config}")
+    with best_result.checkpoint.as_directory() as checkpoint_dir:
+        best_bst.load_model(os.path.join(checkpoint_dir, "model.xgb"))
+    accuracy = 1.0 - best_result.metrics["test-error"]
+    print(f"Best model parameters: {best_result.config}")
     print(f"Best model total accuracy: {accuracy:.4f}")
     return best_bst
 
@@ -84,18 +86,23 @@ def tune_xgboost(use_cv: bool = False):
         max_t=10, grace_period=1, reduction_factor=2  # 10 training iterations
     )
 
-    analysis = tune.run(
-        train_breast_cancer if not use_cv else train_breast_cancer_cv,
-        metric="test-logloss",
-        mode="min",
-        # You can add "gpu": 0.1 to allocate GPUs
-        resources_per_trial={"cpu": 1},
-        config=search_space,
-        num_samples=10,
-        scheduler=scheduler,
+    tuner = tune.Tuner(
+        tune.with_resources(
+            train_breast_cancer if not use_cv else train_breast_cancer_cv,
+            # You can add "gpu": 0.1 to allocate GPUs
+            resources={"cpu": 1},
+        ),
+        tune_config=tune.TuneConfig(
+            metric="test-logloss",
+            mode="min",
+            num_samples=10,
+            scheduler=scheduler,
+        ),
+        param_space=search_space,
     )
+    results = tuner.fit()
 
-    return analysis
+    return results.get_best_result()
 
 
 if __name__ == "__main__":
@@ -103,38 +110,16 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
-    parser.add_argument(
         "--use-cv", action="store_true", help="Use `xgb.cv` instead of `xgb.train`."
     )
     args, _ = parser.parse_known_args()
 
-    if args.server_address:
-        import ray
-
-        ray.init(f"ray://{args.server_address}")
-
-    analysis = tune_xgboost(args.use_cv)
+    best_result = tune_xgboost(args.use_cv)
 
     # Load the best model checkpoint.
     # Checkpointing is not supported when using `xgb.cv`
     if not args.use_cv:
-        if args.server_address:
-            # If connecting to a remote server with Ray Client, checkpoint loading
-            # should be wrapped in a task so it will execute on the server.
-            # We have to make sure it gets executed on the same node that
-            # ``tune.run`` is called on.
-            from ray.util.ml_utils.node import force_on_current_node
-
-            remote_fn = force_on_current_node(ray.remote(get_best_model_checkpoint))
-            best_bst = ray.get(remote_fn.remote(analysis))
-        else:
-            best_bst = get_best_model_checkpoint(analysis)
+        best_bst = get_best_model_checkpoint(best_result)
 
         # You could now do further predictions with
         # best_bst.predict(...)

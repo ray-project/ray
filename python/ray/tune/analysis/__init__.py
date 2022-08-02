@@ -1,3 +1,3 @@
-from ray.tune.analysis.experiment_analysis import Analysis, ExperimentAnalysis
+from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 
-__all__ = ["Analysis", "ExperimentAnalysis"]
+__all__ = ["ExperimentAnalysis"]

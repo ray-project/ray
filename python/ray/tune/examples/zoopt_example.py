@@ -6,8 +6,9 @@ Requires the ZOOpt library to be installed (`pip install zoopt`).
 """
 import time
 
-from ray import tune
-from ray.tune.suggest.zoopt import ZOOptSearch
+from ray import air, tune
+from ray.air import session
+from ray.tune.search.zoopt import ZOOptSearch
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
@@ -24,7 +25,7 @@ def easy_objective(config):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
-        tune.report(iterations=step, mean_loss=intermediate_score)
+        session.report({"iterations": step, "mean_loss": intermediate_score})
 
 
 if __name__ == "__main__":
@@ -74,18 +75,23 @@ if __name__ == "__main__":
 
     scheduler = AsyncHyperBandScheduler()
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         easy_objective,
-        metric="mean_loss",
-        mode="min",
-        search_alg=zoopt_search,
-        name="zoopt_search",
-        scheduler=scheduler,
-        num_samples=num_samples,
-        config={
+        tune_config=tune.TuneConfig(
+            metric="mean_loss",
+            mode="min",
+            search_alg=zoopt_search,
+            scheduler=scheduler,
+            num_samples=num_samples,
+        ),
+        run_config=air.RunConfig(
+            name="zoopt_search",
+        ),
+        param_space={
             "steps": 10,
             "height": tune.quniform(-10, 10, 1e-2),
             "width": tune.randint(0, 10),
         },
     )
-    print("Best config found: ", analysis.best_config)
+    results = tuner.fit()
+    print("Best config found: ", results.get_best_result().config)

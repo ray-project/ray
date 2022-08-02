@@ -13,7 +13,7 @@ def flatten_space(space: gym.Space) -> List[gym.Space]:
     Primitive components are any non Tuple/Dict spaces.
 
     Args:
-        space (gym.Space): The gym.Space to flatten. This may be any
+        space: The gym.Space to flatten. This may be any
             supported type (including nested Tuples and Dicts).
 
     Returns:
@@ -43,7 +43,7 @@ def get_base_struct_from_space(space):
     """Returns a Tuple/Dict Space as native (equally structured) py tuple/dict.
 
     Args:
-        space (gym.Space): The Space to get the python struct for.
+        space: The Space to get the python struct for.
 
     Returns:
         Union[dict,tuple,gym.Space]: The struct equivalent to the given Space.
@@ -83,13 +83,13 @@ def get_dummy_batch_for_space(
     as an additional batch dimension has to be added as dim=0.
 
     Args:
-        space (gym.Space): The space to get a dummy batch for.
-        batch_size(int): The required batch size (B). Note that this can also
+        space: The space to get a dummy batch for.
+        batch_size: The required batch size (B). Note that this can also
             be 0 (only if `time_size` is None!), which will result in a
             non-batched sample for the given space (no batch dim).
-        fill_value (Union[float, int, str]): The value to fill the batch with
+        fill_value: The value to fill the batch with
             or "random" for random values.
-        time_size (Optional[int]): If not None, add an optional time axis
+        time_size: If not None, add an optional time axis
             of `time_size` size to the returned batch.
         time_major: If True AND `time_size` is not None, return batch
             as shape [T x B x ...], otherwise as [B x T x ...]. If `time_size`
@@ -182,7 +182,10 @@ def unbatch(batches_struct):
     """Converts input from (nested) struct of batches to batch of structs.
 
     Input: Struct of different batches (each batch has size=3):
-        {"a": [1, 2, 3], "b": ([4, 5, 6], [7.0, 8.0, 9.0])}
+        {
+            "a": np.array([1, 2, 3]),
+            "b": (np.array([4, 5, 6]), np.array([7.0, 8.0, 9.0]))
+        }
     Output: Batch (list) of structs (each of these structs representing a
         single action):
         [

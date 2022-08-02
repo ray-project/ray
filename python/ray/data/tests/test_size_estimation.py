@@ -4,8 +4,8 @@ import uuid
 
 import ray
 from ray.tests.conftest import *  # noqa
-from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.impl.arrow_block import ArrowBlockBuilder
+from ray.data._internal.simple_block import SimpleBlockBuilder
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 
 SMALL_VALUE = "a" * 100
 LARGE_VALUE = "a" * 10000
@@ -161,7 +161,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
         ray.data.range(200000, parallelism=1).map(
             lambda _: uuid.uuid4().hex
         ).write_parquet(path)
-        return ray.data.read_parquet(path)
+        return ray.data.read_parquet(path, parallelism=200)
 
     # 20MiB
     ctx.target_max_block_size = 20_000_000

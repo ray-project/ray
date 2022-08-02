@@ -1,3 +1,4 @@
+import ray.rllib.agents.a3c.a2c as a2c  # noqa
 from ray.rllib.algorithms.a2c.a2c import (
     A2CConfig,
     A2C as A2CTrainer,

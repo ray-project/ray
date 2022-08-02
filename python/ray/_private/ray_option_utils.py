@@ -1,12 +1,15 @@
 """Manage, parse and validate options for Ray tasks, actors and actor methods."""
-from typing import Dict, Any, Callable, Tuple, Union, Optional
+import warnings
 from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional, Tuple, Union
+
+import ray._private.ray_constants as ray_constants
+from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
-    PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
 )
-import ray.ray_constants as ray_constants
 
 
 @dataclass
@@ -163,7 +166,7 @@ def _check_deprecate_placement_group(options: Dict[str, Any]):
     placement_group = options.get("placement_group", "default")
     scheduling_strategy = options.get("scheduling_strategy")
     # TODO(suquark): @ray.remote(placement_group=None) is used in
-    # "python/ray/data/impl/remote_fn.py" and many other places,
+    # "python/ray.data._internal/remote_fn.py" and many other places,
     # while "ray.data.read_api.read_datasource" set "scheduling_strategy=SPREAD".
     # This might be a bug, but it is also ok to allow them co-exist.
     if (placement_group not in ("default", None)) and (scheduling_strategy is not None):
@@ -171,6 +174,41 @@ def _check_deprecate_placement_group(options: Dict[str, Any]):
             "Placement groups should be specified via the "
             "scheduling_strategy option. "
             "The placement_group option is deprecated."
+        )
+
+
+def _warn_if_using_deprecated_placement_group(
+    options: Dict[str, Any], caller_stacklevel: int
+):
+    placement_group = options["placement_group"]
+    placement_group_bundle_index = options["placement_group_bundle_index"]
+    placement_group_capture_child_tasks = options["placement_group_capture_child_tasks"]
+    if placement_group != "default":
+        warnings.warn(
+            "placement_group parameter is deprecated. Use "
+            "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+            "instead, see the usage at "
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            DeprecationWarning,
+            stacklevel=caller_stacklevel + 1,
+        )
+    if placement_group_bundle_index != -1:
+        warnings.warn(
+            "placement_group_bundle_index parameter is deprecated. Use "
+            "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+            "instead, see the usage at "
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            DeprecationWarning,
+            stacklevel=caller_stacklevel + 1,
+        )
+    if placement_group_capture_child_tasks:
+        warnings.warn(
+            "placement_group_capture_child_tasks parameter is deprecated. Use "
+            "scheduling_strategy=PlacementGroupSchedulingStrategy(...) "
+            "instead, see the usage at "
+            f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/package-ref.html#ray-remote.",  # noqa: E501
+            DeprecationWarning,
+            stacklevel=caller_stacklevel + 1,
         )
 
 
@@ -223,6 +261,18 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
 
     if options.get("get_if_exists") and not options.get("name"):
         raise ValueError("The actor name must be specified to use `get_if_exists`.")
+
+    if "object_store_memory" in options:
+        warnings.warn(
+            "Setting 'object_store_memory'"
+            " for actors is deprecated since it doesn't actually"
+            " reserve the required object store memory."
+            f" Use object spilling that's enabled by default (https://docs.ray.io/en/{get_ray_doc_version()}/ray-core/objects/object-spilling.html) "  # noqa: E501
+            "instead to bypass the object store memory size limitation.",
+            DeprecationWarning,
+            stacklevel=1,
+        )
+
     _check_deprecate_placement_group(options)
 
 

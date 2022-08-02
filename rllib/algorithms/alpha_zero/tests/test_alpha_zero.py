@@ -20,7 +20,7 @@ class TestAlphaZero(unittest.TestCase):
         ray.shutdown()
 
     def test_alpha_zero_compilation(self):
-        """Test whether an AlphaZeroTrainer can be built with all frameworks."""
+        """Test whether AlphaZero can be built with all frameworks."""
         config = (
             az.AlphaZeroConfig()
             .environment(env=CartPoleSparseRewards)
@@ -30,11 +30,12 @@ class TestAlphaZero(unittest.TestCase):
 
         # Only working for torch right now.
         for _ in framework_iterator(config, frameworks="torch"):
-            trainer = config.build()
+            algo = config.build()
             for i in range(num_iterations):
-                results = trainer.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
+            algo.stop()
 
 
 if __name__ == "__main__":

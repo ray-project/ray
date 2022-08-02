@@ -181,10 +181,6 @@ def test_client_tasks_and_actors_inherit_from_driver(conda_envs, call_ray_start)
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_task_actor_conda_env(conda_envs, shutdown_only):
     ray.init()
 
@@ -222,10 +218,6 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 def test_job_config_conda_env(conda_envs, shutdown_only):
     for package_version in REQUEST_VERSIONS:
         runtime_env = {"conda": f"package-{package_version}"}
@@ -251,7 +243,10 @@ def test_job_eager_install(shutdown_only, runtime_env_class):
     wait_for_condition(lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
     ray.shutdown()
     # Test disable eager install
-    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": False}
+    runtime_env = {
+        "conda": {"dependencies": ["toolz"]},
+        "config": {"eager_install": False},
+    }
     ray.init(runtime_env=runtime_env_class(**runtime_env))
     with pytest.raises(RuntimeError):
         wait_for_condition(
@@ -259,7 +254,10 @@ def test_job_eager_install(shutdown_only, runtime_env_class):
         )
     ray.shutdown()
     # Test unavailable type
-    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
+    runtime_env = {
+        "conda": {"dependencies": ["toolz"]},
+        "config": {"eager_install": 123},
+    }
     with pytest.raises(TypeError):
         ray.init(runtime_env=runtime_env_class(**runtime_env))
     ray.shutdown()
@@ -301,10 +299,6 @@ def test_get_conda_env_dir(tmp_path):
         assert env_dir == str(tmp_path / "envs" / "tf2")
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
 @pytest.mark.skipif(
     os.environ.get("CONDA_EXE") is None,
     reason="Requires properly set-up conda shell",
@@ -887,16 +881,16 @@ def test_e2e_complex(call_ray_start, tmp_path):
 
                 return Path("./test").read_text()
 
-        a = TestActor.remote()
+        a = TestActor.options(runtime_env={"pip": str(requirement_path)}).remote()
         assert ray.get(a.test.remote()) == "Hello"
 
         # Check that per-task pip specification works and that the job's
-        # working_dir is not inherited.
+        # working_dir is still inherited.
         @ray.remote
         def test_pip():
             import pip_install_test  # noqa
 
-            return "Hello"
+            return Path("./test").read_text()
 
         assert (
             ray.get(
@@ -905,44 +899,22 @@ def test_e2e_complex(call_ray_start, tmp_path):
             == "Hello"
         )
 
-        @ray.remote
-        def test_working_dir():
-            import pip_install_test  # noqa
-
-            return Path("./test").read_text()
-
-        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
-            ray.get(
-                test_working_dir.options(
-                    runtime_env={"pip": ["pip-install-test"]}
-                ).remote()
-            )
-        assert "FileNotFoundError" in str(excinfo.value)
-
         # Check that pip_install_test is not in the job's pip requirements.
         with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
             ray.get(test_pip.remote())
         assert "ModuleNotFoundError" in str(excinfo.value)
 
         # Check that per-actor pip specification works and that the job's
-        # working_dir is not inherited.
+        # working_dir is still inherited.
         @ray.remote
         class TestActor:
             def test(self):
-                import pip_install_test  # noqa
-
-                return "Hello"
-
-            def test_working_dir(self):
                 import pip_install_test  # noqa
 
                 return Path("./test").read_text()
 
         a = TestActor.options(runtime_env={"pip": ["pip-install-test"]}).remote()
         assert ray.get(a.test.remote()) == "Hello"
-        with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
-            ray.get(a.test_working_dir.remote())
-        assert "FileNotFoundError" in str(excinfo.value)
 
 
 @pytest.mark.skipif(_WIN32, reason="Fails on windows")
@@ -1077,4 +1049,7 @@ setup(
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

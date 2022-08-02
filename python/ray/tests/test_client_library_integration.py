@@ -8,7 +8,7 @@ from ray._private.client_mode_hook import enable_client_mode, client_mode_should
 
 
 @pytest.mark.skip(reason="KV store is not working properly.")
-def test_rllib_integration(ray_start_regular_shared):
+def test_rllib_integration(ray_start_regular):
     with ray_start_client_server():
         import ray.rllib.algorithms.dqn as dqn
 
@@ -26,7 +26,7 @@ def test_rllib_integration(ray_start_regular_shared):
             # Test with compression.
             config["compress_observations"] = True
             num_iterations = 2
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v1")
+            trainer = dqn.SimpleQ(config=config, env="CartPole-v1")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()
@@ -34,7 +34,7 @@ def test_rllib_integration(ray_start_regular_shared):
                 trainer.train()
 
 
-def test_rllib_integration_tune(ray_start_regular_shared):
+def test_rllib_integration_tune(ray_start_regular):
     with ray_start_client_server():
         # Confirming the behavior of this context manager.
         # (Client mode hook not yet enabled.)
@@ -49,7 +49,7 @@ def test_rllib_integration_tune(ray_start_regular_shared):
 
 
 @pytest.mark.asyncio
-async def test_serve_handle(ray_start_regular_shared):
+async def test_serve_handle(ray_start_regular):
     with ray_start_client_server() as ray:
         from ray import serve
 
@@ -67,4 +67,9 @@ async def test_serve_handle(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -4,9 +4,14 @@ export type CoreWorkerStats = {
   actorId: string;
   usedResources: { [key: string]: number };
   numExecutedTasks: number;
+  numPendingTasks: number;
   workerId: string;
   actorTitle: string;
   jobId: string;
+  numObjectRefsInScope: number;
+  numInPlasma: number;
+  numLocalObjects: number;
+  usedObjectStoreMemory: string;
 };
 
 export type Worker = {

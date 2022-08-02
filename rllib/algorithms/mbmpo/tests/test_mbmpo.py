@@ -19,7 +19,7 @@ class TestMBMPO(unittest.TestCase):
         ray.shutdown()
 
     def test_mbmpo_compilation(self):
-        """Test whether an MBMPOTrainer can be built with all frameworks."""
+        """Test whether MBMPO can be built with all frameworks."""
         config = (
             mbmpo.MBMPOConfig()
             .rollouts(num_rollout_workers=2, horizon=200)

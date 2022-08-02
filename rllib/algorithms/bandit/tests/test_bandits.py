@@ -16,7 +16,7 @@ class TestBandits(unittest.TestCase):
         ray.shutdown()
 
     def test_bandit_lin_ts_compilation(self):
-        """Test whether a BanditLinTSTrainer can be built on all frameworks."""
+        """Test whether BanditLinTS can be built on all frameworks."""
         config = (
             bandit.BanditLinTSConfig()
             .environment(env=SimpleContextualBandit)
@@ -29,18 +29,18 @@ class TestBandits(unittest.TestCase):
         ):
             for train_batch_size in [1, 10]:
                 config.training(train_batch_size=train_batch_size)
-                trainer = config.build()
+                algo = config.build()
                 results = None
-                for i in range(num_iterations):
-                    results = trainer.train()
+                for _ in range(num_iterations):
+                    results = algo.train()
                     check_train_results(results)
                     print(results)
                 # Force good learning behavior (this is a very simple env).
                 self.assertTrue(results["episode_reward_mean"] == 10.0)
-                trainer.stop()
+                algo.stop()
 
     def test_bandit_lin_ucb_compilation(self):
-        """Test whether a BanditLinUCBTrainer can be built on all frameworks."""
+        """Test whether BanditLinUCB can be built on all frameworks."""
         config = (
             bandit.BanditLinUCBConfig()
             .environment(env=SimpleContextualBandit)

@@ -73,7 +73,7 @@ class TestSAC(unittest.TestCase):
         ray.shutdown()
 
     def test_sac_compilation(self):
-        """Tests whether an SACTrainer can be built with all frameworks."""
+        """Tests whether SAC can be built with all frameworks."""
         config = (
             sac.SACConfig()
             .training(
@@ -148,7 +148,7 @@ class TestSAC(unittest.TestCase):
                 # this is framework agnostic).
                 if fw == "tf" and env == "CartPole-v0":
                     checkpoint = trainer.save()
-                    new_trainer = sac.SACTrainer(config, env=env)
+                    new_trainer = sac.SAC(config, env=env)
                     new_trainer.restore(checkpoint)
                     # Get some data from the buffer and compare.
                     data = trainer.local_replay_buffer.replay_buffers[
@@ -176,7 +176,7 @@ class TestSAC(unittest.TestCase):
             )
             .rollouts(num_rollout_workers=0)
             .reporting(
-                min_time_s_per_reporting=0,
+                min_time_s_per_iteration=0,
             )
             .environment(
                 env_config={"simplex_actions": True},
@@ -246,7 +246,7 @@ class TestSAC(unittest.TestCase):
         for fw, sess in framework_iterator(
             config, frameworks=("tf", "torch"), session=True
         ):
-            # Generate Trainer and get its default Policy object.
+            # Generate Algorithm and get its default Policy object.
             trainer = config.build(env=env)
             policy = trainer.get_policy()
             p_sess = None

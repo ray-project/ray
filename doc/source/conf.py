@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.abspath("."))
 from custom_directives import *
 from datetime import datetime
+
 
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
@@ -22,6 +23,13 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 import ray
 
 # -- General configuration ------------------------------------------------
+
+# The name of a reST role (builtin or Sphinx extension) to use as the default role, that
+# is, for text marked up `like this`. This can be set to 'py:obj' to make `filter` a
+# cross-reference to the Python function “filter”. The default is None, which doesn’t
+# reassign the default role.
+
+default_role = "py:obj"
 
 extensions = [
     "sphinx_panels",
@@ -169,6 +177,7 @@ linkcheck_ignore = [
     r"https://huggingface.co/*",  # seems to be flaky
     r"https://www.meetup.com/*",  # seems to be flaky
     r"https://www.pettingzoo.ml/*",  # seems to be flaky
+    r"http://localhost[:/].*",  # Ignore localhost links
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -260,6 +269,9 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = "bysource"
 
+# Better typehint formatting (see custom.css)
+autodoc_typehints = "signature"
+
 
 # Add a render priority for doctest
 nb_render_priority = {
@@ -294,6 +306,10 @@ def setup(app):
     )
     app.add_js_file("js/docsearch.js", defer="defer")
 
+    # https://github.com/medmunds/rate-the-docs for allowing users
+    # to give thumbs up / down and feedback on existing docs pages.
+    app.add_js_file("js/rate-the-docs.es.min.js")
+
     # Custom docstring processor
     app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
 
@@ -303,3 +319,8 @@ def setup(app):
     app.connect("builder-inited", github_docs.write_new_docs)
     # Restore original file content after build
     app.connect("build-finished", github_docs.write_original_docs)
+
+    # Hook into the logger used by linkcheck to display a summary at the end.
+    linkcheck_summarizer = LinkcheckSummarizer()
+    app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
+    app.connect("build-finished", linkcheck_summarizer.summarize)

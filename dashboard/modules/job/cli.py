@@ -1,18 +1,18 @@
 import asyncio
 import os
 import pprint
-from subprocess import list2cmdline
 import time
+from subprocess import list2cmdline
 from typing import Optional, Tuple
 
 import click
 
-import ray.ray_constants as ray_constants
-from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
-from ray.job_submission import JobStatus, JobSubmissionClient
-from ray.internal.storage import _load_class
-from ray.util.annotations import PublicAPI
+import ray._private.ray_constants as ray_constants
+from ray._private.storage import _load_class
+from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
+from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.util.annotations import PublicAPI
 
 
 def _get_sdk_client(
@@ -87,7 +87,17 @@ def job_cli_group():
     type=str,
     default=None,
     required=False,
-    help=("Job ID to specify for the job. " "If not provided, one will be generated."),
+    help=("DEPRECATED: Use -- submission-id instead."),
+)
+@click.option(
+    "--submission-id",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Submission ID to specify for the job. "
+        "If not provided, one will be generated."
+    ),
 )
 @click.option(
     "--runtime-env",
@@ -127,6 +137,7 @@ def job_cli_group():
 def submit(
     address: Optional[str],
     job_id: Optional[str],
+    submission_id: Optional[str],
     runtime_env: Optional[str],
     runtime_env_json: Optional[str],
     working_dir: Optional[str],
@@ -139,11 +150,19 @@ def submit(
         ray job submit -- python my_script.py --arg=val
     """
 
+    if job_id:
+        cli_logger.warning(
+            "--job-id option is deprecated. " "Please use --submission-id instead."
+        )
+
+    submission_id = submission_id or job_id
+
     if ray_constants.RAY_JOB_SUBMIT_HOOK in os.environ:
         # Submit all args as **kwargs per the JOB_SUBMIT_HOOK contract.
         _load_class(os.environ[ray_constants.RAY_JOB_SUBMIT_HOOK])(
             address=address,
-            job_id=job_id,
+            job_id=submission_id,
+            submission_id=submission_id,
             runtime_env=runtime_env,
             runtime_env_json=runtime_env_json,
             working_dir=working_dir,
@@ -161,7 +180,7 @@ def submit(
 
     job_id = client.submit_job(
         entrypoint=list2cmdline(entrypoint),
-        job_id=job_id,
+        submission_id=submission_id,
         runtime_env=final_runtime_env,
     )
 

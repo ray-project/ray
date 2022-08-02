@@ -35,7 +35,7 @@ config = {
     },
 }
 
-trainer = ppo.PPO(config=config)
+algo = ppo.PPO(config=config)
 for _ in range(3):
-    print(trainer.train())
+    print(algo.train())
 # __rllib-custom-gym-env-end__

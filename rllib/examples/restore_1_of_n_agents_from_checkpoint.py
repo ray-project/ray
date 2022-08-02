@@ -1,7 +1,7 @@
 """Simple example of how to restore only one of n agents from a trained
-multi-agent Trainer using Ray tune.
+multi-agent Algorithm using Ray tune.
 
-The trick/workaround is to use an intermediate trainer that loads the
+The trick/workaround is to use an intermediate algorithm that loads the
 trained checkpoint into all policies and then reverts those policies
 that we don't want to restore, then saves a new checkpoint, from which
 tune can pick up training.
@@ -101,21 +101,21 @@ if __name__ == "__main__":
     best_checkpoint = results.get_best_checkpoint(results.trials[0], mode="max")
     print(f".. best checkpoint was: {best_checkpoint}")
 
-    # Create a new dummy Trainer to "fix" our checkpoint.
-    new_trainer = PPO(config=config)
+    # Create a new dummy Algorithm to "fix" our checkpoint.
+    new_algo = PPO(config=config)
     # Get untrained weights for all policies.
-    untrained_weights = new_trainer.get_weights()
+    untrained_weights = new_algo.get_weights()
     # Restore all policies from checkpoint.
-    new_trainer.restore(best_checkpoint)
+    new_algo.restore(best_checkpoint)
     # Set back all weights (except for 1st agent) to original
     # untrained weights.
-    new_trainer.set_weights(
+    new_algo.set_weights(
         {pid: w for pid, w in untrained_weights.items() if pid != "policy_0"}
     )
     # Create the checkpoint from which tune can pick up the
     # experiment.
-    new_checkpoint = new_trainer.save()
-    new_trainer.stop()
+    new_checkpoint = new_algo.save()
+    new_algo.stop()
     print(
         ".. checkpoint to restore from (all policies reset, "
         f"except policy_0): {new_checkpoint}"

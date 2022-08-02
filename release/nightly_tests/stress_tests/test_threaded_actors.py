@@ -7,7 +7,7 @@ import threading
 import time
 
 from ray._private.test_utils import monitor_memory_usage
-from ray.data.impl.progress_bar import ProgressBar
+from ray.data._internal.progress_bar import ProgressBar
 
 from collections import namedtuple
 from queue import Queue

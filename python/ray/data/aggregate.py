@@ -12,7 +12,7 @@ from ray.data.block import (
     KeyFn,
     _validate_key_fn,
 )
-from ray.data.impl.null_aggregate import (
+from ray.data._internal.null_aggregate import (
     _null_wrap_init,
     _null_wrap_merge,
     _null_wrap_accumulate_block,

@@ -25,7 +25,7 @@ class TestAlphaStar(unittest.TestCase):
         ray.shutdown()
 
     def test_alpha_star_compilation(self):
-        """Test whether a AlphaStarTrainer can be built with all frameworks."""
+        """Test whether AlphaStar can be built with all frameworks."""
         config = (
             alpha_star.AlphaStarConfig()
             .environment(env="connect_four")

@@ -19,7 +19,7 @@ namespace core {
 
 class CoreWorker;
 
-/// Lifecycle management of one or more `CoreWorker` instances in a process.
+/// Lifecycle management of the `CoreWorker` instance in a process.
 ///
 /// To start a driver in the current process:
 ///     CoreWorkerOptions options = {
@@ -31,7 +31,7 @@ class CoreWorker;
 /// To shutdown a driver in the current process:
 ///     CoreWorkerProcess::Shutdown();
 ///
-/// To start one or more workers in the current process:
+/// To start a worker in the current process:
 ///     CoreWorkerOptions options = {
 ///         WorkerType::WORKER,             // worker_type
 ///         ...,                            // other arguments
@@ -43,14 +43,6 @@ class CoreWorker;
 /// To shutdown a worker in the current process, return a system exit status (with status
 /// code `IntentionalSystemExit` or `UnexpectedSystemExit`) in the task execution
 /// callback.
-///
-/// If more than 1 worker is started, only the threads which invoke the
-/// `task_execution_callback` will be automatically associated with the corresponding
-/// worker. If you started your own threads and you want to use core worker APIs in these
-/// threads, remember to call `CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id)`
-/// once in the new thread before calling core worker APIs, to associate the current
-/// thread with a worker. You can obtain the worker ID via
-/// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`.
 ///
 /// How does core worker process dealloation work?
 ///
@@ -77,7 +69,7 @@ class CoreWorkerProcess {
   /// \param[in] options The various initialization options.
   static void Initialize(const CoreWorkerOptions &options);
 
-  /// Get the core worker associated with the current thread.
+  /// Get the core worker.
   /// NOTE (kfstorm): Here we return a reference instead of a `shared_ptr` to make sure
   /// `CoreWorkerProcess` has full control of the destruction timing of `CoreWorker`.
   static CoreWorker &GetCoreWorker();
@@ -87,13 +79,7 @@ class CoreWorkerProcess {
   ///
   /// \param[in] workerId The worker ID.
   /// \return The `CoreWorker` instance.
-  static std::shared_ptr<CoreWorker> TryGetWorker(const WorkerID &worker_id);
-
-  /// Set the core worker associated with the current thread by worker ID.
-  /// Currently used by Java worker only.
-  ///
-  /// \param worker_id The worker ID of the core worker instance.
-  static void SetCurrentThreadWorkerId(const WorkerID &worker_id);
+  static std::shared_ptr<CoreWorker> TryGetWorker();
 
   /// Whether the current process has been initialized for core worker.
   static bool IsInitialized();
@@ -129,35 +115,20 @@ class CoreWorkerProcessImpl {
   /// Create an `CoreWorkerProcessImpl` with proper options.
   ///
   /// \param[in] options The various initialization options.
-  CoreWorkerProcessImpl(const CoreWorkerOptions &options);
+  explicit CoreWorkerProcessImpl(const CoreWorkerOptions &options);
 
   ~CoreWorkerProcessImpl();
 
   void InitializeSystemConfig();
 
-  /// Check that if the global worker should be created on construction.
-  bool ShouldCreateGlobalWorkerOnConstruction() const;
+  /// Try to get core worker. Returns nullptr if core worker doesn't exist.
+  std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
 
-  /// Get the `CoreWorker` instance by worker ID.
+  /// Get the `CoreWorker` instance. The process will be exited if
+  /// the core worker is nullptr.
   ///
-  /// \param[in] workerId The worker ID.
   /// \return The `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> GetWorker(const WorkerID &worker_id) const
-      LOCKS_EXCLUDED(mutex_);
-
-  /// Create a new `CoreWorker` instance.
-  ///
-  /// \return The newly created `CoreWorker` instance.
-  std::shared_ptr<CoreWorker> CreateWorker() LOCKS_EXCLUDED(mutex_);
-
-  /// Remove an existing `CoreWorker` instance.
-  ///
-  /// \param[in] The existing `CoreWorker` instance.
-  /// \return Void.
-  void RemoveWorker(std::shared_ptr<CoreWorker> worker) LOCKS_EXCLUDED(mutex_);
-
-  /// Get the `GlobalWorker` instance, if the number of workers is 1.
-  std::shared_ptr<CoreWorker> GetGlobalWorker() LOCKS_EXCLUDED(mutex_);
+  std::shared_ptr<CoreWorker> GetCoreWorker() const;
 
   /// Run worker execution loop.
   void RunWorkerTaskExecutionLoop();
@@ -165,28 +136,17 @@ class CoreWorkerProcessImpl {
   /// Shutdown the driver completely at the process level.
   void ShutdownDriver();
 
-  /// Return the CoreWorker for current thread.
-  CoreWorker &GetCoreWorkerForCurrentThread();
-
-  /// Set the core worker associated with the current thread by worker ID.
-  /// Currently used by Java worker only.
-  void SetThreadLocalWorkerById(const WorkerID &worker_id);
-
  private:
   /// The various options.
   const CoreWorkerOptions options_;
 
-  /// The only core worker instance, if the number of workers is 1.
-  std::shared_ptr<CoreWorker> global_worker_ GUARDED_BY(mutex_);
+  /// The core worker instance of this worker process.
+  std::shared_ptr<CoreWorker> core_worker_ GUARDED_BY(mutex_);
 
-  /// The core worker instance associated with the current thread.
-  /// Use weak_ptr here to avoid memory leak due to multi-threading.
-  static thread_local std::weak_ptr<CoreWorker> thread_local_core_worker_;
+  /// The worker ID of this worker.
+  const WorkerID worker_id_;
 
-  /// The worker ID of the global worker, if the number of workers is 1.
-  const WorkerID global_worker_id_;
-
-  /// To protect access to workers_ and global_worker_
+  /// To protect access to core_worker_
   mutable absl::Mutex mutex_;
 };
 }  // namespace core

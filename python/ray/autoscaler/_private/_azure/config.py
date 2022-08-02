@@ -1,7 +1,7 @@
 import json
 import logging
-from pathlib import Path
 import random
+from pathlib import Path
 from typing import Any, Callable
 
 from azure.common.credentials import get_cli_profile

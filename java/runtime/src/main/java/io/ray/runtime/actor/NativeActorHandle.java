@@ -65,6 +65,8 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
         return new NativeJavaActorHandle(actorId);
       case PYTHON:
         return new NativePyActorHandle(actorId);
+      case CPP:
+        return new NativeCppActorHandle(actorId);
       default:
         throw new IllegalStateException("Unknown actor handle language: " + language);
     }
@@ -116,14 +118,12 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   private static final class NativeActorHandleReference
       extends FinalizableWeakReference<NativeActorHandle> {
     private final AtomicBoolean removed;
-    private final byte[] workerId;
     private final byte[] actorId;
 
     public NativeActorHandleReference(NativeActorHandle handle) {
       super(handle, REFERENCE_QUEUE);
       this.actorId = handle.actorId;
       AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
-      this.workerId = runtime.getWorkerContext().getCurrentWorkerId().getBytes();
       this.removed = new AtomicBoolean(false);
       REFERENCES.add(this);
     }
@@ -134,7 +134,7 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
         REFERENCES.remove(this);
         // It's possible that GC is executed after the runtime is shutdown.
         if (Ray.isInitialized()) {
-          nativeRemoveActorHandleReference(workerId, actorId);
+          nativeRemoveActorHandleReference(actorId);
         }
       }
     }
@@ -150,5 +150,5 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
 
   private static native byte[] nativeDeserialize(byte[] data);
 
-  private static native void nativeRemoveActorHandleReference(byte[] workerId, byte[] actorId);
+  private static native void nativeRemoveActorHandleReference(byte[] actorId);
 }

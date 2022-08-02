@@ -55,6 +55,6 @@ To change the config for the `rllib train|rollout` command, use
   `--config={'[key]': '[value]'}` on the command line.
 To change the config for `tune.run()` in a script: Modify the python dict
   passed to `tune.run(config=[...])`.
-To change the config for an RLlib Trainer instance: Modify the python dict
-  passed to the Trainer's constructor, e.g. `PPO(config=[...])`.
+To change the config for an RLlib Algorithm instance: Modify the python dict
+  passed to the Algorithm's constructor, e.g. `PPO(config=[...])`.
 """

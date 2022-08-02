@@ -30,6 +30,7 @@ ENV HOME=/home/ray
 RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     && sudo apt-get install -y \
         git \
+        libjemalloc-dev \
         wget \
         cmake \
         g++ \ 

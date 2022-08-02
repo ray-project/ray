@@ -55,13 +55,13 @@ Contributing Algorithms
 These are the guidelines for merging new algorithms into RLlib:
 
 * Contributed algorithms (`rllib/contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__):
-    - must subclass Trainer and implement the ``step()`` method
+    - must subclass Algorithm and implement the ``step()`` method
     - must include a lightweight test (`example <https://github.com/ray-project/ray/blob/6bb110393008c9800177490688c6ed38b2da52a9/test/jenkins_tests/run_multi_node_tests.sh#L45>`__) to ensure the algorithm runs
     - should include tuned hyperparameter examples and documentation
     - should offer functionality not present in existing algorithms
 
 * Fully integrated algorithms (`rllib/agents <https://github.com/ray-project/ray/tree/master/rllib/agents>`__) have the following additional requirements:
-    - must fully implement the Trainer API
+    - must fully implement the Algorithm API
     - must offer substantial new functionality not possible to add to other algorithms
     - should support custom models and preprocessors
     - should use RLlib abstractions and support distributed execution
@@ -70,14 +70,14 @@ Both integrated and contributed algorithms ship with the ``ray`` PyPI package, a
 
 How to add an algorithm to ``contrib``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-It takes just two changes to add an algorithm to `contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/contrib/random_agent/random_agent.py>`__. First, subclass `Trainer <https://github.com/ray-project/ray/commits/master/rllib/agents/trainer.py>`__ and implement the ``_init`` and ``step`` methods:
+It takes just two changes to add an algorithm to `contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/contrib/random_agent/random_agent.py>`__. First, subclass `Algorithm <https://github.com/ray-project/ray/commits/master/rllib/algorithms/algorithm.py>`__ and implement the ``_init`` and ``step`` methods:
 
 .. literalinclude:: ../../../rllib/contrib/random_agent/random_agent.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-Second, register the trainer with a name in `contrib/registry.py <https://github.com/ray-project/ray/blob/master/rllib/contrib/registry.py>`__.
+Second, register the algorithm with a name in `contrib/registry.py <https://github.com/ray-project/ray/blob/master/rllib/contrib/registry.py>`__.
 
 .. code-block:: python
 
@@ -110,7 +110,7 @@ Finding Memory Leaks In Workers
 
 Keeping the memory usage of long running workers stable can be challenging. The ``MemoryTrackingCallbacks`` class can be used to track memory usage of workers.
 
-.. autoclass:: ray.rllib.agents.callbacks.MemoryTrackingCallbacks
+.. autoclass:: ray.rllib.algorithms.callbacks.MemoryTrackingCallbacks
 
 The objects with the top 20 memory usage in the workers will be added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights and Biases: 
 

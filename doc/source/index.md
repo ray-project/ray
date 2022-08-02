@@ -31,16 +31,16 @@
 :card:
 
 **Run machine learning workflows with**\
-**<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">ML**
+**<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">AIR**
 ^^^
-Ray ML is a toolkit for distributed machine learning. 
+Ray AI Runtime (AIR)  is an open-source toolkit for building end-to-end ML applications. 
 It provides libraries for distributed 
 [data processing](data/dataset.rst), 
 [model training](train/train.rst), 
 [tuning](tune/index.rst), 
 [reinforcement learning](rllib/index.rst), 
 [model serving](serve/index.rst), 
-and [more](workflows/concepts.rst). 
+and [more](ray-more-libs/index.rst). 
 +++
 ```{link-button} ray-overview/index
 :type: ref

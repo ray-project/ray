@@ -35,11 +35,11 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
 
     Examples:
         >>> import gym
-        >>> from ray.rllib.algorithms.pg import PGTrainer
+        >>> from ray.rllib.algorithms.pg import PG
         >>> from ray.rllib.env.policy_client import PolicyClient
         >>> from ray.rllib.env.policy_server_input import PolicyServerInput
         >>> addr, port = ... # doctest: +SKIP
-        >>> pg = PGTrainer( # doctest: +SKIP
+        >>> pg = PG( # doctest: +SKIP
         ...     env="CartPole-v0", config={ # doctest: +SKIP
         ...         "input": lambda io_ctx: # doctest: +SKIP
         ...             PolicyServerInput(io_ctx, addr, port), # doctest: +SKIP

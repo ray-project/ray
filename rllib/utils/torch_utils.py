@@ -1,26 +1,30 @@
-import gym
-from gym.spaces import Discrete, MultiDiscrete
-import numpy as np
 import os
-import tree  # pip install dm_tree
-from typing import Dict, List, Optional, TYPE_CHECKING
+import logging
 import warnings
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
+
+import gym
+import numpy as np
+import tree  # pip install dm_tree
+from gym.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import Deprecated, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
-    TensorType,
     TensorStructType,
+    TensorType,
 )
 
 if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy
+    from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
+logger = logging.getLogger(__name__)
 torch, nn = try_import_torch()
 
 # Limit values suitable for use as close to a -inf logit. These are useful
@@ -44,20 +48,31 @@ def apply_grad_clipping(
         An info dict containing the "grad_norm" key and the resulting clipped
         gradients.
     """
-    info = {}
-    if policy.config["grad_clip"]:
-        for param_group in optimizer.param_groups:
-            # Make sure we only pass params with grad != None into torch
-            # clip_grad_norm_. Would fail otherwise.
-            params = list(filter(lambda p: p.grad is not None, param_group["params"]))
-            if params:
-                grad_gnorm = nn.utils.clip_grad_norm_(
-                    params, policy.config["grad_clip"]
-                )
-                if isinstance(grad_gnorm, torch.Tensor):
-                    grad_gnorm = grad_gnorm.cpu().numpy()
-                info["grad_gnorm"] = grad_gnorm
-    return info
+    grad_gnorm = 0
+    if policy.config["grad_clip"] is not None:
+        clip_value = policy.config["grad_clip"]
+    else:
+        clip_value = np.inf
+
+    for param_group in optimizer.param_groups:
+        # Make sure we only pass params with grad != None into torch
+        # clip_grad_norm_. Would fail otherwise.
+        params = list(filter(lambda p: p.grad is not None, param_group["params"]))
+        if params:
+            # PyTorch clips gradients inplace and returns the norm before clipping
+            # We therefore need to compute grad_gnorm further down (fixes #4965)
+            global_norm = nn.utils.clip_grad_norm_(params, clip_value)
+
+            if isinstance(global_norm, torch.Tensor):
+                global_norm = global_norm.cpu().numpy()
+
+            grad_gnorm += min(global_norm, clip_value)
+
+    if grad_gnorm > 0:
+        return {"grad_gnorm": grad_gnorm}
+    else:
+        # No grads available
+        return {}
 
 
 @Deprecated(
@@ -71,7 +86,9 @@ def atanh(x: TensorType) -> TensorType:
 
 
 @PublicAPI
-def concat_multi_gpu_td_errors(policy: "TorchPolicy") -> Dict[str, TensorType]:
+def concat_multi_gpu_td_errors(
+    policy: Union["TorchPolicy", "TorchPolicyV2"]
+) -> Dict[str, TensorType]:
     """Concatenates multi-GPU (per-tower) TD error tensors given TorchPolicy.
 
     TD-errors are extracted from the TorchPolicy via its tower_stats property.
@@ -139,6 +156,9 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
     """
 
     def mapping(item):
+        if item is None:
+            # returns None with dtype=np.obj
+            return np.asarray(item)
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
             return item if device is None else item.to(device)
@@ -297,7 +317,10 @@ def get_device(config):
     # Figure out the number of GPUs to use on the local side (index=0) or on
     # the remote workers (index > 0).
     worker_idx = config.get("worker_index", 0)
-    if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
+    if (
+        not config["_fake_gpus"]
+        and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+    ):
         num_gpus = 0
     elif worker_idx == 0:
         num_gpus = config["num_gpus"]
@@ -320,7 +343,7 @@ def get_device(config):
     else:
         # We are a remote worker (WORKER_MODE=1):
         # GPUs should be assigned to us by ray.
-        if ray.worker._mode() == ray.worker.WORKER_MODE:
+        if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
             gpu_ids = ray.get_gpu_ids()
 
         if len(gpu_ids) < num_gpus:
@@ -449,11 +472,13 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     if isinstance(space, Discrete):
         return nn.functional.one_hot(x.long(), space.n)
     elif isinstance(space, MultiDiscrete):
+        if isinstance(space.nvec[0], np.ndarray):
+            nvec = np.ravel(space.nvec)
+            x = x.reshape(x.shape[0], -1)
+        else:
+            nvec = space.nvec
         return torch.cat(
-            [
-                nn.functional.one_hot(x[:, i].long(), n)
-                for i, n in enumerate(space.nvec)
-            ],
+            [nn.functional.one_hot(x[:, i].long(), n) for i, n in enumerate(nvec)],
             dim=-1,
         )
     else:
@@ -516,6 +541,22 @@ def sequence_mask(
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+@DeveloperAPI
+def warn_if_infinite_kl_divergence(
+    policy: "TorchPolicy",
+    kl_divergence: TensorType,
+) -> None:
+    if policy.loss_initialized() and kl_divergence.isinf():
+        logger.warning(
+            "KL divergence is non-finite, this will likely destabilize your model and"
+            " the training process. Action(s) in a specific state have near-zero"
+            " probability. This can happen naturally in deterministic environments"
+            " where the optimal policy has zero mass for a specific action. To fix this"
+            " issue, consider setting the coefficient for the KL loss term to zero or"
+            " increasing policy entropy."
+        )
 
 
 @PublicAPI

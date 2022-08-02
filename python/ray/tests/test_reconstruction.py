@@ -268,9 +268,12 @@ def test_basic_reconstruction_actor_task(ray_start_cluster, reconstruction_enabl
     cluster.add_node(num_cpus=1, resources={"node2": 1}, object_store_memory=10 ** 8)
     cluster.wait_for_nodes()
 
+    # Always set max retries to -1 because Ray fails actor tasks if the actor
+    # is restarting when the task is submitted.
+    # See #22818 for details.
     @ray.remote(
         max_restarts=-1,
-        max_task_retries=-1 if reconstruction_enabled else 0,
+        max_task_retries=-1,
         resources={"node1": 1},
         num_cpus=0,
     )
@@ -293,25 +296,30 @@ def test_basic_reconstruction_actor_task(ray_start_cluster, reconstruction_enabl
     obj = a.large_object.remote()
     ray.get(dependent_task.options(resources={"node1": 1}).remote(obj))
 
-    # Workaround to kill the actor process too since there is a bug where the
-    # actor's plasma client hangs after the plasma store has exited.
-    os.kill(pid, SIGKILL)
+    for i in range(10):
+        # Workaround to kill the actor process too since there is a bug where the
+        # actor's plasma client hangs after the plasma store has exited.
+        os.kill(pid, SIGKILL)
 
-    cluster.remove_node(node_to_kill, allow_graceful=False)
-    cluster.add_node(num_cpus=1, resources={"node1": 2}, object_store_memory=10 ** 8)
+        cluster.remove_node(node_to_kill, allow_graceful=False)
+        node_to_kill = cluster.add_node(
+            num_cpus=1, resources={"node1": 2}, object_store_memory=10 ** 8
+        )
 
-    wait_for_pid_to_exit(pid)
+        wait_for_pid_to_exit(pid)
 
-    if reconstruction_enabled:
-        ray.get(dependent_task.remote(obj))
-    else:
-        with pytest.raises(ray.exceptions.RayTaskError):
+        if reconstruction_enabled:
             ray.get(dependent_task.remote(obj))
-        with pytest.raises(ray.exceptions.ObjectLostError):
-            ray.get(obj)
+        else:
+            with pytest.raises(ray.exceptions.RayTaskError):
+                ray.get(dependent_task.remote(obj))
+            with pytest.raises(ray.exceptions.ObjectLostError):
+                ray.get(obj)
 
-    # Make sure the actor handle is still usable.
-    pid = ray.get(a.pid.remote())
+        # Make sure the actor handle is still usable.
+        pid_ref = a.pid.remote()
+        print(i, "pid", pid_ref)
+        pid = ray.get(pid_ref)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
@@ -705,4 +713,7 @@ def test_reconstruction_stress_spill(ray_start_cluster):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

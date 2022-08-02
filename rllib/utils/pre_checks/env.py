@@ -1,5 +1,6 @@
 """Common pre-checks for all RLlib experiments."""
 from copy import copy
+import inspect
 import logging
 import gym
 import numpy as np
@@ -60,9 +61,10 @@ def check_env(env: EnvType) -> None:
             ),
         ):
             raise ValueError(
-                "Env must be one of the supported types: BaseEnv, gym.Env, "
+                "Env must be of one of the following supported types: BaseEnv, "
+                "gym.Env, "
                 "MultiAgentEnv, VectorEnv, RemoteBaseEnv, ExternalMultiAgentEnv, "
-                f"ExternalEnv, but instead was a {type(env)}"
+                f"ExternalEnv, but instead is of type {type(env)}."
             )
         if isinstance(env, MultiAgentEnv):
             check_multiagent_environments(env)
@@ -73,8 +75,8 @@ def check_env(env: EnvType) -> None:
         else:
             logger.warning(
                 "Env checking isn't implemented for VectorEnvs, RemoteBaseEnvs, "
-                "ExternalMultiAgentEnv,or ExternalEnvs or Environments that are "
-                "Ray actors"
+                "ExternalMultiAgentEnv, ExternalEnvs or environments that are "
+                "Ray actors."
             )
     except Exception:
         actual_error = traceback.format_exc()
@@ -82,9 +84,9 @@ def check_env(env: EnvType) -> None:
             f"{actual_error}\n"
             "The above error has been found in your environment! "
             "We've added a module for checking your custom environments. It "
-            "may cause your experiment to fail if your environment is not set up"
+            "may cause your experiment to fail if your environment is not set up "
             "correctly. You can disable this behavior by setting "
-            "`disable_env_checking=True` in your config "
+            "`disable_env_checking=True` in your environment config "
             "dictionary. You can run the environment checking module "
             "standalone by calling ray.rllib.utils.check_env([env])."
         )
@@ -145,6 +147,17 @@ def check_gym_environments(env: gym.Env) -> None:
                 "to infinity, and your environment will not be "
                 "reset."
             )
+    # Raise warning if using new reset api introduces in gym 0.24
+    reset_signature = inspect.signature(env.unwrapped.reset).parameters.keys()
+    if any(k in reset_signature for k in ["seed", "return_info"]):
+        if log_once("reset_signature"):
+            logger.warning(
+                "Your env reset() method appears to take 'seed' or 'return_info'"
+                " arguments. Note that these are not yet supported in RLlib."
+                " Seeding will take place using 'env.seed()' and the info dict"
+                " will not be returned from reset."
+            )
+
     # check if sampled actions and observations are contained within their
     # respective action and observation spaces.
 
@@ -257,7 +270,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
         )
         raise ValueError(error)
 
-    sampled_action = env.action_space_sample()
+    sampled_action = env.action_space_sample(reset_obs.keys())
     _check_if_element_multi_agent_dict(env, sampled_action, "action_space_sample")
     try:
         env.action_space_contains(sampled_action)
@@ -418,7 +431,7 @@ def _check_done(done, base_env=False, agent_ids=None):
                         f"env.get_agent_ids() are: {agent_ids}"
                     )
                     raise ValueError(error)
-    elif not isinstance(done, (bool, np.bool, np.bool_)):
+    elif not isinstance(done, (bool, np.bool_)):
         error = (
             "Your step function must return a done that is a boolean. But instead "
             f"was a {type(done)}"
@@ -485,7 +498,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
     if not isinstance(element, dict):
         if base_env:
             error = (
-                f"The element returned by {function_string} has values "
+                f"The element returned by {function_string} contains values "
                 f"that are not MultiAgentDicts. Instead, they are of "
                 f"type: {type(element)}"
             )
@@ -514,7 +527,7 @@ def _check_if_element_multi_agent_dict(env, element, function_string, base_env=F
                 f" that are not the names of the agents in the env. "
                 f"\nAgent_ids in this MultiAgentDict: "
                 f"{list(element.keys())}\nAgent_ids in this env:"
-                f"{list(env.get_agent_ids())}. You likley need to add the private "
+                f"{list(env.get_agent_ids())}. You likely need to add the private "
                 f"attribute `_agent_ids` to your env, which is a set containing the "
                 f"ids of agents supported by your env."
             )

@@ -1,26 +1,23 @@
+import pickle
+import time
 from dataclasses import dataclass, replace
 from enum import Enum
-import time
-from typing import Any, Dict, Optional, Tuple
-import pickle
 from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
-from ray import ray_constants
+from ray._private import ray_constants
+from ray._private.runtime_env.packaging import parse_uri
 from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
     _internal_kv_get,
+    _internal_kv_initialized,
     _internal_kv_list,
     _internal_kv_put,
 )
-from ray._private.runtime_env.packaging import parse_uri
 
 # NOTE(edoakes): these constants should be considered a public API because
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
-
-# Version 0 -> 1: Added log streaming and changed behavior of job logs cli.
-CURRENT_VERSION = "1"
 
 
 class JobStatus(str, Enum):
@@ -52,6 +49,7 @@ class JobStatus(str, Enum):
         return self.value in {"STOPPED", "SUCCEEDED", "FAILED"}
 
 
+# TODO(aguo): Convert to pydantic model
 @dataclass
 class JobInfo:
     """A class for recording information associated with a job and its execution."""
@@ -96,7 +94,7 @@ class JobInfoStorageClient:
     Interface to put and get job data from the Internal KV store.
     """
 
-    JOB_DATA_KEY_PREFIX = "_ray_internal_job_info_"
+    JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
     def __init__(self):
@@ -180,19 +178,14 @@ def validate_request_type(json_data: Dict[str, Any], request_type: dataclass) ->
 
 
 @dataclass
-class VersionResponse:
-    version: str
-    ray_version: str
-    ray_commit: str
-
-
-@dataclass
 class JobSubmitRequest:
     # Command to start execution, ex: "python script.py"
     entrypoint: str
-    # Optional job_id to specify for the job. If the job_id is not specified,
-    # one will be generated. If a job with the same job_id already exists, it
-    # will be rejected.
+    # Optional submission_id to specify for the job. If the submission_id
+    # is not specified, one will be generated. If a job with the same
+    # submission_id already exists, it will be rejected.
+    submission_id: Optional[str] = None
+    # DEPRECATED. Use submission_id instead
     job_id: Optional[str] = None
     # Dict to setup execution environment.
     runtime_env: Optional[Dict[str, Any]] = None
@@ -203,9 +196,15 @@ class JobSubmitRequest:
         if not isinstance(self.entrypoint, str):
             raise TypeError(f"entrypoint must be a string, got {type(self.entrypoint)}")
 
+        if self.submission_id is not None and not isinstance(self.submission_id, str):
+            raise TypeError(
+                "submission_id must be a string if provided, "
+                f"got {type(self.submission_id)}"
+            )
+
         if self.job_id is not None and not isinstance(self.job_id, str):
             raise TypeError(
-                f"job_id must be a string if provided, got {type(self.job_id)}"
+                "job_id must be a string if provided, " f"got {type(self.job_id)}"
             )
 
         if self.runtime_env is not None:
@@ -236,7 +235,9 @@ class JobSubmitRequest:
 
 @dataclass
 class JobSubmitResponse:
+    # DEPRECATED: Use submission_id instead.
     job_id: str
+    submission_id: str
 
 
 @dataclass

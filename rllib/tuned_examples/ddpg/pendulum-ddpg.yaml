@@ -28,7 +28,7 @@ pendulum-ddpg:
             ou_theta: 0.15
             ou_sigma: 0.2
 
-        min_sample_timesteps_per_reporting: 600
+        min_sample_timesteps_per_iteration: 600
         target_network_update_freq: 0
         tau: 0.001
 

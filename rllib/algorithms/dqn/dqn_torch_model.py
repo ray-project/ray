@@ -148,7 +148,7 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         if self.num_atoms > 1:
             # Distributional Q-learning uses a discrete support z
             # to represent the action value distribution
-            z = torch.range(0.0, self.num_atoms - 1, dtype=torch.float32).to(
+            z = torch.arange(0.0, self.num_atoms, dtype=torch.float32).to(
                 action_scores.device
             )
             z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)

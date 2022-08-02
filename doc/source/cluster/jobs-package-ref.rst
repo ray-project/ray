@@ -15,6 +15,12 @@ Job Submission CLI
 .. click:: ray.dashboard.modules.job.cli:submit
    :prog: ray job submit
 
+.. warning::
+
+    When using the CLI, do not wrap the entrypoint command in quotes.  For example, use 
+    ``ray job submit --working_dir="." -- python script.py`` instead of ``ray job submit --working_dir="." -- "python script.py"``.
+    Otherwise you may encounter the error ``/bin/sh: 1: python script.py: not found``.
+
 .. _ray-job-status-doc:
 
 .. click:: ray.dashboard.modules.job.cli:status
