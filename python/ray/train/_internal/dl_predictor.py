@@ -93,8 +93,8 @@ class DLPredictor(Predictor):
         except ValueError as e:
             raise ValueError(
                 "Tried to cast output columns to the TensorArray tensor "
-                "extension type but the conversion failed. For Pytorch or "
-                "TensorFlow predictor, consider structure the output of your "
-                "call_model() to be Tensor, Dict[str, Tensor] or plain "
+                "extension type but the conversion failed. For your custom "
+                "Pytorch or TensorFlow predictor, consider structure the output "
+                "of your call_model() to be Tensor, Dict[str, Tensor] or plain "
                 "pandas.DataFrame as fall through."
             ) from e
