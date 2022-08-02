@@ -89,9 +89,9 @@ GPU autoscaling
 The Ray autoscaler is aware of each Ray worker group's GPU capacity.
 Say we have a RayCluster configured as in the config snippet above:
 
-- There is a worker group of Ray pods with 1 unit of GPU capacity each
-- The Ray cluster does not currently have any workers from that group
-- `maxReplicas` for the group is at least 2
+- There is a worker group of Ray pods with 1 unit of GPU capacity each.
+- The Ray cluster does not currently have any workers from that group.
+- `maxReplicas` for the group is at least 2.
 
 Then the following Ray program will trigger upscaling of 2 GPU workers.
 
