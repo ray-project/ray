@@ -190,7 +190,7 @@ If this admission controller is not enabled for your Kubernetes cluster, you may
 Node selectors and node labels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To ensure Ray pods are bound to Kubernetes nodes satisfying specific
-conditions (such as presence of GPU hardware), you may wish to use
+conditions (such as the presence of GPU hardware), you may wish to use
 the `nodeSelector` field of your `workerGroup`'s pod template `spec`.
 See the `Kubernetes docs`_ for more about Pod-to-Node assignment.
 
