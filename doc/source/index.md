@@ -93,8 +93,8 @@ Learn more about [Ray AIR](ray-air/getting-started) and its libraries:
 - [Datasets](data/dataset): Distributed Data Loading and Compute
 - [Train](train/train): Distributed Deep Learning
 - [Tune](tune/index): Scalable Hyperparameter Tuning
-- [RLlib](rllib/index): Scalable Reinforcement Learning
 - [Serve](serve/index): Scalable and Programmable Serving
+- [RLlib](rllib/index): Scalable Reinforcement Learning
 
 Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
 - [Tasks](ray-core/tasks): Stateless tasks executed in the cluster.
