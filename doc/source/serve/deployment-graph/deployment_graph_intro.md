@@ -102,7 +102,7 @@ with InputNode() as http_request:
     add_3_output = add_3.add.bind(subtract_1_output)
 ```
 
-The `with` statement (know as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it represents the input of our graph. In this case, that input will be an HTTP request. In [a future section](deployment-graph-drivers-http-adapters-intro), we'll show how you can change this input type using another Ray Serve-provided object called the driver.
+The `with` statement (known as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it represents the input of our graph. In this case, that input will be an HTTP request. In [a future section](deployment-graph-drivers-http-adapters-intro), we'll show how you can change this input type using another Ray Serve-provided object called the driver.
 
 :::{note}
 It's important to note that the `InputNode` is merely a representation of the future graph input. In this example, for instance, `http_request`'s type is `InputNode`, not an actual HTTP request.
