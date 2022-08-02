@@ -15,7 +15,7 @@ class Counter:
         app.add_routes([web.get("/", self.get)])
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, "localhost", 8264)
+        site = web.TCPSite(runner, "localhost", 25001)
         await site.start()
 
     async def get(self, request):
@@ -28,5 +28,5 @@ class Counter:
 ray.init()
 counter = Counter.remote()
 [ray.get(counter.increment.remote()) for i in range(5)]
-r = requests.get("http://localhost:8264/")
+r = requests.get("http://localhost:25001/")
 assert r.text == "5"
