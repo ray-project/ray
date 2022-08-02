@@ -151,7 +151,7 @@ class TestWorkerFailure(unittest.TestCase):
                 },
             }
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+        for _ in framework_iterator(config, frameworks=("tf", "tf2", "torch")):
             a = agent_cls(config=config, env="fault_env")
             # Expect this to go well and all faulty workers are recovered.
             self.assertTrue(
@@ -254,6 +254,23 @@ class TestWorkerFailure(unittest.TestCase):
         self.do_test(
             "PG",
             config={"model": {"fcnet_hiddens": [4]}},
+            fn=self._do_test_fault_fatal_but_recreate,
+            eval_only=True,
+        )
+
+    def test_eval_workers_parallel_to_training_failing_recreate(self):
+        # Test the case where all eval workers fail, but we chose to recover.
+        config = pg.PGConfig()\
+            .evaluation(
+                evaluation_num_workers=2,
+                evaluation_parallel_to_training=True,
+                evaluation_duration="auto",
+            )\
+            .training(model={"fcnet_hiddens": [4]})
+
+        self.do_test(
+            "PG",
+            config=config.to_dict(),
             fn=self._do_test_fault_fatal_but_recreate,
             eval_only=True,
         )

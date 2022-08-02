@@ -46,6 +46,7 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (
     STEPS_TRAINED_THIS_ITER_COUNTER,  # TODO: Backward compatibility.
 )
+from ray.rllib.execution.parallel_requests import AsyncRequestsManager
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.offline import get_offline_io_resource_bundles
@@ -284,6 +285,9 @@ class Algorithm(Trainable):
 
         # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
         self.evaluation_workers: Optional[WorkerSet] = None
+        # If evaluation duration is "auto", use a AsyncRequestsManager to be more
+        # robust against eval worker failures.
+        self._evaluation_async_req_manager: Optional[AsyncRequestsManager] = None
         # Initialize common evaluation_metrics to nan, before they become
         # available. We want to make sure the metrics are always present
         # (although their values may be nan), so that Tune does not complain
@@ -502,7 +506,7 @@ class Algorithm(Trainable):
             # Set `rollout_fragment_length` such that desired steps are divided
             # equally amongst workers or - in "auto" duration mode - set it
             # to a reasonably small number (10), such that a single `sample()`
-            # call doesn't take too much time so we can stop evaluation as soon
+            # call doesn't take too much time and we can stop evaluation as soon
             # as possible after the train step is completed.
             else:
                 eval_config.update(
@@ -539,6 +543,13 @@ class Algorithm(Trainable):
                 local_worker=False,
                 logdir=self.logdir,
             )
+
+            if self.config["evaluation_with_async_requests"]:
+                self._evaluation_async_req_manager = AsyncRequestsManager(
+                    workers=self.evaluation_workers.remote_workers(),
+                    max_remote_requests_in_flight_per_worker=1,
+                )
+                self._evaluation_weights_seq_number = 0
 
         self.reward_estimators: Dict[str, OffPolicyEstimator] = {}
         ope_types = {
@@ -718,15 +729,6 @@ class Algorithm(Trainable):
                 episodes left to run. It's used to find out whether
                 evaluation should continue.
         """
-        # In case we are evaluating (in a thread) parallel to training,
-        # we may have to re-enable eager mode here (gets disabled in the
-        # thread).
-        if (
-            self.config.get("framework") in ["tf2", "tfe"]
-            and not tf.executing_eagerly()
-        ):
-            tf1.enable_eager_execution()
-
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
@@ -926,6 +928,198 @@ class Algorithm(Trainable):
         self.evaluation_metrics = {"evaluation": metrics}
 
         # Also return the results here for convenience.
+        return self.evaluation_metrics
+
+    @ExperimentalAPI
+    def _evaluate_v2(
+        self,
+        duration_fn: Optional[Callable[[int], int]] = None,
+    ) -> dict:
+        """Evaluates current policy under `evaluation_config` settings.
+
+        Note that this default implementation does not do anything beyond
+        merging evaluation_config with the normal trainer config.
+
+        Args:
+            duration_fn: An optional callable taking the already run
+                num episodes as only arg and returning the number of
+                episodes left to run. It's used to find out whether
+                evaluation should continue.
+        """
+        # How many episodes/timesteps do we need to run?
+        # In "auto" mode (only for parallel eval + training): Run as long
+        # as training lasts.
+        unit = self.config["evaluation_duration_unit"]
+        eval_cfg = self.config["evaluation_config"]
+        rollout_len = eval_cfg["rollout_fragment_length"]
+        num_envs = eval_cfg["num_envs_per_worker"]
+        auto = self.config["evaluation_duration"] == "auto"
+        duration = (
+            self.config["evaluation_duration"]
+            if not auto
+            else (self.config["evaluation_num_workers"] or 1)
+            * (1 if unit == "episodes" else rollout_len)
+        )
+
+        # Call the `_before_evaluate` hook.
+        self._before_evaluate()
+
+        # Put weights only once into object store and use same object
+        # ref to synch to all workers.
+        self._evaluation_weights_seq_number += 1
+        weights_ref = ray.put(self.workers.local_worker().get_weights())
+        self._sync_filters_if_needed(
+            self.evaluation_workers,
+            timeout_seconds=self.config[
+                "sync_filters_on_rollout_workers_timeout_s"
+            ],
+        )
+
+        if self.config["custom_eval_function"]:
+            raise ValueError(
+                "`custom_eval_function` not supported in combination "
+                "with `evaluation_with_async_requests=True` config setting!"
+            )
+        if (
+            self.evaluation_workers is None
+            and (
+                self.workers.local_worker().input_reader is None
+                or self.config["evaluation_num_workers"] == 0
+            )
+        ):
+            raise ValueError(
+                "Local evaluation OR evaluation without input reader OR evaluation "
+                "with only a local eval worker not supported in combination "
+                "with `evaluation_with_async_requests=True` config setting!"
+            )
+
+        agent_steps_this_iter = 0
+        env_steps_this_iter = 0
+
+        logger.info(f"Evaluating current policy for {duration} {unit}.")
+
+        all_batches = []
+
+        # Default done-function returns True, whenever num episodes
+        # have been completed.
+        if duration_fn is None:
+            def duration_fn(num_units_done):
+                return duration - num_units_done
+
+        def remote_fn(worker, w_ref, w_seq_no):
+            worker.set_weights(weights=w_ref)
+            batch = worker.sample()
+            metrics = worker.get_metrics()
+            return batch, metrics, w_seq_no
+
+        rollout_metrics = []
+
+        # How many episodes have we run (across all eval workers)?
+        num_units_done = 0
+        round_ = 0
+        time_started = time.time()
+        timed_out = True
+
+        while time.time() - time_started < self.config["evaluation_sample_timeout_s"]:
+            units_left_to_do = duration_fn(num_units_done)
+            if units_left_to_do <= 0:
+                timed_out = False
+                break
+
+            round_ += 1
+            # Use the AsyncRequestsManager to get ready evaluation results and
+            # metrics.
+            self._evaluation_async_req_manager.call_on_all_available(
+                remote_fn=remote_fn,
+                fn_args=[weights_ref, self._evaluation_weights_seq_number],
+            )
+            ready_requests = self._evaluation_async_req_manager.get_ready()
+
+            batches = []
+            for i, requests in enumerate(ready_requests.values()):
+                for req in requests:
+                    batch, metrics, seq_no = req
+                    # Ignore results, if the weights seq-number does not match (is from
+                    # a previous evaluation step) OR if we have already reached the
+                    # configured duration (e.g. number of episodes to evaluate for).
+                    if (
+                        seq_no == self._evaluation_weights_seq_number
+                        and (
+                            i * (1 if unit == "episodes" else rollout_len * num_envs)
+                            < units_left_to_do
+                        )
+                    ):
+                        batches.append(batch)
+                        rollout_metrics.extend(metrics)
+
+            _agent_steps = sum(b.agent_steps() for b in batches)
+            _env_steps = sum(b.env_steps() for b in batches)
+
+            # 1 episode per returned batch.
+            if unit == "episodes":
+                num_units_done += len(batches)
+                # Make sure all batches are exactly one episode.
+                for ma_batch in batches:
+                    ma_batch = ma_batch.as_multi_agent()
+                    for batch in ma_batch.policy_batches.values():
+                        assert np.sum(batch[SampleBatch.DONES])
+            # n timesteps per returned batch.
+            else:
+                num_units_done += (
+                    _agent_steps if self._by_agent_steps else _env_steps
+                )
+            if self.reward_estimators:
+                all_batches.extend(batches)
+
+            agent_steps_this_iter += _agent_steps
+            env_steps_this_iter += _env_steps
+
+            logger.info(
+                f"Ran round {round_} of parallel evaluation "
+                f"({num_units_done}/{duration if not auto else '?'} "
+                f"{unit} done)"
+            )
+
+        if timed_out and log_once("evaluation_timeout"):
+            logger.warning(
+                "Calling `sample()` on your remote evaluation worker(s) "
+                "resulted in a timeout (after the configured "
+                f"{self.config['evaluation_sample_timeout_s']} seconds)! "
+                "Try to set `evaluation_sample_timeout_s` in your config"
+                " to a larger value."
+                + (
+                    " If your episodes don't terminate easily, you may "
+                    "also want to set `evaluation_duration_unit` to "
+                    "'timesteps' (instead of 'episodes')."
+                    if unit == "episodes"
+                    else ""
+                )
+            )
+
+        metrics = summarize_episodes(
+            rollout_metrics,
+            keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
+        )
+
+        metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
+        metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
+        # TODO: Remove this key at some point. Here for backward compatibility.
+        metrics["timesteps_this_iter"] = env_steps_this_iter
+
+        if self.reward_estimators:
+            # Compute off-policy estimates
+            metrics["off_policy_estimator"] = {}
+            total_batch = concat_samples(all_batches)
+            for name, estimator in self.reward_estimators.items():
+                estimates = estimator.estimate(total_batch)
+                metrics["off_policy_estimator"][name] = estimates
+
+        # Evaluation does not run for every step.
+        # Save evaluation metrics on trainer, so it can be attached to
+        # subsequent step results as latest evaluation result.
+        self.evaluation_metrics = {"evaluation": metrics}
+
+        # Return evaluation results.
         return self.evaluation_metrics
 
     @OverrideToImplementCustomLogic
@@ -2193,6 +2387,12 @@ class Algorithm(Trainable):
                 self.train_exec_impl = self.execution_plan(
                     worker_set, self.config, **self._kwargs_for_execution_plan()
                 )
+        elif (
+            worker_set is getattr(self, "evaluation_workers", None)
+            and self.config["evaluation_config"].get("evaluation_duration") == "auto"
+        ):
+          self._evaluation_async_req_manager.remove_workers(removed_workers)
+          self._evaluation_async_req_manager.add_workers(new_workers)
 
     def on_worker_failures(
         self, removed_workers: List[ActorHandle], new_workers: List[ActorHandle]
@@ -2339,6 +2539,15 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the training iteration.
         """
+        # In case we are training (in a thread) parallel to evaluation,
+        # we may have to re-enable eager mode here (gets disabled in the
+        # thread).
+        if (
+            self.config.get("framework") in ["tf2", "tfe"]
+            and not tf.executing_eagerly()
+        ):
+            tf1.enable_eager_execution()
+
         results = None
         # Create a step context ...
         with TrainIterCtx(algo=self) as train_iter_ctx:
@@ -2378,6 +2587,12 @@ class Algorithm(Trainable):
             The results dict from the evaluation call.
         """
         eval_results = {"evaluation": {}}
+
+        eval_func_to_use = (
+            self._evaluate_v2 if self.config["evaluation_with_async_requests"]
+            else self.evaluate
+        )
+
         try:
             if self.config["evaluation_duration"] == "auto":
                 assert (
@@ -2385,7 +2600,7 @@ class Algorithm(Trainable):
                     and self.config["evaluation_parallel_to_training"]
                 )
                 unit = self.config["evaluation_duration_unit"]
-                eval_results = self.evaluate(
+                eval_results = eval_func_to_use(
                     duration_fn=functools.partial(
                         self._automatic_evaluation_duration_fn,
                         unit,
@@ -2396,7 +2611,7 @@ class Algorithm(Trainable):
                 )
             # Run `self.evaluate()` only once per training iteration.
             else:
-                eval_results = self.evaluate()
+                eval_results = eval_func_to_use()
 
         # In case of any failures, try to ignore/recover the failed evaluation workers.
         except Exception as e:
