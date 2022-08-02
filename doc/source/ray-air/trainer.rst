@@ -3,15 +3,14 @@
 Ray AIR Trainers
 ================
 
-.. https://docs.google.com/presentation/d/1uCEJANVSszC1WIu8USOd94eT2keH1Ct5ISEdY_v9IDo/edit?usp=sharing
+.. https://docs.google.com/drawings/d/1anmT0JVFH9abR5wX5_WcxNHJh6jWeDL49zWxGpkfORA/edit
 
-.. image:: images/trainer.jpg
+.. image:: images/train.svg
 
 
 Ray AIR offers integration with popular machine learning training framework through a variety of Trainers,
 including Pytorch, Tensorflow, Horovod, XGBoost, as well as scikit-learn and HuggingFace. It also offers a RLTrainer
 with RLlib integration.
-See :ref:`doc <air-trainer-ref>` for more information.
 
 Within Ray AIR, a user can choose different models/frameworks in a composable manner.
 Ray AIR trainer is also designed with interoperability in mind. It has built in support for Ray Dataset as
@@ -21,9 +20,8 @@ for hyperparameter tuning with minimal boilerplate code.
 
 Following we will give examples of how to use each type of trainers.
 
-
-Distributed Dataparallel Training
----------------------------------
+Distributed Deep Learning
+-------------------------
 Within this category we mainly have TorchTrainer, TensorflowTrainer and HorovodTrainer, they all implement
 DataParallelTrainer API.
 
@@ -114,7 +112,7 @@ The following is how you can interact with training result:
 
 .. code-block:: python
 
-result = trainer.fit()
+    result = trainer.fit()
 
 
 - ``result.checkpoint`` gives last saved checkpoint

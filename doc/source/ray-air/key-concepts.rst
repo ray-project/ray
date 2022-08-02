@@ -30,7 +30,7 @@ Trainers
 
 Trainers are wrapper classes around third-party training frameworks like XGBoost and Pytorch. They are built to help integrate with core Ray actors (for distribution), Ray Tune, and Ray Datasets.
 
-See the documentation on :ref:`Trainers <air-trainer-ref>`.
+See the documentation on :ref:`Trainers <air-trainers>`.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python

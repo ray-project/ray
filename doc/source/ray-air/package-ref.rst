@@ -27,7 +27,7 @@ Built-in Preprocessors
 .. automethod:: ray.data.Dataset.train_test_split
     :noindex:
 
-.. _air-trainer-ref:
+.. _air-abstract-trainer-ref:
 
 Trainer
 ~~~~~~~
