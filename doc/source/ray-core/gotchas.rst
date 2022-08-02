@@ -119,7 +119,7 @@ because the resource request {'CPU': 10} cannot fit into any bundles for the pla
 
 **Fix**: In the ``@ray.remote`` declaration of tasks
 called by ``create_task_that_uses_resources()`` , include a
-``placement_group=None``.
+``scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None)``.
 
 .. code-block:: diff
 
