@@ -324,8 +324,8 @@ message CreateActorReply {
   Address actor_address = 2;
   // Info about any refs that the created actor is borrowing.
   repeated ObjectReferenceCount borrowed_refs = 3;
-  // Whether the actor creation was cancelled.
-  bool cancelled = 4;
+  // The cause of this actor's death if creation was cancelled.
+  ActorDeathCause death_cause = 4;
 }
 
 message RegisterActorRequest {
