@@ -19,6 +19,7 @@ Ray is a unified framework for scaling AI and Python applications. Ray consists 
 .. image:: https://github.com/ericl/ray/raw/ray-intro/doc/source/images/what-is-ray.svg
 
 Learn more about `Ray AIR`_ and its libraries:
+
 - `Datasets`_: Distributed Data Loading and Compute
 - `Train`_: Distributed Deep Learning
 - `Tune`_: Scalable Hyperparameter Tuning
@@ -26,6 +27,7 @@ Learn more about `Ray AIR`_ and its libraries:
 - `Serve`_: Scalable and Programmable Serving
 
 Or more about `Ray Core`_ and its key abstractions:
+
 - `Tasks`_: Stateless tasks executed in the cluster.
 - `Actors`_: Stateful worker processes created in the cluster.
 - `Objects`_: Shared-memory objects accessible across the cluster.
