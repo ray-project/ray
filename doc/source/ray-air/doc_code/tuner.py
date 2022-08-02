@@ -231,3 +231,8 @@ tune_config = TuneConfig(
     search_alg=BayesOptSearch(),
 )
 # __tune_config_end__
+
+# __tune_restore_start__
+tuner = Tuner.restore("~/ray_results/test_tuner", restart_errored=True)
+tuner.fit()
+# __tune_restore_end__

@@ -196,9 +196,21 @@ You can also sample different train/validation datasets:
 
 Restoring and resuming
 ----------------------
-Coming soon!
+A Tuner regularly saves its state, so that a tuning run can be resumed after being interrupted.
 
+Additionally, if trials fail during a tuning run, they can be retried - either from scratch or
+from the latest available checkpoint.
 
+To restore the Tuner state, you just pass the path to the experiment directory to ``Tuner.restore()``.
 
+This path can be obtained e.g. from the output of a tuning run (it's called "Result logdir"). If you
+specify a ``name`` in the :class:`RunConfig <ray.air.config.RunConfig>`, it will usually be found
+under ``~/ray_results/<name>``.
 
+.. literalinclude:: doc_code/tuner.py
+    :language: python
+    :start-after: __tune_restore_start__
+    :end-before: __tune_restore_end__
 
+For more resume options, please see the documentation of
+:meth:`Tuner.restore() <ray.tune.tuner.Tuner.restore>`.
