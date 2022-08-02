@@ -66,8 +66,11 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicTimeout) {
   auto start = absl::Now();
   AddNode(node_1);
 
-  while (absl::Now() - start < absl::Seconds(1)) {
+  while (true) {
     absl::MutexLock lock(&mutex_);
+    if (absl::Now() - start >= absl::Seconds(1)) {
+      break;
+    }
     ASSERT_TRUE(dead_nodes.empty());
   }
 
@@ -84,8 +87,11 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicReport) {
   auto start = absl::Now();
   AddNode(node_1);
 
-  while (absl::Now() - start < absl::Seconds(3)) {
+  while (true) {
     absl::MutexLock lock(&mutex_);
+    if (absl::Now() - start >= absl::Seconds(3)) {
+      break;
+    }
     ASSERT_TRUE(dead_nodes.empty());
     io_service.post(
         [&]() {
@@ -116,8 +122,11 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicRestart) {
 
   heartbeat_manager->Initialize(init_data);
 
-  while (absl::Now() - start < absl::Seconds(3)) {
+  while (true) {
     absl::MutexLock lock(&mutex_);
+    if (absl::Now() - start >= absl::Seconds(3)) {
+      break;
+    }
     ASSERT_TRUE(dead_nodes.empty());
   }
 
@@ -158,8 +167,11 @@ TEST_F(GcsHeartbeatManagerTest, TestBasicRestart2) {
     std::this_thread::sleep_for(0.1s);
   }
 
-  while (absl::Now() - start < absl::Seconds(1)) {
+  while (true) {
     absl::MutexLock lock(&mutex_);
+    if (absl::Now() - start >= absl::Seconds(1)) {
+      break;
+    }
     ASSERT_TRUE(dead_nodes.empty());
   }
 

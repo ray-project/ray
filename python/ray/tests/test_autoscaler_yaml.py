@@ -301,7 +301,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         ] = 0
         assert prepared_config == expected_prepared
 
-    def testValidateNetworkConfigForBackwardsCompatibility(self):
+    def testValidateNetworkConfig(self):
         web_yaml = (
             "https://raw.githubusercontent.com/ray-project/ray/"
             "master/python/ray/autoscaler/aws/example-full.yaml"
