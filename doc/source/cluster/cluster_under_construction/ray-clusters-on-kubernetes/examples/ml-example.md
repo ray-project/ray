@@ -103,14 +103,6 @@ per 16-CPU Kubernetes node. The pattern of one Ray pod per Kubernetes node is en
 Broadly speaking, it is more efficient to use a few large Ray pods than many small ones.
 :::
 
-You may choose to deploy either a statically-sized Ray cluster or an autoscaling
-Ray cluster. Run one of the two commands below to deploy your Ray cluster.
-
-### Deploying the Ray cluster
-
-This option is most appropriate if you have set up a statically sized Kubernetes
-node pool or group.
-
 We recommend taking a look at the config file applied in the following command.
 ```shell
 # Starting from the parent directory of cloned Ray master,
