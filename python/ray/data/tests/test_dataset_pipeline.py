@@ -52,7 +52,7 @@ def test_warnings(shutdown_only):
     assert dataset.logger.infos == [
         "Created DatasetPipeline with 10 windows: 8b min, 8b max, 8b mean",
         "Blocks per window: 1 min, 1 max, 1 mean",
-        f"{OK_PREFIX} This pipeline's windows can each fit in object store memory "
+        f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
         "without spilling.",
     ]
 
@@ -117,7 +117,7 @@ def test_warnings(shutdown_only):
         "Blocks per window: 10 min, 10 max, 10 mean",
         f"{OK_PREFIX} This pipeline's per-window parallelism is high enough to fully "
         "utilize the cluster.",
-        f"{OK_PREFIX} This pipeline's windows can each fit in object store memory "
+        f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
         "without spilling.",
     ]
 
