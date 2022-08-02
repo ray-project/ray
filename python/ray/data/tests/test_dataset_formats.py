@@ -2921,7 +2921,7 @@ def test_image_folder_datasource_mode_parameter(
 
 @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
 def test_image_folder_datasource_value_error(ray_start_regular_shared, size):
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folders/simple"
     with pytest.raises(ValueError):
         ray.data.read_datasource(ImageFolderDatasource(), root=root, size=size)
 
@@ -2933,7 +2933,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from torchvision import transforms
     from torchvision.models import resnet18
 
-    root = "example://image-folder"
+    root = "example://image-folders/simple"
     dataset = ray.data.read_datasource(
         ImageFolderDatasource(), root=root, size=(32, 32)
     )
