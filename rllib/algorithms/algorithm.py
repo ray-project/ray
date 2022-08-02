@@ -2388,8 +2388,8 @@ class Algorithm(Trainable):
                     worker_set, self.config, **self._kwargs_for_execution_plan()
                 )
         elif (
-            worker_set is getattr(self, "evaluation_workers", None)
-            and self.config["evaluation_config"].get("evaluation_duration") == "auto"
+            self._evaluation_async_req_manager is not None
+            and worker_set is getattr(self, "evaluation_workers", None)
         ):
           self._evaluation_async_req_manager.remove_workers(removed_workers)
           self._evaluation_async_req_manager.add_workers(new_workers)

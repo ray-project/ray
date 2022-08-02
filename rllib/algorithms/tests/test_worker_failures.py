@@ -258,11 +258,11 @@ class TestWorkerFailure(unittest.TestCase):
             eval_only=True,
         )
 
-    def test_eval_workers_parallel_to_training_failing_recreate(self):
+    def test_recreate_eval_workers_parallel_to_training_w_async_req_manager(self):
         # Test the case where all eval workers fail, but we chose to recover.
         config = pg.PGConfig()\
             .evaluation(
-                evaluation_num_workers=2,
+                evaluation_with_async_requests=True,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
             )\
