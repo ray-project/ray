@@ -1,7 +1,8 @@
 .. _air-tuner:
 
-Hyperparameter Tuning
-=====================
+Configuring Hyperparameter Tuning
+=================================
+
 The Ray AIR :class:`Tuner <ray.tune.Tuner>` is the recommended way to tune hyperparameters in Ray AIR.
 
 The `Tuner` provides an interface that works with AIR Trainers to perform distributed
