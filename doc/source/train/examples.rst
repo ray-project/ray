@@ -16,7 +16,7 @@ PyTorch
 ~~~~~~~
 
 * :doc:`/train/examples/torch_linear_example`:
-  Simple example for PyTorch.
+  Bare-bones basic example for PyTorch.
 
 * :doc:`/train/examples/torch_fashion_mnist_example`:
   End-to-end example for PyTorch.
