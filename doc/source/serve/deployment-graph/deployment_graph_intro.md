@@ -19,9 +19,9 @@ Ray Serve's **Deployment Graph** API lets you compose your deployments together 
 The basic building block of deployment graphs is the `DeploymentNode`. There are
 three types of `DeploymentNodes`:
 
-* `ClassNode`: a `DeploymentNode` containing a Python class bound to its constructor's arguments
-* `MethodNode`: a `DeploymentNode` representing a `ClassNode`'s method bound to arguments that will be used to invoke the method
-* `FunctionNode`: a `DeploymentNode` containing a Python function bound to arguments that will be used to invoke the function
+* `ClassNode`: a `DeploymentNode` containing a Python class bound to its constructor's arguments using the `bind` function
+* `MethodNode`: a `DeploymentNode` representing a `ClassNode`'s method bound to arguments (using `bind`) that will be used to invoke the method
+* `FunctionNode`: a `DeploymentNode` containing a Python function bound to arguments (using `bind`) that will be used to invoke the function
 
 The next two sections will discuss how to construct and connect these nodes to form deployment graphs.
 
