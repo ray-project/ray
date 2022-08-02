@@ -93,7 +93,7 @@ When the controller dies, requests can still be sent via HTTP and ServeHandles, 
 ## Ray Serve API Server
 
 Ray Serve provides a [CLI](serve-cli) for managing your Ray Serve instance, as well as a [REST API](serve-rest-api).
-Each node in your Ray cluster provides a Serve REST API server that can connect to Serve and respond to Serve REST requests
+Each node in your Ray cluster provides a Serve REST API server that can connect to Serve and respond to Serve REST requests.
 
 ## FAQ
 
