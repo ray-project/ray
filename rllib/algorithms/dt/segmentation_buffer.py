@@ -4,9 +4,10 @@ from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 
 
 class SegmentationBuffer:
-    def __init__(self, size, max_seq_len):
+    def __init__(self, size, max_seq_len, max_ep_len):
         self.size = size
         self.max_seq_len = max_seq_len
+        self.max_ep_len = max_ep_len
 
         self.buffer = []
 
@@ -16,6 +17,10 @@ class SegmentationBuffer:
             self._add_single(episode)
 
     def _add_single(self, episode: SampleBatch):
+        # truncate if episode too long
+        if episode.env_steps() > self.max_ep_len:
+            episode = episode[: self.max_ep_len]
+
         if len(self.buffer) < self.size:
             self.buffer.append(episode)
         else:
@@ -32,15 +37,18 @@ class SegmentationBuffer:
         # TODO(charlesjsun): sample proportional to episode length
         buffer_ind = np.random.randint(0, len(self.buffer))
         episode: SampleBatch = self.buffer[buffer_ind]
-        si = np.random.randint(0, episode[SampleBatch.OBS].shape[0])
+        ep_len = episode[SampleBatch.OBS].shape[0]
+        si = np.random.randint(-self.max_seq_len + 1, ep_len - self.max_seq_len + 1)
+        ei = si + self.max_seq_len
+        si = max(si, 0)
+
+        assert 0 <= si < ei <= ep_len, f"si={si}, ei={ei}, ep_len={ep_len}"
 
         # TODO(charlesjsun): is this numpy or torch tensors?
-        obs = episode[SampleBatch.OBS][si : si + self.max_seq_len]
-        actions = episode[SampleBatch.ACTIONS][si : si + self.max_seq_len]
+        obs = episode[SampleBatch.OBS][si:ei]
+        actions = episode[SampleBatch.ACTIONS][si:ei]
         # Note that returns to go needs one extra as the target for the last action
-        returns_to_go = episode[SampleBatch.RETURNS_TO_GO][
-            si : si + self.max_seq_len + 1
-        ].reshape(-1, 1)
+        returns_to_go = episode[SampleBatch.RETURNS_TO_GO][si : ei + 1].reshape(-1, 1)
 
         length = obs.shape[0]
         timesteps = np.arange(si, si + length)

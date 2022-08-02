@@ -36,8 +36,6 @@ class DTConfig(AlgorithmConfig):
         self.lr = 1e-4
         self.max_ep_len = self.horizon
 
-        # __sphinx_doc_end__
-        # fmt: on
         self.weight_decay = 1e-4
         self.betas = (0.9, 0.95)
 
@@ -51,11 +49,14 @@ class DTConfig(AlgorithmConfig):
         self.use_return_output = False
         self.target_return = None
 
+        # __sphinx_doc_end__
+        # fmt: on
+
         # overriding the trainer config default
         # If data ingestion/sample_time is slow, increase this
         self.num_workers = 0
         self.offline_sampling = True
-        self.min_iter_time_s = 10.0
+        self.min_time_s_per_iteration = 10.0
         self.postprocess_inputs = True
 
     def training(
@@ -135,6 +136,7 @@ class DT(Algorithm):
         self.buffer = SegmentationBuffer(
             self.config["shuffle_buffer_size"],
             self.config["max_seq_len"],
+            self.config["max_ep_len"],
         )
 
     @override(Algorithm)

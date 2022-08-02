@@ -45,6 +45,11 @@ class DTTorchPolicy(TorchPolicyV2):
         action_space: gym.spaces.Space,
         config: TrainerConfigDict,
     ):
+        print("DT Policy Config")
+        import pprint
+
+        pprint.pprint(config)
+
         TorchPolicyV2.__init__(
             self,
             observation_space,
