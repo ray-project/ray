@@ -98,9 +98,6 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
   if (std::filesystem::exists(kCgroupsV2MemoryMaxPath)) {
     std::ifstream mem_file(kCgroupsV2MemoryMaxPath, std::ios::in | std::ios::binary);
     mem_file >> total_bytes;
-    if (total_bytes == 0) {
-      total_bytes = kNull;
-    }
   } else if (std::filesystem::exists(kCgroupsV1MemoryMaxPath)) {
     std::ifstream mem_file(kCgroupsV1MemoryMaxPath, std::ios::in | std::ios::binary);
     mem_file >> total_bytes;
@@ -115,8 +112,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetCGroupMemoryBytes() {
     mem_file >> used_bytes;
   }
 
-  RAY_CHECK_GT(used_bytes, 0);
+  RAY_CHECK((total_bytes == kNull && used_bytes == kNull) ||
+            (total_bytes != kNull && used_bytes != kNull));
   if (total_bytes != kNull) {
+    RAY_CHECK_GT(used_bytes, 0);
     RAY_CHECK_GT(total_bytes, used_bytes);
   }
 
