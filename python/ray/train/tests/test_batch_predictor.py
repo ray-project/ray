@@ -262,6 +262,8 @@ def test_get_and_set_preprocessor():
 
 
 def test_separate_gpu_stage_pipelined(shutdown_only):
+    if ray.is_initialized():
+        ray.shutdown()
     ray.init(num_gpus=1)
     batch_predictor = BatchPredictor.from_checkpoint(
         Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
