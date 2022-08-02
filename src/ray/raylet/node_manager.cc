@@ -2884,7 +2884,7 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
     }
     if (is_usage_above_threshold) {
       if (high_memory_eviction_target_ != nullptr) {
-        RAY_LOG_EVERY_MS(INFO, MemoryMonitor::kLogIntervalMs)
+        RAY_LOG_EVERY_MS(INFO, 1000)
             << "Memory usage above threshold. "
             << "Still waiting for worker eviction to free up memory. "
             << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId()
