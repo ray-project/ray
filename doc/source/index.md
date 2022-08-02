@@ -30,10 +30,10 @@
 :column: col-lg-4 px-2 py-2
 :card:
 
-**Run machine learning workflows with**\
+**Scale machine learning workloads with**\
 **<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">AIR**
 ^^^
-Ray AI Runtime (AIR)  is an open-source toolkit for building end-to-end ML applications. 
+Ray AI Runtime (AIR) is an open-source toolkit for building ML applications. 
 It provides libraries for distributed 
 [data processing](data/dataset.rst), 
 [model training](train/train.rst), 
@@ -83,18 +83,21 @@ or [Slurm](cluster/slurm) clusters.
 
 ## What is Ray?
 
-Ray is unified framework for scalable computing that makes it easy to scale AI and Python applications.
-Ray comes with a toolkit of libraries (Ray AIR) for accelerating ML workloads:
+Ray is a unified framework for scaling AI and Python applications.
+Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for
+accelerating ML workloads:
 
-- `Datasets`_: Distributed Data Loading and Compute
-- `Train`_: Distributed Deep Learning
-- `Tune`_: Scalable Hyperparameter Tuning
-- `RLlib`_: Scalable Reinforcement Learning
-- `Serve`_: Scalable and Programmable Serving
+<img src="images/what-is-ray.svg" alt="what-is-ray">
 
-[diagram here]
+Learn more about [Ray AIR](ray-air/getting-started) and its libraries:
+- [Datasets](data/dataset): Distributed Data Loading and Compute
+- [Train](train/train): Distributed Deep Learning
+- [Tune](tune/index): Scalable Hyperparameter Tuning
+- [RLlib](rllib/index): Scalable Reinforcement Learning
+- [Serve](serve/index): Scalable and Programmable Serving
 
-Who is Ray for?
+## Who is Ray for?
+
 - Ray core: systems software engineers, ML library and system developers
 - Ray AIR: ML practitioners and ML platform builders
 
