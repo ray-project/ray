@@ -8,7 +8,6 @@ from torchvision import transforms
 from torchvision.models import resnet18
 
 import ray
-from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.train.torch import TorchCheckpoint, TorchPredictor
 from ray.train.batch_predictor import BatchPredictor
 from ray.data.preprocessors import BatchMapper
@@ -17,8 +16,7 @@ from ray.data.datasource import ImageFolderDatasource
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     """
-    User Pytorch code to transform user image. Note we still use TensorArray as
-    intermediate format to hold images for now.
+    User Pytorch code to transform user image.
     """
     preprocess = transforms.Compose(
         [
@@ -28,7 +26,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    df["image"] = TensorArray([preprocess(image.to_numpy()) for image in df["image"]])
+    df.loc[:, "image"] = [preprocess(image).numpy() for image in df["image"]]
     return df
 
 
@@ -38,7 +36,9 @@ def main(data_size_gb: int):
     data_url = f"s3://air-example-data-2/{data_size_gb}G-image-data-synthetic-raw"
     print(f"Running GPU batch prediction with {data_size_gb}GB data from {data_url}")
     start = time.time()
-    dataset = ray.data.read_datasource(ImageFolderDatasource(), paths=[data_url])
+    dataset = ray.data.read_datasource(
+        ImageFolderDatasource(), root=data_url, size=(256, 256)
+    )
 
     model = resnet18(pretrained=True)
 

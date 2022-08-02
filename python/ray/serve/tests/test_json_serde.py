@@ -9,10 +9,10 @@ from ray import serve
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve.handle import (
     RayServeSyncHandle,
-    serve_handle_to_json_dict,
-    serve_handle_from_json_dict,
+    _serve_handle_to_json_dict,
+    _serve_handle_from_json_dict,
 )
-from ray.serve.json_serde import (
+from ray.serve._private.json_serde import (
     DAGNodeEncoder,
     dagnode_from_json,
 )
@@ -25,7 +25,7 @@ from ray.serve.tests.resources.test_modules import (
     Combine,
     NESTED_HANDLE_KEY,
 )
-from ray.serve.deployment_graph_build import (
+from ray.serve._private.deployment_graph_build import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
     transform_serve_dag_to_serve_executor_dag,
@@ -235,19 +235,19 @@ async def call(handle, inp):
 class TestHandleJSON:
     def test_invalid(self, serve_instance):
         with pytest.raises(ValueError):
-            serve_handle_from_json_dict({"blah": 123})
+            _serve_handle_from_json_dict({"blah": 123})
 
     @pytest.mark.parametrize("sync", [False, True])
     async def test_basic(self, serve_instance, sync):
         handle = get_handle(sync)
         assert await call(handle, "hi") == "hi"
 
-        serialized = json.dumps(serve_handle_to_json_dict(handle))
+        serialized = json.dumps(_serve_handle_to_json_dict(handle))
         # Check we can go through multiple rounds of serde.
         serialized = json.dumps(json.loads(serialized))
 
         # Load the handle back from the dict.
-        handle = serve_handle_from_json_dict(json.loads(serialized))
+        handle = _serve_handle_from_json_dict(json.loads(serialized))
         assert await call(handle, "hi") == "hi"
 
 

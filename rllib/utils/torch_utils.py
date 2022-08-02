@@ -1,4 +1,5 @@
 import os
+import logging
 import warnings
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
@@ -9,7 +10,7 @@ from gym.spaces import Discrete, MultiDiscrete
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import Deprecated, PublicAPI
+from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
+logger = logging.getLogger(__name__)
 torch, nn = try_import_torch()
 
 # Limit values suitable for use as close to a -inf logit. These are useful
@@ -539,6 +541,22 @@ def sequence_mask(
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+@DeveloperAPI
+def warn_if_infinite_kl_divergence(
+    policy: "TorchPolicy",
+    kl_divergence: TensorType,
+) -> None:
+    if policy.loss_initialized() and kl_divergence.isinf():
+        logger.warning(
+            "KL divergence is non-finite, this will likely destabilize your model and"
+            " the training process. Action(s) in a specific state have near-zero"
+            " probability. This can happen naturally in deterministic environments"
+            " where the optimal policy has zero mass for a specific action. To fix this"
+            " issue, consider setting the coefficient for the KL loss term to zero or"
+            " increasing policy entropy."
+        )
 
 
 @PublicAPI
