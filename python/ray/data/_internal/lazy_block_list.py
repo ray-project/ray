@@ -140,6 +140,7 @@ class LazyBlockList(BlockList):
             None for _ in self._block_partition_meta_refs
         ]
         self._cached_metadata = [None for _ in self._cached_metadata]
+        self._stats_actor = None
 
     def is_cleared(self) -> bool:
         return all(ref is None for ref in self._block_partition_refs)
@@ -503,6 +504,8 @@ class LazyBlockList(BlockList):
         self, task_idx: int
     ) -> Tuple[ObjectRef[MaybeBlockPartition], ObjectRef[BlockPartitionMetadata]]:
         """Submit the task with index task_idx."""
+        if self._stats_actor is None:
+            self._stats_actor = _get_or_create_stats_actor()
         stats_actor = self._stats_actor
         if not self._execution_started:
             stats_actor.record_start.remote(self._stats_uuid)
