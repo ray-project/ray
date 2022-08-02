@@ -199,7 +199,7 @@ Hola Dora
 
 Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-intro-call-graph), the `DAGDriver` takes in a `DeploymentNode` and it produces a `ClassNode` that you can run.
 
-The `DAGDriver` also has an optional keyword argument: `http_adapter`. `http_adapters` are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
+The `DAGDriver` also has an optional keyword argument: `http_adapter`. [HTTP adapters](serve-http-adapters) are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
 
 For instance, we can use the Ray Serve-provided `json_request` adapter to simplify our [arithmetic call graph](deployment-graph-intro-arithmetic-graph) by eliminating the `unpack_request` function. Here's the revised call graph and driver:
 
@@ -215,6 +215,8 @@ graph = DAGDriver.bind(add_3_output, http_adapter=json_request)
 ```
 
 Note that the `http_adapter`'s output type becomes what the `InputNode` represents. Without the `json_request` adapter, the `InputNode` represented an HTTP request. With the adapter, it now represents the number packaged inside the request's JSON body. You can work directly with that body's contents in the graph instead of first processing it.
+
+See [the guide](serve-http-adapters) on `http_adapters` to learn more.
 
 ## Next Steps
 
