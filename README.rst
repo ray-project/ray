@@ -45,7 +45,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 More Information
 ----------------
 
-- `Ray Documentation`_
+- `Documentation`_
 - `Ray Architecture whitepaper`_
 - `Exoshuffle: large-scale data shuffle in Ray`_
 - `RLlib paper`_
