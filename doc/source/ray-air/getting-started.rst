@@ -150,7 +150,7 @@ Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms
 
 **1. Seamless Dev to Prod**: AIR reduces friction going from development to production. Traditional orchestration approaches introduce separate systems and operational overheads. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
 
-**2. Unified API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new library like HuggingFace? Thanks to the flexibility of Ray AIR, you can do this by just swapping out a single class, without needing to set up new systems or change other aspects of your workflow.
+**2. Unified API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new library like HuggingFace? Thanks to the flexibility of AIR, you can do this by just swapping out a single class, without needing to set up new systems or change other aspects of your workflow.
 
 **3. Open and Evolvable**: Ray core and libraries are fully open-source and can run on any cluster, cloud, or Kubernetes, reducing the costs of platform lock-in. Want to go out of the box? Run any framework you want using AIR's integration APIs, or build advanced use cases directly on Ray core.
 
