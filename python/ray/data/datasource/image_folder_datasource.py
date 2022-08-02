@@ -3,7 +3,6 @@ import pathlib
 from typing import TYPE_CHECKING, Tuple, Optional
 
 import numpy as np
-import pandas as pd
 
 from ray.data._internal.util import _check_import
 from ray.data.datasource.binary_datasource import BinaryDatasource
@@ -113,6 +112,7 @@ class ImageFolderDatasource(BinaryDatasource):
             )
 
         _check_import(self, module="PIL", package="Pillow")
+        _check_import(self, module="pandas", package="pandas")
 
         # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
         # in the same way as the paths passed to `_get_class_from_path`.
@@ -136,6 +136,7 @@ class ImageFolderDatasource(BinaryDatasource):
         size: Optional[Tuple[int, int]],
         mode: Optional[str],
     ):
+        import pandas as pd
         from PIL import Image
 
         records = super()._read_file(f, path, include_paths=True)
