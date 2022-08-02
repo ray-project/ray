@@ -34,7 +34,7 @@ find guidance [here](https://cloud.google.com/kubernetes-engine/docs/concepts/no
 You can find the landing page for EKS [here](https://aws.amazon.com/eks/).
 If have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
 Alternatively, check out the [documentation](https://docs.aws.amazon.com/eks/latest/userguide/) and
-[quickstart guides]((https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html). To successfully deploy Ray on Kubernetes,
+[quickstart guides](https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html). To successfully deploy Ray on Kubernetes,
 you will need to configure groups of Kubernetes nodes;
 find guidance [here](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html).
 :::
