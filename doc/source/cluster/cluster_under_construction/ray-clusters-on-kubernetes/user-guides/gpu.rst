@@ -63,6 +63,7 @@ Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instanc
     as demonstrated with the `minReplicas:0` and `maxReplicas:5` settings above.
     To enable autoscaling, remember also to set `enableInTreeAutoscaling:True` in your RayCluster's `spec`
     Finally, make sure your group or pool of GPU Kubernetes nodes are configured to autoscale.
+    Refer to your :ref:`cloud provider's documentation<kuberay-k8s-setup>` for details on autoscaling node pools.
 
 GPUs and Ray
 ____________
