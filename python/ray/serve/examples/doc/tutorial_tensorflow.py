@@ -11,6 +11,7 @@ import numpy as np
 # __doc_train_model_begin__
 TRAINED_MODEL_PATH = os.path.join(tempfile.gettempdir(), "mnist_model.h5")
 
+
 def train_and_save_model():
     import tensorflow as tf
 
@@ -64,7 +65,8 @@ class TFMnistModel:
 
         # Step 3: tensorflow output -> web output
         return {"prediction": prediction.numpy().tolist(), "file": self.model_path}
-# __doc_define_servable_end__
+        # __doc_define_servable_end__
+
 
 # __doc_deploy_begin__
 app = TFMnistModel.bind(TRAINED_MODEL_PATH)

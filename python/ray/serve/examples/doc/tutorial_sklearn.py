@@ -70,7 +70,8 @@ class BoostingModel:
         prediction = self.model.predict([input_vector])[0]
         human_name = self.label_list[prediction]
         return {"result": human_name}
-# __doc_define_servable_end__
+        # __doc_define_servable_end__
+
 
 # __doc_deploy_begin__
 app = BoostingModel.bind()

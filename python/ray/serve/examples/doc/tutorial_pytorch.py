@@ -44,7 +44,8 @@ class ImageModel:
             output_tensor = self.model(input_tensor)
         print("[3/3] Inference done!")
         return {"class_index": int(torch.argmax(output_tensor[0]))}
-# __doc_define_servable_end__
+        # __doc_define_servable_end__
+
 
 # __doc_deploy_begin__
 app = ImageModel.bind()
