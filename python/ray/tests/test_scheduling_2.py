@@ -244,16 +244,6 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
 
         func.options(scheduling_strategy="XXX").remote()
 
-    with pytest.raises(ValueError):
-
-        @ray.remote
-        def func():
-            return 0
-
-        func.options(
-            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None)
-        ).remote()
-
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_node_affinity_scheduling_strategy(
