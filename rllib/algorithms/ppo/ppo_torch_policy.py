@@ -24,6 +24,7 @@ from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
     explained_variance,
     sequence_mask,
+    warn_if_infinite_kl_divergence,
 )
 from ray.rllib.utils.typing import TensorType
 
@@ -119,6 +120,9 @@ class PPOTorchPolicy(
         if self.config["kl_coeff"] > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = reduce_mean_valid(action_kl)
+            # TODO smorad: should we do anything besides warn? Could discard KL term
+            # for this update
+            warn_if_infinite_kl_divergence(self, mean_kl_loss)
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 

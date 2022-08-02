@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 import ray
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
@@ -18,7 +19,6 @@ from ray.tune.resources import Resources
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.tune_test_util import TrialResultObserver
 from ray.tune.trainable.util import TrainableUtil
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 
 
 def create_mock_components():

@@ -46,8 +46,8 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import (
     Tee,
-    delete_external_checkpoint,
-    get_checkpoint_from_remote_node,
+    _delete_external_checkpoint,
+    _get_checkpoint_from_remote_node,
     retry_fn,
 )
 from ray.util.annotations import PublicAPI
@@ -425,7 +425,9 @@ class Trainable:
         )
         return checkpoint_dir
 
-    def save(self, checkpoint_dir: Optional[str] = None) -> str:
+    def save(
+        self, checkpoint_dir: Optional[str] = None, prevent_upload: bool = False
+    ) -> str:
         """Saves the current model state to a checkpoint.
 
         Subclasses should override ``save_checkpoint()`` instead to save state.
@@ -436,6 +438,7 @@ class Trainable:
 
         Args:
             checkpoint_dir: Optional dir to place the checkpoint.
+            prevent_upload: If True, will not upload the saved checkpoint to cloud.
 
         Returns:
             The given or created checkpoint directory.
@@ -487,7 +490,8 @@ class Trainable:
         TrainableUtil.write_metadata(checkpoint_dir, metadata)
 
         # Maybe sync to cloud
-        self._maybe_save_to_cloud(checkpoint_dir)
+        if not prevent_upload:
+            self._maybe_save_to_cloud(checkpoint_dir)
 
         return checkpoint_dir
 
@@ -512,6 +516,15 @@ class Trainable:
         return True
 
     def _maybe_load_from_cloud(self, checkpoint_path: str) -> bool:
+        if os.path.exists(checkpoint_path):
+            try:
+                TrainableUtil.find_checkpoint_dir(checkpoint_path)
+            except Exception:
+                pass
+            else:
+                # If the path exists locally, we don't have to download
+                return True
+
         if not self.uses_cloud_checkpointing:
             return False
 
@@ -541,12 +554,13 @@ class Trainable:
         """Saves the current model state to a Python object.
 
         It also saves to disk but does not return the checkpoint path.
+        It does not save the checkpoint to cloud storage.
 
         Returns:
             Object holding checkpoint data.
         """
         temp_container_dir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
-        checkpoint_dir = self.save(temp_container_dir)
+        checkpoint_dir = self.save(temp_container_dir, prevent_upload=True)
 
         obj_ref = Checkpoint.from_directory(checkpoint_dir).to_bytes()
         shutil.rmtree(temp_container_dir)
@@ -607,7 +621,7 @@ class Trainable:
             # And the source IP is different to the current IP
             and checkpoint_node_ip != ray.util.get_node_ip_address()
         ):
-            checkpoint = get_checkpoint_from_remote_node(
+            checkpoint = _get_checkpoint_from_remote_node(
                 checkpoint_path, checkpoint_node_ip
             )
             if checkpoint:
@@ -701,7 +715,7 @@ class Trainable:
                 else:
                     checkpoint_uri = self._storage_path(checkpoint_dir)
                     retry_fn(
-                        lambda: delete_external_checkpoint(checkpoint_uri),
+                        lambda: _delete_external_checkpoint(checkpoint_uri),
                         subprocess.CalledProcessError,
                         num_retries=3,
                         sleep_time=1,
@@ -1074,8 +1088,7 @@ class Trainable:
         """Subclasses can optionally override this to customize logging.
 
         The logging here is done on the worker process rather than
-        the driver. You may want to turn off driver logging via the
-        ``loggers`` parameter in ``tune.run`` when overriding this function.
+        the driver.
 
         .. versionadded:: 0.8.7
 

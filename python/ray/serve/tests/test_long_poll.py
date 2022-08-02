@@ -7,8 +7,8 @@ from typing import Dict
 import pytest
 
 import ray
-from ray.serve.common import EndpointTag, EndpointInfo, RunningReplicaInfo
-from ray.serve.long_poll import (
+from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaInfo
+from ray.serve._private.long_poll import (
     LongPollClient,
     LongPollHost,
     UpdatedObject,

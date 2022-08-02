@@ -1,3 +1,4 @@
+import os
 import tempfile
 from typing import Optional
 
@@ -10,10 +11,10 @@ from fastapi import Depends, FastAPI
 import ray
 from ray import serve
 from ray.air.checkpoint import Checkpoint
-from ray.serve.air_integrations import BatchingManager, PredictorDeployment
+from ray.serve.air_integrations import _BatchingManager, PredictorDeployment
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.deployment_graph_build import build
+from ray.serve._private.deployment_graph_build import build
 from ray.serve.http_adapters import json_to_ndarray
 from ray.train.predictor import DataBatchType, Predictor
 from ray.data.extensions import TensorArray
@@ -25,17 +26,17 @@ class TestBatchingFunctionFunctions:
         batched_arr = np.array([[i] for i in range(4)])
         batch_size = 4
 
-        batched = BatchingManager.batch_array(list_of_arr)
+        batched = _BatchingManager.batch_array(list_of_arr)
         assert np.array_equal(batched, batched_arr)
 
-        for i, j in zip(BatchingManager.split_array(batched, batch_size), list_of_arr):
+        for i, j in zip(_BatchingManager.split_array(batched, batch_size), list_of_arr):
             assert np.array_equal(i, j)
 
     def test_array_error(self):
         with pytest.raises(ValueError, match="output array should have shape of"):
-            BatchingManager.split_array(np.arange(2), 10)
+            _BatchingManager.split_array(np.arange(2), 10)
         with pytest.raises(TypeError, match="output should be np.ndarray but"):
-            BatchingManager.split_array("string", 6)
+            _BatchingManager.split_array("string", 6)
 
     def test_dict_array(self):
         list_of_dicts = [
@@ -45,12 +46,12 @@ class TestBatchingFunctionFunctions:
         batched_dict = {"a": np.array([[1, 2], [3, 4]]), "b": np.array([3, 4])}
         batch_size = 2
 
-        batched = BatchingManager.batch_dict_array(list_of_dicts)
+        batched = _BatchingManager.batch_dict_array(list_of_dicts)
         assert batched.keys() == batched_dict.keys()
         for key in batched.keys():
             assert np.array_equal(batched[key], batched_dict[key])
 
-        unpacked_list = BatchingManager.split_dict_array(batched, batch_size)
+        unpacked_list = _BatchingManager.split_dict_array(batched, batch_size)
         for original, unpacked in zip(list_of_dicts, unpacked_list):
             assert original.keys() == unpacked.keys()
             for key in original.keys():
@@ -66,10 +67,10 @@ class TestBatchingFunctionFunctions:
         )
         batch_size = 4
 
-        batched = BatchingManager.batch_dataframe(list_of_dfs)
+        batched = _BatchingManager.batch_dataframe(list_of_dfs)
         assert batched.equals(batched_df)
 
-        unpacked_list = BatchingManager.split_dataframe(batched, batch_size)
+        unpacked_list = _BatchingManager.split_dataframe(batched, batch_size)
         assert len(unpacked_list) == len(list_of_dfs)
         for i, j in zip(unpacked_list, list_of_dfs):
             assert i.equals(j)
@@ -88,10 +89,15 @@ class TestBatchingFunctionFunctions:
             }
         )
 
-        unpacked_list = BatchingManager.split_dataframe(batched_df, 1)
+        unpacked_list = _BatchingManager.split_dataframe(batched_df, 1)
         assert len(unpacked_list) == 1
-        assert unpacked_list[0]["a"].equals(split_df["a"])
-        assert unpacked_list[0]["b"].equals(split_df["b"])
+        # On windows, conversion dtype is not preserved.
+        check_dtype = not os.name == "nt"
+        pd.testing.assert_frame_equal(
+            unpacked_list[0].reset_index(drop=True),
+            split_df.reset_index(drop=True),
+            check_dtype=check_dtype,
+        )
 
 
 class AdderPredictor(Predictor):

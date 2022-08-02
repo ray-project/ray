@@ -9,6 +9,7 @@ from typing import (
     Tuple,
     Union,
 )
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 from ray.serve.context import get_global_client
 from ray.dag.class_node import ClassNode
@@ -17,9 +18,9 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
-from ray.serve.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT
 from ray.util.annotations import PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
@@ -213,6 +214,19 @@ class Deployment:
             init_kwargs: kwargs to pass to the class __init__
                 method. Not valid if this deployment wraps a function.
         """
+        record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+        self._deploy(*init_args, _blocking=_blocking, **init_kwargs)
+
+    # TODO(Sihan) Promote the _deploy to deploy after we fully deprecate the API
+    def _deploy(self, *init_args, _blocking=True, **init_kwargs):
+        """Deploy or update this deployment.
+
+        Args:
+            init_args: args to pass to the class __init__
+                method. Not valid if this deployment wraps a function.
+            init_kwargs: kwargs to pass to the class __init__
+                method. Not valid if this deployment wraps a function.
+        """
         if len(init_args) == 0 and self._init_args is not None:
             init_args = self._init_args
         if len(init_kwargs) == 0 and self._init_kwargs is not None:
@@ -238,6 +252,12 @@ class Deployment:
     def delete(self):
         """Delete this deployment."""
 
+        return self._delete()
+
+    # TODO(Sihan) Promote the _delete to delete after we fully deprecate the API
+    def _delete(self):
+        """Delete this deployment."""
+
         return get_global_client().delete_deployments([self._name])
 
     @deprecated(
@@ -245,6 +265,23 @@ class Deployment:
     )
     @PublicAPI
     def get_handle(
+        self, sync: Optional[bool] = True
+    ) -> Union[RayServeHandle, RayServeSyncHandle]:
+        """Get a ServeHandle to this deployment to invoke it from Python.
+
+        Args:
+            sync: If true, then Serve will return a ServeHandle that
+                works everywhere. Otherwise, Serve will return an
+                asyncio-optimized ServeHandle that's only usable in an asyncio
+                loop.
+
+        Returns:
+            ServeHandle
+        """
+        return self._get_handle(sync)
+
+    # TODO(Sihan) Promote the _get_handle to get_handle after we fully deprecate the API
+    def _get_handle(
         self, sync: Optional[bool] = True
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Get a ServeHandle to this deployment to invoke it from Python.

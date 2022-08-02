@@ -102,21 +102,44 @@ class PolicySpec:
         )
 
     def serialize(self) -> Dict:
+        from ray.rllib.algorithms.registry import get_policy_class_name
+
+        # Try to figure out a durable name for this policy.
+        cls = get_policy_class_name(self.policy_class)
+        if cls is None:
+            logger.warning(
+                f"Can not figure out a durable policy name for {self.policy_class}. "
+                f"You are probably trying to checkpoint a custom policy. "
+                f"Raw policy class may cause problems when the checkpoint needs to "
+                "be loaded in the future. To fix this, make sure you add your "
+                "custom policy in rllib.algorithms.registry.POLICIES."
+            )
+            cls = self.policy_class
+
         return {
-            # TODO(jungong) : try making the policy_class config durable.
-            # Maybe we should save the full string class path instead.
-            # That will allow us to load a policy checkpoint even if the class
-            # does not exist anymore (e.g., renamed).
-            "policy_class": self.policy_class,
+            "policy_class": cls,
             "observation_space": space_to_dict(self.observation_space),
             "action_space": space_to_dict(self.action_space),
+            # TODO(jungong) : try making the config dict durable by maybe
+            # getting rid of all the fields that are not JSON serializable.
             "config": self.config,
         }
 
     @classmethod
     def deserialize(cls, spec: Dict) -> "PolicySpec":
+        if isinstance(spec["policy_class"], str):
+            # Try to recover the actual policy class from durable name.
+            from ray.rllib.algorithms.registry import get_policy_class
+
+            policy_class = get_policy_class(spec["policy_class"])
+        elif isinstance(spec["policy_class"], type):
+            # Policy spec is already a class type. Simply use it.
+            policy_class = spec["policy_class"]
+        else:
+            raise AttributeError(f"Unknown policy class spec {spec['policy_class']}")
+
         return cls(
-            policy_class=spec["policy_class"],
+            policy_class=policy_class,
             observation_space=space_from_dict(spec["observation_space"]),
             action_space=space_from_dict(spec["action_space"]),
             config=spec["config"],
@@ -963,7 +986,10 @@ class Policy(metaclass=ABCMeta):
         return {
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
-                data_col=SampleBatch.OBS, shift=1, space=self.observation_space
+                data_col=SampleBatch.OBS,
+                shift=1,
+                space=self.observation_space,
+                used_for_compute_actions=False,
             ),
             SampleBatch.ACTIONS: ViewRequirement(
                 space=self.action_space, used_for_compute_actions=False
@@ -980,7 +1006,7 @@ class Policy(metaclass=ABCMeta):
                 data_col=SampleBatch.REWARDS, shift=-1
             ),
             SampleBatch.DONES: ViewRequirement(),
-            SampleBatch.INFOS: ViewRequirement(),
+            SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
             SampleBatch.T: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
@@ -1202,27 +1228,15 @@ class Policy(metaclass=ABCMeta):
             # Non-flattened dummy batch.
             else:
                 # Range of indices on time-axis, e.g. "-50:-1".
-                if view_req.shift_from is not None:
-                    ret[view_col] = get_dummy_batch_for_space(
-                        view_req.space,
-                        batch_size=batch_size,
-                        time_size=view_req.shift_to - view_req.shift_from + 1,
+                if isinstance(view_req.space, gym.spaces.Space):
+                    time_size = (
+                        len(view_req.shift_arr) if len(view_req.shift_arr) > 1 else None
                     )
-                # Sequence of (probably non-consecutive) indices.
-                elif isinstance(view_req.shift, (list, tuple)):
                     ret[view_col] = get_dummy_batch_for_space(
-                        view_req.space,
-                        batch_size=batch_size,
-                        time_size=len(view_req.shift),
+                        view_req.space, batch_size=batch_size, time_size=time_size
                     )
-                # Single shift int value.
                 else:
-                    if isinstance(view_req.space, gym.spaces.Space):
-                        ret[view_col] = get_dummy_batch_for_space(
-                            view_req.space, batch_size=batch_size, fill_value=0.0
-                        )
-                    else:
-                        ret[view_col] = [view_req.space for _ in range(batch_size)]
+                    ret[view_col] = [view_req.space for _ in range(batch_size)]
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
