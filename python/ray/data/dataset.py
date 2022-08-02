@@ -3280,7 +3280,7 @@ class Dataset(Generic[T]):
                         )
                     else:
                         logger.info(
-                            f"{OK_PREFIX} This pipeline's windows can each fit in "
+                            f"{OK_PREFIX} This pipeline's windows likely fit in "
                             "object store memory without spilling."
                         )
                 except Exception as e:

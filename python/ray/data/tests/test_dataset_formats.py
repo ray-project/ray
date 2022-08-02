@@ -437,6 +437,10 @@ def test_parquet_deserialize_pieces_with_retry(
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
@@ -496,6 +500,10 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
@@ -565,6 +573,10 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
@@ -658,6 +670,10 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
             lazy_fixture("s3_fs_with_space"),
             lazy_fixture("s3_path_with_space"),
         ),  # Path contains space.
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path):
@@ -719,6 +735,10 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
@@ -902,6 +922,10 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
         (lazy_fixture("s3_fs_with_space"), lazy_fixture("s3_path_with_space")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_path):
@@ -1180,6 +1204,10 @@ def test_parquet_write_block_path_provider(
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -1211,6 +1239,10 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -2068,6 +2100,10 @@ def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         (None, lazy_fixture("local_path")),
         (lazy_fixture("local_fs"), lazy_fixture("local_path")),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+        ),
     ],
 )
 def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
@@ -2369,6 +2405,11 @@ def test_csv_read_meta_provider(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_hive_implicit(
@@ -2409,6 +2450,11 @@ def test_csv_read_partitioned_hive_implicit(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+        (
+            lazy_fixture("s3_fs_with_anonymous_crendential"),
+            lazy_fixture("s3_path_with_anonymous_crendential"),
+            lazy_fixture("s3_server"),
+        ),
     ],
 )
 def test_csv_read_partitioned_styles_explicit(
@@ -2600,11 +2646,6 @@ def test_csv_read_partitioned_with_filter_multikey(
         (None, lazy_fixture("local_path"), None),
         (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-        (
-            lazy_fixture("s3_fs_with_special_chars"),
-            lazy_fixture("s3_path_with_special_chars"),
-            lazy_fixture("s3_server"),
-        ),
     ],
 )
 def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
@@ -2784,7 +2825,7 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
 def test_image_folder_datasource(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
 ):
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folder"
     ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
 
     assert ds.count() == 3
@@ -2810,7 +2851,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from torchvision import transforms
     from torchvision.models import resnet18
 
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folder"
     dataset = ray.data.read_datasource(
         ImageFolderDatasource(), root=root, size=(32, 32)
     )
