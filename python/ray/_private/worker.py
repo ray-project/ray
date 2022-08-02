@@ -117,10 +117,14 @@ class RemoteFunctionNoArgs(Generic[R]):
     def __init__(self, function: Callable[[], R]) -> None:
         pass
 
-    def remote(self,) -> "ObjectRef[R]":
+    def remote(
+        self,
+    ) -> "ObjectRef[R]":
         ...
 
-    def bind(self,) -> "DAGNode[R]":
+    def bind(
+        self,
+    ) -> "DAGNode[R]":
         ...
 
 
@@ -128,10 +132,16 @@ class RemoteFunction0(Generic[R, T0]):
     def __init__(self, function: Callable[[T0], R]) -> None:
         pass
 
-    def remote(self, __arg0: "Union[T0, ObjectRef[T0]]",) -> "ObjectRef[R]":
+    def remote(
+        self, 
+        __arg0: "Union[T0, ObjectRef[T0]]",
+    ) -> "ObjectRef[R]":
         ...
 
-    def bind(self, __arg0: "Union[T0, DAGNode[T0]]",) -> "DAGNode[R]":
+    def bind(
+        self, 
+        __arg0: "Union[T0, DAGNode[T0]]",
+    ) -> "DAGNode[R]":
         ...
 
 
@@ -140,12 +150,16 @@ class RemoteFunction1(Generic[R, T0, T1]):
         pass
 
     def remote(
-        self, __arg0: "Union[T0, ObjectRef[T0]]", __arg1: "Union[T1, ObjectRef[T1]]",
+        self, 
+        __arg0: "Union[T0, ObjectRef[T0]]", 
+        __arg1: "Union[T1, ObjectRef[T1]]",
     ) -> "ObjectRef[R]":
         ...
 
     def bind(
-        self, __arg0: "Union[T0, DAGNode[T0]]", __arg1: "Union[T1, DAGNode[T1]]",
+        self, 
+        __arg0: "Union[T0, DAGNode[T0]]", 
+        __arg1: "Union[T1, DAGNode[T1]]",
     ) -> "DAGNode[R]":
         ...
 
@@ -2542,7 +2556,10 @@ def _make_remote(function_or_class, options):
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
         ray_option_utils.validate_task_options(options, in_options=False)
         return ray.remote_function.RemoteFunction(
-            Language.PYTHON, function_or_class, None, options,
+            Language.PYTHON, 
+            function_or_class, 
+            None, 
+            options,
         )
 
     if inspect.isclass(function_or_class):

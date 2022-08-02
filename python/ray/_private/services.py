@@ -1236,7 +1236,9 @@ def start_api_server(
             port_retries = 0
             port_test_socket = socket.socket()
             port_test_socket.setsockopt(
-                socket.SOL_SOCKET, socket.SO_REUSEADDR, 1,
+                socket.SOL_SOCKET,
+                socket.SO_REUSEADDR,
+                1,
             )
             try:
                 port_test_socket.bind((host, port))
@@ -1703,7 +1705,9 @@ def start_raylet(
     if socket_to_use:
         socket_to_use.close()
     if node_name is not None:
-        command.append(f"--node-name={node_name}",)
+        command.append(
+            f"--node-name={node_name}",
+        )
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
