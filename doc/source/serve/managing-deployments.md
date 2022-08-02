@@ -203,3 +203,6 @@ is set.  In particular, it's also called when new replicas are created in the
 future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
+:::{note}
+The `user_config` and its contents must be JSON-serializable.
+:::
