@@ -32,6 +32,7 @@ def ray_start_4_cpus_2_gpus():
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
+
 def test_jax_get_device(ray_start_4_cpus_2_gpus):
     def _train_fn(x):
         return jax.lax.psum(x, "i")
