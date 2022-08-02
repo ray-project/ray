@@ -16,8 +16,6 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <boost/filesystem.hpp>
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 
