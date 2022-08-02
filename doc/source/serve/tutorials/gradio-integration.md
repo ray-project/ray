@@ -16,7 +16,7 @@ We will be using [HuggingFace's Pipelines](https://huggingface.co/docs/transform
 $ pip install transformers
 ```
 
-## Basic Example: Deploy your Gradio app with Ray Serve
+## Quickstart: Deploy your Gradio app with Ray Serve
 
 This example will show you an easy, straightforward way to deploy your app onto Ray Serve. Start by creating a new Python file named `demo.py` and import `GradioServer` from Ray Serve for deploying your Gradio app, `gradio`, and `transformers.pipeline` for loading text summarization models.
 ```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration.py
@@ -65,7 +65,7 @@ Now you can access your Gradio app at `http://localhost:8000`! This is what it s
 See [Putting Ray Serve Deployment Graphs in Production](https://docs.ray.io/en/master/serve/production.html#id1) for more information on how to deploy your app in production.
 
 
-## Complex Example: Parallelism
+## Parallelizing models with Ray Serve
 You can run multiple models in parallel with Ray Serve by utilizing the [deployment graph](deployment-graph-e2e-tutorial) in Ray Serve.
 
 ### Original Approach
