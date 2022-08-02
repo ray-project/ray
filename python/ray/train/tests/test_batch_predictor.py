@@ -261,6 +261,41 @@ def test_get_and_set_preprocessor():
     ]
 
 
+def test_separate_gpu_stage_pipelined(shutdown_only):
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_gpus=1)
+    batch_predictor = BatchPredictor.from_checkpoint(
+        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
+        DummyPredictor,
+    )
+    ds = batch_predictor.predict_pipelined(
+        ray.data.range_table(5),
+        blocks_per_window=1,
+        num_gpus_per_worker=1,
+        separate_gpu_stage=True,
+        allow_gpu=True,
+    )
+    out = [x["value"] for x in ds.iter_rows()]
+    stats = ds.stats()
+    assert "Stage 1 read->map_batches:" in stats, stats
+    assert "Stage 2 map_batches:" in stats, stats
+    assert max(out) == 16.0, out
+
+    ds = batch_predictor.predict_pipelined(
+        ray.data.range_table(5),
+        blocks_per_window=1,
+        num_gpus_per_worker=1,
+        separate_gpu_stage=False,
+        allow_gpu=True,
+    )
+    out = [x["value"] for x in ds.iter_rows()]
+    stats = ds.stats()
+    assert "Stage 1 read:" in stats, stats
+    assert "Stage 2 map_batches:" in stats, stats
+    assert max(out) == 16.0, out
+
+
 if __name__ == "__main__":
     import sys
 
