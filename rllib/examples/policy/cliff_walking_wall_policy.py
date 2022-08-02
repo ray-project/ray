@@ -8,9 +8,13 @@ import numpy as np
 import gym
 
 
-class CliffWalkingPolicy(Policy):
-    """Optimal RLlib policy for the CliffWalking environment with
-    epsilon-greedy exploration"""
+class CliffWalkingWallPolicy(Policy):
+    """Optimal RLlib policy for the CliffWalkingWallEnv environment, defined in
+    ray/rllib/examples/env/cliff_walking_wall_env.py, with epsilon-greedy exploration.
+
+    The policy takes a random action with probability epsilon, specified
+    by `config["epsilon"]`, and the optimal action with probability  1 - epsilon.
+    """
 
     @override(Policy)
     def __init__(
@@ -20,23 +24,28 @@ class CliffWalkingPolicy(Policy):
         config: AlgorithmConfigDict,
     ):
         super().__init__(observation_space, action_space, config)
+
         # Known optimal action dist for each of the 48 states and 4 actions
-        self.optimal_dist = np.zeros((48, 4), dtype=float)
+        self.action_dist = np.zeros((48, 4), dtype=float)
         # Starting state: go up
-        self.optimal_dist[36] = (1, 0, 0, 0)
+        self.action_dist[36] = (1, 0, 0, 0)
         # Cliff + Goal: never actually used, set to random
-        self.optimal_dist[37:] = (0.25, 0.25, 0.25, 0.25)
+        self.action_dist[37:] = (0.25, 0.25, 0.25, 0.25)
         # Row 2; always go right
-        self.optimal_dist[24:36] = (0, 1, 0, 0)
+        self.action_dist[24:36] = (0, 1, 0, 0)
         # Row 0 and Row 1; go down or go right
-        self.optimal_dist[0:24] = (0, 0.5, 0.5, 0)
+        self.action_dist[0:24] = (0, 0.5, 0.5, 0)
         # Col 11; always go down, supercedes previous values
-        self.optimal_dist[[11, 23, 35]] = (0, 0, 1, 0)
-        assert np.allclose(self.optimal_dist.sum(-1), 1)
+        self.action_dist[[11, 23, 35]] = (0, 0, 1, 0)
+        assert np.allclose(self.action_dist.sum(-1), 1)
 
-        # Initialize action_dist used to compute actions as optimal_dist
-        self.update_epsilon(config.get("epsilon", 0.0))
+        # Epsilon-Greedy action selection
+        epsilon = config.get("epsilon", 0.0)
+        self.action_dist = self.action_dist * (1 - epsilon) + epsilon / 4
+        assert np.allclose(self.action_dist.sum(-1), 1)
 
+        # Attributes required for RLlib; note that while CliffWalkingWallPolicy
+        # inherits from Policy, it actually implements TorchPolicyV2.
         self.view_requirements[SampleBatch.ACTION_PROB] = ViewRequirement()
         self.device = "cpu"
         self.model = None
@@ -69,17 +78,19 @@ class CliffWalkingPolicy(Policy):
     ) -> TensorType:
         obs = np.array(obs_batch, dtype=int)
         actions = np.array(actions, dtype=int)
+        # Compute action probs for all possible actions
         action_probs = self.action_dist[obs]
-        return np.log(action_probs[np.arange(len(obs)), actions])
-
-    def update_epsilon(self, epsilon: float):
-        # Epsilon-Greedy action selection
-        self.action_dist = self.optimal_dist * (1 - epsilon) + epsilon / 4
-        assert np.allclose(self.action_dist.sum(-1), 1)
+        # Take the action_probs corresponding to the specified actions
+        action_probs = action_probs[np.arange(len(obs)), actions]
+        # Ignore RuntimeWarning thrown by np.log(0) if action_probs is 0
+        with np.errstate(divide="ignore"):
+            return np.log(action_probs)
 
     def action_distribution_fn(
         self, model, obs_batch: TensorStructType, **kwargs
     ) -> Tuple[TensorType, type, List[TensorType]]:
         obs = np.array(obs_batch[SampleBatch.OBS], dtype=int)
         action_probs = self.action_dist[obs]
-        return np.log(action_probs), TorchCategorical, None
+        # Ignore RuntimeWarning thrown by np.log(0) if action_probs is 0
+        with np.errstate(divide="ignore"):
+            return np.log(action_probs), TorchCategorical, None

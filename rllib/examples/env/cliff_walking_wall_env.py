@@ -1,6 +1,11 @@
 import gym
 from gym import spaces
 
+ACTION_UP = 0
+ACTION_RIGHT = 1
+ACTION_DOWN = 2
+ACTION_LEFT = 3
+
 
 class CliffWalkingWallEnv(gym.Env):
     """Modified version of the CliffWalking environment from OpenAI Gym
@@ -20,6 +25,7 @@ class CliffWalkingWallEnv(gym.Env):
     - 1: move right
     - 2: move down
     - 3: move left
+    You can also use the constants ACTION_UP, ACTION_RIGHT, ... defined above.
 
     ### Observations
     There are 3x12 + 2 possible states, not including the walls. If an action
@@ -41,18 +47,18 @@ class CliffWalkingWallEnv(gym.Env):
         x = self.position // 12
         y = self.position % 12
         # UP
-        if action == 0:
+        if action == ACTION_UP:
             x = max(x - 1, 0)
         # RIGHT
-        elif action == 1:
+        elif action == ACTION_RIGHT:
             if self.position != 36:
                 y = min(y + 1, 11)
         # DOWN
-        elif action == 2:
+        elif action == ACTION_DOWN:
             if self.position < 25 or self.position > 34:
                 x = min(x + 1, 3)
         # LEFT
-        elif action == 3:
+        elif action == ACTION_LEFT:
             if self.position != 47:
                 y = max(y - 1, 0)
         else:

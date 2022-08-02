@@ -1,7 +1,6 @@
 import copy
 import os
 import unittest
-from pathlib import Path
 from typing import Type, Union, Dict, Tuple
 
 import numpy as np
@@ -37,9 +36,7 @@ class TestOPE(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
-        rllib_dir = Path(__file__).parent.parent.parent.parent
-        train_data = os.path.join(rllib_dir, "tests/data/cartpole/small.json")
-        eval_data = train_data
+        train_data = "s3://air-example-data/rllib/cartpole/small.json"
 
         env_name = "CartPole-v0"
         cls.gamma = 0.99
@@ -52,13 +49,14 @@ class TestOPE(unittest.TestCase):
             .rollouts(batch_mode="complete_episodes")
             .framework("torch")
             .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0)))
-            .offline_data(input_=train_data)
+            .offline_data(
+                input_="dataset", input_config={"format": "json", "paths": train_data}
+            )
             .evaluation(
                 evaluation_interval=1,
                 evaluation_duration=n_episodes,
                 evaluation_num_workers=1,
                 evaluation_duration_unit="episodes",
-                evaluation_config={"input": eval_data},
                 off_policy_estimation_methods={
                     "is": {"type": ImportanceSampling},
                     "wis": {"type": WeightedImportanceSampling},
@@ -70,7 +68,7 @@ class TestOPE(unittest.TestCase):
         cls.algo = config.build()
 
         # Read n_episodes of data, assuming that one line is one episode
-        reader = DatasetReader(read_json(eval_data))
+        reader = DatasetReader(read_json(train_data))
         batches = [reader.next() for _ in range(n_episodes)]
         cls.batch = concat_samples(batches)
         cls.n_episodes = len(cls.batch.split_by_episode())
@@ -82,19 +80,27 @@ class TestOPE(unittest.TestCase):
 
     def test_ope_standalone(self):
         # Test all OPE methods standalone
+        estimator_outputs = {
+            "v_behavior",
+            "v_behavior_std",
+            "v_target",
+            "v_target_std",
+            "v_gain",
+            "v_gain_std",
+        }
         estimator = ImportanceSampling(
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
-        assert estimates is not None, "IS estimator did not compute estimates"
+        self.assertEqual(estimates.keys(), estimator_outputs)
 
         estimator = WeightedImportanceSampling(
             policy=self.algo.get_policy(),
             gamma=self.gamma,
         )
         estimates = estimator.estimate(self.batch)
-        assert estimates is not None, "WIS estimator did not compute estimates"
+        self.assertEqual(estimates.keys(), estimator_outputs)
 
         estimator = DirectMethod(
             policy=self.algo.get_policy(),
@@ -104,7 +110,7 @@ class TestOPE(unittest.TestCase):
         losses = estimator.train(self.batch)
         assert losses, "DM estimator did not return mean loss"
         estimates = estimator.estimate(self.batch)
-        assert estimates is not None, "DM estimator did not compute estimates"
+        self.assertEqual(estimates.keys(), estimator_outputs)
 
         estimator = DoublyRobust(
             policy=self.algo.get_policy(),
@@ -114,31 +120,19 @@ class TestOPE(unittest.TestCase):
         losses = estimator.train(self.batch)
         assert losses, "DM estimator did not return mean loss"
         estimates = estimator.estimate(self.batch)
-        assert estimates is not None, "DM estimator did not compute estimates"
+        self.assertEqual(estimates.keys(), estimator_outputs)
 
     def test_ope_in_algo(self):
         # Test OPE in DQN, during training as well as by calling evaluate()
         results = self.algo.train()
         ope_results = results["evaluation"]["off_policy_estimator"]
         # Check that key exists AND is not {}
-        assert ope_results, "Did not run OPE in training!"
-        assert set(ope_results.keys()) == {
-            "is",
-            "wis",
-            "dm_fqe",
-            "dr_fqe",
-        }, "Missing keys in OPE result dict"
+        self.assertEqual(ope_results.keys(), {"is", "wis", "dm_fqe", "dr_fqe"})
 
         # Check algo.evaluate() manually as well
-        results = self.algo.train()
+        results = self.algo.evaluate()
         ope_results = results["evaluation"]["off_policy_estimator"]
-        assert ope_results, "Did not run OPE on call to Algorithm.evaluate()!"
-        assert set(ope_results.keys()) == {
-            "is",
-            "wis",
-            "dm_fqe",
-            "dr_fqe",
-        }, "Missing keys in OPE result dict"
+        self.assertEqual(ope_results.keys(), {"is", "wis", "dm_fqe", "dr_fqe"})
 
 
 class TestFQE(unittest.TestCase):
@@ -186,11 +180,13 @@ class TestFQE(unittest.TestCase):
         ray.shutdown()
 
     def test_fqe_compilation_and_stopping(self):
-        # Test FQETorchModel for:
-        # (1) Check that it does not modify the underlying batch during training
-        # (2) Check that the stopping criteria from FQE are working correctly
-        # (3) Check that using fqe._compute_action_probs equals brute force
-        # iterating over all actions with policy.compute_log_likelihoods
+        """Compilation tests for FQETorchModel.
+
+        (1) Check that it does not modify the underlying batch during training
+        (2) Check that the stopping criteria from FQE are working correctly
+        (3) Check that using fqe._compute_action_probs equals brute force
+        iterating over all actions with policy.compute_log_likelihoods
+        """
         fqe = FQETorchModel(
             policy=self.policy,
             gamma=self.gamma,
@@ -202,10 +198,11 @@ class TestFQE(unittest.TestCase):
         check(tmp_batch, self.batch)
 
         # Make sure FQE stopping criteria are respected
-        assert (
-            len(losses) == fqe.n_iters or losses[-1] < fqe.delta
-        ), f"FQE.train() terminated early in {len(losses)} steps with final loss"
-        f"{losses[-1]} for n_iters: {fqe.n_iters} and delta: {fqe.delta}"
+        assert len(losses) == fqe.n_iters or losses[-1] < fqe.min_loss_threshold, (
+            f"FQE.train() terminated early in {len(losses)} steps with final loss"
+            f"{losses[-1]} for n_iters: {fqe.n_iters} and "
+            f"min_loss_threshold: {fqe.min_loss_threshold}"
+        )
 
         # Test fqe._compute_action_probs against "brute force" method
         # of computing log_prob for each possible action individually
@@ -226,9 +223,14 @@ class TestFQE(unittest.TestCase):
         check(action_probs, tmp_probs, decimals=3)
 
     def test_fqe_optimal_convergence(self):
-        # Optimal CliffWalkingWallPolicy with epsilon = 0.0
-        # and CliffWalkingWallEnv are deterministic;
-        # check that FQE converges to the true Q-values for self.batch
+        """Test that FQE converges to the true Q-values for an optimal trajectory
+
+        self.batch is deterministic since it is collected under a CliffWalkingWallPolicy
+        with epsilon = 0.0; check that FQE converges to the true Q-values for self.batch
+
+        If self.batch["rewards"] = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 10],
+        and gamma = 0.99, the discounted returns i.e. optimal Q-values are as follows:
+        """
         q_vals = [
             -2.50,
             -1.51,
@@ -245,14 +247,13 @@ class TestFQE(unittest.TestCase):
             10.00,
         ]
         q_model_config = {
-            "tau": 1.0,
+            "polyak_coef": 1.0,
             "model": {
                 "fcnet_hiddens": [],
                 "activation": "linear",
             },
             "lr": 0.01,
             "n_iters": 5000,
-            "delta": 1e-3,
         }
 
         fqe = FQETorchModel(
@@ -262,14 +263,9 @@ class TestFQE(unittest.TestCase):
         )
         losses = fqe.train(self.batch)
         print(losses[-10:])
-        assert losses[-1] < fqe.delta, "FQE loss did not converge!"
         estimates = fqe.estimate_v(self.batch)
         print(estimates)
-        check(
-            estimates,
-            q_vals,
-            decimals=1,
-        )
+        check(estimates, q_vals, decimals=1)
 
 
 def get_cliff_walking_wall_policy_and_data(
@@ -287,8 +283,8 @@ def get_cliff_walking_wall_policy_and_data(
     Returns:
         A Tuple consisting of:
           - A CliffWalkingWallPolicy with exploration parameter epsilon
-          - A SampleBatch of `num_episodes` CliffWalkingWall episodes collected using
-          epsilon-greedy exploration
+          - A SampleBatch of at least `num_episodes` CliffWalkingWall episodes
+          collected using epsilon-greedy exploration
           - The mean of the discounted return over the collected episodes
           - The stddev of the discounted return over the collected episodes
 
@@ -299,6 +295,8 @@ def get_cliff_walking_wall_policy_and_data(
         .environment(disable_env_checking=True)
         .experimental(_disable_preprocessor_api=True)
     )
+    config = config.to_dict()
+    config["epsilon"] = epsilon
 
     env = CliffWalkingWallEnv()
     policy = CliffWalkingWallPolicy(
@@ -307,10 +305,9 @@ def get_cliff_walking_wall_policy_and_data(
     workers = WorkerSet(
         env_creator=lambda env_config: CliffWalkingWallEnv(),
         policy_class=CliffWalkingWallPolicy,
-        trainer_config=config.to_dict(),
-        num_workers=8,
+        trainer_config=config,
+        num_workers=4,
     )
-    workers.foreach_policy(func=lambda policy, _: policy.update_epsilon(epsilon))
     ep_ret = []
     batches = []
     n_eps = 0
@@ -337,9 +334,22 @@ def check_estimate(
     mean_ret: float,
     std_ret: float,
 ) -> None:
-    # Train and estimate an estimator using the given batch and policy.
-    # Assert that the 1 stddev intervals for the estimated mean return
-    # and the actual mean return overlap.
+    """Compute off-policy estimates and compare them to the true discounted return.
+
+    Args:
+        estimator_cls: Off-Policy Estimator class to be used
+        gamma: discount factor
+        q_model_config: Optional config settings for the estimator's Q-model
+        policy: The target policy we compute estimates for
+        batch: The behavior data we use for off-policy estimation
+        mean_ret: The mean discounted episode return over the batch
+        std_ret: The standard deviation corresponding to mean_ret
+
+    Raises:
+        AssertionError if the estimated mean episode return computed by
+        the off-policy estimator does not fall within one standard deviation of
+        the values specified above i.e. [mean_ret - std_ret, mean_ret + std_ret]
+    """
     estimator = estimator_cls(
         policy=policy,
         gamma=gamma,
@@ -351,10 +361,7 @@ def check_estimate(
     est_std = estimates["v_target_std"]
     print(f"{est_mean:.2f}, {est_std:.2f}, {mean_ret:.2f}, {std_ret:.2f}, {loss:.2f}")
     # Assert that the two mean +- stddev intervals overlap
-    assert (
-        est_mean - est_std <= mean_ret + std_ret
-        and mean_ret - std_ret <= est_mean + est_std
-    ), (
+    assert mean_ret - std_ret <= est_mean <= mean_ret + std_ret, (
         f"DirectMethod estimate {est_mean:.2f} with stddev "
         f"{est_std:.2f} does not converge to true discounted return "
         f"{mean_ret:.2f} with stddev {std_ret:.2f}!"
@@ -362,7 +369,19 @@ def check_estimate(
 
 
 class TestOPELearning(unittest.TestCase):
-    """Learning tests for the DirectMethod and DoublyRobust estimators"""
+    """Learning tests for the DirectMethod and DoublyRobust estimators.
+
+    Generates three GridWorldWallPolicy policies and batches with  epsilon = 0.2, 0.5,
+    and 0.8 respectively using `get_cliff_walking_wall_policy_and_data`.
+
+    Tests that the estimators converge on all eight combinations of evaluation policy
+    and behavior batch using `check_estimates`, except random policy-expert batch.
+
+    Note: We do not test OPE with the "random" policy (epsilon=0.8)
+    and "expert" (epsilon=0.2) batch because of the large policy-data mismatch. The
+    expert batch is unlikely to contain the longer trajectories that would be observed
+    under the random policy, thus the OPE estimate is flaky and inaccurate.
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -378,7 +397,7 @@ class TestOPELearning(unittest.TestCase):
         cls.q_model_config = {
             "n_iters": 600,
             "minibatch_size": 32,
-            "tau": 1.0,
+            "polyak_coef": 1.0,
             "model": {
                 "fcnet_hiddens": [],
                 "activation": "linear",
@@ -443,22 +462,6 @@ class TestOPELearning(unittest.TestCase):
             q_model_config=self.q_model_config,
             policy=self.random_policy,
             batch=self.mixed_batch,
-            mean_ret=self.random_reward,
-            std_ret=self.random_std,
-        )
-
-    @unittest.skip(
-        "Skipped out due to flakiness; makes sense since expert episodes"
-        "are shorter than random ones, increasing the variance of the estimate"
-    )
-    def test_dm_random_policy_expert_data(self):
-        print("Test DirectMethod on random policy on expert dataset")
-        check_estimate(
-            estimator_cls=DirectMethod,
-            gamma=self.gamma,
-            q_model_config=self.q_model_config,
-            policy=self.random_policy,
-            batch=self.expert_batch,
             mean_ret=self.random_reward,
             std_ret=self.random_std,
         )
@@ -559,24 +562,8 @@ class TestOPELearning(unittest.TestCase):
             std_ret=self.random_std,
         )
 
-    @unittest.skip(
-        "Skipped out due to flakiness; makes sense since expert episodes"
-        "are shorter than random ones, increasing the variance of the estimate"
-    )
-    def test_dr_random_policy_expert_data(self):
-        print("Test DoublyRobust on  random policy on expert dataset")
-        check_estimate(
-            estimator_cls=DoublyRobust,
-            gamma=self.gamma,
-            q_model_config=self.q_model_config,
-            policy=self.random_policy,
-            batch=self.expert_batch,
-            mean_ret=self.random_reward,
-            std_ret=self.random_std,
-        )
-
     def test_dr_mixed_policy_random_data(self):
-        print("Test DoublyRobust on  mixed policy on random dataset")
+        print("Test DoublyRobust on mixed policy on random dataset")
         check_estimate(
             estimator_cls=DoublyRobust,
             gamma=self.gamma,
@@ -588,7 +575,7 @@ class TestOPELearning(unittest.TestCase):
         )
 
     def test_dr_mixed_policy_mixed_data(self):
-        print("Test DoublyRobust on  mixed policy on mixed dataset")
+        print("Test DoublyRobust on mixed policy on mixed dataset")
         check_estimate(
             estimator_cls=DoublyRobust,
             gamma=self.gamma,
@@ -600,7 +587,7 @@ class TestOPELearning(unittest.TestCase):
         )
 
     def test_dr_mixed_policy_expert_data(self):
-        print("Test DoublyRobust on  mixed policy on expert dataset")
+        print("Test DoublyRobust on mixed policy on expert dataset")
         check_estimate(
             estimator_cls=DoublyRobust,
             gamma=self.gamma,
@@ -612,7 +599,7 @@ class TestOPELearning(unittest.TestCase):
         )
 
     def test_dr_expert_policy_random_data(self):
-        print("Test DoublyRobust on  expert policy on random dataset")
+        print("Test DoublyRobust on expert policy on random dataset")
         check_estimate(
             estimator_cls=DoublyRobust,
             gamma=self.gamma,
@@ -624,7 +611,7 @@ class TestOPELearning(unittest.TestCase):
         )
 
     def test_dr_expert_policy_mixed_data(self):
-        print("Test DoublyRobust on  expert policy on mixed dataset")
+        print("Test DoublyRobust on expert policy on mixed dataset")
         check_estimate(
             estimator_cls=DoublyRobust,
             gamma=self.gamma,
@@ -636,7 +623,7 @@ class TestOPELearning(unittest.TestCase):
         )
 
     def test_dr_expert_policy_expert_data(self):
-        print("Test DoublyRobust on  expert policy on expert dataset")
+        print("Test DoublyRobust on expert policy on expert dataset")
         check_estimate(
             estimator_cls=DoublyRobust,
             gamma=self.gamma,
