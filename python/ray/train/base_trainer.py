@@ -34,7 +34,7 @@ class TrainingFailedError(RuntimeError):
     pass
 
 
-@DeveloperAPI
+@DeveloperAPI(to_show=True)
 class BaseTrainer(abc.ABC):
     """Defines interface for distributed training on Ray.
 

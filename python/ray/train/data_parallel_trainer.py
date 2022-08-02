@@ -46,7 +46,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
 
-@DeveloperAPI
+@DeveloperAPI(to_show=True)
 class DataParallelTrainer(BaseTrainer):
     """A Trainer for data parallel training.
 
