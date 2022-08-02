@@ -8,10 +8,6 @@ from ray.train.examples.alpa_mnist_example import (
 from ray.air import session
 from ray.train.alpa import AlpaTrainer
 
-import jax
-import numpy as np
-
-
 from ray import tune
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
