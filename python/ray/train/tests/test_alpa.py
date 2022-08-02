@@ -60,7 +60,7 @@ def test_jax_get_device(ray_start_4_cpus_2_gpus):
 
     results = trainer.fit()
     devices = results.metrics["devices"]
-    assert devices[0] == 2 and devices[1] == 2 and len(devices) == 2
+    assert devices = num_gpus_per_worker
 
 
 def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
