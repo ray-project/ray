@@ -197,6 +197,10 @@ def train_tf_vanilla(
         for rank in range(num_workers)
     ]
 
+    run_fn_on_actors(
+        actors=actors, fn=lambda: os.environ.setdefault("OMP_NUM_THREADS", "1")
+    )
+
     start_time = time.monotonic()
     run_commands_on_actors(actors=actors, cmds=cmds)
     time_taken = time.monotonic() - start_time
