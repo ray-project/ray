@@ -157,7 +157,9 @@ def _get_checkpoint_from_remote_node(
         )
         return None
     fut = _serialize_checkpoint.options(
-        resources={f"node:{node_ip}": 0.01}, num_cpus=0
+        resources={f"node:{node_ip}": 0.01},
+        num_cpus=0,
+        scheduling_strategy="DEFAULT",
     ).remote(checkpoint_path)
     try:
         checkpoint_data = ray.get(fut, timeout=timeout)
