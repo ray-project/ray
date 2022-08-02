@@ -50,14 +50,15 @@ class DLPredictor(Predictor):
     @abc.abstractmethod
     def call_model(
         self, tensor: Union[TensorType, Dict[str, TensorType]]
-    ) -> Union[TensorType, Dict[str, TensorType]]:
+    ) -> Union[TensorType, Dict[str, TensorType], pd.DataFrame]:
         """Inputs the tensor to the model for this Predictor and returns the result.
 
         Args:
             tensor: The tensor to input to the model.
 
         Returns:
-            A tensor or dictionary of tensors containing the model output.
+            A tensor, dictionary of tensors or pd.DataFrame containing the
+            model output.
         """
         raise NotImplementedError
 

@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
+import pandas as pd
 import torch
 
 from ray.util import log_once
@@ -95,7 +96,7 @@ class TorchPredictor(DLPredictor):
 
     def call_model(
         self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor], pd.DataFrame]:
         """Runs inference on a single batch of tensor data.
 
         This method is called by `TorchPredictor.predict` after converting the
@@ -129,8 +130,8 @@ class TorchPredictor(DLPredictor):
                 PyTorch tensor or for multi-input models, a dictionary of tensors.
 
         Returns:
-            The model outputs, either as a single tensor or a dictionary of tensors.
-
+            The model outputs, as a single tensor, a dictionary of tensors or
+            a Pandas DataFrame.
         """
         with torch.no_grad():
             output = self.model(tensor)

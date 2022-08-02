@@ -2,6 +2,7 @@ import logging
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 
 from ray.util import log_once
@@ -115,7 +116,7 @@ class TensorflowPredictor(DLPredictor):
 
     def call_model(
         self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]
-    ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
+    ) -> Union[tf.Tensor, Dict[str, tf.Tensor], pd.DataFrame]:
         """Runs inference on a single batch of tensor data.
 
         This method is called by `TorchPredictor.predict` after converting the
@@ -150,8 +151,8 @@ class TensorflowPredictor(DLPredictor):
                 PyTorch tensor or for multi-input models, a dictionary of tensors.
 
         Returns:
-            The model outputs, either as a single tensor or a dictionary of tensors.
-
+            The model outputs, as a single tensor, a dictionary of tensors or
+            a Pandas DataFrame.
         """
         if self.use_gpu:
             with tf.device("GPU:0"):

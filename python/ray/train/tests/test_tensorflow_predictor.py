@@ -1,4 +1,5 @@
 import re
+from typing import Union, Dict, Any
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -12,7 +13,9 @@ from ray.air.util.data_batch_conversion import (
     convert_pandas_to_batch_type,
     convert_batch_type_to_pandas,
 )
+from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.tensorflow import TensorflowCheckpoint, TensorflowPredictor
@@ -236,6 +239,74 @@ def test_tensorflow_predictor_no_training(use_gpu):
     predict_dataset = ray.data.range(3)
     predictions = batch_predictor.predict(predict_dataset)
     assert predictions.count() == 3
+
+
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_freeform_call_model_output(use_gpu):
+    """
+    Test to ensure users can return arbitrary return values with model output
+    in call_model for their custom predictor implementation without running
+    into TensorArray casting exceptions.
+    """
+
+    def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+        df.loc[:, "image"] = [np.asarray(image) for image in df["image"]]
+        return df
+
+    class CustomPredictorCannotConvert(TensorflowPredictor):
+        def call_model(self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]) -> Any:
+            model_output = super().call_model(tensor)
+            return [{"key": output} for output in model_output]
+
+    class CustomPredictorPandasFallThrough(TensorflowPredictor):
+        def call_model(self, tensor: Union[tf.Tensor, Dict[str, tf.Tensor]]) -> Any:
+            model_output = super().call_model(tensor)
+            return pd.DataFrame([{"key": output} for output in model_output])
+
+    dummy_data = pd.DataFrame(
+        {
+            "image": TensorArray(
+                [
+                    tf.random.uniform(shape=(1,)).numpy(),
+                    tf.random.uniform(shape=(1,)).numpy(),
+                ]
+            )
+        }
+    )
+    dataset = ray.data.from_pandas(dummy_data)
+    preprocessor = BatchMapper(preprocess)
+    ckpt = TensorflowCheckpoint.from_model(
+        model=build_model(), preprocessor=preprocessor
+    )
+
+    cannot_convert_predictor = BatchPredictor.from_checkpoint(
+        ckpt,
+        CustomPredictorCannotConvert,
+        model_definition=build_model,
+        use_gpu=use_gpu,
+    )
+    pandas_fallthrough_predictor = BatchPredictor.from_checkpoint(
+        ckpt,
+        CustomPredictorPandasFallThrough,
+        model_definition=build_model,
+        use_gpu=use_gpu,
+    )
+    num_gpus_per_worker = 1 if use_gpu else 0
+
+    # Assert non Tensor / Dict[str, Tensor] fails to convert with actionable message
+    with pytest.raises(ValueError, match="plain pandas.DataFrame as fall through"):
+        predictions = cannot_convert_predictor.predict(
+            dataset, num_gpus_per_worker=num_gpus_per_worker, feature_columns=["image"]
+        )
+
+    # Assert pandas DataFrame is passed through
+    predictions = pandas_fallthrough_predictor.predict(
+        dataset, num_gpus_per_worker=num_gpus_per_worker, feature_columns=["image"]
+    )
+    assert predictions.count() == 2
+    element = predictions.take(1)
+    assert isinstance(element, list)
+    assert element[0]["key"].shape == (1,)
 
 
 if __name__ == "__main__":
