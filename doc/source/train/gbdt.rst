@@ -28,6 +28,7 @@ training parameters are passed as the ``params`` dictionary.
 .. tabbed:: LightGBM
 
     Run ``pip install -U lightgbm_ray``.
+
     .. literalinclude:: doc_code/gbdt_user_guide.py
         :language: python
         :start-after: __lightgbm_start__
