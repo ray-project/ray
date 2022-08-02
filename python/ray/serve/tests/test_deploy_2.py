@@ -3,6 +3,7 @@ import functools
 import os
 import sys
 import time
+from typing import Dict
 
 import pytest
 import requests
@@ -247,6 +248,52 @@ def test_deployment_error_handling(serve_instance):
         serve.run(
             f.options(ray_actor_options={"runtime_env": {"working_dir": "."}}).bind()
         )
+
+
+def test_json_serialization_user_config(serve_instance):
+    """See https://github.com/ray-project/ray/issues/25345.
+
+    See https://github.com/ray-project/ray/pull/26235 for additional context
+    about this test.
+    """
+
+    @serve.deployment(name="simple-deployment")
+    class SimpleDeployment:
+        value: str
+        nested_value: str
+
+        def reconfigure(self, config: Dict) -> None:
+            self.value = config["value"]
+            self.nested_value = config["nested"]["value"]
+
+        def get_value(self) -> None:
+            return self.value
+
+        def get_nested_value(self) -> None:
+            return self.nested_value
+
+    SimpleDeployment.options(
+        user_config={
+            "value": "Success!",
+            "nested": {"value": "Success!"},
+        }
+    ).deploy()
+
+    handle = SimpleDeployment.get_handle()
+    assert ray.get(handle.get_value.remote()) == "Success!"
+    assert ray.get(handle.get_nested_value.remote()) == "Success!"
+
+    SimpleDeployment.options(
+        user_config={
+            "value": "Failure!",
+            "another-value": "Failure!",
+            "nested": {"value": "Success!"},
+        }
+    ).deploy()
+
+    handle = SimpleDeployment.get_handle()
+    assert ray.get(handle.get_value.remote()) == "Failure!"
+    assert ray.get(handle.get_nested_value.remote()) == "Success!"
 
 
 def test_http_proxy_request_cancellation(serve_instance):
