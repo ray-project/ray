@@ -233,25 +233,13 @@ class TestFQE(unittest.TestCase):
         #   [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 10],
         # and gamma = 0.99, the discounted returns i.e. optimal Q-values are as follows:
 
-        # q_values = copy.deepcopy(self.batch["rewards"])
-        # for t in range(len(self.batch["rewards"]) - 2, -1, -1):
-        #     q_values[t] = self.batch["rewards"][t] + self.gamma * q_values[t + 1]
+        q_values = np.zeros(len(self.batch["rewards"]), dtype = float)
+        q_values[-1] = self.batch["rewards"][-1]
+        for t in range(len(self.batch["rewards"]) - 2, -1, -1):
+            q_values[t] = self.batch["rewards"][t] + self.gamma * q_values[t + 1]
+        
+        print(q_values)
 
-        q_vals = [
-            -2.50,
-            -1.51,
-            -0.52,
-            0.49,
-            1.50,
-            2.53,
-            3.56,
-            4.61,
-            5.67,
-            6.73,
-            7.81,
-            8.90,
-            10.00,
-        ]
         q_model_config = {
             "polyak_coef": 1.0,
             "model": {
@@ -271,7 +259,7 @@ class TestFQE(unittest.TestCase):
         print(losses[-10:])
         estimates = fqe.estimate_v(self.batch)
         print(estimates)
-        check(estimates, q_vals, decimals=1)
+        check(estimates, q_values, decimals=1)
 
 
 def get_cliff_walking_wall_policy_and_data(
