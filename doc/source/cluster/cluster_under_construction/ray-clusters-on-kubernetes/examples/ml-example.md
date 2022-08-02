@@ -1,10 +1,235 @@
 (kuberay-ml-example)=
 
-# Example machine learning workloads
+# XGBoost-Ray on Kubernetes
 
-:::{warning}
-This page is under construction!
+:::{note}
+To learn the basics of Ray on Kubernetes, we recommend taking a look
+at the {ref}`introductory guide<kuberay-quickstart>` first.
 :::
 
-At least one end-to-end example of an actual machine learning workload,
-preferably with GPUs, possibly engaging the autoscaling functionality.
+
+In this guide, we show you how to run a sample Ray machine learning
+workload on Kubernetes infrastructure.
+
+We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
+To learn more about XGBoost-Ray, check out that library's {ref}`documentation<xgboost-ray>`.
+
+## Kubernetes infrastructure setup
+
+### Managed Kubernetes services
+
+Running the example in this guide requires basic Kubernetes infrastructure set-up.
+We collect helpful links for users who are getting started with a managed Kubernetes service.
+
+:::{tabbed} GKE (Google Cloud)
+You can find the landing page for GKE [here](https://cloud.google.com/kubernetes-engine).
+If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
+Alternatively, check out the [documentation](https://cloud.google.com/kubernetes-engine/docs/) and
+[quickstart guides](https://cloud.google.com/kubernetes-engine/docs/deploy-app-cluster). To successfully deploy Ray on Kubernetes,
+you will need to configure pools of Kubernetes nodes;
+find guidance [here](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools).
+:::
+
+:::{tabbed} EKS (Amazon Web Services)
+You can find the landing page for EKS [here](https://aws.amazon.com/eks/).
+If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
+Alternatively, check out the [documentation](https://docs.aws.amazon.com/eks/latest/userguide/) and
+[quickstart guides](https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html). To successfully deploy Ray on Kubernetes,
+you will need to configure groups of Kubernetes nodes;
+find guidance [here](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html).
+:::
+
+:::{tabbed} AKS (Microsoft Azure)
+You can find the landing page for AKS [here](https://azure.microsoft.com/en-us/services/kubernetes-service/).
+If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
+Alternatively, check out the [documentation](https://docs.microsoft.com/en-us/azure/aks/) and
+[quickstart guides](https://docs.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-portal?tabs=azure-cli). To successfully deploy Ray on Kubernetes,
+you will need to configure pools of Kubernetes nodes;
+find guidance [here](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools).
+:::
+
+```{admonition} Optional: Autoscaling
+This guide includes notes on how to deploy the XGBoost benchmark with optional Ray Autoscaler support.
+Here are some considerations to keep in mind when choosing whether to use autoscaling.\
+**Autoscaling: Pros**\
+_Cope with unknown resource requirements._ If you don't know how much compute your Ray
+workload will require, autoscaling can adjust your Ray cluster to the right size.\
+_Save on costs._ Idle compute is automatically scaled down, potentially leading to cost savings.\
+**Autoscaling: Cons**\
+_Less predictable when resource requirements are known._ If you already know exactly
+how much compute your workload requires, it makes sense to provision a statically-sized Ray cluster.
+In this guide's example, we know that we need 1 Ray head and 9 Ray workers,
+so autoscaling is not strictly required.\
+_Longer end-to-end runtime._ Autoscaling entails provisioning compute for Ray workers
+while the Ray application is running. On the other hand, if you pre-provision a fixed
+number of Ray nodes,
+all of the Ray nodes can be started in parallel, potentially reducing your application's
+runtime.
+```
+
+### Set up a node pool for the XGBoost benchmark
+
+For the workload in this guide, it is recommended to use a pool or group of Kubernetes nodes
+with the following properties:
+- 10 nodes total
+- A capacity of 16 CPU and 64 Gi memory per node. For the major cloud providers, suitable instance types include
+    * m5.4xlarge (Amazon Web Services)
+    * Standard_D5_v2 (Azure)
+    * e2-standard-16 (Google Cloud)
+- Each node should be configured with 1000 gigabytes of disk space (to store the training set).
+
+```{admonition} Optional: Set up an autoscaling node pool
+**If you would like to try running the workload with autoscaling enabled**, use an autoscaling
+node group or pool with a 1 node minimum and a 10 node maximum.
+The 1 static node will be used to run the Ray head pod. This node may also host the KubeRay
+operator and Kubernetes system components. After the workload is submitted, 9 additional nodes will
+scale up to accommodate Ray worker pods. These nodes will scale back down after the workload is complete.
+```
+
+## Deploying the KubeRay operator
+
+Once you have set up your Kubernetes cluster, deploy the KubeRay operator:
+```shell
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0-rc.0"
+```
+
+## Deploying a Ray cluster
+
+Now we're ready to deploy the Ray cluster that will execute our workload.
+
+:::{tip}
+The Ray cluster we'll deploy is configured such that one Ray pod will be scheduled
+per 16-CPU Kubernetes node. The pattern of one Ray pod per Kubernetes node is encouraged, but not required.
+Broadly speaking, it is more efficient to use a few large Ray pods than many small ones.
+:::
+
+We recommend taking a look at the config file applied in the following command.
+```shell
+# Starting from the parent directory of cloned Ray master,
+pushd ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/
+kubectl apply -f xgboost-benchmark.yaml
+popd
+```
+
+A Ray head pod and 9 Ray worker pods will be created.
+
+
+```{admonition} Optional: Deploying an autoscaling Ray cluster
+If you've set up an autoscaling node group or pool, you may wish to deploy
+an autoscaling cluster by applying the config `xgboost-benchmark-autoscaler.yaml`.
+One Ray head pod will be created. Once the workload starts, the Ray autoscaler will trigger
+creation of Ray worker pods. Kubernetes autoscaling will then create nodes to place the Ray pods.
+```
+
+## Running the workload
+
+To observe the startup progress of the Ray head pod, run the following command.
+
+```shell
+# If you're on MacOS, first `brew install watch`.
+watch -n 1 kubectl get pod
+```
+
+Once the Ray head pod enters `Running` state, we are ready to execute the XGBoost workload.
+We will use {ref}`Ray Job Submission<jobs-overview>` to kick off the workload.
+
+### Connect to the cluster.
+
+First, we connect to the Job server. Run the following blocking command
+in a separate shell.
+```shell
+kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
+```
+
+### Submit the workload.
+
+We'll use the {ref}`Ray Job Python SDK<ray-job-sdk>` to submit the XGBoost workload.
+
+```{literalinclude} ../doc_code/xgboost_submit.py
+:language: python
+```
+
+To submit the workload, run the above Python script.
+The script is available in the Ray repository.
+
+```shell
+# From the parent directory of cloned Ray master.
+pushd ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/doc_code/
+python xgboost_submit.py
+popd
+```
+
+### Observe progress.
+
+The benchmark may take up to 30 minutes to run.
+Use the following tools to observe its progress.
+
+#### Job logs
+
+To follow the job's logs, use the command printed by the above submission script.
+```shell
+# Subsitute the Ray Job's submission id.
+ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
+```
+
+#### Kubectl
+
+Observe the pods in your cluster with
+```shell
+# If you're on MacOS, first `brew install watch`.
+watch -n 1 kubectl get pod
+```
+
+#### Ray Dashboard
+
+View `localhost:8265` in your browser to access the Ray Dashboard.
+
+#### Ray Status
+
+Observe autoscaling status and Ray resource usage with
+```shell
+# Substitute the name of your Ray cluster's head pod.
+watch -n 1 kubectl exec -it raycluster-xgboost-benchmark-head-xxxxx -- ray status
+```
+
+:::{note}
+Under some circumstances and for certain cloud providers,
+the K8s API server may become briefly unavailable during Kuberentes
+cluster resizing events.
+
+Don't worry if that happens -- the Ray workload should be uninterrupted.
+For the example in this guide, wait until the API server is back up, restart the port-forwarding process,
+and re-run the job log command.
+:::
+
+### Job completion
+
+#### Benchmark results
+
+Once the benchmark is complete, the job log will display the results:
+
+```
+Results: {'training_time': 1338.488839321999, 'prediction_time': 403.36653568099973}
+```
+
+The performance of the benchmark is sensitive to the underlying cloud infrastructure --
+you might not match {ref}`the numbers quoted in the benchmark docs<xgboost-benchmark>`.
+
+#### Model parameters
+The file `model.json` in the Ray head pod contains the parameters for the trained model.
+Other result data will be available in the directory `ray_results` in the head pod.
+Refer to the {ref}`XGBoost-Ray documentation<xgboost-ray>` for details.
+
+```{admonition} Scale-down
+If autoscaling is enabled, Ray worker pods will scale down after 60 seconds.
+After the Ray worker pods are gone, your Kubernetes infrastructure should scale down
+the nodes that hosted these pods.
+```
+
+#### Clean-up
+Delete your Ray cluster with the following command:
+```shell
+kubectl delete raycluster raycluster-xgboost-benchmark
+```
+If you're on a public cloud, don't forget to clean up the underlying
+node group and/or Kubernetes cluster.
