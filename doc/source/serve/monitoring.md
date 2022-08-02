@@ -13,13 +13,13 @@ See the [Ray Dashboard documentation](ray-dashboard) for a detailed overview, in
 
 Below is an example of what the Ray Dashboard might look like for a Serve deployment:
 
-```{image} https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard.png
+```{image} https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard-2-replicas.png
 :align: center
 ```
 
 Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve deployment.
 To learn about the function of the controller and proxy actors, see the [Serve Architecture page](serve-architecture).
-In this example pictured above, we have a single-node cluster with a deployment named Counter with `num_replicas=2`.
+In this example pictured above, we have a single-node cluster with a deployment named Translator with `num_replicas=2`.
 
 ## Logging
 
