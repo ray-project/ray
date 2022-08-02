@@ -2825,7 +2825,7 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
 def test_image_folder_datasource(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
 ):
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folder"
     ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
 
     assert ds.size_bytes() >= 15000
@@ -2852,7 +2852,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from torchvision import transforms
     from torchvision.models import resnet18
 
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folder"
     dataset = ray.data.read_datasource(
         ImageFolderDatasource(), root=root, size=(32, 32)
     )

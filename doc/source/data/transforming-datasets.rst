@@ -176,7 +176,7 @@ Here is an overview of the available batch formats:
 
   * **Tensor Datasets** (single-column): Each batch will be a single
     `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`__
-    containing the single-tensor-column for this batch.
+    containing the single tensor column for this batch.
 
   * **Simple Datasets**: Each batch will be a single NumPy ndarray, where Datasets will
     attempt to convert each list-batch to an ndarray.

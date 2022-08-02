@@ -203,7 +203,7 @@ You can also specify the size of each window using ``bytes_per_window``. In this
     # -> INFO -- Created DatasetPipeline with 73 windows: 9120MiB min, 9431MiB max, 9287MiB mean
     # -> INFO -- Blocks per window: 10 min, 16 max, 14 mean
     # -> INFO -- ✔️  This pipeline's per-window parallelism is high enough to fully utilize the cluster.
-    # -> INFO -- ✔️  This pipeline's windows can each fit in object store memory without spilling.
+    # -> INFO -- ✔️  This pipeline's windows likely fit in object store memory without spilling.
 
 Datasets will warn you if the windows are too large or each window has insufficient parallelism (too few blocks). Check out the reported statistics for window size and blocks per window to ensure efficient pipeline execution.
 
