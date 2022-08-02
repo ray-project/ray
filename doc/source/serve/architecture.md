@@ -9,7 +9,7 @@ This section should help you:
 
 % Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
 
-```{image} architecture.svg
+```{image} architecture-2.0.svg
 :align: center
 :width: 600px
 ```
@@ -24,9 +24,10 @@ There are three kinds of actors that are created to make up a Serve instance:
   the control plane. The Controller is responsible for creating, updating, and
   destroying other actors. Serve API calls like creating or getting a deployment
   make remote calls to the Controller.
-- HTTP Proxy: There is one HTTP proxy actor on the head node (the location and number of proxies is configurable via the `location` field of `http_options`: {ref}`core-apis`). This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
+- HTTP Proxy: By default there is one HTTP proxy actor on the head node. This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
   server that accepts incoming requests, forwards them to replicas, and
-  responds once they are completed.
+  responds once they are completed.  For scalability and high availability,
+  you can also run a proxy on each node in the cluster via the `location` field of `http_options`: {ref}`core-apis`
 - Worker Replicas: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
   replica processes individual requests from the HTTP proxy (these may be batched
@@ -62,7 +63,7 @@ Machine errors and faults will be handled by Ray Serve as follows:
 
 - When replica actors fail, the Controller actor will replace them with new ones.
 - When the HTTP proxy actor fails, the Controller actor will restart it.
-- When the Controller actor fails, Ray will restart it
+- When the Controller actor fails, Ray will restart it.
 - When using Kuberay ({ref}`kuberay-index`), the Kuberay Operator will recover crashed nodes.
 - When the Ray cluster fails, Ray Serve cannot recover.
 
