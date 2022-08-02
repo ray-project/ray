@@ -20,15 +20,15 @@ Serve runs on Ray and utilizes [Ray actors](actor-guide).
 
 There are three kinds of actors that are created to make up a Serve instance:
 
-- Controller: A global actor unique to each Serve instance that manages
+- **Controller**: A global actor unique to each Serve instance that manages
   the control plane. The Controller is responsible for creating, updating, and
   destroying other actors. Serve API calls like creating or getting a deployment
   make remote calls to the Controller.
-- HTTP Proxy: By default there is one HTTP proxy actor on the head node. This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
+- **HTTP Proxy**: By default there is one HTTP proxy actor on the head node. This actor runs a [Uvicorn](https://www.uvicorn.org/) HTTP
   server that accepts incoming requests, forwards them to replicas, and
   responds once they are completed.  For scalability and high availability,
   you can also run a proxy on each node in the cluster via the `location` field of `http_options`: {ref}`core-apis`
-- Worker Replicas: Actors that actually execute the code in response to a
+- **Replicas**: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
   replica processes individual requests from the HTTP proxy (these may be batched
   by the replica using `@serve.batch`, see the [batching](serve-batching) docs).
