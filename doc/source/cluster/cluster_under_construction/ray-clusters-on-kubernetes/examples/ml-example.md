@@ -33,7 +33,6 @@ all of the Ray nodes can be started in parallel, potentially reducing your appli
 runtime.
 ```
 
-### Set up a node pool for the XGBoost benchmark
 ## Kubernetes infrastructure setup
 
 If you are new to Kubernetes and you are planning to deploy Ray workloads on a managed
