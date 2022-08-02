@@ -19,15 +19,14 @@ class MyPytorchTrainer(BaseTrainer):
         # self.datasets["train"] has already been
         # preprocessed by self.preprocessor
         dataset = self.datasets["train"]
-
-        torch_ds = dataset.to_torch(label_column="y")
         loss_fn = torch.nn.MSELoss()
 
         for epoch_idx in range(10):
             loss = 0
             num_batches = 0
-            for X, y in iter(torch_ds):
+            for batch in dataset.iter_torch_batches():
                 # Compute prediction error
+                X, y = batch["x"], batch["y"]
                 pred = self.model(X.float())
                 batch_loss = loss_fn(pred, y.float())
 

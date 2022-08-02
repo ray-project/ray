@@ -80,8 +80,7 @@ class TorchTrainer(DataParallelTrainer):
 
             # Configures the dataloader for distributed training by adding a
             # `DistributedSampler`.
-            # You should NOT use this if you are doing
-            # `session.get_dataset_shard(...).to_torch(...)`
+            # DO  NOT use this with `iter_torch_batches(...)`
             train.torch.prepare_data_loader(...)
 
             # Returns the current torch device.
@@ -94,65 +93,72 @@ class TorchTrainer(DataParallelTrainer):
     "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 
     Example:
-        .. code-block:: python
 
-            import torch
-            import torch.nn as nn
+    .. code-block:: python
 
-            import ray
-            from ray import train
-            from ray.air import session, Checkpoint
-            from ray.train.torch import TorchTrainer
-            from ray.air.config import ScalingConfig
+        import torch
+        import torch.nn as nn
 
-            input_size = 1
-            layer_size = 15
-            output_size = 1
-            num_epochs = 3
+        import ray
+        from ray import train
+        from ray.air import session, Checkpoint
+        from ray.train.torch import TorchTrainer
+        from ray.air.config import ScalingConfig
 
-            class NeuralNetwork(nn.Module):
-                def __init__(self):
-                    super(NeuralNetwork, self).__init__()
-                    self.layer1 = nn.Linear(input_size, layer_size)
-                    self.relu = nn.ReLU()
-                    self.layer2 = nn.Linear(layer_size, output_size)
+        input_size = 1
+        layer_size = 15
+        output_size = 1
+        num_epochs = 3
 
-                def forward(self, input):
-                    return self.layer2(self.relu(self.layer1(input)))
+        class NeuralNetwork(nn.Module):
+            def __init__(self):
+                super(NeuralNetwork, self).__init__()
+                self.layer1 = nn.Linear(input_size, layer_size)
+                self.relu = nn.ReLU()
+                self.layer2 = nn.Linear(layer_size, output_size)
 
-            def train_loop_per_worker():
-                dataset_shard = session.get_dataset_shard("train")
-                model = NeuralNetwork()
-                loss_fn = nn.MSELoss()
-                optimizer = optim.SGD(model.parameters(), lr=0.1)
+            def forward(self, input):
+                return self.layer2(self.relu(self.layer1(input)))
 
-                model = train.torch.prepare_model(model)
+        def train_loop_per_worker():
+            dataset_shard = session.get_dataset_shard("train")
+            model = NeuralNetwork()
+            loss_fn = nn.MSELoss()
+            optimizer = optim.SGD(model.parameters(), lr=0.1)
 
-                for epoch in range(num_epochs):
-                    for batch in iter(dataset_shard.to_torch(batch_size=32)):
-                        output = model(input)
-                        loss = loss_fn(output, labels)
-                        optimizer.zero_grad()
-                        loss.backward()
-                        optimizer.step()
-                        print(f"epoch: {epoch}, loss: {loss.item()}")
+            model = train.torch.prepare_model(model)
 
-                    session.report(
-                        {},
-                        checkpoint=Checkpoint.from_dict(
-                            dict(epoch=epoch, model=model.state_dict())
-                        ),
-                    )
+            for epoch in range(num_epochs):
+                loss_total = 0
+                count = 0
+                for batch in dataset_shard.iter_torch_batches(batch_size=32):
+                    inputs, labels = batch["x"], batch["y"]
+                    output = model(inputs)
+                    loss = loss_fn(output, labels)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    print(f"epoch: {epoch}, loss: {loss.item()}")
+                    loss_total += loss.item()
+                    count += 1
 
-            train_dataset = ray.data.from_items([1, 2, 3])
-            scaling_config = ScalingConfig(num_workers=3)
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
-            trainer = TorchTrainer(
-                train_loop_per_worker=train_loop_per_worker,
-                scaling_config=scaling_config,
-                datasets={"train": train_dataset})
-            result = trainer.fit()
+                session.report(
+                    {"loss": loss_total / count},
+                    checkpoint=Checkpoint.from_dict(
+                        dict(epoch=epoch, model=model.state_dict())
+                    ),
+                )
+
+        train_dataset = ray.data.from_items(
+            [{"x": x, "y": 2 * x + 1} for x in [1, 2, 3]])
+        scaling_config = ScalingConfig(num_workers=3)
+        # If using GPUs, use the below scaling config instead.
+        # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+        trainer = TorchTrainer(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config=scaling_config,
+            datasets={"train": train_dataset})
+        result = trainer.fit()
 
     Args:
         train_loop_per_worker: The training function to execute.

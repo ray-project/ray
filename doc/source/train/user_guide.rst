@@ -443,54 +443,7 @@ Using Ray Datasets is the recommended way for ingesting data into ``Trainer``\s 
 
 **Simple Dataset Example**
 
-.. code-block:: python
-
-    import ray
-    from ray import train
-    from ray.air import ScalingConfig
-    from ray.train.torch import TorchTrainer
-
-    def train_func(config):
-        # Create your model here.
-        model = NeuralNetwork()
-
-        batch_size = config["worker_batch_size"]
-
-        train_data_shard = train.get_dataset_shard("train")
-        train_torch_dataset = train_data_shard.to_torch(
-            label_column="label", batch_size=batch_size
-        )
-
-        validation_data_shard = train.get_dataset_shard("validation")
-        validation_torch_dataset = validation_data_shard.to_torch(
-            label_column="label", batch_size=batch_size
-        )
-
-        for epoch in config["num_epochs"]:
-            for X, y in train_torch_dataset:
-                model.train()
-                output = model(X)
-                # Train on one batch.
-            for X, y in validation_torch_dataset:
-                model.eval()
-                output = model(X)
-                # Validate one batch.
-        return model
-
-    # Random split dataset into 80% training data and 20% validation data.
-    train_dataset, validation_dataset = dataset.train_test_split(
-        test_size=0.2, shuffle=True
-    )
-
-    trainer = TorchTrainer(
-        train_func,
-        train_loop_config={"worker_batch_size": 64, "num_epochs": 2},
-        datasets={"train": train_dataset, "validation": validation_dataset},
-        scaling_config=ScalingConfig(num_workers=8),
-    )
-    dataset = ray.data.read_csv("...")
-
-    result = trainer.fit()
+.. literalinclude:: ../ray-air/examples/pytorch_tabular_starter.py
 
 .. _train-dataset-pipeline:
 
