@@ -8,9 +8,20 @@ To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup
 
 To learn about GPU usage on different clouds, see instructions for `GKE`_, for `EKS`_, and for `AKS`_.
 
+Dependencies for GPU-based machine learning
+___________________________________________
 The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based images packaged with Ray for use in Kubernetes pods.
 For example, the image ``rayproject/ray-ml:2.0.0-gpu`` is ideal for running GPU-based ML workloads with Ray 2.0.0.
-Read :ref:`here<docker-images>` for further details on Ray images.
+The Ray ML images are packaged with the dependencies (such as TensorFlow and PyTorch) needed to use the :ref:`Ray AI Runtime<air>`
+and the Ray Libraries covered in these docs.
+To use additional dependencies, we recommend one, or both, of the following methods:
+
+* Building a docker image using one of the official :ref:`Ray docker images<docker-images>` as base.
+* Using :ref:`Ray Runtime environments<runtime-environments>`.
+
+
+Configuring Ray pods for GPU usage
+__________________________________
 
 Using Nvidia GPUs requires specifying `nvidia.com/gpu` resource `limits` in the container fields of your `RayCluster`'s
 `headGroupSpec` and/or `workerGroupSpecs`.
@@ -56,11 +67,12 @@ Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instanc
 GPUs and Ray
 ____________
 
+This section discuss GPU usage for Ray applications running on Kubernetes.
+For general guidance on GPU usage with Ray, see also :ref:`gpu-support`.
+
 The KubeRay operator advertises container GPU resource limits to
 the Ray scheduler and the Ray autoscaler. In particular, the Ray container's
 `ray start` entrypoint will be automatically configured with the appropriate `--num-gpus` option.
-
-* Learn more about Ray's :ref:`gpu-support`.
 
 GPU workload scheduling
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -74,6 +86,7 @@ GPU autoscaling
 ~~~~~~~~~~~~~~~
 The Ray autoscaler is aware of each Ray worker group's GPU capacity.
 Say we have a RayCluster configured as in the config snippet above:
+
 - There is a worker group of Ray pods with 1 unit of GPU capacity each
 - The Ray cluster does not currently have any workers from that group
 - `maxReplicas` for the group is at least 2
