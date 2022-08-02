@@ -286,7 +286,9 @@ The checkpoint path argument accepts the following format:
 
 While we have native support for on disk, AWS S3, and Google Cloud Storage (GCS), there is no reason we cannot support more.
 
-In Kubernetes environment, we recommend using KubeRay (a Kubernetes operator for Ray Serve, see {ref}`kuberay-index`) to help deploy your Serve applications with Kubernetes, and help you recover the node crash from Customized Resource.
+In Kubernetes environment, we recommend using [Persistent Volumes] to create a disk and mount it into the Ray head node.
+For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s [Persistent Volumes] API.
+Alternatively, you can also directly write to object store like S3.
 
 You can easily try to plug into your own implementation using the `custom://` path and inherit the [KVStoreBase] class.
 Feel free to open new github issues and contribute more storage backends!
