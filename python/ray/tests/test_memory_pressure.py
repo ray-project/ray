@@ -72,14 +72,14 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
 
 
 def test_memory_pressure_kill_worker(shutdown_only):
-    node_high_memory_usage_fraction = 0.7
+    memory_usage_threshold_fraction = 0.7
     memory_monitor_interval_ms = 100
 
     ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
-            "node_high_memory_usage_fraction": node_high_memory_usage_fraction,
+            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
         },
     )
@@ -95,14 +95,14 @@ def test_memory_pressure_kill_worker(shutdown_only):
 
 
 def test_memory_pressure_kill_newest_worker(shutdown_only):
-    node_high_memory_usage_fraction = 0.7
+    memory_usage_threshold_fraction = 0.7
     memory_monitor_interval_ms = 100
 
     ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
-            "node_high_memory_usage_fraction": node_high_memory_usage_fraction,
+            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
         },
     )
@@ -126,21 +126,21 @@ def test_memory_pressure_kill_newest_worker(shutdown_only):
 
 
 def test_memory_pressure_above_single_actor(shutdown_only):
-    node_high_memory_usage_fraction = 0.8
+    memory_usage_threshold_fraction = 0.8
     memory_monitor_interval_ms = 200
 
     ray.init(
         num_cpus=10,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
-            "node_high_memory_usage_fraction": node_high_memory_usage_fraction,
+            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
         },
     )
 
     # Ensure the current usage is below memory monitor threshold
     bytes_needed = get_additional_bytes_to_reach_memory_usage_pct(
-        node_high_memory_usage_fraction
+        memory_usage_threshold_fraction
     )
     assert bytes_needed > 0
 
