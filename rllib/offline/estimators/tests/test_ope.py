@@ -390,13 +390,13 @@ class TestOPELearning(unittest.TestCase):
         random_eps = 0.8
         mixed_eps = 0.5
         expert_eps = 0.2
-        num_episodes = 32
+        num_episodes = 64
         cls.gamma = 0.99
 
         # Config settings for FQE model
         cls.q_model_config = {
-            "n_iters": 600,
-            "minibatch_size": 32,
+            "n_iters": 800,
+            "minibatch_size": 64,
             "polyak_coef": 1.0,
             "model": {
                 "fcnet_hiddens": [],
