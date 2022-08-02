@@ -860,7 +860,7 @@ def get_gpu_ids():
     return assigned_ids
 
 
-@Deprecated
+@Deprecated(message="Use ray.get_runtime_context().get_assigned_resources() instead.")
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
 
@@ -1029,14 +1029,16 @@ def init(
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
 
-    To start Ray locally and all of the relevant processes, use this as
-    follows:
+    In most cases, it is enough to just call this method with no arguments.
+    This will autodetect an existing Ray cluster or start a new Ray instance if
+    no existing cluster is found:
 
     .. code-block:: python
 
         ray.init()
 
-    To connect to an existing local cluster, use this as follows.
+    To explicitly connect to an existing local cluster, use this as follows. A
+    ConnectionError will be thrown if no existing local cluster is found.
 
     .. code-block:: python
 
@@ -1058,19 +1060,25 @@ def init(
     cluster with ray.init() or ray.init(address="auto").
 
     Args:
-        address: The address of the Ray cluster to connect to. If
-            this address is not provided, then this command will start Redis,
-            a raylet, a plasma store, a plasma manager, and some workers.
-            It will also kill these processes when Python exits. If the driver
-            is running on a node in a Ray cluster, using `auto` as the value
-            tells the driver to detect the cluster, removing the need to
-            specify a specific node address. If the environment variable
-            `RAY_ADDRESS` is defined and the address is None or "auto", Ray
-            will set `address` to `RAY_ADDRESS`.
-            Addresses can be prefixed with a "ray://" to connect to a remote
-            cluster. For example, passing in the address
-            "ray://123.45.67.89:50005" will connect to the cluster at the
-            given address.
+        address: The address of the Ray cluster to connect to. The provided
+            address is resolved as follows:
+            1. If a concrete address (e.g., localhost:<port>) is provided, try to
+            connect to it. Concrete addresses can be prefixed with "ray://" to
+            connect to a remote cluster. For example, passing in the address
+            "ray://123.45.67.89:50005" will connect to the cluster at the given
+            address.
+            2. If no address is provided, try to find an existing Ray instance
+            to connect to. This is done by first checking the environment
+            variable `RAY_ADDRESS`. If this is not defined, check the address
+            of the latest cluster started (found in
+            /tmp/ray/ray_current_cluster) if available. If this is also empty,
+            then start a new local Ray instance.
+            3. If the provided address is "auto", then follow the same process
+            as above. However, if there is no existing cluster found, this will
+            throw a ConnectionError instead of starting a new local Ray
+            instance.
+            4. If the provided address is "local", start a new local Ray
+            instance, even if there is already an existing local Ray instance.
         num_cpus: Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus: Number of GPUs the user wishes to assign to each
@@ -1130,7 +1138,7 @@ def init(
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _metrics_export_port(int): Port number Ray exposes system metrics
+        _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
         _system_config: Configuration for overriding
@@ -1156,6 +1164,8 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if configure_logging:
+        setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1182,8 +1192,6 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
-    if not logging_format:
-        logging_format = ray_constants.LOGGER_FORMAT
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -1216,7 +1224,15 @@ def init(
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
         builder._init_args(**passed_kwargs)
-        return builder.connect()
+        ctx = builder.connect()
+        from ray._private.usage import usage_lib
+
+        if passed_kwargs.get("allow_multiple") is True:
+            with ctx:
+                usage_lib.put_pre_init_usage_stats()
+        else:
+            usage_lib.put_pre_init_usage_stats()
+        return ctx
 
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
@@ -1289,17 +1305,11 @@ def init(
         node_ip_address = services.resolve_ip_for_localhost(_node_ip_address)
     raylet_ip_address = node_ip_address
 
-    bootstrap_address, redis_address, gcs_address = None, None, None
-    if address:
-        bootstrap_address = services.canonicalize_bootstrap_address(address)
-        assert bootstrap_address is not None
-        logger.info(
-            f"Connecting to existing Ray cluster at address: {bootstrap_address}"
-        )
+    redis_address, gcs_address = None, None
+    bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
+    if bootstrap_address is not None:
         gcs_address = bootstrap_address
-
-    if configure_logging:
-        setup_logger(logging_level, logging_format)
+        logger.info("Connecting to existing Ray cluster at address: %s...", gcs_address)
 
     if local_mode:
         driver_mode = LOCAL_MODE
@@ -1440,13 +1450,44 @@ def init(
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
         )
-        _global_node = ray._private.node.Node(
-            ray_params,
-            head=False,
-            shutdown_at_exit=False,
-            spawn_reaper=False,
-            connect_only=True,
+        try:
+            _global_node = ray._private.node.Node(
+                ray_params,
+                head=False,
+                shutdown_at_exit=False,
+                spawn_reaper=False,
+                connect_only=True,
+            )
+        except ConnectionError:
+            if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
+                logger.info(
+                    "Failed to connect to the default Ray cluster address at "
+                    f"{gcs_address}. This is most likely due to a previous Ray "
+                    "instance that has since crashed. To reset the default "
+                    "address to connect to, run `ray stop` or restart Ray with "
+                    "`ray start`."
+                )
+            raise
+
+    # Log a message to find the Ray address that we connected to and the
+    # dashboard URL.
+    dashboard_url = _global_node.address_info["webui_url"]
+    # We logged the address before attempting the connection, so we don't need
+    # to log it again.
+    info_str = "Connected to Ray cluster."
+    if gcs_address is None:
+        info_str = "Started a local Ray instance."
+    if dashboard_url:
+        logger.info(
+            info_str + " View the dashboard at %s%shttp://%s%s%s.",
+            colorama.Style.BRIGHT,
+            colorama.Fore.GREEN,
+            dashboard_url,
+            colorama.Fore.RESET,
+            colorama.Style.NORMAL,
         )
+    else:
+        logger.info(info_str)
 
     connect(
         _global_node,
@@ -2001,7 +2042,7 @@ def connect(
             )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory)
@@ -2684,7 +2725,6 @@ def remote(
     resources: Dict[str, float] = Undefined,
     accelerator_type: str = Undefined,
     memory: Union[int, float] = Undefined,
-    object_store_memory: int = Undefined,
     max_calls: int = Undefined,
     max_restarts: int = Undefined,
     max_task_retries: int = Undefined,
@@ -2766,7 +2806,6 @@ def remote(*args, **kwargs):
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
         memory: The heap memory request for this task/actor.
-        object_store_memory: The object store memory request for actors only.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit

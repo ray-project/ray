@@ -11,6 +11,7 @@ import traceback
 import warnings
 
 import ray
+from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
@@ -46,14 +47,13 @@ from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncode
 from ray.tune.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 MAX_DEBUG_TRIALS = 20
 
 logger = logging.getLogger(__name__)
 
 
-def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
+def _find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     """Returns path to most recently modified checkpoint."""
     full_paths = [
         os.path.join(ckpt_dir, fname)
@@ -65,7 +65,7 @@ def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     return max(full_paths)
 
 
-def load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
+def _load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
     new_trial = Trial(
         trial_cp["trainable_name"], stub=stub, _setup_default_resource=False, **kwargs
     )
@@ -73,7 +73,7 @@ def load_trial_from_checkpoint(trial_cp: dict, stub: bool = False, **kwargs):
     return new_trial
 
 
-def load_trials_from_experiment_checkpoint(
+def _load_trials_from_experiment_checkpoint(
     experiment_checkpoint: Mapping[str, Any], stub: bool = False
 ) -> List[Trial]:
     """Create trial objects from experiment checkpoint.
@@ -87,7 +87,7 @@ def load_trials_from_experiment_checkpoint(
 
     trials = []
     for trial_cp in checkpoints:
-        trials.append(load_trial_from_checkpoint(trial_cp, stub=stub))
+        trials.append(_load_trial_from_checkpoint(trial_cp, stub=stub))
 
     return trials
 
@@ -602,7 +602,7 @@ class TrialRunner:
                     f'a new experiment, use `resume="AUTO"` or '
                     f"`resume=None`. If you expected an experiment to "
                     f"already exist, check if you supplied the correct "
-                    f"`local_dir` to `tune.run()`."
+                    f"`local_dir` to `air.RunConfig()`."
                 )
             elif resume_type == "PROMPT":
                 if click.confirm(
@@ -621,7 +621,7 @@ class TrialRunner:
                     "Called resume from remote without remote directory or "
                     "without valid syncer. "
                     "Fix this by passing a `SyncConfig` object with "
-                    "`upload_dir` set to `tune.run(sync_config=...)`."
+                    "`upload_dir` set to `Tuner(sync_config=...)`."
                 )
 
             # Try syncing down the upload directory.
@@ -649,7 +649,7 @@ class TrialRunner:
                     "`resume=None`. If you expected an experiment to "
                     "already exist, check if you supplied the correct "
                     "`upload_dir` to the `tune.SyncConfig` passed to "
-                    "`tune.run()`."
+                    "`tune.Tuner()`."
                 ) from e
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
@@ -713,7 +713,9 @@ class TrialRunner:
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
         """
-        newest_ckpt_path = find_newest_experiment_checkpoint(self._local_checkpoint_dir)
+        newest_ckpt_path = _find_newest_experiment_checkpoint(
+            self._local_checkpoint_dir
+        )
 
         if not newest_ckpt_path:
             raise ValueError(
@@ -742,7 +744,7 @@ class TrialRunner:
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        trials = load_trials_from_experiment_checkpoint(runner_state)
+        trials = _load_trials_from_experiment_checkpoint(runner_state)
         for trial in sorted(trials, key=lambda t: t.last_update_time, reverse=True):
             trial_to_add = trial
             if trial.status == Trial.ERROR:
@@ -1011,14 +1013,14 @@ class TrialRunner:
         self.trial_executor.mark_trial_to_checkpoint(trial)
 
     def debug_string(self, delim="\n"):
-        from ray.tune.progress_reporter import trial_progress_str
+        from ray.tune.progress_reporter import _trial_progress_str
 
         result_keys = [list(t.last_result) for t in self.get_trials() if t.last_result]
         metrics = set().union(*result_keys)
         messages = [
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string(),
-            trial_progress_str(self.get_trials(), metrics, force_table=True),
+            _trial_progress_str(self.get_trials(), metrics, force_table=True),
         ]
         return delim.join(messages)
 
@@ -1155,7 +1157,7 @@ class TrialRunner:
 
             if base_metric and base_metric not in result:
                 report_metric = base_metric
-                location = "tune.run()"
+                location = "tune.TuneConfig()"
             elif scheduler_metric and scheduler_metric not in result:
                 report_metric = scheduler_metric
                 location = type(self._scheduler_alg).__name__

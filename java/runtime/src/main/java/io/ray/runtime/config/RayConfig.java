@@ -8,6 +8,7 @@ import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigRenderOptions;
 import io.ray.api.id.JobId;
 import io.ray.api.options.ActorLifetime;
+import io.ray.api.runtimeenv.types.RuntimeEnvName;
 import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.runtimeenv.RuntimeEnvImpl;
 import io.ray.runtime.util.NetworkUtil;
@@ -215,7 +216,13 @@ public class RayConfig {
       if (config.hasPath(jarsPath)) {
         jarUrls = config.getStringList(jarsPath);
       }
-      runtimeEnvImpl = new RuntimeEnvImpl(envVars, jarUrls);
+      runtimeEnvImpl = new RuntimeEnvImpl();
+      if (!envVars.isEmpty()) {
+        runtimeEnvImpl.set(RuntimeEnvName.ENV_VARS, envVars);
+      }
+      if (!jarUrls.isEmpty()) {
+        runtimeEnvImpl.set(RuntimeEnvName.JARS, jarUrls);
+      }
     }
 
     {

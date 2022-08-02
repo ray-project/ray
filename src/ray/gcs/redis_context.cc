@@ -344,7 +344,8 @@ Status ConnectWithRetries(const std::string &address,
   while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
       RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
-                     << "to connect have all failed. The last error message was: "
+                     << "to connect have all failed. Please check whether the"
+                     << " redis storage is alive or not. The last error message was: "
                      << errorMessage;
       break;
     }

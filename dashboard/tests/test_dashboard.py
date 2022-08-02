@@ -33,10 +33,13 @@ from ray._private.test_utils import (
     wait_until_succeeded_without_exception,
 )
 from ray.dashboard import dashboard
-from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
+from ray.dashboard.head import DashboardHead
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.exception import ServerUnavailable
+from ray.experimental.internal_kv import _initialize_internal_kv
+from unittest.mock import MagicMock
+from ray.dashboard.utils import DashboardHeadModule
 
 import psutil
 
@@ -960,11 +963,53 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
     response = None
 
     with pytest.raises(ServerUnavailable):
-        client = StateApiClient(address=DEFAULT_DASHBOARD_ADDRESS)
-        response = client.list(StateResource.NODES, options=ListApiOptions())
+        client = StateApiClient()
+        response = client.list(
+            StateResource.NODES, options=ListApiOptions(), raise_on_missing_output=False
+        )
 
     # Response should not be populated
     assert response is None
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
+)
+def test_dashboard_module_load(tmpdir):
+    """Verify if the head module can load only selected modules."""
+    head = DashboardHead(
+        "127.0.0.1",
+        8265,
+        1,
+        "127.0.0.1:6379",
+        str(tmpdir),
+        str(tmpdir),
+        str(tmpdir),
+        False,
+    )
+
+    # Test basic.
+    loaded_modules_expected = {"UsageStatsHead", "JobHead"}
+    loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
+    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
+    assert loaded_modules_actual == loaded_modules_expected
+
+    # Test modules that don't exist.
+    loaded_modules_expected = {"StateHea"}
+    with pytest.raises(AssertionError):
+        loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the base case.
+    # It is needed to pass assertion check from one of modules.
+    gcs_client = MagicMock()
+    _initialize_internal_kv(gcs_client)
+    loaded_modules_expected = {
+        m.__name__ for m in dashboard_utils.get_all_modules(DashboardHeadModule)
+    }
+    loaded_modules = head._load_modules()
+    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
+    assert loaded_modules_actual == loaded_modules_expected
 
 
 if __name__ == "__main__":
