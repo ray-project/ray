@@ -2998,6 +2998,18 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     assert ds.to_pandas().equals(expected_df)
 
 
+def test_csv_read_filter_no_file(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    table = pa.Table.from_pandas(df)
+    path = os.path.join(str(tmp_path), "test.parquet")
+    pq.write_table(table, path)
+
+    error_message = "Please double check the input files are having expected extension"
+    with pytest.raises(ValueError) as e:
+        ray.data.read_csv(path)
+    assert error_message in str(e.value)
+
+
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
     """A writable datasource that logs node IDs of write tasks, for testing."""
 
