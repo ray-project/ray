@@ -12,9 +12,8 @@ This section should help you:
 ```{contents}
 ```
 
-## Configurations
 
-### Updating a Deployment
+## Updating a Deployment
 
 Often you want to be able to update your code or configuration options for a deployment over time.
 Deployments can be updated simply by updating the code or configuration options and calling `deploy()` again.
@@ -48,7 +47,7 @@ When a redeployment happens, Serve will perform a rolling update, bringing down 
 
 (configuring-a-deployment)=
 
-### Configuring a Deployment
+## Configuring a Deployment
 
 There are a number of things you'll likely want to do with your serving application including
 scaling out or configuring the maximum number of in-flight requests for a deployment.
@@ -58,7 +57,7 @@ To update the config options for a running deployment, simply redeploy it with t
 
 (scaling-out-a-deployment)=
 
-### Scaling Out
+## Scaling Out
 
 To scale out a deployment to many processes, simply configure the number of replicas.
 
@@ -78,7 +77,7 @@ func.options(num_replicas=1).deploy()
 ```
 
 
-#### Autoscaling
+## Autoscaling
 
 Ray Serve has support for a demand-based replica autoscaler.
 It reacts to traffic spikes via observing queue sizes and making scaling decisions.
