@@ -1,3 +1,4 @@
+#!/bin/bash
 sudo rm -rf /var/lib/apt/lists/lock
 sudo rm -rf /var/cache/apt/archives/lock
 sudo rm -rf /var/lib/dpkg/lock*
