@@ -10,7 +10,8 @@ To learn about GPU usage on different clouds, see instructions for `GKE`_, for `
 
 Dependencies for GPU-based machine learning
 ___________________________________________
-The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based images packaged with Ray for use in Kubernetes pods.
+The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based container images packaged
+with Ray and certain machine learning libraries.
 For example, the image ``rayproject/ray-ml:2.0.0-gpu`` is ideal for running GPU-based ML workloads with Ray 2.0.0.
 The Ray ML images are packaged with the dependencies (such as TensorFlow and PyTorch) needed to use the :ref:`Ray AI Runtime<air>`
 and the Ray Libraries covered in these docs.
