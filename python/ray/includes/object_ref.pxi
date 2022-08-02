@@ -42,7 +42,6 @@ cdef class ObjectRef(BaseID):
 
     def __init__(
             self, id, owner_addr="", call_site_data="",
-            # TOBE_SOLVED: @qingwu: Node.nil() will failed.
             spilled_url="", spilled_node_id="",
             skip_adding_local_ref=False,
             global_owner_id=""):
