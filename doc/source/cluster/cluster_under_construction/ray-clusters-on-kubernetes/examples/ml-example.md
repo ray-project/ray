@@ -7,38 +7,12 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look
 at the {ref}`introductory guide<kuberay-quickstart>` first.
 :::
 
+
 In this guide, we show you how to run a sample Ray machine learning
 workload on Kubernetes infrastructure.
 
 We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
-* Learn more about {ref}`XGBoost-Ray<xgboost-ray>`.
-
-## A note on autoscaling
-This guide will show you how to run an XGBoost workload with and without optional Ray Autoscaler support.
-When choosing whether or not to use autoscaling functionality, keep the following considerations in mind.
-
-### Autoscaling: Pros
-
-#### Cope with unknown resource requirements.
-If you don't know how much compute your Ray workload will require,
-autoscaling can adjust your Ray cluster to the right size.
-
-#### Save on costs.
-Idle compute is automatically scaled down, potentially leading to cost savings.
-
-### Autoscaling: Cons
-
-#### Less predictable when resource requirements are known.
-If you already know exactly how much compute your workload requires, it makes
-sense to provision a statically-sized Ray cluster.
-In this guide's example, we know that we need 1 Ray head and 9 Ray workers,
-so autoscaling is not strictly required.
-
-#### Longer end-to-end runtime.
-Autoscaling entails provisioning compute for Ray workers while the Ray application
-is running. On the other hand, if you pre-provision a fixed number of Ray nodes,
-all of the Ray nodes can be started in parallel, potentially reducing your application's
-runtime.
+To learn more about, check out that library's {ref}`documentation<xgboost-ray>`.
 
 ## Kubernetes infrastructure setup
 
@@ -47,32 +21,51 @@ runtime.
 Running the example in this guide requires some basic Kubernetes infrastructure set-up.
 We collect some helpful links for users who are getting started with a managed Kubernetes service.
 
-#### Landing pages
-Landing pages for the major cloud providers' Kubernetes services can be found at the following links.
-- [GKE landing page (Google Cloud)](https://cloud.google.com/kubernetes-engine)
-- [EKS landing page (Amazon Web Services)](https://aws.amazon.com/eks/)
-- [AKS landing page (Azure)](https://azure.microsoft.com/en-us/services/kubernetes-service/)
+:::{tabbed} GKE (Google Cloud)
+You can find the landing page for this Kubernetes service [here](https://cloud.google.com/kubernetes-engine).
+If have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
+Alternatively, check out the [documentation](https://cloud.google.com/kubernetes-engine/docs/) and
+[quickstart guides](https://cloud.google.com/kubernetes-engine/docs/). To successfully deploy Ray on Kubernetes,
+you will need to configure pools of Kubernetes nodes;
+find guidance [here](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools).
+:::
 
+:::{tabbed} EKS (Amazon Web Services)
+You can find the landing page for this Kubernetes service [here](https://aws.amazon.com/eks/).
+If have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
+Alternatively, check out the [documentation](https://docs.aws.amazon.com/eks/latest/userguide/) and
+[quickstart guides]((https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html). To successfully deploy Ray on Kubernetes,
+you will need to configure groups of Kubernetes nodes;
+find guidance [here]((https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html).
+:::
 
-#### General documentation
-For documentation on managed Kubernetes services, see the following links.
-- [GKE docs](https://cloud.google.com/kubernetes-engine/docs/)
-- [EKS docs](https://docs.aws.amazon.com/eks/latest/userguide/)
-- [AKS docs](https://docs.microsoft.com/en-us/azure/aks/)
+:::{tabbed} AKS (Microsoft Azure)
+You can find the landing page for this Kubernetes service [here](https://azure.microsoft.com/en-us/services/kubernetes-service/).
+If have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
+Alternatively, check out the [documentation](https://docs.microsoft.com/en-us/azure/aks/) and
+[quickstart guides](https://docs.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-portal?tabs=azure-cli). To successfully deploy Ray on Kubernetes,
+you will need to configure pools of Kubernetes nodes;
+find guidance [here](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools).
+:::
 
-#### Quickstart guides
-See the following links for guides on getting started with your managed Kubernetes service.
-- [GKE docs](https://cloud.google.com/kubernetes-engine/docs/deploy-app-cluster)
-- [EKS docs](https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html)
-- [AKS docs](https://docs.microsoft.com/en-us/azure/aks/learn/quick-kubernetes-deploy-portal?tabs=azure-cli)
-
-#### Setting up node pools
-Running the example workload in this guide requires setting up a pool or group of Kubernetes nodes.
-To learn about node group or node pool setup with managed Kubernetes services, see
-the following links.
-- [GKE node pools](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools)
-- [EKS node groups](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html)
-- [AKS node pools](https://docs.microsoft.com/en-us/azure/aks/use-multiple-node-pools)
+```{admonition} Optional: Autoscaling
+This guide includes notes on how to deploy the XGBoost benchmark with optional Ray Autoscaler support.
+Here are some considerations to keep in mind when choosing whether to use autoscaling.\
+**Autoscaling: Pros**\
+_Cope with unknown resource requirements._ If you don't know how much compute your Ray
+workload will require, autoscaling can adjust your Ray cluster to the right size.\
+_Save on costs._ Idle compute is automatically scaled down, potentially leading to cost savings.\
+**Autoscaling: Cons**\
+_Less predictable when resource requirements are known._ If you already know exactly
+how much compute your workload requires, it makes sense to provision a statically-sized Ray cluster.
+In this guide's example, we know that we need 1 Ray head and 9 Ray workers,
+so autoscaling is not strictly required.\
+_Longer end-to-end runtime._ Autoscaling entails provisioning compute for Ray workers
+while the Ray application is running. On the other hand, if you pre-provision a fixed
+number of Ray nodes,
+all of the Ray nodes can be started in parallel, potentially reducing your application's
+runtime.
+```
 
 ### Set up a node pool for the XGBoost benchmark
 
@@ -85,16 +78,13 @@ with the following properties:
     * e2-standard-16 (Google Cloud)
 - Each node should be configured with 1000 gigabytes of disk space (to store the training set).
 
-### Optional: Set up an autoscaling node pool
-
+```{admonition} Optional: Set up an autoscaling node pool
 **If you would like to try running the workload with autoscaling enabled**, use an autoscaling
-node group or pool with
-- 1 node minimum
-- 10 nodes maximum
-
+node group or pool with a 1 node minimum and a 10 node maximum.
 The 1 static node will be used to run the Ray head pod. This node may also host the KubeRay
 operator and Kubernetes system components. After the workload is submitted, 9 additional nodes will
 scale up to accommodate Ray worker pods. These nodes will scale back down after the workload is complete.
+```
 
 ## Deploying the KubeRay operator
 
@@ -116,7 +106,7 @@ Broadly speaking, it is more efficient to use a few large Ray pods than many sma
 You may choose to deploy either a statically-sized Ray cluster or an autoscaling
 Ray cluster. Run one of the two commands below to deploy your Ray cluster.
 
-### Deploying a fixed-sized Ray cluster
+### Deploying the Ray cluster
 
 This option is most appropriate if you have set up a statically sized Kubernetes
 node pool or group.
@@ -131,26 +121,18 @@ popd
 
 A Ray head pod and 9 Ray worker pods will be created.
 
-### Deploying an autoscaling Ray cluster
 
-This option is most appropriate if you have set up an autoscaling Kubernetes
-node pool or group.
-
-We recommend taking a look at the config file applied in the following command.
-```shell
-# Starting from the parent directory of cloned Ray master,
-pushd ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/
-kubectl apply -f xgboost-benchmark-autoscaler.yaml
-popd
-```
-
+```{admonition} Optional: Deploying an autoscaling Ray cluster
+If you've set up an autoscaling node group or pool, you may wish to deploy
+an autoscaling cluster by applying the config `xgboost-benchmark-autoscaler.yaml`.
 One Ray head pod will be created. Once the workload starts, the Ray autoscaler will trigger
 creation of Ray worker pods. Kubernetes autoscaling will then create nodes to place the Ray pods.
-
+```
 
 ## Running the workload
 
 To observe the startup progress of the Ray head pod, run the following command.
+
 ```shell
 # If you're on MacOS, first `brew install watch`.
 watch -n 1 kubectl get pod
@@ -244,12 +226,13 @@ you might not match {ref}`the numbers quoted in the benchmark docs<xgboost-bench
 #### Model parameters
 The file `model.json` in the head pod contains the parameters for the trained model.
 Other result data will be available in the directory `ray_results` in the head pod.
-Refer to the `XGBoost-Ray documentation<xgboost-ray>` for details.
+Refer to the {ref}`XGBoost-Ray documentation<xgboost-ray>` for details.
 
-#### Scale-down
+```{admonition} Scale-down
 If autoscaling is enabled, Ray worker pods will scale down after 60 seconds.
-After the Ray worker pods are gone, your Kubernetes infrastructure should scale down the nodes
-that hosted these pods.
+After the Ray worker pods are gone, your Kubernetes infrastructure should scale down
+the nodes that hosted these pods.
+```
 
 #### Clean-up
 Delete your Ray cluster with the following command:
