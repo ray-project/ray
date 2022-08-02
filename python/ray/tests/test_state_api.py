@@ -2345,7 +2345,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
                     res_q,
                     start_q,
                 ),
-                kwargs={"timeout": 3},
+                kwargs={"timeout": 6},
             ),
             threading.Thread(
                 target=_try_state_query_expect_rate_limit,
@@ -2354,7 +2354,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
                     res_q,
                     start_q,
                 ),
-                kwargs={"timeout": 3},
+                kwargs={"timeout": 6},
             ),
             threading.Thread(
                 target=_try_state_query_expect_rate_limit,
@@ -2363,7 +2363,7 @@ def test_state_api_rate_limit_with_failure(monkeypatch, shutdown_only):
                     res_q,
                     start_q,
                 ),
-                kwargs={"timeout": 3},
+                kwargs={"timeout": 6},
             ),
         ]
 
