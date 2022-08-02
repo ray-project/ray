@@ -1364,7 +1364,7 @@ def start_api_server(
                 raise Exception(err_msg)
 
         if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ:
-            # Get hosted external ray dashboard URL if it exists
+            # Override with external ray dashboard URL if it exists
             dashboard_url = os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
         if minimal:
             # If it is the minimal installation, the web url (dashboard url)

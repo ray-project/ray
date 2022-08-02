@@ -125,7 +125,8 @@ MEMORY_RESOURCE_UNIT_BYTES = 1
 MIN_RESOURCE_GRANULARITY = 0.0001
 
 # Set this environment variable to populate the dashboard URL with
-# an external hosted Ray dashboard URL.
+# an external hosted Ray dashboard URL (e.g. because the
+# dashboard is behind a proxy or load balancer).
 RAY_OVERRIDE_DASHBOARD_URL = "RAY_OVERRIDE_DASHBOARD_URL"
 
 
