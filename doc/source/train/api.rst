@@ -1,8 +1,11 @@
-
 .. _train-api:
 
 Ray Train API
 =============
+
+This page covers advanced configurations for specific frameworks using Train.
+
+For different high level trainers and their usage, take a look at the :ref:`AIR Trainer package reference <air-trainer-ref>`.
 
 .. _train-api-backend-config:
 

@@ -37,16 +37,6 @@ Horovod
   End-to-end example for Horovod (with PyTorch)
 
 
-..
-  TODO
-
-  * :doc:`/train/examples/TODO`:
-  Simple example for TensorFlow
-
-  * :doc:`/train/examples/TODO`:
-  Simple example for Horovod (with TensorFlow)
-
-
 Logger/Callback Examples
 ------------------------
 * :doc:`/train/examples/mlflow_fashion_mnist_example`:
@@ -55,9 +45,6 @@ Logger/Callback Examples
 
 Ray Datasets Integration Examples
 ---------------------------------
-
-* :doc:`/train/examples/tensorflow_linear_dataset_example`:
-  Simple example for training a linear TensorFlow model.
 
 * :doc:`/train/examples/torch_linear_dataset_example`:
   Simple example for training a linear PyTorch model.

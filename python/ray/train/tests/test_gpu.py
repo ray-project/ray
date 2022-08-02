@@ -460,14 +460,6 @@ def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
     assert train_linear(num_workers=2, use_gpu=True)
 
 
-def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.tensorflow_linear_dataset_example import (
-        train_tensorflow_linear,
-    )
-
-    assert train_tensorflow_linear(num_workers=2, use_gpu=True)
-
-
 # TODO: Refactor as a backend test.
 @pytest.mark.parametrize(
     ("device_choice", "auto_transfer"),

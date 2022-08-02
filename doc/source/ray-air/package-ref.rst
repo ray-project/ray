@@ -114,6 +114,8 @@ Serving
 
 .. autoclass:: ray.serve.air_integrations.PredictorWrapper
 
+.. _air-trainer-ref:
+
 Trainer and Predictor Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
