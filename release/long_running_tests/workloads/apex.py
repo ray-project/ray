@@ -46,7 +46,7 @@ run_experiments(
                 "replay_buffer_config": {
                     "capacity": 10000,
                 },
-                "num_steps_sampled_before_learning_starts": 10000,
+                "num_steps_sampled_before_learning_starts": 0,
                 "rollout_fragment_length": 1,
                 "train_batch_size": 1,
                 "min_iter_time_s": 10,

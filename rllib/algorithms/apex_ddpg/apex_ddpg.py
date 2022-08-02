@@ -97,6 +97,9 @@ class ApexDDPGConfig(DDPGConfig):
             # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
             "prioritized_replay": DEPRECATED_VALUE,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning.
+        self.num_steps_sampled_before_learning_starts = 50000
         self.target_network_update_freq = 500000
         self.training_intensity = 1
         # __sphinx_doc_end__
