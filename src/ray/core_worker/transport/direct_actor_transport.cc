@@ -104,7 +104,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     if (objects_valid) {
       for (size_t i = 0; i < return_objects.size(); i++) {
         auto return_object = reply->add_return_objects();
-        ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
+        ObjectID id = task_spec.ReturnId(i);
         return_object->set_object_id(id.Binary());
 
         if (!return_objects[i]) {

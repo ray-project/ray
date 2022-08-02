@@ -273,7 +273,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                               const size_t object_size);
 
   Status UpdateForwardedObject(const rpc::PushTaskReply &reply,
-                               const std::string &pinned_at_raylet_id,
+                               const std::string &raylet_id,
                                const rpc::Address &owner_address);
 
   /// Create and return a buffer in the object store that can be directly written

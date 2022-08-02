@@ -289,10 +289,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                 object_size);
   };
   auto update_forwarded_object_callback = [this](const rpc::PushTaskReply &reply,
-                                                 const std::string &pinned_at_raylet_id,
+                                                 const std::string &raylet_id,
                                                  const rpc::Address &owner_address) {
     return UpdateForwardedObject(reply,
-                                 pinned_at_raylet_id,
+                                 raylet_id,
                                  owner_address);
   };
   task_manager_.reset(new TaskManager(
@@ -971,22 +971,27 @@ Status CoreWorker::Put(const RayObject &object,
 }
 
 Status CoreWorker::UpdateForwardedObject(const rpc::PushTaskReply &reply,
-                                         const std::string &pinned_at_raylet_id,
+                                         const std::string &raylet_id,
                                          const rpc::Address &owner_address) {
   rpc::UpdateForwardedObjectRequest request;
+  RAY_LOG(ERROR) << "update forward object callback: " << ObjectID::FromBinary(reply.return_objects(0).object_id());
   for (int i = 0; i < reply.return_objects_size(); i++) {
     request.add_return_objects()->CopyFrom(reply.return_objects(i));
   }
-  request.set_pinned_at_raylet_id(pinned_at_raylet_id);
+  request.set_pinned_at_raylet_id(raylet_id);
   auto conn = core_worker_client_pool_->GetOrConnect(owner_address);
   std::promise<Status> status_promise;
+  RAY_LOG(ERROR) << "point 1";
   conn->UpdateForwardedObject(request,
                           [&status_promise](const Status &returned_status,
                                             const rpc::UpdateForwardedObjectReply &reply) {
                             status_promise.set_value(returned_status);
                           });
+  RAY_LOG(ERROR) << "point 2";
   // Block until the remote call `UpdateForwardedObject` returns.
-  return status_promise.get_future().get();
+  auto status = status_promise.get_future().get();
+  RAY_LOG(ERROR) << "update forwarded object has status " << status;
+  return status;
 }
 
 Status CoreWorker::ForwardToOtherWorker(const ObjectID &object_id,
@@ -1928,9 +1933,11 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
   int parent_num_returns = -1;
+  auto caller_address = rpc_address_;
   if (task_options.use_parent_task_id) {
     auto current_task = worker_context_.GetCurrentTask();
     parent_num_returns = current_task->NumReturns();
+    caller_address = current_task->CallerAddress();
   }
   RAY_LOG(ERROR) << parent_num_returns;
   RAY_LOG(ERROR) << task_options.use_parent_task_id;
@@ -1957,7 +1964,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
                       worker_context_.GetCurrentTaskID(),
                       next_task_index,
                       GetCallerId(),
-                      rpc_address_,
+                      caller_address,
                       function,
                       args,
                       parent_num_returns,
@@ -1987,15 +1994,8 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     lock.Release();
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
-    // auto caller_address = rpc_address_;
-    if (task_spec.ForwardToParent()) {
-      auto parent_address = worker_context_.GetCurrentTask()->CallerAddress();
-      returned_refs = task_manager_->AddPendingTask(
-          parent_address, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    } else {
-      returned_refs = task_manager_->AddPendingTask(
-          rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    }
+    returned_refs = task_manager_->AddPendingTask(
+        rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
   return {std::move(returned_refs)};
@@ -3269,6 +3269,7 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
                                          rpc::AssignObjectOwnerReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  RAY_LOG(ERROR) << "Handling assign ownership for " << object_id;
   const auto &borrower_address = request.borrower_address();
   std::string call_site = request.call_site();
   // Get a list of contained object ids.
@@ -3294,10 +3295,12 @@ void CoreWorker::HandleAssignObjectOwner(const rpc::AssignObjectOwnerRequest &re
 void CoreWorker::HandleUpdateForwardedObject(const rpc::UpdateForwardedObjectRequest &request,
                                              rpc::UpdateForwardedObjectReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "Start handling updateForwarded";
   auto pinned_at_raylet_id = NodeID::FromBinary(request.pinned_at_raylet_id());
   for (int i = 0; i < request.return_objects_size(); i++) {
     const auto &return_object = request.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
+    RAY_LOG(ERROR) << "Handling updating raylet for " << object_id;
     reference_counter_->UpdateObjectSize(object_id, return_object.size());
     reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
   }

@@ -197,7 +197,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
                                       bool is_reconstructable,
                                       bool add_local_ref,
                                       const absl::optional<NodeID> &pinned_at_raylet_id) {
-  RAY_LOG(DEBUG) << "Adding owned object " << object_id;
+  RAY_LOG(ERROR) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
       << "Tried to create an owned object that already exists: " << object_id;
@@ -692,6 +692,7 @@ std::vector<ObjectID> ReferenceCounter::FlushObjectsToRecover() {
 void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
                                                   const NodeID &raylet_id) {
   absl::MutexLock lock(&mutex_);
+  RAY_LOG(ERROR) << "updating raylet of " << object_id;
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     if (freed_objects_.count(object_id) > 0) {
@@ -702,7 +703,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     // The object is still in scope. Track the raylet location until the object
     // has gone out of scope or the raylet fails, whichever happens first.
     if (it->second.pinned_at_raylet_id.has_value()) {
-      RAY_LOG(INFO) << "Updating primary location for object " << object_id << " to node "
+      RAY_LOG(ERROR) << "Updating primary location for object " << object_id << " to node "
                     << raylet_id << ", but it already has a primary location "
                     << *it->second.pinned_at_raylet_id
                     << ". This should only happen during reconstruction";

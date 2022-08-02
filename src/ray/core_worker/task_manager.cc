@@ -35,7 +35,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries";
-
+  auto owner_address= spec.CallerAddress();
   // Add references for the dependencies to the task.
   std::vector<ObjectID> task_deps;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
@@ -71,8 +71,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
         auto contained_object_ids = std::vector<ObjectID>();
         forward_object_callback_(return_id,
                                 contained_object_ids,
-                                spec.CallerAddress(),
                                 caller_address,
+                                owner_address,
                                 -1);
       } else {
         // bool is_reconstructable = max_retries != 0;
@@ -87,7 +87,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
         // skip_adding_local_ref=True to avoid double referencing the object.
         reference_counter_->AddOwnedObject(return_id,
                                           /*inner_ids=*/{},
-                                          caller_address,
+                                          owner_address,
                                           call_site,
                                           -1,
                                           /*is_reconstructable=*/is_reconstructable,
@@ -98,7 +98,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     return_ids.push_back(return_id);
     rpc::ObjectReference ref;
     ref.set_object_id(spec.ReturnId(i).Binary());
-    ref.mutable_owner_address()->CopyFrom(caller_address);
+    ref.mutable_owner_address()->CopyFrom(owner_address);
     ref.set_call_site(call_site);
     returned_refs.push_back(std::move(ref));
   }
@@ -255,7 +255,9 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     caller_address = it->second.spec.CallerAddress();
   }
   std::vector<ObjectID> direct_return_ids;
+  RAY_LOG(ERROR) << "task manager completing task " << task_id;
   if (forward_to_parent) {
+    RAY_LOG(ERROR) << "updating forwarded object";
     update_forwarded_object_callback_(reply, worker_addr.raylet_id(), caller_address);
   } else {
 
@@ -321,7 +323,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
   }
-
+  RAY_LOG(ERROR) << "Complete pending task continued...";
   TaskSpecification spec;
   bool release_lineage = true;
   int64_t min_lineage_bytes_to_evict = 0;

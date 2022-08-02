@@ -88,7 +88,7 @@ using ForwardObjectCallback = std::function<Status(const ObjectID &object_id,
                                                    const rpc::Address &owner_address,
                                                    const size_t object_size)>;
 using UpdateForwardedObjectCallback = std::function<Status(const rpc::PushTaskReply &reply,
-                                                           const std::string &pinned_at_raylet_id,
+                                                           const std::string &raylet_id,
                                                            const rpc::Address &owner_address)>;
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
