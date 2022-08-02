@@ -1,4 +1,3 @@
-from contextlib import contextmanager
 import json
 
 from ray.dag.class_node import ClassNode  # noqa: F401
@@ -6,14 +5,6 @@ from ray.dag.function_node import FunctionNode  # noqa: F401
 from ray.dag.input_node import InputNode  # noqa: F401
 from ray.dag import DAGNode  # noqa: F401
 from ray.util.annotations import PublicAPI
-import ray.serve._private.client
-
-
-@contextmanager
-def _mute_sync_handle_warnings():
-    ray.serve._private.client._WARN_SYNC_ASYNC_HANDLE_CONTEXT = False
-    yield
-    ray.serve._private.client._WARN_SYNC_ASYNC_HANDLE_CONTEXT = True
 
 
 @PublicAPI(stability="alpha")
@@ -41,12 +32,10 @@ class RayServeDAGHandle:
         return RayServeDAGHandle._deserialize, (self.dag_node_json,)
 
     def remote(self, *args, **kwargs):
-        # NOTE: There's nothing user can do about these warnings, we should hide it.
-        with _mute_sync_handle_warnings():
-            if self.dag_node is None:
-                from ray.serve._private.json_serde import dagnode_from_json
+        if self.dag_node is None:
+            from ray.serve._private.json_serde import dagnode_from_json
 
-                self.dag_node = json.loads(
-                    self.dag_node_json, object_hook=dagnode_from_json
-                )
-            return self.dag_node.execute(*args, **kwargs)
+            self.dag_node = json.loads(
+                self.dag_node_json, object_hook=dagnode_from_json
+            )
+        return self.dag_node.execute(*args, **kwargs)

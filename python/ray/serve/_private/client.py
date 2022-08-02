@@ -1,4 +1,3 @@
-import asyncio
 import atexit
 import logging
 import random
@@ -23,9 +22,6 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(__file__)
-# Whether to issue warnings about using sync handles in async context
-# or using async handle in sync context.
-_WARN_SYNC_ASYNC_HANDLE_CONTEXT: bool = True
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -366,31 +362,6 @@ class ServeControllerClient:
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
         if not missing_ok and deployment_name not in all_endpoints:
             raise KeyError(f"Deployment '{deployment_name}' does not exist.")
-
-        try:
-            asyncio_loop_running = asyncio.get_event_loop().is_running()
-        except RuntimeError as ex:
-            if "There is no current event loop in thread" in str(ex):
-                asyncio_loop_running = False
-            else:
-                raise ex
-
-        if asyncio_loop_running and sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
-            logger.warning(
-                "You are retrieving a sync handle inside an asyncio loop. "
-                "Try getting Deployment.get_handle(.., sync=False) to get better "
-                "performance. Learn more at https://docs.ray.io/en/latest/serve/"
-                "handle-guide.html#sync-and-async-handles"
-            )
-
-        if not asyncio_loop_running and not sync and _WARN_SYNC_ASYNC_HANDLE_CONTEXT:
-            logger.warning(
-                "You are retrieving an async handle outside an asyncio loop. "
-                "You should make sure Deployment.get_handle is called inside a "
-                "running event loop. Or call Deployment.get_handle(.., sync=True) "
-                "to create sync handle. Learn more at https://docs.ray.io/en/latest/"
-                "serve/handle-guide.html#sync-and-async-handles"
-            )
 
         if sync:
             handle = RayServeSyncHandle(
