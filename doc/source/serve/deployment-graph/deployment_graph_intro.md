@@ -47,6 +47,10 @@ There are two options to run a node:
 
 When you run a node, you are deploying the node's deployment and its bound arguments. Ray Serve will create a deployment in Ray and instantiate your deployment's class using the arguments. By default, you can send requests to your deployment at `http://localhost:8000`. These requests will be converted to Starlette `request` objects and passed to your class's `__call__` method.
 
+:::{note}
+Additionally, when you run a node, the deployment's configurations (which you can set in the `@serve.deployment` decorator, through an `options` call, or a [Serve config file](serve-in-production-config-file)) still apply to the deployment. You can use this to independently scale and configure your graph's deployments by, for instance, setting different `num_replicas`, `num_cpus`, or `num_gpus` values for different deployments.
+:::
+
 You can copy the `echo.py` script above and run it with `serve run`. Make sure to run the command from a directory containing `echo.py`, so it can locate the script:
 
 ```console
