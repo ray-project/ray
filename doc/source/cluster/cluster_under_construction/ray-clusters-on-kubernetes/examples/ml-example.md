@@ -25,7 +25,7 @@ We collect helpful links for users who are getting started with a managed Kubern
 You can find the landing page for GKE [here](https://cloud.google.com/kubernetes-engine).
 If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
 Alternatively, check out the [documentation](https://cloud.google.com/kubernetes-engine/docs/) and
-[quickstart guides](https://cloud.google.com/kubernetes-engine/docs/). To successfully deploy Ray on Kubernetes,
+[quickstart guides](https://cloud.google.com/kubernetes-engine/docs/deploy-app-cluster). To successfully deploy Ray on Kubernetes,
 you will need to configure pools of Kubernetes nodes;
 find guidance [here](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools).
 :::
