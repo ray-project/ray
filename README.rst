@@ -26,7 +26,7 @@ Ray comes with a toolkit of libraries (Ray AIR) for accelerating ML workloads:
 - `RLlib`_: Scalable Reinforcement Learning
 - `Serve`_: Scalable and Programmable Serving
 
-.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/what-is-ray.svg
+.. image:: https://github.com/ericl/ray/raw/ray-intro/doc/source/images/what-is-ray.svg
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/master/installation.html>`__.
@@ -35,6 +35,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
 .. _`Workflow`: https://docs.ray.io/en/master/workflows/concepts.html
 .. _`Train`: https://docs.ray.io/en/master/train/train.html
+.. _`Tune`: https://docs.ray.io/en/master/tune/index.html
 .. _`RLlib`: https://docs.ray.io/en/master/rllib/index.html
 
 Documentation
