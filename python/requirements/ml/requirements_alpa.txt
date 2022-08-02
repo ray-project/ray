@@ -1,0 +1,7 @@
+tensorflow==2.9.1
+jax==0.3.5
+flax==0.4.1
+
+-f https://alpa-projects.github.io/wheels.html
+jaxlib==0.3.5+cuda112.cudnn810 
+alpa==0.1.5
