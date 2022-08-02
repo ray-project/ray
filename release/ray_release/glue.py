@@ -10,7 +10,6 @@ from ray_release.cluster_manager.aws_vm_stack import AwsVmClusterManager
 from ray_release.command_runner.client_runner import ClientRunner
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.sdk_runner import SDKRunner
-from ray_release.command_runner.vm_stack_runner import VmStackRunner
 from ray_release.config import (
     Test,
     DEFAULT_BUILD_TIMEOUT,
@@ -35,7 +34,6 @@ from ray_release.exception import (
     ClusterEnvCreateError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.file_manager.vm_stack_file_manager import VmStackFileManager
 from ray_release.file_manager.remote_task import RemoteTaskFileManager
 from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
@@ -60,7 +58,6 @@ command_runner_to_cluster_manager = {
     ClientRunner: FullClusterManager,
     JobRunner: AwsVmClusterManager,
     #JobRunner: FullClusterManager,
-    VmStackRunner: AwsVmClusterManager
 }
 
 file_manager_str_to_file_manager = {
@@ -73,7 +70,6 @@ command_runner_to_file_manager = {
     SDKRunner: SessionControllerFileManager,
     ClientRunner: RemoteTaskFileManager,
     JobFileManager: JobFileManager,
-    VmStackRunner: VmStackFileManager
 }
 
 uploader_str_to_uploader = {"client": None, "s3": None, "command_runner": None}

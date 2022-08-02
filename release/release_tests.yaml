@@ -103,7 +103,7 @@
   working_dir: vm_stack_tests
 
   frequency: nightly
-  team: ml # TODO
+  team: ml # TODO select correct team
 
   cluster:
     cluster_launcher_config: cluster_launcher_config.yaml
@@ -111,9 +111,6 @@
   run:
     timeout: 36000
     script: python cade-test-script.py
-    #long_running: true
-    #wait_for_nodes:
-    #  num_nodes: 3
 
     type: vm_stack_command
     file_manager: job

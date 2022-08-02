@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-
-echo starting..
-for i in $(seq 3); do
-    printf "stdout $i\n" >&1
-    printf "stderr $i\n" >&2
-    sleep 1
-done

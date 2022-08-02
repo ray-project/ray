@@ -375,7 +375,7 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
             "No Ray wheels found - can't install matching Ray wheels locally!"
         )
         return
-    # TODO
+    # TODO(cade) Remove changes to this function, this was just to speed up local testing.
     #assert "manylinux2014_x86_64" in ray_wheels, ray_wheels
     if sys.platform == "darwin":
         platform = "macosx_10_15_intel"

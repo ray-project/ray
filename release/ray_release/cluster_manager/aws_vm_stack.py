@@ -4,25 +4,7 @@ import subprocess
 import sys
 import signal
 
-def stream_subproc_output(process):
-    # TODO dup output so we can assert on it
-    # Otherwise, this can be simplified to proc.wait()
-    import select
-
-    associated_streams = {process.stderr: sys.stderr, process.stdout: sys.stdout}
-    timeout_seconds = 0.1
-
-    while True:
-        ready_reads, _, _ = select.select(associated_streams.keys(), [], [], timeout_seconds)
-        
-        if process.poll() != None:
-            break
-    
-        for stream in ready_reads:
-            read_one = stream.read1().decode('utf-8')
-            associated_streams[stream].write(read_one)
-
-
+# TODO Rename this, it works for anything that `ray up` supports (GCP)
 class AwsVmClusterManager(ClusterManager):
 
     def __init__(self, a, b):
@@ -51,9 +33,6 @@ class AwsVmClusterManager(ClusterManager):
         raise NotImplementedError
 
     def start_cluster(self, timeout: float):
-        # This is commented out as unless we need the stdout/stderr we can defer to process.wait
-        #process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config.yaml', '-y'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #stream_subproc_output(process)
 
         # TODO need to propagate bad error codes
         import os
@@ -64,14 +43,14 @@ class AwsVmClusterManager(ClusterManager):
             # TODO handle timeouts
             return_code = process.wait()
 
-        # TODO error handling?
-        # TODO should dump this output to stdout (actually I think it already goes to stdout)
-        # TODO fix terminal borking.
-        #self.port_forward_proc = subprocess.Popen(' '.join(['ray', 'dashboard', 'cluster_launcher_config_aws.yaml']), shell=True)
+        # TODO error handling
+        # TODO fix: The terminal is corrupted by the ray dashboard command.
+
         self.port_forward_proc = subprocess.Popen(['ray', 'dashboard', 'cluster_launcher_config_aws.yaml'])
-        #self.port_forward_proc = subprocess.Popen(['sleep', '120'])
+
+        # TODO(cade) remove this sleep, find less flaky way to wait until port forwarding is done
         import time
-        print('Sleeping 10s to wait for port forward to be online. TODO(cade) remove this')
+        print('Sleeping 10s to wait for port forward to be online.')
         time.sleep(10)
         # debug: wait for user input
         #print('enter any key to continue')
@@ -82,7 +61,7 @@ class AwsVmClusterManager(ClusterManager):
         self.port_forward_proc.send_signal(signal.SIGTERM)
         self.port_forward_proc.wait()
 
-        # TODO wait=False functionality
+        # TODO This is missing wait=False functionality
         import os
         if os.environ.get('CADE_SKIP_RAY_DOWN_COMMAND', None):
             pass
@@ -91,23 +70,31 @@ class AwsVmClusterManager(ClusterManager):
             # TODO handle timeouts
             return_code = process.wait()
 
-
-        ''' Annoying terminal borking'''
-
     def get_cluster_address(self) -> str:
-        command = ['ray', 'get-head-ip', 'cluster_launcher_config_aws.yaml']
-        process = subprocess.Popen(command ,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        
-        # TODO verbose logs currently go to stdout. They should go to stderr so I can separate stdout/stderr.
-        lines_in_stdout = stdout.strip().split(b'\n')
-
-        if not lines_in_stdout:
-            raise ValueError(f'Unexpected output from command {command}: {stdout}, {stderr}')
-
         return None
-        #return 'http://localhost'
-        #return 'https://' + lines_in_stdout[-1].decode('utf-8')
     
     def get_cluster_url(self) -> Optional[str]:
         return None
+
+#def stream_subproc_output(process):
+#    # I can delete this function and just use proc.wait()
+#    # If we need to check the output as it runs, we can use this
+#    # TODO delete this
+#    #
+#    # process = subprocess.Popen(['ray', 'up', 'cluster_launcher_config.yaml', '-y'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#    # stream_subproc_output(process)
+#    import select
+#
+#    associated_streams = {process.stderr: sys.stderr, process.stdout: sys.stdout}
+#    timeout_seconds = 0.1
+#
+#    while True:
+#        ready_reads, _, _ = select.select(associated_streams.keys(), [], [], timeout_seconds)
+#        
+#        if process.poll() != None:
+#            break
+#    
+#        for stream in ready_reads:
+#            read_one = stream.read1().decode('utf-8')
+#            associated_streams[stream].write(read_one)
+#
