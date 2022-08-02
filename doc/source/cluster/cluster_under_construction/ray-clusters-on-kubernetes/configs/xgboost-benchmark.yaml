@@ -45,7 +45,7 @@ metadata:
   name: raycluster-xgboost-benchmark
 spec:
   # Uncomment the next line to experiment with autoscaling.
-  enableInTreeAutoscaling: true
+  # enableInTreeAutoscaling: true
   # The version of Ray you are using. Make sure all Ray containers are running this version of Ray.
   rayVersion: '2.0.0'
   headGroupSpec:
