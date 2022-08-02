@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from ray.util.annotations import PublicAPI
 from typing import TYPE_CHECKING, List, Optional
-import re  
+import re
 from ray.air.config import ScalingConfig
+
 if TYPE_CHECKING:
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 import jax
@@ -42,6 +43,7 @@ class ScalingConfigWithIPs(ScalingConfig):
         Strategies <pgroup-strategy>` for the possible options.
     ips: A list of IP addresses to use for the workers.
     """
+
     ips: Optional[List[str]] = None
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
@@ -60,10 +62,14 @@ class ScalingConfigWithIPs(ScalingConfig):
             {} if self.resources_per_worker is None else self.resources_per_worker
         )
         worker_bundles = [
-            {**worker_resources, **worker_resources_extra, **{f"node:{self.ips[_]}": 1e-3}}
+            {
+                **worker_resources,
+                **worker_resources_extra,
+                **{f"node:{self.ips[_]}": 1e-3},
+            }
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
-        
+
         # added here to gives the deamon resources
         # otherwise hang out forever when the trainer is killed
         daemon_worker_bundles = [
@@ -72,8 +78,8 @@ class ScalingConfigWithIPs(ScalingConfig):
         ]
         bundles = trainer_bundle + worker_bundles + daemon_worker_bundles
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
-    
-    
+
+
 def update_jax_platform(platform):
     """Update the jax backend platform."""
     jax.config.update("jax_platform_name", platform)

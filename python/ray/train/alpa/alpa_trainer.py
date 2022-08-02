@@ -7,7 +7,7 @@ from ray.air.config import ScalingConfig, RunConfig
 from ray.train.trainer import BaseTrainer, GenDataset
 
 from ray.train.alpa.config import AlpaConfig
- 
+
 from ray.tune import Trainable
 from ray.util import PublicAPI
 from ray._private.dict import merge_dicts
@@ -23,26 +23,27 @@ from ray.train.constants import (
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
 )
-from ray.train.trainer import BaseTrainer
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
-from ray.train.trainer import GenDataset
-from ray.air.checkpoint import Checkpoint
+
+from ray.air.config import DatasetConfig
+
 
 try:
     import alpa
+    from alpa.device_mesh import VirtualPhysicalMesh
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "alpa isn't installed. To install alpa, run 'pip install " "alpa'."
     )
 
-from ray.train.alpa.utils import is_ray_node_resource, ScalingConfigWithIPs, update_jax_platform
+from ray.train.alpa.utils import (
+    is_ray_node_resource,
+    ScalingConfigWithIPs,
+    update_jax_platform,
+)
 
-
-import alpa
-from alpa.util import update_jax_platform
-from alpa.device_mesh import VirtualPhysicalMesh
 
 logger = logging.getLogger(__name__)
+
 
 @PublicAPI(stability="beta")
 class AlpaTrainer(BaseTrainer):
@@ -58,8 +59,7 @@ class AlpaTrainer(BaseTrainer):
         TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=False),
         WILDCARD_KEY: DatasetConfig(split=False),
     }
-    
-    
+
     def __init__(
         self,
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
@@ -83,36 +83,37 @@ class AlpaTrainer(BaseTrainer):
             alpa.init("ray")
 
         cluster = alpa.get_global_cluster()
-        
+
         logger.info(
-             "Distributed Training with Alpa using "
+            "Distributed Training with Alpa using "
             f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
         )
-        
-        # scaling parameters 
+
+        # scaling parameters
         self.scaling_config = scaling_config
         self.resources_per_worker = self.scaling_config.resources_per_worker
-        
+
         num_workers = self.scaling_config.num_workers
         num_gpus = int(self.scaling_config.use_gpu)
-        if 'GPU' in self.resources_per_worker: 
-            num_gpus = self.resources_per_worker['GPU']
-        
+        if "GPU" in self.resources_per_worker:
+            num_gpus = self.resources_per_worker["GPU"]
+
         # head node info
         from ray._private.worker import _global_node as ray_global_node
+
         self.head_info = ray_global_node.address_info
         self.head_ip = self.head_info["node_ip_address"]
-        
+
         # Gather host ids
         self.host_info = []
         self.host_ips = []
-        
+
         for node in ray.nodes():
             for key in node["Resources"]:
                 if is_ray_node_resource(key):
                     self.host_info.append(node)
-                    self.host_ips.append(key.split('node:')[-1])
-                    
+                    self.host_ips.append(key.split("node:")[-1])
+
         # Gather device info
         self.host_num_devices = []
         for host_info in self.host_info:
@@ -123,30 +124,31 @@ class AlpaTrainer(BaseTrainer):
         # number of workers filter
         # the number of workers can not exceeed the number of devices
         num_workers = min(num_workers, len(self.host_info))
-        node_ids = [i for i in range(num_workers)]
-        node_ips = [self.host_ips[i] for i in range(num_workers)]
+        node_ids = list(range(num_workers))
         node_info = [self.host_info[i] for i in range(num_workers)]
-        
+
         # filter the number of gpus per worker
-        self.host_num_devices = [ self.host_num_devices[i] for i in range(num_workers)]
+        self.host_num_devices = [self.host_num_devices[i] for i in range(num_workers)]
         num_devices_per_host = min(self.host_num_devices)
         num_devices_per_host = min(num_gpus, num_devices_per_host)
 
-        self.vp_mesh = VirtualPhysicalMesh(host_ids=node_ids,
-                            host_info=node_info,
-                            head_ip=self.head_ip,
-                            num_devices_per_host=num_devices_per_host,
-                            parent=None)
+        self.vp_mesh = VirtualPhysicalMesh(
+            host_ids=node_ids,
+            host_info=node_info,
+            head_ip=self.head_ip,
+            num_devices_per_host=num_devices_per_host,
+            parent=None,
+        )
 
         alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
-        cluster.host_info = node_info 
+        cluster.host_info = node_info
         cluster.host_num_devices = [num_devices_per_host for i in range(num_workers)]
         alpa.device_mesh.set_global_cluster(cluster)
 
         self._train_loop = train_loop_per_worker
         self._train_loop_config = train_loop_config
-        
+
         super(AlpaTrainer, self).__init__(
             scaling_config=scaling_config,
             run_config=run_config,
@@ -157,13 +159,14 @@ class AlpaTrainer(BaseTrainer):
 
     def training_loop(self) -> None:
         # needs to add this to the head node
-        # otherwise RuntimeError: Backend 'gpu' failed to initialize: FAILED_PRECONDITION: No visible GPU devices.
+        # otherwise RuntimeError: Backend 'gpu' failed to initialize:
+        # FAILED_PRECONDITION: No visible GPU devices.
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-        if self._train_loop_config: 
+        if self._train_loop_config:
             self._train_loop(self._train_loop_config)
-        else: 
+        else:
             self._train_loop()
-        
+
     def as_trainable(self) -> Type[Trainable]:
         """Convert self to a ``tune.Trainable`` class."""
 
@@ -226,16 +229,21 @@ class AlpaTrainer(BaseTrainer):
                 updated_scaling_config = config.get("scaling_config", scaling_config)
                 updated_scaling_config_dict = updated_scaling_config.__dict__
                 # adding the ip address of the head node to the config
-                # `alpa` needs to allocate resources on the fixed node 
-                updated_scaling_config_dict['ips'] = self.host_ips            
-                
-                assert updated_scaling_config_dict['num_workers'] <= len(self.host_ips), \
-                    "The number of workers must not exceed the number of hosts" \
-                    "Either decrease the number of workers or check whether connected to" \
-                    "the ray cluster via `ray.init('auto')`"
+                # `alpa` needs to allocate resources on the fixed node
+                updated_scaling_config_dict["ips"] = self.host_ips
+
+                assert updated_scaling_config_dict["num_workers"] <= len(
+                    self.host_ips
+                ), (
+                    "The number of workers must not exceed the number of hosts. "
+                    "Either decrease the number of workers or check whether "
+                    "connected to the ray cluster via `ray.init('auto')`"
+                )
                 if isinstance(updated_scaling_config_dict, dict):
-                    updated_scaling_config = ScalingConfigWithIPs(**updated_scaling_config_dict)
+                    updated_scaling_config = ScalingConfigWithIPs(
+                        **updated_scaling_config_dict
+                    )
 
                 return updated_scaling_config.as_placement_group_factory()
-            
+
         return TrainTrainable

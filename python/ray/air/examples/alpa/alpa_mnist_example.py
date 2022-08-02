@@ -8,10 +8,7 @@ import alpa
 
 import ray.train as train
 
-from typing import Dict
-import argparse
-import time
-import numpy as np
+
 import ray
 from ray.data.datasource import SimpleTensorFlowDatasource
 import pandas as pd
@@ -127,7 +124,7 @@ def train_func(datasets: ray.data.Dataset, config: Dict):
     num_epochs = config["num_epochs"]
 
     # Create datasets
-    train_ds = datasets.pop('train')
+    train_ds = datasets.pop("train")
 
     rng = jax.random.PRNGKey(0)
     rng, init_rng = jax.random.split(rng)

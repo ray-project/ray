@@ -6,14 +6,9 @@ import numpy as np
 
 import alpa
 
-
-from typing import Dict
-import argparse
-import time
-import numpy as np
-import ray
 from ray.air import session
 import os
+
 
 def get_datasets():
     """Load MNIST train and test datasets into memory."""
@@ -22,17 +17,19 @@ def get_datasets():
     # it unavailable to JAX.
     import tensorflow as tf
     import tensorflow_datasets as tfds
+
     tf.config.experimental.set_visible_devices([], "GPU")
 
-    ds_builder = tfds.builder('mnist')
+    ds_builder = tfds.builder("mnist")
     ds_builder.download_and_prepare()
-    train_ds = tfds.as_numpy(ds_builder.as_dataset(split='train', batch_size=-1))
-    test_ds = tfds.as_numpy(ds_builder.as_dataset(split='test', batch_size=-1))
-    train_ds['image'] = np.float32(train_ds['image']) / 255.
-    test_ds['image'] = np.float32(test_ds['image']) / 255.
-    train_ds['label'] = np.int32(train_ds['label'])
-    test_ds['label'] = np.int32(test_ds['label'])
+    train_ds = tfds.as_numpy(ds_builder.as_dataset(split="train", batch_size=-1))
+    test_ds = tfds.as_numpy(ds_builder.as_dataset(split="test", batch_size=-1))
+    train_ds["image"] = np.float32(train_ds["image"]) / 255.0
+    test_ds["image"] = np.float32(test_ds["image"]) / 255.0
+    train_ds["label"] = np.int32(train_ds["label"])
+    test_ds["label"] = np.int32(test_ds["label"])
     return train_ds, test_ds
+
 
 def train_func(config: Dict):
     import jax
@@ -41,8 +38,8 @@ def train_func(config: Dict):
     from flax.training import train_state
     import optax
 
-    # TODO: is this able to adding somewhere else? 
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    # TODO: is this able to adding somewhere else?
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     # NOTE: the flax nn module has to define inside
     # otherwise, the error message `ValueError: parent must be None, Module or Scope`
@@ -85,15 +82,15 @@ def train_func(config: Dict):
 
     def train_epoch(state, train_ds, batch_size):
         """Train for a single epoch."""
-        train_ds_size = len(train_ds['image'])
+        train_ds_size = len(train_ds["image"])
         steps_per_epoch = train_ds_size // batch_size
 
         epoch_loss = []
         epoch_accuracy = []
 
         for i in range(steps_per_epoch):
-            batch_images = train_ds['image'][i*batch_size:(i+1)*batch_size]
-            batch_labels = train_ds['label'][i*batch_size:(i+1)*batch_size]
+            batch_images = train_ds["image"][i * batch_size : (i + 1) * batch_size]
+            batch_labels = train_ds["label"][i * batch_size : (i + 1) * batch_size]
             state, loss, accuracy = train_step(state, batch_images, batch_labels)
             epoch_loss.append(loss)
             epoch_accuracy.append(accuracy)
@@ -129,7 +126,6 @@ def train_func(config: Dict):
         session.report({"train_loss": train_loss, "train_accuracy": train_accuracy})
 
 
-
 def train_mnist(num_workers, use_gpu, num_gpu_per_worker):
     config = {
         "learning_rate": 0.1,
@@ -143,7 +139,11 @@ def train_mnist(num_workers, use_gpu, num_gpu_per_worker):
     trainer = AlpaTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu, resources_per_worker={'CPU': 1, 'GPU': num_gpu_per_worker}),
+        scaling_config=ScalingConfig(
+            num_workers=num_workers,
+            use_gpu=use_gpu,
+            resources_per_worker={"CPU": 1, "GPU": num_gpu_per_worker},
+        ),
     )
 
     results = trainer.fit()
@@ -160,7 +160,9 @@ def tune_mnist(num_samples):
 
     trainer = AlpaTrainer(
         train_loop_per_worker=train_func,
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=True, resources_per_worker={'CPU': 1, 'GPU': 2}),
+        scaling_config=ScalingConfig(
+            num_workers=2, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 2}
+        ),
     )
 
     tuner = Tuner(
@@ -214,5 +216,5 @@ if __name__ == "__main__":
         num_gpu_per_worker=args.num_gpu_per_worker,
     )
     ray.shutdown()
-    
+
     # tune_mnist(num_samples=8)

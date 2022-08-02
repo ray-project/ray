@@ -40,9 +40,7 @@ def ray_start_1_cpu_1_gpu():
 def test_jax_get_device(ray_start_4_cpus_2_gpus):
     def train_fn():
         """Creates a barrier across all hosts/devices."""
-        session.report(
-            dict(devices=alpa.device_mesh.global_cluster.num_devices)
-        )
+        session.report(dict(devices=alpa.device_mesh.global_cluster.num_devices))
 
     num_gpus_per_worker = 2
     trainer = AlpaTrainer(
@@ -89,7 +87,9 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             use_gpu=use_gpu,
-            resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker} if use_gpu else {"CPU": 1},
+            resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker}
+            if use_gpu
+            else {"CPU": 1},
         ),
     )
     tuner = Tuner(
