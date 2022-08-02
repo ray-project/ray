@@ -1,15 +1,12 @@
 import abc
 from typing import Dict, TypeVar, Union
-import warnings
 
 import numpy as np
 import pandas as pd
 
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type, DataType
 from ray.air.util.tensor_extensions.pandas import TensorArray
-from ray.data.context import DatasetContext
 from ray.train.predictor import Predictor
-from ray.util.debug import log_once
 
 TensorType = TypeVar("TensorType")
 TensorDtype = TypeVar("TensorDtype")
@@ -75,9 +72,13 @@ class DLPredictor(Predictor):
         model_input = self._arrays_to_tensors(tensors, dtype)
 
         output = self.call_model(model_input)
-        # Handle model multi-output. For example if model outputs 2 images.
         try:
-            if isinstance(output, dict):
+            # For predictor outputs we provide a default fall through behavior if
+            # user provides a pd.DataFrame as return type.
+            if isinstance(output, pd.DataFrame):
+                return output
+            # Handle model multi-output. For example if model outputs 2 images.
+            elif isinstance(output, dict):
                 return pd.DataFrame(
                     {
                         k: TensorArray(self._tensor_to_array(v))
@@ -89,16 +90,11 @@ class DLPredictor(Predictor):
                     {"predictions": TensorArray(self._tensor_to_array(output))},
                     columns=["predictions"],
                 )
-        except ValueError:
-            # Fall back to returning raw pandas dataframe with user UDF output
-            if log_once("call_model_fallback_python_object"):
-                warnings.warn(
-                    "Failed to automatically cast call_model's output to a "
-                    "supported data type. Falling back to returning the raw "
-                    "python object by setting enable_tensor_extension_casting "
-                    "to False."
-                )
-            self._cast_tensor_columns = False
-            ctx = DatasetContext.get_current()
-            ctx.enable_tensor_extension_casting = False
-            return pd.DataFrame(output, dtype=object)
+        except ValueError as e:
+            raise ValueError(
+                "Tried to cast output columns to the TensorArray tensor "
+                "extension type but the conversion failed. For Pytorch or "
+                "TensorFlow predictor, consider structure the output of your "
+                "call_model() to be Tensor, Dict[str, Tensor] or plain "
+                "pandas.DataFrame as fall through."
+            ) from e

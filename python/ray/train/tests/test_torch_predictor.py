@@ -274,23 +274,19 @@ def test_freeform_call_model_output(model, use_gpu):
         df.loc[:, "image"] = [np.asarray(image) for image in df["image"]]
         return df
 
-    class SSDPredictor(TorchPredictor):
+    class CustomPredictorCannotConvert(TorchPredictor):
         def call_model(
             self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
         ) -> Any:
-            """
-            User inference code to run forward pass and return value.
-            NOTE: This needs to be tensor first, no TensorArray semantics or
-                restrictions. User should be able to return any format they
-                want, like nested list/dict with Tensors and deal with the
-                outputs later.
-            """
             model_output = super().call_model(tensor)
             return [{"key": output} for output in model_output]
 
-    preprocessor = BatchMapper(preprocess)
-    ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
-    predictor = BatchPredictor.from_checkpoint(ckpt, SSDPredictor)
+    class CustomPredictorPandasFallThrough(TorchPredictor):
+        def call_model(
+            self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
+        ) -> Any:
+            model_output = super().call_model(tensor)
+            return pd.DataFrame([{"key": output} for output in model_output])
 
     dummy_data = pd.DataFrame(
         {
@@ -300,8 +296,25 @@ def test_freeform_call_model_output(model, use_gpu):
         }
     )
     dataset = ray.data.from_pandas(dummy_data)
+    preprocessor = BatchMapper(preprocess)
+    ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
+
+    cannot_convert_predictor = BatchPredictor.from_checkpoint(
+        ckpt, CustomPredictorCannotConvert
+    )
+    pandas_fallthrough_predictor = BatchPredictor.from_checkpoint(
+        ckpt, CustomPredictorPandasFallThrough
+    )
     num_gpus_per_worker = 1 if use_gpu else 0
-    predictions = predictor.predict(
+
+    # Assert non Tensor / Dict[str, Tensor] fails to convert with actionable message
+    with pytest.raises(ValueError, match="plain pandas.DataFrame as fall through"):
+        predictions = cannot_convert_predictor.predict(
+            dataset, num_gpus_per_worker=num_gpus_per_worker, feature_columns=["image"]
+        )
+
+    # Assert pandas DataFrame is passed through
+    predictions = pandas_fallthrough_predictor.predict(
         dataset, num_gpus_per_worker=num_gpus_per_worker, feature_columns=["image"]
     )
     assert predictions.count() == 2
