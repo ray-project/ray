@@ -6,6 +6,7 @@ import pandas as pd
 
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type, DataType
 from ray.air.util.tensor_extensions.pandas import TensorArray
+from ray.data.context import DatasetContext
 from ray.train.predictor import Predictor
 
 TensorType = TypeVar("TensorType")
@@ -72,14 +73,20 @@ class DLPredictor(Predictor):
         model_input = self._arrays_to_tensors(tensors, dtype)
 
         output = self.call_model(model_input)
-
         # Handle model multi-output. For example if model outputs 2 images.
-        if isinstance(output, dict):
-            return pd.DataFrame(
-                {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
-            )
-        else:
-            return pd.DataFrame(
-                {"predictions": TensorArray(self._tensor_to_array(output))},
-                columns=["predictions"],
-            )
+        try:
+            if isinstance(output, dict):
+                return pd.DataFrame(
+                    {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
+                )
+            else:
+                return pd.DataFrame(
+                    {"predictions": TensorArray(self._tensor_to_array(output))},
+                    columns=["predictions"],
+                )
+        except ValueError:
+            # Fall back to returning raw pandas dataframe with user UDF output
+            self._cast_tensor_columns = False
+            ctx = DatasetContext.get_current()
+            ctx.enable_tensor_extension_casting = False
+            return pd.DataFrame(output, dtype=object)
