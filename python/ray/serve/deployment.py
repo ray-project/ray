@@ -166,7 +166,7 @@ class Deployment:
             "Use `deployment.deploy() instead.`"
         )
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="beta")
     def bind(self, *args, **kwargs) -> Union[ClassNode, FunctionNode]:
         """Bind the provided arguments and return a class or function node.
 
