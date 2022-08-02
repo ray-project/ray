@@ -1,4 +1,4 @@
-More Topics
+Advanced Topics
 ===========
 
 This section covers extended topics on how to use Ray.
@@ -14,4 +14,4 @@ This section covers extended topics on how to use Ray.
     cross-language
     using-ray-with-jupyter
     ray-dag
-    advanced
+    miscellaneous
