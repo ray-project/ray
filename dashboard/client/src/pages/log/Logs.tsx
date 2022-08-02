@@ -145,10 +145,10 @@ const Logs = (props: LogsProps) => {
     <div className={classes.root} ref={el}>
       <TitleCard title="Logs Viewer">
         <Paper>
-          {!origin && <p>Please choose an url to get log path</p>}
+          {!origin && <p>Please choose an url to see logs for that node</p>}
           {origin && (
             <p>
-              Now Path: {origin}
+              Node: {origin}
               {decodeURIComponent(path || "")}
             </p>
           )}
