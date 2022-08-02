@@ -324,10 +324,6 @@ bool TaskSpecification::IsSpreadSchedulingStrategy() const {
          rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy;
 }
 
-const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() const {
-  return message_->serialized_retry_exception_allowlist();
-}
-
 // === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {
@@ -454,9 +450,12 @@ std::string TaskSpecification::DebugString() const {
     const auto &runtime_env_info = RuntimeEnvInfo();
     stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
     const auto &uris = runtime_env_info.uris();
-    if (uris.size() > 0) {
+    if (!uris.working_dir_uri().empty() || uris.py_modules_uris().size() > 0) {
       stream << ", runtime_env_uris=";
-      for (const auto &uri : uris) {
+      if (!uris.working_dir_uri().empty()) {
+        stream << uris.working_dir_uri() << ":";
+      }
+      for (const auto &uri : uris.py_modules_uris()) {
         stream << uri << ":";
       }
       // Erase the last ":"

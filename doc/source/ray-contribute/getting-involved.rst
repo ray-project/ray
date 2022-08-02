@@ -105,13 +105,15 @@ The full suite of tests is too large to run on a single machine. However, you ca
 
 .. code-block:: shell
 
-    pytest -v -s python/ray/tests/test_basic.py
+    # Directly calling `pytest -v ...` may lose import paths.
+    python -m pytest -v -s python/ray/tests/test_basic.py
 
 This will run all of the tests in the file. To run a specific test, use the following:
 
 .. code-block:: shell
-
-    pytest -v -s test_file.py::name_of_the_test
+    
+    # Directly calling `pytest -v ...` may lose import paths.
+    python -m pytest -v -s test_file.py::name_of_the_test
 
 Testing for C++ development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -131,7 +133,7 @@ Alternatively, you can also run one specific C++ test. You can use:
 Code Style
 ----------
 
-In general, we follow the `Google style guide <https://google.github.io/styleguide/>`__ for C++ code and the `Black code style <https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html>`__ for Python code. However, it is more important for code to be in a locally consistent style than to strictly follow guidelines. Whenever in doubt, follow the local code style of the component.
+In general, we follow the `Google style guide <https://google.github.io/styleguide/>`__ for C++ code and the `Black code style <https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html>`__ for Python code. Python imports follow `PEP8 style <https://peps.python.org/pep-0008/#imports>`__. However, it is more important for code to be in a locally consistent style than to strictly follow guidelines. Whenever in doubt, follow the local code style of the component.
 
 For Python documentation, we follow a subset of the `Google pydoc format <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__. The following code snippet demonstrates the canonical Ray pydoc formatting:
 

@@ -87,6 +87,16 @@ py_test(
     args = ["--smoke-test"]
 )
 
+# py_test(
+#     name = "tensorflow_autoencoder_example", # REGRESSION
+#     size = "medium",
+#     main = "examples/tf/tensorflow_autoencoder_example.py",
+#     srcs = ["examples/tf/tensorflow_autoencoder_example.py"],
+#     tags = ["team:ml", "exclusive"],
+#     deps = [":ml_lib"],
+#     args = ["--smoke-test"]
+# )
+
 py_test(
     name = "torch_fashion_mnist_example",
     size = "medium",
@@ -170,6 +180,22 @@ py_test(
 )
 
 py_test(
+    name = "test_checkpoint_manager",
+    size = "small",
+    srcs = ["tests/test_checkpoint_manager.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_configs",
+    size = "small",
+    srcs = ["tests/test_configs.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_data_batch_conversion",
     size = "small",
     srcs = ["tests/test_data_batch_conversion.py"],
@@ -186,14 +212,6 @@ py_test(
 )
 
 py_test(
-    name = "test_dataset_utils",
-    size = "small",
-    srcs = ["tests/test_dataset_utils.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
     name = "test_keras_callback",
     size = "small",
     srcs = ["tests/test_keras_callback.py"],
@@ -202,9 +220,25 @@ py_test(
 )
 
 py_test(
+    name = "test_mlflow",
+    size = "medium",
+    srcs = ["tests/test_mlflow.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_remote_storage",
     size = "small",
     srcs = ["tests/test_remote_storage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_resource_changing",
+    size = "medium",
+    srcs = ["tests/test_resource_changing.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )
@@ -222,4 +256,10 @@ py_test(
 py_library(
     name = "ml_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    visibility = [
+        "//python/ray/air:__pkg__",
+        "//python/ray/air:__subpackages__",
+        "//python/ray/train:__pkg__",
+        "//python/ray/train:__subpackages__",
+    ],
 )

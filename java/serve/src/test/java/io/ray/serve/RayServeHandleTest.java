@@ -4,21 +4,27 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
-import io.ray.serve.generated.ActorSet;
+import io.ray.serve.common.Constants;
+import io.ray.serve.config.DeploymentConfig;
+import io.ray.serve.config.RayServeConfig;
+import io.ray.serve.deployment.DeploymentVersion;
+import io.ray.serve.deployment.DeploymentWrapper;
+import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.generated.DeploymentLanguage;
+import io.ray.serve.handle.RayServeHandle;
+import io.ray.serve.replica.RayServeWrappedReplica;
+import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CommonUtil;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class RayServeHandleTest {
-
+public class RayServeHandleTest extends BaseTest {
   @Test
   public void test() {
-    boolean inited = Ray.isInitialized();
-    String previous_namespace = System.getProperty("ray.job.namespace");
-    System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
-    Ray.init();
+    init();
 
     try {
       String deploymentName = "RayServeHandleTest";
@@ -28,38 +34,34 @@ public class RayServeHandleTest {
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
+      Map<String, String> config = new HashMap<>();
+      config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       // Set ReplicaContext
-      Serve.setInternalReplicaContext(null, null, controllerName, null);
-      Serve.getReplicaContext()
-          .setRayServeConfig(
-              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
       // Replica
       DeploymentConfig deploymentConfig =
-          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
+          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
-      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
+      Object[] initArgs =
+          new Object[] {deploymentName, replicaTag, controllerName, new Object(), new HashMap<>()};
 
-      DeploymentInfo deploymentInfo =
-          new DeploymentInfo()
+      DeploymentWrapper deploymentWrapper =
+          new DeploymentWrapper()
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setDeploymentDef("io.ray.serve.ReplicaContext")
-              .setInitArgs(initArgs);
+              .setDeploymentDef(ReplicaContext.class.getName())
+              .setInitArgs(initArgs)
+              .setConfig(config);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(
-                  RayServeWrappedReplica::new,
-                  deploymentInfo,
-                  replicaTag,
-                  controllerName,
-                  new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"))
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
@@ -67,8 +69,8 @@ public class RayServeHandleTest {
       // RayServeHandle
       RayServeHandle rayServeHandle =
           new RayServeHandle(controllerHandle, deploymentName, null, null)
-              .setMethodName("getDeploymentName");
-      ActorSet.Builder builder = ActorSet.newBuilder();
+              .method("getDeploymentName");
+      ActorNameList.Builder builder = ActorNameList.newBuilder();
       builder.addNames(actorName);
       rayServeHandle.getRouter().getReplicaSet().updateWorkerReplicas(builder.build());
 
@@ -76,15 +78,7 @@ public class RayServeHandleTest {
       ObjectRef<Object> resultRef = rayServeHandle.remote(null);
       Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      if (previous_namespace == null) {
-        System.clearProperty("ray.job.namespace");
-      } else {
-        System.setProperty("ray.job.namespace", previous_namespace);
-      }
-      Serve.setInternalReplicaContext(null);
+      shutdown();
     }
   }
 }

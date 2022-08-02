@@ -12,6 +12,7 @@ import time
 import numpy as np
 import pytest
 import requests
+import socket
 
 import ray
 import ray.dashboard.consts as dashboard_consts
@@ -32,10 +33,13 @@ from ray._private.test_utils import (
     wait_until_succeeded_without_exception,
 )
 from ray.dashboard import dashboard
-from ray.dashboard.modules.dashboard_sdk import DEFAULT_DASHBOARD_ADDRESS
+from ray.dashboard.head import DashboardHead
 from ray.experimental.state.api import StateApiClient
 from ray.experimental.state.common import ListApiOptions, StateResource
 from ray.experimental.state.exception import ServerUnavailable
+from ray.experimental.internal_kv import _initialize_internal_kv
+from unittest.mock import MagicMock
+from ray.dashboard.utils import DashboardHeadModule
 
 import psutil
 
@@ -817,6 +821,7 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 )
 def test_dashboard_does_not_depend_on_serve():
     """Check that the dashboard can start without Serve."""
+    ray.shutdown()
 
     with pytest.raises(ImportError):
         from ray import serve  # noqa: F401
@@ -826,13 +831,127 @@ def test_dashboard_does_not_depend_on_serve():
     # Ensure standard dashboard features, like snapshot, still work
     response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
     assert response.status_code == 200
+
     assert response.json()["result"] is True
     assert "snapshot" in response.json()["data"]
 
+    agent_url = (
+        ctx.address_info["node_ip_address"]
+        + ":"
+        + str(ctx.address_info["dashboard_agent_listen_port"])
+    )
+
     # Check that Serve-dependent features fail
-    response = requests.get(f"http://{ctx.dashboard_url}/api/serve/deployments/")
-    assert response.status_code == 500
-    assert "ModuleNotFoundError" in response.text
+    try:
+        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        assert response.status_code == 500
+    except Exception as e:
+        # Fail to connect to service is fine.
+        print(e)
+        assert True
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
+)
+def test_agent_does_not_depend_on_serve(shutdown_only):
+    """Check that the dashboard agent can start without Serve."""
+    ray.shutdown()
+
+    with pytest.raises(ImportError):
+        from ray import serve  # noqa: F401
+
+    ray.init(include_dashboard=True)
+
+    node = ray._private.worker._global_node
+    all_processes = node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
+
+    check_agent_register(raylet_proc, agent_pid)
+
+    logger.info("Agent works.")
+
+    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
+
+    # Check that Serve-dependent features fail
+    try:
+        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        assert response.status_code == 500
+    except Exception as e:
+        # Fail to connect to service is fine.
+        print(e)
+        assert True
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
+    reason="This test is not supposed to work for minimal or default installation.",
+)
+def test_agent_port_conflict():
+    ray.shutdown()
+
+    # start ray and test agent works.
+    ray.init(include_dashboard=True)
+
+    node = ray._private.worker._global_node
+    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
+    wait_for_condition(
+        lambda: requests.get(f"http://{agent_url}/api/serve/deployments/").status_code
+        == 200
+    )
+    ray.shutdown()
+
+    # ocuppy the port with a socket.
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    wait_for_condition(
+        lambda: s.connect_ex(
+            ("localhost", ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT)
+        )
+        != 0
+    )
+
+    # start ray and the agent http server should fail
+    # to start due to port conflict, but the agent still starts.
+    ray.init(include_dashboard=True)
+    node = ray._private.worker._global_node
+    all_processes = node.all_processes
+    raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
+    raylet_proc = psutil.Process(raylet_proc_info.process.pid)
+
+    wait_for_condition(lambda: search_agent(raylet_proc.children()))
+    agent_proc = search_agent(raylet_proc.children())
+    agent_pid = agent_proc.pid
+
+    check_agent_register(raylet_proc, agent_pid)
+
+    # Release the port from socket.
+    s.close()
+
+    agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
+
+    # Check that Serve-dependent features fail.
+    try:
+        wait_for_condition(
+            lambda: requests.get(
+                f"http://{agent_url}/api/serve/deployments/"
+            ).status_code
+            == 200
+        )
+        assert False
+    except Exception as e:
+        assert e is not None
 
 
 @pytest.mark.skipif(
@@ -844,11 +963,53 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_with_dashboard):
     response = None
 
     with pytest.raises(ServerUnavailable):
-        client = StateApiClient(api_server_address=DEFAULT_DASHBOARD_ADDRESS)
-        response = client.list(StateResource.NODES, options=ListApiOptions())
+        client = StateApiClient()
+        response = client.list(
+            StateResource.NODES, options=ListApiOptions(), raise_on_missing_output=False
+        )
 
     # Response should not be populated
     assert response is None
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
+)
+def test_dashboard_module_load(tmpdir):
+    """Verify if the head module can load only selected modules."""
+    head = DashboardHead(
+        "127.0.0.1",
+        8265,
+        1,
+        "127.0.0.1:6379",
+        str(tmpdir),
+        str(tmpdir),
+        str(tmpdir),
+        False,
+    )
+
+    # Test basic.
+    loaded_modules_expected = {"UsageStatsHead", "JobHead"}
+    loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
+    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
+    assert loaded_modules_actual == loaded_modules_expected
+
+    # Test modules that don't exist.
+    loaded_modules_expected = {"StateHea"}
+    with pytest.raises(AssertionError):
+        loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
+
+    # Test the base case.
+    # It is needed to pass assertion check from one of modules.
+    gcs_client = MagicMock()
+    _initialize_internal_kv(gcs_client)
+    loaded_modules_expected = {
+        m.__name__ for m in dashboard_utils.get_all_modules(DashboardHeadModule)
+    }
+    loaded_modules = head._load_modules()
+    loaded_modules_actual = {type(m).__name__ for m in loaded_modules}
+    assert loaded_modules_actual == loaded_modules_expected
 
 
 if __name__ == "__main__":

@@ -194,6 +194,12 @@ ray_files += [
     for filename in filenames
 ]
 
+# Files for ray.init html template.
+ray_files += [
+    "ray/widgets/templates/context_dashrow.html.j2",
+    "ray/widgets/templates/context.html.j2",
+]
+
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements/requirements.txt
 # in this directory
@@ -212,6 +218,7 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
+            "pydantic",
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
@@ -244,7 +251,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gym<0.22",
+        "gym>=0.21.0,<0.24.0",
         "lz4",
         # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
         # Todo: Remove this when safe?
@@ -740,6 +747,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},

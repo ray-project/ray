@@ -1,4 +1,5 @@
 import abc
+from functools import partial
 import threading
 from typing import (
     Callable,
@@ -7,6 +8,7 @@ from typing import (
     TYPE_CHECKING,
     Union,
     Optional,
+    Tuple,
 )
 
 import logging
@@ -15,6 +17,7 @@ import time
 from dataclasses import dataclass
 
 import ray
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air._internal.remote_storage import (
     fs_hint,
     upload_to_uri,
@@ -27,7 +30,6 @@ from ray.tune.callback import Callback
 from ray.tune.result import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.experiment import Trial
@@ -36,6 +38,13 @@ logger = logging.getLogger(__name__)
 
 # Syncing period for syncing checkpoints between nodes or to cloud.
 DEFAULT_SYNC_PERIOD = 300
+
+_EXCLUDE_FROM_SYNC = [
+    "./checkpoint_-00001",
+    "./checkpoint_tmp*",
+    "./save_to_object*",
+    "./rank_*",
+]
 
 
 def _validate_upload_dir(sync_config: "SyncConfig") -> bool:
@@ -300,11 +309,11 @@ class Syncer(abc.ABC):
         pass
 
 
-class _DefaultSyncer(Syncer):
-    """Default syncer between local storage and remote URI."""
+class _BackgroundSyncer(Syncer):
+    """Syncer using a background process for asynchronous file transfer."""
 
     def __init__(self, sync_period: float = 300.0):
-        super(_DefaultSyncer, self).__init__(sync_period=sync_period)
+        super(_BackgroundSyncer, self).__init__(sync_period=sync_period)
         self._sync_process = None
         self._current_cmd = None
 
@@ -323,13 +332,17 @@ class _DefaultSyncer(Syncer):
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = (
-            upload_to_uri,
-            dict(local_path=local_dir, uri=remote_dir, exclude=exclude),
+        self._current_cmd = self._sync_up_command(
+            local_path=local_dir, uri=remote_dir, exclude=exclude
         )
         self.retry()
 
         return True
+
+    def _sync_up_command(
+        self, local_path: str, uri: str, exclude: Optional[List] = None
+    ) -> Tuple[Callable, Dict]:
+        raise NotImplementedError
 
     def sync_down(
         self, remote_dir: str, local_dir: str, exclude: Optional[List] = None
@@ -346,13 +359,15 @@ class _DefaultSyncer(Syncer):
             except Exception as e:
                 logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = (
-            download_from_uri,
-            dict(uri=remote_dir, local_path=local_dir),
+        self._current_cmd = self._sync_down_command(
+            uri=remote_dir, local_path=local_dir
         )
         self.retry()
 
         return True
+
+    def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
+        raise NotImplementedError
 
     def delete(self, remote_dir: str) -> bool:
         if self._sync_process and self._sync_process.is_running:
@@ -361,10 +376,13 @@ class _DefaultSyncer(Syncer):
             )
             return False
 
-        self._current_cmd = (delete_at_uri, dict(uri=remote_dir))
+        self._current_cmd = self._delete_command(uri=remote_dir)
         self.retry()
 
         return True
+
+    def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
+        raise NotImplementedError
 
     def wait(self):
         if self._sync_process:
@@ -381,6 +399,27 @@ class _DefaultSyncer(Syncer):
         cmd, kwargs = self._current_cmd
         self._sync_process = _BackgroundProcess(cmd)
         self._sync_process.start(**kwargs)
+
+
+class _DefaultSyncer(_BackgroundSyncer):
+    """Default syncer between local storage and remote URI."""
+
+    def _sync_up_command(
+        self, local_path: str, uri: str, exclude: Optional[List] = None
+    ) -> Tuple[Callable, Dict]:
+        return (
+            upload_to_uri,
+            dict(local_path=local_path, uri=uri, exclude=exclude),
+        )
+
+    def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
+        return (
+            download_from_uri,
+            dict(uri=uri, local_path=local_path),
+        )
+
+    def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
+        return delete_at_uri, dict(uri=uri)
 
 
 @DeveloperAPI
@@ -419,7 +458,8 @@ class SyncerCallback(Callback):
 
     def _get_trial_sync_process(self, trial: "Trial"):
         return self._sync_processes.setdefault(
-            trial.trial_id, _BackgroundProcess(sync_dir_between_nodes)
+            trial.trial_id,
+            _BackgroundProcess(partial(sync_dir_between_nodes, max_size_bytes=None)),
         )
 
     def _remove_trial_sync_process(self, trial: "Trial"):
@@ -471,6 +511,7 @@ class SyncerCallback(Callback):
             source_path=self._remote_trial_logdir(trial),
             target_ip=ray.util.get_node_ip_address(),
             target_path=self._local_trial_logdir(trial),
+            exclude=_EXCLUDE_FROM_SYNC,
         )
         self._sync_times[trial.trial_id] = time.time()
         if wait:

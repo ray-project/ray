@@ -22,8 +22,8 @@ from ray.core.generated.gcs_service_pb2 import (
     GetAllWorkerInfoRequest,
 )
 from ray.core.generated.node_manager_pb2 import (
-    GetObjectsInfoRequest,
     GetObjectsInfoReply,
+    GetObjectsInfoRequest,
     GetTasksInfoReply,
     GetTasksInfoRequest,
 )
@@ -40,10 +40,16 @@ from ray.core.generated.runtime_env_agent_pb2 import (
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
+from ray.experimental.state.common import RAY_MAX_LIMIT_FROM_DATA_SOURCE
 from ray.experimental.state.exception import DataSourceUnavailable
-from ray.experimental.state.common import MAX_LIMIT
 
 logger = logging.getLogger(__name__)
+
+_STATE_MANAGER_GRPC_OPTIONS = [
+    *ray_constants.GLOBAL_GRPC_OPTIONS,
+    ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+]
 
 
 def handle_grpc_network_errors(func):
@@ -67,7 +73,6 @@ def handle_grpc_network_errors(func):
                 or there's a slow network issue causing timeout.
             Otherwise, the raw network exceptions (e.g., gRPC) will be raised.
         """
-        # TODO(sang): Add a retry policy.
         try:
             return await func(*args, **kwargs)
         except grpc.aio.AioRpcError as e:
@@ -157,7 +162,7 @@ class StateDataSourceClient:
 
     def register_raylet_client(self, node_id: str, address: str, port: int):
         full_addr = f"{address}:{port}"
-        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        options = _STATE_MANAGER_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             full_addr, options, asynchronous=True
         )
@@ -169,7 +174,7 @@ class StateDataSourceClient:
         self._id_id_map.pop(node_id)
 
     def register_agent_client(self, node_id, address: str, port: int):
-        options = ray_constants.GLOBAL_GRPC_OPTIONS
+        options = _STATE_MANAGER_GRPC_OPTIONS
         channel = ray._private.utils.init_grpc_channel(
             f"{address}:{port}", options=options, asynchronous=True
         )
@@ -209,7 +214,7 @@ class StateDataSourceClient:
         self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllActorInfoReply]:
         if not limit:
-            limit = MAX_LIMIT
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         request = GetAllActorInfoRequest(limit=limit)
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
@@ -222,7 +227,7 @@ class StateDataSourceClient:
         self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllPlacementGroupReply]:
         if not limit:
-            limit = MAX_LIMIT
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         request = GetAllPlacementGroupRequest(limit=limit)
         reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
@@ -243,7 +248,7 @@ class StateDataSourceClient:
         self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllWorkerInfoReply]:
         if not limit:
-            limit = MAX_LIMIT
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         request = GetAllWorkerInfoRequest(limit=limit)
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
@@ -274,7 +279,7 @@ class StateDataSourceClient:
         self, node_id: str, timeout: int = None, limit: int = None
     ) -> Optional[GetTasksInfoReply]:
         if not limit:
-            limit = MAX_LIMIT
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         stub = self._raylet_stubs.get(node_id)
         if not stub:
@@ -290,7 +295,7 @@ class StateDataSourceClient:
         self, node_id: str, timeout: int = None, limit: int = None
     ) -> Optional[GetObjectsInfoReply]:
         if not limit:
-            limit = MAX_LIMIT
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         stub = self._raylet_stubs.get(node_id)
         if not stub:
@@ -307,7 +312,7 @@ class StateDataSourceClient:
         self, node_id: str, timeout: int = None, limit: int = None
     ) -> Optional[GetRuntimeEnvsInfoReply]:
         if not limit:
-            limit = MAX_LIMIT
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         stub = self._runtime_env_agent_stub.get(node_id)
         if not stub:

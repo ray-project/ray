@@ -1,9 +1,9 @@
 import os
 import sys
 import signal
+import threading
 
 import ray
-
 import numpy as np
 import pytest
 import time
@@ -139,6 +139,212 @@ def test_async_actor_task_retries(ray_start_regular):
     ray.get(signal.send.remote())
     assert ray.get(ref_1) == 1
     assert ray.get(ref_3) == 3
+
+
+def test_actor_failure_async(ray_start_regular):
+    @ray.remote
+    class A:
+        def echo(self):
+            pass
+
+        def pid(self):
+            return os.getpid()
+
+    a = A.remote()
+    rs = []
+
+    def submit():
+        for i in range(10000):
+            r = a.echo.remote()
+            r._on_completed(lambda x: 1)
+            rs.append(r)
+
+    t = threading.Thread(target=submit)
+    pid = ray.get(a.pid.remote())
+
+    t.start()
+    from time import sleep
+
+    sleep(0.1)
+    os.kill(pid, SIGKILL)
+
+    t.join()
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{"_system_config": {"timeout_ms_task_wait_for_death_info": 100000000}}],
+    indirect=True,
+)
+def test_actor_failure_async_2(ray_start_regular, tmp_path):
+    p = tmp_path / "a_pid"
+
+    @ray.remote(max_restarts=1)
+    class A:
+        def __init__(self):
+            pid = os.getpid()
+            # The second time start, it'll block,
+            # so that we'll know the actor is restarting.
+            if p.exists():
+                p.write_text(str(pid))
+                time.sleep(100000)
+            else:
+                p.write_text(str(pid))
+
+        def pid(self):
+            return os.getpid()
+
+    a = A.remote()
+
+    pid = ray.get(a.pid.remote())
+
+    os.kill(int(pid), SIGKILL)
+
+    # kill will be in another thred.
+    def kill():
+        # sleep for 2s for the code to be setup
+        time.sleep(2)
+        new_pid = int(p.read_text())
+        while new_pid == pid:
+            new_pid = int(p.read_text())
+            time.sleep(1)
+        os.kill(new_pid, SIGKILL)
+
+    t = threading.Thread(target=kill)
+    t.start()
+
+    try:
+        o = a.pid.remote()
+
+        def new_task(_):
+            print("new_task")
+            # make sure there is no deadlock
+            a.pid.remote()
+
+        o._on_completed(new_task)
+        # When ray.get(o) failed,
+        # new_task will be executed
+        ray.get(o)
+    except Exception:
+        pass
+    t.join()
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{"_system_config": {"timeout_ms_task_wait_for_death_info": 100000000}}],
+    indirect=True,
+)
+def test_actor_failure_async_3(ray_start_regular):
+    @ray.remote(max_restarts=1)
+    class A:
+        def pid(self):
+            return os.getpid()
+
+    a = A.remote()
+
+    def new_task(_):
+        print("new_task")
+        # make sure there is no deadlock
+        a.pid.remote()
+
+    t = a.pid.remote()
+    # Make sure there is no deadlock when executing
+    # the callback
+    t._on_completed(new_task)
+
+    ray.kill(a)
+
+    with pytest.raises(Exception):
+        ray.get(t)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{"_system_config": {"timeout_ms_task_wait_for_death_info": 100000000}}],
+    indirect=True,
+)
+def test_actor_failure_async_4(ray_start_regular, tmp_path):
+    from filelock import FileLock
+
+    l_file = tmp_path / "lock"
+
+    l_lock = FileLock(l_file)
+    l_lock.acquire()
+
+    @ray.remote
+    def f():
+        with FileLock(l_file):
+            os.kill(os.getpid(), SIGKILL)
+
+    @ray.remote(max_restarts=1)
+    class A:
+        def pid(self, x):
+            return os.getpid()
+
+    a = A.remote()
+
+    def new_task(_):
+        print("new_task")
+        # make sure there is no deadlock
+        a.pid.remote(None)
+
+    t = a.pid.remote(f.remote())
+    # Make sure there is no deadlock when executing
+    # the callback
+    t._on_completed(new_task)
+
+    ray.kill(a)
+
+    # This will make the dependence failed
+    l_lock.release()
+
+    with pytest.raises(Exception):
+        ray.get(t)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [
+        {
+            "_system_config": {
+                "timeout_ms_task_wait_for_death_info": 0,
+                "core_worker_internal_heartbeat_ms": 1000000,
+            }
+        }
+    ],
+    indirect=True,
+)
+def test_actor_failure_no_wait(ray_start_regular, tmp_path):
+    p = tmp_path / "a_pid"
+    time.sleep(1)
+
+    # Make sure the request will fail immediately without waiting for the death info
+    @ray.remote(max_restarts=1, max_task_retries=0)
+    class A:
+        def __init__(self):
+            pid = os.getpid()
+            # The second time start, it'll block,
+            # so that we'll know the actor is restarting.
+            if p.exists():
+                p.write_text(str(pid))
+                time.sleep(100000)
+            else:
+                p.write_text(str(pid))
+
+        def p(self):
+            time.sleep(100000)
+
+        def pid(self):
+            return os.getpid()
+
+    a = A.remote()
+    pid = ray.get(a.pid.remote())
+    t = a.p.remote()
+    os.kill(int(pid), SIGKILL)
+    with pytest.raises(ray.exceptions.RayActorError):
+        # Make sure it'll return within 1s
+        ray.get(t)
 
 
 if __name__ == "__main__":

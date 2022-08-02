@@ -18,8 +18,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-# Import psutil and colorama after ray so the packaged version is used.
-import colorama
+# Import psutil after ray so the packaged version is used.
 import psutil
 
 # Ray modules
@@ -31,8 +30,6 @@ from ray.core.generated.common_pb2 import Language
 
 resource = None
 if sys.platform != "win32":
-    import resource
-
     _timeout = 30
 else:
     _timeout = 60
@@ -120,7 +117,7 @@ def propagate_jemalloc_env_var(
     Params:
         jemalloc_path: The path to the jemalloc shared library.
         jemalloc_conf: `,` separated string of jemalloc config.
-        jemalloc_comps List(str): The list of Ray components
+        jemalloc_comps: The list of Ray components
             that we will profile.
         process_type: The process type that needs jemalloc
             env var for memory profiling. If it doesn't match one of
@@ -290,73 +287,64 @@ def _find_address_from_flag(flag: str):
     return addresses
 
 
-def find_redis_address():
-    return _find_address_from_flag("--redis-address")
-
-
-def find_gcs_address():
+def find_gcs_addresses():
+    """Finds any local GCS processes based on grepping ps."""
     return _find_address_from_flag("--gcs-address")
 
 
-def find_bootstrap_address():
-    return find_gcs_address()
+def find_bootstrap_address(temp_dir: Optional[str]):
+    """Finds the latest Ray cluster address to connect to, if any. This is the
+    GCS address connected to by the last successful `ray start`."""
+    return ray._private.utils.read_ray_address(temp_dir)
 
 
-def _find_redis_address_or_die():
-    """Finds one Redis address unambiguously, or raise an error.
+def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
+    """Attempts to find the address of Ray cluster to use, in this order:
 
-    Callers outside this module should use
-    get_ray_address_from_environment() or canonicalize_bootstrap_address()
-    """
-    redis_addresses = find_redis_address()
-    if len(redis_addresses) > 1:
-        raise ConnectionError(
-            f"Found multiple active Ray instances: {redis_addresses}. "
-            "Please specify the one to connect to by setting `address`."
-        )
-        sys.exit(1)
-    elif not redis_addresses:
-        raise ConnectionError(
-            "Could not find any running Ray instance. "
-            "Please specify the one to connect to by setting `address`."
-        )
-    return redis_addresses.pop()
-
-
-def _find_gcs_address_or_die():
-    """Find one GCS address unambiguously, or raise an error.
-
-    Callers outside of this module should use get_ray_address_to_use_or_die()
-    """
-    gcs_addresses = _find_address_from_flag("--gcs-address")
-    if len(gcs_addresses) > 1:
-        raise ConnectionError(
-            f"Found multiple active Ray instances: {gcs_addresses}. "
-            "Please specify the one to connect to by setting `--address` flag "
-            "or `RAY_ADDRESS` environment variable."
-        )
-        sys.exit(1)
-    elif not gcs_addresses:
-        raise ConnectionError(
-            "Could not find any running Ray instance. "
-            "Please specify the one to connect to by setting `--address` flag "
-            "or `RAY_ADDRESS` environment variable."
-        )
-    return gcs_addresses.pop()
-
-
-def get_ray_address_from_environment():
-    """
-    Attempts to find the address of Ray cluster to use, first from
-    RAY_ADDRESS environment variable, then from the local Raylet.
+    1. Use RAY_ADDRESS if defined.
+    2. If no address is provided or the provided address is "auto", use the
+    address in /tmp/ray/ray_current_cluster if available. This will error if
+    the specified address is None and there is no address found. For "auto",
+    we will fallback to connecting to any detected Ray cluster (legacy).
+    3. Otherwise, use the provided address.
 
     Returns:
         A string to pass into `ray.init(address=...)`, e.g. ip:port, `auto`.
     """
-    addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if addr is None or addr == "auto":
-        addr = _find_gcs_address_or_die()
-    return addr
+    env_addr = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if env_addr is not None:
+        addr = env_addr
+
+    if addr is not None and addr != "auto":
+        return addr
+    # We should try to automatically find an active local instance.
+    gcs_addrs = find_gcs_addresses()
+    bootstrap_addr = find_bootstrap_address(temp_dir)
+
+    if len(gcs_addrs) > 1 and bootstrap_addr is not None:
+        logger.warning(
+            f"Found multiple active Ray instances: {gcs_addrs}. "
+            f"Connecting to latest cluster at {bootstrap_addr}. "
+            "You can override this by setting the `--address` flag "
+            "or `RAY_ADDRESS` environment variable."
+        )
+    elif len(gcs_addrs) > 0 and addr == "auto":
+        # Preserve legacy "auto" behavior of connecting to any cluster, even if not
+        # started with ray start. However if addr is None, we will raise an error.
+        bootstrap_addr = list(gcs_addrs).pop()
+
+    if bootstrap_addr is None:
+        if addr is None:
+            # Caller should start a new instance.
+            return None
+        else:
+            raise ConnectionError(
+                "Could not find any running Ray instance. "
+                "Please specify the one to connect to by setting `--address` flag "
+                "or `RAY_ADDRESS` environment variable."
+            )
+
+    return bootstrap_addr
 
 
 def wait_for_node(
@@ -445,7 +433,9 @@ def remaining_processes_alive():
     return ray._private.worker._global_node.remaining_processes_alive()
 
 
-def canonicalize_bootstrap_address(addr: str):
+def canonicalize_bootstrap_address(
+    addr: str, temp_dir: Optional[str] = None
+) -> Optional[str]:
     """Canonicalizes Ray cluster bootstrap address to host:port.
     Reads address from the environment if needed.
 
@@ -453,16 +443,58 @@ def canonicalize_bootstrap_address(addr: str):
     via ray.init() or `--address` flags, before using the address to connect.
 
     Returns:
-        Ray cluster address string in <host:port> format.
+        Ray cluster address string in <host:port> format or None if the caller
+        should start a local Ray instance.
     """
     if addr is None or addr == "auto":
-        addr = get_ray_address_from_environment()
+        addr = get_ray_address_from_environment(addr, temp_dir)
+    if addr is None or addr == "local":
+        return None
     try:
         bootstrap_address = resolve_ip_for_localhost(addr)
     except Exception:
         logger.exception(f"Failed to convert {addr} to host:port")
         raise
     return bootstrap_address
+
+
+def canonicalize_bootstrap_address_or_die(
+    addr: str, temp_dir: Optional[str] = None
+) -> str:
+    """Canonicalizes Ray cluster bootstrap address to host:port.
+
+    This function should be used when the caller expects there to be an active
+    and local Ray instance. If no address is provided or address="auto", this
+    will autodetect the latest Ray instance created with `ray start`.
+
+    For convenience, if no address can be autodetected, this function will also
+    look for any running local GCS processes, based on pgrep output. This is to
+    allow easier use of Ray CLIs when debugging a local Ray instance (whose GCS
+    addresses are not recorded).
+
+    Returns:
+        Ray cluster address string in <host:port> format. Throws a
+        ConnectionError if zero or multiple active Ray instances are
+        autodetected.
+    """
+    bootstrap_addr = canonicalize_bootstrap_address(addr, temp_dir=temp_dir)
+    if bootstrap_addr is not None:
+        return bootstrap_addr
+
+    running_gcs_addresses = find_gcs_addresses()
+    if len(running_gcs_addresses) == 0:
+        raise ConnectionError(
+            "Could not find any running Ray instance. "
+            "Please specify the one to connect to by setting the `--address` "
+            "flag or `RAY_ADDRESS` environment variable."
+        )
+    if len(running_gcs_addresses) > 1:
+        raise ConnectionError(
+            f"Found multiple active Ray instances: {running_gcs_addresses}. "
+            "Please specify the one to connect to by setting the `--address` "
+            "flag or `RAY_ADDRESS` environment variable."
+        )
+    return running_gcs_addresses.pop()
 
 
 def extract_ip_port(bootstrap_address: str):
@@ -570,7 +602,7 @@ def create_redis_client(redis_address, password=None):
         cli = create_redis_client.instances.get(redis_address)
         if cli is None:
             redis_ip_address, redis_port = extract_ip_port(
-                canonicalize_bootstrap_address(redis_address)
+                canonicalize_bootstrap_address_or_die(redis_address)
             )
             cli = redis.StrictRedis(
                 host=redis_ip_address, port=int(redis_port), password=password
@@ -817,79 +849,6 @@ def start_ray_process(
         use_perftools_profiler=use_perftools_profiler,
         use_tmux=use_tmux,
     )
-
-
-def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
-    """Wait for a Redis server to be available.
-
-    This is accomplished by creating a Redis client and sending a random
-    command to the server until the command gets through.
-
-    Args:
-        redis_ip_address: The IP address of the redis server.
-        redis_port: The port of the redis server.
-        password: The password of the redis server.
-
-    Raises:
-        Exception: An exception is raised if we could not connect with Redis.
-    """
-    import redis
-
-    redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=redis_port, password=password
-    )
-    # Wait for the Redis server to start.
-    num_retries = ray_constants.START_REDIS_WAIT_RETRIES
-    delay = 0.001
-    for i in range(num_retries):
-        try:
-            # Run some random command and see if it worked.
-            logger.debug(
-                "Waiting for redis server at {}:{} to respond...".format(
-                    redis_ip_address, redis_port
-                )
-            )
-            redis_client.client_list()
-        # If the Redis service is delayed getting set up for any reason, we may
-        # get a redis.ConnectionError: Error 111 connecting to host:port.
-        # Connection refused.
-        # Unfortunately, redis.ConnectionError is also the base class of
-        # redis.AuthenticationError. We *don't* want to obscure a
-        # redis.AuthenticationError, because that indicates the user provided a
-        # bad password. Thus a double except clause to ensure a
-        # redis.AuthenticationError isn't trapped here.
-        except redis.AuthenticationError as authEx:
-            raise RuntimeError(
-                f"Unable to connect to Redis at {redis_ip_address}:{redis_port}."
-            ) from authEx
-        except redis.ConnectionError as connEx:
-            if i >= num_retries - 1:
-                raise RuntimeError(
-                    f"Unable to connect to Redis at {redis_ip_address}:"
-                    f"{redis_port} after {num_retries} retries. Check that "
-                    f"{redis_ip_address}:{redis_port} is reachable from this "
-                    "machine. If it is not, your firewall may be blocking "
-                    "this port. If the problem is a flaky connection, try "
-                    "setting the environment variable "
-                    "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of"
-                    " attempts to ping the Redis server."
-                ) from connEx
-            # Wait a little bit.
-            time.sleep(delay)
-            # Make sure the retry interval doesn't increase too large, which will
-            # affect the delivery time of the Ray cluster.
-            delay = min(1, delay * 2)
-        else:
-            break
-    else:
-        raise RuntimeError(
-            f"Unable to connect to Redis (after {num_retries} retries). "
-            "If the Redis instance is on a different machine, check that "
-            "your firewall and relevant Ray ports are configured properly. "
-            "You can also set the environment variable "
-            "`RAY_START_REDIS_WAIT_RETRIES` to increase the number of "
-            "attempts to ping the Redis server."
-        )
 
 
 def start_reaper(fate_share=None):
@@ -1139,109 +1098,28 @@ def _start_redis_instance(
     Raises:
         Exception: An exception is raised if Redis could not be started.
     """
-    import redis
 
     assert os.path.isfile(executable)
-    counter = 0
 
-    while counter < num_retries:
-        # Construct the command to start the Redis server.
-        command = [executable]
-        if password:
-            if " " in password:
-                raise ValueError("Spaces not permitted in redis password.")
-            command += ["--requirepass", password]
-        command += ["--port", str(port), "--loglevel", "warning"]
-        if listen_to_localhost_only:
-            command += ["--bind", "127.0.0.1"]
-        pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
-        command += ["--pidfile", pidfile]
-        process_info = start_ray_process(
-            command,
-            ray_constants.PROCESS_TYPE_REDIS_SERVER,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            fate_share=fate_share,
-        )
-        try:
-            wait_for_redis_to_start("127.0.0.1", port, password=password)
-        except (redis.exceptions.ResponseError, RuntimeError):
-            # Connected to redis with the wrong password, or exceeded
-            # the number of retries. This means we got the wrong redis
-            # or there is some error in starting up redis.
-            # Try the next port by looping again.
-            pass
-        else:
-            r = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
-            # Check if Redis successfully started and we connected
-            # to the right server.
-            if r.config_get("pidfile")["pidfile"] == pidfile:
-                break
-        port = new_port(denylist=port_denylist)
-        counter += 1
-    if counter == num_retries:
-        raise RuntimeError(
-            "Couldn't start Redis. "
-            "Check log files: {} {}".format(
-                stdout_file.name if stdout_file is not None else "<stdout>",
-                stderr_file.name if stdout_file is not None else "<stderr>",
-            )
-        )
-
-    # Create a Redis client just for configuring Redis.
-    redis_client = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
-    # Wait for the Redis server to start.
-    wait_for_redis_to_start("127.0.0.1", port, password=password)
-    # Configure Redis to generate keyspace notifications. TODO(rkn): Change
-    # this to only generate notifications for the export keys.
-    redis_client.config_set("notify-keyspace-events", "Kl")
-
-    # Configure Redis to not run in protected mode so that processes on other
-    # hosts can connect to it. TODO(rkn): Do this in a more secure way.
-    redis_client.config_set("protected-mode", "no")
-
-    # Discard old task and object metadata.
-    if redis_max_memory is not None:
-        redis_client.config_set("maxmemory", str(redis_max_memory))
-        redis_client.config_set("maxmemory-policy", "allkeys-lru")
-        redis_client.config_set("maxmemory-samples", "10")
-        logger.debug(
-            "Starting Redis shard with {} GB max memory.".format(
-                round(redis_max_memory / 1e9, 2)
-            )
-        )
-
-    # If redis_max_clients is provided, attempt to raise the number of maximum
-    # number of Redis clients.
-    if redis_max_clients is not None:
-        redis_client.config_set("maxclients", str(redis_max_clients))
-    elif resource is not None:
-        # If redis_max_clients is not provided, determine the current ulimit.
-        # We will use this to attempt to raise the maximum number of Redis
-        # clients.
-        current_max_clients = int(redis_client.config_get("maxclients")["maxclients"])
-        # The below command should be the same as doing ulimit -n.
-        ulimit_n = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
-        # The quantity redis_client_buffer appears to be the required buffer
-        # between the maximum number of redis clients and ulimit -n. That is,
-        # if ulimit -n returns 10000, then we can set maxclients to
-        # 10000 - redis_client_buffer.
-        redis_client_buffer = 32
-        if current_max_clients < ulimit_n - redis_client_buffer:
-            redis_client.config_set("maxclients", ulimit_n - redis_client_buffer)
-
-    # Increase the hard and soft limits for the redis client pubsub buffer to
-    # 128MB. This is a hack to make it less likely for pubsub messages to be
-    # dropped and for pubsub connections to therefore be killed.
-    cur_config = redis_client.config_get("client-output-buffer-limit")[
-        "client-output-buffer-limit"
-    ]
-    cur_config_list = cur_config.split()
-    assert len(cur_config_list) == 12
-    cur_config_list[8:] = ["pubsub", "134217728", "134217728", "60"]
-    redis_client.config_set("client-output-buffer-limit", " ".join(cur_config_list))
-    # Put a time stamp in Redis to indicate when it was started.
-    redis_client.set("redis_start_time", time.time())
+    # Construct the command to start the Redis server.
+    command = [executable]
+    if password:
+        if " " in password:
+            raise ValueError("Spaces not permitted in redis password.")
+        command += ["--requirepass", password]
+    command += ["--port", str(port), "--loglevel", "warning"]
+    if listen_to_localhost_only:
+        command += ["--bind", "127.0.0.1"]
+    pidfile = os.path.join(session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
+    command += ["--pidfile", pidfile]
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REDIS_SERVER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share,
+    )
+    port = new_port(denylist=port_denylist)
     return port, process_info
 
 
@@ -1307,8 +1185,9 @@ def start_log_monitor(
     return process_info
 
 
-def start_dashboard(
-    require_dashboard: bool,
+def start_api_server(
+    include_dashboard: bool,
+    raise_on_failure: bool,
     host: str,
     gcs_address: str,
     temp_dir: str,
@@ -1320,12 +1199,15 @@ def start_dashboard(
     backup_count: int = 0,
     redirect_logging: bool = True,
 ):
-    """Start a dashboard process.
+    """Start a API server process.
 
     Args:
-        require_dashboard: If true, this will raise an exception if we
-            fail to start the dashboard. Otherwise it will print a warning if
-            we fail to start the dashboard.
+        include_dashboard: If true, this will load all dashboard-related modules
+            when starting the API server. Otherwise, it will only
+            start the modules that are not relevant to the dashboard.
+        raise_on_failure: If true, this will raise an exception
+            if we fail to start the API server. Otherwise it will print
+            a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
         temp_dir: The temporary directory used for log files and
@@ -1415,6 +1297,13 @@ def start_dashboard(
         if minimal:
             command.append("--minimal")
 
+        if not include_dashboard:
+            # If dashboard is not included, load modules
+            # that are irrelevant to the dashboard.
+            # TODO(sang): Modules like job or state APIs should be
+            # loaded although dashboard is disabled. Fix it.
+            command.append("--modules-to-load=UsageStatsHead")
+
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_DASHBOARD,
@@ -1448,6 +1337,7 @@ def start_dashboard(
                 if dashboard_returncode is not None
                 else ""
             )
+            # TODO(sang): Change it to the API server.
             err_msg = "Failed to start the dashboard" + returncode_str
             if logdir:
                 dashboard_log = os.path.join(logdir, "dashboard.log")
@@ -1473,24 +1363,16 @@ def start_dashboard(
             else:
                 raise Exception(err_msg)
 
-        if not minimal:
-            logger.info(
-                "View the Ray dashboard at %s%shttp://%s%s%s",
-                colorama.Style.BRIGHT,
-                colorama.Fore.GREEN,
-                dashboard_url,
-                colorama.Fore.RESET,
-                colorama.Style.NORMAL,
-            )
-        else:
+        if minimal:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
             dashboard_url = ""
         return dashboard_url, process_info
     except Exception as e:
-        if require_dashboard:
+        if raise_on_failure:
             raise e from e
         else:
+            # TODO(sang): Change it to the API server.
             logger.error(f"Failed to start the dashboard: {e}")
             logger.exception(e)
             return None, None
@@ -1521,7 +1403,7 @@ def start_gcs_server(
         config: Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port: Port number of the gcs server.
-        metrics_agent_port(int): The port where metrics agent is bound to.
+        metrics_agent_port: The port where metrics agent is bound to.
         node_ip_address: IP Address of a node where gcs server starts.
 
     Returns:
@@ -1601,7 +1483,7 @@ def start_raylet(
         redis_address: The address of the primary Redis server.
         gcs_address: The address of GCS server.
         node_ip_address: The IP address of this node.
-        node_manager_port(int): The port to use for the node manager. If it's
+        node_manager_port: The port to use for the node manager. If it's
             0, a random port will be used.
         raylet_name: The name of the raylet socket to create.
         plasma_store_name: The name of the plasma store socket to connect
@@ -1613,7 +1495,7 @@ def start_raylet(
         storage: The persistent storage URI.
         temp_dir: The path of the temporary directory Ray will use.
         session_dir: The path of this session.
-        resource_dir(str): The path of resource of this session .
+        resource_dir: The path of resource of this session .
         log_dir: The path of the dir where log files are created.
         resource_spec: Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
@@ -1702,6 +1584,7 @@ def start_raylet(
             session_dir,
             log_dir,
             node_ip_address,
+            setup_worker_path,
         )
     else:
         cpp_worker_command = []
@@ -1916,6 +1799,7 @@ def build_cpp_worker_command(
     session_dir: str,
     log_dir: str,
     node_ip_address: str,
+    setup_worker_path: str,
 ):
     """This method assembles the command used to start a CPP worker.
 
@@ -1928,11 +1812,15 @@ def build_cpp_worker_command(
         session_dir: The path of this session.
         log_dir: The path of logs.
         node_ip_address: The ip address for this node.
+        setup_worker_path: The path of the Python file that will set up
+            the environment for the worker process.
     Returns:
         The command string for starting CPP worker.
     """
 
     command = [
+        sys.executable,
+        setup_worker_path,
         DEFAULT_WORKER_EXECUTABLE,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
@@ -2098,7 +1986,7 @@ def start_monitor(
     Args:
         redis_address: The address that the Redis server is listening on.
         gcs_address: The address of GCS server.
-        logs_dir(str): The path to the log directory.
+        logs_dir: The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If

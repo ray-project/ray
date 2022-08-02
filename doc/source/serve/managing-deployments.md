@@ -1,3 +1,5 @@
+(serve-managing-deployments-guide)=
+
 # Managing Deployments
 
 This section should help you:
@@ -55,6 +57,8 @@ All of these options can be specified either in {mod}`@serve.deployment <ray.ser
 
 To update the config options for a running deployment, simply redeploy it with the new options set.
 
+(scaling-out-a-deployment)=
+
 ### Scaling Out
 
 To scale out a deployment to many processes, simply configure the number of replicas.
@@ -74,20 +78,18 @@ func.options(num_replicas=10).deploy()
 func.options(num_replicas=1).deploy()
 ```
 
+(ray-serve-autoscaling)=
+
 #### Autoscaling
 
-Serve also has experimental support for a demand-based replica autoscaler.
+Serve also has the support for a demand-based replica autoscaler.
 It reacts to traffic spikes via observing queue sizes and making scaling decisions.
-To configure it, you can set the `_autoscaling` field in deployment options.
+To configure it, you can set the `autoscaling` field in deployment options.
 
-:::{warning}
-The API is experimental and subject to change. We welcome you to test it out
-and leave us feedback through [Github Issues](https://github.com/ray-project/ray/issues) or our [discussion forum](https://discuss.ray.io/)!
-:::
 
 ```python
 @serve.deployment(
-    _autoscaling_config={
+    autoscaling_config={
         "min_replicas": 1,
         "max_replicas": 5,
         "target_num_ongoing_requests_per_replica": 10,
@@ -134,6 +136,8 @@ following:
 def func(*args):
     return do_something_with_my_gpu()
 ```
+
+(serve-fractional-resources-guide)=
 
 ### Fractional Resources
 
@@ -199,3 +203,6 @@ is set.  In particular, it's also called when new replicas are created in the
 future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
+:::{note}
+The `user_config` and its contents must be JSON-serializable.
+:::

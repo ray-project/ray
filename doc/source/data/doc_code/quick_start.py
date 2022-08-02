@@ -110,12 +110,12 @@ transformed_ds.show()
 @ray.remote
 def consume(data) -> int:
     num_batches = 0
-    for batch in data.iter_batches():
+    for batch in data.iter_batches(batch_size=10):
         num_batches += 1
     return num_batches
 
 ray.get(consume.remote(ds))
-# -> 10
+# -> 15
 # __data_access_end__
 # fmt: on
 
@@ -134,7 +134,7 @@ class Worker:
 workers = [Worker.remote(i) for i in range(4)]
 # -> [Actor(Worker, ...), Actor(Worker, ...), ...]
 
-shards = ds.split(n=4, locality_hints=workers)
+shards = ds.split(n=4)
 # -> [
 #       Dataset(num_blocks=3, num_rows=45,
 #               schema={sepal.length: double, sepal.width: double,

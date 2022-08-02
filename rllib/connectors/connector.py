@@ -38,25 +38,27 @@ class ConnectorContext:
     def __init__(
         self,
         config: AlgorithmConfigDict = None,
-        model_initial_states: List[TensorType] = None,
+        initial_states: List[TensorType] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
         view_requirements: Dict[str, ViewRequirement] = None,
+        is_policy_recurrent: bool = False,
     ):
         """Construct a ConnectorContext instance.
 
         Args:
-            model_initial_states: States that are used for constructing
+            initial_states: States that are used for constructing
                 the initial input dict for RNN models. [] if a model is not recurrent.
             action_space_struct: a policy's action space, in python
                 data format. E.g., python dict instead of DictSpace, python tuple
                 instead of TupleSpace.
         """
-        self.config = config
-        self.initial_states = model_initial_states or []
+        self.config = config or {}
+        self.initial_states = initial_states or []
         self.observation_space = observation_space
         self.action_space = action_space
         self.view_requirements = view_requirements
+        self.is_policy_recurrent = is_policy_recurrent
 
     @staticmethod
     def from_policy(policy: "Policy") -> "ConnectorContext":
@@ -69,11 +71,12 @@ class ConnectorContext:
             A ConnectorContext instance.
         """
         return ConnectorContext(
-            policy.config,
-            policy.get_initial_state(),
-            policy.observation_space,
-            policy.action_space,
-            policy.view_requirements,
+            config=policy.config,
+            initial_states=policy.get_initial_state(),
+            observation_space=policy.observation_space,
+            action_space=policy.action_space,
+            view_requirements=policy.view_requirements,
+            is_policy_recurrent=policy.is_recurrent(),
         )
 
 
@@ -92,10 +95,10 @@ class Connector(abc.ABC):
 
     def __init__(self, ctx: ConnectorContext):
         # This gets flipped to False for inference.
-        self.is_training = True
+        self._is_training = True
 
     def is_training(self, is_training: bool):
-        self.is_training = is_training
+        self._is_training = is_training
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
@@ -325,6 +328,8 @@ class ConnectorPipeline(abc.ABC):
             raise ValueError(f"Can not find connector {name}")
         del self.connectors[idx]
 
+        logger.info(f"Removed connector {name} from {self.__class__.__name__}.")
+
     def insert_before(self, name: str, connector: Connector):
         """Insert a new connector before connector <name>
 
@@ -340,6 +345,11 @@ class ConnectorPipeline(abc.ABC):
         if idx < 0:
             raise ValueError(f"Can not find connector {name}")
         self.connectors.insert(idx, connector)
+
+        logger.info(
+            f"Inserted {connector.__class__.__name__} before {name} "
+            f"to {self.__class__.__name__}."
+        )
 
     def insert_after(self, name: str, connector: Connector):
         """Insert a new connector after connector <name>
@@ -357,6 +367,11 @@ class ConnectorPipeline(abc.ABC):
             raise ValueError(f"Can not find connector {name}")
         self.connectors.insert(idx + 1, connector)
 
+        logger.info(
+            f"Inserted {connector.__class__.__name__} after {name} "
+            f"to {self.__class__.__name__}."
+        )
+
     def prepend(self, connector: Connector):
         """Append a new connector at the beginning of a connector pipeline.
 
@@ -365,6 +380,11 @@ class ConnectorPipeline(abc.ABC):
         """
         self.connectors.insert(0, connector)
 
+        logger.info(
+            f"Added {connector.__class__.__name__} to the beginning of "
+            f"{self.__class__.__name__}."
+        )
+
     def append(self, connector: Connector):
         """Append a new connector at the end of a connector pipeline.
 
@@ -372,6 +392,11 @@ class ConnectorPipeline(abc.ABC):
             connector: a new connector to be appended.
         """
         self.connectors.append(connector)
+
+        logger.info(
+            f"Added {connector.__class__.__name__} to the end of "
+            f"{self.__class__.__name__}."
+        )
 
     def __str__(self, indentation: int = 0):
         return "\n".join(

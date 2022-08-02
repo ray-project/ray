@@ -240,7 +240,7 @@ def _get_conda_dict_with_ray_inserted(
     ray_pip = current_ray_pip_specifier(logger=logger)
     if ray_pip:
         extra_pip_dependencies = [ray_pip, "ray[default]"]
-    elif runtime_env.get_extension("_inject_current_ray") == "True":
+    elif runtime_env.get_extension("_inject_current_ray"):
         extra_pip_dependencies = _resolve_install_from_source_ray_dependencies()
     else:
         extra_pip_dependencies = []
@@ -315,6 +315,13 @@ class CondaPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
+        if uri is None:
+            # The "conda" field is the name of an existing conda env, so no
+            # need to create one.
+            # TODO(architkulkarni): Try "conda activate" here to see if the
+            # env exists, and raise an exception if it doesn't.
+            return 0
+
         # Currently create method is still a sync process, to avoid blocking
         # the loop, need to run this function in another thread.
         # TODO(Catch-Bull): Refactor method create into an async process, and
@@ -342,7 +349,7 @@ class CondaPlugin(RuntimeEnvPlugin):
                 finally:
                     os.remove(conda_yaml_file)
 
-                if runtime_env.get_extension("_inject_current_ray") == "True":
+                if runtime_env.get_extension("_inject_current_ray"):
                     _inject_ray_to_conda_site(conda_path=conda_env_name, logger=logger)
             logger.info(f"Finished creating conda environment at {conda_env_name}")
             return get_directory_size_bytes(conda_env_name)

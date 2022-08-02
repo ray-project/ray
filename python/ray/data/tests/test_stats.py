@@ -49,6 +49,7 @@ Stage N map: N/N blocks executed in T
 Dataset iterator time breakdown:
 * In ray.wait(): T
 * In ray.get(): T
+* In next_batch(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -160,7 +161,7 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
 
 def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(100, parallelism=10).map(lambda x: x + 1)
-    dses = ds.split_at_indices([50])
+    dses = ds.split_at_indices([49])
     dses = [ds.map(lambda x: x + 1) for ds in dses]
     for ds_ in dses:
         stats = canonicalize(ds_.stats())
@@ -174,9 +175,13 @@ def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Stage N split: N/N blocks split from parent in T
+Stage N split: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
 * Output num rows: N min, N max, N mean, N total
 * Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
 
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -196,6 +201,8 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
     ds = ds.map_batches(lambda x: x)
     pipe = ds.repeat(5)
     pipe = pipe.map(lambda x: x)
+    stats = canonicalize(pipe.stats())
+    assert "No stats available" in stats, stats
     for batch in pipe.iter_batches():
         pass
     stats = canonicalize(pipe.stats())
@@ -247,6 +254,7 @@ DatasetPipeline iterator time breakdown:
 * Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
+* In next_batch(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T
@@ -316,6 +324,7 @@ DatasetPipeline iterator time breakdown:
 * Waiting for next dataset: T
 * In ray.wait(): T
 * In ray.get(): T
+* In next_batch(): T
 * In format_batch(): T
 * In user code: T
 * Total time: T

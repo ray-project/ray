@@ -187,7 +187,8 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
         ) : actor.state === ActorState.Infeasible ? (
           <span className={classes.infeasible}>
             {actor.actorClass} cannot be created because the Ray cluster cannot
-            satisfy its resource requirements.
+            satisfy its resource requirements or its runtime_env could not be
+            created.
           </span>
         ) : (
           <span className={classes.pendingResources}>

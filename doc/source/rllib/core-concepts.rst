@@ -32,7 +32,7 @@ An environment in RL is the agent's world, it is a simulation of the problem to 
 An RLlib environment consists of: 
 
 1. all possible actions (**action space**)
-2. a complete omniscient description of the environment, nothing hidden (**state space**)
+2. a complete description of the environment, nothing hidden (**state space**)
 3. an observation by the agent of certain parts of the state (**observation space**)
 4. **reward**, which is the only feedback the agent receives per action.
 
@@ -85,13 +85,13 @@ which implements the proximal policy optimization algorithm in RLlib.
         from ray import tune
 
         # Configure.
-        from ray.rllib.algorithms import PPOConfig
-        config = PPOConfig().environment("CartPole-v0").training(train_batch_size=4000)
+        from ray.rllib.algorithms.ppo import PPO, PPOConfig
+        config = PPOConfig().environment(env="CartPole-v0").training(train_batch_size=4000)
 
         # Train via Ray Tune.
         # Note that Ray Tune does not yet support AlgorithmConfig objects, hence
         # we need to convert back to old-style config dicts.
-        tune.run("PPO", config=config.to_dict())
+        tune.Tuner(PPO, param_space=config.to_dict()).fit()
 
 
 .. tabbed:: RLlib Command Line

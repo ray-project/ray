@@ -166,6 +166,7 @@ class VectorEnv:
         num_envs: int = 1,
         remote_envs: bool = False,
         remote_env_batch_wait_ms: int = 0,
+        restart_failed_sub_environments: bool = False,
     ) -> "BaseEnv":
         """Converts an RLlib MultiAgentEnv into a BaseEnv object.
 
@@ -192,7 +193,6 @@ class VectorEnv:
         Returns:
             The resulting BaseEnv object.
         """
-        del make_env, num_envs, remote_envs, remote_env_batch_wait_ms
         env = VectorEnvWrapper(self)
         return env
 
@@ -227,10 +227,9 @@ class _VectorizedGymEnv(VectorEnv):
             observation_space: The observation space. If None, use
                 existing_envs[0]'s observation space.
             restart_failed_sub_environments: If True and any sub-environment (within
-                a vectorized env) throws any error during env stepping, the
-                Sampler will try to restart the faulty sub-environment. This is done
-                without disturbing the other (still intact) sub-environment and without
-                the RolloutWorker crashing.
+                a vectorized env) throws any error during env stepping, we will try to
+                restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environments.
         """
         self.envs = existing_envs
         self.make_env = make_env
@@ -249,13 +248,31 @@ class _VectorizedGymEnv(VectorEnv):
 
     @override(VectorEnv)
     def vector_reset(self):
-        return [e.reset() for e in self.envs]
+        # Use reset_at(index) to restart and retry until
+        # we successfully create a new env.
+        resetted_obs = []
+        for i in range(len(self.envs)):
+            while True:
+                obs = self.reset_at(i)
+                if not isinstance(obs, Exception):
+                    break
+            resetted_obs.append(obs)
+        return resetted_obs
 
     @override(VectorEnv)
     def reset_at(self, index: Optional[int] = None) -> EnvObsType:
         if index is None:
             index = 0
-        return self.envs[index].reset()
+        try:
+            obs = self.envs[index].reset()
+        except Exception as e:
+            if self.restart_failed_sub_environments:
+                logger.exception(e.args[0])
+                self.restart_at(index)
+                obs = e
+            else:
+                raise e
+        return obs
 
     @override(VectorEnv)
     def restart_at(self, index: Optional[int] = None) -> None:
@@ -271,8 +288,11 @@ class _VectorizedGymEnv(VectorEnv):
                     "Trying to close old and replaced sub-environment (at vector "
                     f"index={index}), but closing resulted in error:\n{e}"
                 )
+
         # Re-create the sub-env at the new index.
+        logger.warning(f"Trying to restart sub-environment at index {index}.")
         self.envs[index] = self.make_env(index)
+        logger.warning(f"Sub-environment at index {index} restarted successfully.")
 
     @override(VectorEnv)
     def vector_step(self, actions):
@@ -380,11 +400,9 @@ class VectorEnvWrapper(BaseEnv):
         from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 
         assert env_id is None or isinstance(env_id, int)
-        return {
-            env_id
-            if env_id is not None
-            else 0: {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
-        }
+        env_id = env_id if env_id is not None else 0
+        obs = self.vector_env.reset_at(env_id)
+        return {env_id: obs if isinstance(obs, Exception) else {_DUMMY_AGENT_ID: obs}}
 
     @override(BaseEnv)
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:

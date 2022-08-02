@@ -13,6 +13,8 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. image:: images/rllib-envs.svg
 
+.. _configuring-environments:
+
 Configuring Environments
 ------------------------
 
@@ -524,8 +526,6 @@ You can configure any Algorithm to launch a policy server with the following con
         ),
         # Use the existing algorithm process to run the server.
         "num_workers": 0,
-        # Disable OPE, since the rollouts are coming from online clients.
-        "off_policy_estimation_methods": {},
     }
 
 Clients can then connect in either *local* or *remote* inference mode.

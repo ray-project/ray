@@ -16,11 +16,11 @@
 
 #include <cctype>
 #include <csignal>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 
 #include "absl/time/clock.h"
-#include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -345,7 +345,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       /*get_used_object_store_memory*/
       [this]() {
         if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
-          return local_object_manager_.GetPinnedBytes();
+          // Get the current bytes used by local primary object copies.  This
+          // is used to help node scale down decisions. A node can only be
+          // safely drained when this function reports zero.
+          int64_t bytes_used = local_object_manager_.GetPrimaryBytes();
+          // Report nonzero if we have objects spilled to the local filesystem.
+          if (bytes_used == 0) {
+            bytes_used = local_object_manager_.HasLocallySpilledObjects();
+          }
+          return bytes_used;
         } else {
           return object_manager_.GetUsedMemory();
         }
@@ -1682,6 +1690,9 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
                       TaskID::Nil(),
                       /*ray_get=*/false,
                       /*mark_worker_blocked*/ false);
+  // De-duplicate the object IDs.
+  absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
+  object_ids.assign(object_id_set.begin(), object_id_set.end());
   wait_manager_.Wait(
       object_ids,
       -1,

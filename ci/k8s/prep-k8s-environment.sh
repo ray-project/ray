@@ -16,6 +16,12 @@ chmod +x kubectl
 mv ./kubectl /usr/bin/kubectl
 kubectl version --client
 
+curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
+mv ./kustomize /usr/bin/kustomize
+
+# Delete dangling clusters
+kind delete clusters --all
+
 # Create the cluster
 time kind create cluster --wait 120s --config ./ci/k8s/kind.config.yaml
 docker ps

@@ -61,19 +61,26 @@ class ZOOptSearch(Searcher):
 
         zoopt_search = ZOOptSearch(
             algo="Asracos",  # only support Asracos currently
-            budget=20,  # must match `num_samples` in `tune.run()`.
+            budget=20,  # must match `num_samples` in `tune.TuneConfig()`.
             dim_dict=dim_dict,
             metric="mean_loss",
             mode="min",
             **zoopt_search_config
         )
 
-        tune.run(my_objective,
-            config=config,
-            search_alg=zoopt_search,
-            name="zoopt_search",
-            num_samples=20,
-            stop={"timesteps_total": 10})
+        tuner = tune.Tuner(
+            my_objective,
+            tune_config=tune.TuneConfig(
+                search_alg=zoopt_search,
+                num_samples=20
+            ),
+            run_config=air.RunConfig(
+                name="zoopt_search",
+                stop={"timesteps_total": 10}
+            ),
+            param_space=config
+        )
+        tuner.fit()
 
     If you would like to pass the search space manually, the code would
     look like this:
@@ -100,19 +107,25 @@ class ZOOptSearch(Searcher):
 
         zoopt_search = ZOOptSearch(
             algo="Asracos",  # only support Asracos currently
-            budget=20,  # must match `num_samples` in `tune.run()`.
+            budget=20,  # must match `num_samples` in `tune.TuneConfig()`.
             dim_dict=dim_dict,
             metric="mean_loss",
             mode="min",
             **zoopt_search_config
         )
 
-        tune.run(my_objective,
-            config=config,
-            search_alg=zoopt_search,
-            name="zoopt_search",
-            num_samples=20,
-            stop={"timesteps_total": 10})
+        tuner = tune.Tuner(
+            my_objective,
+            tune_config=tune.TuneConfig(
+                search_alg=zoopt_search,
+                num_samples=20
+            ),
+            run_config=air.RunConfig(
+                name="zoopt_search",
+                stop={"timesteps_total": 10}
+            ),
+        )
+        tuner.fit()
 
     Parameters:
         algo: To specify an algorithm in zoopt you want to use.

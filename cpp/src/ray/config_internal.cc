@@ -16,6 +16,7 @@
 
 #include <boost/dll/runtime_symbol_info.hpp>
 #include <charconv>
+#include <filesystem>
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
@@ -75,6 +76,13 @@ ABSL_FLAG(std::string,
           "",
           "The default actor lifetime type, `detached` or `non_detached`.");
 
+ABSL_FLAG(std::string, ray_runtime_env, "", "The serialized runtime env.");
+
+ABSL_FLAG(int,
+          ray_runtime_env_hash,
+          -1,
+          "The computed hash of the runtime env for this worker.");
+
 namespace ray {
 namespace internal {
 
@@ -110,6 +118,9 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   }
   if (config.default_actor_lifetime == ActorLifetime::DETACHED) {
     default_actor_lifetime = rpc::JobConfig_ActorLifetime_DETACHED;
+  }
+  if (config.runtime_env) {
+    runtime_env = config.runtime_env;
   }
 
   if (argc != 0 && argv != nullptr) {
@@ -158,6 +169,10 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       default_actor_lifetime =
           ParseDefaultActorLifetimeType(FLAGS_ray_default_actor_lifetime.CurrentValue());
     }
+    if (!FLAGS_ray_runtime_env.CurrentValue().empty()) {
+      runtime_env = RuntimeEnv::Deserialize(FLAGS_ray_runtime_env.CurrentValue());
+    }
+    runtime_env_hash = absl::GetFlag<int>(FLAGS_ray_runtime_env_hash);
   }
   worker_type = config.is_worker_ ? WorkerType::WORKER : WorkerType::DRIVER;
   if (worker_type == WorkerType::DRIVER && run_mode == RunMode::CLUSTER) {
@@ -181,10 +196,14 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       // driver.
       std::vector<std::string> absolute_path;
       for (const auto &path : code_search_path) {
-        absolute_path.emplace_back(boost::filesystem::absolute(path).string());
+        absolute_path.emplace_back(std::filesystem::absolute(path).string());
       }
       code_search_path = absolute_path;
     }
+  }
+  if (worker_type == WorkerType::DRIVER) {
+    ray_namespace =
+        config.ray_namespace.empty() ? GenerateUUIDV4() : config.ray_namespace;
   }
 };
 
@@ -195,6 +214,15 @@ void ConfigInternal::SetBootstrapAddress(std::string_view address) {
   auto ret = std::from_chars(
       address.data() + pos + 1, address.data() + address.size(), bootstrap_port);
   RAY_CHECK(ret.ec == std::errc());
+}
+
+void ConfigInternal::UpdateSessionDir(const std::string dir) {
+  if (session_dir.empty()) {
+    session_dir = dir;
+  }
+  if (logs_dir.empty()) {
+    logs_dir = session_dir + "/logs";
+  }
 }
 }  // namespace internal
 }  // namespace ray

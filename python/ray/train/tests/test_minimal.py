@@ -5,14 +5,18 @@ import pytest
 import ray
 import ray.train as train
 from ray.train import Trainer
-from ray.train.backend import BackendConfig, Backend
 from ray.train.callbacks import TrainingCallback
+from ray.air import session
+from ray.air.checkpoint import Checkpoint
 from ray.train._internal.worker_group import WorkerGroup
+from ray.train.backend import Backend, BackendConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import ScalingConfig
 
 
 @pytest.fixture
-def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2)
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -40,7 +44,38 @@ class TestCallback(TrainingCallback):
         self.result_list.append(results)
 
 
-def test_run(ray_start_2_cpus):
+def test_run(ray_start_4_cpus):
+    """Tests that Train can be run without any specific backends."""
+    num_workers = 2
+    key = "value"
+    value = 1
+    config = TestConfig()
+
+    def train_func():
+        checkpoint = session.get_checkpoint()
+        session.report(metrics=checkpoint.to_dict(), checkpoint=checkpoint)
+        return checkpoint.to_dict()[key]
+
+    checkpoint = Checkpoint.from_dict(
+        {
+            # this would be set during checkpoint saving
+            "_current_checkpoint_id": 1,
+            key: value,
+        }
+    )
+
+    trainer = DataParallelTrainer(
+        train_func,
+        backend_config=config,
+        resume_from_checkpoint=checkpoint,
+        scaling_config=ScalingConfig(num_workers=num_workers),
+    )
+    results = trainer.fit()
+
+    assert results.checkpoint.to_dict()[key] == checkpoint.to_dict()[key]
+
+
+def test_run_legacy(ray_start_4_cpus):
     """Tests that Train can be run without any specific backends."""
     num_workers = 2
     key = "value"
@@ -89,7 +124,8 @@ def test_failure():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
