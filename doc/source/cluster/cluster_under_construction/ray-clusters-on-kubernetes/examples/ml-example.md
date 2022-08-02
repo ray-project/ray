@@ -12,7 +12,7 @@ In this guide, we show you how to run a sample Ray machine learning
 workload on Kubernetes infrastructure.
 
 We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
-To learn more about, check out that library's {ref}`documentation<xgboost-ray>`.
+To learn more about XGBoost-Ray, check out that library's {ref}`documentation<xgboost-ray>`.
 
 ## Kubernetes infrastructure setup
 
