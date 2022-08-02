@@ -168,6 +168,7 @@ class DatasetStats:
         self.time_total_s: float = 0
         self.needs_stats_actor = needs_stats_actor
         self.stats_uuid = stats_uuid
+        self._stats_actor = _get_or_create_stats_actor()
 
         # Iteration stats, filled out if the user iterates over the dataset.
         self.iter_wait_s: Timer = Timer()
@@ -179,7 +180,7 @@ class DatasetStats:
 
     @property
     def stats_actor(self):
-        return _get_or_create_stats_actor()
+        return self._stats_actor
 
     def child_builder(self, name: str) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
