@@ -15,6 +15,8 @@ post_build_cmds:
   - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   # TODO(jungong): remove once nightly image gets upgraded.
   - pip install -U pybullet==3.2.0
+  # TODO(artur): remove once torch is bumped everywhere
+  - pip install -U torch==1.12.0+cu102
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   # Clone the rl-experiments repo for offline-RL files.
   - git clone https://github.com/ray-project/rl-experiments.git
