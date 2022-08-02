@@ -76,13 +76,13 @@ scaling_config = ScalingConfig(
 # __scaling_gpu_start__
 scaling_config = ScalingConfig(
     num_workers=4,
-    resources_per_worker={"GPU": 1},
+    use_gpu=True,
 )
 # __scaling_gpu_end__
 
 # __scaling_gpumulti_start__
 scaling_config = ScalingConfig(
     num_workers=16,
-    resources_per_worker={"GPU": 1},
+    use_gpu=True,
 )
 # __scaling_gpumulti_end__
