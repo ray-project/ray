@@ -20,7 +20,7 @@ import requests
     indirect=True,
 )
 def test_receive_event_by_http(workflow_start_regular_shared_serve):
-    """This test has a statically declared event workflow step,
+    """This test has a statically declared event workflow task,
     receiving one externally posted message to a Ray Serve endpoint.
     """
 
@@ -79,8 +79,8 @@ def test_dynamic_event_by_http(workflow_start_regular_shared_serve):
 
     @ray.remote
     def return_dynamically_generated_event():
-        event_step = workflow.wait_for_event(HTTPListener, event_key="event_key")
-        return workflow.continuation(event_step)
+        event_task = workflow.wait_for_event(HTTPListener, event_key="event_key")
+        return workflow.continuation(event_task)
 
     workflow.run_async(
         return_dynamically_generated_event.bind(),

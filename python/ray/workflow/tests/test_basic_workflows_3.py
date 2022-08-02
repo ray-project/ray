@@ -43,7 +43,7 @@ def test_dedupe_indirect(workflow_start_regular_shared, tmp_path):
     def join(*a):
         return counter.read_text()
 
-    # Here a is passed to two steps and we need to ensure
+    # Here a is passed to two tasks and we need to ensure
     # it's only executed once
     a = incr.bind()
     i1 = identity.bind(a)

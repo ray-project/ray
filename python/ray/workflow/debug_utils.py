@@ -4,7 +4,7 @@ from ray.dag import DAGNode, DAGInputData
 
 from ray.workflow.common import asyncio_run
 from ray.workflow.workflow_executor import WorkflowExecutor
-from ray.workflow.workflow_context import workflow_step_context, WorkflowStepContext
+from ray.workflow.workflow_context import workflow_task_context, WorkflowTaskContext
 from ray.workflow.workflow_storage import get_workflow_storage
 
 
@@ -13,8 +13,8 @@ def execute_workflow_local(dag: DAGNode, workflow_id: str, *args, **kwargs):
     from ray.workflow.workflow_state_from_dag import workflow_state_from_dag
 
     job_id = ray.get_runtime_context().job_id.hex()
-    context = WorkflowStepContext(workflow_id=workflow_id)
-    with workflow_step_context(context):
+    context = WorkflowTaskContext(workflow_id=workflow_id)
+    with workflow_task_context(context):
         wf_store = get_workflow_storage()
         state = workflow_state_from_dag(
             dag, DAGInputData(*args, **kwargs), workflow_id=workflow_id
@@ -30,8 +30,8 @@ def resume_workflow_local(workflow_id: str):
     from ray.workflow.workflow_state_from_storage import workflow_state_from_storage
 
     job_id = ray.get_runtime_context().job_id.hex()
-    context = WorkflowStepContext(workflow_id=workflow_id)
-    with workflow_step_context(context):
+    context = WorkflowTaskContext(workflow_id=workflow_id)
+    with workflow_task_context(context):
         wf_store = get_workflow_storage()
         state = workflow_state_from_storage(workflow_id, None)
         executor = WorkflowExecutor(state)

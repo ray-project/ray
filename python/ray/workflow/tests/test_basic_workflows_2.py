@@ -15,14 +15,14 @@ from ray.tests.conftest import *  # noqa
     ],
     indirect=True,
 )
-def test_step_resources(workflow_start_regular, tmp_path):
+def test_task_resources(workflow_start_regular, tmp_path):
     lock_path = str(tmp_path / "lock")
     # We use signal actor here because we can't guarantee the order of tasks
     # sent from worker to raylet.
     signal_actor = SignalActor.remote()
 
     @ray.remote
-    def step_run():
+    def task_run():
         ray.wait([signal_actor.send.remote()])
         with FileLock(lock_path):
             return None
@@ -33,7 +33,7 @@ def test_step_resources(workflow_start_regular, tmp_path):
 
     lock = FileLock(lock_path)
     lock.acquire()
-    ret = workflow.run_async(step_run.options(num_cpus=2).bind())
+    ret = workflow.run_async(task_run.options(num_cpus=2).bind())
     ray.wait([signal_actor.wait.remote()])
     obj = remote_run.remote()
     with pytest.raises(ray.exceptions.GetTimeoutError):
@@ -210,12 +210,12 @@ def test_get_non_exist_output(workflow_start_regular, tmp_path):
         ray.get(non_exist)
 
 
-def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
+def test_get_named_task_output_finished(workflow_start_regular, tmp_path):
     @ray.remote
     def double(v):
         return 2 * v
 
-    # Get the result from named step after workflow finished
+    # Get the result from named task after workflow finished
     assert 4 == workflow.run(
         double.options(**workflow.options(name="outer")).bind(
             double.options(**workflow.options(name="inner")).bind(1)
@@ -226,7 +226,7 @@ def test_get_named_step_output_finished(workflow_start_regular, tmp_path):
     assert workflow.get_output("double", name="outer") == 4
 
 
-def test_get_named_step_output_running(workflow_start_regular, tmp_path):
+def test_get_named_task_output_running(workflow_start_regular, tmp_path):
     @ray.remote
     def double(v, lock=None):
         if lock is not None:
@@ -235,7 +235,7 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
         else:
             return 2 * v
 
-    # Get the result from named step after workflow before it's finished
+    # Get the result from named task after workflow before it's finished
     lock_path = str(tmp_path / "lock")
     lock = FileLock(lock_path)
     lock.acquire()
@@ -270,14 +270,14 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     assert [2, 4] == ray.get([inner, outer])
 
 
-def test_get_named_step_output_error(workflow_start_regular, tmp_path):
+def test_get_named_task_output_error(workflow_start_regular, tmp_path):
     @ray.remote
     def double(v, error):
         if error:
             raise Exception()
         return v + v
 
-    # Force it to fail for the outer step
+    # Force it to fail for the outer task
     with pytest.raises(Exception):
         workflow.run(
             double.options(**workflow.options(name="outer")).bind(
@@ -286,13 +286,13 @@ def test_get_named_step_output_error(workflow_start_regular, tmp_path):
             workflow_id="double",
         )
 
-    # For the inner step, it should have already been executed.
+    # For the inner task, it should have already been executed.
     assert 2 == workflow.get_output("double", name="inner")
     with pytest.raises(Exception):
         workflow.get_output("double", name="outer")
 
 
-def test_get_named_step_default(workflow_start_regular, tmp_path):
+def test_get_named_task_default(workflow_start_regular, tmp_path):
     @ray.remote
     def factorial(n, r=1):
         if n == 1:
@@ -303,18 +303,18 @@ def test_get_named_step_default(workflow_start_regular, tmp_path):
 
     assert math.factorial(5) == workflow.run(factorial.bind(5), workflow_id="factorial")
     for i in range(5):
-        step_name = (
+        task_name = (
             "python.ray.workflow.tests.test_basic_workflows_2."
-            "test_get_named_step_default.locals.factorial"
+            "test_get_named_task_default.locals.factorial"
         )
 
         if i != 0:
-            step_name += "_" + str(i)
+            task_name += "_" + str(i)
         # All outputs will be 120
-        assert math.factorial(5) == workflow.get_output("factorial", name=step_name)
+        assert math.factorial(5) == workflow.get_output("factorial", name=task_name)
 
 
-def test_get_named_step_duplicate(workflow_start_regular):
+def test_get_named_task_duplicate(workflow_start_regular):
     @workflow.options(name="f")
     @ray.remote
     def f(n, dep):

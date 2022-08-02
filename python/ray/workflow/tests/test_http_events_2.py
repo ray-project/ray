@@ -42,13 +42,13 @@ def test_multiple_events_by_http(workflow_start_regular_shared_serve):
         return resp
 
     @ray.remote
-    def trivial_step(arg1, arg2):
+    def trivial_task(arg1, arg2):
         return f"{arg1[1]} {arg2[1]}"
 
     event1_promise = workflow.wait_for_event(HTTPListener, event_key="e1")
     event2_promise = workflow.wait_for_event(HTTPListener, event_key="e2")
     workflow.run_async(
-        trivial_step.bind(event1_promise, event2_promise),
+        trivial_task.bind(event1_promise, event2_promise),
         workflow_id="workflow_test_multiple_event_by_http",
     )
 
