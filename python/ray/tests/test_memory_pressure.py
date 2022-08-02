@@ -111,46 +111,5 @@ def test_memory_pressure_kill_newest_worker(shutdown_only):
     assert "leaker1" in actors
 
 
-def test_memory_pressure_above_single_actor(shutdown_only):
-    memory_usage_threshold_fraction = 0.8
-    memory_monitor_interval_ms = 200
-
-    ray.init(
-        num_cpus=10,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
-            "memory_monitor_interval_ms": memory_monitor_interval_ms,
-        },
-    )
-
-    bytes_needed = get_additional_bytes_to_reach_memory_usage_pct(
-        memory_usage_threshold_fraction
-    )
-
-    # Ensure a single task's memory usage does not trigger the memory monitor,
-    # which will kill it
-    bytes_used_per_task = bytes_needed * 0.9
-
-    start = time.time()
-    num_tasks = 5
-    result_refs = []
-    result_refs.append(
-        no_retry.remote(bytes_used_per_task, 5, memory_monitor_interval_ms / 1000)
-    )
-    result_refs.extend(
-        [
-            inf_retry.remote(bytes_used_per_task, 5, memory_monitor_interval_ms / 1000)
-            for _ in range(num_tasks - 1)
-        ]
-    )
-
-    results = ray.get(result_refs)
-
-    end = time.time()
-
-    print(f"time taken {end - start}, time per remote call {results}")
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
