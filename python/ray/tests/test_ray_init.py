@@ -8,7 +8,7 @@ import grpc
 import pytest
 
 import ray
-from ray._private.ray_constants import EXTERNAL_RAY_DASHBOARD_URL
+from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL
 import ray._private.services
 from ray._private.test_utils import run_string_as_driver
 from ray.client_builder import ClientContext
@@ -371,21 +371,21 @@ def test_hosted_external_dashboard_url(shutdown_only):
     """
     Test setting external dashboard URL through environment variable.
     """
-    orig_external_dashboard_url = os.environ.get(EXTERNAL_RAY_DASHBOARD_URL)
+    orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
 
-    os.environ[EXTERNAL_RAY_DASHBOARD_URL] = "https://external_dashboard_url"
+    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "https://external_dashboard_url"
     info = ray.init()
     assert info.dashboard_url == "https://external_dashboard_url"
     assert info.address_info["webui_url"] == "https://external_dashboard_url"
     ray.shutdown()
 
-    os.environ.pop(EXTERNAL_RAY_DASHBOARD_URL)
+    os.environ.pop(RAY_OVERRIDE_DASHBOARD_URL)
     info = ray.init()
     assert info.dashboard_url.startswith("127.0.0.1")
     assert info.address_info["webui_url"].startswith("127.0.0.1")
 
     if orig_external_dashboard_url:
-        os.environ[EXTERNAL_RAY_DASHBOARD_URL] = orig_external_dashboard_url
+        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
 
 
 if __name__ == "__main__":
