@@ -15,7 +15,7 @@ from ray.workflow import workflow_storage
 from ray.workflow.common import (
     WorkflowStatus,
     WorkflowExecutionMetadata,
-    StepType,
+    TaskType,
     TaskID,
     WorkflowRef,
     CheckpointMode,
@@ -25,62 +25,62 @@ from ray.workflow.workflow_state_from_dag import workflow_state_from_dag
 
 if TYPE_CHECKING:
     from ray.workflow.common import (
-        WorkflowStepRuntimeOptions,
+        WorkflowTaskRuntimeOptions,
     )
-    from ray.workflow.workflow_context import WorkflowStepContext
+    from ray.workflow.workflow_context import WorkflowTaskContext
 
 
 logger = logging.getLogger(__name__)
 
 
-def get_step_executor(step_options: "WorkflowStepRuntimeOptions"):
-    if step_options.step_type == StepType.FUNCTION:
+def get_task_executor(task_options: "WorkflowTaskRuntimeOptions"):
+    if task_options.task_type == TaskType.FUNCTION:
         # prevent automatic lineage reconstruction
-        step_options.ray_options["max_retries"] = 0
+        task_options.ray_options["max_retries"] = 0
         # prevent retrying exception by Ray
-        step_options.ray_options["retry_exceptions"] = False
-        executor = _workflow_step_executor_remote.options(
-            **step_options.ray_options
+        task_options.ray_options["retry_exceptions"] = False
+        executor = _workflow_task_executor_remote.options(
+            **task_options.ray_options
         ).remote
     else:
-        raise ValueError(f"Invalid step type {step_options.step_type}")
+        raise ValueError(f"Invalid task type {task_options.task_type}")
     return executor
 
 
-def _workflow_step_executor(
+def _workflow_task_executor(
     func: Callable,
-    context: "WorkflowStepContext",
+    context: "WorkflowTaskContext",
     task_id: "TaskID",
     baked_inputs: "_BakedWorkflowInputs",
-    runtime_options: "WorkflowStepRuntimeOptions",
+    runtime_options: "WorkflowTaskRuntimeOptions",
 ) -> Tuple[Any, Any]:
-    """Executor function for workflow step.
+    """Executor function for workflow task.
 
     Args:
-        task_id: ID of the step.
-        func: The workflow step function.
-        baked_inputs: The processed inputs for the step.
-        context: Workflow step context. Used to access correct storage etc.
-        runtime_options: Parameters for workflow step execution.
+        task_id: ID of the task.
+        func: The workflow task function.
+        baked_inputs: The processed inputs for the task.
+        context: Workflow task context. Used to access correct storage etc.
+        runtime_options: Parameters for workflow task execution.
 
     Returns:
-        Workflow step output.
+        Workflow task output.
     """
-    with workflow_context.workflow_step_context(context):
+    with workflow_context.workflow_task_context(context):
         store = workflow_storage.get_workflow_storage()
         # Part 1: resolve inputs
         args, kwargs = baked_inputs.resolve(store)
 
-        # Part 2: execute the step
+        # Part 2: execute the task
         try:
-            store.save_step_prerun_metadata(task_id, {"start_time": time.time()})
+            store.save_task_prerun_metadata(task_id, {"start_time": time.time()})
             with workflow_context.workflow_execution():
                 logger.info(f"{get_task_status_info(WorkflowStatus.RUNNING)}")
                 output = func(*args, **kwargs)
-            store.save_step_postrun_metadata(task_id, {"end_time": time.time()})
+            store.save_task_postrun_metadata(task_id, {"end_time": time.time()})
         except Exception as e:
             # Always checkpoint the exception.
-            store.save_step_output(task_id, None, exception=e)
+            store.save_task_output(task_id, None, exception=e)
             raise e
 
         if isinstance(output, DAGNode):
@@ -97,30 +97,30 @@ def _workflow_step_executor(
             if isinstance(output, WorkflowExecutionState):
                 store.save_workflow_execution_state(task_id, output)
             else:
-                store.save_step_output(task_id, output, exception=None)
+                store.save_task_output(task_id, output, exception=None)
         return execution_metadata, output
 
 
 @ray.remote(num_returns=2)
-def _workflow_step_executor_remote(
+def _workflow_task_executor_remote(
     func: Callable,
-    context: "WorkflowStepContext",
+    context: "WorkflowTaskContext",
     job_id: str,
     task_id: "TaskID",
     baked_inputs: "_BakedWorkflowInputs",
-    runtime_options: "WorkflowStepRuntimeOptions",
+    runtime_options: "WorkflowTaskRuntimeOptions",
 ) -> Any:
-    """The remote version of '_workflow_step_executor'."""
+    """The remote version of '_workflow_task_executor'."""
     with workflow_context.workflow_logging_context(job_id):
-        return _workflow_step_executor(
+        return _workflow_task_executor(
             func, context, task_id, baked_inputs, runtime_options
         )
 
 
 @dataclass
 class _BakedWorkflowInputs:
-    """This class stores pre-processed inputs for workflow step execution.
-    Especially, all input workflows to the workflow step will be scheduled,
+    """This class stores pre-processed inputs for workflow task execution.
+    Especially, all input workflows to the workflow task will be scheduled,
     and their outputs (ObjectRefs) replace the original workflows."""
 
     args: "ObjectRef"
@@ -129,7 +129,7 @@ class _BakedWorkflowInputs:
     def resolve(self, store: workflow_storage.WorkflowStorage) -> Tuple[List, Dict]:
         """
         This function resolves the inputs for the code inside
-        a workflow step (works on the callee side). For outputs from other
+        a workflow task (works on the callee side). For outputs from other
         workflows, we resolve them into object instances inplace.
 
         For each ObjectRef argument, the function returns both the ObjectRef
@@ -146,7 +146,7 @@ class _BakedWorkflowInputs:
         workflow_ref_mapping = []
         for r in self.workflow_refs:
             if r.ref is None:
-                workflow_ref_mapping.append(store.load_step_output(r.task_id))
+                workflow_ref_mapping.append(store.load_task_output(r.task_id))
             else:
                 workflow_ref_mapping.append(r.ref)
 
