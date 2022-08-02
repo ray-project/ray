@@ -141,7 +141,6 @@ def test_async_actor_task_retries(ray_start_regular):
     assert ray.get(ref_3) == 3
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail on windowns")
 def test_actor_failure_async(ray_start_regular):
     @ray.remote
     class A:
@@ -155,7 +154,7 @@ def test_actor_failure_async(ray_start_regular):
     rs = []
 
     def submit():
-        for i in range(100000):
+        for i in range(10000):
             r = a.echo.remote()
             r._on_completed(lambda x: 1)
             rs.append(r)
@@ -167,12 +166,11 @@ def test_actor_failure_async(ray_start_regular):
     from time import sleep
 
     sleep(0.1)
-    os.kill(pid, signal.SIGKILL)
+    os.kill(pid, SIGKILL)
 
     t.join()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail on windowns")
 @pytest.mark.parametrize(
     "ray_start_regular",
     [{"_system_config": {"timeout_ms_task_wait_for_death_info": 100000000}}],
@@ -200,7 +198,7 @@ def test_actor_failure_async_2(ray_start_regular, tmp_path):
 
     pid = ray.get(a.pid.remote())
 
-    os.kill(int(pid), signal.SIGKILL)
+    os.kill(int(pid), SIGKILL)
 
     # kill will be in another thred.
     def kill():
@@ -210,7 +208,7 @@ def test_actor_failure_async_2(ray_start_regular, tmp_path):
         while new_pid == pid:
             new_pid = int(p.read_text())
             time.sleep(1)
-        os.kill(new_pid, signal.SIGKILL)
+        os.kill(new_pid, SIGKILL)
 
     t = threading.Thread(target=kill)
     t.start()
@@ -232,7 +230,6 @@ def test_actor_failure_async_2(ray_start_regular, tmp_path):
     t.join()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail on windowns")
 @pytest.mark.parametrize(
     "ray_start_regular",
     [{"_system_config": {"timeout_ms_task_wait_for_death_info": 100000000}}],
@@ -262,7 +259,6 @@ def test_actor_failure_async_3(ray_start_regular):
         ray.get(t)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail on windowns")
 @pytest.mark.parametrize(
     "ray_start_regular",
     [{"_system_config": {"timeout_ms_task_wait_for_death_info": 100000000}}],
@@ -279,7 +275,7 @@ def test_actor_failure_async_4(ray_start_regular, tmp_path):
     @ray.remote
     def f():
         with FileLock(l_file):
-            os.kill(os.getpid(), signal.SIGKILL)
+            os.kill(os.getpid(), SIGKILL)
 
     @ray.remote(max_restarts=1)
     class A:
@@ -307,7 +303,6 @@ def test_actor_failure_async_4(ray_start_regular, tmp_path):
         ray.get(t)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail on windowns")
 @pytest.mark.parametrize(
     "ray_start_regular",
     [
@@ -346,7 +341,7 @@ def test_actor_failure_no_wait(ray_start_regular, tmp_path):
     a = A.remote()
     pid = ray.get(a.pid.remote())
     t = a.p.remote()
-    os.kill(int(pid), signal.SIGKILL)
+    os.kill(int(pid), SIGKILL)
     with pytest.raises(ray.exceptions.RayActorError):
         # Make sure it'll return within 1s
         ray.get(t)
