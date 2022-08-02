@@ -48,18 +48,18 @@ trainer = XGBoostTrainer(
         "eval_metric": ["logloss", "error"],
         "max_depth": 4,
     },
-    num_boost_round=20,
+    num_boost_round=10,
     datasets={"train": dataset},
 )
 
 param_space = {
     # Tune parameters directly passed into the XGBoostTrainer
-    "num_boost_round": tune.randint(20, 30),
+    "num_boost_round": tune.randint(5, 20),
     # `params` will be merged with the `params` defined in the above XGBoostTrainer
     "params": {
         "min_child_weight": tune.uniform(0.8, 1.0),
         # Below will overwrite the XGBoostTrainer setting
-        "max_depth": tune.randint(1, 9),
+        "max_depth": tune.randint(1, 5),
     },
     # Tune the number of distributed workers
     "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
