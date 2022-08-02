@@ -69,7 +69,11 @@ tuner = Tuner(
     trainable=trainer,
     run_config=RunConfig(name="test_tuner"),
     param_space=param_space,
-    tune_config=tune.TuneConfig(mode="min", metric="train-logloss", num_samples=2),
+    tune_config=tune.TuneConfig(
+        mode="min",
+        metric="train-logloss",
+        num_samples=2,
+        max_concurrent_trials=2),
 )
 result_grid = tuner.fit()
 # __xgboost_end__
@@ -104,7 +108,11 @@ tuner = Tuner(
     trainable=trainer,
     run_config=RunConfig(name="test_tuner", local_dir="~/ray_results"),
     param_space=param_space,
-    tune_config=tune.TuneConfig(mode="min", metric="loss", num_samples=2),
+    tune_config=tune.TuneConfig(
+        mode="min",
+        metric="loss",
+        num_samples=2,
+        max_concurrent_trials=2),
 )
 result_grid = tuner.fit()
 # __torch_end__
@@ -203,7 +211,7 @@ for result in result_grid:
         print("The trial had an error:", result.error)
         continue
 
-    print("The trial finished successfully with the metrics:", result.metrics)
+    print("The trial finished successfully with the metrics:", result.metrics["loss"])
 # __result_grid_inspection_end__
 
 # __run_config_start__
