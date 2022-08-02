@@ -19,7 +19,7 @@ To learn more about XGBoost-Ray, check out that library's {ref}`documentation<xg
 ### Managed Kubernetes services
 
 Running the example in this guide requires basic Kubernetes infrastructure set-up.
-We collect some helpful links for users who are getting started with a managed Kubernetes service.
+We collect helpful links for users who are getting started with a managed Kubernetes service.
 
 :::{tabbed} GKE (Google Cloud)
 You can find the landing page for this Kubernetes service [here](https://cloud.google.com/kubernetes-engine).
