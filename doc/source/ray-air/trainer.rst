@@ -24,16 +24,14 @@ Following we will give examples of how to use each type of trainers.
 
 Distributed Dataparallel Training
 ---------------------------------
-Within this category we mainly have TorchTrainer, TensorflowTrainer and HorovodTrainer.
+Within this category we mainly have TorchTrainer, TensorflowTrainer and HorovodTrainer, they all implement
+DataParallelTrainer API.
 
 User needs to supply ``train_loop_per_worker``, which is the main training logic that runs on each training worker.
 User also needs to specify ``ScalingConfig`` which determines the number of workers and the resources for each worker.
 
 Under the hood, Ray AIR will start training workers per specification. The input training dataset is automatically
 split across all the workers through ``session.get_dataset_shard()``.
-
-Tabular
-~~~~~~~
 
 .. tabbed:: Torch
 
@@ -42,8 +40,10 @@ Tabular
 
 .. tabbed:: Tensorflow
 
-    .. literalinclude:: examples/tf_trainer.py
+    .. literalinclude:: examples/tf_starter.py
         :language: python
+        :start-after: __air_tf_train_start__
+        :end-before: __air_tf_train_end__
 
 .. tabbed:: Horovod
 
@@ -53,17 +53,41 @@ Tabular
 
 Report metrics and checkpoint through ``Session``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-To be filled in
+One often needs to report metrics and save checkpoints for fault tolerance or future reference.
+This can be challenging in a distributed environment, where the calculation of metrics and
+the generation of checkpoints are spread out across multiple nodes in a cluster.
+
+A user can simply call :ref:`Session <air-session-ref>` API and under the hood,
+this API makes sure that metrics are presented in the final training or tuning result. And
+checkpoints are synced to driver or the cloud storage based on user's configurations.
+
+Take a look at the following code snippet.
+
+.. literalinclude:: doc_code/report_metrics_and_save_checkpoints.py
+    :language: python
+    :start-after: __air_session_start__
+    :end-before: __air_session_end__
 
 
 HuggingFace Trainer
 ~~~~~~~~~~~~~~~~~~~
-To be filled in
+HuggingFaceTrainer further extends TorchTrainer. The main logic is inside ``trainer_init_per_worker``.
+Take a look at the following example.
+
+.. literalinclude:: doc_code/hf_trainer.py
+    :language: python
+    :start-after: __hf_trainer_start__
+    :end-before: __hf_trainer_end__
 
 
 XGBoost Trainer
 ---------------
-To be filled in
+Ray AIR also provides an easy to use XGBoost Trainer, which is a wrapper around "Distributed XGBoost on Ray".
+See the example below.
+
+.. literalinclude:: doc_code/xgboost_trainer.py
+    :language: python
+
 
 
 ScikitLearn Trainer
