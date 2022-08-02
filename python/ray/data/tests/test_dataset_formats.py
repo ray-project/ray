@@ -2831,7 +2831,7 @@ def test_image_folder_datasource(
     The folder "simple" contains two cat images and one dog images, all of which are
     are 32x32 RGB images.
     """
-    root = os.path.join(os.path.dirname(__file__), "image-folders", "simple")
+    root = "example://image-folders/simple"
     ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
 
     _, types = ds.schema()
@@ -2857,9 +2857,7 @@ def test_image_folder_datasource_filtering(
     The folder "different-extensions" contains two cat images, one dog image, and two
     non-images. All images are 32x32 RGB images.
     """
-    root = os.path.join(
-        os.path.dirname(__file__), "image-folders", "different-extensions"
-    )
+    root = "example://image-folders/different-extensions"
     ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
 
     assert ds.count() == 3
@@ -2875,9 +2873,7 @@ def test_image_folder_datasource_size_parameter(
     has a different size, with the size described in file names (e.g., 32x32.png). All
     images are RGB images.
     """
-    root = os.path.join(
-        os.path.dirname(__file__), "image-folders", "different-extensions"
-    )
+    root = "example://image-folders/different-sizes"
     ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(32, 32))
 
     tensors = ds.to_pandas()["image"]
@@ -2895,7 +2891,7 @@ def test_image_folder_datasource_retains_shape_without_cast(
     if enable_automatic_tensor_extension_cast:
         return
 
-    root = os.path.join(os.path.dirname(__file__), "image-folders", "different-sizes")
+    root = "example://image-folders/different-sizes"
     ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
     arrays = ds.to_pandas()["image"]
     shapes = sorted(array.shape for array in arrays)
@@ -2916,9 +2912,7 @@ def test_image_folder_datasource_mode_parameter(
     The folder "different-modes" contains two cat images and one dog image. Their modes
     are "CMYK", "L", and "RGB". All images are 32x32.
     """
-    root = os.path.join(
-        os.path.dirname(__file__), "image-folders", "different-extensions"
-    )
+    root = "example://image-folders/different-modes"
     ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, mode=mode)
 
     tensors = ds.to_pandas()["image"]
@@ -2939,7 +2933,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from torchvision import transforms
     from torchvision.models import resnet18
 
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folder"
     dataset = ray.data.read_datasource(
         ImageFolderDatasource(), root=root, size=(32, 32)
     )
