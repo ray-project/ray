@@ -5,7 +5,12 @@ from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.jax_mnist_example import (
     train_func as jax_mnist_train_func,
 )
+from ray.air import session
 from ray.train.jax import JaxTrainer
+
+import jax
+import numpy as np
+
 
 from ray import tune
 from ray.tune.tune_config import TuneConfig
@@ -20,9 +25,42 @@ def ray_start_8_cpus():
     ray.shutdown()
 
 
-def test_jax_mnist_gpu(ray_start_8_cpus):
+@pytest.fixture
+def ray_start_4_cpus_2_gpus():
+    address_info = ray.init(num_cpus=4, num_gpus=2)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+def test_jax_get_device(ray_start_4_cpus_2_gpus):
+    def _train_fn(x):
+        return jax.lax.psum(x, "i")
+
+    def train_fn():
+        """Creates a barrier across all hosts/devices."""
+        session.report(
+            dict(devices=jax.pmap(_train_fn, "i")(np.ones(jax.local_device_count())))
+        )
+
+    num_gpus_per_worker = 2
+    trainer = JaxTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            use_gpu=True,
+            resources_per_worker={"GPU": num_gpus_per_worker},
+        ),
+    )
+
+    results = trainer.fit()
+    devices = results.metrics["devices"]
+    assert devices[0] == 2 and devices[1] == 2 and len(devices) == 2
+
+
+def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
     num_workers = 1
     num_epochs = 2
+    num_gpus_per_worker = 2
     trainer = JaxTrainer(
         train_loop_per_worker=jax_mnist_train_func,
         train_loop_config={
@@ -33,7 +71,8 @@ def test_jax_mnist_gpu(ray_start_8_cpus):
         },
         scaling_config=ScalingConfig(
             num_workers=num_workers,
-            use_gpu=False,
+            use_gpu=True,
+            resources_per_worker={"GPU": num_gpus_per_worker},
         ),
     )
 
@@ -73,6 +112,10 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
 
 def test_tune_jax_mnist(ray_start_8_cpus):
     tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
+
+
+def test_tune_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
+    tune_jax_mnist(num_workers=1, use_gpu=True, num_samples=1, num_gpus_per_worker=2)
 
 
 if __name__ == "__main__":

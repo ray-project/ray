@@ -370,6 +370,14 @@ py_test(
 )
 
 py_test(
+    name = "test_jax_gpu",
+    size = "large",
+    srcs = ["tests/test_jax_gpu.py"],
+    tags = ["team:ml", "exclusive", "jax", "gpu_only"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_xgboost_trainer",
     size = "medium",
     srcs = ["tests/test_xgboost_trainer.py"],
