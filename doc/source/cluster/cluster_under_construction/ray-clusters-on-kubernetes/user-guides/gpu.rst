@@ -124,7 +124,7 @@ You can also make a :ref:`direct request to the autoscaler<ref-autoscaler-sdk-re
     import ray
 
     ray.init()
-    ray.autoscaler.sdk.request_resources(bundles=[{"GPU": 1} * 2])
+    ray.autoscaler.sdk.request_resources(bundles=[{"GPU": 1}] * 2)
 
 After the nodes are scaled up, they will persist until the request is explicitly overridden.
 The following program will remove the resource request.
