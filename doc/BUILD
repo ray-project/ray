@@ -130,8 +130,7 @@ py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-core/doc_code/*.py"],
     exclude = ["source/ray-core/doc_code/runtime_env_example.py",
-               "source/ray-core/doc_code/cross_language.py",
-               "source/ray-core/doc_code/namespaces.py"],
+               "source/ray-core/doc_code/cross_language.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
 )
