@@ -1,7 +1,13 @@
+import argparse
 import pytorch_lightning
 import torch
+import ray.data
+from torchvision.datasets import MNIST
+from torchvision.transforms import ToTensor
 
-# model adapted from https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#starter-example 
+
+# model adapted from
+# https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#starter-example
 class LitModel(pytorch_lightning.LightningModule):
     def __init__(self, learning_rate=0.02):
         super().__init__()
@@ -27,13 +33,9 @@ class LitModel(pytorch_lightning.LightningModule):
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
-    # don't set `train_dataloader`, `val_data_loader`, 
+    # don't set `train_dataloader`, `val_data_loader`,
     # `test_dataloader`, or `predict_dataloader` hooks here.
 
-
-import ray.data
-from torchvision.datasets import MNIST
-from torchvision.transforms import ToTensor
 
 train_dataset = ray.data.read_datasource(
     ray.data.datasource.SimpleTorchDatasource(),
@@ -58,8 +60,12 @@ def train_lightning_mnist(num_workers=2, use_gpu=False, epochs=4):
     # don't set `trainer_init_config["devices"]`
     trainer = LightningTrainer(
         LitModel,
-        lightning_module_init_config={"learning_rate": 0.02},  # arguments that will be passed to `LitModel.__init__`
-        trainer_init_config={},  # https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init
+        lightning_module_init_config={
+            "learning_rate": 0.02
+        },  # arguments that will be passed to `LitModel.__init__`
+        # for valid keywords to pass to `trainer_init_config`, see
+        # https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init
+        trainer_init_config={},
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": train_dataset, "test": test_dataset},
     )
