@@ -65,15 +65,6 @@ AIR User Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: /ray-air/examples/analyze_tuning_results
-        :type: ref
-        :text: Analyzing Tune Results
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
     .. link-button:: predictors
         :type: ref
         :text: Using Predictors for Inference
