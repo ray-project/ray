@@ -91,7 +91,6 @@ def _get_basic_autoscaling_config() -> dict:
         "cluster_synced_files": [],
         "file_mounts": {},
         "file_mounts_sync_continuously": False,
-        "head_node": {},
         "head_node_type": "head-group",
         "head_setup_commands": [],
         "head_start_ray_commands": [],
@@ -100,7 +99,6 @@ def _get_basic_autoscaling_config() -> dict:
         "max_workers": 600,
         "setup_commands": [],
         "upscaling_speed": 1000,
-        "worker_nodes": {},
         "worker_setup_commands": [],
         "worker_start_ray_commands": [],
     }

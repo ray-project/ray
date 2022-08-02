@@ -46,8 +46,8 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import (
     Tee,
-    delete_external_checkpoint,
-    get_checkpoint_from_remote_node,
+    _delete_external_checkpoint,
+    _get_checkpoint_from_remote_node,
     retry_fn,
 )
 from ray.util.annotations import PublicAPI
@@ -621,7 +621,7 @@ class Trainable:
             # And the source IP is different to the current IP
             and checkpoint_node_ip != ray.util.get_node_ip_address()
         ):
-            checkpoint = get_checkpoint_from_remote_node(
+            checkpoint = _get_checkpoint_from_remote_node(
                 checkpoint_path, checkpoint_node_ip
             )
             if checkpoint:
@@ -715,7 +715,7 @@ class Trainable:
                 else:
                     checkpoint_uri = self._storage_path(checkpoint_dir)
                     retry_fn(
-                        lambda: delete_external_checkpoint(checkpoint_uri),
+                        lambda: _delete_external_checkpoint(checkpoint_uri),
                         subprocess.CalledProcessError,
                         num_retries=3,
                         sleep_time=1,
