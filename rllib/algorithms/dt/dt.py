@@ -144,14 +144,16 @@ class DT(Algorithm):
         assert self.config.get("horizon") is not None, "Must specify rollout horizon."
         assert self.config["horizon"] >= 2, "rollout horizon must be at least 2."
 
-        assert self.config.get("replay_buffer_config") is not None, "Must specify replay_buffer_config."
+        assert (
+            self.config.get("replay_buffer_config") is not None
+        ), "Must specify replay_buffer_config."
         replay_buffer_type = self.config["replay_buffer_config"].get("type")
         if replay_buffer_type is None:
             self.config["replay_buffer_config"]["type"] = SegmentationBuffer
         else:
-            assert replay_buffer_type == SegmentationBuffer, (
-                "replay_buffer's type must be SegmentationBuffer."
-            )
+            assert (
+                replay_buffer_type == SegmentationBuffer
+            ), "replay_buffer's type must be SegmentationBuffer."
 
         model_max_seq_len = self.config["model"].get("max_seq_len")
         assert model_max_seq_len is not None, "Must specify model's max_seq_len."
@@ -160,17 +162,17 @@ class DT(Algorithm):
         if buffer_max_seq_len is None:
             self.config["replay_buffer_config"]["max_seq_len"] = model_max_seq_len
         else:
-            assert buffer_max_seq_len == model_max_seq_len, (
-                "replay_buffer's max_seq_len must equal model's max_seq_len."
-            )
+            assert (
+                buffer_max_seq_len == model_max_seq_len
+            ), "replay_buffer's max_seq_len must equal model's max_seq_len."
 
         buffer_max_ep_len = self.config["replay_buffer_config"].get("max_ep_len")
         if buffer_max_ep_len is None:
             self.config["replay_buffer_config"]["max_ep_len"] = self.config["horizon"]
         else:
-            assert buffer_max_ep_len == self.config["horizon"], (
-                "replay_buffer's max_ep_len must equal rollout horizon."
-            )
+            assert (
+                buffer_max_ep_len == self.config["horizon"]
+            ), "replay_buffer's max_ep_len must equal rollout horizon."
 
     @classmethod
     @override(Algorithm)
