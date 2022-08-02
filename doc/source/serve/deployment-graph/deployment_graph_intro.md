@@ -197,9 +197,9 @@ Hola Dora
 (deployment-graph-drivers-http-adapters-intro)=
 ## Drivers and HTTP Adapters
 
-Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-intro-call-graph), the `DAGDriver` has one required argument: the `FunctionNode` or `MethodNode` representing your call graph's final output.
+Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-intro-call-graph), the `DAGDriver` takes in a `DeploymentNode` and it produces a `ClassNode` that you can run.
 
-The `DAGDriver` also has one more optional keyword argument: `http_adapter`. `http_adapters` are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
+The `DAGDriver` also has an optional keyword argument: `http_adapter`. `http_adapters` are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
 
 For instance, we can use the Ray Serve-provided `json_request` adapter to simplify our [arithmetic call graph](deployment-graph-intro-arithmetic-graph) by eliminating the `unpack_request` function. Here's the revised call graph and driver:
 
