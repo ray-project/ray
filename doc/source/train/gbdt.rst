@@ -18,6 +18,8 @@ training parameters are passed as the ``params`` dictionary.
 
 .. tabbed:: XGBoost
 
+    Run ``pip install -U xgboost_ray``.
+
     .. literalinclude:: doc_code/gbdt_user_guide.py
         :language: python
         :start-after: __xgboost_start__
@@ -25,6 +27,7 @@ training parameters are passed as the ``params`` dictionary.
 
 .. tabbed:: LightGBM
 
+    Run ``pip install -U lightgbm_ray``.
     .. literalinclude:: doc_code/gbdt_user_guide.py
         :language: python
         :start-after: __lightgbm_start__
@@ -40,7 +43,7 @@ adjusting the :class:`ScalingConfig <ray.air.config.ScalingConfig>`. Here are so
 examples for common use-cases:
 
 
-.. tabbed:: Multi-node CPU training
+.. tabbed:: Multi-node CPU
 
     Setup: 4 nodes with 8 CPUs each.
 
@@ -55,7 +58,7 @@ examples for common use-cases:
     be allocated to the actual distributed training workers.
 
 
-.. tabbed:: Single-node multi-GPU training
+.. tabbed:: Single-node multi-GPU
 
     Setup: 1 node with 8 CPUs and 4 GPUs.
 
@@ -67,7 +70,7 @@ examples for common use-cases:
         :start-after: __scaling_gpu_start__
         :end-before: __scaling_gpu_end__
 
-.. tabbed:: Multi-node multi-GPU training
+.. tabbed:: Multi-node multi-GPU
 
     Setup: 4 node with 8 CPUs and 4 GPUs each.
 
@@ -85,6 +88,7 @@ examples for common use-cases:
 
 How many remote actors should I use?
 ------------------------------------
+
 This depends on your workload and your cluster setup.
 Generally there is no inherent benefit of running more than
 one remote actor per node for CPU-only training. This is because
@@ -93,7 +97,7 @@ XGBoost can already leverage multiple CPUs via threading.
 However, there are some cases when you should consider starting
 more than one actor per node:
 
-* For `multi GPU training <#multi-gpu-training>`_, each GPU should have a separate
+* For **multi GPU training**, each GPU should have a separate
   remote actor. Thus, if your machine has 24 CPUs and 4 GPUs,
   you will want to start 4 remote actors with 6 CPUs and 1 GPU
   each
@@ -122,8 +126,15 @@ machines have 16 CPUs in addition to the 4 GPUs, each actor should have
 4 CPUs to use.
 
 
-XGBoost memory usage
---------------------
+.. literalinclude:: doc_code/gbdt_user_guide.py
+    :language: python
+    :start-after: __gpu_xgboost_start__
+    :end-before: __gpu_xgboost_end__
+
+
+How to optimize XGBoost memory usage?
+-------------------------------------
+
 XGBoost uses a compute-optimized datastructure, the ``DMatrix``,
 to hold training data. When converting a dataset to a ``DMatrix``,
 XGBoost creates intermediate copies and ends up

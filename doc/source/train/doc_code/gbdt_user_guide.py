@@ -86,3 +86,22 @@ scaling_config = ScalingConfig(
     use_gpu=True,
 )
 # __scaling_gpumulti_end__
+
+# __gpu_xgboost_start__
+trainer = XGBoostTrainer(
+    scaling_config=ScalingConfig(
+        # Number of workers to use for data parallelism.
+        num_workers=2,
+        # Whether to use GPU acceleration.
+        use_gpu=True,
+    ),
+    params={
+        # XGBoost specific params
+        "tree_method": "gpu_hist",
+        "eval_metric": ["logloss", "error"],
+    },
+    label_column="target",
+    num_boost_round=20,
+    datasets={"train": train_dataset, "valid": valid_dataset},
+)
+# __gpu_xgboost_end__
