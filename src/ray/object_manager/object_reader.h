@@ -15,6 +15,7 @@
 #pragma once
 
 #include "src/ray/protobuf/common.pb.h"
+#include "ray/common/id.h"
 
 namespace ray {
 
@@ -32,6 +33,8 @@ class IObjectReader {
   uint64_t GetObjectSize() const { return GetDataSize() + GetMetadataSize(); }
 
   virtual const rpc::Address &GetOwnerAddress() const = 0;
+
+  virtual const ray::ActorID &GetGlobalOwnerID() const = 0;
 
   /// Read from data sections into output.
   /// Return false if the object is corrupted or size/offset is invalid.

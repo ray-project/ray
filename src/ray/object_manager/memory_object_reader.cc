@@ -19,9 +19,11 @@
 namespace ray {
 
 MemoryObjectReader::MemoryObjectReader(plasma::ObjectBuffer object_buffer,
-                                       rpc::Address owner_address)
+                                       rpc::Address owner_address,
+                                       ActorID global_owner_id)
     : object_buffer_(std::move(object_buffer)),
-      owner_address_(std::move(owner_address)) {}
+      owner_address_(std::move(owner_address)),
+      global_owner_id_(std::move(global_owner_id)) {}
 
 uint64_t MemoryObjectReader::GetDataSize() const { return object_buffer_.data->Size(); }
 
@@ -30,6 +32,8 @@ uint64_t MemoryObjectReader::GetMetadataSize() const {
 }
 
 const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_address_; }
+
+const ray::ActorID &MemoryObjectReader::GetGlobalOwnerID() const { return global_owner_id_; };
 
 bool MemoryObjectReader::ReadFromDataSection(uint64_t offset,
                                              uint64_t size,

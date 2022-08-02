@@ -396,7 +396,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
 
   std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> reader_status =
-      buffer_pool_.CreateObjectReader(object_id, owner_address);
+      buffer_pool_.CreateObjectReader(object_id, owner_address, object_info.global_owner_id);
   Status status = reader_status.second;
   if (!status.ok()) {
     RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
@@ -415,6 +415,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
                      << ", expected metadata size: " << metadata_size
                      << ", actual data size: " << object_reader->GetDataSize()
                      << ", actual metadata size: " << object_reader->GetMetadataSize()
+                     << ", global owner id: " << object_reader->GetGlobalOwnerID()
                      << ". This is likely due to a race condition."
                      << " We will update the object size and proceed sending the object.";
     local_objects_[object_id].object_info.data_size = 0;
@@ -474,7 +475,6 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                                        const NodeID &node_id,
                                        std::shared_ptr<ChunkObjectReader> chunk_reader,
                                        bool from_disk) {
-  const ActorID &global_owner_id = local_objects_[object_id].object_info.global_owner_id;
   auto rpc_client = GetRpcClient(node_id);
   if (!rpc_client) {
     // Push is best effort, so do nothing here.
@@ -510,8 +510,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                         "ObjectManager.Push");
                   },
                   chunk_reader,
-                  from_disk,
-                  global_owner_id);
+                  from_disk);
             },
             "ObjectManager.Push");
       });
@@ -524,8 +523,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
                                     std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
                                     std::function<void(const Status &)> on_complete,
                                     std::shared_ptr<ChunkObjectReader> chunk_reader,
-                                    bool from_disk,
-                                    const ActorID &global_owner_id) {
+                                    bool from_disk) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
@@ -537,7 +535,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
   push_request.set_data_size(chunk_reader->GetObject().GetObjectSize());
   push_request.set_metadata_size(chunk_reader->GetObject().GetMetadataSize());
   push_request.set_chunk_index(chunk_index);
-  push_request.set_global_owner_id(global_owner_id.Binary());
+  push_request.set_global_owner_id(chunk_reader->GetObject().GetGlobalOwnerID().Binary());
 
   // read a chunk into push_request and handle errors.
   auto optional_chunk = chunk_reader->GetChunk(chunk_index);

@@ -70,7 +70,8 @@ uint64_t ObjectBufferPool::GetBufferLength(uint64_t chunk_index,
 
 std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>
 ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
-                                     rpc::Address owner_address) {
+                                     rpc::Address owner_address,
+                                     ActorID global_owner_id) {
   absl::MutexLock lock(&pool_mutex_);
 
   std::vector<ObjectID> object_ids{object_id};
@@ -90,7 +91,8 @@ ObjectBufferPool::CreateObjectReader(const ObjectID &object_id,
 
   return std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status>(
       std::make_shared<MemoryObjectReader>(std::move(object_buffers[0]),
-                                           std::move(owner_address)),
+                                           std::move(owner_address),
+                                           std::move(global_owner_id)),
       ray::Status::OK());
 }
 

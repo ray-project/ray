@@ -41,6 +41,8 @@ SpilledObjectReader::CreateSpilledObjectReader(const std::string &object_url) {
   uint64_t metadata_offset = 0;
   uint64_t metadata_size = 0;
   rpc::Address owner_address;
+  uint64_t global_owner_id_size = 0;
+  ray::ActorID global_owner_id;
 
   std::ifstream is(file_path, std::ios::binary);
   if (!is || !SpilledObjectReader::ParseObjectHeader(is,
@@ -49,7 +51,9 @@ SpilledObjectReader::CreateSpilledObjectReader(const std::string &object_url) {
                                                      data_size,
                                                      metadata_offset,
                                                      metadata_size,
-                                                     owner_address)) {
+                                                     owner_address,
+                                                     global_owner_id_size,
+                                                     global_owner_id)) {
     RAY_LOG(WARNING) << "Failed to parse object header for spilled object " << object_url;
     return absl::optional<SpilledObjectReader>();
   }
@@ -61,7 +65,8 @@ SpilledObjectReader::CreateSpilledObjectReader(const std::string &object_url) {
                           data_size,
                           metadata_offset,
                           metadata_size,
-                          std::move(owner_address)));
+                          std::move(owner_address),
+                          std::move(global_owner_id)));
 }
 
 uint64_t SpilledObjectReader::GetDataSize() const { return data_size_; }
@@ -72,20 +77,26 @@ const rpc::Address &SpilledObjectReader::GetOwnerAddress() const {
   return owner_address_;
 }
 
+const ray::ActorID &SpilledObjectReader::GetGlobalOwnerID() const {
+  return global_owner_id_;
+}
+
 SpilledObjectReader::SpilledObjectReader(std::string file_path,
                                          uint64_t object_size,
                                          uint64_t data_offset,
                                          uint64_t data_size,
                                          uint64_t metadata_offset,
                                          uint64_t metadata_size,
-                                         rpc::Address owner_address)
+                                         rpc::Address owner_address,
+                                         ray::ActorID global_owner_id)
     : file_path_(std::move(file_path)),
       object_size_(object_size),
       data_offset_(data_offset),
       data_size_(data_size),
       metadata_offset_(metadata_offset),
       metadata_size_(metadata_size),
-      owner_address_(std::move(owner_address)) {}
+      owner_address_(std::move(owner_address)),
+      global_owner_id_(global_owner_id) {}
 
 /* static */ bool SpilledObjectReader::ParseObjectURL(const std::string &object_url,
                                                       std::string &file_path,
@@ -123,14 +134,16 @@ bool SpilledObjectReader::ParseObjectHeader(std::istream &is,
                                             uint64_t &data_size,
                                             uint64_t &metadata_offset,
                                             uint64_t &metadata_size,
-                                            rpc::Address &owner_address) {
+                                            rpc::Address &owner_address,
+                                            uint64_t &global_owner_id_size,
+                                            ray::ActorID &global_owner_id) {
   if (!is.seekg(object_offset)) {
     return false;
   }
 
   uint64_t address_size = 0;
   if (!ReadUINT64(is, address_size) || !ReadUINT64(is, metadata_size) ||
-      !ReadUINT64(is, data_size)) {
+      !ReadUINT64(is, data_size) || !ReadUINT64(is, global_owner_id_size)) {
     return false;
   }
 
@@ -140,7 +153,13 @@ bool SpilledObjectReader::ParseObjectHeader(std::istream &is,
     return false;
   }
 
-  metadata_offset = object_offset + UINT64_size * 3 + address_size;
+  std::string global_owner_id_binary(global_owner_id_size, '\0');
+  if (!is.read(&global_owner_id_binary[0], global_owner_id_size)) {
+    return false;
+  }
+  global_owner_id = ray::ActorID::FromBinary(global_owner_id_binary);
+
+  metadata_offset = object_offset + UINT64_size * 4 + address_size;
   data_offset = metadata_offset + metadata_size;
   return true;
 }

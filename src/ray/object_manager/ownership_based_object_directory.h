@@ -22,6 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -94,7 +95,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   std::string DebugString() const override;
 
  private:
-  void ReSubscribeObjectLocations(const UniqueID &callback_id,
+  bool ReSubscribeObjectLocations(const UniqueID &callback_id,
                                   const ObjectID &object_id,
                                   const rpc::Address &owner_address,
                                   const std::string &spilled_url,
@@ -180,6 +181,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
                                              const NodeID &node_id,
                                              const rpc::Address &owner_address);
 
+  void TryResubscribe();
+
   /// Metrics
 
   /// Number of object locations added to this object directory.
@@ -201,6 +204,10 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   uint64_t cum_metrics_num_object_location_updates_;
 
   friend class OwnershipBasedObjectDirectoryTest;
+
+  std::vector<std::function<bool()>> resubscribe_callbacks_;
+
+  std::shared_ptr<boost::asio::deadline_timer> resubscribe_timer_;
 };
 
 }  // namespace ray

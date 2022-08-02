@@ -35,7 +35,8 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
       owner_client_pool_(owner_client_pool),
       kMaxObjectReportBatchSize(max_object_report_batch_size),
       mark_as_failed_(mark_as_failed),
-      get_owner_address_(get_owner_address) {}
+      get_owner_address_(get_owner_address),
+      resubscribe_timer_(nullptr) {}
 
 namespace {
 
@@ -343,7 +344,7 @@ void OwnershipBasedObjectDirectory::ObjectLocationSubscriptionCallback(
   }
 }
 
-void OwnershipBasedObjectDirectory::ReSubscribeObjectLocations(
+bool OwnershipBasedObjectDirectory::ReSubscribeObjectLocations(
     const UniqueID &callback_id,
     const ObjectID &object_id,
     const rpc::Address &owner_address,
@@ -365,27 +366,46 @@ void OwnershipBasedObjectDirectory::ReSubscribeObjectLocations(
                              spilled_node_id,
                              global_owner_id,
                              callback);
+    return true;
   } else {
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    io_service_.post(
-        [this,
+    auto resubscribe_callback = [this,
          callback_id,
          object_id,
          owner_address,
          spilled_url,
          spilled_node_id,
          global_owner_id,
-         callback]() {
-          ReSubscribeObjectLocations(callback_id,
+         callback]() -> bool {
+          return ReSubscribeObjectLocations(callback_id,
                                      object_id,
                                      owner_address,
                                      spilled_url,
                                      spilled_node_id,
                                      global_owner_id,
                                      callback);
-        },
-        "ObjectDirectory.ResubscribeLocationCallback");
+        };
+    resubscribe_callbacks_.push_back(resubscribe_callback);
+    TryResubscribe();
+    return false;
   }
+}
+
+void OwnershipBasedObjectDirectory::TryResubscribe() {
+  if(resubscribe_timer_) return;
+  resubscribe_timer_ = execute_after(
+    io_service_,
+    [this]() {
+      resubscribe_timer_ = nullptr;
+      std::vector<std::function<bool()> > failed_subscribe_callback;
+      for (auto const &func : resubscribe_callbacks_) {
+        if(!func()) failed_subscribe_callback.push_back(func);
+      }
+      resubscribe_callbacks_.assign(failed_subscribe_callback.begin(), failed_subscribe_callback.end());
+      TryResubscribe();
+    },
+    1000 /*1 second*/
+  );
 }
 
 ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
@@ -436,24 +456,24 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
                     << " with global_owner_id: " << global_owner_id;
 
       if (!global_owner_id.IsNil()) {
-        io_service_.post(
-            [this,
-             callback_id,
-             object_id,
-             owner_address,
-             spilled_url,
-             spilled_node_id,
-             global_owner_id,
-             callback]() {
-              ReSubscribeObjectLocations(callback_id,
-                                         object_id,
-                                         owner_address,
-                                         spilled_url,
-                                         spilled_node_id,
-                                         global_owner_id,
-                                         callback);
-            },
-            "ObjectDirectory.ResubscribeLocationCallback");
+        auto resubscribe_callback = [this,
+          callback_id,
+          object_id,
+          owner_address,
+          spilled_url,
+          spilled_node_id,
+          global_owner_id,
+          callback]() -> bool {
+          return ReSubscribeObjectLocations(callback_id,
+                                      object_id,
+                                      owner_address,
+                                      spilled_url,
+                                      spilled_node_id,
+                                      global_owner_id,
+                                      callback);
+        };
+        resubscribe_callbacks_.push_back(resubscribe_callback);
+        TryResubscribe();
       }
 
       rpc::WorkerObjectLocationsPubMessage location_info;

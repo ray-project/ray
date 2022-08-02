@@ -305,8 +305,7 @@ class ObjectManager : public ObjectManagerInterface,
                        std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
                        std::function<void(const Status &)> on_complete,
                        std::shared_ptr<ChunkObjectReader> chunk_reader,
-                       bool from_disk,
-                       const ActorID &global_owner_id);
+                       bool from_disk);
 
   /// Handle starting, running, and stopping asio rpc_service.
   void StartRpcService();

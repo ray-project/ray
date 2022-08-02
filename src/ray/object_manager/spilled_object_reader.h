@@ -21,6 +21,7 @@
 #include "absl/types/optional.h"
 #include "ray/object_manager/object_reader.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "ray/common/id.h"
 
 namespace ray {
 /// Reader for a local object spilled in the object_url.
@@ -40,6 +41,8 @@ class SpilledObjectReader : public IObjectReader {
 
   const rpc::Address &GetOwnerAddress() const override;
 
+  const ray::ActorID &GetGlobalOwnerID() const override;
+
   bool ReadFromDataSection(uint64_t offset, uint64_t size, char *output) const override;
   bool ReadFromMetadataSection(uint64_t offset,
                                uint64_t size,
@@ -52,7 +55,8 @@ class SpilledObjectReader : public IObjectReader {
                       uint64_t data_size,
                       uint64_t metadata_offset,
                       uint64_t metadata_size,
-                      rpc::Address owner_address);
+                      rpc::Address owner_address,
+                      ray::ActorID global_owner_id);
 
   /// Parse the object url in the form of {path}?offset={offset}&size={size}.
   /// Return false if parsing failed.
@@ -93,7 +97,9 @@ class SpilledObjectReader : public IObjectReader {
                                 uint64_t &data_size,
                                 uint64_t &metadata_offset,
                                 uint64_t &metadata_size,
-                                rpc::Address &owner_address);
+                                rpc::Address &owner_address,
+                                uint64_t &global_owner_id_size,
+                                ray::ActorID &global_owner_id);
 
   /// Read 8 bytes from inputstream and deserialize it as a little-endian
   /// uint64_t. Return false if reach end of stream early.
@@ -117,6 +123,7 @@ class SpilledObjectReader : public IObjectReader {
   const uint64_t metadata_offset_;
   const uint64_t metadata_size_;
   const rpc::Address owner_address_;
+  const ray::ActorID global_owner_id_;
 };
 
 }  // namespace ray
