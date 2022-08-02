@@ -44,6 +44,7 @@ class JobSubmissionClient(SubmissionClient):
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
+        requests_session: Optional['requests.Session'] = None
     ):
         """Initialize a JobSubmissionClient and check the connection to the cluster.
 
@@ -59,6 +60,7 @@ class JobSubmissionClient(SubmissionClient):
                 via a simple dict update.
             headers: Headers to use when sending requests to the HTTP job server, used
                 for cases like authentication to a remote cluster.
+            requests_session: A Requests session to use when sending requests to the HTTP job server.
         """
         if requests is None:
             raise RuntimeError(
@@ -72,6 +74,7 @@ class JobSubmissionClient(SubmissionClient):
             metadata=metadata,
             headers=headers,
         )
+
         self._check_connection_and_version(
             min_version="1.9",
             version_error_message="Jobs API is not supported on the Ray "
