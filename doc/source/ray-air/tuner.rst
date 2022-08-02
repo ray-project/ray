@@ -31,7 +31,7 @@ There are a couple key concepts for using a Tuner:
 
 .. note::
    Tuners can also be used to launch hyperparameter tuning without using Ray AIR Trainers. See
-   :ref:`the Ray Tune documentation <tune-main>` for more guides examples.
+   :ref:`the Ray Tune documentation <tune-main>` for more guides and examples.
 
 Basic usage
 -----------
