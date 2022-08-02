@@ -5,6 +5,9 @@ Configuring Hyperparameter Tuning
 
 The Ray AIR :class:`Tuner <ray.tune.Tuner>` is the recommended way to tune hyperparameters in Ray AIR.
 
+.. image:: images/tuner.svg
+    :align: center
+
 The `Tuner` provides an interface that works with AIR Trainers to perform distributed
 hyperparameter tuning. The `Tuner` component is part of Ray Tune and provides
 a variety of state-of-the-art hyperparameter tuning algorithms for optimizing model
