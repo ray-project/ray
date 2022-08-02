@@ -81,4 +81,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(num_workers=args.num_workers, max_steps=args.max_steps, use_gpu=args.use_gpu)
-    
