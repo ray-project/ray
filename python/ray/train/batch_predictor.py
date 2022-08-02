@@ -4,7 +4,6 @@ import pandas as pd
 
 import ray
 from ray.air import Checkpoint
-from ray.air.util.data_batch_conversion import convert_batch_type_to_pandas
 from ray.data import Preprocessor
 from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
@@ -186,18 +185,25 @@ class BatchPredictor:
                     self._predictor.set_preprocessor(override_prep)
 
             def __call__(self, batch):
+                assert isinstance(batch, dict)
                 if feature_columns:
-                    prediction_batch = batch[feature_columns]
+                    prediction_batch = {
+                        col_name: col
+                        for col_name, col in batch.items()
+                        if col_name in feature_columns
+                    }
                 else:
                     prediction_batch = batch
                 prediction_output = self._predictor.predict(
                     prediction_batch, **predict_kwargs
                 )
                 if keep_columns:
-                    prediction_output[keep_columns] = batch[keep_columns]
-                return convert_batch_type_to_pandas(
-                    prediction_output, cast_tensor_columns
-                )
+                    for col_name in keep_columns:
+                        prediction_output[col_name] = batch[col_name]
+                return prediction_output
+                # return convert_batch_type_to_pandas(
+                #     prediction_output, cast_tensor_columns
+                # )
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers
@@ -219,7 +225,7 @@ class BatchPredictor:
         prediction_results = data.map_batches(
             ScoringWrapper,
             compute=compute,
-            batch_format="pandas",
+            batch_format="numpy",
             batch_size=batch_size,
             **ray_remote_args,
         )

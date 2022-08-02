@@ -6,11 +6,7 @@ import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.data_batch_conversion import (
-    DataType,
-    convert_batch_type_to_pandas,
-    convert_pandas_to_batch_type,
-)
+from ray.air.util.data_batch_conversion import DataType
 from ray.data import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -144,7 +140,7 @@ class Predictor(abc.ABC):
             DataBatchType: Prediction result. The return type will be the same as the
                 input type.
         """
-        data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
+        # data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
 
         if not hasattr(self, "_preprocessor"):
             raise NotImplementedError(
@@ -152,14 +148,14 @@ class Predictor(abc.ABC):
             )
 
         if self._preprocessor:
-            data_df = self._preprocessor.transform_batch(data_df)
+            data = self._preprocessor.transform_batch(data)
 
-        predictions_df = self._predict_pandas(data_df, **kwargs)
-        return convert_pandas_to_batch_type(
-            predictions_df,
-            type=TYPE_TO_ENUM[type(data)],
-            cast_tensor_columns=self._cast_tensor_columns,
-        )
+        return self._predict_pandas(data, **kwargs)
+        # return convert_pandas_to_batch_type(
+        #     predictions_df,
+        #     type=TYPE_TO_ENUM[type(data)],
+        #     cast_tensor_columns=self._cast_tensor_columns,
+        # )
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
