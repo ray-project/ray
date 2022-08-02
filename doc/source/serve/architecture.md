@@ -82,7 +82,7 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
 
 - Each ServeHandle and each replica periodically pushes its metrics to the autoscaler.
-- For each deployment, the autoscaler uses ServeHandle queue metrics and replicas queries metrics to make a decision whether to scale up or down the number of replicas.
+- For each deployment, the autoscaler periodically checks ServeHandle queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
 - Each ServeHandle continues to poll the updated group of replicas from the controller. Upon discovery of the new replicas, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached.
 
 :::{note}
