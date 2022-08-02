@@ -9,6 +9,10 @@ Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR 
 
 AIR comes with ready-to-use libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>`, as well as an ecosystem of integrations.
 
+Ray AIR focuses on two functional aspects:
+ * It provides scalability by leveraging Ray’s distributed compute layer for ML workloads.
+ * It is designed to interoperate with other systems for storage and metadata needs.
+
 Get started by installing Ray AIR:
 
 .. code:: bash
