@@ -14,19 +14,21 @@
 
 |
 
+Ray is a unified framework for scaling AI and Python applications. Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for accelerating ML workloads:
 
-**Ray is a unified framework for scalable computing.**
+.. image:: https://github.com/ericl/ray/raw/ray-intro/doc/source/images/what-is-ray.svg
 
-Ray is a unified framework for scaling AI and Python applications.
-Ray comes with a toolkit of libraries (Ray AIR) for accelerating ML workloads:
-
+Learn more about `Ray AIR`_ and its libraries:
 - `Datasets`_: Distributed Data Loading and Compute
 - `Train`_: Distributed Deep Learning
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `Serve`_: Scalable and Programmable Serving
 
-.. image:: https://github.com/ericl/ray/raw/ray-intro/doc/source/images/what-is-ray.svg
+Or more about `Ray Core`_ and its key abstractions:
+- `Tasks`_: Stateless tasks executed in the cluster.
+- `Actors`_: Stateful worker processes created in the cluster.
+- `Objects`_: Shared-memory objects accessible across the cluster.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/master/installation.html>`__.
@@ -37,13 +39,6 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Train`: https://docs.ray.io/en/master/train/train.html
 .. _`Tune`: https://docs.ray.io/en/master/tune/index.html
 .. _`RLlib`: https://docs.ray.io/en/master/rllib/index.html
-
-Documentation
--------------
-
-Interested in scaling ML workloads with Ray? `Get started with Ray AIR`_.
-
-Interested in developing distributed applications? `Get started with Ray Core`_.
 
 More Information
 ----------------
@@ -59,8 +54,11 @@ More Information
 - `Ray paper`_
 - `Ray HotOS paper`_
 
-.. _`Get started with Ray Core`: https://docs.ray.io/en/master/ray-core/walkthrough.html
-.. _`Get started with Ray AIR`: https://docs.ray.io/en/master/ray-air/getting-started.html
+.. _`Ray AIR`: https://docs.ray.io/en/master/ray-air/getting-started.html
+.. _`Ray Core`: https://docs.ray.io/en/master/ray-core/walkthrough.html
+.. _`Tasks`: https://docs.ray.io/en/master/ray-core/tasks.html
+.. _`Actors`: https://docs.ray.io/en/master/ray-core/actors.html
+.. _`Objects`: https://docs.ray.io/en/master/ray-core/objects.html
 .. _`Documentation`: http://docs.ray.io/en/master/index.html
 .. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
