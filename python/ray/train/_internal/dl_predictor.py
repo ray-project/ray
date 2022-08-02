@@ -1,5 +1,6 @@
 import abc
 from typing import Dict, TypeVar, Union
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -8,6 +9,7 @@ from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type, Dat
 from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.data.context import DatasetContext
 from ray.train.predictor import Predictor
+from ray.util.debug import log_once
 
 TensorType = TypeVar("TensorType")
 TensorDtype = TypeVar("TensorDtype")
@@ -77,7 +79,10 @@ class DLPredictor(Predictor):
         try:
             if isinstance(output, dict):
                 return pd.DataFrame(
-                    {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
+                    {
+                        k: TensorArray(self._tensor_to_array(v))
+                        for k, v in output.items()
+                    }
                 )
             else:
                 return pd.DataFrame(
@@ -86,6 +91,13 @@ class DLPredictor(Predictor):
                 )
         except ValueError:
             # Fall back to returning raw pandas dataframe with user UDF output
+            if log_once("call_model_fallback_python_object"):
+                warnings.warn(
+                    "Failed to automatically cast call_model's output to a "
+                    "supported data type. Falling back to returning the raw "
+                    "python object by setting enable_tensor_extension_casting "
+                    "to False."
+                )
             self._cast_tensor_columns = False
             ctx = DatasetContext.get_current()
             ctx.enable_tensor_extension_casting = False

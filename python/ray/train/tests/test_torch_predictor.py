@@ -1,4 +1,5 @@
 import re
+from typing import Union, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -13,7 +14,9 @@ from ray.air.util.data_batch_conversion import (
     convert_pandas_to_batch_type,
     convert_batch_type_to_pandas,
 )
+from ray.air.util.tensor_extensions.pandas import TensorArray
 from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessors import BatchMapper
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
 from ray.train.torch import TorchCheckpoint, TorchPredictor
@@ -184,31 +187,6 @@ def test_predict_multi_output(use_gpu):
         assert v.flatten().tolist() == [1, 2, 3]
 
 
-def test_predict_unsupported_output():
-    """Tests predictions with models that have unsupported output types."""
-    predictor = TorchPredictor(model=DummyCustomModel())
-
-    data_batch = np.array([1, 2, 3])
-
-    # List output is not supported.
-    with pytest.raises(ValueError):
-        predictor.predict(data_batch)
-
-    # Use a custom predictor instead.
-    class CustomPredictor(TorchPredictor):
-        def call_model(self, tensor):
-            model_output = super().call_model(tensor)
-            return {str(i): model_output[i] for i in range(len(model_output))}
-
-    predictor = CustomPredictor(model=DummyCustomModel())
-    predictions = predictor.predict(data_batch)
-    assert len(predictions) == 2
-    for k, v in predictions.items():
-        # Each tensor is of size 3
-        assert len(v) == 3
-        assert v.flatten().tolist() == [1, 2, 3]
-
-
 @pytest.mark.parametrize("use_gpu", [False, True])
 @pytest.mark.parametrize(
     ("input_dtype", "expected_output_dtype"),
@@ -284,9 +262,56 @@ def test_multi_modal_real_model(use_gpu):
         ).is_cuda, "Model should not be on GPU if use_gpu is False"
 
 
+@pytest.mark.parametrize("use_gpu", [False, True])
+def test_freeform_call_model_output(model, use_gpu):
+    """
+    Test to ensure users can return arbitrary return values with model output
+    in call_model for their custom predictor implementation without running
+    into TensorArray casting exceptions.
+    """
+
+    def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+        df.loc[:, "image"] = [np.asarray(image) for image in df["image"]]
+        return df
+
+    class SSDPredictor(TorchPredictor):
+        def call_model(
+            self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
+        ) -> Any:
+            """
+            User inference code to run forward pass and return value.
+            NOTE: This needs to be tensor first, no TensorArray semantics or
+                restrictions. User should be able to return any format they
+                want, like nested list/dict with Tensors and deal with the
+                outputs later.
+            """
+            model_output = super().call_model(tensor)
+            return [{"key": output} for output in model_output]
+
+    preprocessor = BatchMapper(preprocess)
+    ckpt = TorchCheckpoint.from_model(model=model, preprocessor=preprocessor)
+    predictor = BatchPredictor.from_checkpoint(ckpt, SSDPredictor)
+
+    dummy_data = pd.DataFrame(
+        {
+            "image": TensorArray(
+                [torch.rand(300, 300, 3).numpy(), torch.rand(300, 300, 3).numpy()]
+            )
+        }
+    )
+    dataset = ray.data.from_pandas(dummy_data)
+    num_gpus_per_worker = 1 if use_gpu else 0
+    predictions = predictor.predict(
+        dataset, num_gpus_per_worker=num_gpus_per_worker, feature_columns=["image"]
+    )
+    assert predictions.count() == 2
+    element = predictions.take(1)
+    assert isinstance(element, list)
+    assert element[0]["key"].shape == (300, 300, 3)
+
+
 if __name__ == "__main__":
     import sys
-
     import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))
