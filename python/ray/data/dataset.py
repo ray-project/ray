@@ -1793,8 +1793,8 @@ class Dataset(Generic[T]):
     def take_all(self, limit: int = 100000) -> List[T]:
         """Return all the records in the dataset.
         
-        This will move up to ``limit`` records to the caller's machine; if
-        ``limit`` is very large, this can result in an OutOfMemory crash on
+        This will move the entire dataset to the caller's machine; if the
+        dataset is very large, this can result in an OutOfMemory crash on
         the caller.
 
         Time complexity: O(dataset size)
