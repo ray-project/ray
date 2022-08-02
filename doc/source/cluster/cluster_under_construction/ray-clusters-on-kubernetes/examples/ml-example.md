@@ -216,7 +216,7 @@ The performance of the benchmark is sensitive to the underlying cloud infrastruc
 you might not match {ref}`the numbers quoted in the benchmark docs<xgboost-benchmark>`.
 
 #### Model parameters
-The file `model.json` in the head pod contains the parameters for the trained model.
+The file `model.json` in the Ray head pod contains the parameters for the trained model.
 Other result data will be available in the directory `ray_results` in the head pod.
 Refer to the {ref}`XGBoost-Ray documentation<xgboost-ray>` for details.
 
