@@ -34,7 +34,7 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_compilation(self):
         """Test whether DDPG can be built with both frameworks."""
-        config = ddpg.DDPGConfig()
+        config = ddpg.DDPGConfig().training(num_steps_sampled_before_learning_starts=0)
         config.num_workers = 0
         config.num_envs_per_worker = 2
         config.num_steps_sampled_before_learning_starts = 0
@@ -63,7 +63,12 @@ class TestDDPG(unittest.TestCase):
     def test_ddpg_exploration_and_with_random_prerun(self):
         """Tests DDPG's Exploration (w/ random actions for n timesteps)."""
 
-        core_config = ddpg.DDPGConfig().rollouts(num_rollout_workers=0)
+        core_config = (
+            ddpg.DDPGConfig()
+            .rollouts(num_rollout_workers=0)
+            .training(num_steps_sampled_before_learning_starts=0)
+        )
+
         obs = np.array([0.0, 0.1, -0.1])
 
         # Test against all frameworks.
@@ -125,7 +130,8 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_loss_function(self):
         """Tests DDPG loss function results across all frameworks."""
-        config = ddpg.DDPGConfig()
+        config = ddpg.DDPGConfig().training(num_steps_sampled_before_learning_starts=0)
+
         # Run locally.
         config.seed = 42
         config.num_workers = 0

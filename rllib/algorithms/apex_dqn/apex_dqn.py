@@ -447,12 +447,11 @@ class ApexDQN(DQN):
                     ]
                     self._counters[NUM_ENV_STEPS_SAMPLED] += samples_info["env_steps"]
                     worker_samples_collected[worker] += samples_info["agent_steps"]
+            # update the weights of the workers that returned samples
+            # only do this if there are remote workers (config["num_workers"] > 1)
+            if self.workers.remote_workers():
+                self.update_workers(worker_samples_collected)
             sampled_this_step = True
-
-        # update the weights of the workers that returned samples
-        # only do this if there are remote workers (config["num_workers"] > 1)
-        if self.workers.remote_workers():
-            self.update_workers(worker_samples_collected)
 
         # trigger a sample from the replay actors and enqueue operation to the
         # learner thread.

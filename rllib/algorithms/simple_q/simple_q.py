@@ -351,7 +351,9 @@ class SimpleQ(Algorithm):
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
                 # Store new samples in the replay buffer
                 # Use deprecated add_batch() to support old replay buffers for now
-                self.local_replay_buffer.add(batch)
+
+            self.local_replay_buffer.add(batch)
+            sampled_this_step = True
 
         global_vars = {
             "timestep": self._counters[NUM_ENV_STEPS_SAMPLED],
