@@ -373,7 +373,7 @@ py_test(
     name = "test_alpa",
     size = "large",
     srcs = ["tests/test_alpa.py"],
-    tags = ["team:ml", "exclusive", "alpa", "gpu"],
+    tags = ["team:ml", "exclusive", "alpa"],
     deps = [":train_lib"]
 )
 
