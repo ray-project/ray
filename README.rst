@@ -31,6 +31,12 @@ Ray comes with a toolkit of libraries (Ray AIR) for accelerating ML workloads:
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/master/installation.html>`__.
 
+.. _`Serve`: https://docs.ray.io/en/master/serve/index.html
+.. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
+.. _`Workflow`: https://docs.ray.io/en/master/workflows/concepts.html
+.. _`Train`: https://docs.ray.io/en/master/train/train.html
+.. _`RLlib`: https://docs.ray.io/en/master/rllib/index.html
+
 Documentation
 -------------
 
