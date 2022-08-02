@@ -11,6 +11,8 @@ from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
+    WORKER_LIVENESS_CHECK_KEY,
+    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.kuberay import node_provider
 from ray.autoscaler._private.util import validate_config
@@ -21,6 +23,8 @@ AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
 IDLE_SECONDS_KEY = "idleTimeoutSeconds"
 UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
+UPSCALING_VALUE_DEFAULT = "Default"
+UPSCALING_VALUE_CONSERVATIVE = "Conservative"
 
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
@@ -108,11 +112,18 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     if IDLE_SECONDS_KEY in autoscaler_options:
         idle_timeout_minutes = autoscaler_options[IDLE_SECONDS_KEY] / 60.0
     else:
-        idle_timeout_minutes = 5.0
-    if autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_AGGRESSIVE:
-        upscaling_speed = 1000  # i.e. big
+        idle_timeout_minutes = 1.0
+
+    if autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_CONSERVATIVE:
+        upscaling_speed = 1  # Rate-limit upscaling if "Conservative" is set by user.
+    # This elif is redudant but included for clarity.
+    elif autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_DEFAULT:
+        upscaling_speed = 1000  # i.e. big, no rate-limiting by default
+    # This elif is redudant but included for clarity.
+    elif autoscaler_options.get(UPSCALING_KEY) == UPSCALING_VALUE_AGGRESSIVE:
+        upscaling_speed = 1000
     else:
-        upscaling_speed = 1
+        upscaling_speed = 1000
 
     autoscaling_config = {
         "provider": provider_config,
@@ -145,6 +156,16 @@ def _generate_provider_config(ray_cluster_namespace: str) -> Dict[str, Any]:
         DISABLE_NODE_UPDATERS_KEY: True,
         DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
         FOREGROUND_NODE_LAUNCH_KEY: True,
+        WORKER_LIVENESS_CHECK_KEY: False,
+        # For the time being we are letting the autoscaler drain nodes,
+        # hence the following setting is set to True (the default value).
+        # This is because we are observing that with the flag set to false,
+        # The GCS may not be properly notified of node downscaling.
+        # TODO Solve this issue, flip the key back to false -- else we may have
+        # a race condition in which the autoscaler kills the Ray container
+        # Kubernetes recreates it,
+        # and then KubeRay deletes the pod, killing the container again.
+        WORKER_RPC_DRAIN_KEY: True,
     }
 
 
@@ -161,8 +182,6 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
         "head_start_ray_commands": [],
         "worker_start_ray_commands": [],
         "auth": {},
-        "head_node": {},
-        "worker_nodes": {},
     }
 
 
@@ -336,11 +355,9 @@ def _get_custom_resources(
 ) -> Dict[str, int]:
     """Format custom resources based on the `resources` Ray start param.
 
-    For the current prototype, the value of the `resources` field must
+    Currently, the value of the `resources` field must
     be formatted as follows:
     '"{\"Custom1\": 1, \"Custom2\": 5}"'.
-
-    We intend to provide a better interface soon.
 
     This method first converts the input to a correctly formatted
     json string and then loads that json string to a dict.

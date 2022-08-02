@@ -8,18 +8,14 @@ import io.ray.serve.poll.LongPollResult;
 import java.util.Map;
 
 public class DummyServeController implements ServeController {
-
   private Map<String, EndpointInfo> endpoints;
 
   private LongPollResult longPollResult;
 
   private String rootUrl;
 
-  private String checkpointPath;
-
-  public DummyServeController(String rootUrl, String checkpointPath) {
+  public DummyServeController(String rootUrl) {
     this.rootUrl = rootUrl;
-    this.checkpointPath = checkpointPath;
   }
 
   @Override
@@ -50,10 +46,5 @@ public class DummyServeController implements ServeController {
 
   public void setRootUrl(String rootUrl) {
     this.rootUrl = rootUrl;
-  }
-
-  @Override
-  public String getCheckpointPath() {
-    return checkpointPath;
   }
 }

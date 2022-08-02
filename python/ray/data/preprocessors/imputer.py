@@ -73,13 +73,9 @@ class SimpleImputer(Preprocessor):
         return df
 
     def __repr__(self):
-        stats = getattr(self, "stats_", None)
         return (
-            f"SimpleImputer("
-            f"columns={self.columns}, "
-            f"strategy={self.strategy}, "
-            f"fill_value={self.fill_value}, "
-            f"stats={stats})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"strategy={self.strategy!r}, fill_value={self.fill_value!r})"
         )
 
 
