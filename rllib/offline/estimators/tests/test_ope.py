@@ -233,11 +233,11 @@ class TestFQE(unittest.TestCase):
         #   [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 10],
         # and gamma = 0.99, the discounted returns i.e. optimal Q-values are as follows:
 
-        q_values = np.zeros(len(self.batch["rewards"]), dtype = float)
+        q_values = np.zeros(len(self.batch["rewards"]), dtype=float)
         q_values[-1] = self.batch["rewards"][-1]
         for t in range(len(self.batch["rewards"]) - 2, -1, -1):
             q_values[t] = self.batch["rewards"][t] + self.gamma * q_values[t + 1]
-        
+
         print(q_values)
 
         q_model_config = {
