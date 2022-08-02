@@ -1,7 +1,3 @@
-from getpass import getuser
-from shlex import quote
-from typing import Dict, List
-import click
 import hashlib
 import json
 import logging
@@ -10,30 +6,33 @@ import subprocess
 import sys
 import time
 import warnings
+from getpass import getuser
+from shlex import quote
+from typing import Dict, List
 
-from ray.autoscaler.command_runner import CommandRunnerInterface
+import click
+
+from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_SSH_INTERVAL_S,
+    AUTOSCALER_NODE_START_WAIT_S,
     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
-    AUTOSCALER_NODE_START_WAIT_S,
 )
 from ray.autoscaler._private.docker import (
     check_bind_mounts_cmd,
-    check_docker_running_cmd,
     check_docker_image,
+    check_docker_running_cmd,
     docker_start_cmds,
     with_docker_exec,
 )
 from ray.autoscaler._private.log_timer import LogTimer
-
 from ray.autoscaler._private.subprocess_output_util import (
-    run_cmd_redirected,
     ProcessRunnerError,
     is_output_redirected,
+    run_cmd_redirected,
 )
-
-from ray.autoscaler._private.cli_logger import cli_logger, cf
+from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -66,7 +65,7 @@ def is_using_login_shells():
     return _config["use_login_shells"]
 
 
-def set_using_login_shells(val):
+def set_using_login_shells(val: bool):
     """Choose between login and non-interactive shells.
 
     Non-interactive shells have the benefit of receiving less output from
@@ -81,7 +80,7 @@ def set_using_login_shells(val):
     and non-robust tool to work.
 
     Args:
-        val (bool): If true, login shells will be used to run all commands.
+        val: If true, login shells will be used to run all commands.
     """
     _config["use_login_shells"] = val
 
@@ -90,7 +89,7 @@ def _with_environment_variables(cmd: str, environment_variables: Dict[str, objec
     """Prepend environment variables to a shell command.
 
     Args:
-        cmd (str): The base command.
+        cmd: The base command.
         environment_variables (Dict[str, object]): The set of environment
             variables. If an environment variable value is a dict, it will
             automatically be converted to a one line yaml string.
@@ -443,8 +442,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                 Full command to run. Should include SSH options and other
                 processing that we do.
             with_output (bool):
-                If `with_output` is `True`, command stdout and stderr
-                will be captured and returned.
+                If `with_output` is `True`, command stdout will be captured and
+                returned.
             exit_on_fail (bool):
                 If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
@@ -465,10 +464,8 @@ class SSHCommandRunner(CommandRunnerInterface):
                     silent=silent,
                     use_login_shells=is_using_login_shells(),
                 )
-            if with_output:
-                return self.process_runner.check_output(final_cmd)
             else:
-                return self.process_runner.check_call(final_cmd)
+                return self.process_runner.check_output(final_cmd)
         except subprocess.CalledProcessError as e:
             joined_cmd = " ".join(final_cmd)
             if not is_using_login_shells():
@@ -488,6 +485,11 @@ class SSHCommandRunner(CommandRunnerInterface):
                 if is_output_redirected():
                     fail_msg += " See above for the output from the failure."
                 raise click.ClickException(fail_msg) from None
+        finally:
+            # Do our best to flush output to terminal.
+            # See https://github.com/ray-project/ray/pull/19473.
+            sys.stdout.flush()
+            sys.stderr.flush()
 
     def run(
         self,

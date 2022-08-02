@@ -1,5 +1,6 @@
-import ray
 import time
+
+import ray
 
 
 # By adding the `@ray.remote` decorator, a regular Python function

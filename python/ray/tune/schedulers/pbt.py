@@ -7,22 +7,23 @@ import random
 import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from ray.tune import trial_runner
-from ray.tune import trial_executor
+from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
-from ray.tune.suggest import SearchGenerator
+from ray.tune.search import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
-from ray.tune.sample import Domain, Function
+from ray.tune.search.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.suggest.variant_generator import format_vars
-from ray.tune.trial import Trial, _TuneCheckpoint
+from ray.tune.search.variant_generator import format_vars
+from ray.tune.experiment import Trial
+from ray.util import PublicAPI
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
 
-class PBTTrialState:
+class _PBTTrialState:
     """Internal PBT state tracked per-trial."""
 
     def __init__(self, trial: Trial):
@@ -44,7 +45,7 @@ class PBTTrialState:
         )
 
 
-def explore(
+def _explore(
     config: Dict,
     mutations: Dict,
     resample_probability: float,
@@ -65,7 +66,7 @@ def explore(
     for key, distribution in mutations.items():
         if isinstance(distribution, dict):
             new_config.update(
-                {key: explore(config[key], mutations[key], resample_probability, None)}
+                {key: _explore(config[key], mutations[key], resample_probability, None)}
             )
         elif isinstance(distribution, list):
             if (
@@ -100,7 +101,7 @@ def explore(
     return new_config
 
 
-def make_experiment_tag(orig_tag: str, config: Dict, mutations: Dict) -> str:
+def _make_experiment_tag(orig_tag: str, config: Dict, mutations: Dict) -> str:
     """Appends perturbed params to the trial name to show in the console."""
 
     resolved_vars = {}
@@ -109,7 +110,7 @@ def make_experiment_tag(orig_tag: str, config: Dict, mutations: Dict) -> str:
     return "{}@perturbed[{}]".format(orig_tag, format_vars(resolved_vars))
 
 
-def fill_config(
+def _fill_config(
     config: Dict, attr: str, search_space: Union[Callable, Domain, list, dict]
 ):
     """Add attr to config by sampling from search_space."""
@@ -122,9 +123,10 @@ def fill_config(
     elif isinstance(search_space, dict):
         config[attr] = {}
         for k, v in search_space.items():
-            fill_config(config[attr], k, v)
+            _fill_config(config[attr], k, v)
 
 
+@PublicAPI
 class PopulationBasedTraining(FIFOScheduler):
     """Implements the Population Based Training (PBT) algorithm.
 
@@ -142,7 +144,7 @@ class PopulationBasedTraining(FIFOScheduler):
     This Tune PBT implementation considers all trials added as part of the
     PBT population. If the number of trials exceeds the cluster capacity,
     they will be time-multiplexed as to balance training progress across the
-    population. To run multiple trials, use `tune.run(num_samples=<int>)`.
+    population. To run multiple trials, use `tune.TuneConfig(num_samples=<int>)`.
 
     In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in
     `pbt_global.txt` and individual policy perturbations are recorded
@@ -234,7 +236,15 @@ class PopulationBasedTraining(FIFOScheduler):
                 # factor_4 is treated as a continuous hyperparameter.
                 "factor_4": tune.choice([1, 10, 100, 1000, 10000]),
             })
-        tune.run({...}, num_samples=8, scheduler=pbt)
+        tuner = tune.Tuner(
+            trainable,
+            tune_config=tune.TuneConfig(
+                scheduler=pbt,
+                num_samples=8,
+            ),
+        )
+        tuner.fit()
+
     """
 
     def __init__(
@@ -357,12 +367,12 @@ class PopulationBasedTraining(FIFOScheduler):
                 "{} has been instantiated without a valid `metric` ({}) or "
                 "`mode` ({}) parameter. Either pass these parameters when "
                 "instantiating the scheduler, or pass them as parameters "
-                "to `tune.run()`".format(
+                "to `tune.TuneConfig()`".format(
                     self.__class__.__name__, self._metric, self._mode
                 )
             )
 
-        self._trial_state[trial] = PBTTrialState(trial)
+        self._trial_state[trial] = _PBTTrialState(trial)
 
         for attr in self._hyperparam_mutations.keys():
             if attr not in trial.config:
@@ -373,7 +383,7 @@ class PopulationBasedTraining(FIFOScheduler):
                     )
                 # Add attr to trial's config by sampling search space from
                 # hyperparam_mutations.
-                fill_config(trial.config, attr, self._hyperparam_mutations[attr])
+                _fill_config(trial.config, attr, self._hyperparam_mutations[attr])
                 # Make sure this attribute is added to CLI output.
                 trial.evaluated_params[attr] = trial.config[attr]
 
@@ -490,7 +500,7 @@ class PopulationBasedTraining(FIFOScheduler):
             )
 
     def _save_trial_state(
-        self, state: PBTTrialState, time: int, result: Dict, trial: Trial
+        self, state: _PBTTrialState, time: int, result: Dict, trial: Trial
     ):
         """Saves necessary trial information when result is received.
         Args:
@@ -528,7 +538,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 state.last_checkpoint = trial.checkpoint
             else:
                 state.last_checkpoint = trial_executor.save(
-                    trial, _TuneCheckpoint.MEMORY, result=state.last_result
+                    trial, CheckpointStorage.MEMORY, result=state.last_result
                 )
             self._num_checkpoints += 1
         else:
@@ -548,8 +558,8 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _log_config_on_step(
         self,
-        trial_state: PBTTrialState,
-        new_state: PBTTrialState,
+        trial_state: _PBTTrialState,
+        new_state: _PBTTrialState,
         trial: Trial,
         trial_to_clone: Trial,
         new_config: Dict,
@@ -586,7 +596,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _get_new_config(self, trial, trial_to_clone):
         """Gets new config for trial by exploring trial_to_clone's config."""
-        return explore(
+        return _explore(
             trial_to_clone.config,
             self._hyperparam_mutations,
             self._resample_probability,
@@ -595,7 +605,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def _exploit(
         self,
-        trial_executor: "trial_executor.TrialExecutor",
+        trial_executor: "trial_runner.RayTrialExecutor",
         trial: Trial,
         trial_to_clone: Trial,
     ):
@@ -632,7 +642,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_state, new_state, trial, trial_to_clone, new_config
             )
 
-        new_tag = make_experiment_tag(
+        new_tag = _make_experiment_tag(
             trial_state.orig_tag, new_config, self._hyperparam_mutations
         )
         if trial.status == Trial.PAUSED:
@@ -728,6 +738,7 @@ class PopulationBasedTraining(FIFOScheduler):
         )
 
 
+@PublicAPI
 class PopulationBasedTrainingReplay(FIFOScheduler):
     """Replays a Population Based Training run.
 
@@ -755,7 +766,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
     .. code-block:: python
 
         # Replaying a result from ray.tune.examples.pbt_convnet_example
-        from ray import tune
+        from ray import air, tune
 
         from ray.tune.examples.pbt_convnet_example import PytorchTrainable
         from ray.tune.schedulers import PopulationBasedTrainingReplay
@@ -763,10 +774,16 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         replay = PopulationBasedTrainingReplay(
             "~/ray_results/pbt_test/pbt_policy_XXXXX_00001.txt")
 
-        tune.run(
+        tuner = tune.Tuner(
             PytorchTrainable,
-            scheduler=replay,
-            stop={"training_iteration": 100})
+            run_config=air.RunConfig(
+                stop={"training_iteration": 100}
+            ),
+            tune_config=tune.TuneConfig(
+                scheduler=replay,
+            ),
+        )
+        tuner.fit()
 
 
     """
@@ -841,7 +858,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         elif not self._trial.config and not self._policy:
             raise ValueError(
                 "No replay policy found and trial initialized without a "
-                "valid config. Either pass a `config` argument to `tune.run()`"
+                "valid config. Either pass a `config` argument to `tune.Tuner()`"
                 "or consider not using PBT replay for this run."
             )
         self._trial.set_config(self.config)
@@ -872,10 +889,10 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         )
 
         checkpoint = trial_runner.trial_executor.save(
-            trial, _TuneCheckpoint.MEMORY, result=result
+            trial, CheckpointStorage.MEMORY, result=result
         )
 
-        new_tag = make_experiment_tag(self.experiment_tag, new_config, new_config)
+        new_tag = _make_experiment_tag(self.experiment_tag, new_config, new_config)
 
         trial_executor = trial_runner.trial_executor
         trial_executor.stop_trial(trial)

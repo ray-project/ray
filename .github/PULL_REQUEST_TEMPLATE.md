@@ -12,6 +12,7 @@
 
 ## Checks
 
+- [ ] I've signed off every commit(by using the -s flag, i.e., `git commit -s`) in this PR.
 - [ ] I've run `scripts/format.sh` to lint the changes in this PR.
 - [ ] I've included any doc changes needed for https://docs.ray.io/en/master/.
 - [ ] I've made sure the tests are passing. Note that there might be a few flaky tests, see the recent failures at https://flakey-tests.ray.io/

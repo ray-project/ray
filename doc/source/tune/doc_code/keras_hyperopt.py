@@ -4,7 +4,7 @@ accuracy = 42
 
 # __keras_hyperopt_start__
 from ray import tune
-from ray.tune.suggest.hyperopt import HyperOptSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 import keras
 
 
@@ -25,7 +25,14 @@ search_space = {"activation": tune.choice(["relu", "tanh"])}
 algo = HyperOptSearch()
 
 # 3. Start a Tune run that maximizes accuracy.
-analysis = tune.run(
-    objective, search_alg=algo, config=search_space, metric="accuracy", mode="max"
+tuner = tune.Tuner(
+    objective,
+    tune_config=tune.TuneConfig(
+        metric="accuracy",
+        mode="max",
+        search_alg=algo,
+    ),
+    param_space=search_space,
 )
+results = tuner.fit()
 # __keras_hyperopt_end__

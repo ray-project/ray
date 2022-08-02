@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 import ray
-from ray.tune.config_parser import make_parser
+from ray.tune.experiment.config_parser import _make_parser
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.resources import resources_to_json
 from ray.tune.tune import run_experiments
@@ -23,24 +23,24 @@ Training example via RLlib CLI:
     rllib train --run DQN --env CartPole-v0
 
 Grid search example via RLlib CLI:
-    rllib train -f tuned_examples/cartpole-grid-search-example.yaml
+    rllib train -f tuned_examples/cartpole-ppo-grid-search-example.yaml
 
 Grid search example via executable:
-    ./train.py -f tuned_examples/cartpole-grid-search-example.yaml
+    ./train.py -f tuned_examples/cartpole-ppo-grid-search-example.yaml
 
 Note that -f overrides all other trial-specific command-line options.
 """
 
 
 def create_parser(parser_creator=None):
-    parser = make_parser(
+    parser = _make_parser(
         parser_creator=parser_creator,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Train a reinforcement learning agent.",
         epilog=EXAMPLE_USAGE,
     )
 
-    # See also the base parser definition in ray/tune/config_parser.py
+    # See also the base parser definition in ray/tune/experiment/__config_parser.py
     parser.add_argument(
         "--ray-address",
         default=None,
@@ -162,7 +162,7 @@ def run(args, parser):
         with open(args.config_file) as f:
             experiments = yaml.safe_load(f)
     else:
-        # Note: keep this in sync with tune/config_parser.py
+        # Note: keep this in sync with tune/experiment/__config_parser.py
         experiments = {
             args.experiment_name: {  # i.e. log to ~/ray_results/default
                 "run": args.run,

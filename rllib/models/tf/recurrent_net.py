@@ -3,7 +3,7 @@ import gym
 from gym.spaces import Box, Discrete, MultiDiscrete
 import logging
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Optional, Type, Tuple
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -63,15 +63,17 @@ class RecurrentNetwork(TFModelV2):
         input_dict: Dict[str, TensorType],
         state: List[TensorType],
         seq_lens: TensorType,
-    ) -> (TensorType, List[TensorType]):
+    ) -> Tuple[TensorType, List[TensorType]]:
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
         assert seq_lens is not None
-        padded_inputs = input_dict["obs_flat"]
-        max_seq_len = tf.shape(padded_inputs)[0] // tf.shape(seq_lens)[0]
+        flat_inputs = input_dict["obs_flat"]
+        inputs = add_time_dimension(
+            padded_inputs=flat_inputs, seq_lens=seq_lens, framework="tf"
+        )
         output, new_state = self.forward_rnn(
-            add_time_dimension(padded_inputs, max_seq_len=max_seq_len, framework="tf"),
+            inputs,
             state,
             seq_lens,
         )
@@ -79,13 +81,13 @@ class RecurrentNetwork(TFModelV2):
 
     def forward_rnn(
         self, inputs: TensorType, state: List[TensorType], seq_lens: TensorType
-    ) -> (TensorType, List[TensorType]):
+    ) -> Tuple[TensorType, List[TensorType]]:
         """Call the model with the given input tensors and state.
 
         Args:
-            inputs (dict): observation tensor with shape [B, T, obs_size].
-            state (list): list of state tensors, each with shape [B, T, size].
-            seq_lens (Tensor): 1d tensor holding input sequence lengths.
+            inputs: observation tensor with shape [B, T, obs_size].
+            state: list of state tensors, each with shape [B, T, size].
+            seq_lens: 1d tensor holding input sequence lengths.
 
         Returns:
             (outputs, new_state): The model output tensor of shape
@@ -117,6 +119,7 @@ class RecurrentNetwork(TFModelV2):
         raise NotImplementedError("You must implement this for a RNN model")
 
 
+@DeveloperAPI
 class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm."""
 
@@ -215,7 +218,7 @@ class LSTMWrapper(RecurrentNetwork):
         input_dict: Dict[str, TensorType],
         state: List[TensorType],
         seq_lens: TensorType,
-    ) -> (TensorType, List[TensorType]):
+    ) -> Tuple[TensorType, List[TensorType]]:
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
@@ -264,7 +267,7 @@ class LSTMWrapper(RecurrentNetwork):
     @override(RecurrentNetwork)
     def forward_rnn(
         self, inputs: TensorType, state: List[TensorType], seq_lens: TensorType
-    ) -> (TensorType, List[TensorType]):
+    ) -> Tuple[TensorType, List[TensorType]]:
         model_out, self._value_out, h, c = self._rnn_model([inputs, seq_lens] + state)
         return model_out, [h, c]
 
@@ -280,6 +283,7 @@ class LSTMWrapper(RecurrentNetwork):
         return tf.reshape(self._value_out, [-1])
 
 
+@DeveloperAPI
 class Keras_LSTMWrapper(tf.keras.Model if tf else object):
     """A tf keras auto-LSTM wrapper used when `use_lstm`=True."""
 
@@ -409,7 +413,7 @@ class Keras_LSTMWrapper(tf.keras.Model if tf else object):
 
     def call(
         self, input_dict: SampleBatch
-    ) -> (TensorType, List[TensorType], Dict[str, TensorType]):
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         assert input_dict.get(SampleBatch.SEQ_LENS) is not None
         # Push obs through underlying (wrapped) model first.
         wrapped_out, _, _ = self.wrapped_keras_model(input_dict)
@@ -433,11 +437,8 @@ class Keras_LSTMWrapper(tf.keras.Model if tf else object):
         if prev_a_r:
             wrapped_out = tf.concat([wrapped_out] + prev_a_r, axis=1)
 
-        max_seq_len = (
-            tf.shape(wrapped_out)[0] // tf.shape(input_dict[SampleBatch.SEQ_LENS])[0]
-        )
         wrapped_out_plus_time_dim = add_time_dimension(
-            wrapped_out, max_seq_len=max_seq_len, framework="tf"
+            wrapped_out, seq_lens=input_dict[SampleBatch.SEQ_LENS], framework="tf"
         )
         model_out, value_out, h, c = self._rnn_model(
             [

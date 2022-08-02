@@ -1,13 +1,23 @@
+from typing import List, Callable, Any
+
 import ray
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
+from ray._private.utils import get_ray_doc_version
 
 
+@Deprecated(
+    message="For stateless/task processing, use ray.util.multiprocessing, see details "
+    f"in https://docs.ray.io/en/{get_ray_doc_version()}/ray-more-libs/multiprocessing.html. "  # noqa: E501
+    "For stateful/actor processing such as batch prediction, use "
+    "Datasets.map_batches(compute=ActorPoolStrategy, ...), see details in "
+    f"https://docs.ray.io/en/{get_ray_doc_version()}/data/package-ref.html#ray.data.Dataset.map_batches."  # noqa: E501
+)
 @PublicAPI(stability="beta")
 class ActorPool:
     """Utility class to operate on a fixed pool of actors.
 
     Arguments:
-        actors (list): List of Ray actor handles to use in this pool.
+        actors: List of Ray actor handles to use in this pool.
 
     Examples:
         >>> import ray
@@ -22,7 +32,7 @@ class ActorPool:
         [2, 4, 6, 8]
     """
 
-    def __init__(self, actors):
+    def __init__(self, actors: list):
         # actors to be used
         self._idle_actors = list(actors)
 
@@ -41,7 +51,7 @@ class ActorPool:
         # next work depending when actors free
         self._pending_submits = []
 
-    def map(self, fn, values):
+    def map(self, fn: Callable[[Any], Any], values: List[Any]):
         """Apply the given function in parallel over the actors and values.
 
         This returns an ordered iterator that will return results of the map
@@ -49,10 +59,10 @@ class ActorPool:
         the computation to finish.
 
         Arguments:
-            fn (func): Function that takes (actor, value) as argument and
+            fn: Function that takes (actor, value) as argument and
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
-            values (list): List of values that fn(actor, value) should be
+            values: List of values that fn(actor, value) should be
                 applied to.
 
         Returns:
@@ -69,7 +79,7 @@ class ActorPool:
         # by calling `has_next` and `gen_next` repeteadly.
         while self.has_next():
             try:
-                self.get_next(timeout=0)
+                self.get_next(timeout=0, ignore_if_timedout=True)
             except TimeoutError:
                 pass
 
@@ -78,7 +88,7 @@ class ActorPool:
         while self.has_next():
             yield self.get_next()
 
-    def map_unordered(self, fn, values):
+    def map_unordered(self, fn: Callable[[Any], Any], values: List[Any]):
         """Similar to map(), but returning an unordered iterator.
 
         This returns an unordered iterator that will return results of the map
@@ -86,10 +96,10 @@ class ActorPool:
         take longer to compute than others.
 
         Arguments:
-            fn (func): Function that takes (actor, value) as argument and
+            fn: Function that takes (actor, value) as argument and
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
-            values (list): List of values that fn(actor, value) should be
+            values: List of values that fn(actor, value) should be
                 applied to.
 
         Returns:
@@ -123,10 +133,10 @@ class ActorPool:
         get_next() / get_next_unordered().
 
         Arguments:
-            fn (func): Function that takes (actor, value) as argument and
+            fn: Function that takes (actor, value) as argument and
                 returns an ObjectRef computing the result over the value. The
                 actor will be considered busy until the ObjectRef completes.
-            value (object): Value to compute a result for.
+            value: Value to compute a result for.
 
         Examples:
             >>> from ray.util.actor_pool import ActorPool
@@ -165,7 +175,7 @@ class ActorPool:
         """
         return bool(self._future_to_actor)
 
-    def get_next(self, timeout=None):
+    def get_next(self, timeout=None, ignore_if_timedout=False):
         """Returns the next pending result in order.
 
         This returns the next result produced by submit(), blocking for up to
@@ -191,10 +201,15 @@ class ActorPool:
                 "It is not allowed to call get_next() after get_next_unordered()."
             )
         future = self._index_to_future[self._next_return_index]
+        timeout_msg = "Timed out waiting for result"
+        raise_timeout_after_ignore = False
         if timeout is not None:
             res, _ = ray.wait([future], timeout=timeout)
             if not res:
-                raise TimeoutError("Timed out waiting for result")
+                if not ignore_if_timedout:
+                    raise TimeoutError(timeout_msg)
+                else:
+                    raise_timeout_after_ignore = True
         del self._index_to_future[self._next_return_index]
         self._next_return_index += 1
 
@@ -202,9 +217,13 @@ class ActorPool:
         i, a = self._future_to_actor.pop(future_key)
 
         self._return_actor(a)
+        if raise_timeout_after_ignore:
+            raise TimeoutError(
+                timeout_msg + ". The task {} has been ignored.".format(future)
+            )
         return ray.get(future)
 
-    def get_next_unordered(self, timeout=None):
+    def get_next_unordered(self, timeout=None, ignore_if_timedout=False):
         """Returns any of the next pending results.
 
         This returns some result produced by submit(), blocking for up to
@@ -232,14 +251,23 @@ class ActorPool:
             raise StopIteration("No more results to get")
         # TODO(ekl) bulk wait for performance
         res, _ = ray.wait(list(self._future_to_actor), num_returns=1, timeout=timeout)
+        timeout_msg = "Timed out waiting for result"
+        raise_timeout_after_ignore = False
         if res:
             [future] = res
         else:
-            raise TimeoutError("Timed out waiting for result")
+            if not ignore_if_timedout:
+                raise TimeoutError(timeout_msg)
+            else:
+                raise_timeout_after_ignore = True
         i, a = self._future_to_actor.pop(future)
         self._return_actor(a)
         del self._index_to_future[i]
         self._next_return_index = max(self._next_return_index, i + 1)
+        if raise_timeout_after_ignore:
+            raise TimeoutError(
+                timeout_msg + ". The task {} has been ignored.".format(future)
+            )
         return ray.get(future)
 
     def _return_actor(self, actor):
@@ -315,4 +343,4 @@ class ActorPool:
         if actor in self._idle_actors or actor in busy_actors:
             raise ValueError("Actor already belongs to current ActorPool")
         else:
-            self._idle_actors.append(actor)
+            self._return_actor(actor)

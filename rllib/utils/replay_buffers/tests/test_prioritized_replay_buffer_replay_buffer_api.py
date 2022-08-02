@@ -5,7 +5,7 @@ import unittest
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
     PrioritizedReplayBuffer,
 )
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
 from ray.rllib.utils.test_utils import check
 
 
@@ -68,7 +68,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
                 buffer.add(batch, **kwargs)
 
         buffer = PrioritizedReplayBuffer(
-            capacity=100, storage_unit="timesteps", alpha=0.5
+            capacity=100, storage_unit="fragments", alpha=0.5
         )
 
         # Test add/sample
@@ -97,7 +97,9 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
 
     def test_sequence_size(self):
         # Seq-len=1.
-        buffer = PrioritizedReplayBuffer(capacity=100, alpha=0.1)
+        buffer = PrioritizedReplayBuffer(
+            capacity=100, alpha=0.1, storage_unit="fragments"
+        )
         for _ in range(200):
             buffer.add(self._generate_data())
         assert len(buffer._storage) == 100, len(buffer._storage)
@@ -110,11 +112,11 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         assert new_memory.stats()["added_count"] == 200, new_memory.stats()
 
         # Seq-len=5.
-        buffer = PrioritizedReplayBuffer(capacity=100, alpha=0.1)
+        buffer = PrioritizedReplayBuffer(
+            capacity=100, alpha=0.1, storage_unit="fragments"
+        )
         for _ in range(40):
-            buffer.add(
-                SampleBatch.concat_samples([self._generate_data() for _ in range(5)])
-            )
+            buffer.add(concat_samples([self._generate_data() for _ in range(5)]))
         assert len(buffer._storage) == 20, len(buffer._storage)
         assert buffer.stats()["added_count"] == 200, buffer.stats()
         # Test get_state/set_state.

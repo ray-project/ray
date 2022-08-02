@@ -11,10 +11,10 @@ import gym
 import os
 
 import ray
-from ray.rllib.agents.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray import tune
+from ray import air, tune
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -45,6 +45,11 @@ parser.add_argument(
 )
 parser.add_argument(
     "--stop-reward", type=float, default=180.0, help="Reward at which we stop training."
+)
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
 )
 
 
@@ -82,7 +87,7 @@ class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
 class TaskSettingCallback(DefaultCallbacks):
     """Custom callback to verify, we can set the task on each remote sub-env."""
 
-    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+    def on_train_result(self, *, algorithm, result: dict, **kwargs) -> None:
         """Curriculum learning as seen in Ray docs"""
         if result["episode_reward_mean"] > 0.0:
             phase = 0
@@ -91,12 +96,12 @@ class TaskSettingCallback(DefaultCallbacks):
 
         # Sub-envs are now ray.actor.ActorHandles, so we have to add
         # `remote()` here.
-        trainer.workers.foreach_env(lambda env: env.set_task.remote(phase))
+        algorithm.workers.foreach_env(lambda env: env.set_task.remote(phase))
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(num_cpus=6)
+    ray.init(num_cpus=6, local_mode=args.local_mode)
 
     config = {
         # Specify your custom (single, non-vectorized) env directly as a
@@ -125,7 +130,9 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

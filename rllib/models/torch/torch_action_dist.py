@@ -290,9 +290,9 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         """Parameterizes the distribution via `inputs`.
 
         Args:
-            low (float): The lowest possible sampling value
+            low: The lowest possible sampling value
                 (excluding this value).
-            high (float): The highest possible sampling value
+            high: The highest possible sampling value
                 (excluding this value).
         """
         super().__init__(inputs, model)

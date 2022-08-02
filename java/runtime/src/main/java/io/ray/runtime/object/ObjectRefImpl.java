@@ -7,8 +7,7 @@ import com.google.common.collect.Sets;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
-import io.ray.api.id.UniqueId;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -38,10 +37,6 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
 
   private ObjectId id;
 
-  // In GC thread, we don't know which worker this object binds to, so we need to
-  // store the worker ID for later uses.
-  private transient UniqueId workerId;
-
   private Class<T> type;
 
   // Raw data of this object.
@@ -60,12 +55,10 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public void init(ObjectId id, Class<?> type, boolean skipAddingLocalRef) {
     this.id = id;
     this.type = (Class<T>) type;
-    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-    Preconditions.checkState(workerId == null);
-    workerId = runtime.getWorkerContext().getCurrentWorkerId();
+    AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
 
     if (!skipAddingLocalRef) {
-      runtime.getObjectStore().addLocalReference(workerId, id);
+      runtime.getObjectStore().addLocalReference(id);
     }
     // We still add the reference so that the local ref count will be properly
     // decremented once this object is GCed.
@@ -106,7 +99,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(this.getId());
     out.writeObject(this.getType());
-    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
     byte[] ownerAddress = runtime.getObjectStore().getOwnershipInfo(this.getId());
     out.writeInt(ownerAddress.length);
     out.write(ownerAddress);
@@ -121,10 +114,8 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     byte[] ownerAddress = new byte[len];
     in.readFully(ownerAddress);
 
-    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-    Preconditions.checkState(workerId == null);
-    workerId = runtime.getWorkerContext().getCurrentWorkerId();
-    runtime.getObjectStore().addLocalReference(workerId, id);
+    AbstractRayRuntime runtime = (AbstractRayRuntime) Ray.internal();
+    runtime.getObjectStore().addLocalReference(id);
     new ObjectRefImplReference(this);
 
     runtime
@@ -136,13 +127,11 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   private static final class ObjectRefImplReference
       extends FinalizableWeakReference<ObjectRefImpl<?>> {
 
-    private final UniqueId workerId;
     private final ObjectId objectId;
     private final AtomicBoolean removed;
 
     public ObjectRefImplReference(ObjectRefImpl<?> obj) {
       super(obj, REFERENCE_QUEUE);
-      this.workerId = obj.workerId;
       this.objectId = obj.id;
       this.removed = new AtomicBoolean(false);
       REFERENCES.add(this);
@@ -151,14 +140,12 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     @Override
     public void finalizeReferent() {
       // This method may be invoked multiple times on the same instance (due to explicit invoking in
-      // unit tests). So if `workerId` is null, it means this method has been invoked.
+      // unit tests).
       if (!removed.getAndSet(true)) {
         REFERENCES.remove(this);
         // It's possible that GC is executed after the runtime is shutdown.
         if (Ray.isInitialized()) {
-          ((RayRuntimeInternal) (Ray.internal()))
-              .getObjectStore()
-              .removeLocalReference(workerId, objectId);
+          ((AbstractRayRuntime) (Ray.internal())).getObjectStore().removeLocalReference(objectId);
           allObjects.remove(objectId);
           LOG.debug("Object {} is finalized.", objectId);
         }

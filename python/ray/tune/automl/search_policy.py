@@ -2,11 +2,11 @@ import time
 import copy
 import logging
 
-from ray.tune.trial import Trial
-from ray.tune.suggest import SearchAlgorithm
-from ray.tune.experiment import convert_to_experiment_list
-from ray.tune.suggest.variant_generator import generate_variants
-from ray.tune.config_parser import make_parser, create_trial_from_spec
+from ray.tune.experiment import Trial
+from ray.tune.search import SearchAlgorithm
+from ray.tune.experiment import _convert_to_experiment_list
+from ray.tune.search.variant_generator import generate_variants
+from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class AutoMLSearcher(SearchAlgorithm):
         """Initialize AutoMLSearcher.
 
         Arguments:
-            search_space (SearchSpace): The space to search.
+            search_space: The space to search.
             reward_attr: The attribute name of the reward in the result.
         """
         # Pass experiment later to allow construction without this parameter
@@ -54,7 +54,7 @@ class AutoMLSearcher(SearchAlgorithm):
         self.experiment_list = []
         self.best_trial = None
         self._is_finished = False
-        self._parser = make_parser()
+        self._parser = _make_parser()
         self._unfinished_count = 0
         self._running_trials = {}
         self._completed_trials = {}
@@ -66,7 +66,7 @@ class AutoMLSearcher(SearchAlgorithm):
         self._start_ts = 0
 
     def add_configurations(self, experiments):
-        self.experiment_list = convert_to_experiment_list(experiments)
+        self.experiment_list = _convert_to_experiment_list(experiments)
 
     def get_best_trial(self):
         """Returns the Trial object with the best reward_attr"""
@@ -107,7 +107,7 @@ class AutoMLSearcher(SearchAlgorithm):
                     tag += "%s=%s-" % (path.split(".")[-1], value)
                     deep_insert(path.split("."), value, new_spec["config"])
 
-                trial = create_trial_from_spec(
+                trial = _create_trial_from_spec(
                     new_spec, exp.dir_name, self._parser, experiment_tag=tag
                 )
 
@@ -218,7 +218,7 @@ class AutoMLSearcher(SearchAlgorithm):
         parameter permutations
 
         Arguments:
-            trials (list): A list of Trial object, where user can fetch the
+            trials: A list of Trial object, where user can fetch the
                 result attribute, etc.
 
         Returns:

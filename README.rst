@@ -27,7 +27,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 As well as libraries for taking ML and distributed apps to production:
 
 - `Serve`_: Scalable and Programmable Serving
-- `Workflows`_: Fast, Durable Application Flows (alpha)
+- `Workflow`_: Fast, Durable Application Flows (alpha)
 
 There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
 
@@ -42,7 +42,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Scikit-learn`: https://docs.ray.io/en/master/joblib.html
 .. _`Serve`: https://docs.ray.io/en/master/serve/index.html
 .. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
-.. _`Workflows`: https://docs.ray.io/en/master/workflows/concepts.html
+.. _`Workflow`: https://docs.ray.io/en/master/workflows/concepts.html
 .. _`Train`: https://docs.ray.io/en/master/train/train.html
 
 
@@ -118,7 +118,7 @@ This example runs a parallel grid search to optimize an example objective functi
 
 .. code-block:: python
 
-    from ray import tune
+    from ray.air import session
 
 
     def objective(step, alpha, beta):
@@ -132,20 +132,22 @@ This example runs a parallel grid search to optimize an example objective functi
             # Iterative training function - can be any arbitrary training procedure.
             intermediate_score = objective(step, alpha, beta)
             # Feed the score back back to Tune.
-            tune.report(mean_loss=intermediate_score)
+            session.report({"mean_loss": intermediate_score})
 
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
         training_function,
-        config={
+        param_space={
             "alpha": tune.grid_search([0.001, 0.01, 0.1]),
             "beta": tune.choice([1, 2, 3])
         })
+    
+    results = tuner.fit()
 
-    print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
+    print("Best config: ", results.get_best_result(metric="mean_loss", mode="min").config)
 
     # Get a dataframe for analyzing trial results.
-    df = analysis.results_df
+    df = results.get_dataframe()
 
 If TensorBoard is installed, automatically visualize all trial results:
 
@@ -179,7 +181,7 @@ It offers high scalability and unified APIs for a
 .. code-block:: python
 
     import gym
-    from ray.rllib.agents.ppo import PPOTrainer
+    from ray.rllib.algorithms.ppo import PPO
 
 
     # Define your problem using python and openAI's gym API:
@@ -229,7 +231,7 @@ It offers high scalability and unified APIs for a
 
 
     # Create an RLlib Trainer instance.
-    trainer = PPOTrainer(
+    trainer = PPO(
         config={
             # Env class to use (here: our gym.Env sub-class from above).
             "env": SimpleCorridor,

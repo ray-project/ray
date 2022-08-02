@@ -39,12 +39,36 @@ See the documentation on :ref:`Trainers <air-trainer-ref>`.
 
 
 
-Trainer objects will produce a :ref:`Results <air-results-ref>` object after calling ``.fit()``.  These objects will contain training metrics as long as checkpoints to retrieve the best model.
+Trainer objects will produce a :ref:`Result <air-results-ref>` object after calling ``.fit()``.  These objects will contain training metrics as long as checkpoints to retrieve the best model.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python
     :start-after: __air_trainer_output_start__
     :end-before: __air_trainer_output_end__
+
+.. _air-session-key-concepts:
+
+Session
+-------
+
+Ray AIR exposes a functional API for users to define training behavior, or for developers to create their own ``Trainer``\s.
+In both cases, there is a need for the following interactions:
+
+1. To disseminate information downstream, including ``trial_name``, ``trial_id``, ``trial_resources``, rank information etc.
+2. To report information to upstream, including metrics and checkpoint.
+
+To facilitate such interactions, we introduce the :ref:`Session <air-session-ref>` concept.
+
+The session concept exists on several levels: The execution layer (called `Tune Session`) and the Data Parallel training layer
+(called `Train Session`).
+The following figure shows how these two sessions look like in a Data Parallel training scenario.
+
+.. image:: images/session.svg
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit
 
 
 Tuner
@@ -71,11 +95,12 @@ You can take a trained model and do batch inference using the BatchPredictor obj
     :start-after: __air_batch_predictor_start__
     :end-before: __air_batch_predictor_end__
 
+.. _air-key-concepts-online-inference:
 
 Online Inference
 ----------------
 
-Deploy the model as an inference service by using Ray Serve and the ``ModelWrapperDeployment`` class.
+Deploy the model as an inference service by using Ray Serve and the ``PredictorDeployment`` class.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python

@@ -1,64 +1,59 @@
-import pytest
-from datetime import datetime
-from dataclasses import asdict
-import json
-import time
-import yaml
-import tempfile
-import shutil
-import unittest
-from unittest import mock
 import copy
+import json
+import shutil
+import tempfile
+import time
+import unittest
+from dataclasses import asdict
+from datetime import datetime
+from time import sleep
+from unittest import mock
+
+import pytest
+import yaml
 
 import ray
-import ray.ray_constants
+import ray._private.ray_constants
+from ray._private.gcs_utils import PlacementGroupTableData
+from ray._private.test_utils import same_elements
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.commands import get_or_create_head_node
+from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
+from ray.autoscaler._private.resource_demand_scheduler import (
+    ResourceDemandScheduler,
+    _add_min_workers_nodes,
+    _utilization_score,
+    get_bin_pack_residual,
+)
+from ray.autoscaler._private.resource_demand_scheduler import get_nodes_for as _get
 from ray.autoscaler._private.util import (
-    prepare_config,
+    LoadMetricsSummary,
     format_info_string,
     is_placement_group_resource,
-    LoadMetricsSummary,
 )
+from ray.autoscaler.tags import (
+    NODE_KIND_HEAD,
+    NODE_KIND_WORKER,
+    STATUS_UNINITIALIZED,
+    STATUS_UP_TO_DATE,
+    STATUS_WAITING_FOR_SSH,
+    TAG_RAY_NODE_KIND,
+    TAG_RAY_NODE_STATUS,
+    TAG_RAY_USER_NODE_TYPE,
+)
+from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.tests.test_autoscaler import (
-    SMALL_CLUSTER,
-    MOCK_DEFAULT_CONFIG,
     MULTI_WORKER_CLUSTER,
     TYPES_A,
-    MockProvider,
-    MockProcessRunner,
-    MockNodeInfoStub,
-    mock_raylet_id,
-    fill_in_raylet_ids,
     MockAutoscaler,
+    MockNodeInfoStub,
+    MockProcessRunner,
+    MockProvider,
+    fill_in_raylet_ids,
+    mock_raylet_id,
 )
-from ray.autoscaler._private.providers import _NODE_PROVIDERS, _clear_provider_cache
-from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.commands import get_or_create_head_node
-from ray.autoscaler._private.resource_demand_scheduler import (
-    _utilization_score,
-    _add_min_workers_nodes,
-    get_bin_pack_residual,
-    get_nodes_for as _get,
-    ResourceDemandScheduler,
-)
-from ray._private.gcs_utils import PlacementGroupTableData
-from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
-from ray.autoscaler.tags import (
-    TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_NODE_KIND,
-    NODE_KIND_WORKER,
-    TAG_RAY_NODE_STATUS,
-    STATUS_UP_TO_DATE,
-    STATUS_UNINITIALIZED,
-    STATUS_WAITING_FOR_SSH,
-    NODE_KIND_HEAD,
-    NODE_TYPE_LEGACY_WORKER,
-    NODE_TYPE_LEGACY_HEAD,
-)
-from ray._private.test_utils import same_elements
-from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-
-from time import sleep
 
 GET_DEFAULT_METHOD = "ray.autoscaler._private.util._get_default_config"
 
@@ -1173,192 +1168,6 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     assert not rem
 
 
-def test_rewrite_legacy_yaml_to_available_node_types():
-    with mock.patch(GET_DEFAULT_METHOD, return_value=MOCK_DEFAULT_CONFIG):
-        cluster_config = copy.deepcopy(SMALL_CLUSTER)  # Legacy cluster_config.
-        cluster_config = prepare_config(cluster_config)
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD]["max_workers"]
-            == 0
-        )
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD]["min_workers"]
-            == 0
-        )
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_HEAD]["node_config"]
-            == SMALL_CLUSTER["head_node"]
-        )
-
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                "node_config"
-            ]
-            == SMALL_CLUSTER["worker_nodes"]
-        )
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                "max_workers"
-            ]
-            == SMALL_CLUSTER["max_workers"]
-        )
-        assert (
-            cluster_config["available_node_types"][NODE_TYPE_LEGACY_WORKER][
-                "min_workers"
-            ]
-            == SMALL_CLUSTER["min_workers"]
-        )
-
-
-def test_handle_legacy_cluster_config_yaml():
-    with mock.patch(GET_DEFAULT_METHOD, return_value=MOCK_DEFAULT_CONFIG):
-        provider = MockProvider()
-        head_resources = {"CPU": 8, "GPU": 1}
-        worker_resources = {"CPU": 32, "GPU": 8}
-        cluster_config = copy.deepcopy(SMALL_CLUSTER)  # Legacy cluster_config.
-        cluster_config = prepare_config(cluster_config)
-        scheduler = ResourceDemandScheduler(
-            provider,
-            cluster_config["available_node_types"],
-            0,
-            head_node_type=NODE_TYPE_LEGACY_HEAD,
-        )
-        provider.create_node(
-            {},
-            {
-                TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-                TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD,
-            },
-            1,
-        )
-        head_ip = provider.non_terminated_node_ips({})[0]
-        head_node_id = provider.non_terminated_nodes({})[0]
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [], {}, [], {}, [], {head_ip: head_resources}
-        )
-        assert to_launch == {}  # Should always be empty with max_workers = 0.
-        assert not rem
-
-        scheduler.max_workers = 30
-        min_workers = scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"]
-        scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"] = 0
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [head_node_id], {}, [], {}, [], {head_ip: head_resources}
-        )
-        assert (
-            to_launch == {}
-        )  # Since the resource demand does not require adding nodes.
-        assert not rem
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [head_node_id], {}, [head_resources], {}, [], {head_ip: head_resources}
-        )
-        assert (
-            to_launch == {}
-        )  # Since the resource demand does not require adding nodes.
-        assert not rem
-
-        scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["min_workers"] = min_workers
-        # Returns min_workers when min_workers>0.
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [head_node_id], {}, [head_resources], {}, [], {head_ip: head_resources}
-        )
-        assert to_launch == {NODE_TYPE_LEGACY_WORKER: min_workers}
-        assert not rem
-
-        provider.create_node(
-            {},
-            {
-                TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-                TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
-                TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_WORKER,
-            },
-            min_workers,
-        )
-        nodes = provider.non_terminated_nodes({})
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, [head_resources], {}, [], {head_ip: head_resources}
-        )
-        # A node is running, at some point it'll connect.
-        assert to_launch == {}
-        assert not rem
-        pending_launches = {NODE_TYPE_LEGACY_WORKER: 4}
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            [], pending_launches, [head_resources], {}, [], {head_ip: head_resources}
-        )
-        # A node is launching, at some point it'll connect.
-        assert to_launch == {}
-        assert not rem
-
-        # Now assume that we already launched/connected the nodes.
-        ips = provider.non_terminated_node_ips({})
-        lm = LoadMetrics()
-        worker_ips = []
-        for ip in ips:
-            if ip == head_ip:
-                lm.update(ip, mock_raylet_id(), head_resources, head_resources, {})
-            else:
-                lm.update(ip, mock_raylet_id(), worker_resources, worker_resources, {})
-                worker_ips.append(ip)
-
-        assert not scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, [], {}, [], lm.get_static_node_resources_by_ip()
-        )
-        assert (
-            scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
-            == worker_resources
-        )
-        assert to_launch == {}
-        assert not rem
-        utilizations = {ip: worker_resources for ip in worker_ips}
-        utilizations[head_ip] = head_resources
-        # Needs 4 nodes since worker resources is bigger than head reasources.
-        demands = [worker_resources] * (len(utilizations) + 3)
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, demands, utilizations, [], lm.get_static_node_resources_by_ip()
-        )
-        # 4 nodes are necessary to meet resource demand, but we never exceed
-        # max_workers.
-        assert to_launch == {}
-        assert rem == [{"CPU": 32, "GPU": 8}] * 4
-        scheduler.max_workers = 10
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, demands, utilizations, [], lm.get_static_node_resources_by_ip()
-        )
-        # 4 nodes are necessary to meet resource demand, but we never exceed
-        # max_workers.
-        assert to_launch == {}
-        assert rem == [{"CPU": 32, "GPU": 8}] * 4
-        scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["max_workers"] = 10
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes, {}, demands, utilizations, [], lm.get_static_node_resources_by_ip()
-        )
-        # 4 nodes are necessary to meet resource demand.
-        assert to_launch == {NODE_TYPE_LEGACY_WORKER: 4}
-        assert not rem
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes,
-            pending_launches,
-            demands,
-            utilizations,
-            [],
-            lm.get_static_node_resources_by_ip(),
-        )
-        # 0 because there are 4 pending launches and we only need 4.
-        assert to_launch == {}
-        to_launch, rem = scheduler.get_nodes_to_launch(
-            nodes,
-            pending_launches,
-            demands * 2,
-            utilizations,
-            [],
-            lm.get_static_node_resources_by_ip(),
-        )
-        # 1 because there are 4 pending launches and we only allow a max of 5.
-        assert to_launch == {NODE_TYPE_LEGACY_WORKER: 1}
-        assert rem == [{"CPU": 32, "GPU": 8}] * 2
-
-
 class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
@@ -1738,9 +1547,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testScaleUpMinSanity(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = config[
-            "min_workers"
-        ]
+        config["available_node_types"]["m4.large"]["min_workers"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -2369,9 +2176,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testUpdateConfig(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = config[
-            "min_workers"
-        ]
+        config["available_node_types"]["m4.large"]["min_workers"] = 2
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -3001,6 +2806,10 @@ def test_placement_group_match_string():
 
 
 if __name__ == "__main__":
+    import os
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

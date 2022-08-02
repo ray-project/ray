@@ -3,13 +3,13 @@
 It supports both traced and non-traced eager execution modes.
 """
 
-import gym
 import logging
 import threading
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
-from ray.util.debug import log_once
+import gym
+import tree  # pip install dm_tree
+
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -17,8 +17,8 @@ from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.policy.eager_tf_policy import (
     _convert_to_tf,
     _disallow_var_creation,
-    OptimizerWrapper,
-    traced_eager_policy,
+    _OptimizerWrapper,
+    _traced_eager_policy,
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
@@ -39,11 +39,12 @@ from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
 )
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class EagerTFPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         **kwargs,
     ):
         self.framework = config.get("framework", "tf2")
@@ -83,6 +84,14 @@ class EagerTFPolicyV2(Policy):
         self.explore = tf.Variable(
             self.config["explore"], trainable=False, dtype=tf.bool
         )
+
+        # Log device and worker index.
+        num_gpus = self._get_num_gpus_for_policy()
+        if num_gpus > 0:
+            gpu_ids = get_gpu_devices()
+            logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
+
+        self._is_training = False
 
         self._loss_initialized = False
         # Backward compatibility workaround so Policy will call self.loss() directly.
@@ -136,7 +145,7 @@ class EagerTFPolicyV2(Policy):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
-    def get_default_config(self) -> TrainerConfigDict:
+    def get_default_config(self) -> AlgorithmConfigDict:
         return {}
 
     @DeveloperAPI
@@ -145,7 +154,7 @@ class EagerTFPolicyV2(Policy):
         self,
         obs_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
         return {}
 
@@ -226,11 +235,11 @@ class EagerTFPolicyV2(Policy):
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
+            policy: The Policy object that generated the loss tensor and
                 that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            loss (TensorType): The loss tensor for which gradients should be
+            loss: The loss tensor for which gradients should be
                 calculated.
 
         Returns:
@@ -243,18 +252,15 @@ class EagerTFPolicyV2(Policy):
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
-        policy: Policy,
         optimizer: "tf.keras.optimizers.Optimizer",
         grads: ModelGradients,
     ) -> "tf.Operation":
         """Gradients computing function (from loss tensor, using local optimizer).
 
         Args:
-            policy (Policy): The Policy object that generated the loss tensor and
-                that holds the given local optimizer.
-            optimizer (LocalOptimizer): The tf (local) optimizer object to
+            optimizer: The tf (local) optimizer object to
                 calculate the gradients with.
-            grads (ModelGradients): The gradient tensor to be applied.
+            grads: The gradient tensor to be applied.
 
         Returns:
             "tf.Operation": TF operation that applies supplied gradients.
@@ -389,11 +395,12 @@ class EagerTFPolicyV2(Policy):
                     "`make_model` is required if `action_sampler_fn` OR "
                     "`action_distribution_fn` is given"
                 )
+            return None
         else:
             dist_class, _ = ModelCatalog.get_action_dist(
                 self.action_space, self.config["model"]
             )
-        return dist_class
+            return dist_class
 
     def _init_view_requirements(self):
         # Auto-update model's inference view requirements, if recurrent.
@@ -546,15 +553,14 @@ class EagerTFPolicyV2(Policy):
 
         # Action dist class and inputs are generated via custom function.
         if is_overridden(self.action_distribution_fn):
-            dist_inputs, dist_class, _ = self.action_distribution_fn(
+            dist_inputs, self.dist_class, _ = self.action_distribution_fn(
                 self, self.model, input_batch, explore=False, is_training=False
             )
         # Default log-likelihood calculation.
         else:
             dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
-            dist_class = self.dist_class
 
-        action_dist = dist_class(dist_inputs, self.model)
+        action_dist = self.dist_class(dist_inputs, self.model)
 
         # Normalize actions if necessary.
         if not actions_normalized and self.config["normalize_actions"]:
@@ -686,9 +692,12 @@ class EagerTFPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Weights and global_timestep (tf vars).
-        self.set_weights(state["weights"])
+
+        # Restore glbal timestep (tf vars).
         self.global_timestep.assign(state["global_timestep"])
+
+        # Then the Policy's (NN) weights and connectors.
+        super().set_state(state)
 
     @override(Policy)
     def export_checkpoint(self, export_dir):
@@ -742,7 +751,7 @@ class EagerTFPolicyV2(Policy):
                 state_out = []
                 actions, logp, dist_inputs, state_out = self.action_sampler_fn(
                     self.model,
-                    input_dict[SampleBatch.CUR_OBS],
+                    input_dict[SampleBatch.OBS],
                     explore=explore,
                     timestep=timestep,
                     episodes=episodes,
@@ -758,7 +767,7 @@ class EagerTFPolicyV2(Policy):
                         state_out,
                     ) = self.action_distribution_fn(
                         self.model,
-                        input_dict=input_dict,
+                        obs_batch=input_dict[SampleBatch.OBS],
                         state_batches=state_batches,
                         seq_lens=seq_lens,
                         explore=explore,
@@ -846,7 +855,7 @@ class EagerTFPolicyV2(Policy):
             # object looks like a "classic" tf.optimizer. This way, custom
             # compute_gradients_fn will work on both tf static graph
             # and tf-eager.
-            optimizer = OptimizerWrapper(tape)
+            optimizer = _OptimizerWrapper(tape)
             # More than one loss terms/optimizers.
             if self.config["_tf_policy_handles_more_than_one_loss"]:
                 grads_and_vars = self.compute_gradients_fn(
@@ -924,4 +933,4 @@ class EagerTFPolicyV2(Policy):
 
     @classmethod
     def with_tracing(cls):
-        return traced_eager_policy(cls)
+        return _traced_eager_policy(cls)

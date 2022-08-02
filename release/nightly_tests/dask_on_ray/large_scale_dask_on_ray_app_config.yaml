@@ -7,9 +7,8 @@ python:
 
 post_build_cmds:
   # - pip install fastparquet
-  - pip3 uninstall -y ray
   - pip3 install -U pytest
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  -  pip3 uninstall -y ray && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[default]
   - echo {{env["DATESTAMP"]}}
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

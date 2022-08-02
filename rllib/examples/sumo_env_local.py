@@ -17,9 +17,9 @@ import pathlib
 from pprint import pformat
 
 import ray
-from ray import tune
+from ray import air, tune
 
-from ray.rllib.agents.ppo import ppo
+from ray.rllib.algorithms.ppo import ppo
 from ray.rllib.examples.simulators.sumo import marlenvironment
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -78,14 +78,14 @@ if __name__ == "__main__":
     tune.register_env("sumo_test_env", marlenvironment.env_creator)
 
     # Algorithm.
-    policy_class = ppo.PPOTFPolicy
+    policy_class = ppo.PPOTF1Policy
     config = ppo.DEFAULT_CONFIG
     config["framework"] = "tf"
     config["gamma"] = 0.99
     config["lambda"] = 0.95
     config["log_level"] = "WARN"
     config["lr"] = 0.001
-    config["min_time_s_per_reporting"] = 5
+    config["min_time_s_per_iteration"] = 5
     config["num_gpus"] = int(os.environ.get("RLLIB_NUM_GPUS", "0"))
     config["num_workers"] = args.num_workers
     config["rollout_fragment_length"] = 200
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     }
     marl_env = marlenvironment.SUMOTestMultiAgentEnv(env_config)
 
-    # Config for the PPO trainer from the MARLEnv
+    # Config for PPO from the MARLEnv.
     policies = {}
     for agent in marl_env.get_agents():
         agent_policy_params = {}
@@ -163,12 +163,15 @@ if __name__ == "__main__":
     # Run the experiment.
     results = tune.run(
         "PPO",
-        config=config,
-        stop=stop,
-        verbose=1,
-        checkpoint_freq=10,
-        restore=args.from_checkpoint,
-    )
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=1,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=10,
+            ),
+        ),
+    ).fit()
 
     # And check the results.
     if args.as_test:

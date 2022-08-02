@@ -2,6 +2,7 @@ import time
 
 import pytest
 import requests
+from ray.serve.drivers import DAGDriver
 from fastapi import FastAPI, Request
 from starlette.responses import RedirectResponse
 
@@ -37,12 +38,17 @@ def test_path_validation(serve_instance):
 
     D4.deploy()
 
-    # Reject duplicate route.
-    with pytest.raises(ValueError):
-        D4.options(name="test2").deploy()
+    # Allow duplicate route.
+    D4.options(name="test2").deploy()
 
 
-def test_routes_endpoint(serve_instance):
+def test_routes_healthz(serve_instance):
+    resp = requests.get("http://localhost:8000/-/healthz")
+    assert resp.status_code == 200
+    assert resp.content == b"success"
+
+
+def test_routes_endpoint_legacy(serve_instance):
     @serve.deployment
     class D1:
         pass
@@ -86,6 +92,31 @@ def test_routes_endpoint(serve_instance):
     assert len(routes) == 1, routes
     assert "/hello" in routes, routes
     assert routes["/hello"] == "D3", routes
+
+
+def test_routes_endpoint(serve_instance):
+    @serve.deployment
+    class D1:
+        def __call__(self):
+            return "D1"
+
+    @serve.deployment
+    class D2:
+        def __call__(self):
+            return "D2"
+
+    dag = DAGDriver.bind({"/D1": D1.bind(), "/hello/world": D2.bind()})
+    serve.run(dag)
+
+    routes = requests.get("http://localhost:8000/-/routes").json()
+
+    assert len(routes) == 1, routes
+    assert "/" in routes, routes
+
+    assert requests.get("http://localhost:8000/D1").json() == "D1"
+    assert requests.get("http://localhost:8000/D1").status_code == 200
+    assert requests.get("http://localhost:8000/hello/world").json() == "D2"
+    assert requests.get("http://localhost:8000/hello/world").status_code == 200
 
 
 def test_deployment_without_route(serve_instance):
@@ -188,6 +219,27 @@ def test_path_prefixing(serve_instance):
     check_req("/hello/world/again/hi") == '"hi"'
 
 
+def test_multi_dag_with_wrong_route(serve_instance):
+    @serve.deployment
+    class D1:
+        def __call__(self):
+            return "D1"
+
+    @serve.deployment
+    class D2:
+        def __call__(self):
+            return "D2"
+
+    dag = DAGDriver.bind({"/D1": D1.bind(), "/hello/world": D2.bind()})
+
+    serve.run(dag)
+
+    assert requests.get("http://localhost:8000/D1").status_code == 200
+    assert requests.get("http://localhost:8000/hello/world").status_code == 200
+    assert requests.get("http://localhost:8000/not_exist").status_code == 404
+    assert requests.get("http://localhost:8000/").status_code == 404
+
+
 @pytest.mark.parametrize("base_path", ["", "subpath"])
 def test_redirect(serve_instance, base_path):
     app = FastAPI()
@@ -236,7 +288,7 @@ def test_default_error_handling(serve_instance):
     def f():
         1 / 0
 
-    f.deploy()
+    serve.run(f.bind())
     r = requests.get("http://localhost:8000/f")
     assert r.status_code == 500
     assert "ZeroDivisionError" in r.text, r.text
@@ -250,7 +302,7 @@ def test_default_error_handling(serve_instance):
         ray.get(intentional_kill.remote(ray.get_runtime_context().current_actor))
         time.sleep(100)  # Don't return here to leave time for actor exit.
 
-    h.deploy()
+    serve.run(h.bind())
     r = requests.get("http://localhost:8000/h")
     assert r.status_code == 500
     assert "retries" in r.text, r.text

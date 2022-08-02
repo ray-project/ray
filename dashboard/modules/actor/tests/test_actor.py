@@ -1,19 +1,18 @@
+import logging
 import os
 import sys
-import logging
-import requests
 import time
 import traceback
-import ray
+
 import pytest
-import ray.dashboard.utils as dashboard_utils
+import requests
+
+import ray
 import ray._private.gcs_pubsub as gcs_pubsub
-from ray.dashboard.tests.conftest import *  # noqa
+import ray.dashboard.utils as dashboard_utils
+from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.modules.actor import actor_consts
-from ray._private.test_utils import (
-    format_web_url,
-    wait_until_server_available,
-)
+from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +151,7 @@ def test_kill_actor(ray_start_with_dashboard):
             pass
 
         def f(self):
-            ray.worker.show_in_dashboard("test")
+            ray._private.worker.show_in_dashboard("test")
             return os.getpid()
 
     a = Actor.remote()
@@ -327,6 +326,99 @@ def test_nil_node(enable_test_module, disable_aiohttp_cache, ray_start_with_dash
             response.raise_for_status()
             result = response.json()
             assert actor_consts.NIL_NODE_ID not in result["data"]["nodeActors"]
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+def test_actor_cleanup(
+    disable_aiohttp_cache, reduce_actor_cache, ray_start_with_dashboard
+):
+    @ray.remote
+    class Foo:
+        def __init__(self, num):
+            self.num = num
+
+        def do_task(self):
+            return self.num
+
+    @ray.remote(num_gpus=1)
+    class InfeasibleActor:
+        pass
+
+    infeasible_actor = InfeasibleActor.remote()  # noqa
+
+    foo_actors = [
+        Foo.remote(1),
+        Foo.remote(2),
+        Foo.remote(3),
+        Foo.remote(4),
+        Foo.remote(5),
+        Foo.remote(6),
+    ]
+    results = [actor.do_task.remote() for actor in foo_actors]  # noqa
+    webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 8
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            resp = requests.get(f"{webui_url}/logical/actors")
+            resp_json = resp.json()
+            resp_data = resp_json["data"]
+            actors = resp_data["actors"]
+            # Although max cache is 3, there should be 7 actors
+            # because they are all still alive.
+            assert len(actors) == 7
+
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = (
+                    traceback.format_exception(
+                        type(last_ex), last_ex, last_ex.__traceback__
+                    )
+                    if last_ex
+                    else []
+                )
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+    # kill
+    ray.kill(infeasible_actor)
+    [ray.kill(foo_actor) for foo_actor in foo_actors]
+    # Wait 5 seconds for cleanup to finish
+    time.sleep(5)
+
+    # Check only three remaining in cache
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            resp = requests.get(f"{webui_url}/logical/actors")
+            resp_json = resp.json()
+            resp_data = resp_json["data"]
+            actors = resp_data["actors"]
+            # Max cache is 3 so only 3 actors should be left.
+            assert len(actors) == 3
+
             break
         except Exception as ex:
             last_ex = ex

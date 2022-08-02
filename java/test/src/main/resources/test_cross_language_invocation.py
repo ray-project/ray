@@ -58,9 +58,7 @@ def py_func_call_java_function():
 @ray.remote
 def py_func_call_java_actor(value):
     assert isinstance(value, bytes)
-    c = ray.cross_language.java_actor_class(
-        "io.ray.test.CrossLanguageInvocationTest$TestActor"
-    )
+    c = ray.cross_language.java_actor_class("io.ray.test.TestActor")
     java_actor = c.remote(b"Counter")
     r = java_actor.concat.remote(value)
     return ray.get(r)

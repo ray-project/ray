@@ -3,7 +3,6 @@ import os
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
-
 from typing import Callable
 
 import ray
@@ -24,7 +23,7 @@ def setup_logger(logging_level, logging_format):
         logger.addHandler(_default_handler)
     _default_handler.setFormatter(logging.Formatter(logging_format))
     # Setting this will avoid the message
-    # is propagated to the parent logger.
+    # being propagated to the parent logger.
     logger.propagate = False
 
 
@@ -44,18 +43,18 @@ def setup_component_logger(
     The only exception is workers. They use the different logging config.
 
     Args:
-        logging_level(str | int): Logging level in string or logging enum.
-        logging_format(str): Logging format string.
-        log_dir(str): Log directory path. If empty, logs will go to
+        logging_level: Logging level in string or logging enum.
+        logging_format: Logging format string.
+        log_dir: Log directory path. If empty, logs will go to
             stderr.
-        filename(str): Name of the file to write logs. If empty, logs will go
+        filename: Name of the file to write logs. If empty, logs will go
             to stderr.
-        max_bytes(int): Same argument as RotatingFileHandler's maxBytes.
-        backup_count(int): Same argument as RotatingFileHandler's backupCount.
-        logger_name(str, optional): used to create or get the correspoding
+        max_bytes: Same argument as RotatingFileHandler's maxBytes.
+        backup_count: Same argument as RotatingFileHandler's backupCount.
+        logger_name: used to create or get the correspoding
             logger in getLogger call. It will get the root logger by default.
     Returns:
-        logger (logging.Logger): the created or modified logger.
+        the created or modified logger.
     """
     logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
@@ -98,7 +97,7 @@ class StandardStreamInterceptor:
     Args:
         logger: Python logger that will receive messages streamed to
                 the standard out/err and delegate writes.
-        intercept_stdout(bool): True if the class intercepts stdout. False
+        intercept_stdout: True if the class intercepts stdout. False
                          if stderr is intercepted.
     """
 
@@ -192,9 +191,12 @@ def get_worker_log_file_name(worker_type, job_id=None):
         worker_name = "io_worker"
 
     # Make sure these values are set already.
-    assert ray.worker._global_node is not None
-    assert ray.worker.global_worker is not None
-    filename = f"{worker_name}-" f"{binary_to_hex(ray.worker.global_worker.worker_id)}-"
+    assert ray._private.worker._global_node is not None
+    assert ray._private.worker.global_worker is not None
+    filename = (
+        f"{worker_name}-"
+        f"{binary_to_hex(ray._private.worker.global_worker.worker_id)}-"
+    )
     if job_id:
         filename += f"{job_id}-"
     filename += f"{os.getpid()}"
@@ -245,9 +247,9 @@ def setup_and_get_worker_interceptor_logger(
 
     Args:
         args: args received from default_worker.py.
-        max_bytes(int): maxBytes argument of RotatingFileHandler.
-        backup_count(int): backupCount argument of RotatingFileHandler.
-        is_for_stdout(bool): True if logger will be used to intercept stdout.
+        max_bytes: maxBytes argument of RotatingFileHandler.
+        backup_count: backupCount argument of RotatingFileHandler.
+        is_for_stdout: True if logger will be used to intercept stdout.
                              False otherwise.
     """
     file_extension = "out" if is_for_stdout else "err"
@@ -270,12 +272,12 @@ def setup_and_get_worker_interceptor_logger(
         worker_name = "io_worker"
 
     # Make sure these values are set already.
-    assert ray.worker._global_node is not None
-    assert ray.worker.global_worker is not None
+    assert ray._private.worker._global_node is not None
+    assert ray._private.worker.global_worker is not None
     filename = (
-        f"{ray.worker._global_node.get_session_dir_path()}/logs/"
+        f"{ray._private.worker._global_node.get_session_dir_path()}/logs/"
         f"{worker_name}-"
-        f"{binary_to_hex(ray.worker.global_worker.worker_id)}-"
+        f"{binary_to_hex(ray._private.worker.global_worker.worker_id)}-"
         f"{job_id}-{os.getpid()}.{file_extension}"
     )
     handler = StandardFdRedirectionRotatingFileHandler(
@@ -285,8 +287,6 @@ def setup_and_get_worker_interceptor_logger(
         is_for_stdout=is_for_stdout,
     )
     logger.addHandler(handler)
-    # TODO(sang): Add 0 or 1 to decide whether
-    # or not logs are streamed to drivers.
     handler.setFormatter(logging.Formatter("%(message)s"))
     # Avoid messages are propagated to parent loggers.
     logger.propagate = False

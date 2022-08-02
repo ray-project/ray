@@ -10,14 +10,17 @@ import torch
 import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
-from ray.train import Trainer, CheckpointStrategy
-from ray.train.backend import BackendConfig, Backend, BackendExecutor
+from ray.air import CheckpointConfig
+from ray.train import Trainer
+from ray.train.backend import BackendConfig, Backend
 from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.torch import TorchConfig
 from ray.train.tensorflow import TensorflowConfig
+
 from ray.train.horovod import HorovodConfig
 from ray.train.callbacks.callback import TrainingCallback
-from ray.train.worker_group import WorkerGroup
+from ray.train._internal.worker_group import WorkerGroup
+from ray.train._internal.backend_executor import BackendExecutor
 
 
 @pytest.fixture
@@ -87,9 +90,7 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i].actor._BaseWorkerMixin__execute.remote(
-            f, *args, **kwargs
-        )
+        return self.workers[i].actor._RayTrainWorker__execute.remote(f, *args, **kwargs)
 
     return execute_single_async_special
 
@@ -494,7 +495,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, logdir):
     if logdir is not None:
         assert trainer.logdir == Path(logdir).expanduser().resolve()
     assert trainer.latest_checkpoint_dir.is_dir()
-    assert trainer.best_checkpoint_path.is_file()
+    assert trainer.best_checkpoint_path.is_dir()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
     assert trainer.best_checkpoint_path.parent.name == "checkpoints"
     assert trainer.best_checkpoint == trainer.latest_checkpoint
@@ -512,7 +513,7 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     logdir = "/tmp/test/trainer/test_persisted_checkpoint_strategy"
     config = TestConfig()
 
-    checkpoint_strategy = CheckpointStrategy(
+    checkpoint_strategy = CheckpointConfig(
         num_to_keep=2, checkpoint_score_attribute="loss", checkpoint_score_order="min"
     )
 
@@ -530,13 +531,13 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
     if logdir is not None:
         assert trainer.logdir == Path(logdir).expanduser().resolve()
     assert trainer.latest_checkpoint_dir.is_dir()
-    assert trainer.best_checkpoint_path.is_file()
+    assert trainer.best_checkpoint_path.is_dir()
     assert trainer.best_checkpoint_path.name == f"checkpoint_{2:06d}"
     assert trainer.latest_checkpoint["loss"] == 5
     assert trainer.best_checkpoint["loss"] == 3
 
     checkpoint_dir = trainer.latest_checkpoint_dir
-    file_names = [f.name for f in checkpoint_dir.iterdir()]
+    file_names = [f.name for f in checkpoint_dir.iterdir() if f.is_dir()]
     assert len(file_names) == 2
     assert f"checkpoint_{2:06d}" in file_names
     assert f"checkpoint_{3:06d}" not in file_names
@@ -553,7 +554,7 @@ def test_persisted_checkpoint_strategy(ray_start_2_cpus):
 def test_load_checkpoint_from_path(ray_start_2_cpus, tmpdir):
     config = TestConfig()
 
-    checkpoint_strategy = CheckpointStrategy(
+    checkpoint_strategy = CheckpointConfig(
         checkpoint_score_attribute="loss", checkpoint_score_order="min"
     )
 
@@ -583,12 +584,12 @@ def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
     trainer.start()
 
     with pytest.raises(ValueError):
-        trainer.run(train_func, checkpoint_strategy=CheckpointStrategy(num_to_keep=-1))
+        trainer.run(train_func, checkpoint_strategy=CheckpointConfig(num_to_keep=-1))
 
     with pytest.raises(ValueError):
         trainer.run(
             train_func,
-            checkpoint_strategy=CheckpointStrategy(
+            checkpoint_strategy=CheckpointConfig(
                 checkpoint_score_order="invalid_order"
             ),
         )
@@ -596,7 +597,7 @@ def test_persisted_checkpoint_strategy_failure(ray_start_2_cpus):
     with pytest.raises(ValueError):
         trainer.run(
             train_func,
-            checkpoint_strategy=CheckpointStrategy(
+            checkpoint_strategy=CheckpointConfig(
                 checkpoint_score_attribute="missing_attribute"
             ),
         )
@@ -650,6 +651,50 @@ def test_torch_auto_unwrap(ray_start_2_cpus):
         model, torch.nn.parallel.DistributedDataParallel
     )
 
+    trainer.shutdown()
+
+
+def test_torch_amp(ray_start_2_cpus):
+    def train_fn():
+        train.torch.accelerate(amp=True)
+        model = torch.nn.Linear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Make sure model is serializable even with amp enabled.
+        return model.module
+
+    num_workers = 2
+    trainer = Trainer("torch", num_workers)
+    trainer.start()
+
+    trainer.run(train_fn)
+    trainer.shutdown()
+
+
+def test_torch_amp_with_custom_get_state(ray_start_2_cpus):
+    """Tests amp with a model that has a custom __getstate__ method defined.
+
+    See https://discuss.ray.io/t/ray-train-hangs-for-long-time/6333/7
+    """
+
+    def train_fn():
+        train.torch.accelerate(amp=True)
+
+        class CustomLinear(torch.nn.Linear):
+            def __getstate__(self):
+                return self.__dict__.copy()
+
+        model = CustomLinear(1, 1)
+        model = train.torch.prepare_model(model)
+
+        # Make sure model is serializable even with amp enabled.
+        return model.module
+
+    num_workers = 2
+    trainer = Trainer("torch", num_workers)
+    trainer.start()
+
+    trainer.run(train_fn)
     trainer.shutdown()
 
 

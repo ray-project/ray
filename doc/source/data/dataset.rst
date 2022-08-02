@@ -64,7 +64,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
     :column: col-lg-6 px-2 py-2
     :card:
 
-    Getting Started
+    **Getting Started**
     ^^^
 
     Start with our quick start tutorials for :ref:`working with Datasets<datasets_getting_started>`
@@ -78,12 +78,12 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :classes: btn-outline-info btn-block
     ---
 
-    Key Concepts
+    **Key Concepts**
     ^^^
 
     Understand the key concepts behind Ray Datasets.
     Learn what :ref:`Datasets<dataset_concept>` and :ref:`Dataset Pipelines<dataset_pipeline_concept>` are
-    and :ref:`how they get executed<dataset_execution_concept>` in Ray Datasets.
+    and how they get executed in Ray Datasets.
 
     +++
     .. link-button:: data_key_concepts
@@ -92,12 +92,12 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :classes: btn-outline-info btn-block
     ---
 
-    User Guide
+    **User Guides**
     ^^^
 
     Learn how to :ref:`create datasets<creating_datasets>`, :ref:`save
     datasets<saving_datasets>`, :ref:`transform datasets<transforming_datasets>`,
-    :ref:`access and exchange datasets<accessing_datasets>`, :ref:`pipeline
+    :ref:`access and exchange datasets<consuming_datasets>`, :ref:`pipeline
     transformations<pipelining_datasets>`, :ref:`load and process data for ML<datasets-ml-preprocessing>`,
     work with :ref:`tensor data<datasets_tensor_support>`, or :ref:`use pipelines<data_pipeline_usage>`.
 
@@ -107,8 +107,33 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :text: Start Using Ray Datasets
         :classes: btn-outline-info btn-block
     ---
+    
+    **Examples**
+    ^^^
 
-    API
+    Find both simple and scaling-out examples of using Ray Datasets for data
+    processing and ML ingest.
+
+    +++
+    .. link-button:: datasets-recipes
+        :type: ref
+        :text: Ray Datasets Examples
+        :classes: btn-outline-info btn-block
+    ---
+
+    **Ray Datasets FAQ**
+    ^^^
+
+    Find answers to commonly asked questions in our detailed FAQ.
+
+    +++
+    .. link-button:: datasets_faq
+        :type: ref
+        :text: Ray Datasets FAQ
+        :classes: btn-outline-info btn-block
+    ---
+
+    **API**
     ^^^
 
     Get more in-depth information about the Ray Datasets API.
@@ -120,7 +145,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
         :classes: btn-outline-info btn-block
     ---
 
-    Other Data Processing Solutions
+    **Other Data Processing Solutions**
     ^^^
 
     For running ETL pipelines, check out :ref:`Spark-on-Ray <spark-on-ray>`. For scaling

@@ -8,7 +8,7 @@ import io.ray.api.concurrencygroup.ConcurrencyGroupBuilder;
 import io.ray.api.function.RayFunc;
 import io.ray.api.function.RayFuncR;
 import io.ray.api.parallelactor.*;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 
@@ -26,7 +26,7 @@ public class ParallelActorContextImpl implements ParallelActorContext {
               .build();
     }
 
-    FunctionManager functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
+    FunctionManager functionManager = ((AbstractRayRuntime) Ray.internal()).getFunctionManager();
     JavaFunctionDescriptor functionDescriptor =
         functionManager.getFunction(ctorFunc).getFunctionDescriptor();
     ActorHandle<ParallelActorExecutorImpl> parallelExecutorHandle =
@@ -42,7 +42,7 @@ public class ParallelActorContextImpl implements ParallelActorContext {
       ParallelActorHandle<A> parallelActorHandle, int instanceId, RayFunc func, Object[] args) {
     ActorHandle<ParallelActorExecutorImpl> parallelExecutor =
         ((ParallelActorHandleImpl) parallelActorHandle).getExecutor();
-    FunctionManager functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
+    FunctionManager functionManager = ((AbstractRayRuntime) Ray.internal()).getFunctionManager();
     JavaFunctionDescriptor functionDescriptor =
         functionManager.getFunction(func).getFunctionDescriptor();
     ObjectRef<Object> ret =

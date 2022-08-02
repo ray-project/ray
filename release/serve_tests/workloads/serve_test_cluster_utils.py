@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import logging
-import requests
 
 import ray
+import requests
 from ray import serve
+from ray._private.test_utils import monitor_memory_usage
 from ray.cluster_utils import Cluster
 from ray.serve.config import DeploymentMode
-from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 
 logger = logging.getLogger(__file__)
 
@@ -18,7 +18,6 @@ NUM_CONNECTIONS = 10
 def setup_local_single_node_cluster(
     num_nodes: int,
     num_cpu_per_node=NUM_CPU_PER_NODE,
-    checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
     namespace="serve",
 ):
     """Setup ray cluster locally via ray.init() and Cluster()
@@ -36,15 +35,13 @@ def setup_local_single_node_cluster(
         )
     ray.init(address=cluster.address, dashboard_host="0.0.0.0", namespace=namespace)
     serve_client = serve.start(
-        detached=True,
-        http_options={"location": DeploymentMode.EveryNode},
-        _checkpoint_path=checkpoint_path,
+        detached=True, http_options={"location": DeploymentMode.EveryNode}
     )
 
     return serve_client, cluster
 
 
-def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
+def setup_anyscale_cluster():
     """Setup ray cluster at anyscale via ray.client()
 
     Note this is by default large scale and should be kicked off
@@ -55,12 +52,15 @@ def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
     # ray.client().env({}).connect()
     ray.init(
         address="auto",
-        runtime_env={"env_vars": {"SERVE_ENABLE_SCALING_LOG": "1"}},
+        # This flag can be enabled to debug node autoscaler events.
+        # But the cluster scaling has been stable for now, so we turn it off
+        # to reduce spam.
+        runtime_env={"env_vars": {"SERVE_ENABLE_SCALING_LOG": "0"}},
     )
-    serve_client = serve.start(
-        http_options={"location": DeploymentMode.EveryNode},
-        _checkpoint_path=checkpoint_path,
-    )
+    serve_client = serve.start(http_options={"location": DeploymentMode.EveryNode})
+
+    # Print memory usage on the head node to help diagnose/debug memory leaks.
+    monitor_memory_usage()
 
     return serve_client
 

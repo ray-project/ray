@@ -16,11 +16,11 @@
 
 #include <cctype>
 #include <csignal>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 
 #include "absl/time/clock.h"
-#include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -324,11 +324,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             return result;
           },
           /*fail_pull_request=*/
-          [this](const ObjectID &object_id) {
+          [this](const ObjectID &object_id, rpc::ErrorType error_type) {
             rpc::ObjectReference ref;
             ref.set_object_id(object_id.Binary());
-            MarkObjectsAsFailed(
-                rpc::ErrorType::OBJECT_FETCH_TIMED_OUT, {ref}, JobID::Nil());
+            MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -395,7 +394,15 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       /*get_used_object_store_memory*/
       [this]() {
         if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
-          return local_object_manager_.GetPinnedBytes();
+          // Get the current bytes used by local primary object copies.  This
+          // is used to help node scale down decisions. A node can only be
+          // safely drained when this function reports zero.
+          int64_t bytes_used = local_object_manager_.GetPrimaryBytes();
+          // Report nonzero if we have objects spilled to the local filesystem.
+          if (bytes_used == 0) {
+            bytes_used = local_object_manager_.HasLocallySpilledObjects();
+          }
+          return bytes_used;
         } else {
           return object_manager_.GetUsedMemory();
         }
@@ -628,11 +635,12 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
-                                rpc::WorkerExitType disconnect_type) {
+                                rpc::WorkerExitType disconnect_type,
+                                const std::string &disconnect_detail) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  DisconnectClient(worker->Connection(), disconnect_type);
+  DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   worker->MarkDead();
   KillWorker(worker);
 }
@@ -742,9 +750,12 @@ void NodeManager::HandleReleaseUnusedBundles(
   std::unordered_set<BundleID, pair_hash> in_use_bundles;
   for (int index = 0; index < request.bundles_in_use_size(); ++index) {
     const auto &bundle_id = request.bundles_in_use(index).bundle_id();
-    in_use_bundles.emplace(
-        std::make_pair(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
-                       bundle_id.bundle_index()));
+    in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                           bundle_id.bundle_index());
+    // Add -1 one to the in_use_bundles. It's ok to add it more than one times since it's
+    // a set.
+    in_use_bundles.emplace(PlacementGroupID::FromBinary(bundle_id.placement_group_id()),
+                           -1);
   }
 
   // Kill all workers that are currently associated with the unused bundles.
@@ -769,7 +780,10 @@ void NodeManager::HandleReleaseUnusedBundles(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DestroyWorker(worker, rpc::WorkerExitType::UNUSED_RESOURCE_RELEASED);
+    DestroyWorker(worker,
+                  rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                  "Worker exits because it uses placement group bundles that are not "
+                  "registered to GCS. It can happen upon GCS restart.");
   }
 
   // Return unused bundle resources.
@@ -781,11 +795,23 @@ void NodeManager::HandleReleaseUnusedBundles(
 void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
                                      rpc::GetTasksInfoReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Received a HandleGetTasksInfo request";
+  auto total = std::make_shared<int>(0);
+  auto count = std::make_shared<int>(0);
+  auto limit = request.has_limit() ? request.limit() : -1;
+  // Each worker query will have limit as well.
+  // At the end there will be limit * num_workers entries returned at max.
   QueryAllWorkerStates(
       /*on_replied*/
-      [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
+      [reply, total, limit, count](const ray::Status &status,
+                                   const rpc::GetCoreWorkerStatsReply &r) {
+        *total += r.tasks_total();
         if (status.ok()) {
           for (const auto &task_info : r.owned_task_info_entries()) {
+            if (limit != -1 && *count >= limit) {
+              break;
+            }
+            *count += 1;
             reply->add_owned_task_info_entries()->CopyFrom(task_info);
           }
           for (const auto &running_task_id : r.running_task_ids()) {
@@ -797,15 +823,33 @@ void NodeManager::HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
       },
       send_reply_callback,
       /*include_memory_info*/ false,
-      /*include_task_info*/ true);
+      /*include_task_info*/ true,
+      /*limit*/ limit,
+      /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
 void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request,
                                        rpc::GetObjectsInfoReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Received a HandleGetObjectsInfo request";
+  auto total = std::make_shared<int>(0);
+  auto count = std::make_shared<int>(0);
+  auto limit = request.has_limit() ? request.limit() : -1;
+
+  // Each worker query will have limit as well.
+  // At the end there will be limit * num_workers entries returned at max.
   QueryAllWorkerStates(
       /*on_replied*/
-      [reply](const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
+      [reply, total, count, limit](const ray::Status &status,
+                                   const rpc::GetCoreWorkerStatsReply &r) {
+        *total += r.core_worker_stats().objects_total();
+        if (limit != -1 && *count >= limit) {
+          return;
+        }
+        // Currently, instead of counting object one by one, we add all object refs
+        // returned. This means there can be overflow. TODO(sang): Fix it after
+        // refactoring this code path.
+        *count += r.core_worker_stats().object_refs_size();
         if (status.ok()) {
           reply->add_core_workers_stats()->MergeFrom(r.core_worker_stats());
         } else {
@@ -814,7 +858,9 @@ void NodeManager::HandleGetObjectsInfo(const rpc::GetObjectsInfoRequest &request
       },
       send_reply_callback,
       /*include_memory_info*/ true,
-      /*include_task_info*/ false);
+      /*include_task_info*/ false,
+      /*limit*/ limit,
+      /*on_all_replied*/ [total, reply]() { reply->set_total(*total); });
 }
 
 void NodeManager::QueryAllWorkerStates(
@@ -822,8 +868,11 @@ void NodeManager::QueryAllWorkerStates(
         &on_replied,
     rpc::SendReplyCallback &send_reply_callback,
     bool include_memory_info,
-    bool include_task_info) {
-  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true);
+    bool include_task_info,
+    int64_t limit,
+    const std::function<void()> &on_all_replied) {
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                          /*filter_io_workers*/ true);
   for (auto driver :
        worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
     all_workers.push_back(driver);
@@ -834,6 +883,20 @@ void NodeManager::QueryAllWorkerStates(
     return;
   }
 
+  // Sort workers for the consistent ordering.
+  auto sort_func = [](std::shared_ptr<WorkerInterface> worker_a,
+                      std::shared_ptr<WorkerInterface> worker_b) {
+    // Prioritize drivers over workers. It is because drivers usually have data users care
+    // more. Note the enum values Driver == 1, Worker == 0.
+    return (worker_a->GetWorkerType() > worker_b->GetWorkerType())
+           // If the worker type is the same, order it based on pid (just for consistent
+           // ordering).
+           || ((worker_a->GetWorkerType() == worker_b->GetWorkerType()) &&
+               (worker_a->GetProcess().GetId() < worker_b->GetProcess().GetId()));
+  };
+  std::sort(all_workers.begin(), all_workers.end(), sort_func);
+
+  // Query all workers.
   auto rpc_replied = std::make_shared<size_t>(0);
   auto num_workers = all_workers.size();
   for (const auto &worker : all_workers) {
@@ -844,17 +907,22 @@ void NodeManager::QueryAllWorkerStates(
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(include_memory_info);
     request.set_include_task_info(include_task_info);
+    request.set_limit(limit);
     // TODO(sang): Add timeout to the RPC call.
     worker->rpc_client()->GetCoreWorkerStats(
         request,
         [num_workers,
          rpc_replied,
          send_reply_callback,
-         on_replied = std::move(on_replied)](const ray::Status &status,
-                                             const rpc::GetCoreWorkerStatsReply &r) {
+         on_replied = std::move(on_replied),
+         on_all_replied](const ray::Status &status,
+                         const rpc::GetCoreWorkerStatsReply &r) {
           *rpc_replied += 1;
           on_replied(status, r);
           if (*rpc_replied == num_workers) {
+            if (on_all_replied) {
+              on_all_replied();
+            }
             send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
@@ -1108,10 +1176,12 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
     return;
   }
 
+  std::vector<scheduling::ResourceID> resource_ids;
   for (const auto &resource_label : resource_names) {
-    cluster_resource_scheduler_->GetClusterResourceManager().DeleteResource(
-        scheduling::NodeID(node_id.Binary()), scheduling::ResourceID(resource_label));
+    resource_ids.emplace_back(scheduling::ResourceID(resource_label));
   }
+  cluster_resource_scheduler_->GetClusterResourceManager().DeleteResources(
+      scheduling::NodeID(node_id.Binary()), resource_ids);
   return;
 }
 
@@ -1307,7 +1377,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         fbb.GetBufferPointer(),
         [this, client](const ray::Status &status) {
           if (!status.ok()) {
-            DisconnectClient(client);
+            DisconnectClient(client,
+                             rpc::WorkerExitType::SYSTEM_ERROR,
+                             "Worker is failed because the raylet couldn't reply the "
+                             "registration request.");
           }
         });
   };
@@ -1410,6 +1483,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                                    rpc::WorkerExitType disconnect_type,
+                                   const std::string &disconnect_detail,
                                    const rpc::RayException *creation_task_exception) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
                 << ", has creation task exception = "
@@ -1444,13 +1518,16 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                   << ", worker_id: " << worker->WorkerId();
   }
   // Publish the worker failure.
-  auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(self_node_id_,
-                                                              worker->WorkerId(),
-                                                              worker->IpAddress(),
-                                                              worker->Port(),
-                                                              time(nullptr),
-                                                              disconnect_type,
-                                                              creation_task_exception);
+  auto worker_failure_data_ptr =
+      gcs::CreateWorkerFailureData(self_node_id_,
+                                   worker->WorkerId(),
+                                   worker->IpAddress(),
+                                   worker->Port(),
+                                   time(nullptr),
+                                   disconnect_type,
+                                   disconnect_detail,
+                                   worker->GetProcess().GetId(),
+                                   creation_task_exception);
   RAY_CHECK_OK(
       gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
 
@@ -1467,7 +1544,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         local_task_manager_->TaskFinished(worker, &task);
       }
 
-      if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
+      if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
         // Push the error to driver.
         const JobID &job_id = worker->GetAssignedJobId();
         // TODO(rkn): Define this constant somewhere else.
@@ -1481,7 +1558,10 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                       << " Node ID: " << self_node_id_
                       << " Worker IP address: " << worker->IpAddress()
                       << " Worker port: " << worker->Port()
-                      << " Worker PID: " << worker->GetProcess().GetId();
+                      << " Worker PID: " << worker->GetProcess().GetId()
+                      << " Worker exit type: "
+                      << rpc::WorkerExitType_Name(disconnect_type)
+                      << " Worker exit detail: " << disconnect_detail;
         std::string error_message_str = error_message.str();
         RAY_EVENT(ERROR, EL_RAY_WORKER_FAILURE)
                 .WithField("worker_id", worker->WorkerId().Hex())
@@ -1514,7 +1594,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     RAY_LOG(INFO) << "Driver (pid=" << worker->GetProcess().GetId()
                   << ") is disconnected. "
                   << "job_id: " << worker->GetAssignedJobId();
-    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
+    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
       RAY_EVENT(ERROR, EL_RAY_DRIVER_FAILURE)
               .WithField("node_id", self_node_id_.Hex())
               .WithField("job_id", worker->GetAssignedJobId().Hex())
@@ -1535,6 +1615,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::DisconnectClient>(message_data);
   auto disconnect_type = static_cast<rpc::WorkerExitType>(message->disconnect_type());
+  const auto &disconnect_detail = message->disconnect_detail()->str();
   const flatbuffers::Vector<uint8_t> *exception_pb =
       message->creation_task_exception_pb();
 
@@ -1544,7 +1625,8 @@ void NodeManager::ProcessDisconnectClientMessage(
     creation_task_exception->ParseFromString(std::string(
         reinterpret_cast<const char *>(exception_pb->data()), exception_pb->size()));
   }
-  DisconnectClient(client, disconnect_type, creation_task_exception.get());
+  DisconnectClient(
+      client, disconnect_type, disconnect_detail, creation_task_exception.get());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1651,7 +1733,10 @@ void NodeManager::ProcessWaitRequestMessage(
           }
         } else {
           // We failed to write to the client, so disconnect the client.
-          DisconnectClient(client);
+          std::ostringstream stream;
+          stream << "Failed to write WaitReply to the client. Status " << status
+                 << ", message: " << status.message();
+          DisconnectClient(client, rpc::WorkerExitType::SYSTEM_ERROR, stream.str());
         }
       });
 }
@@ -1672,6 +1757,9 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
                       TaskID::Nil(),
                       /*ray_get=*/false,
                       /*mark_worker_blocked*/ false);
+  // De-duplicate the object IDs.
+  absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
+  object_ids.assign(object_id_set.begin(), object_id_set.end());
   wait_manager_.Wait(
       object_ids,
       -1,
@@ -1908,14 +1996,17 @@ void NodeManager::HandleCancelResourceReserve(
     }
   }
   for (const auto &worker : workers_associated_with_pg) {
-    RAY_LOG(DEBUG)
+    std::ostringstream stream;
+    stream
         << "Destroying worker since its placement group was removed. Placement group id: "
         << worker->GetBundleId().first
         << ", bundle index: " << bundle_spec.BundleId().second
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DestroyWorker(worker, rpc::WorkerExitType::PLACEMENT_GROUP_REMOVED);
+    const auto &message = stream.str();
+    RAY_LOG(DEBUG) << message;
+    DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
   // Return bundle resources.
@@ -1941,7 +2032,10 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   if (worker) {
     if (request.disconnect_worker()) {
       // The worker should be destroyed.
-      DisconnectClient(worker->Connection());
+      DisconnectClient(worker->Connection(),
+                       rpc::WorkerExitType::SYSTEM_ERROR,
+                       "The leased worker has unrecoverable failure. Worker is requested "
+                       "to be destroyed when it is returned.");
     } else {
       if (worker->IsBlocked()) {
         // Handle the edge case where the worker was returned before we got the
@@ -2449,16 +2543,32 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   RAY_CHECK(owner_is_global_owner.size() == object_ids.size());
   std::vector<std::unique_ptr<RayObject>> results;
   if (!GetObjectsFromPlasma(object_ids, &results)) {
-    RAY_LOG(WARNING)
-        << "Failed to get objects that should have been in the object store. These "
-           "objects may have been evicted while there are still references in scope.";
-    // TODO(suquark): Maybe "Status::ObjectNotFound" is more accurate here.
-    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
-    return;
-  }
-  // Wait for the object to be freed by the owner, which keeps the ref count.
-  local_object_manager_.PinObjectsAndWaitForFree(
+    for (size_t i = 0; i < object_ids.size(); ++i) {
+      reply->add_successes(false);
+    }
+  } else {
+    RAY_CHECK_EQ(object_ids.size(), results.size());
+    auto object_id_it = object_ids.begin();
+    auto result_it = results.begin();
+    while (object_id_it != object_ids.end()) {
+      if (*result_it == nullptr) {
+        RAY_LOG(DEBUG) << "Failed to get object in the object store: " << *object_id_it
+                       << ". This should only happen when the owner tries to pin a "
+                       << "secondary copy and it's evicted in the meantime";
+        object_id_it = object_ids.erase(object_id_it);
+        result_it = results.erase(result_it);
+        reply->add_successes(false);
+      } else {
+        ++object_id_it;
+        ++result_it;
+        reply->add_successes(true);
+      }
+    }
+    // Wait for the object to be freed by the owner, which keeps the ref count.
+    local_object_manager_.PinObjectsAndWaitForFree(
       object_ids, owner_is_global_owner, std::move(results), owner_address);
+  }
+  RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2466,16 +2576,6 @@ void NodeManager::HandleGetSystemConfig(const rpc::GetSystemConfigRequest &reque
                                         rpc::GetSystemConfigReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   reply->set_system_config(initial_config_.raylet_config);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void NodeManager::HandleGetGcsServerAddress(
-    const rpc::GetGcsServerAddressRequest &request,
-    rpc::GetGcsServerAddressReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  auto address = gcs_client_->GetGcsServerAddress();
-  reply->set_ip(address.first);
-  reply->set_port(address.second);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

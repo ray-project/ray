@@ -4,15 +4,13 @@ from gym.spaces import Box, Discrete
 import numpy as np
 import os
 import random
-import tempfile
 import time
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.algorithms.a2c import A2C
+from ray.rllib.algorithms.pg import PG
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.utils import VideoMonitor
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
@@ -24,7 +22,7 @@ from ray.rllib.examples.env.mock_env import (
 )
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent, MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
@@ -145,7 +143,7 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_global_vars_update(self):
         for fw in framework_iterator(frameworks=("tf2", "tf")):
-            agent = A2CTrainer(
+            agent = A2C(
                 env="CartPole-v0",
                 config={
                     "num_workers": 1,
@@ -183,12 +181,12 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator():
-            # We expect this to fail already on Trainer init due
+            # We expect this to fail already on Algorithm init due
             # to the env sanity check right after env creation (inside
             # RolloutWorker).
             self.assertRaises(
                 Exception,
-                lambda: PGTrainer(
+                lambda: PG(
                     env="fail",
                     config={
                         "num_workers": 2,
@@ -200,7 +198,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
             counts = Counter()
-            pg = PGTrainer(
+            pg = PG(
                 env="CartPole-v0",
                 config={
                     "num_workers": 0,
@@ -226,7 +224,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
         for fw in framework_iterator(frameworks=("torch", "tf")):
-            pg = PGTrainer(
+            pg = PG(
                 env="test",
                 config={
                     "num_workers": 2,
@@ -376,10 +374,8 @@ class TestRolloutWorker(unittest.TestCase):
 
                 curframe = inspect.currentframe()
                 called_from_check = any(
-                    [
-                        frame[3] == "check_gym_environments"
-                        for frame in inspect.getouterframes(curframe, 2)
-                    ]
+                    frame[3] == "check_gym_environments"
+                    for frame in inspect.getouterframes(curframe, 2)
                 )
                 # Check, whether the action is immutable.
                 if action.flags.writeable and not called_from_check:
@@ -476,7 +472,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(sum(samples["dones"]), 3)
         ev.stop()
 
-        # A gym env's max_episode_steps is smaller than Trainer's horizon.
+        # A gym env's max_episode_steps is smaller than Algorithm's horizon.
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
@@ -818,6 +814,41 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(seeds, [1, 2, 3])
         ev.stop()
 
+    def test_determine_spaces_for_multi_agent_dict(self):
+        class MockMultiAgentEnv(MultiAgentEnv):
+            """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
+
+            def __init__(self):
+                # Intentinoally don't call super().__init__(),
+                # so this env doesn't have _spaces_in_preferred_format
+                # attribute.
+                self.observation_space = gym.spaces.Discrete(2)
+                self.action_space = gym.spaces.Discrete(2)
+
+            def reset(self):
+                pass
+
+            def step(self, action_dict):
+                obs = {1: [0, 0], 2: [1, 1]}
+                rewards = {1: 0, 2: 0}
+                dones = {1: False, 2: False, "__all__": False}
+                infos = {1: {}, 2: {}}
+                return obs, rewards, dones, infos
+
+        ev = RolloutWorker(
+            env_creator=lambda _: MockMultiAgentEnv(),
+            num_envs=3,
+            policy_spec={
+                "policy_1": PolicySpec(policy_class=MockPolicy),
+                "policy_2": PolicySpec(policy_class=MockPolicy),
+            },
+            seed=1,
+        )
+        # The fact that this RolloutWorker can be created without throwing
+        # exceptions means _determine_spaces_for_multi_agent_dict() is
+        # handling multiagent user environments properly.
+        self.assertIsNotNone(ev)
+
     def test_wrap_multi_agent_env(self):
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(10),
@@ -825,15 +856,12 @@ class TestRolloutWorker(unittest.TestCase):
             policy_config={
                 "in_evaluation": False,
             },
-            record_env=tempfile.gettempdir(),
         )
         # Make sure we can properly sample from the wrapped env.
         ev.sample()
         # Make sure the resulting environment is indeed still an
-        # instance of MultiAgentEnv and VideoMonitor.
         self.assertTrue(isinstance(ev.env.unwrapped, MultiAgentEnv))
         self.assertTrue(isinstance(ev.env, gym.Env))
-        self.assertTrue(isinstance(ev.env, VideoMonitor))
         ev.stop()
 
     def test_no_training(self):

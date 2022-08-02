@@ -9,12 +9,12 @@ parameters (SimpleCorridor corridor lengths).
 Sample output for `python custom_eval.py`
 ------------------------------------------------------------------------
 
-INFO trainer.py:623 -- Evaluating current policy for 10 episodes.
-INFO trainer.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
-INFO trainer.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
-INFO trainer.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
-INFO trainer.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
-INFO trainer.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
+INFO algorithm.py:623 -- Evaluating current policy for 10 episodes.
+INFO algorithm.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
+INFO algorithm.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
+INFO algorithm.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
+INFO algorithm.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
+INFO algorithm.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
 
 Result for PG_SimpleCorridor_2c6b27dc:
   ...
@@ -38,7 +38,7 @@ Result for PG_SimpleCorridor_2c6b27dc:
 Sample output for `python custom_eval.py --custom-eval`
 ------------------------------------------------------------------------
 
-INFO trainer.py:631 -- Running custom eval function <function ...>
+INFO algorithm.py:631 -- Running custom eval function <function ...>
 Update corridor length to 4
 Update corridor length to 7
 Custom evaluation round 1
@@ -70,12 +70,13 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--evaluation-parallel-to-training", action="store_true")
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
@@ -99,17 +100,22 @@ parser.add_argument(
 parser.add_argument(
     "--stop-reward", type=float, default=0.7, help="Reward at which we stop training."
 )
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Init Ray in local mode for easier debugging.",
+)
 
 
-def custom_eval_function(trainer, eval_workers):
+def custom_eval_function(algorithm, eval_workers):
     """Example of a custom evaluation function.
 
     Args:
-        trainer (Trainer): trainer class to evaluate.
-        eval_workers (WorkerSet): evaluation workers.
+        algorithm: Algorithm class to evaluate.
+        eval_workers: Evaluation WorkerSet.
 
     Returns:
-        metrics (dict): evaluation metrics dict.
+        metrics: Evaluation metrics dict.
     """
 
     # We configured 2 eval workers in the training config.
@@ -152,7 +158,7 @@ if __name__ == "__main__":
     else:
         eval_fn = custom_eval_function
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     config = {
         "env": SimpleCorridor,
@@ -172,8 +178,10 @@ if __name__ == "__main__":
         "custom_eval_function": eval_fn,
         # Enable evaluation, once per training iteration.
         "evaluation_interval": 1,
-        # Run 10 episodes each time evaluation runs.
-        "evaluation_duration": 10,
+        # Run 10 episodes each time evaluation runs (OR "auto" if parallel to training).
+        "evaluation_duration": "auto" if args.evaluation_parallel_to_training else 10,
+        # Evaluate parallelly to training.
+        "evaluation_parallel_to_training": args.evaluation_parallel_to_training,
         # Override the env config for evaluation.
         "evaluation_config": {
             "env_config": {
@@ -190,7 +198,10 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run("PG", config=config, stop=stop, verbose=1)
+    tuner = tune.Tuner(
+        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    )
+    results = tuner.fit()
 
     # Check eval results (from eval workers using the custom function),
     # not results from the regular workers.

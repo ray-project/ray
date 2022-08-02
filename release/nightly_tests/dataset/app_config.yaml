@@ -8,8 +8,7 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y ray || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   # TODO (Alex): We need to do this because the ray-ml image pins
   # tensorflow=2.6, which requires numpy~=1.19.2. This is ok because the test
   # doesn't actually use tensorflow, but in the long term, but we should

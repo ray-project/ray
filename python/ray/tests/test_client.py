@@ -1,25 +1,31 @@
-import os
-import pytest
-import time
-import sys
-import logging
-import queue
-import threading
 import _thread
+import logging
+import os
+import queue
+import sys
+import threading
+import time
 from unittest.mock import patch
+
 import numpy as np
-from ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE
+import pytest
 
 import ray.util.client.server.server as ray_client_server
-from ray.tests.client_test_utils import create_remote_signal_actor
-from ray.tests.client_test_utils import run_wrapped_actor_creation
-from ray.util.client.common import ClientObjectRef
-from ray.util.client.ray_client_helpers import connect_to_client_or_not
-from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray._private.client_mode_hook import client_mode_should_convert
-from ray._private.client_mode_hook import disable_client_hook
-from ray._private.client_mode_hook import enable_client_mode
+from ray._private.client_mode_hook import (
+    client_mode_should_convert,
+    disable_client_hook,
+    enable_client_mode,
+)
 from ray._private.test_utils import run_string_as_driver
+from ray.tests.client_test_utils import (
+    create_remote_signal_actor,
+    run_wrapped_actor_creation,
+)
+from ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE, ClientObjectRef
+from ray.util.client.ray_client_helpers import (
+    connect_to_client_or_not,
+    ray_start_client_server,
+)
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -657,8 +663,9 @@ def test_client_gpu_ids(call_ray_stop_only):
 
 
 def test_client_serialize_addon(call_ray_stop_only):
-    import ray
     import pydantic
+
+    import ray
 
     ray.init(num_cpus=0)
 
@@ -834,4 +841,7 @@ def test_large_remote_call(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -16,12 +16,14 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/util/process.h"
 
+using json = nlohmann::json;
 namespace ray {
 
 namespace raylet {
@@ -90,17 +92,13 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
       reply.set_error_message(BAD_RUNTIME_ENV_ERROR_MSG);
     } else {
-      rpc::RuntimeEnv runtime_env;
-      if (google::protobuf::util::JsonStringToMessage(request.serialized_runtime_env(),
-                                                      &runtime_env)
-              .ok()) {
-        auto it = runtime_env_reference.find(request.serialized_runtime_env());
-        if (it == runtime_env_reference.end()) {
-          runtime_env_reference[request.serialized_runtime_env()] = 1;
-        } else {
-          runtime_env_reference[request.serialized_runtime_env()] += 1;
-        }
+      auto it = runtime_env_reference.find(request.serialized_runtime_env());
+      if (it == runtime_env_reference.end()) {
+        runtime_env_reference[request.serialized_runtime_env()] = 1;
+      } else {
+        runtime_env_reference[request.serialized_runtime_env()] += 1;
       }
+
       reply.set_status(rpc::AGENT_RPC_STATUS_OK);
       reply.set_serialized_runtime_env_context("{\"dummy\":\"dummy\"}");
     }
@@ -524,18 +522,14 @@ class WorkerPoolTest : public ::testing::Test {
 
 static inline rpc::RuntimeEnvInfo ExampleRuntimeEnvInfo(
     const std::vector<std::string> uris, bool eager_install = false) {
-  rpc::RuntimeEnv runtime_env;
-  for (auto &uri : uris) {
-    runtime_env.mutable_uris()->mutable_py_modules_uris()->Add(std::string(uri));
-  }
-  std::string runtime_env_string;
-  google::protobuf::util::MessageToJsonString(runtime_env, &runtime_env_string);
+  json runtime_env;
+  runtime_env["py_modules"] = uris;
   rpc::RuntimeEnvInfo runtime_env_info;
-  runtime_env_info.set_serialized_runtime_env(runtime_env_string);
+  runtime_env_info.set_serialized_runtime_env(runtime_env.dump());
   for (auto &uri : uris) {
-    runtime_env_info.mutable_uris()->Add(std::string(uri));
+    runtime_env_info.mutable_uris()->add_py_modules_uris(std::string(uri));
   }
-  runtime_env_info.set_runtime_env_eager_install(eager_install);
+  runtime_env_info.mutable_runtime_env_config()->set_eager_install(eager_install);
   return runtime_env_info;
 }
 
@@ -612,7 +606,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
   for (const auto &worker : workers) {
     worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_EXIT);
+        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_USER_EXIT);
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
   }
@@ -628,7 +622,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
         worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
     worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_EXIT);
+        worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_USER_EXIT);
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
   }
 }
@@ -1527,10 +1521,12 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWorkerLevel) {
     auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 3);
     // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::IDLE_EXIT);
+    worker_pool_->DisconnectWorker(popped_actor_worker,
+                                   rpc::WorkerExitType::INTENDED_USER_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 2);
     // Disconnect task worker.
-    worker_pool_->DisconnectWorker(popped_normal_worker, rpc::WorkerExitType::IDLE_EXIT);
+    worker_pool_->DisconnectWorker(popped_normal_worker,
+                                   rpc::WorkerExitType::INTENDED_USER_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Finish the job.
     worker_pool_->HandleJobFinished(job_id);
@@ -1565,10 +1561,12 @@ TEST_F(WorkerPoolTest, RuntimeEnvUriReferenceWorkerLevel) {
     auto popped_normal_worker = worker_pool_->PopWorkerSync(actor_creation_task_spec);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 2);
     // Disconnect actor worker.
-    worker_pool_->DisconnectWorker(popped_actor_worker, rpc::WorkerExitType::IDLE_EXIT);
+    worker_pool_->DisconnectWorker(popped_actor_worker,
+                                   rpc::WorkerExitType::INTENDED_USER_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 1);
     // Disconnect task worker.
-    worker_pool_->DisconnectWorker(popped_normal_worker, rpc::WorkerExitType::IDLE_EXIT);
+    worker_pool_->DisconnectWorker(popped_normal_worker,
+                                   rpc::WorkerExitType::INTENDED_USER_EXIT);
     ASSERT_EQ(GetReferenceCount(runtime_env_info.serialized_runtime_env()), 0);
     // Finish the job.
     worker_pool_->HandleJobFinished(job_id);
@@ -1818,8 +1816,8 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
     RAY_CHECK_OK(
         worker_pool_->RegisterWorker(worker, proc.GetId(), token, [](Status, int) {}));
     // The worker failed before announcing the worker port (i.e. OnworkerStarted)
-    worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+    worker_pool_->DisconnectWorker(worker,
+                                   /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
   }
 
   ASSERT_EQ(worker_pool_->NumSpillWorkerStarting(), 0);
@@ -1841,8 +1839,8 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
 
   for (const auto &worker : spill_worker_set) {
     worker_pool_->PushSpillWorker(worker);
-    worker_pool_->DisconnectWorker(
-        worker, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+    worker_pool_->DisconnectWorker(worker,
+                                   /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
   }
   spill_worker_set.clear();
 
@@ -1868,8 +1866,8 @@ TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
 
   // This time, we mock worker failure before it's returning to worker pool.
 
-  worker_pool_->DisconnectWorker(
-      worker2, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+  worker_pool_->DisconnectWorker(worker2,
+                                 /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR);
   worker_pool_->PushSpillWorker(worker2);
   spill_worker_set.clear();
 

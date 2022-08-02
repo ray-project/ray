@@ -252,6 +252,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
       plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet,
       0,
       global_owner_id);
+	  
   pool_mutex_.Lock();
 
   // No other thread could have created the buffer.
@@ -267,6 +268,9 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   }
 
   if (!s.ok()) {
+    if (s.IsOutOfDisk()) {
+      return s;
+    }
     // Create failed. Buffer creation will be tried by another chunk.
     // And this chunk will eventually make it here via retried pull requests.
     return ray::Status::IOError(s.message());

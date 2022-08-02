@@ -224,7 +224,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
-      std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
           run_delayed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
@@ -329,6 +328,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                     const WorkerID &worker_id,
                     const std::string &worker_ip,
                     const rpc::WorkerExitType disconnect_type,
+                    const std::string &disconnect_detail,
                     const rpc::RayException *creation_task_exception = nullptr);
 
   /// Testing only.
@@ -453,9 +453,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Notify CoreWorker to kill the specified actor.
   ///
   /// \param actor The actor to be killed.
+  /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
+                                   const rpc::ActorDeathCause &death_cause,
                                    bool force_kill = true,
                                    bool no_restart = true);
 
@@ -562,9 +564,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
-  /// A callback to get the job config of an actor based on its job id. This is
-  /// necessary for actor creation.
-  std::function<std::shared_ptr<rpc::JobConfig>(const JobID &)> get_job_config_;
   /// Runtime environment manager for GC purpose
   RuntimeEnvManager &runtime_env_manager_;
   /// Function manager for GC purpose

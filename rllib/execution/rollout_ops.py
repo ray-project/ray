@@ -17,6 +17,7 @@ from ray.rllib.policy.sample_batch import (
     SampleBatch,
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
+    concat_samples,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
@@ -65,16 +66,16 @@ def synchronous_parallel_sample(
         rollout worker in the given `worker_set`).
 
     Examples:
-        >>> # Define an RLlib trainer.
-        >>> trainer = ... # doctest: +SKIP
+        >>> # Define an RLlib Algorithm.
+        >>> algorithm = ... # doctest: +SKIP
         >>> # 2 remote workers (num_workers=2):
-        >>> batches = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> batches = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
         >>> print(len(batches)) # doctest: +SKIP
         2
         >>> print(batches[0]) # doctest: +SKIP
         SampleBatch(16: ['obs', 'actions', 'rewards', 'dones'])
         >>> # 0 remote workers (num_workers=0): Using the local worker.
-        >>> batches = synchronous_parallel_sample(trainer.workers) # doctest: +SKIP
+        >>> batches = synchronous_parallel_sample(algorithm.workers) # doctest: +SKIP
         >>> print(len(batches)) # doctest: +SKIP
         1
     """
@@ -108,7 +109,7 @@ def synchronous_parallel_sample(
         all_sample_batches.extend(sample_batches)
 
     if concat is True:
-        full_batch = SampleBatch.concat_samples(all_sample_batches)
+        full_batch = concat_samples(all_sample_batches)
         # Discard collected incomplete episodes in episode mode.
         # if max_episodes is not None and episodes >= max_episodes:
         #    last_complete_ep_idx = len(full_batch) - full_batch[
@@ -129,15 +130,15 @@ def ParallelRollouts(
     the local worker instance instead.
 
     Args:
-        workers (WorkerSet): set of rollout workers to use.
-        mode (str): One of 'async', 'bulk_sync', 'raw'. In 'async' mode,
+        workers: set of rollout workers to use.
+        mode: One of 'async', 'bulk_sync', 'raw'. In 'async' mode,
             batches are returned as soon as they are computed by rollout
             workers with no order guarantees. In 'bulk_sync' mode, we collect
             one batch from each worker and concatenate them together into a
             large batch to return. In 'raw' mode, the ParallelIterator object
             is returned directly and the caller is responsible for implementing
             gather and updating the timesteps counter.
-        num_async (int): In async mode, the max number of async
+        num_async: In async mode, the max number of async
             requests in flight per actor.
 
     Returns:
@@ -183,7 +184,7 @@ def ParallelRollouts(
     if mode == "bulk_sync":
         return (
             rollouts.batch_across_shards()
-            .for_each(lambda batches: SampleBatch.concat_samples(batches))
+            .for_each(lambda batches: concat_samples(batches))
             .for_each(report_timesteps)
         )
     elif mode == "async":
@@ -200,7 +201,7 @@ def AsyncGradients(workers: WorkerSet) -> LocalIterator[Tuple[ModelGradients, in
     """Operator to compute gradients in parallel from rollout workers.
 
     Args:
-        workers (WorkerSet): set of rollout workers to use.
+        workers: set of rollout workers to use.
 
     Returns:
         A local iterator over policy gradients computed on rollout workers.

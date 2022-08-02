@@ -7,7 +7,7 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/ci.sh build
     - pip install -Ur ./python/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only python/ray/train/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,gpu_only,-ray_air python/ray/train/...
 
 - label: ":tv: :database: :steam_locomotive: Datasets Train Integration GPU Tests and Examples (Python 3.7)"
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
@@ -31,15 +31,15 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --jobs 2
       --test_tag_filters=multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
-
-- label: ":tv: :airplane: ML GPU tests (ray/ml)"
+- label: ":tv: :airplane: ML GPU tests (ray/air)"
   conditions: ["RAY_CI_ML_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
+    - DATA_PROCESSING_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements_ml_docker.txt
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu python/ray/ml/...
-
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu python/ray/air/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu python/ray/train/...
 
 - label: ":tv: :book: Doc GPU tests and examples"
   conditions:

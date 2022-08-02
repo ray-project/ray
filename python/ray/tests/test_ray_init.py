@@ -1,93 +1,20 @@
+import logging
 import os
 import sys
-
-import logging
-import pytest
-import redis
 import unittest.mock
+import subprocess
+
+import grpc
+import pytest
+
 import ray
 import ray._private.services
-from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray._private.test_utils import run_string_as_driver
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
-from ray._private.test_utils import run_string_as_driver
 from ray.util.client.common import ClientObjectRef
+from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
-import grpc
-
-
-@pytest.fixture
-def password():
-    random_bytes = os.urandom(128)
-    if hasattr(random_bytes, "hex"):
-        return random_bytes.hex()  # Python 3
-    return random_bytes.encode("hex")  # Python 2
-
-
-class TestRedisPassword:
-    @pytest.mark.skipif(
-        True, reason="Not valid anymore. To be added back when fixing Redis mode"
-    )
-    def test_redis_password(self, password, shutdown_only):
-        @ray.remote
-        def f():
-            return 1
-
-        info = ray.init(_redis_password=password)
-        address = info["redis_address"]
-        redis_ip, redis_port = address.split(":")
-
-        # Check that we can run a task
-        object_ref = f.remote()
-        ray.get(object_ref)
-
-        # Check that Redis connections require a password
-        redis_client = redis.StrictRedis(host=redis_ip, port=redis_port, password=None)
-        with pytest.raises(redis.exceptions.AuthenticationError):
-            redis_client.ping()
-        # We want to simulate how this is called by ray.scripts.start().
-        try:
-            ray._private.services.wait_for_redis_to_start(
-                redis_ip, redis_port, password="wrong password"
-            )
-        # We catch a generic Exception here in case someone later changes the
-        # type of the exception.
-        except Exception as ex:
-            if not (
-                isinstance(ex.__cause__, redis.AuthenticationError)
-                and "invalid password" in str(ex.__cause__)
-            ) and not (
-                isinstance(ex, redis.ResponseError)
-                and "WRONGPASS invalid username-password pair" in str(ex)
-            ):
-                raise
-            # By contrast, we may be fairly confident the exact string
-            # 'invalid password' won't go away, because redis-py simply wraps
-            # the exact error from the Redis library.
-            # https://github.com/andymccurdy/redis-py/blob/master/
-            # redis/connection.py#L132
-            # Except, apparently sometimes redis-py raises a completely
-            # different *type* of error for a bad password,
-            # redis.ResponseError, which is not even derived from
-            # redis.ConnectionError as redis.AuthenticationError is.
-
-        # Check that we can connect to Redis using the provided password
-        redis_client = redis.StrictRedis(
-            host=redis_ip, port=redis_port, password=password
-        )
-        assert redis_client.ping()
-
-    def test_redis_password_cluster(self, password, shutdown_only):
-        @ray.remote
-        def f():
-            return 1
-
-        node_args = {"redis_password": password}
-        cluster = Cluster(initialize_head=True, connect=True, head_node_args=node_args)
-        cluster.add_node(**node_args)
-
-        object_ref = f.remote()
-        ray.get(object_ref)
 
 
 def test_shutdown_and_reset_global_worker(shutdown_only):
@@ -265,6 +192,7 @@ def test_ray_address(input, call_ray_start):
         res = ray.init(input)
         # Ensure this is not a client.connect()
         assert not isinstance(res, ClientContext)
+        assert res.address_info["gcs_address"] == address
         ray.shutdown()
 
     addr = "localhost:{}".format(address.split(":")[-1])
@@ -272,7 +200,66 @@ def test_ray_address(input, call_ray_start):
         res = ray.init(input)
         # Ensure this is not a client.connect()
         assert not isinstance(res, ClientContext)
+        assert res.address_info["gcs_address"] == address
         ray.shutdown()
+
+
+@pytest.mark.parametrize("address", [None, "auto"])
+def test_ray_init_no_local_instance(shutdown_only, address):
+    # Starts a new Ray instance.
+    if address is None:
+        ray.init(address=address)
+    else:
+        # Throws an error if we explicitly want to connect to an existing
+        # instance and none exists.
+        with pytest.raises(ConnectionError):
+            ray.init(address=address)
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="Flaky when run on windows CI",
+)
+@pytest.mark.parametrize("address", [None, "auto"])
+def test_ray_init_existing_instance(call_ray_start, address):
+    ray_address = call_ray_start
+    # If no address is specified, we will default to an existing cluster.
+    res = ray.init(address=address)
+    assert res.address_info["gcs_address"] == ray_address
+    ray.shutdown()
+
+    # Start a second local Ray instance.
+    try:
+        subprocess.check_output("ray start --head", shell=True)
+        # If there are multiple local instances, connect to the latest.
+        res = ray.init(address=address)
+        assert res.address_info["gcs_address"] != ray_address
+        ray.shutdown()
+
+        # If there are multiple local instances and we specify an address
+        # explicitly, it works.
+        with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": ray_address}):
+            res = ray.init(address=address)
+            assert res.address_info["gcs_address"] == ray_address
+    finally:
+        ray.shutdown()
+        subprocess.check_output("ray stop --force", shell=True)
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform == "win32",
+    reason="Flaky when run on windows CI",
+)
+@pytest.mark.parametrize("address", [None, "auto"])
+def test_ray_init_existing_instance_crashed(address):
+    ray._private.utils.write_ray_address("localhost:6379")
+    try:
+        # If no address is specified, we will default to an existing cluster.
+        ray._private.node.NUM_REDIS_GET_RETRIES = 1
+        with pytest.raises(ConnectionError):
+            ray.init(address=address)
+    finally:
+        ray._private.utils.reset_ray_address()
 
 
 class Credentials(grpc.ChannelCredentials):
@@ -379,34 +366,12 @@ def test_ray_init_using_hostname(ray_start_cluster):
     assert node_table[0].get("NodeManagerHostname", "") == hostname
 
 
-def test_redis_connect_backoff():
-    from ray import ray_constants
-    import time
-
-    unreachable_address = "127.0.0.1:65535"
-    redis_ip, redis_port = unreachable_address.split(":")
-    wait_retries = ray_constants.START_REDIS_WAIT_RETRIES
-    ray_constants.START_REDIS_WAIT_RETRIES = 12
-    try:
-        start = time.time()
-        with pytest.raises(RuntimeError):
-            ray._private.services.wait_for_redis_to_start(redis_ip, int(redis_port))
-        end = time.time()
-        duration = end - start
-        assert duration > 2
-
-        start = time.time()
-        with pytest.raises(RuntimeError):
-            ray._private.services.create_redis_client(redis_address=unreachable_address)
-        end = time.time()
-        duration = end - start
-        assert duration > 2
-    finally:
-        ray_constants.START_REDIS_WAIT_RETRIES = wait_retries
-
-
 if __name__ == "__main__":
-    import pytest
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    import pytest
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

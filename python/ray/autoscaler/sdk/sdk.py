@@ -1,19 +1,19 @@
 """IMPORTANT: this is an experimental interface and not currently stable."""
 
-from contextlib import contextmanager
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 import json
 import os
 import tempfile
+from contextlib import contextmanager
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 from ray.autoscaler._private import commands
-from ray.autoscaler._private.event_system import (  # noqa: F401
-    CreateClusterEvent,  # noqa: F401
-    global_event_system,
-)
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray.autoscaler._private.event_system import CreateClusterEvent  # noqa: F401
+from ray.autoscaler._private.event_system import global_event_system  # noqa: F401
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 def create_or_update_cluster(
     cluster_config: Union[dict, str],
     *,
@@ -26,12 +26,12 @@ def create_or_update_cluster(
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
-        no_restart (bool): Whether to skip restarting Ray services during the
+        no_restart: Whether to skip restarting Ray services during the
             update. This avoids interrupting running jobs and can be used to
             dynamically adjust autoscaler configuration.
-        restart_only (bool): Whether to skip running setup commands and only
+        restart_only: Whether to skip running setup commands and only
             restart Ray. This cannot be used with 'no-restart'.
-        no_config_cache (bool): Whether to disable the config cache and fully
+        no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
     """
     with _as_config_file(cluster_config) as config_file:
@@ -49,6 +49,7 @@ def create_or_update_cluster(
         )
 
 
+@DeveloperAPI
 def teardown_cluster(
     cluster_config: Union[dict, str],
     workers_only: bool = False,
@@ -59,9 +60,9 @@ def teardown_cluster(
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
-        workers_only (bool): Whether to keep the head node running and only
+        workers_only: Whether to keep the head node running and only
             teardown worker nodes.
-        keep_min_workers (bool): Whether to keep min_workers (as specified
+        keep_min_workers: Whether to keep min_workers (as specified
             in the YAML) still running.
     """
     with _as_config_file(cluster_config) as config_file:
@@ -74,6 +75,7 @@ def teardown_cluster(
         )
 
 
+@DeveloperAPI
 def run_on_cluster(
     cluster_config: Union[dict, str],
     *,
@@ -90,15 +92,15 @@ def run_on_cluster(
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
-        cmd (str): the command to run, or None for a no-op command.
-        run_env (str): whether to run the command on the host or in a
+        cmd: the command to run, or None for a no-op command.
+        run_env: whether to run the command on the host or in a
             container. Select between "auto", "host" and "docker".
-        tmux (bool): whether to run in a tmux session
-        stop (bool): whether to stop the cluster after command run
-        no_config_cache (bool): Whether to disable the config cache and fully
+        tmux: whether to run in a tmux session
+        stop: whether to stop the cluster after command run
+        no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
         port_forward ( (int,int) or list[(int,int)]): port(s) to forward.
-        with_output (bool): Whether to capture command output.
+        with_output: Whether to capture command output.
 
     Returns:
         The output of the command as a string.
@@ -119,6 +121,7 @@ def run_on_cluster(
         )
 
 
+@DeveloperAPI
 def rsync(
     cluster_config: Union[dict, str],
     *,
@@ -135,13 +138,13 @@ def rsync(
     Args:
         cluster_config (Union[str, dict]): Either the config dict of the
             cluster, or a path pointing to a file containing the config.
-        source (str): rsync source argument.
-        target (str): rsync target argument.
-        down (bool): whether we're syncing remote -> local.
-        ip_address (str): Address of node.
-        use_internal_ip (bool): Whether the provided ip_address is
+        source: rsync source argument.
+        target: rsync target argument.
+        down: whether we're syncing remote -> local.
+        ip_address: Address of node.
+        use_internal_ip: Whether the provided ip_address is
             public or private.
-        no_config_cache (bool): Whether to disable the config cache and fully
+        no_config_cache: Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
         should_bootstrap: whether to bootstrap cluster config before syncing
 
@@ -163,6 +166,7 @@ def rsync(
         )
 
 
+@DeveloperAPI
 def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
     """Returns head node IP for given configuration file if exists.
 
@@ -180,6 +184,7 @@ def get_head_node_ip(cluster_config: Union[dict, str]) -> str:
         return commands.get_head_node_ip(config_file)
 
 
+@DeveloperAPI
 def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
     """Returns worker node IPs for given configuration file.
 
@@ -197,6 +202,7 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
         return commands.get_worker_node_ips(config_file)
 
 
+@DeveloperAPI
 def request_resources(
     num_cpus: Optional[int] = None, bundles: Optional[List[dict]] = None
 ) -> None:
@@ -216,7 +222,7 @@ def request_resources(
     internal bin packing algorithm and max worker count restrictions.
 
     Args:
-        num_cpus (int): Scale the cluster to ensure this number of CPUs are
+        num_cpus: Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
             request_resources() is made to override.
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
@@ -234,9 +240,26 @@ def request_resources(
         >>> request_resources( # doctest: +SKIP
         ...     bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
+    if num_cpus is not None and not isinstance(num_cpus, int):
+        raise TypeError("num_cpus should be of type int.")
+    if bundles is not None:
+        if isinstance(bundles, List):
+            for bundle in bundles:
+                if isinstance(bundle, Dict):
+                    for key in bundle.keys():
+                        if not (isinstance(key, str) and isinstance(bundle[key], int)):
+                            raise TypeError(
+                                "each bundle key should be str and value as int."
+                            )
+                else:
+                    raise TypeError("each bundle should be a Dict.")
+        else:
+            raise TypeError("bundles should be of type List")
+
     return commands.request_resources(num_cpus, bundles)
 
 
+@DeveloperAPI
 def configure_logging(
     log_style: Optional[str] = None,
     color_mode: Optional[str] = None,
@@ -245,7 +268,7 @@ def configure_logging(
     """Configures logging for cluster command calls.
 
     Args:
-        log_style (str): If 'pretty', outputs with formatting and color.
+        log_style: If 'pretty', outputs with formatting and color.
             If 'record', outputs record-style without formatting.
             'auto' defaults to 'pretty', and disables pretty logging
             if stdin is *not* a TTY. Defaults to "auto".
@@ -267,6 +290,7 @@ def configure_logging(
 
 
 @contextmanager
+@DeveloperAPI
 def _as_config_file(cluster_config: Union[dict, str]) -> Iterator[str]:
     if isinstance(cluster_config, dict):
         tmp = tempfile.NamedTemporaryFile("w", prefix="autoscaler-sdk-tmp-")
@@ -278,6 +302,7 @@ def _as_config_file(cluster_config: Union[dict, str]) -> Iterator[str]:
     yield cluster_config
 
 
+@DeveloperAPI
 def bootstrap_config(
     cluster_config: Dict[str, Any], no_config_cache: bool = False
 ) -> Dict[str, Any]:
@@ -286,6 +311,7 @@ def bootstrap_config(
     return commands._bootstrap_config(cluster_config, no_config_cache)
 
 
+@DeveloperAPI
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     """Fillout default values for a cluster_config based on the provider."""
     from ray.autoscaler._private.util import fillout_defaults
@@ -293,6 +319,7 @@ def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     return fillout_defaults(config)
 
 
+@DeveloperAPI
 def register_callback_handler(
     event_name: str,
     callback: Union[Callable[[Dict], None], List[Callable[[Dict], None]]],
@@ -300,15 +327,16 @@ def register_callback_handler(
     """Registers a callback handler for autoscaler events.
 
     Args:
-        event_name (str): Event that callback should be called on. See
+        event_name: Event that callback should be called on. See
             CreateClusterEvent for details on the events available to be
             registered against.
-        callback (Callable): Callable object that is invoked
+        callback: Callable object that is invoked
             when specified event occurs.
     """
     global_event_system.add_callback_handler(event_name, callback)
 
 
+@DeveloperAPI
 def get_docker_host_mount_location(cluster_name: str) -> str:
     """Return host path that Docker mounts attach to."""
     docker_mount_prefix = "/tmp/ray_tmp_mount/{cluster_name}"

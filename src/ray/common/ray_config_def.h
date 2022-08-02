@@ -57,6 +57,14 @@ RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
 RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
+
+/// If GCS restarts, before the first heatbeat is sent,
+/// gcs_failover_worker_reconnect_timeout is used for the threshold
+/// of the raylet. This is very useful given that raylet might need
+/// a while to reconnect to the GCS, for example, when GCS is available
+/// but not reachable to raylet.
+RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
+
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
@@ -67,6 +75,17 @@ RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 
 /// The duration between raylet check memory pressure and send gc request
 RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
+
+/// Threshold when the node is beyond the memory capacity.
+/// Ranging from [0, 1]
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
+
+/// The interval between runs of the memory usage monitor.
+/// Monitor is disabled when this value is 0.
+RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
+
+/// If the raylet fails to get agent info, we will retry after this interval.
+RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
 
 /// For a raylet, if the last resource report was sent more than this many
 /// report periods ago, then a warning will be logged that the report
@@ -242,6 +261,13 @@ RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 /// NOTE(swang): Linux only.
 RAY_CONFIG(int, worker_oom_score_adjustment, 1000)
 
+/// Sets workers' nice value on posix systems, so that the OS prioritizes CPU for other
+/// processes over worker. This makes CPU available to GCS, Raylet and user processes
+/// even when workers are busy.
+/// Valid value is [0, 19] (negative values require sudo permissions).
+/// NOTE: Linux, Unix and MacOS only.
+RAY_CONFIG(int, worker_niceness, 15)
+
 /// Allow up to 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
@@ -373,6 +399,10 @@ RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 10
 /// Feature flag to use the ray syncer for resource synchronization
 RAY_CONFIG(bool, use_ray_syncer, false)
 
+/// The queuing buffer of ray syncer. This indicates how many concurrent
+/// requests can run in flight for syncing.
+RAY_CONFIG(int64_t, ray_syncer_polling_buffer, 5)
+
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.
 RAY_CONFIG(uint64_t, gcs_service_address_check_interval_milliseconds, 1000)
@@ -468,9 +498,17 @@ RAY_CONFIG(int64_t, max_fused_object_count, 2000)
 /// In unlimited allocation mode, this is the time delay prior to fallback allocating.
 RAY_CONFIG(int64_t, oom_grace_period_s, 2)
 
-/// Whether or not the external storage is file system.
-/// This is configured based on object_spilling_config.
+/// Whether or not the external storage is the local file system.
+/// Note that this value should be overridden based on the storage type
+/// specified by object_spilling_config.
 RAY_CONFIG(bool, is_external_storage_type_fs, true)
+
+/// Control the capacity threshold for ray local file system (for object store).
+/// Once we are over the capacity, all subsequent object creation will fail.
+RAY_CONFIG(float, local_fs_capacity_threshold, 0.95);
+
+/// Control the frequency of checking the disk usage.
+RAY_CONFIG(uint64_t, local_fs_monitor_interval_ms, 100);
 
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
@@ -490,6 +528,10 @@ RAY_CONFIG(int64_t, log_rotation_backup_count, 5)
 /// notification, in this case we'll wait for a fixed timeout value and then mark it
 /// as failed.
 RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
+
+/// The core worker heartbeat interval. During heartbeat, it'll
+/// report the loads to raylet.
+RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000);
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
@@ -593,6 +635,10 @@ RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
+
+/// The namespace for the storage.
+/// This fields is used to isolate data stored in DB.
+RAY_CONFIG(std::string, external_storage_namespace, "default")
 
 /// Whether or not use TLS.
 RAY_CONFIG(bool, USE_TLS, false)

@@ -346,6 +346,31 @@ TEST_F(TaskManagerTest, TestLineageEvicted) {
   ASSERT_FALSE(reference_counter_->HasReference(return_id));
 }
 
+TEST_F(TaskManagerTest, TestLocalityDataAdded) {
+  auto spec = CreateTaskHelper(1, {});
+  auto return_id = spec.ReturnId(0);
+  auto node_id = NodeID::FromRandom();
+  int object_size = 100;
+  store_->GetAsync(return_id, [&](std::shared_ptr<RayObject> obj) {
+    // By the time the return object is available to get, we should be able
+    // to get the locality data too.
+    auto locality_data = reference_counter_->GetLocalityData(return_id);
+    ASSERT_TRUE(locality_data.has_value());
+    ASSERT_EQ(locality_data->object_size, object_size);
+    ASSERT_TRUE(locality_data->nodes_containing_object.contains(node_id));
+  });
+
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  return_object->set_in_plasma(true);
+  return_object->set_size(object_size);
+  rpc::Address worker_addr;
+  worker_addr.set_raylet_id(node_id.Binary());
+  manager_.AddPendingTask(rpc::Address(), spec, "", 0);
+  manager_.CompletePendingTask(spec.TaskId(), reply, worker_addr);
+}
+
 // Test to make sure that the task spec and dependencies for an object are
 // pinned when lineage pinning is enabled in the ReferenceCounter.
 TEST_F(TaskManagerLineageTest, TestLineagePinned) {

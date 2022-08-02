@@ -2,8 +2,9 @@ import pytest
 import time
 
 import ray
+
 from ray import serve
-from ray.serve.common import DeploymentInfo
+from ray.serve._private.common import DeploymentInfo
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 
 
@@ -16,7 +17,7 @@ def test_redeploy_start_time(serve_instance):
     def test(_):
         return "1"
 
-    test.deploy()
+    serve.run(test.bind())
     deployment_route = DeploymentRoute.FromString(
         ray.get(controller.get_deployment_info.remote("test"))
     )
@@ -29,7 +30,7 @@ def test_redeploy_start_time(serve_instance):
     def test(_):
         return "2"
 
-    test.deploy()
+    serve.run(test.bind())
     deployment_route = DeploymentRoute.FromString(
         ray.get(controller.get_deployment_info.remote("test"))
     )

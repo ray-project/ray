@@ -168,10 +168,10 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
           Status status_to_return = Status::OK();
           if (env->IsInstanceOf(throwable,
                                 java_ray_intentional_system_exit_exception_class)) {
-            status_to_return = Status::IntentionalSystemExit();
+            status_to_return = Status::IntentionalSystemExit("");
           } else if (env->IsInstanceOf(throwable, java_ray_actor_exception_class)) {
             creation_task_exception_pb = SerializeActorCreationException(env, throwable);
-            status_to_return = Status::CreationTaskError();
+            status_to_return = Status::CreationTaskError("");
           } else {
             RAY_LOG(ERROR) << "Unkown java exception was thrown while executing tasks.";
           }
@@ -257,17 +257,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
     }
   };
 
-  auto on_worker_shutdown = [](const WorkerID &worker_id) {
-    JNIEnv *env = GetJNIEnv();
-    auto worker_id_bytes = IdToJavaByteArray<WorkerID>(env, worker_id);
-    if (java_task_executor) {
-      env->CallVoidMethod(java_task_executor,
-                          java_native_task_executor_on_worker_shutdown,
-                          worker_id_bytes);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-    }
-  };
-
   std::string serialized_job_config =
       (jobConfig == nullptr ? "" : JavaByteArrayToNativeString(env, jobConfig));
   CoreWorkerOptions options;
@@ -286,7 +275,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
   options.raylet_ip_address = JavaStringToNativeString(env, nodeIpAddress);
   options.driver_name = JavaStringToNativeString(env, driverName);
   options.task_execution_callback = task_execution_callback;
-  options.on_worker_shutdown = on_worker_shutdown;
+  options.on_worker_shutdown = [](const WorkerID &) {};
   options.gc_collect = gc_collect;
   options.serialized_job_config = serialized_job_config;
   options.metrics_agent_port = -1;
@@ -390,12 +379,6 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeKillActor(
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(
-    JNIEnv *env, jclass, jbyteArray workerId) {
-  const auto worker_id = JavaByteArrayToId<WorkerID>(env, workerId);
-  CoreWorkerProcess::SetCurrentThreadWorkerId(worker_id);
-}
-
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
   auto key_converter = [](JNIEnv *env, const std::string &str) -> jstring {
@@ -425,6 +408,12 @@ JNIEXPORT jstring JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *env, jclass) {
   return env->NewStringUTF(
       CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str());
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentNodeId(JNIEnv *env, jclass) {
+  const auto &curr_node_id = CoreWorkerProcess::GetCoreWorker().GetCurrentNodeId();
+  return IdToJavaByteArray<NodeID>(env, curr_node_id);
 }
 
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentReturnIds(

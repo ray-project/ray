@@ -8,15 +8,14 @@ import time
 import numpy as np
 import pytest
 
+import ray
 import ray.cluster_utils
 from ray._private.test_utils import (
+    SignalActor,
     client_test_enabled,
     get_error_message,
-    SignalActor,
     run_string_as_driver,
 )
-
-import ray
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +248,7 @@ def test_invalid_arguments():
 def test_options():
     """General test of option keywords in Ray."""
     import re
+
     from ray._private import ray_option_utils
 
     def f():
@@ -908,8 +908,8 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     throw_exception_fct1.remote()
     throw_exception_fct1.remote()
 
-    if ray.worker.global_worker.mode != ray.worker.LOCAL_MODE:
-        msgs = get_error_message(p, 2, ray.ray_constants.TASK_PUSH_ERROR)
+    if ray._private.worker.global_worker.mode != ray._private.worker.LOCAL_MODE:
+        msgs = get_error_message(p, 2, ray._private.ray_constants.TASK_PUSH_ERROR)
         assert len(msgs) == 2
         for msg in msgs:
             assert "Test function 1 intentionally failed." in msg.error_message
@@ -961,4 +961,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

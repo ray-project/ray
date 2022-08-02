@@ -398,7 +398,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] stats The proto to write references to.
   void AddObjectRefStats(
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
-      rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
+      rpc::CoreWorkerStats *stats,
+      const int64_t limit) const LOCKS_EXCLUDED(mutex_);
 
   /// Add a new location for the given object. The owner must have the object ref in
   /// scope.
@@ -462,7 +463,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id Object whose locality data we want.
   /// \return Locality data.
-  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
+  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const;
 
   /// Report locality data for object. This is used by the FutureResolver to report
   /// locality data for borrowed refs.

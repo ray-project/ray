@@ -7,37 +7,35 @@ return a list of node types that can satisfy the demands given constraints
 (i.e., reverse bin packing).
 """
 
-import copy
-import numpy as np
-import logging
 import collections
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Tuple
+import copy
+import logging
+from typing import Dict, List, Optional, Tuple
 
-from ray.autoscaler.node_provider import NodeProvider
+import numpy as np
+
+import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
-from ray.core.generated.common_pb2 import PlacementStrategy
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.util import (
-    is_placement_group_resource,
+    NodeID,
+    NodeIP,
     NodeType,
     NodeTypeConfigDict,
     ResourceDict,
-    NodeID,
-    NodeIP,
+    is_placement_group_resource,
 )
+from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
-    TAG_RAY_USER_NODE_TYPE,
+    NODE_KIND_HEAD,
     NODE_KIND_UNMANAGED,
-    NODE_TYPE_LEGACY_WORKER,
     NODE_KIND_WORKER,
     NODE_TYPE_LEGACY_HEAD,
+    NODE_TYPE_LEGACY_WORKER,
     TAG_RAY_NODE_KIND,
-    NODE_KIND_HEAD,
+    TAG_RAY_USER_NODE_TYPE,
 )
-import ray.ray_constants as ray_constants
+from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +207,21 @@ class ResourceDemandScheduler:
         # Step 3: get resource demands of placement groups and return the
         # groups that should be strictly spread.
         logger.debug(f"Placement group demands: {pending_placement_groups}")
+        # TODO(Clark): Refactor placement group bundle demands such that their placement
+        # group provenance is mantained, since we need to keep an accounting of the
+        # cumulative CPU cores allocated as fulfilled during bin packing in order to
+        # ensure that a placement group's cumulative allocation is under the placement
+        # group's max CPU fraction per node. Without this, and placement group with many
+        # bundles might not be schedulable, but will fail to trigger scale-up since the
+        # max CPU fraction is properly applied to the cumulative bundle requests for a
+        # single node.
+        #
+        # placement_group_demand_vector: List[Tuple[List[ResourceDict], double]]
+        #
+        # bin_pack_residual() can keep it's packing priority; we just need to account
+        # for (1) the running CPU allocation for the bundle's placement group for that
+        # particular node, and (2) the max CPU cores allocatable for a single placement
+        # group for that particular node.
         (
             placement_group_demand_vector,
             strict_spreads,
@@ -246,13 +259,16 @@ class ResourceDemandScheduler:
             node_resources,
             node_type_counts,
         ) = self.reserve_and_allocate_spread(
-            strict_spreads, node_resources, node_type_counts
+            strict_spreads,
+            node_resources,
+            node_type_counts,
         )
 
         # Calculate the nodes to add for bypassing max launch limit for
         # placement groups and spreads.
         unfulfilled_placement_groups_demands, _ = get_bin_pack_residual(
-            node_resources, placement_group_demand_vector
+            node_resources,
+            placement_group_demand_vector,
         )
         # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
@@ -907,7 +923,7 @@ def get_bin_pack_residual(
         node_resources (List[ResourceDict]): List of resources per node.
         resource_demands (List[ResourceDict]): List of resource bundles that
             need to be bin packed onto the nodes.
-        strict_spread (bool): If true, each element in resource_demands must be
+        strict_spread: If true, each element in resource_demands must be
             placed on a different entry in `node_resources`.
 
     Returns:

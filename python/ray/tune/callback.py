@@ -2,15 +2,15 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from abc import ABCMeta
 import warnings
 
-from ray.tune.checkpoint_manager import _TuneCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.tune.trial import Trial
+    from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+    from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
 
 
-class CallbackMeta(ABCMeta):
+class _CallbackMeta(ABCMeta):
     """A helper metaclass to ensure container classes (e.g. CallbackList) have
     implemented all the callback methods (e.g. `on_*`).
     """
@@ -56,11 +56,17 @@ class CallbackMeta(ABCMeta):
 
     @classmethod
     def need_override_by_subclass(mcs, attr_name: str, attr: Any) -> bool:
-        return (attr_name.startswith("on_") or attr_name == "setup") and callable(attr)
+        return (
+            (
+                attr_name.startswith("on_")
+                and not attr_name.startswith("on_trainer_init")
+            )
+            or attr_name == "setup"
+        ) and callable(attr)
 
 
 @PublicAPI(stability="beta")
-class Callback(metaclass=CallbackMeta):
+class Callback(metaclass=_CallbackMeta):
     """Tune base callback that can be extended and passed to a ``TrialRunner``
 
     Tune callbacks are called from within the ``TrialRunner`` class. There are
@@ -74,7 +80,7 @@ class Callback(metaclass=CallbackMeta):
 
     .. code-block:: python
 
-        from ray import tune
+        from ray import air, tune
         from ray.tune import Callback
 
 
@@ -88,10 +94,13 @@ class Callback(metaclass=CallbackMeta):
             for i in range(10):
                 tune.report(metric=i)
 
-
-        tune.run(
+        tuner = tune.Tuner(
             train,
-            callbacks=[MyCallback()])
+            run_config=air.RunConfig(
+                callbacks=[MyCallback()]
+            )
+        )
+        tuner.fit()
 
     """
 
@@ -110,7 +119,7 @@ class Callback(metaclass=CallbackMeta):
 
         Arguments:
             stop: Stopping criteria.
-                If ``time_budget_s`` was passed to ``tune.run``, a
+                If ``time_budget_s`` was passed to ``air.RunConfig``, a
                 ``TimeoutStopper`` will be passed here, either by itself
                 or as a part of a ``CombinedStopper``.
             num_samples: Number of times to sample from the
@@ -245,7 +254,7 @@ class Callback(metaclass=CallbackMeta):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: _TuneCheckpoint,
+        checkpoint: "_TrackedCheckpoint",
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.
@@ -270,6 +279,7 @@ class Callback(metaclass=CallbackMeta):
         pass
 
 
+@DeveloperAPI
 class CallbackList(Callback):
     """Call multiple callbacks at once."""
 

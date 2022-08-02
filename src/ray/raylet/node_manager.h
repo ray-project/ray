@@ -225,12 +225,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// from all workers.
   /// \param include_task_info If true, it requires every task metadata information
   /// from all workers.
+  /// \param limit A maximum number of task/object entries to return from each core
+  /// worker.
+  /// \param on_all_replied A callback that's called when every worker replies.
   void QueryAllWorkerStates(
       const std::function<void(const ray::Status &status,
                                const rpc::GetCoreWorkerStatsReply &r)> &on_replied,
       rpc::SendReplyCallback &send_reply_callback,
       bool include_memory_info,
-      bool include_task_info);
+      bool include_task_info,
+      int64_t limit,
+      const std::function<void()> &on_all_replied);
 
  private:
   /// Methods for handling nodes.
@@ -367,10 +372,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// We will disconnect the worker connection first and then kill the worker.
   ///
   /// \param worker The worker to destroy.
+  /// \param disconnect_type The reason why this worker process is disconnected.
+  /// \param disconnect_detail The detailed reason for a given exit.
   /// \return Void.
-  void DestroyWorker(
-      std::shared_ptr<WorkerInterface> worker,
-      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+  void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
+                     rpc::WorkerExitType disconnect_type,
+                     const std::string &disconnect_detail);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -586,11 +593,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `GetGcsServerAddress` request.
-  void HandleGetGcsServerAddress(const rpc::GetGcsServerAddressRequest &request,
-                                 rpc::GetGcsServerAddressReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `HandleGetTasksInfo` request.
   void HandleGetTasksInfo(const rpc::GetTasksInfoRequest &request,
                           rpc::GetTasksInfoReply *reply,
@@ -653,12 +655,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that sent the message.
   /// \param disconnect_type The reason to disconnect the specified client.
+  /// \param disconnect_detail Disconnection information in details.
   /// \param client_error_message Extra error messages about this disconnection
   /// \return Void.
-  void DisconnectClient(
-      const std::shared_ptr<ClientConnection> &client,
-      rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
-      const rpc::RayException *creation_task_exception = nullptr);
+  void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
+                        rpc::WorkerExitType disconnect_type,
+                        const std::string &disconnect_detail,
+                        const rpc::RayException *creation_task_exception = nullptr);
 
   bool TryLocalGC();
 

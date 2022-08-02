@@ -103,11 +103,11 @@ def monitor_events(
     callback.
 
     Args:
-        event_dir (str): The event log directory.
+        event_dir: The event log directory.
         callback (def callback(List[str]): pass): A callback accepts a list of
             event strings.
-        scan_interval_seconds (float): An interval seconds between two scans.
-        start_mtime (float): Only the event log files whose last modification
+        scan_interval_seconds: An interval seconds between two scans.
+        start_mtime: Only the event log files whose last modification
             time is greater than start_mtime are monitored.
         monitor_files (Dict[int, MonitorFile]): The map from event log file id
             to MonitorFile object. Monitor all files start from the beginning

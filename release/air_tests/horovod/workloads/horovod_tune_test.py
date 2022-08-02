@@ -2,20 +2,21 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torchvision
-from ray.ml import RunConfig
-from ray.ml.train.integrations.horovod import HorovodTrainer
+from ray.air import RunConfig, session
+from ray.train.horovod import HorovodTrainer
+from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 from torch.utils.data import DataLoader
 
 import torchvision.transforms as transforms
+from torchvision.models import resnet18
 
 import ray
 from ray import tune
-from ray import train
+from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers import create_scheduler
 
-from ray.util.ml_utils.resnet import ResNet18
 
 from ray.tune.utils.release_test_util import ProgressCallback
 
@@ -30,14 +31,14 @@ def train_loop_per_worker(config):
 
     hvd.init()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = ResNet18(None).to(device)
+    net = resnet18().to(device)
     optimizer = torch.optim.SGD(
         net.parameters(),
         lr=config["lr"],
     )
     epoch = 0
 
-    checkpoint = train.load_checkpoint()
+    checkpoint = session.get_checkpoint()
     if checkpoint:
         model_state = checkpoint["model_state"]
         optimizer_state = checkpoint["optimizer_state"]
@@ -58,6 +59,7 @@ def train_loop_per_worker(config):
     trainloader = DataLoader(
         trainset, batch_size=int(config["batch_size"]), shuffle=True, num_workers=4
     )
+    trainloader_len = len(trainloader)
 
     for epoch in range(epoch, 40):  # loop over the dataset multiple times
         running_loss = 0.0
@@ -79,18 +81,22 @@ def train_loop_per_worker(config):
             # print statistics
             running_loss += loss.item()
             epoch_steps += 1
-            train.report(loss=running_loss / epoch_steps)
+            if i == trainloader_len - 1:
+                checkpoint = Checkpoint.from_dict(
+                    dict(
+                        model_state=net.state_dict(),
+                        optimizer_state=optimizer.state_dict(),
+                        epoch=epoch,
+                    )
+                )
+            else:
+                checkpoint = None
+            session.report(dict(loss=running_loss / epoch_steps), checkpoint=checkpoint)
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print(
                     "[%d, %5d] loss: %.3f"
                     % (epoch + 1, i + 1, running_loss / epoch_steps)
                 )
-
-        train.save_checkpoint(
-            model_state=net.state_dict(),
-            optimizer_state=optimizer.state_dict(),
-            epoch=epoch,
-        )
 
 
 if __name__ == "__main__":
@@ -122,10 +128,10 @@ if __name__ == "__main__":
 
     horovod_trainer = HorovodTrainer(
         train_loop_per_worker=train_loop_per_worker,
-        scaling_config={
-            "use_gpu": False if args.smoke_test else True,
-            "num_workers": 2 if args.smoke_test else 4,
-        },
+        scaling_config=ScalingConfig(
+            use_gpu=False if args.smoke_test else True,
+            num_workers=2 if args.smoke_test else 4,
+        ),
         train_loop_config={"batch_size": 64, "data": ray.put(dataset)},
     )
 

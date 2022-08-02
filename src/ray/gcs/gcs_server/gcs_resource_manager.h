@@ -21,11 +21,13 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+using raylet::ClusterTaskManager;
 namespace gcs {
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resoruce_manager` to `cluster_resource_manager`, and all logic related to
@@ -35,7 +37,7 @@ namespace gcs {
 /// from being too large to review.
 ///
 /// 1). Remove `node_resource_usages_` related code as it could be calculated from
-/// `cluseter_resource_mananger`
+/// `cluster_resource_manager`
 /// 2). Move all resource-write-related logic out from `gcs_resource_manager`
 /// 3). Move `placement_group_load_` from `gcs_resource_manager` to
 /// `placement_group_manager` and make `gcs_resource_manager` depend on
@@ -49,13 +51,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
                            public syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
-  ///
-  /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsResourceManager(
       instrumented_io_context &io_context,
-      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       ClusterResourceManager &cluster_resource_manager,
-      scheduling::NodeID local_node_id_ = scheduling::NodeID::Nil());
+      NodeID local_node_id,
+      std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
   virtual ~GcsResourceManager() {}
 
@@ -82,18 +82,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Update resources of a node
-  /// \param node_id Id of a node.
-  /// \param changed_resources The newly added resources for the node. Usually it's
-  /// placement group resources.
-  void UpdateResources(const NodeID &node_id,
-                       absl::flat_hash_map<std::string, double> changed_resources);
-
-  /// Delete resource of a node
-  /// \param node_id Id of a node.
-  /// \param resource_names The resources to be deleted from the node.
-  void DeleteResources(const NodeID &node_id, std::vector<std::string> resource_names);
 
   /// Handle a node registration.
   ///
@@ -153,8 +141,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
 
-  /// Storage for GCS tables.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// The resources changed listeners.
@@ -163,17 +149,16 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Debug info.
   enum CountType {
     GET_RESOURCES_REQUEST = 0,
-    UPDATE_RESOURCES_REQUEST = 1,
-    DELETE_RESOURCES_REQUEST = 2,
-    GET_ALL_AVAILABLE_RESOURCES_REQUEST = 3,
-    REPORT_RESOURCE_USAGE_REQUEST = 4,
-    GET_ALL_RESOURCE_USAGE_REQUEST = 5,
-    CountType_MAX = 6,
+    GET_ALL_AVAILABLE_RESOURCES_REQUEST = 1,
+    REPORT_RESOURCE_USAGE_REQUEST = 2,
+    GET_ALL_RESOURCE_USAGE_REQUEST = 3,
+    CountType_MAX = 4,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   ClusterResourceManager &cluster_resource_manager_;
-  scheduling::NodeID local_node_id_;
+  NodeID local_node_id_;
+  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
 };
 
 }  // namespace gcs

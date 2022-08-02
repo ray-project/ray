@@ -35,7 +35,7 @@ class Rendezvous:
     process.
 
     Args:
-        store_key (str): the unique store key, usually as a concatanation
+        store_key: the unique store key, usually as a concatanation
             of group_name and communicator key. See `get_nccl_communicator`
             for more details.
     """
@@ -55,7 +55,7 @@ class Rendezvous:
         """Meet at the named actor store.
 
         Args:
-            timeout_s (int): timeout in seconds.
+            timeout_s: timeout in seconds.
 
         Return:
             None
@@ -104,7 +104,7 @@ class Rendezvous:
             timeout_s: timeout in seconds.
 
         Return:
-            uid (str): the NCCLUniqueID if successful.
+            uid: the NCCLUniqueID if successful.
         """
         if not self._store:
             raise ValueError("Rendezvous store is not setup.")
@@ -176,7 +176,7 @@ class NCCLGroup(BaseGroup):
         """AllReduce tensors across the collective group following options.
 
         Args:
-            tensors (List): the list of tensors to be reduced. Each tensor must
+            tensors: the list of tensors to be reduced. Each tensor must
                             reside on one GPU of the current process.
             allreduce_options: allreduce options.
 
@@ -220,7 +220,7 @@ class NCCLGroup(BaseGroup):
         """Reduce tensors to a destination gpu following options.
 
         Args:
-            tensors (List): the list of tensors to be reduced, each tensor
+            tensors: the list of tensors to be reduced, each tensor
                             must reside on one gpu of the current process.
             reduce_options: reduce options.
 
@@ -246,7 +246,7 @@ class NCCLGroup(BaseGroup):
         """Broadcast tensors to all other gpus following options.
 
         Args:
-            tensors (List): tensors to be broadcast or received.
+            tensors: tensors to be broadcast or received.
             broadcast_options: broadcast options.
 
         Returns:
@@ -312,7 +312,7 @@ class NCCLGroup(BaseGroup):
         """Reduce then scatter a list of tensors across the group.
 
         Args:
-            tensors (List): the output tensors (could be unspecified), each
+            tensors: the output tensors (could be unspecified), each
                             located on a GPU of the current process.
             tensor_lists (List[List]): the list of tensors to be reduced then
                                        scattered.
@@ -351,7 +351,7 @@ class NCCLGroup(BaseGroup):
         """Send a tensor to a destination gpu in the group.
 
         Args:
-            tensors (List): the tensor to send.
+            tensors: the tensor to send.
             send_options: send options.
 
         Returns:
@@ -377,7 +377,7 @@ class NCCLGroup(BaseGroup):
         """Receive a tensor from a source gpu in the group.
 
         Args:
-            tensors (List): the received tensor.
+            tensors: the received tensor.
             recv_options: Receive options.
 
         Returns:
@@ -407,8 +407,8 @@ class NCCLGroup(BaseGroup):
         TODO(Hao): this function is not thread-safe now.
 
         Args:
-            comm_key (str): the key to query the communicator cache.
-            device_list (List): a list of GPU devices of the current process
+            comm_key: the key to query the communicator cache.
+            device_list: a list of GPU devices of the current process
                                 that participates into the collective.
 
         Returns:
@@ -471,10 +471,10 @@ class NCCLGroup(BaseGroup):
         Note(Hao): this function is not thread-safe now.
 
         Args:
-            comm_key (str): communicator key.
-            my_gpu_idx (int): the gpu index on the current process.
-            peer_rank (int): the rank of the destination process.
-            peer_gpu_idx (int): the gpu index on the peer process.
+            comm_key: communicator key.
+            my_gpu_idx: the gpu index on the current process.
+            peer_rank: the rank of the destination process.
+            peer_gpu_idx: the gpu index on the peer process.
         Returns:
             communicator
         """
@@ -542,7 +542,7 @@ class NCCLGroup(BaseGroup):
         """Destroy the KV store (Ray named actor).
 
         Args:
-            group_key (str): the unique key to retrieve the KV store.
+            group_key: the unique key to retrieve the KV store.
 
         Returns:
             None
@@ -560,7 +560,7 @@ class NCCLGroup(BaseGroup):
         when destroying the collective group.
 
         Args:
-            key (str): the key of the .
+            key: the key of the .
 
         Returns:
             NCCLUniqueID (str): NCCL unique ID.
@@ -632,8 +632,8 @@ class NCCLGroup(BaseGroup):
         Args:
             tensors: the tensor to send or receive.
             p2p_fn: the p2p function call.
-            peer_rank (int): the rank of the peer process.
-            peer_gpu_idx (int): the index of the gpu on the peer process.
+            peer_rank: the rank of the peer process.
+            peer_gpu_idx: the index of the gpu on the peer process.
 
         Returns:
             None
@@ -781,7 +781,7 @@ def _get_comm_key_from_devices(devices):
     then the key would be "0,1,2,3".
 
     Args:
-        devices(list): a list of GPU device indices
+        devices: a list of GPU device indices
 
     Returns:
         str: a string represents the key to query the communicator cache.
@@ -797,13 +797,13 @@ def _get_comm_key_send_recv(my_rank, my_gpu_idx, peer_rank, peer_gpu_idx):
                 [min_rank]_[gpu_index]:[max_rank]_[gpu_index].
 
     Args:
-        my_rank (int): the rank of the source process.
-        my_gpu_idx (int): the source gpu index on the process.
-        peer_rank (int): the rank of the destination process.
-        peer_gpu_idx (int): the destination gpu index on the process.
+        my_rank: the rank of the source process.
+        my_gpu_idx: the source gpu index on the process.
+        peer_rank: the rank of the destination process.
+        peer_gpu_idx: the destination gpu index on the process.
 
     Returns:
-        comm_key (str): a string key to query the communication cache.
+        comm_key: a string key to query the communication cache.
     """
     if my_rank < peer_rank:
         lower_key = str(my_rank) + "_" + str(my_gpu_idx)

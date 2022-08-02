@@ -3,35 +3,37 @@ import logging
 import os
 import warnings
 from pathlib import Path
-from typing import List, Optional, Dict, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
-from ray.train.callbacks import TrainingCallback
-from ray.train.callbacks.results_preprocessors import (
-    IndexedResultsPreprocessor,
+from ray.air._internal.mlflow import _MLflowLoggerUtil
+from ray.air._internal.json import SafeFallbackEncoder
+from ray.train._internal.results_preprocessors import (
     ExcludedKeysResultsPreprocessor,
+    IndexedResultsPreprocessor,
 )
-from ray.train.callbacks.results_preprocessors.preprocessor import (
+from ray.train._internal.results_preprocessors.preprocessor import (
     SequentialResultsPreprocessor,
 )
+from ray.train.callbacks import TrainingCallback
+from ray.train.callbacks.callback import _deprecation_msg
 from ray.train.constants import (
+    PID,
     RESULT_FILE_JSON,
-    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTAMP,
-    PID,
     TRAIN_CHECKPOINT_SUBDIR,
+    TRAINING_ITERATION,
 )
+from ray.util.annotations import Deprecated
 from ray.util.debug import log_once
-from ray.util.ml_utils.dict import flatten_dict
-from ray.util.ml_utils.json import SafeFallbackEncoder
-from ray.util.ml_utils.mlflow import MLflowLoggerUtil
+from ray._private.dict import flatten_dict
 
 logger = logging.getLogger(__name__)
 
 
-class TrainCallbackLogdirManager:
+class _TrainCallbackLogdirManager:
     """Sets up a logging directory for a callback.
 
     The path of the ``logdir`` can be set during initialization. Otherwise, the
@@ -44,11 +46,11 @@ class TrainCallbackLogdirManager:
         logdir (Optional[str|Path]): The path of the logdir to use.
             If None is passed in, the logdir will use the ``default_logdir``
             when ``setup_logdir`` is called.
-        create_logdir (bool): Whether to create the logdir if it does not
+        create_logdir: Whether to create the logdir if it does not
             already exist.
 
     Attributes:
-        logdir_path (Path): The path of the logdir. The default logdir will
+        logdir_path: The path of the logdir. The default logdir will
             not be available until ``setup_logdir`` is called.
     """
 
@@ -91,6 +93,7 @@ class TrainCallbackLogdirManager:
         raise RuntimeError("Logdir must be set in init or setup_logdir.")
 
 
+@Deprecated
 class JsonLoggerCallback(TrainingCallback):
     """Logs Train results in json format.
 
@@ -111,8 +114,12 @@ class JsonLoggerCallback(TrainingCallback):
         filename: Optional[str] = None,
         workers_to_log: Optional[Union[int, List[int]]] = 0,
     ):
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+        )
         self._filename = filename
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=workers_to_log)
 
     def start_training(self, logdir: str, **info):
@@ -139,6 +146,7 @@ class JsonLoggerCallback(TrainingCallback):
         return self.logdir.joinpath(filename)
 
 
+@Deprecated
 class MLflowLoggerCallback(TrainingCallback):
     """MLflow Logger to automatically log Train results and config to MLflow.
 
@@ -167,14 +175,14 @@ class MLflowLoggerCallback(TrainingCallback):
             ``experiment_name`` must be passed in.
         tags (Optional[Dict]):  An optional dictionary of string keys and
             values to set as tags on the run
-        save_artifact (bool): If set to True, automatically save the entire
+        save_artifact: If set to True, automatically save the entire
             contents of the Train local_dir as an artifact to the
             corresponding run in MlFlow.
         logdir (Optional[str]): Path to directory where the results file
             should be. If None, will be set by the Trainer. If no tracking
             uri or registry uri are passed in, the logdir will be used for
             both.
-        worker_to_log (int): Worker index to log. By default, will log the
+        worker_to_log: Worker index to log. By default, will log the
             worker with index 0.
     """
 
@@ -189,7 +197,11 @@ class MLflowLoggerCallback(TrainingCallback):
         logdir: Optional[str] = None,
         worker_to_log: int = 0,
     ):
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+        )
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=worker_to_log)
 
         self.tracking_uri = tracking_uri
@@ -199,7 +211,7 @@ class MLflowLoggerCallback(TrainingCallback):
         self.tags = tags
 
         self.save_artifact = save_artifact
-        self.mlflow_util = MLflowLoggerUtil()
+        self.mlflow_util = _MLflowLoggerUtil()
 
     def start_training(self, logdir: str, config: Dict, **info):
         self._logdir_manager.setup_logdir(default_logdir=logdir)
@@ -236,13 +248,14 @@ class MLflowLoggerCallback(TrainingCallback):
         return self._logdir_manager.logdir_path
 
 
+@Deprecated
 class TBXLoggerCallback(TrainingCallback):
     """Logs Train results in TensorboardX format.
 
     Args:
         logdir (Optional[str]): Path to directory where the results file
             should be. If None, will be set by the Trainer.
-        worker_to_log (int): Worker index to log. By default, will log the
+        worker_to_log: Worker index to log. By default, will log the
             worker with index 0.
     """
 
@@ -257,7 +270,11 @@ class TBXLoggerCallback(TrainingCallback):
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S}
 
     def __init__(self, logdir: Optional[str] = None, worker_to_log: int = 0) -> None:
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+        )
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
 
         results_preprocessors = [
             IndexedResultsPreprocessor(indices=worker_to_log),

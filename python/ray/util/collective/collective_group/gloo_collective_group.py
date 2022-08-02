@@ -1,28 +1,28 @@
-import logging
 import datetime
-import time
+import logging
 import os
 import shutil
+import time
+
+import numpy
+import pygloo
 
 import ray
-from ray import ray_constants
-import pygloo
-import numpy
-
+from ray._private import ray_constants
 from ray.util.collective.collective_group import gloo_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
+from ray.util.collective.const import get_store_name
 from ray.util.collective.types import (
-    AllReduceOptions,
-    BarrierOptions,
-    Backend,
-    ReduceOptions,
-    BroadcastOptions,
     AllGatherOptions,
+    AllReduceOptions,
+    Backend,
+    BarrierOptions,
+    BroadcastOptions,
+    RecvOptions,
+    ReduceOptions,
     ReduceScatterOptions,
     SendOptions,
-    RecvOptions,
 )
-from ray.util.collective.const import get_store_name
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +37,13 @@ class Rendezvous:
     process.
 
     Args:
-        group_name (str): the unique user-specified group name.
+        group_name: the unique user-specified group name.
     """
 
     def __init__(self, group_name, context, store_type, device_type):
         self._group_name = group_name
         self._context = context
-        redis_address = ray.worker._global_node.redis_address
+        redis_address = ray._private.worker._global_node.redis_address
         (self._redis_ip_address, self._redis_port) = (
             redis_address.split(":") if store_type == "redis" else (None, None)
         )
@@ -68,7 +68,7 @@ class Rendezvous:
             redisStore = pygloo.rendezvous.RedisStore(
                 self._redis_ip_address, int(self._redis_port)
             )
-            redis_password = ray.worker._global_node.redis_password
+            redis_password = ray._private.worker._global_node.redis_password
             if redis_password is None or len(redis_password) == 0:
                 redis_password = ray_constants.REDIS_DEFAULT_PASSWORD
             redisStore.authorize(redis_password)
@@ -104,7 +104,7 @@ class Rendezvous:
         """Meet at the named actor store.
 
         Args:
-            timeout_s (int): timeout in seconds.
+            timeout_s: timeout in seconds.
 
         Return:
             None
@@ -193,12 +193,12 @@ class GLOOGroup(BaseGroup):
         """Init an GLOO collective group.
 
         Args:
-            world_size (int): The number of processes.
-            rank (int): The id of process
-            group_name (str): The unique user-specified group name.
-            store_type (str): The store type. Optional: "redis",
+            world_size: The number of processes.
+            rank: The id of process
+            group_name: The unique user-specified group name.
+            store_type: The store type. Optional: "redis",
                               "file", "hash".
-            device_type (str): The device type to transport.
+            device_type: The device type to transport.
                                Optional: "tcp", "uv".
         """
         super(GLOOGroup, self).__init__(world_size, rank, group_name)
@@ -267,7 +267,7 @@ class GLOOGroup(BaseGroup):
         """Reduce tensors following options.
 
         Args:
-            tensors (List): the list of tensors to be reduced,
+            tensors: the list of tensors to be reduced,
                             this list only have one tensor.
             reduce_options: reduce options.
 
@@ -293,7 +293,7 @@ class GLOOGroup(BaseGroup):
         """Broadcast tensors to all other processes following options.
 
         Args:
-            tensors (List): tensors to be broadcast or received.
+            tensors: tensors to be broadcast or received.
             broadcast_options: broadcast options.
 
         Returns:
@@ -356,7 +356,7 @@ class GLOOGroup(BaseGroup):
         """Reduce the scatter a list of tensors across the group.
 
         Args:
-            tensors (List): the output tensors (could be unspecified), each
+            tensors: the output tensors (could be unspecified), each
                             located on CPU.
             tensor_lists (List[List]): the list of tensors to be reduced then
                                        scattered.
@@ -398,7 +398,7 @@ class GLOOGroup(BaseGroup):
         """Send a tensor to a destination rank in the group.
 
         Args:
-            tensors (List): the tensor to send.
+            tensors: the tensor to send.
             send_options: send options.
 
         Returns:
@@ -420,7 +420,7 @@ class GLOOGroup(BaseGroup):
         """Receive a tensor from a source rank in the group.
 
         Args:
-            tensors (List): the received tensor.
+            tensors: the received tensor.
             recv_options: Receive options.
 
         Returns:
@@ -473,7 +473,7 @@ class GLOOGroup(BaseGroup):
         Args:
             tensors: the tensor to send or receive.
             p2p_fn: the p2p function call.
-            peer_rank (int): the rank of the peer process.
+            peer_rank: the rank of the peer process.
 
         Returns:
             None

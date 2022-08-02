@@ -1,8 +1,9 @@
 import unittest
 
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import PlacementGroupFactory
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
-from ray.tune.trial import Trial, _TuneCheckpoint
+from ray.tune.experiment import Trial
 from ray.tune.schedulers.resource_changing_scheduler import (
     ResourceChangingScheduler,
     DistributeResources,
@@ -48,7 +49,11 @@ class MockTrialRunner:
 class MockTrial(Trial):
     @property
     def checkpoint(self):
-        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, "None", {})
+        return _TrackedCheckpoint(
+            dir_or_data="None",
+            storage_mode=CheckpointStorage.MEMORY,
+            metrics={},
+        )
 
 
 class TestUniformResourceAllocation(unittest.TestCase):
@@ -560,7 +565,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1,
             scheduler,
-            PlacementGroupFactory([{"CPU": 2, "GPU": 2}] * 4),
+            PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 4),
             metric=1.2,
         )
 
@@ -631,3 +636,10 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1, scheduler, PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
         )
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

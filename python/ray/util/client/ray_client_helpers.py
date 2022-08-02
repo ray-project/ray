@@ -38,6 +38,8 @@ def ray_start_client_server_pair(metadata=None, ray_connect_handler=None, **kwar
                 time.sleep(1)
                 if time.monotonic() - start > 30:
                     raise RuntimeError("Failed to terminate Ray")
+        # Allow windows to close processes before moving on
+        time.sleep(3)
 
 
 @contextmanager

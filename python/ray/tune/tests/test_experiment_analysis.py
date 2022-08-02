@@ -90,9 +90,16 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         assert self.ea.runner_data()
 
     def testTrialDataframe(self):
-        checkpoints = self.ea._checkpoints
+        checkpoints = self.ea._checkpoints_and_paths
         idx = random.randint(0, len(checkpoints) - 1)
-        trial_df = self.ea.trial_dataframes[checkpoints[idx]["logdir"]]
+        logdir_from_checkpoint = str(
+            checkpoints[idx][1].joinpath(checkpoints[idx][0]["relative_logdir"])
+        )
+        logdir_from_trial = self.ea.trials[idx].logdir
+
+        self.assertEqual(logdir_from_checkpoint, logdir_from_trial)
+
+        trial_df = self.ea.trial_dataframes[logdir_from_checkpoint]
 
         self.assertTrue(isinstance(trial_df, pd.DataFrame))
         self.assertEqual(trial_df.shape[0], 1)
@@ -124,31 +131,31 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_000001", "checkpoint")
-        assert checkpoints_metrics[0][0] == expected_path
+        expected_path = os.path.join(logdir, "checkpoint_000001")
+        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
         assert checkpoints_metrics[0][1] == 1
 
     def testGetTrialCheckpointsPathsByPath(self):
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000001/", "checkpoint")
-        assert checkpoints_metrics[0][0] == expected_path
+        expected_path = os.path.join(logdir, "checkpoint_000001")
+        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
         assert checkpoints_metrics[0][1] == 1
 
     def testGetTrialCheckpointsPathsWithMetricByTrial(self):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
-        expected_path = os.path.join(logdir, "checkpoint_000001", "checkpoint")
-        assert paths[0][0] == expected_path
+        expected_path = os.path.join(logdir, "checkpoint_000001")
+        assert os.path.normpath(paths[0][0]) == expected_path
         assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
 
     def testGetTrialCheckpointsPathsWithMetricByPath(self):
         best_trial = self.ea.get_best_trial(self.metric, mode="max")
         logdir = self.ea.get_best_logdir(self.metric, mode="max")
         paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
-        expected_path = os.path.join(logdir, "checkpoint_000001", "checkpoint")
-        assert paths[0][0] == expected_path
+        expected_path = os.path.join(logdir, "checkpoint_000001")
+        assert os.path.normpath(paths[0][0]) == expected_path
         assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
 
     def testGetBestCheckpoint(self):
@@ -160,7 +167,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         best_checkpoint = self.ea.get_best_checkpoint(
             best_trial, self.metric, mode="max"
         )
-        assert expected_path == best_checkpoint
+        assert expected_path == best_checkpoint._local_path
 
     def testGetBestCheckpointNan(self):
         """Tests if nan values are excluded from best checkpoint."""
@@ -189,7 +196,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             ],
             key=lambda x: x[1],
         )[0]
-        assert best_checkpoint == expected_checkpoint_no_nan
+        assert best_checkpoint._local_path == expected_checkpoint_no_nan
 
     def testGetLastCheckpoint(self):
         # one more experiment with 2 iterations
@@ -206,7 +213,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         )
 
         # check if it's loaded correctly
-        last_checkpoint = new_ea.get_last_checkpoint().local_path
+        last_checkpoint = new_ea.get_last_checkpoint()._local_path
         assert self.test_path in last_checkpoint
         assert "checkpoint_000002" in last_checkpoint
 
@@ -259,8 +266,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         )
         logdir = analysis.get_best_logdir(self.metric, mode="max")
         checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000001/", "checkpoint")
-        assert checkpoints_metrics[0][0] == expected_path
+        expected_path = os.path.join(logdir, "checkpoint_000001")
+        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
         assert checkpoints_metrics[0][1] == 1
 
     def testGetTrialCheckpointsPathsWithTemporaryCheckpoints(self):
@@ -281,11 +288,11 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         )
 
         checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
-        expected_path = os.path.join(logdir, "checkpoint_000002/", "checkpoint")
+        expected_path = os.path.join(logdir, "checkpoint_000002")
 
         assert len(checkpoints_metrics) == 1
 
-        assert checkpoints_metrics[0][0] == expected_path
+        assert os.path.normpath(checkpoints_metrics[0][0]) == expected_path
         assert checkpoints_metrics[0][1] == 2
 
 
@@ -309,7 +316,9 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
         self.assertEqual(ea.best_trial, trials[2])
         self.assertEqual(ea.best_config, trials[2].config)
         self.assertEqual(ea.best_logdir, trials[2].logdir)
-        self.assertEqual(ea.best_checkpoint._local_path, trials[2].checkpoint.value)
+        self.assertEqual(
+            ea.best_checkpoint._local_path, trials[2].checkpoint.dir_or_data
+        )
         self.assertTrue(all(ea.best_dataframe["trial_id"] == trials[2].trial_id))
         self.assertEqual(ea.results_df.loc[trials[2].trial_id, "res"], 309)
         self.assertEqual(ea.best_result["res"], 309)

@@ -16,6 +16,7 @@ class OutputWriter:
         raise NotImplementedError
 
 
+@PublicAPI
 class NoopOutput(OutputWriter):
     """Output writer that discards its outputs."""
 

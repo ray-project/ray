@@ -177,9 +177,23 @@ Multiple returns
 
       @ray.remote(num_returns=3)
       def return_multiple():
-          return 1, 2, 3
+          return 0, 1, 2
 
       a, b, c = return_multiple.remote()
+
+    For tasks that return multiple objects, Ray also supports remote generators that allow a task to return one object at a time to reduce memory usage at the worker. See the :ref:`user guide <generators>` for more details on use cases.
+
+    .. code-block:: python
+
+      @ray.remote(num_returns=3)
+      def return_multiple_as_generator():
+          for i in range(3):
+              yield i
+
+      # NOTE: Similar to normal functions, these objects will not be available
+      # until the full task is complete and all returns have been generated.
+      a, b, c = return_multiple_as_generator.remote()
+
 
 .. tabbed:: Java
 
@@ -188,6 +202,7 @@ Multiple returns
 .. tabbed:: C++
 
     C++ remote functions doesn't support returning multiple objects.
+
 
 Cancelling tasks
 ----------------

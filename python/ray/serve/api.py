@@ -1,77 +1,60 @@
 import collections
 import inspect
 import logging
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Optional,
-    Tuple,
-    Union,
-    overload,
-)
+from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
-from ray.serve.common import DeploymentStatusInfo
-from ray.serve.config import (
-    AutoscalingConfig,
-    DeploymentConfig,
-    HTTPOptions,
-)
-from ray.serve.constants import (
-    DEFAULT_CHECKPOINT_PATH,
-    HTTP_PROXY_TIMEOUT,
-    SERVE_CONTROLLER_NAME,
-    CONTROLLER_MAX_CONCURRENCY,
+from ray import cloudpickle
+from ray.dag import DAGNode
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray._private.utils import deprecated
+
+from ray.serve.application import Application
+from ray.serve._private.client import ServeControllerClient
+from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
+from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
-from ray.serve.controller import ServeController
-from ray.serve.deployment import Deployment
-from ray.serve.exceptions import RayServeException
-from ray.experimental.dag import DAGNode
-from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve.logging_utils import LoggingContext
-from ray.serve.utils import (
-    ensure_serialization_context,
-    format_actor_name,
-    get_current_node_resource_key,
-    get_random_letters,
-    in_interactive_shell,
-    DEFAULT,
-    install_serve_encoders_to_fastapi,
-)
-from ray.util.annotations import PublicAPI
-import ray
-from ray import cloudpickle
-from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient, get_controller_namespace
 from ray.serve.context import (
-    set_global_client,
+    ReplicaContext,
     get_global_client,
     get_internal_replica_context,
-    ReplicaContext,
+    _set_global_client,
 )
-from ray.serve.pipeline.api import build as pipeline_build
-from ray.serve.pipeline.api import get_and_validate_ingress_deployment
-from ray._private.usage import usage_lib
+from ray.serve.deployment import Deployment
+from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import RayServeHandle
+from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
+from ray.serve._private.logging_utils import LoggingContext
+from ray.serve._private.utils import (
+    DEFAULT,
+    ensure_serialization_context,
+    in_interactive_shell,
+    install_serve_encoders_to_fastapi,
+)
+
+from ray.serve._private import api as _private_api
 
 logger = logging.getLogger(__file__)
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI(stability="beta")
 def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
     dedicated_cpu: bool = False,
-    _checkpoint_path: str = DEFAULT_CHECKPOINT_PATH,
-    _override_controller_namespace: Optional[str] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -83,21 +66,21 @@ def start(
     ray.init(address="auto") or ray.init("ray://<remote_addr>")).
 
     Args:
-        detached (bool): Whether not the instance should be detached from this
+        detached: Whether not the instance should be detached from this
           script. If set, the instance will live on the Ray cluster until it is
           explicitly stopped with serve.shutdown().
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
 
-            - host(str, None): Host for HTTP servers to listen on. Defaults to
+            - host: Host for HTTP servers to listen on. Defaults to
               "127.0.0.1". To expose Serve publicly, you probably want to set
               this to "0.0.0.0".
-            - port(int): Port for HTTP server. Defaults to 8000.
-            - root_path(str): Root path to mount the serve application
+            - port: Port for HTTP server. Defaults to 8000.
+            - root_path: Root path to mount the serve application
               (for example, "/serve"). All deployment routes will be prefixed
               with this path. Defaults to "".
-            - middlewares(list): A list of Starlette middlewares that will be
+            - middlewares: A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.DeploymentMode): The deployment
               location of HTTP servers:
@@ -107,95 +90,16 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
-            - num_cpus (int): The number of CPU cores to reserve for each
+            - num_cpus: The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
-        dedicated_cpu (bool): Whether to reserve a CPU core for the internal
+        dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
-    usage_lib.record_library_usage("serve")
+    client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
-    http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
-    for key in http_deprecated_args:
-        if key in kwargs:
-            raise ValueError(
-                f"{key} is deprecated, please use serve.start(http_options="
-                f'{{"{key}": {kwargs[key]}}}) instead.'
-            )
-    # Initialize ray if needed.
-    ray.worker.global_worker.filter_logs_by_job = False
-    if not ray.is_initialized():
-        ray.init(namespace="serve")
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
 
-    controller_namespace = get_controller_namespace(
-        detached, _override_controller_namespace=_override_controller_namespace
-    )
-
-    try:
-        client = get_global_client(
-            _override_controller_namespace=_override_controller_namespace,
-            _health_check_controller=True,
-        )
-        logger.info(
-            "Connecting to existing Serve instance in namespace "
-            f"'{controller_namespace}'."
-        )
-
-        _check_http_and_checkpoint_options(client, http_options, _checkpoint_path)
-        return client
-    except RayServeException:
-        pass
-
-    if detached:
-        controller_name = SERVE_CONTROLLER_NAME
-    else:
-        controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
-
-    if isinstance(http_options, dict):
-        http_options = HTTPOptions.parse_obj(http_options)
-    if http_options is None:
-        http_options = HTTPOptions()
-
-    controller = ServeController.options(
-        num_cpus=1 if dedicated_cpu else 0,
-        name=controller_name,
-        lifetime="detached" if detached else None,
-        max_restarts=-1,
-        max_task_retries=-1,
-        # Pin Serve controller on the head node.
-        resources={get_current_node_resource_key(): 0.01},
-        namespace=controller_namespace,
-        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
-    ).remote(
-        controller_name,
-        http_options,
-        _checkpoint_path,
-        detached=detached,
-        _override_controller_namespace=_override_controller_namespace,
-    )
-
-    proxy_handles = ray.get(controller.get_http_proxies.remote())
-    if len(proxy_handles) > 0:
-        try:
-            ray.get(
-                [handle.ready.remote() for handle in proxy_handles.values()],
-                timeout=HTTP_PROXY_TIMEOUT,
-            )
-        except ray.exceptions.GetTimeoutError:
-            raise TimeoutError(
-                f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
-            )
-
-    client = ServeControllerClient(
-        controller,
-        controller_name,
-        detached=detached,
-        _override_controller_namespace=_override_controller_namespace,
-    )
-    set_global_client(client)
-    logger.info(
-        f"Started{' detached ' if detached else ' '}Serve instance in "
-        f"namespace '{controller_namespace}'."
-    )
     return client
 
 
@@ -217,7 +121,7 @@ def shutdown() -> None:
         return
 
     client.shutdown()
-    set_global_client(None)
+    _set_global_client(None)
 
 
 @PublicAPI
@@ -350,7 +254,6 @@ def deployment(func_or_class: Callable) -> Deployment:
 def deployment(
     name: Optional[str] = None,
     version: Optional[str] = None,
-    prev_version: Optional[str] = None,
     num_replicas: Optional[int] = None,
     init_args: Optional[Tuple[Any]] = None,
     init_kwargs: Optional[Dict[Any, Any]] = None,
@@ -358,11 +261,11 @@ def deployment(
     ray_actor_options: Optional[Dict] = None,
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
-    _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    _graceful_shutdown_wait_loop_s: Optional[float] = None,
-    _graceful_shutdown_timeout_s: Optional[float] = None,
-    _health_check_period_s: Optional[float] = None,
-    _health_check_timeout_s: Optional[float] = None,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+    graceful_shutdown_wait_loop_s: Optional[float] = None,
+    graceful_shutdown_timeout_s: Optional[float] = None,
+    health_check_period_s: Optional[float] = None,
+    health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     pass
 
@@ -372,7 +275,6 @@ def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Optional[str] = None,
     version: Optional[str] = None,
-    prev_version: Optional[str] = None,
     num_replicas: Optional[int] = None,
     init_args: Optional[Tuple[Any]] = None,
     init_kwargs: Optional[Dict[Any, Any]] = None,
@@ -380,11 +282,11 @@ def deployment(
     ray_actor_options: Optional[Dict] = None,
     user_config: Optional[Any] = None,
     max_concurrent_queries: Optional[int] = None,
-    _autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
-    _graceful_shutdown_wait_loop_s: Optional[float] = None,
-    _graceful_shutdown_timeout_s: Optional[float] = None,
-    _health_check_period_s: Optional[float] = None,
-    _health_check_timeout_s: Optional[float] = None,
+    autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = None,
+    graceful_shutdown_wait_loop_s: Optional[float] = None,
+    graceful_shutdown_timeout_s: Optional[float] = None,
+    health_check_period_s: Optional[float] = None,
+    health_check_timeout_s: Optional[float] = None,
 ) -> Callable[[Callable], Deployment]:
     """Define a Serve deployment.
 
@@ -396,11 +298,6 @@ def deployment(
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
             new version.
-        prev_version (Optional[str]): Version of the existing deployment which
-            is used as a precondition for the next deployment. If prev_version
-            does not match with the existing deployment's version, the
-            deployment will fail. If not provided, deployment procedure will
-            not check the existing deployment's version.
         num_replicas (Optional[int]): The number of processes to start up that
             will handle requests to this deployment. Defaults to 1.
         init_args (Optional[Tuple]): Positional args to be passed to the class
@@ -418,14 +315,14 @@ def deployment(
             to '/a/b', '/a/b/', and '/a/b/c' go to B. Routes must not end with
             a '/' unless they're the root (just '/'), which acts as a
             catch-all.
-        ray_actor_options (dict): Options to be passed to the Ray actor
+        ray_actor_options: Options to be passed to the Ray actor
             constructor such as resource requirements.
-        user_config (Optional[Any]): [experimental] Config to pass to the
+        user_config (Optional[Any]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
-            restarting its replicas. The user_config needs to be hashable to
-            keep track of updates, so it must only contain hashable types, or
-            hashable types nested in lists and dictionaries.
+            restarting its replicas. The user_config must be json-serializable
+            to keep track of updates, so it must only contain json-serializable
+            types, or json-serializable types nested in lists and dictionaries.
         max_concurrent_queries (Optional[int]): The maximum number of queries
             that will be sent to a replica of this deployment without receiving
             a response. Defaults to 100.
@@ -444,10 +341,15 @@ def deployment(
         Deployment
     """
 
-    if num_replicas is not None and _autoscaling_config is not None:
+    # Num of replicas should not be 0.
+    # TODO(Sihan) seperate num_replicas attribute from internal and api
+    if num_replicas == 0:
+        raise ValueError("num_replicas is expected to larger than 0")
+
+    if num_replicas is not None and autoscaling_config is not None:
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
-            "_autoscaling_config is provided."
+            "autoscaling_config is provided."
         )
 
     config = DeploymentConfig.from_default(
@@ -455,11 +357,11 @@ def deployment(
         num_replicas=num_replicas,
         user_config=user_config,
         max_concurrent_queries=max_concurrent_queries,
-        autoscaling_config=_autoscaling_config,
-        graceful_shutdown_wait_loop_s=_graceful_shutdown_wait_loop_s,
-        graceful_shutdown_timeout_s=_graceful_shutdown_timeout_s,
-        health_check_period_s=_health_check_period_s,
-        health_check_timeout_s=_health_check_timeout_s,
+        autoscaling_config=autoscaling_config,
+        graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
+        health_check_period_s=health_check_period_s,
+        health_check_timeout_s=health_check_timeout_s,
     )
 
     def decorator(_func_or_class):
@@ -468,7 +370,6 @@ def deployment(
             name if name is not None else _func_or_class.__name__,
             config,
             version=version,
-            prev_version=prev_version,
             init_args=init_args,
             init_kwargs=init_kwargs,
             route_prefix=route_prefix,
@@ -481,6 +382,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
@@ -494,85 +396,31 @@ def get_deployment(name: str) -> Deployment:
     >>> MyDeployment.options(num_replicas=10).deploy()  # doctest: +SKIP
 
     Args:
-        name(str): name of the deployment. This must have already been
+        name: name of the deployment. This must have already been
         deployed.
 
     Returns:
         Deployment
     """
-    try:
-        (
-            deployment_info,
-            route_prefix,
-        ) = get_global_client().get_deployment_info(name)
-    except KeyError:
-        raise KeyError(
-            f"Deployment {name} was not found. Did you call Deployment.deploy()?"
-        )
-    return Deployment(
-        cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
-        name,
-        deployment_info.deployment_config,
-        version=deployment_info.version,
-        init_args=deployment_info.replica_config.init_args,
-        init_kwargs=deployment_info.replica_config.init_kwargs,
-        route_prefix=route_prefix,
-        ray_actor_options=deployment_info.replica_config.ray_actor_options,
-        _internal=True,
-    )
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    return _private_api.get_deployment(name)
 
 
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
 @PublicAPI
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
 
     Dictionary maps deployment name to Deployment objects.
     """
-    infos = get_global_client().list_deployments()
-
-    deployments = {}
-    for name, (deployment_info, route_prefix) in infos.items():
-        deployments[name] = Deployment(
-            cloudpickle.loads(deployment_info.replica_config.serialized_deployment_def),
-            name,
-            deployment_info.deployment_config,
-            version=deployment_info.version,
-            init_args=deployment_info.replica_config.init_args,
-            init_kwargs=deployment_info.replica_config.init_kwargs,
-            route_prefix=route_prefix,
-            ray_actor_options=deployment_info.replica_config.ray_actor_options,
-            _internal=True,
-        )
-
-    return deployments
-
-
-def get_deployment_statuses() -> Dict[str, DeploymentStatusInfo]:
-    """Returns a dictionary of deployment statuses.
-
-    A deployment's status is one of {UPDATING, UNHEALTHY, and HEALTHY}.
-
-    Example:
-    >>> from ray.serve.api import get_deployment_statuses
-    >>> statuses = get_deployment_statuses() # doctest: +SKIP
-    >>> status_info = statuses["deployment_name"] # doctest: +SKIP
-    >>> status = status_info.status # doctest: +SKIP
-    >>> message = status_info.message # doctest: +SKIP
-
-    Returns:
-            Dict[str, DeploymentStatus]: This dictionary maps the running
-                deployment's name to a DeploymentStatus object containing its
-                status and a message explaining the status.
-    """
-
-    return get_global_client().get_deployment_statuses()
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+    return _private_api.list_deployments()
 
 
 @PublicAPI(stability="alpha")
 def run(
     target: Union[ClassNode, FunctionNode],
     _blocking: bool = True,
-    *,
     host: str = DEFAULT_HTTP_HOST,
     port: int = DEFAULT_HTTP_PORT,
 ) -> Optional[RayServeHandle]:
@@ -587,15 +435,19 @@ def run(
             A user-built Serve Application or a ClassNode that acts as the
             root node of DAG. By default ClassNode is the Driver
             deployment unless user provides a customized one.
-        host (str): The host passed into serve.start().
-        port (int): The port passed into serve.start().
+        host: The host passed into serve.start().
+        port: The port passed into serve.start().
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
+    client = _private_api.serve_start(
+        detached=True, http_options={"host": host, "port": port}
+    )
 
-    client = start(detached=True, http_options={"host": host, "port": port})
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
@@ -639,7 +491,6 @@ def run(
             "ray_actor_options": deployment._ray_actor_options,
             "config": deployment._config,
             "version": deployment._version,
-            "prev_version": deployment._prev_version,
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
         }
@@ -649,9 +500,10 @@ def run(
     )
 
     if ingress is not None:
-        return ingress.get_handle()
+        return ingress._get_handle()
 
 
+@DeveloperAPI
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
@@ -667,7 +519,6 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     The returned Application object can be exported to a dictionary or YAML
     config.
     """
-
     if in_interactive_shell():
         raise RuntimeError(
             "build cannot be called from an interactive shell like "
@@ -678,36 +529,3 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
     return Application(pipeline_build(target))
-
-
-def _check_http_and_checkpoint_options(
-    client: ServeControllerClient,
-    http_options: Union[dict, HTTPOptions],
-    checkpoint_path: str,
-) -> None:
-    if checkpoint_path and checkpoint_path != client.checkpoint_path:
-        logger.warning(
-            f"The new client checkpoint path '{checkpoint_path}' "
-            f"is different from the existing one '{client.checkpoint_path}'. "
-            "The new checkpoint path is ignored."
-        )
-
-    if http_options:
-        client_http_options = client.http_config
-        new_http_options = (
-            http_options
-            if isinstance(http_options, HTTPOptions)
-            else HTTPOptions.parse_obj(http_options)
-        )
-        different_fields = []
-        all_http_option_fields = new_http_options.__dict__
-        for field in all_http_option_fields:
-            if getattr(new_http_options, field) != getattr(client_http_options, field):
-                different_fields.append(field)
-
-        if len(different_fields):
-            logger.warning(
-                "The new client HTTP config differs from the existing one "
-                f"in the following fields: {different_fields}. "
-                "The new HTTP config is ignored."
-            )

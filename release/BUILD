@@ -207,7 +207,15 @@ py_test(
     name = "test_config",
     tags = ["team:ci", "release_unit"],
     size = "small",
-    srcs = ["ray_release/tests/test_config.py"]
+    srcs = ["ray_release/tests/test_config.py"],
+    data = ["release_tests.yaml"],
+)
+
+py_test(
+    name = "test_env",
+    tags = ["team:ci", "release_unit"],
+    size = "small",
+    srcs = ["ray_release/tests/test_env.py"]
 )
 
 py_test(
@@ -221,12 +229,18 @@ py_test(
     name = "test_run_script",
     tags = ["team:ci", "release_unit"],
     size = "small",
-    srcs = ["ray_release/tests/test_run_script.py"]
+    srcs = ["ray_release/tests/test_run_script.py"],
+    data = [
+        "run_release_test.sh",
+        "ray_release/tests/_test_catch_args.py",
+        "ray_release/tests/_test_run_release_test_sh.py",
+    ],
 )
 
 py_test(
     name = "test_wheels",
     tags = ["team:ci", "release_unit"],
     size = "small",
-    srcs = ["ray_release/tests/test_wheels.py"]
+    srcs = ["ray_release/tests/test_wheels.py"],
+    deps = ["//:ray_lib"],
 )

@@ -91,8 +91,8 @@ def _job_cli_group_test_address(mock_sdk_client, cmd, *args):
         assert mock_sdk_client.called_with("env_addr")
     # Test passing no address.
     result = runner.invoke(job_cli_group, [cmd, *args])
-    assert result.exit_code == 1
-    assert "Address must be specified" in str(result.exception)
+    assert result.exit_code == 0
+    assert mock_sdk_client.called_with(None)
 
 
 class TestList:
@@ -220,13 +220,14 @@ class TestSubmit:
         with set_env_var("RAY_ADDRESS", "env_addr"):
             result = runner.invoke(job_cli_group, ["submit", "--", "echo hello"])
             assert result.exit_code == 0
-            assert mock_client_instance.called_with(job_id=None)
+            assert mock_client_instance.called_with(submission_id=None)
 
             result = runner.invoke(
-                job_cli_group, ["submit", "--", "--job-id=my_job_id", "echo hello"]
+                job_cli_group,
+                ["submit", "--", "--submission-id=my_job_id", "echo hello"],
             )
             assert result.exit_code == 0
-            assert mock_client_instance.called_with(job_id="my_job_id")
+            assert mock_client_instance.called_with(submission_id="my_job_id")
 
 
 if __name__ == "__main__":

@@ -81,14 +81,6 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *,
 
 /*
  * Class:     io_ray_runtime_RayNativeRuntime
- * Method:    nativeSetCoreWorker
- * Signature: ([B)V
- */
-JNIEXPORT void JNICALL
-Java_io_ray_runtime_RayNativeRuntime_nativeSetCoreWorker(JNIEnv *, jclass, jbyteArray);
-
-/*
- * Class:     io_ray_runtime_RayNativeRuntime
  * Method:    nativeGetResourceIds
  * Signature: ()Ljava/util/Map;
  */
@@ -110,6 +102,14 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *, jclass);
  */
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentReturnIds(
     JNIEnv *, jclass, jint, jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_RayNativeRuntime
+ * Method:    nativeGetCurrentNodeId
+ * Signature: ()[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetCurrentNodeId(JNIEnv *, jclass);
 
 #ifdef __cplusplus
 }

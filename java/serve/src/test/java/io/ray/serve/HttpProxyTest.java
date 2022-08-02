@@ -3,7 +3,11 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
 import io.ray.serve.api.Serve;
+import io.ray.serve.common.Constants;
+import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.generated.EndpointInfo;
+import io.ray.serve.proxy.HttpProxy;
+import io.ray.serve.proxy.ProxyRouter;
 import io.ray.serve.util.CommonUtil;
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -17,12 +21,10 @@ import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class HttpProxyTest {
-
+public class HttpProxyTest extends BaseTest {
   @Test
   public void test() throws IOException {
-    boolean inited = Ray.isInitialized();
-    Ray.init();
+    init();
 
     try {
       String controllerName =
@@ -30,10 +32,12 @@ public class HttpProxyTest {
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
       String endpointName = "HTTPProxyTest";
       String route = "/route";
+      Map<String, String> config = new HashMap<>();
+      config.put(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false");
 
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new).setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
 
       Map<String, EndpointInfo> endpointInfos = new HashMap<>();
       endpointInfos.put(
@@ -41,10 +45,7 @@ public class HttpProxyTest {
           EndpointInfo.newBuilder().setEndpointName(endpointName).setRoute(route).build());
       controllerHandle.task(DummyServeController::setEndpoints, endpointInfos).remote();
 
-      Serve.setInternalReplicaContext(null, null, controllerName, null);
-      Serve.getReplicaContext()
-          .setRayServeConfig(
-              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
+      Serve.setInternalReplicaContext(null, null, controllerName, null, config);
 
       // ProxyRouter updates routes.
       ProxyRouter proxyRouter = new ProxyRouter();
@@ -59,18 +60,13 @@ public class HttpProxyTest {
       HttpPost httpPost = new HttpPost("http://localhost:" + httpProxy.getPort() + route);
       try (CloseableHttpResponse httpResponse =
           (CloseableHttpResponse) httpClient.execute(httpPost)) {
-
         // No replica, so error is expected.
         int status = httpResponse.getCode();
         Assert.assertEquals(status, HttpURLConnection.HTTP_INTERNAL_ERROR);
       }
 
     } finally {
-      if (!inited) {
-        Ray.shutdown();
-      }
-      Serve.setInternalReplicaContext(null);
-      Serve.setGlobalClient(null);
+      shutdown();
     }
   }
 }

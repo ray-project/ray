@@ -8,6 +8,8 @@ try:
 except ImportError:
     specs = None
 
+from ray.rllib.utils.annotations import PublicAPI
+
 
 def _convert_spec_to_space(spec):
     if isinstance(spec, dict):
@@ -34,6 +36,7 @@ def _convert_spec_to_space(spec):
     )
 
 
+@PublicAPI
 class DMEnv(gym.Env):
     """A `gym.Env` wrapper for the `dm_env` API."""
 

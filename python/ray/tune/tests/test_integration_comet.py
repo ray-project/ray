@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from ray.tune.integration.comet import CometLoggerCallback
+from ray.air.callbacks.comet import CometLoggerCallback
 from collections import namedtuple
 
 

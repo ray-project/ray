@@ -2,12 +2,14 @@ import logging
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
+from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
-from ray.autoscaler._private.command_runner import SSHCommandRunner, DockerCommandRunner
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class NodeProvider:
     """Interface for getting and returning nodes from a Cloud.
 
@@ -84,8 +86,8 @@ class NodeProvider:
         Assumes ip-address is unique per node.
 
         Args:
-            ip_address (str): Address of node.
-            use_internal_ip (bool): Whether the ip address is
+            ip_address: Address of node.
+            use_internal_ip: Whether the ip address is
                 public or private.
 
         Raises:
@@ -197,17 +199,17 @@ class NodeProvider:
         """Returns the CommandRunner class used to perform SSH commands.
 
         Args:
-        log_prefix(str): stores "NodeUpdater: {}: ".format(<node_id>). Used
+        log_prefix: stores "NodeUpdater: {}: ".format(<node_id>). Used
             to print progress in the CommandRunner.
-        node_id(str): the node ID.
-        auth_config(dict): the authentication configs from the autoscaler
+        node_id: the node ID.
+        auth_config: the authentication configs from the autoscaler
             yaml file.
-        cluster_name(str): the name of the cluster.
-        process_runner(module): the module to use to run the commands
+        cluster_name: the name of the cluster.
+        process_runner: the module to use to run the commands
             in the CommandRunner. E.g., subprocess.
-        use_internal_ip(bool): whether the node_id belongs to an internal ip
+        use_internal_ip: whether the node_id belongs to an internal ip
             or external ip.
-        docker_config(dict): If set, the docker information of the docker
+        docker_config: If set, the docker information of the docker
             container that commands should be run on.
         """
         common_args = {

@@ -33,15 +33,6 @@ class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
  public:
   explicit MockInMemoryStoreClient(instrumented_io_context &main_io_service)
       : gcs::InMemoryStoreClient(main_io_service) {}
-
-  Status AsyncPut(const std::string &table_name,
-                  const std::string &key,
-                  const std::string &data,
-                  bool overwrite,
-                  std::function<void(bool)> callback) override {
-    callback(true);
-    return Status::OK();
-  }
 };
 
 class GcsJobManagerTest : public ::testing::Test {
@@ -89,24 +80,88 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
   auto job_id2 = JobID::FromInt(2);
   gcs::GcsInitData gcs_init_data(gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
-  auto add_job_request1 = Mocker::GenAddJobRequest(job_id1, "namespace_1");
 
   rpc::AddJobReply empty_reply;
+  std::promise<bool> promise1;
+  std::promise<bool> promise2;
 
+  auto add_job_request1 = Mocker::GenAddJobRequest(job_id1, "namespace_1");
   gcs_job_manager.HandleAddJob(
       *add_job_request1,
       &empty_reply,
-      [](Status, std::function<void()>, std::function<void()>) {});
+      [&promise1](Status, std::function<void()>, std::function<void()>) {
+        promise1.set_value(true);
+      });
+  promise1.get_future().get();
+
   auto add_job_request2 = Mocker::GenAddJobRequest(job_id2, "namespace_2");
   gcs_job_manager.HandleAddJob(
       *add_job_request2,
       &empty_reply,
-      [](Status, std::function<void()>, std::function<void()>) {});
+      [&promise2](Status, std::function<void()>, std::function<void()>) {
+        promise2.set_value(true);
+      });
+  promise2.get_future().get();
+
   auto job_config1 = gcs_job_manager.GetJobConfig(job_id1);
   ASSERT_EQ("namespace_1", job_config1->ray_namespace());
 
   auto job_config2 = gcs_job_manager.GetJobConfig(job_id2);
   ASSERT_EQ("namespace_2", job_config2->ray_namespace());
+}
+
+TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
+  gcs::GcsJobManager gcs_job_manager(
+      gcs_table_storage_, gcs_publisher_, runtime_env_manager_, *function_manager_);
+
+  auto job_id = JobID::FromInt(1);
+  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+  auto add_job_request = Mocker::GenAddJobRequest(job_id, "namespace");
+  add_job_request->mutable_data()->set_driver_ip_address("10.0.0.1");
+  add_job_request->mutable_data()->set_driver_pid(8264);
+
+  rpc::AddJobReply empty_reply;
+  std::promise<bool> promise;
+
+  gcs_job_manager.HandleAddJob(
+      *add_job_request,
+      &empty_reply,
+      [&promise](Status, std::function<void()>, std::function<void()>) {
+        promise.set_value(true);
+      });
+  promise.get_future().get();
+
+  rpc::MarkJobFinishedRequest job_finished_request;
+  rpc::MarkJobFinishedReply job_finished_reply;
+  std::promise<bool> job_finished_promise;
+
+  job_finished_request.set_job_id(JobID::FromInt(1).Binary());
+
+  gcs_job_manager.HandleMarkJobFinished(
+      job_finished_request,
+      &job_finished_reply,
+      [&job_finished_promise](Status, std::function<void()>, std::function<void()>) {
+        job_finished_promise.set_value(true);
+      });
+  job_finished_promise.get_future().get();
+
+  rpc::GetAllJobInfoRequest all_job_info_request;
+  rpc::GetAllJobInfoReply all_job_info_reply;
+  std::promise<bool> all_job_info_promise;
+
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request,
+      &all_job_info_reply,
+      [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise.set_value(true);
+      });
+  all_job_info_promise.get_future().get();
+
+  ASSERT_EQ(all_job_info_reply.job_info_list().size(), 1);
+  rpc::JobTableData data = all_job_info_reply.job_info_list().Get(0);
+  ASSERT_EQ(data.driver_ip_address(), "10.0.0.1");
+  ASSERT_EQ(data.driver_pid(), 8264);
 }
 
 int main(int argc, char **argv) {

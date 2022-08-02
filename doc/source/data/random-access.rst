@@ -1,3 +1,5 @@
+.. _datasets_random_access:
+
 ---------------------------------
 Random Data Access (Experimental)
 ---------------------------------

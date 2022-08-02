@@ -2,6 +2,7 @@ from gym.spaces import Box, Discrete, Space
 import numpy as np
 from typing import List, Optional, Union
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -16,7 +17,7 @@ from ray.rllib.utils.typing import FromConfigSpec, ModelConfigDict, TensorType
 tf1, tf, tfv = try_import_tf()
 
 
-class MovingMeanStd:
+class _MovingMeanStd:
     """Track moving mean, std and count."""
 
     def __init__(self, epsilon: float = 1e-4, shape: Optional[List[int]] = None):
@@ -78,6 +79,7 @@ class MovingMeanStd:
         return np.sqrt(self.var)
 
 
+@PublicAPI
 def update_beta(beta_schedule: str, beta: float, rho: float, step: int) -> float:
     """Update beta based on schedule and training step.
 
@@ -95,6 +97,7 @@ def update_beta(beta_schedule: str, beta: float, rho: float, step: int) -> float
     return beta
 
 
+@PublicAPI
 def compute_states_entropy(
     obs_embeds: np.ndarray, embed_dim: int, k_nn: int
 ) -> np.ndarray:
@@ -111,9 +114,10 @@ def compute_states_entropy(
     """
     obs_embeds_ = np.reshape(obs_embeds, [-1, embed_dim])
     dist = np.linalg.norm(obs_embeds_[:, None, :] - obs_embeds_[None, :, :], axis=-1)
-    return dist.argsort(axis=-1)[:, :k_nn][:, -1]
+    return dist.argsort(axis=-1)[:, :k_nn][:, -1].astype(np.float32)
 
 
+@PublicAPI
 class RE3(Exploration):
     """Random Encoder for Efficient Exploration.
 
@@ -284,6 +288,6 @@ class RE3(Exploration):
         else:
             obs_embeds = tf.stop_gradient(
                 self._encoder_net({SampleBatch.OBS: sample_batch[SampleBatch.OBS]})[0]
-            )
+            ).numpy()
         sample_batch[SampleBatch.OBS_EMBEDS] = obs_embeds
         return sample_batch

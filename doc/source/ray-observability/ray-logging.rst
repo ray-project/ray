@@ -6,7 +6,7 @@ This document will explain Ray's logging system and its best practices.
 
 Driver logs
 ~~~~~~~~~~~
-An entry point of Ray applications that calls ``ray.init(address='auto')`` or ``ray.init()`` is called a driver.
+An entry point of Ray applications that calls ``ray.init()`` is called a driver.
 All the driver logs are handled in the same way as normal Python programs. 
 
 Worker logs
@@ -43,6 +43,18 @@ Actor log messages look like the following by default.
 .. code-block:: bash
 
     (MyActor pid=480956) actor log message
+
+Disabling logging to the driver
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In large scale runs, it may be undesirable to route all worker logs to the driver. You can disable this feature by setting ``log_to_driver=False`` in Ray init:
+
+.. code-block:: python
+
+    import ray
+
+    # Task and actor logs will not be copied to the driver stdout.
+    ray.init(log_to_driver=False)
 
 Customizing Actor logs prefixes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
