@@ -59,7 +59,6 @@ def test_component_activities_hook(set_ray_cluster_activity_hook, call_ray_start
     """
     Tests /api/component_activities returns correctly for various
     responses of RAY_CLUSTER_ACTIVITY_HOOK.
-
     Verify no active drivers are correctly reflected in response.
     """
     external_hook = set_ray_cluster_activity_hook
@@ -122,10 +121,12 @@ def test_active_component_activities(ray_start_with_dashboard):
 
     driver_template = """
 import ray
-
 ray.init(address="auto", namespace="{namespace}")
     """
     run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
+    # Wait for above driver to start and finish
+    time.sleep(2)
+
     run_string_as_driver_nonblocking(driver_template.format(namespace="my_namespace"))
     run_string_as_driver_nonblocking(
         driver_template.format(namespace="_ray_internal_job_info_id1")
@@ -135,7 +136,7 @@ ray.init(address="auto", namespace="{namespace}")
         driver_template.format(namespace="_ray_internal_dashboard")
     )
 
-    # Wait 1 sec for drivers to start
+    # Wait 1.5 sec for drivers to start (but not finish)
     time.sleep(1.5)
 
     # Verify drivers are considered active after running script
@@ -158,23 +159,32 @@ ray.init(address="auto", namespace="{namespace}")
 
     assert driver_ray_activity_response.is_active == "ACTIVE"
     # Drivers with namespace starting with "_ray_internal" are not
-    # considered active drivers. Three active drivers are the two
+    # considered active drivers. Two active drivers are the second one
     # run with namespace "my_namespace" and the one started
     # from ray_start_with_dashboard
-    assert driver_ray_activity_response.reason == "Number of active drivers: 3"
+    assert driver_ray_activity_response.reason == "Number of active drivers: 2"
+
+    # Get expected_last_activity at from snapshot endpoint which returns details
+    # about all jobs
+    jobs_snapshot_data = requests.get(f"{webui_url}/api/snapshot").json()["data"][
+        "snapshot"
+    ]["jobs"]
+    # Divide endTime by 1000 to convert from milliseconds to seconds
+    expected_last_activity_at = max(
+        [job.get("endTime", 0) / 1000 for (job_id, job) in jobs_snapshot_data.items()]
+    )
+
+    assert driver_ray_activity_response.last_activity_at == expected_last_activity_at
 
 
 def test_snapshot(ray_start_with_dashboard):
     driver_template = """
 import ray
-
 ray.init(address="{address}", namespace="my_namespace")
-
 @ray.remote
 class Pinger:
     def ping(self):
         return "pong"
-
 a = Pinger.options(lifetime={lifetime}, name={name}).remote()
 ray.get(a.ping.remote())
     """
@@ -228,23 +238,17 @@ def test_serve_snapshot(ray_start_with_dashboard):
     detached_serve_driver_script = f"""
 import ray
 from ray import serve
-
 ray.init(
     address="{ray_start_with_dashboard['address']}",
     namespace="serve")
-
 serve.start(detached=True)
-
 @serve.deployment
 def my_func(request):
   return "hello"
-
 my_func.deploy()
-
 @serve.deployment(version="v1")
 def my_func_deleted(request):
   return "hello"
-
 my_func_deleted.deploy()
 my_func_deleted.delete()
     """
