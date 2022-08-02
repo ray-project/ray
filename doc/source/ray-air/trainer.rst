@@ -9,7 +9,7 @@ Ray AIR Trainers
 
 
 Ray AIR offers integration with popular machine learning training framework through a variety of Trainers,
-including Pytorch, Tensorflow, Horovod, XGBoost, as well as Scikit Learn and HuggingFace. It also offers a RLTrainer
+including Pytorch, Tensorflow, Horovod, XGBoost, as well as scikit-learn and HuggingFace. It also offers a RLTrainer
 with RLlib integration.
 See :ref:`doc <air-trainer-ref>` for more information.
 
@@ -82,24 +82,41 @@ Take a look at the following example.
 
 XGBoost Trainer
 ---------------
-Ray AIR also provides an easy to use XGBoost Trainer, which is a wrapper around "Distributed XGBoost on Ray".
+Ray AIR also provides an easy to use XGBoost Trainer for classic machine learning,
+which is a wrapper around "Distributed XGBoost on Ray".
 See the example below.
 
 .. literalinclude:: doc_code/xgboost_trainer.py
     :language: python
 
 
-
-ScikitLearn Trainer
+Scikit-learn Trainer
 -------------------
-To be filled in
+scikit-learn Trainer is a thin wrapper for one to launch scikit-learn training within Ray AIR.
+**Note:** this is done in a non-distributed fashion. See the example below.
+
+.. literalinclude:: doc_code/sklearn_trainer.py
+    :language: python
 
 
 RLlib Trainer
 -------------
-To be filled in
+RLTrainer provides an interface to RL Trainables.
+
+.. literalinclude:: doc_code/rl_trainer.py
+    :language: python
 
 
 How to interprete training result
 ---------------------------------
-To be filled in
+After specifying Trainer, one can then kick off training by simply calling ``fit()``.
+The following is how you can interact with training result:
+
+.. code-block:: python
+
+result = trainer.fit()
+
+
+- ``result.checkpoint`` gives last saved checkpoint
+- ``result.best_checkpoints`` gives N best saved checkpoints, as configured in ``RunConfig.CheckpointConfig``.
+- ``result.metrics`` gives the final metrics as reported.
