@@ -41,50 +41,50 @@ def ray_start_1_cpu_1_gpu():
     ray.shutdown()
 
 
-def test_jax_get_device(ray_start_4_cpus_2_gpus):
-    def train_fn():
-        """Creates a barrier across all hosts/devices."""
-        session.report(
-            dict(devices=alpa.device_mesh.global_cluster.num_devices)
-        )
+# def test_jax_get_device(ray_start_4_cpus_2_gpus):
+#     def train_fn():
+#         """Creates a barrier across all hosts/devices."""
+#         session.report(
+#             dict(devices=alpa.device_mesh.global_cluster.num_devices)
+#         )
 
-    num_gpus_per_worker = 2
-    trainer = AlpaTrainer(
-        train_fn,
-        scaling_config=ScalingConfig(
-            num_workers=1,
-            use_gpu=True,
-            resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
-        ),
-    )
+#     num_gpus_per_worker = 2
+#     trainer = AlpaTrainer(
+#         train_fn,
+#         scaling_config=ScalingConfig(
+#             num_workers=1,
+#             use_gpu=True,
+#             resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
+#         ),
+#     )
 
-    results = trainer.fit()
-    devices = results.metrics["devices"]
-    assert devices == num_gpus_per_worker
+#     results = trainer.fit()
+#     devices = results.metrics["devices"]
+#     assert devices == num_gpus_per_worker
 
 
-def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
-    num_workers = 1
-    num_epochs = 2
-    num_gpus_per_worker = 2
-    trainer = AlpaTrainer(
-        train_loop_per_worker=alpa_mnist_train_func,
-        train_loop_config={
-            "num_epochs": num_epochs,
-            "learning_rate": 1e-3,
-            "momentum": 0.9,
-            "batch_size": 8192,
-        },
-        scaling_config=ScalingConfig(
-            num_workers=num_workers,
-            use_gpu=True,
-            resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
-        ),
-    )
+# def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
+#     num_workers = 1
+#     num_epochs = 2
+#     num_gpus_per_worker = 2
+#     trainer = AlpaTrainer(
+    #     train_loop_per_worker=alpa_mnist_train_func,
+    #     train_loop_config={
+    #         "num_epochs": num_epochs,
+    #         "learning_rate": 1e-3,
+    #         "momentum": 0.9,
+    #         "batch_size": 8192,
+    #     },
+    #     scaling_config=ScalingConfig(
+    #         num_workers=num_workers,
+    #         use_gpu=True,
+    #         resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
+    #     ),
+    # )
 
-    results = trainer.fit()
-    result = results.metrics
-    assert result[TRAINING_ITERATION] == num_epochs
+    # results = trainer.fit()
+    # result = results.metrics
+    # assert result[TRAINING_ITERATION] == num_epochs
 
 
 def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
@@ -93,7 +93,7 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             use_gpu=use_gpu,
-            resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker} if use_gpu else None,
+            resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker} if use_gpu else {"CPU": 1},
         ),
     )
     tuner = Tuner(
@@ -116,12 +116,12 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
         assert df.loc[1, "loss"] < df.loc[0, "loss"]
 
 
-# def test_tune_jax_mnist(ray_start_8_cpus):
-#     tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
+def test_tune_jax_mnist(ray_start_8_cpus):
+    tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 
-def test_tune_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
-    tune_jax_mnist(num_workers=1, use_gpu=True, num_samples=1, num_gpus_per_worker=2)
+# def test_tune_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
+#     tune_jax_mnist(num_workers=1, use_gpu=True, num_samples=1, num_gpus_per_worker=2)
 
 
 if __name__ == "__main__":
