@@ -256,23 +256,10 @@ In this example, checkpoints will be saved:
 * **On head node**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
 * **On workers nodes**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
 
-If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by running the script above again -- note with ``resume="AUTO"``, it will detect the previous run so long as the ``sync_config`` points to the same location.
-
-If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version of Ray) you can resume manaully:
-
-.. code-block:: python
-
-    # Restored previous trial from the given checkpoint
-    tune.run(
-        # our same trainable as before
-        my_trainable,
-
-        # The name can be different from your original name
-        name="my-tune-exp-restart",
-
-        # our same config as above!
-        restore=sync_config,
-    )
+If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by
+``tuner=Tuner.restore(experiment_checkpoint_dir).fit()``.
+There are a few options for restoring an experiment:
+"resume_unfinished", "resume_errored" and "restart_errored". See ``Tuner.restore()`` for more details.
 
 .. _rsync-checkpointing:
 
