@@ -116,7 +116,11 @@ To run the call graph, you need to use a driver. Drivers are deployments that pr
 deployment_graph = DAGDriver.bind(add_3_output)
 ```
 
-The `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of our graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` will also deploy the rest of the graph's deployments.
+Generally, the `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of our graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` will also deploy the rest of the graph's deployments.
+
+:::{note}
+The `DAGDriver` can also be bound to `ClassNodes`. This is useful if you construct a deployment graph where `ClassNodes` invoke other `ClassNodes`' methods. In this case, you should pass in the "root" `ClassNode` to `DAGDriver` (i.e. the one that you would otherwise pass into `serve.run`). Check out [Invoking ClassNodes from within other ClassNodes](deployment-graph-intro-invoking-classnodes-from-other-classnodes) for more info.
+:::
 
 You can test this example using this client script:
 
@@ -140,6 +144,7 @@ $ python arithmetic_client.py
 9
 ```
 
+(deployment-graph-intro-invoking-classnodes-from-other-classnodes)=
 ### Invoking ClassNodes from within other ClassNodes
 
 You can also invoke `ClassNode` methods from other `ClassNodes`. This is especially useful when implementing conditional logic in your graph. You can encode the conditional logic in one of your deployments and invoke another deployment from there.
