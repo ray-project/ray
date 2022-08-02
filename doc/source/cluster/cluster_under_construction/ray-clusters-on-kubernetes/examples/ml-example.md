@@ -36,7 +36,7 @@ If have an account set up, you can immediately start experimenting with Kubernet
 Alternatively, check out the [documentation](https://docs.aws.amazon.com/eks/latest/userguide/) and
 [quickstart guides]((https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html). To successfully deploy Ray on Kubernetes,
 you will need to configure groups of Kubernetes nodes;
-find guidance [here]((https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html).
+find guidance [here](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html).
 :::
 
 :::{tabbed} AKS (Microsoft Azure)
