@@ -1,13 +1,13 @@
 from collections import Counter
 import gym
 from gym.spaces import Box, Discrete
+import json
 import numpy as np
 import os
 import random
+import tempfile
 import time
 import unittest
-import tempfile
-import json
 
 import ray
 from ray.rllib.algorithms.a2c import A2C
