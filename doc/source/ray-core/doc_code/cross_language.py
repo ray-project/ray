@@ -20,7 +20,7 @@ ray.init(job_config=ray.job_config.JobConfig(code_search_path="/path/to/jars:/pa
 # __python_call_java_start__
 import ray
 
-with ray.init(job_config=ray.job_config.JobConfig(code_search_path=["/home/ray/java_build/"])):
+with ray.init(job_config=ray.job_config.JobConfig(code_search_path=["/path/to/code"])):
   # Define a Java class.
   counter_class = ray.cross_language.java_actor_class(
         "io.ray.demo.Counter")
@@ -45,6 +45,7 @@ with ray.init(job_config=ray.job_config.JobConfig(code_search_path=["/home/ray/j
 # fmt: off
 # __python_module_start__
 # ray_demo.py
+
 import ray
 
 @ray.remote
@@ -61,3 +62,42 @@ def add(a, b):
     return a + b
 # __python_module_end__
 # fmt: on
+
+# fmt: off
+# __serialization_start__
+# ray_serialization.py
+
+import ray
+
+@ray.remote
+def py_return_input(v):
+    return v
+# __serialization_end__
+# fmt: on
+
+# fmt: off
+# __raise_exception_start__
+# ray_exception.py
+
+import ray
+
+@ray.remote
+def raise_exception():
+    1 / 0
+# __raise_exception_end__
+# fmt: on
+
+# fmt: off
+# __raise_exception_demo_start__
+# ray_exception_demo.py
+
+import ray
+
+with ray.init(job_config=ray.job_config.JobConfig(code_search_path=["/path/to/ray_exception"])):
+  obj_ref = ray.cross_language.java_function(
+        "io.ray.demo.MyRayClass",
+        "raiseExceptionFromPython").remote()
+  ray.get(obj_ref)  # <-- raise exception from here.
+# __raise_exception_demo_end__
+# fmt: on
+
