@@ -7,7 +7,7 @@ import sys
 
 # add a switch here because master and latest branch
 # diverge; this will be called in `release/release_tests.yaml`
-if sys.argv[1] == "master":
+if len(sys.argv) > 1 and sys.argv[1] == "master":
     from simple_example_master import main
 else:
     from simple_example import main
