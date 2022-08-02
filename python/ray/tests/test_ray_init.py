@@ -353,7 +353,10 @@ def test_ray_init_using_hostname(ray_start_cluster):
 
     hostname = socket.gethostname()
     cluster = Cluster(
-        initialize_head=True, head_node_args={"node_ip_address": hostname}
+        initialize_head=True,
+        head_node_args={
+            "node_ip_address": hostname,
+        },
     )
 
     # Use `ray.init` to test the connection.

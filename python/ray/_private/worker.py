@@ -133,13 +133,13 @@ class RemoteFunction0(Generic[R, T0]):
         pass
 
     def remote(
-        self, 
+        self,
         __arg0: "Union[T0, ObjectRef[T0]]",
     ) -> "ObjectRef[R]":
         ...
 
     def bind(
-        self, 
+        self,
         __arg0: "Union[T0, DAGNode[T0]]",
     ) -> "DAGNode[R]":
         ...
@@ -150,15 +150,15 @@ class RemoteFunction1(Generic[R, T0, T1]):
         pass
 
     def remote(
-        self, 
-        __arg0: "Union[T0, ObjectRef[T0]]", 
+        self,
+        __arg0: "Union[T0, ObjectRef[T0]]",
         __arg1: "Union[T1, ObjectRef[T1]]",
     ) -> "ObjectRef[R]":
         ...
 
     def bind(
-        self, 
-        __arg0: "Union[T0, DAGNode[T0]]", 
+        self,
+        __arg0: "Union[T0, DAGNode[T0]]",
         __arg1: "Union[T1, DAGNode[T1]]",
     ) -> "DAGNode[R]":
         ...
