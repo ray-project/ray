@@ -8,6 +8,7 @@ at the {ref}`introductory guide<kuberay-quickstart>` first.
 
 In these guides, we go into further depth on several topics related to
 deployments of Ray on Kubernetes.
+* {ref}`kuberay-config`
 * {ref}`kuberay-k8s-setup`
 * {ref}`kuberay-gpu`
 
