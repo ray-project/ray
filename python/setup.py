@@ -329,6 +329,7 @@ def bazel_invoke(invoker, cmdline, *args, **kwargs):
             candidates.append(mingw_dir + "/bin/bazel.exe")
     else:
         candidates.append(os.path.join(home, ".bazel", "bin", "bazel"))
+        candidates.append(os.path.join("bazelisk"))
     result = None
     for i, cmd in enumerate(candidates):
         try:
