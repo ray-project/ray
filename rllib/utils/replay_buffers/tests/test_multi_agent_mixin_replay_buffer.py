@@ -131,7 +131,6 @@ class TestMixInMultiAgentReplayBuffer(unittest.TestCase):
         buffer = MultiAgentMixInReplayBuffer(
             capacity=self.capacity,
             replay_ratio=0.9,
-            num_steps_sampled_before_learning_starts=0,
         )
 
         # If we insert and replay n times, expect roughly return batches of

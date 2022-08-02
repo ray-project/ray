@@ -70,6 +70,7 @@ class TestR2D2(unittest.TestCase):
                 lr=5e-4,
                 zero_init_states=True,
                 replay_buffer_config={"replay_burn_in": 20},
+                num_steps_sampled_before_learning_starts=0,
             )
             .exploration(exploration_config={"epsilon_timesteps": 100000})
         )

@@ -115,8 +115,8 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "min_sample_timesteps_per_iteration": 100,
                 "replay_buffer_config": {
                     "capacity": 1000,
-                    "num_steps_sampled_before_learning_starts": 10,
                 },
+                "num_steps_sampled_before_learning_starts": 10,
                 "num_gpus": 0,
                 "min_time_s_per_iteration": 1,
                 "target_network_update_freq": 100,

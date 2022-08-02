@@ -37,7 +37,7 @@ pendulum-ddpg:
           type: MultiAgentPrioritizedReplayBuffer
           capacity: 10000
           worker_side_prioritization: false
-          min_size: 500
+        num_steps_sampled_before_learning_starts: 500
         clip_rewards: False
 
         # === Optimization ===

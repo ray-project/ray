@@ -31,8 +31,10 @@ class TestSimpleQ(unittest.TestCase):
     def test_simple_q_compilation(self):
         """Test whether SimpleQ can be built on all frameworks."""
         # Run locally and with compression
-        config = simple_q.SimpleQConfig().rollouts(
-            num_rollout_workers=0, compress_observations=True
+        config = (
+            simple_q.SimpleQConfig()
+            .rollouts(num_rollout_workers=0, compress_observations=True)
+            .training(num_steps_sampled_before_learning_starts=0)
         )
 
         num_iterations = 2
@@ -57,7 +59,8 @@ class TestSimpleQ(unittest.TestCase):
             model={
                 "fcnet_hiddens": [10],
                 "fcnet_activation": "linear",
-            }
+            },
+            num_steps_sampled_before_learning_starts=0,
         )
 
         for fw in framework_iterator(config):
