@@ -3004,7 +3004,7 @@ def test_csv_read_filter_no_file(ray_start_regular_shared, tmp_path):
     path = os.path.join(str(tmp_path), "test.parquet")
     pq.write_table(table, path)
 
-    error_message = "Please double check the input files are having expected extension"
+    error_message = "Not found any input file to read from"
     with pytest.raises(ValueError) as e:
         ray.data.read_csv(path)
     assert error_message in str(e.value)

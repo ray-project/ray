@@ -357,10 +357,8 @@ class _FileBasedDatasourceReader(Reader):
             self._file_sizes = [path_to_size[p] for p in self._paths]
             if len(self._paths) == 0:
                 raise ValueError(
-                    "Not found any input file to read from. Please double "
-                    "check the input files are having expected extension(s): "
-                    f"'{self._delegate._FILE_EXTENSION}', or set 'partition_filter' "
-                    "field to 'None' to disable files filtering."
+                    "Not found any input file to read from. Please double check "
+                    "'partition_filter' field is set properly."
                 )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
