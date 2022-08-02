@@ -25,7 +25,7 @@
     - PYTHON=3.7 TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/requirements_jax_gpu.txt
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=jax,gpu_only  python/ray/train/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=jax_gpu  python/ray/train/...
     
 - label: ":tv: :brain: RLlib: Multi-GPU Tests"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]

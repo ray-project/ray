@@ -316,7 +316,7 @@
     - TRAIN_TESTING=1 PYTHON=3.7 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/requirements_jax.txt
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=jax,-gpu_only python/ray/train/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=jax_cpu python/ray/train/...
     
 - label: ":octopus: Tune examples {w/o tf/pytorch; no RLlib}"
   conditions: ["RAY_CI_TUNE_AFFECTED"]

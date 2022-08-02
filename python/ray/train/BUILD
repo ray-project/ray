@@ -365,7 +365,7 @@ py_test(
     name = "test_jax",
     size = "large",
     srcs = ["tests/test_jax.py"],
-    tags = ["team:ml", "exclusive", "jax"],
+    tags = ["team:ml", "exclusive", "jax_cpu"],
     deps = [":train_lib"]
 )
 
@@ -373,7 +373,7 @@ py_test(
     name = "test_jax_gpu",
     size = "large",
     srcs = ["tests/test_jax_gpu.py"],
-    tags = ["team:ml", "exclusive", "jax", "gpu_only"],
+    tags = ["team:ml", "exclusive", "jax_gpu"],
     deps = [":train_lib"]
 )
 
