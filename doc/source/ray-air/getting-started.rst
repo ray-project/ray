@@ -3,11 +3,11 @@
 Ray AI Runtime (AIR)
 ====================
 
-Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks. Unlike other toolkits, AIR can scale workloads with just Python by leveraging the Ray unified compute framework.
+Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks, all in just Python.
 
-.. image:: images/air.png
+.. image:: images/ray-air.svg
 
-AIR comes with ready-to-use libraries for :ref:`Data Prep <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Reinforcement Learning <rllib-index>`, :ref:`Serving <rayserve>`, and :ref:`Batch Scoring <air-predictors>`, as well as an ecosystem of integrations.
+AIR comes with ready-to-use libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>`, as well as an ecosystem of integrations.
 
 Get started by installing Ray AIR:
 
@@ -15,34 +15,11 @@ Get started by installing Ray AIR:
 
     pip install -U ray[air]
 
-Why Ray AIR?
-------------
-
-Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by taking a scalable, single-system approach to ML infrastructure (i.e., leveraging Ray as a unified compute framework):
-
-**1. Seamless Dev to Prod**: AIR reduces friction going from development to production. Traditional orchestration approaches introduce separate systems and operational overheads. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
-
-**2. Unified API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new library like HuggingFace? Thanks to the flexibility of Ray AIR, you can do this by just swapping out a single class, without needing to set up new systems or change other aspects of your workflow.
-
-**3. Open and Evolvable**: Ray core and libraries are fully open-source and can run on any cluster, cloud, or Kubernetes, reducing the costs of platform lock-in. Want to go out of the box? Run any framework you want using AIR's integration APIs, or build advanced use cases directly on Ray core.
-
-.. figure:: images/why-air.png
-
-  AIR enables a single-system / single-script approach to scaling ML. Ray's APIs for
-  distributed computation allow ML workloads to be scaled without needing
-  to set up or orchestrate separate systems, reducing the friction of moving from
-  development to production.
-
-AIR is for both ML practitioners and ML engineers. Consider using AIR when you want to:
- * Scale a single workload.
- * Scale end-to-end ML applications.
- * Build a custom ML platform for your organization.
-
 Quick Start
 -----------
 
-Below, we demonstrate how AIR enables simple scaling of end-to-end ML workflows
-involving multiple distributed frameworks (here showing XGBoost, Pytorch, and Tensorflow):
+Below, we demonstrate how AIR enables simple scaling of end-to-end ML workflows, focusing on
+a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow):
 
 Preprocessing
 ~~~~~~~~~~~~~
@@ -162,18 +139,38 @@ Use the trained model for scalable batch prediction with a ``BatchPredictor``.
         :start-after: __air_tf_batchpred_start__
         :end-before: __air_tf_batchpred_end__
 
+Why Ray AIR?
+------------
+
+Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by taking a scalable, single-system approach to ML infrastructure (i.e., leveraging Ray as a unified compute framework):
+
+**1. Seamless Dev to Prod**: AIR reduces friction going from development to production. Traditional orchestration approaches introduce separate systems and operational overheads. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
+
+**2. Unified API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new library like HuggingFace? Thanks to the flexibility of Ray AIR, you can do this by just swapping out a single class, without needing to set up new systems or change other aspects of your workflow.
+
+**3. Open and Evolvable**: Ray core and libraries are fully open-source and can run on any cluster, cloud, or Kubernetes, reducing the costs of platform lock-in. Want to go out of the box? Run any framework you want using AIR's integration APIs, or build advanced use cases directly on Ray core.
+
+.. figure:: images/why-air.png
+
+  AIR enables a single-system / single-script approach to scaling ML. Ray's
+  distributed Python APIs enable scaling of ML workloads without the burden of
+  setting up or orchestrating separate distributed systems.
+
+AIR is for both ML practitioners and ML engineers. Consider using AIR when you want to:
+ * Scale a single workload.
+ * Scale end-to-end ML applications.
+ * Build a custom ML platform for your organization.
 
 AIR Ecosystem
 -------------
 
 AIR comes with built-in integrations with the most popular ecosystem libraries. The following diagram provides an overview of the AIR libraries, ecosystem integrations, and their readiness.
+AIR's developer APIs also enable *custom integrations* to be easily created.
 
 ..
   https://docs.google.com/drawings/d/1pZkRrkAbRD8jM-xlGlAaVo3T66oBQ_HpsCzomMT7OIc/edit
 
 .. image:: images/air-ecosystem.svg
-
-AIR also includes developer APIs for adding new integrations, and for advanced use cases, the option to build custom scalable components using Ray core.
 
 Next Steps
 ----------
