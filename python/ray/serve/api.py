@@ -4,19 +4,20 @@ import logging
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 
 from fastapi import APIRouter, FastAPI
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray._private.utils import deprecated
 
 from ray.serve.application import Application
-from ray.serve.client import ServeControllerClient
+from ray.serve._private.client import ServeControllerClient
 from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
 )
@@ -24,17 +25,19 @@ from ray.serve.context import (
     ReplicaContext,
     get_global_client,
     get_internal_replica_context,
-    set_global_client,
+    _set_global_client,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.deployment_graph import ClassNode, FunctionNode
-from ray.serve.deployment_graph_build import build as pipeline_build
-from ray.serve.deployment_graph_build import get_and_validate_ingress_deployment
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle
-from ray.serve.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve.logging_utils import LoggingContext
-from ray.serve.utils import (
+from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
+from ray.serve._private.logging_utils import LoggingContext
+from ray.serve._private.utils import (
     DEFAULT,
     ensure_serialization_context,
     in_interactive_shell,
@@ -70,14 +73,14 @@ def start(
           for HTTP proxy. You can pass in a dictionary or HTTPOptions object
           with fields:
 
-            - host(str, None): Host for HTTP servers to listen on. Defaults to
+            - host: Host for HTTP servers to listen on. Defaults to
               "127.0.0.1". To expose Serve publicly, you probably want to set
               this to "0.0.0.0".
-            - port(int): Port for HTTP server. Defaults to 8000.
-            - root_path(str): Root path to mount the serve application
+            - port: Port for HTTP server. Defaults to 8000.
+            - root_path: Root path to mount the serve application
               (for example, "/serve"). All deployment routes will be prefixed
               with this path. Defaults to "".
-            - middlewares(list): A list of Starlette middlewares that will be
+            - middlewares: A list of Starlette middlewares that will be
               applied to the HTTP servers in the cluster. Defaults to [].
             - location(str, serve.config.DeploymentMode): The deployment
               location of HTTP servers:
@@ -87,13 +90,17 @@ def start(
                   on. This is the default.
                 - "EveryNode": start one HTTP server per node.
                 - "NoServer" or None: disable HTTP server.
-            - num_cpus (int): The number of CPU cores to reserve for each
+            - num_cpus: The number of CPU cores to reserve for each
               internal Serve HTTP proxy actor.  Defaults to 0.
         dedicated_cpu: Whether to reserve a CPU core for the internal
           Serve controller actor.  Defaults to False.
     """
+    client = _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
 
-    return _private_api.serve_start(detached, http_options, dedicated_cpu, **kwargs)
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
+
+    return client
 
 
 @PublicAPI
@@ -114,7 +121,7 @@ def shutdown() -> None:
         return
 
     client.shutdown()
-    set_global_client(None)
+    _set_global_client(None)
 
 
 @PublicAPI
@@ -313,9 +320,9 @@ def deployment(
         user_config (Optional[Any]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
-            restarting its replicas. The user_config needs to be hashable to
-            keep track of updates, so it must only contain hashable types, or
-            hashable types nested in lists and dictionaries.
+            restarting its replicas. The user_config must be json-serializable
+            to keep track of updates, so it must only contain json-serializable
+            types, or json-serializable types nested in lists and dictionaries.
         max_concurrent_queries (Optional[int]): The maximum number of queries
             that will be sent to a replica of this deployment without receiving
             a response. Defaults to 100.
@@ -389,12 +396,13 @@ def get_deployment(name: str) -> Deployment:
     >>> MyDeployment.options(num_replicas=10).deploy()  # doctest: +SKIP
 
     Args:
-        name(str): name of the deployment. This must have already been
+        name: name of the deployment. This must have already been
         deployed.
 
     Returns:
         Deployment
     """
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.get_deployment(name)
 
 
@@ -405,7 +413,7 @@ def list_deployments() -> Dict[str, Deployment]:
 
     Dictionary maps deployment name to Deployment objects.
     """
-
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v1")
     return _private_api.list_deployments()
 
 
@@ -434,10 +442,12 @@ def run(
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
-
     client = _private_api.serve_start(
         detached=True, http_options={"host": host, "port": port}
     )
+
+    # Record after Ray has been started.
+    record_extra_usage_tag(TagKey.SERVE_API_VERSION, "v2")
 
     if isinstance(target, Application):
         deployments = list(target.deployments.values())
@@ -493,6 +503,7 @@ def run(
         return ingress._get_handle()
 
 
+@DeveloperAPI
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 
@@ -508,7 +519,6 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     The returned Application object can be exported to a dictionary or YAML
     config.
     """
-
     if in_interactive_shell():
         raise RuntimeError(
             "build cannot be called from an interactive shell like "

@@ -1,4 +1,5 @@
 import os
+import tempfile
 from typing import TYPE_CHECKING, Optional
 
 import xgboost
@@ -26,7 +27,6 @@ class XGBoostCheckpoint(Checkpoint):
         cls,
         booster: xgboost.Booster,
         *,
-        path: os.PathLike,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "XGBoostCheckpoint":
         """Create a :py:class:`~ray.air.checkpoint.Checkpoint` that stores an XGBoost
@@ -34,7 +34,6 @@ class XGBoostCheckpoint(Checkpoint):
 
         Args:
             booster: The XGBoost model to store in the checkpoint.
-            path: The directory where the checkpoint will be stored.
             preprocessor: A fitted preprocessor to be applied before inference.
 
         Returns:
@@ -45,7 +44,7 @@ class XGBoostCheckpoint(Checkpoint):
             >>> import xgboost
             >>>
             >>> booster = xgboost.Booster()
-            >>> checkpoint = XGBoostCheckpoint.from_model(booster, path=".")  # doctest: +SKIP # noqa: E501
+            >>> checkpoint = XGBoostCheckpoint.from_model(booster)  # doctest: +SKIP # noqa: E501
 
             You can use a :py:class:`XGBoostCheckpoint` to create an
             :py:class:`~ray.train.xgboost.XGBoostPredictor` and preform inference.
@@ -54,14 +53,16 @@ class XGBoostCheckpoint(Checkpoint):
             >>>
             >>> predictor = XGBoostPredictor.from_checkpoint(checkpoint)  # doctest: +SKIP # noqa: E501
         """
-        booster.save_model(os.path.join(path, MODEL_KEY))
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            booster.save_model(os.path.join(tmpdirname, MODEL_KEY))
 
-        if preprocessor:
-            save_preprocessor_to_dir(preprocessor, path)
+            if preprocessor:
+                save_preprocessor_to_dir(preprocessor, tmpdirname)
 
-        checkpoint = cls.from_directory(path)
+            checkpoint = cls.from_directory(tmpdirname)
+            ckpt_dict = checkpoint.to_dict()
 
-        return checkpoint
+        return cls.from_dict(ckpt_dict)
 
     def get_model(self) -> xgboost.Booster:
         """Retrieve the XGBoost model stored in this checkpoint."""

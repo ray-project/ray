@@ -75,6 +75,16 @@ class TensorflowPredictor(DLPredictor):
             self._model.set_weights(model_weights)
         super().__init__(preprocessor)
 
+    def __repr__(self):
+        fn_name = getattr(self.model_definition, "__name__", self.model_definition)
+        return (
+            f"{self.__class__.__name__}("
+            f"model_definition={fn_name}, "
+            f"preprocessor={self._preprocessor!r}, "
+            f"model_weights={self.model_weights!r}, "
+            f"use_gpu={self.use_gpu!r})"
+        )
+
     @classmethod
     def from_checkpoint(
         cls,

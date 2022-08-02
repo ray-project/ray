@@ -7,7 +7,7 @@ from tqdm import tqdm
 import click
 
 from ray import serve
-from ray.serve.constants import DEFAULT_HTTP_ADDRESS
+from ray.serve._private.constants import DEFAULT_HTTP_ADDRESS
 from ray.serve import controller
 
 controller._TRACING_ENABLED = True

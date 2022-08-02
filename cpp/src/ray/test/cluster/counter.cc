@@ -111,6 +111,14 @@ RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
            &Counter::GetIntVal,
            &Counter::Initialized,
            &Counter::CreateChildActor,
+           &Counter::GetEnvVar,
            &Counter::Plus1ForActor);
 
 RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);
+
+std::string GetEnvVar(std::string key) {
+  auto value = std::getenv(key.c_str());
+  return value == NULL ? "" : std::string(value);
+}
+
+RAY_REMOTE(GetEnvVar);
