@@ -1,6 +1,7 @@
+import functools
 import inspect
 from abc import abstractmethod
-from typing import Any, Callable, Optional, Type, Union
+from typing import Any, Callable, Optional, Type, Union, Dict
 from pydantic import BaseModel
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -11,6 +12,8 @@ from fastapi import Body, Depends, FastAPI
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.http_util import ASGIHTTPSender
+from ray.serve.handle import RayServeLazySyncHandle
+from ray.serve.exceptions import RayServeException
 from ray import serve
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
@@ -83,16 +86,56 @@ class SimpleSchemaIngress:
 
 @PublicAPI(stability="beta")
 @serve.deployment(route_prefix="/")
-class DAGDriver(SimpleSchemaIngress):
+class DAGDriver:
+
+    MATCH_ALL_ROUTE_PREFIX = "/{path:path}"
+
     def __init__(
         self,
-        dag_handle: RayServeDAGHandle,
-        *,
+        dags: Union[RayServeDAGHandle, Dict[str, RayServeDAGHandle]],
         http_adapter: Optional[Union[str, Callable]] = None,
     ):
-        self.dag_handle = dag_handle
-        super().__init__(http_adapter)
+        install_serve_encoders_to_fastapi()
+        http_adapter = _load_http_adapter(http_adapter)
+        self.app = FastAPI()
+
+        if isinstance(dags, dict):
+            self.dags = dags
+            for route, handle in dags.items():
+
+                def endpoint_create(handle):
+                    @self.app.get(f"{route}")
+                    @self.app.post(f"{route}")
+                    async def handle_request(inp=Depends(http_adapter)):
+                        return await handle.remote(inp)
+
+                # bind current handle with endpoint creation function
+                endpoint_create_func = functools.partial(endpoint_create, handle)
+                endpoint_create_func()
+
+        else:
+            assert isinstance(dags, (RayServeDAGHandle, RayServeLazySyncHandle))
+            self.dags = {self.MATCH_ALL_ROUTE_PREFIX: dags}
+
+            # Single dag case, we will receive all prefix route
+            @self.app.get(self.MATCH_ALL_ROUTE_PREFIX)
+            @self.app.post(self.MATCH_ALL_ROUTE_PREFIX)
+            async def handle_request(inp=Depends(http_adapter)):
+                return await self.predict(inp)
+
+    async def __call__(self, request: starlette.requests.Request):
+        # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
+        # generate FastAPI on the fly, we should find a way to unify the two.
+        sender = ASGIHTTPSender()
+        await self.app(request.scope, receive=request.receive, send=sender)
+        return sender.build_asgi_response()
 
     async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
-        return await self.dag_handle.remote(*args, **kwargs)
+        return await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
+
+    async def predict_with_route(self, route_path, *args, **kwargs):
+        """Perform inference directly without HTTP for multi dags."""
+        if route_path not in self.dags:
+            raise RayServeException(f"{route_path} does not exist in dags routes")
+        return await self.dags[route_path].remote(*args, **kwargs)

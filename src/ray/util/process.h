@@ -81,6 +81,11 @@ class Process {
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
+  /// Executes command line operation.
+  ///
+  /// \param[in] argv The command line command to execute.
+  /// \return The output from the command.
+  static std::string Exec(const std::string command);
   static Process CreateNewDummy();
   static Process FromPid(pid_t pid);
   pid_t GetId() const;

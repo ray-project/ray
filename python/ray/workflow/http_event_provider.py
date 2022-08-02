@@ -218,7 +218,7 @@ class HTTPListener(EventListener):
     >>> event_node = workflow.wait_for_event( # doctest: +SKIP
     ...     HTTPListener, event_key='')
     >>> handle_event = ... # doctest: +SKIP
-    >>> handle_event.bind(event_node).run() # doctest: +SKIP
+    >>> workflow.run(handle_event.bind(event_node)) # doctest: +SKIP
     >>>
 
     """
@@ -241,13 +241,13 @@ class HTTPListener(EventListener):
         HTTPEventProvider and return the received external event
         Args:
             event_key: a unique identifier to the receiving node in a workflow;
-            if missing, default to current workflow step id
+            if missing, default to current workflow task id
         Returns:
             tuple(event_key, event_payload)
         """
         workflow_id = workflow_context.get_current_workflow_id()
         if event_key is None:
-            event_key = workflow_context.get_current_step_id()
+            event_key = workflow_context.get_current_task_id()
 
         event_key_payload = await self.handle.get_event_payload.remote(
             workflow_id, event_key
