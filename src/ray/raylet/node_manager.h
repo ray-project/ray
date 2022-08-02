@@ -671,6 +671,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   bool TryLocalGC();
 
+  /// Creates the callback used in the memory monitor.
+  MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -772,7 +775,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Target being evicted or null if no target
   std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
-  /// Time the eviction of the target began
+  /// Time when it started the eviction
   std::chrono::high_resolution_clock::time_point high_memory_eviction_start_time_;
 
   /// Seconds to initialize a local gc
@@ -831,7 +834,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   syncer::RaySyncer ray_syncer_;
 
   /// RaySyncerService for gRPC
-  syncer::RaySyncerService ray_syncer_service_; 
+  syncer::RaySyncerService ray_syncer_service_;
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;

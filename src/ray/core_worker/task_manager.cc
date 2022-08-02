@@ -393,8 +393,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     return true;
   } else {
     std::ostringstream stream;
-    stream << "No retries left for task " << spec.TaskId()
-           << ", not going to resubmit.";
+    stream << "No retries left for task " << spec.TaskId() << ", not going to resubmit.";
     RAY_LOG(INFO) << stream.str();
     return false;
   }
