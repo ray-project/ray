@@ -196,8 +196,7 @@ class SubmissionClient:
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
-        requests_session: Optional['requests.Session'] = None
-
+        requests_session: Optional["requests.Session"] = None,
     ):
 
         # Remove any trailing slashes
@@ -218,7 +217,6 @@ class SubmissionClient:
         # needed for cases like authentication to remote cluster.
         self._headers = cluster_info.headers
         self._session: "requests.Session" = requests_session or requests.Session()
-
 
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None

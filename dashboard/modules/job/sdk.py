@@ -44,7 +44,7 @@ class JobSubmissionClient(SubmissionClient):
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
-        requests_session: Optional['requests.Session'] = None
+        requests_session: Optional["requests.Session"] = None,
     ):
         """Initialize a JobSubmissionClient and check the connection to the cluster.
 
