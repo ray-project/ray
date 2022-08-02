@@ -239,7 +239,6 @@ TEST(RayClusterModeTest, FullTest) {
 }
 
 TEST(RayClusterModeTest, ActorHandleTest) {
-  ray::Init();
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
   auto obj1 = actor1.Task(&Counter::Plus1).Remote();
   EXPECT_EQ(1, *obj1.Get());
