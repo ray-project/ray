@@ -17,7 +17,7 @@
 
 **Ray is a unified framework for scalable computing.**
 
-Ray is unified framework for scalable computing that makes it easy to scale AI and Python applications.
+Ray is a unified framework for scalable computing that makes it easy to scale AI and Python applications.
 Ray comes with a toolkit of libraries (Ray AIR) for accelerating ML workloads:
 
 - `Datasets`_: Distributed Data Loading and Compute
@@ -26,7 +26,7 @@ Ray comes with a toolkit of libraries (Ray AIR) for accelerating ML workloads:
 - `RLlib`_: Scalable Reinforcement Learning
 - `Serve`_: Scalable and Programmable Serving
 
-[diagram here]
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/what_is_ray.svg
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/master/installation.html>`__.
@@ -41,7 +41,7 @@ More Information
 ----------------
 
 - `Documentation`_
-- `Ray 1.0 Architecture whitepaper`_
+- `Ray Architecture whitepaper`_
 - `Exoshuffle: large-scale data shuffle in Ray`_
 - `RLlib paper`_
 - `Tune paper`_
@@ -52,9 +52,7 @@ More Information
 - `Ray HotOS paper`_
 
 .. _`Documentation`: http://docs.ray.io/en/master/index.html
-.. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog`: https://medium.com/distributed-computing-with-ray
-.. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
+.. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
