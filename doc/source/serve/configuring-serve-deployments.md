@@ -191,7 +191,9 @@ Ray Serve supports serving deployments with different (possibly conflicting)
 Python dependencies.  For example, you can simultaneously serve one deployment
 that uses legacy Tensorflow 1 and another that uses Tensorflow 2.
 
-This is supported on Mac OS and Linux using Ray's {ref}`runtime-environments` feature.
+This is supported on Mac OS and Linux using Ray's {ref}`runtime-environments` feature;
+see :ref:`Runtime Environments<runtime-environments>` for details.
+
 As with all other Ray actor options, pass the runtime environment in via `ray_actor_options` in
 your deployment.  Be sure to first run `pip install "ray[default]"` to ensure the
 Runtime Environments feature is installed.
@@ -202,7 +204,7 @@ Example:
 ```
 
 :::{tip}
-Avoid dynamically installing packages that install from source: these can be slow and
+Certain `pip` packages build from source when installed via `pip install`; these can
 use up all resources while installing, leading to problems with the Ray cluster.  Consider
 precompiling such packages in a private repository or Docker image.
 :::
