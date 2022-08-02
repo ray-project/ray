@@ -4,24 +4,6 @@
 Ray Train API
 =============
 
-Trainer
--------
-
-.. warning::
-    This Trainer API is deprecated and no longer supported. For an overview of the new :ref:`air` Trainer API,
-    see :ref:`air-trainer-ref`.
-
-.. autoclass:: ray.train.Trainer
-    :members:
-
-.. _train-api-iterator:
-
-TrainingIterator
-~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.TrainingIterator
-    :members:
-
 .. _train-api-backend-config:
 
 Backend Configurations
@@ -66,53 +48,6 @@ BackendConfig
 
 .. autoclass:: ray.train.backend.BackendConfig
 
-
-Callbacks
----------
-
-.. _train-api-callback:
-
-TrainingCallback
-~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.TrainingCallback
-    :members:
-
-.. _train-api-print-callback:
-
-PrintCallback
-~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.callbacks.PrintCallback
-
-.. _train-api-json-logger-callback:
-
-JsonLoggerCallback
-~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.callbacks.JsonLoggerCallback
-
-.. _train-api-tbx-logger-callback:
-
-TBXLoggerCallback
-~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.callbacks.TBXLoggerCallback
-
-.. _train-api-mlflow-logger-callback:
-
-MLflowLoggerCallback
-~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.callbacks.MLflowLoggerCallback
-
-
-.. _train-api-torch-tensorboard-profiler-callback:
-
-TorchTensorboardProfilerCallback
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.train.callbacks.TorchTensorboardProfilerCallback
 
 .. _train-api-func-utils:
 
@@ -227,3 +162,12 @@ train.tensorflow.prepare_dataset_shard
 
 .. autofunction:: ray.train.tensorflow.prepare_dataset_shard
     :noindex:
+
+
+Deprecated APIs
+---------------
+
+These APIs are deprecated and will be removed in a future Ray release:
+
+- ray.train.Trainer
+- ray.train.callbacks.*
