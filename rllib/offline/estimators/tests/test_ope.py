@@ -127,12 +127,12 @@ class TestOPE(unittest.TestCase):
         results = self.algo.train()
         ope_results = results["evaluation"]["off_policy_estimator"]
         # Check that key exists AND is not {}
-        self.assertEqual(ope_results.keys(), {"is", "wis", "dm_fqe", "dr_fqe"})
+        self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
 
         # Check algo.evaluate() manually as well
         results = self.algo.evaluate()
         ope_results = results["evaluation"]["off_policy_estimator"]
-        self.assertEqual(ope_results.keys(), {"is", "wis", "dm_fqe", "dr_fqe"})
+        self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
 
 
 class TestFQE(unittest.TestCase):
