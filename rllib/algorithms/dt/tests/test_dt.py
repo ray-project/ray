@@ -31,8 +31,8 @@ class TestDT(unittest.TestCase):
         # TODO: terrible asset management style
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
-        # data_file = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
-        data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
+        data_file = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
+        # data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
         # Will use the Json Reader in this example until we convert over the example
         # files over to Parquet, since the dataset json reader cannot handle large
@@ -45,8 +45,8 @@ class TestDT(unittest.TestCase):
 
         config = (
             DTConfig()
-            # .environment(env="Pendulum-v1", clip_actions=True)
-            .environment(env="CartPole-v0")
+            .environment(env="Pendulum-v1", clip_actions=True)
+            # .environment(env="CartPole-v0")
             .framework("torch")
             .offline_data(
                 input_=input_reading_fn,
@@ -54,12 +54,16 @@ class TestDT(unittest.TestCase):
                 actions_in_input_normalized=True,
             )
             .training(
-                shuffle_buffer_size=8,
+                train_batch_size=200,
                 # use_obs_output=True,
                 # use_return_output=True,
                 target_return=-300,
-                max_seq_len=4,
-                max_ep_len=200,
+                replay_buffer_config={
+                    "capacity": 8,
+                },
+                model={
+                    "max_seq_len": 4,
+                },
             )
             .evaluation(
                 evaluation_interval=2,
@@ -71,7 +75,7 @@ class TestDT(unittest.TestCase):
             )
             .rollouts(
                 num_rollout_workers=0,
-                horizon=10,
+                horizon=200,
             )
         )
 

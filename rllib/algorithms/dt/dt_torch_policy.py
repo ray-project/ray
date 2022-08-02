@@ -67,8 +67,7 @@ class DTTorchPolicy(TorchPolicyV2):
         model_config.update(
             dict(
                 embed_dim=self.config["embed_dim"],
-                max_seq_len=self.config["max_seq_len"],
-                max_ep_len=self.config["max_ep_len"],
+                max_ep_len=self.config["horizon"],
                 num_layers=self.config["num_layers"],
                 num_heads=self.config["num_heads"],
                 embed_pdrop=self.config["embed_pdrop"],
@@ -110,8 +109,8 @@ class DTTorchPolicy(TorchPolicyV2):
         optimizer = configure_gpt_optimizer(
             model=self.model,
             learning_rate=self.config["lr"],
-            weight_decay=self.config["weight_decay"],
-            betas=self.config["betas"],
+            weight_decay=self.config["optimizer"]["weight_decay"],
+            betas=self.config["optimizer"]["betas"],
         )
 
         return optimizer

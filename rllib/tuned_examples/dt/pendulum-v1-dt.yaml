@@ -1,31 +1,35 @@
 pendulum_crr:
     env: 'Pendulum-v1'
-    run: CRR
+    run: DT
     stop:
-      # We could make this -200, but given that we have 4 cpus for our tests, we will have to settle for -300.
-      evaluation/episode_reward_mean: -300
-      timesteps_total: 2000000
+        # We could make this -200, but given that we have 4 cpus for our tests, we will have to settle for -300.
+        evaluation/episode_reward_mean: -300
+        timesteps_total: 2000000
     config:
         input: 'dataset'
         input_config:         
             paths: 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
             format: 'json'
-        framework: torch
-        num_workers: 3
-        gamma: 0.99
-        train_batch_size: 1024
-        critic_hidden_activation: 'relu'
-        critic_hiddens: [256, 256]
-        critic_lr: 0.0003
-        actor_hidden_activation: 'relu'
-        actor_hiddens: [256, 256]
-        actor_lr: 0.0003
         actions_in_input_normalized: True
-        clip_actions: True
-        # Q function update setting
-        twin_q: True
-        target_network_update_freq: 1
-        tau: 0.0001
+        clip_actions: False
+        # training
+        framework: torch
+        train_batch_size: 2048
+        target_return: 200
+        lr: 0.001
+        optimizer:
+            weight_decay: 0.0001
+            betas: [0.9, 0.95]
+        replay_buffer_config:
+            capacity: 20
+        # model
+        model:
+            max_seq_len: 5
+        num_layers: 2
+        num_heads: 1
+        embed_dim: 64
+        # rollout
+        horizon: 200
         # evaluation
         evaluation_config:
             explore: False
@@ -35,10 +39,3 @@ pendulum_crr:
         evaluation_interval: 1
         evaluation_num_workers: 1
         evaluation_parallel_to_training: True
-        # replay buffer
-        # specific to CRR
-        temperature: 1.0
-        weight_type: exp
-        advantage_type: max
-        max_weight: 20.0
-        n_action_sample: 4

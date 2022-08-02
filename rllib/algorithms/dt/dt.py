@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Type, Tuple
+from typing import List, Optional, Type, Tuple, Dict, Any
 
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
@@ -15,7 +15,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    PartialAlgorithmConfigDict,
     ResultDict,
 )
 
@@ -30,14 +29,15 @@ class DTConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
         # DT-specific settings.
         # TODO(charlesjsun): what is sphinx_doc
-        self.train_batch_size = 1
-        self.shuffle_buffer_size = 32
-        self.max_seq_len = 20
         self.lr = 1e-4
-        self.max_ep_len = self.horizon
+        self.optimizer = {
+            "weight_decay": 1e-4,
+            "betas": (0.9, 0.95),
+        }
 
-        self.weight_decay = 1e-4
-        self.betas = (0.9, 0.95)
+        self.model = {
+            "max_seq_len": 20,
+        }
 
         self.embed_dim = 128
         self.num_layers = 3
@@ -49,24 +49,28 @@ class DTConfig(AlgorithmConfig):
         self.use_return_output = False
         self.target_return = None
 
+        self.replay_buffer_config = {
+            "capacity": 20,
+        }
+
         # __sphinx_doc_end__
         # fmt: on
 
         # overriding the trainer config default
         # If data ingestion/sample_time is slow, increase this
         self.num_workers = 0
-        self.offline_sampling = True
         self.min_time_s_per_iteration = 10.0
+
+        # Don't change
+        self.offline_sampling = True
         self.postprocess_inputs = True
+
+        # TODO(charlesjsun): discount = None
 
     def training(
         self,
         *,
-        shuffle_buffer_size: Optional[int] = None,
-        weight_decay: Optional[float] = None,
-        betas: Optional[Tuple[float, float]] = None,
-        max_seq_len: Optional[int] = None,
-        max_ep_len: Optional[int] = None,
+        replay_buffer_config: Optional[Dict[str, Any]],
         embed_dim: Optional[int] = None,
         num_layers: Optional[int] = None,
         num_heads: Optional[int] = None,
@@ -83,7 +87,6 @@ class DTConfig(AlgorithmConfig):
 
         Args:
             **kwargs: forward compatibility kwargs
-            weight_decay: weight decay for AdamW optimizer
 
         Returns:
             This updated CRRConfig object.
@@ -91,16 +94,8 @@ class DTConfig(AlgorithmConfig):
         # TODO(charlesjsun): finish doc
 
         super().training(**kwargs)
-        if shuffle_buffer_size is not None:
-            self.shuffle_buffer_size = shuffle_buffer_size
-        if weight_decay is not None:
-            self.weight_decay = weight_decay
-        if betas is not None:
-            self.betas = betas
-        if max_seq_len is not None:
-            self.max_seq_len = max_seq_len
-        if max_ep_len is not None:
-            self.max_ep_len = max_ep_len
+        if replay_buffer_config is not None:
+            self.replay_buffer_config = replay_buffer_config
         if embed_dim is not None:
             self.embed_dim = embed_dim
         if num_layers is not None:
@@ -129,16 +124,6 @@ class DT(Algorithm):
     #  default config. config -> Trainer -> config
     #  defining Config class in the same file for now as a workaround.
 
-    def setup(self, config: PartialAlgorithmConfigDict):
-        super().setup(config)
-
-        # TODO(charlesjsun): add heuristics log2(dataset_size)
-        self.buffer = SegmentationBuffer(
-            self.config["shuffle_buffer_size"],
-            self.config["max_seq_len"],
-            self.config["max_ep_len"],
-        )
-
     @override(Algorithm)
     def validate_config(self, config: AlgorithmConfigDict) -> None:
         """Validates the Trainer's config dict.
@@ -153,10 +138,39 @@ class DT(Algorithm):
         super().validate_config(config)
 
         assert (
-            self.config["target_return"] is not None
+            self.config.get("target_return") is not None
         ), "Must specify a target return (total sum of rewards)."
 
-        assert self.config["max_seq_len"] >= 2, "max_seq_len must be at least 2."
+        assert self.config.get("horizon") is not None, "Must specify rollout horizon."
+        assert self.config["horizon"] >= 2, "rollout horizon must be at least 2."
+
+        assert self.config.get("replay_buffer_config") is not None, "Must specify replay_buffer_config."
+        replay_buffer_type = self.config["replay_buffer_config"].get("type")
+        if replay_buffer_type is None:
+            self.config["replay_buffer_config"]["type"] = SegmentationBuffer
+        else:
+            assert replay_buffer_type == SegmentationBuffer, (
+                "replay_buffer's type must be SegmentationBuffer."
+            )
+
+        model_max_seq_len = self.config["model"].get("max_seq_len")
+        assert model_max_seq_len is not None, "Must specify model's max_seq_len."
+
+        buffer_max_seq_len = self.config["replay_buffer_config"].get("max_seq_len")
+        if buffer_max_seq_len is None:
+            self.config["replay_buffer_config"]["max_seq_len"] = model_max_seq_len
+        else:
+            assert buffer_max_seq_len == model_max_seq_len, (
+                "replay_buffer's max_seq_len must equal model's max_seq_len."
+            )
+
+        buffer_max_ep_len = self.config["replay_buffer_config"].get("max_ep_len")
+        if buffer_max_ep_len is None:
+            self.config["replay_buffer_config"]["max_ep_len"] = self.config["horizon"]
+        else:
+            assert buffer_max_ep_len == self.config["horizon"], (
+                "replay_buffer's max_ep_len must equal rollout horizon."
+            )
 
     @classmethod
     @override(Algorithm)
@@ -186,8 +200,8 @@ class DT(Algorithm):
 
         # TODO(charlesjsun): Action normalization?
 
-        self.buffer.add(train_batch)
-        train_batch = self.buffer.sample(batch_size)
+        self.local_replay_buffer.add(train_batch)
+        train_batch = self.local_replay_buffer.sample(batch_size)
 
         # Postprocess batch before we learn on it.
         post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
