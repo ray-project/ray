@@ -104,8 +104,8 @@ class ImageFolderDatasource(BinaryDatasource):
         """  # noqa: E501
         if size is not None and len(size) != 2:
             raise ValueError(
-                f"Expected `size` to contain 2 numbers, but got {len(size)} numbers "
-                "instead."
+                "Expected `size` to contain 2 integers for height and width, "
+                f"but got {len(size)} integers instead."
             )
         if size is not None and (size[0] < 0 or size[1] < 0):
             raise ValueError(
