@@ -10,6 +10,7 @@ const GRAM_COL_WIDTH = 120;
 export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
   const nodeGRAMEntries = (node.gpus ?? []).map((gpu, i) => {
     const props = {
+      key: gpu.uuid,
       gpuName: gpu.name,
       utilization: gpu.memoryUsed,
       total: gpu.memoryTotal,
@@ -46,6 +47,7 @@ export const WorkerGRAM = ({
         return undefined;
       }
       const props = {
+        key: gpu.uuid,
         gpuName: gpu.name,
         total: gpu.memoryTotal,
         utilization: process.gpuMemoryUsage,
@@ -64,7 +66,7 @@ export const WorkerGRAM = ({
   );
 };
 
-const MiBRatioNoPercent = (used: number, total: number) =>
+const getMiBRatioNoPercent = (used: number, total: number) =>
   `${used}MiB/${total}MiB`;
 
 type GRAMEntryProps = {
@@ -80,7 +82,7 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
   utilization,
   total,
 }) => {
-  const ratioStr = MiBRatioNoPercent(utilization, total);
+  const ratioStr = getMiBRatioNoPercent(utilization, total);
   return (
     <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>

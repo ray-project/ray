@@ -12,7 +12,9 @@ export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
   return (
     <div style={{ minWidth: GPU_COL_WIDTH }}>
       {node.gpus !== undefined && node.gpus.length !== 0 ? (
-        node.gpus.map((gpu, i) => <NodeGPUEntry gpu={gpu} slot={i} />)
+        node.gpus.map((gpu, i) => (
+          <NodeGPUEntry key={gpu.uuid} gpu={gpu} slot={i} />
+        ))
       ) : (
         <Typography color="textSecondary" component="span" variant="inherit">
           N/A
@@ -45,7 +47,9 @@ export const WorkerGPU = ({ worker }: { worker: Worker }) => {
           return slot1.slot - slot2.slot;
         }
       })
-      .map((resourceSlot) => <WorkerGPUEntry resourceSlot={resourceSlot} />);
+      .map((resourceSlot) => (
+        <WorkerGPUEntry key={resourceSlot.slot} resourceSlot={resourceSlot} />
+      ));
   }
   return <div style={{ minWidth: 60 }}>{message}</div>;
 };

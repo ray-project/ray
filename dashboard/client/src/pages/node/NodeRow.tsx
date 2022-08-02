@@ -219,6 +219,9 @@ type NodeRowsProps = {
    * Whether the node row should refresh data about its workers.
    */
   isRefreshing: boolean;
+  /**
+   * Whether the row should start expanded. By default, this is false.
+   */
   startExpanded?: boolean;
 };
 
