@@ -1236,9 +1236,7 @@ def start_api_server(
             port_retries = 0
             port_test_socket = socket.socket()
             port_test_socket.setsockopt(
-                socket.SOL_SOCKET,
-                socket.SO_REUSEADDR,
-                1,
+                socket.SOL_SOCKET, socket.SO_REUSEADDR, 1,
             )
             try:
                 port_test_socket.bind((host, port))
@@ -1363,6 +1361,9 @@ def start_api_server(
             else:
                 raise Exception(err_msg)
 
+        if ray_constants.EXTERNAL_RAY_DASHBOARD_URL in os.environ:
+            # Get hosted external ray dashboard URL if it exists
+            dashboard_url = os.environ.get(ray_constants.EXTERNAL_RAY_DASHBOARD_URL)
         if minimal:
             # If it is the minimal installation, the web url (dashboard url)
             # shouldn't be configured because it doesn't start a server.
@@ -1702,9 +1703,7 @@ def start_raylet(
     if socket_to_use:
         socket_to_use.close()
     if node_name is not None:
-        command.append(
-            f"--node-name={node_name}",
-        )
+        command.append(f"--node-name={node_name}",)
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,

@@ -124,6 +124,10 @@ MEMORY_RESOURCE_UNIT_BYTES = 1
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
 
+# Set this environment variable to populate the dashboard URL with
+# and external hosted Ray dashboard URL.
+EXTERNAL_RAY_DASHBOARD_URL = "EXTERNAL_RAY_DASHBOARD_URL"
+
 
 def round_to_memory_units(memory_bytes, round_up):
     """Round bytes to the nearest memory unit."""
