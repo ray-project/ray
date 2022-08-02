@@ -57,7 +57,7 @@ class DLPredictor(Predictor):
             tensor: The tensor to input to the model.
 
         Returns:
-            A tensor, dictionary of tensors or pd.DataFrame containing the
+            A tensor, dictionary of tensors, or a pd.DataFrame containing the
             model output.
         """
         raise NotImplementedError
