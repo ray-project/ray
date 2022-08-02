@@ -227,10 +227,16 @@ class TestFQE(unittest.TestCase):
 
         self.batch is deterministic since it is collected under a CliffWalkingWallPolicy
         with epsilon = 0.0; check that FQE converges to the true Q-values for self.batch
-
-        If self.batch["rewards"] = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 10],
-        and gamma = 0.99, the discounted returns i.e. optimal Q-values are as follows:
         """
+
+        # If self.batch["rewards"] =
+        #   [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 10],
+        # and gamma = 0.99, the discounted returns i.e. optimal Q-values are as follows:
+
+        # q_values = copy.deepcopy(self.batch["rewards"])
+        # for t in range(len(self.batch["rewards"]) - 2, -1, -1):
+        #     q_values[t] = self.batch["rewards"][t] + self.gamma * q_values[t + 1]
+
         q_vals = [
             -2.50,
             -1.51,
@@ -276,7 +282,7 @@ def get_cliff_walking_wall_policy_and_data(
     """Collect a cliff_walking_wall policy and data with epsilon-greedy exploration.
 
     Args:
-        num_episodes: Number of episodes to collect
+        num_episodes: Minimum number of episodes to collect
         gamma: discount factor
         epsilon: epsilon-greedy exploration value
 
