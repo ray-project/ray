@@ -1,4 +1,5 @@
 tensorflow==2.9.1
+tensorflow_datasets==4.6.0
 jax==0.3.5
 flax==0.4.1
 
