@@ -93,10 +93,12 @@ def test_worker_stats(shutdown_only):
 
     timeout_seconds = 30
     start_time = time.time()
+    print(reply)
     while True:
         if time.time() - start_time > timeout_seconds:
             err_msg = (
-                f"Timeout({time.time() - start_time}) waiting for worker processes."
+                f"Timeout({time.time() - start_time}) waiting for worker processes.",
+                f"Most recent reply: {reply}",
             )
             print(err_msg)
             raise RayTestTimeoutException(err_msg)
@@ -117,6 +119,7 @@ def test_worker_stats(shutdown_only):
             for p in psutil.process_iter(attrs=["pid", "name"])
             if p.info["pid"] in pids
         ]
+        print(processes)
         for process in processes:
             # TODO(ekl) why does travis/mi end up in the process list
             assert (
