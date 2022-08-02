@@ -8,6 +8,7 @@ import io.ray.serve.handle.RayServeHandle;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -49,7 +50,7 @@ public class CrossLanguageDeploymentTest extends BaseServeTest {
   public void createPyClassTest() {
     Deployment deployment =
         Serve.deployment()
-            .setDeploymentLanguage(DeploymentLanguage.PYTHON)
+            .setLanguage(DeploymentLanguage.PYTHON)
             .setName("createPyClassTest")
             .setDeploymentDef(PYTHON_MODULE + ".Counter")
             .setNumReplicas(1)
@@ -64,7 +65,7 @@ public class CrossLanguageDeploymentTest extends BaseServeTest {
   public void createPyMethodTest() {
     Deployment deployment =
         Serve.deployment()
-            .setDeploymentLanguage(DeploymentLanguage.PYTHON)
+            .setLanguage(DeploymentLanguage.PYTHON)
             .setName("createPyMethodTest")
             .setDeploymentDef(PYTHON_MODULE + ".echo_server")
             .setNumReplicas(1)
@@ -75,10 +76,10 @@ public class CrossLanguageDeploymentTest extends BaseServeTest {
   }
 
   @Test
-  public void userConfigTest() {
+  public void userConfigTest() throws InterruptedException {
     Deployment deployment =
         Serve.deployment()
-            .setDeploymentLanguage(DeploymentLanguage.PYTHON)
+            .setLanguage(DeploymentLanguage.PYTHON)
             .setName("userConfigTest")
             .setDeploymentDef(PYTHON_MODULE + ".Counter")
             .setNumReplicas(1)
@@ -87,7 +88,8 @@ public class CrossLanguageDeploymentTest extends BaseServeTest {
             .create();
     deployment.deploy(true);
     Assert.assertEquals(Ray.get(deployment.getHandle().method("increase").remote("6")), "7");
-    // deployment.options().setUserConfig("3").create().deploy(true);
-    // Assert.assertEquals(Ray.get(deployment.getHandle().method("increase").remote("6")), "9");
+    deployment.options().setUserConfig("3").create().deploy(true);
+    TimeUnit.SECONDS.sleep(20L);
+    Assert.assertEquals(Ray.get(deployment.getHandle().method("increase").remote("6")), "9");
   }
 }

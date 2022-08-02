@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -37,7 +38,11 @@ public class ReplicaSet {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ReplicaSet.class);
 
-  private final Map<BaseActorHandle, Set<ObjectRef<Object>>> inFlightQueries;
+  /** Map<><ActorName/ObjectRefSet> */
+  private final Map<String, Set<ObjectRef<Object>>> inFlightQueries;
+
+  /** Map<><ActorName/BaseActorHandle> */
+  private final Map<String, BaseActorHandle> actorHandlerMap;
 
   private DeploymentLanguage language;
 
@@ -49,11 +54,14 @@ public class ReplicaSet {
 
   public ReplicaSet(String deploymentName) {
     this.inFlightQueries = new ConcurrentHashMap<>();
+    this.actorHandlerMap = new ConcurrentHashMap<>();
     try {
       Deployment deployment = Serve.getDeployment(deploymentName);
       this.language = deployment.getConfig().getDeploymentLanguage();
     } catch (Exception e) {
-      LOGGER.warn("can not get language from controller");
+      LOGGER.warn(
+          "Failed to get language from controller. Set it to Java as default value. The exception is ",
+          e);
       this.language = DeploymentLanguage.JAVA;
     }
     RayServeMetrics.execute(
@@ -69,23 +77,30 @@ public class ReplicaSet {
 
   @SuppressWarnings("unchecked")
   public synchronized void updateWorkerReplicas(Object actorSet) {
-    List<String> actorNames = ((ActorNameList) actorSet).getNamesList();
-    Set<BaseActorHandle> workerReplicas = new HashSet<>();
-    if (!CollectionUtil.isEmpty(actorNames)) {
-      actorNames.forEach(
-          name -> workerReplicas.add(Ray.getActor(name, Constants.SERVE_NAMESPACE).get()));
-    }
-
-    Set<BaseActorHandle> added =
-        new HashSet<>(Sets.difference(workerReplicas, inFlightQueries.keySet()));
-    Set<BaseActorHandle> removed =
-        new HashSet<>(Sets.difference(inFlightQueries.keySet(), workerReplicas));
-
-    added.forEach(actorHandle -> inFlightQueries.put(actorHandle, Sets.newConcurrentHashSet()));
-    removed.forEach(inFlightQueries::remove);
-
-    if (added.size() > 0 || removed.size() > 0) {
-      LOGGER.info("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
+    if (null != actorSet) {
+      Set<String> actorNameSet = new HashSet<>(((ActorNameList) actorSet).getNamesList());
+      Set<String> added = new HashSet<>(Sets.difference(actorNameSet, inFlightQueries.keySet()));
+      Set<String> removed = new HashSet<>(Sets.difference(inFlightQueries.keySet(), actorNameSet));
+      added.forEach(
+          name -> {
+            try {
+              Optional<BaseActorHandle> handleOptional =
+                  Ray.getActor(name, Constants.SERVE_NAMESPACE);
+              if (handleOptional.isPresent()) {
+                actorHandlerMap.put(name, handleOptional.get());
+                inFlightQueries.put(name, Sets.newConcurrentHashSet());
+              } else {
+                LOGGER.warn("Can not get actor handle. actor name is {}", name);
+              }
+            } catch (Throwable e) {
+              LOGGER.warn("Failed to get actor handle. The exception is ", e);
+            }
+          });
+      removed.forEach(inFlightQueries::remove);
+      removed.forEach(actorHandlerMap::remove);
+      if (added.size() > 0 || removed.size() > 0) {
+        LOGGER.info("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
+      }
     }
     hasPullReplica = true;
   }
@@ -133,7 +148,7 @@ public class ReplicaSet {
       }
       loopCount++;
     }
-    List<BaseActorHandle> handles = new ArrayList<>(inFlightQueries.keySet());
+    List<BaseActorHandle> handles = new ArrayList<>(actorHandlerMap.values());
     if (CollectionUtil.isEmpty(handles)) {
       throw new RayServeException("ReplicaSet found no replica.");
     }
@@ -155,7 +170,7 @@ public class ReplicaSet {
     }
   }
 
-  public Map<BaseActorHandle, Set<ObjectRef<Object>>> getInFlightQueries() {
+  public Map<String, Set<ObjectRef<Object>>> getInFlightQueries() {
     return inFlightQueries;
   }
 }
