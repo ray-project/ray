@@ -83,17 +83,20 @@ or [Slurm](cluster/slurm) clusters.
 
 ## What is Ray?
 
-Ray is an open-source project developed at UC Berkeley RISE Lab.
-As a general-purpose and universal distributed compute framework, you can flexibly run any compute-intensive Python workload — from distributed training or hyperparameter tuning to deep reinforcement learning and production model serving.
+Ray is unified framework for scalable computing that makes it easy to scale AI and Python applications.
+Ray comes with a toolkit of libraries (Ray AIR) for accelerating ML workloads:
 
-- Ray Core provides a simple, universal API for building distributed applications.
-- Ray's native libraries and tools enable you to run complex ML applications with Ray.
-- You can deploy these applications on any of the major cloud providers, including AWS, GCP, and Azure, or run them on your own servers.
-- Ray also has a growing [ecosystem of community integrations](ray-overview/ray-libraries), including [Dask](https://docs.ray.io/en/latest/data/dask-on-ray.html), [MARS](https://docs.ray.io/en/latest/data/mars-on-ray.html), [Modin](https://github.com/modin-project/modin), [Horovod](https://horovod.readthedocs.io/en/stable/ray_include.html), [Hugging Face](https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search), [Scikit-learn](ray-more-libs/joblib), [and others](ray-more-libs/index).
-The following figure gives you an overview of the Ray ecosystem.
+- `Datasets`_: Distributed Data Loading and Compute
+- `Train`_: Distributed Deep Learning
+- `Tune`_: Scalable Hyperparameter Tuning
+- `RLlib`_: Scalable Reinforcement Learning
+- `Serve`_: Scalable and Programmable Serving
 
-![](ray-overview/images/ray_ecosystem_integration_v2.png)
+[diagram here]
 
+Who is Ray for?
+- Ray core: systems software engineers, ML library and system developers
+- Ray AIR: ML practitioners and ML platform builders
 
 ## How to get involved?
 
