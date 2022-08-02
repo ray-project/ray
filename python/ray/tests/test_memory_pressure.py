@@ -8,20 +8,6 @@ import pytest
 import ray
 
 
-def n():
-    return 1
-
-
-@ray.remote
-def t1():
-    return n()
-
-
-@ray.remote
-def t2():
-    return n()
-
-
 @ray.remote(max_retries=-1)
 def inf_retry(
     allocate_bytes: int, num_chunks: int = 10, allocate_interval_s: float = 0
@@ -138,11 +124,9 @@ def test_memory_pressure_above_single_actor(shutdown_only):
         },
     )
 
-    # Ensure the current usage is below memory monitor threshold
     bytes_needed = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold_fraction
     )
-    assert bytes_needed > 0
 
     # Ensure a single task's memory usage does not trigger the memory monitor,
     # which will kill it
