@@ -1,10 +1,15 @@
-from ray.rllib.examples.env.cliff_walking_wall_env import CliffWalkingWallEnv, ACTION_UP, ACTION_RIGHT, ACTION_DOWN, ACTION_LEFT
+from ray.rllib.examples.env.cliff_walking_wall_env import (
+    CliffWalkingWallEnv,
+    ACTION_UP,
+    ACTION_RIGHT,
+    ACTION_DOWN,
+    ACTION_LEFT,
+)
 
-import numpy as np
 import unittest
 
-class TestCliffWalkingWallEnv(unittest.TestCase):
 
+class TestCliffWalkingWallEnv(unittest.TestCase):
     def test_env(self):
         env = CliffWalkingWallEnv()
         obs = env.reset()
@@ -28,7 +33,7 @@ class TestCliffWalkingWallEnv(unittest.TestCase):
 
         # Going down at the wall is a no-op
         env.step(ACTION_UP)
-        env.step(ACTION_RIGHT)
+        obs, _, _, _ = env.step(ACTION_RIGHT)
         self.assertEqual(obs, 25)
         obs, _, _, _ = env.step(ACTION_DOWN)
         self.assertEqual(obs, 25)
@@ -36,11 +41,8 @@ class TestCliffWalkingWallEnv(unittest.TestCase):
         # Move all the way to the right wall
         for _ in range(10):
             env.step(ACTION_RIGHT)
-        self.assertEqual(obs, 35)
         obs, rew, done, _ = env.step(ACTION_RIGHT)
         self.assertEqual(obs, 35)
-
-        # assert reward is -1
         self.assertEqual(rew, -1)
         self.assertEqual(done, False)
 
@@ -49,6 +51,7 @@ class TestCliffWalkingWallEnv(unittest.TestCase):
         self.assertEqual(obs, 47)
         self.assertEqual(rew, 10)
         self.assertEqual(done, True)
+
 
 if __name__ == "__main__":
     import sys
