@@ -106,7 +106,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         JobConfig.Builder jobConfigBuilder =
             JobConfig.newBuilder()
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
-                .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
         jobConfigBuilder.setRuntimeEnvInfo(rayConfig.runtimeEnvImpl.GenerateRuntimeEnvInfo());
         jobConfigBuilder.setDefaultActorLifetime(

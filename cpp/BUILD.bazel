@@ -194,7 +194,7 @@ cc_test(
         ],
     ),
     args = [
-        "--ray_code_search_path=$(location plus.so):$(location counter.so):cpp/src/ray/test/cluster",
+        "--ray_runtime_env='{\"native_libraries\": [\"file://localhost/./$(location plus.so)\", \"file://localhost/./$(location counter.so)\"], \"py_modules\": [\"file://localhost/./cpp/src/ray/test/cluster\"], \"env_vars\": {\"JOB_LEVEL_KEY1\":\"job_level_value1\"}}'",
         "--ray_head_args '--include-dashboard false'",
     ],
     copts = COPTS,
@@ -219,7 +219,7 @@ cc_test(
         "src/ray/test/cluster/*.h",
     ]),
     args = [
-        "--ray_code_search_path=$(location //java:libio_ray_ray_test.jar)",
+        "--ray_runtime_env='{\"java_jars\": [\"file://localhost/./$(location //java:libio_ray_ray_test.jar)\"]}'",
         "--ray_head_args '--include-dashboard false'",
     ],
     copts = COPTS,
@@ -285,7 +285,7 @@ cc_test(
         "src/ray/test/examples/*.cc",
     ]),
     args = [
-        "--ray_code_search_path=$(location simple_kv_store.so)",
+        "--ray_runtime_env='{\"native_libraries\": [\"$(location simple_kv_store.so)\"]}'",
         "--ray_head_args '--include-dashboard false'",
     ],
     copts = COPTS,

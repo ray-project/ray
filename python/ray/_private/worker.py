@@ -1499,7 +1499,10 @@ def init(
         namespace=namespace,
         job_config=job_config,
     )
-    if job_config and (job_config.runtime_env.get("working_dir") or job_config.runtime_env.get("py_modules")):
+    if job_config and (
+        job_config.runtime_env.get("working_dir")
+        or job_config.runtime_env.get("py_modules")
+    ):
         global_worker.set_load_code_from_local(True)
     else:
         # Because `ray.shutdown()` doesn't reset this flag, for multiple

@@ -74,6 +74,7 @@ void AbstractRayRuntime::DoShutdown() {
   if (ConfigInternal::Instance().run_mode == RunMode::CLUSTER) {
     ProcessHelper::GetInstance().RayStop();
   }
+  ConfigInternal::Instance().Clear();
 }
 
 void AbstractRayRuntime::Put(std::shared_ptr<msgpack::sbuffer> data,

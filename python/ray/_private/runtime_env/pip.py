@@ -395,7 +395,7 @@ class PipPlugin(RuntimeEnvPlugin):
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete pip URI %s", uri)
-        protocol, hash = parse_uri(uri)
+        protocol, _, hash, _ = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError(
                 "PipPlugin can only delete URIs with protocol "
@@ -428,7 +428,7 @@ class PipPlugin(RuntimeEnvPlugin):
         if not runtime_env.has_pip():
             return 0
 
-        protocol, hash = parse_uri(uri)
+        protocol, _, hash, _ = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash)
 
         async def _create_for_hash():
@@ -464,7 +464,7 @@ class PipPlugin(RuntimeEnvPlugin):
         # PipPlugin only uses a single URI.
         uri = uris[0]
         # Update py_executable.
-        protocol, hash = parse_uri(uri)
+        protocol, _, hash, _ = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash)
         virtualenv_python = _PathHelper.get_virtualenv_python(target_dir)
 

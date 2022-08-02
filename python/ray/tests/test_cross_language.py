@@ -6,7 +6,7 @@ import ray.cluster_utils
 
 
 def test_cross_language_raise_kwargs(shutdown_only):
-    paths = [ "file://localhost" + p for p in sys.path]
+    paths = ["file://localhost" + p for p in sys.path]
     ray.init(runtime_env={"py_modules": paths})
 
     with pytest.raises(Exception, match="kwargs"):
@@ -17,7 +17,7 @@ def test_cross_language_raise_kwargs(shutdown_only):
 
 
 def test_cross_language_raise_exception(shutdown_only):
-    paths = [ "file://localhost" + p for p in sys.path]
+    paths = ["file://localhost" + p for p in sys.path]
     ray.init(runtime_env={"py_modules": paths})
 
     class PythonObject(object):

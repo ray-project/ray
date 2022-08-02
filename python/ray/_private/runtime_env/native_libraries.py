@@ -8,7 +8,6 @@ from ray._private.runtime_env.packaging import (
     delete_package,
     download_and_unpack_package,
     get_local_path_from_uri,
-    is_jar_uri,
     parse_uri,
     UriType,
 )
@@ -18,12 +17,12 @@ from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 default_logger = logging.getLogger(__name__)
 
 
-class JavaJarsPlugin(RuntimeEnvPlugin):
+class NativeLibrariesPlugin(RuntimeEnvPlugin):
 
-    name = "java_jars"
+    name = "native_libraries"
 
     def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
-        self._resources_dir = os.path.join(resources_dir, "java_jars_files")
+        self._resources_dir = os.path.join(resources_dir, "native_libraries_files")
         self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
 
@@ -48,18 +47,7 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         return local_dir_size
 
     def get_uris(self, runtime_env: dict) -> List[str]:
-        return runtime_env.java_jars()
-
-    async def _download_jars(
-        self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ):
-        """Download a jar URI."""
-        jar_file = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
-        )
-        module_dir = self._get_local_dir_from_uri(uri)
-        logger.debug(f"Succeeded to download jar file {jar_file} .")
-        return module_dir
+        return runtime_env.get("native_libraries", [])
 
     async def create(
         self,
@@ -71,17 +59,13 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         if not uri:
             return 0
         parsed_uri = parse_uri(uri)
-        logger.info(f"parsed_uri {parsed_uri}")
         if parsed_uri.uri_type is not UriType.REMOTE:
             return 0
-        if is_jar_uri(uri):
-            module_dir = await self._download_jars(uri=uri, logger=logger)
-        else:
-            module_dir = await download_and_unpack_package(
-                uri, self._resources_dir, self._gcs_aio_client, logger=logger
-            )
+        library_dir = await download_and_unpack_package(
+            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+        )
 
-        return get_directory_size_bytes(module_dir)
+        return get_directory_size_bytes(library_dir)
 
     def modify_context(
         self,
@@ -91,11 +75,11 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         logger: Optional[logging.Logger] = default_logger,
     ):
         for uri in uris:
-            module_dir = self._get_local_dir_from_uri(uri)
-            if not module_dir.exists():
+            library_dir = self._get_local_dir_from_uri(uri)
+            if not library_dir.exists():
                 raise ValueError(
-                    f"Local directory {module_dir} for URI {uri} does "
+                    f"Local directory {library_dir} for URI {uri} does "
                     "not exist on the cluster. Something may have gone wrong while "
-                    "downloading, unpacking or installing the java jar files."
+                    "downloading, unpacking or installing the native library files."
                 )
-            context.java_jars.append(str(module_dir))
+            context.native_libraries.append(str(library_dir))

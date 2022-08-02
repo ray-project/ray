@@ -75,7 +75,10 @@ ABSL_FLAG(std::string,
           "",
           "The default actor lifetime type, `detached` or `non_detached`.");
 
-ABSL_FLAG(std::string, ray_runtime_env, "", "The serialized runtime env.");
+ABSL_FLAG(std::string,
+          ray_runtime_env,
+          "",
+          "The serialized runtime env with json format.");
 
 ABSL_FLAG(int,
           ray_runtime_env_hash,
@@ -106,9 +109,6 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     SetBootstrapAddress(config.address);
   }
   run_mode = config.local_mode ? RunMode::SINGLE_PROCESS : RunMode::CLUSTER;
-  if (!config.code_search_path.empty()) {
-    code_search_path = config.code_search_path;
-  }
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
   }
@@ -119,7 +119,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     default_actor_lifetime = rpc::JobConfig_ActorLifetime_DETACHED;
   }
   if (config.runtime_env) {
-    runtime_env = config.runtime_env;
+    runtime_env = *config.runtime_env;
   }
 
   if (argc != 0 && argv != nullptr) {
@@ -183,22 +183,28 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
         SetBootstrapAddress(ray_address_env);
       }
     }
-    if (code_search_path.empty()) {
+    if (!runtime_env.Contains("native_libraries")) {
       auto program_path = boost::dll::program_location().parent_path();
-      RAY_LOG(INFO) << "No code search path found yet. "
+      RAY_LOG(INFO) << "No native library path found yet. "
                     << "The program location path " << program_path
                     << " will be added for searching dynamic libraries by default."
-                    << " And you can add some search paths by '--ray_code_search_path'";
-      code_search_path.emplace_back(program_path.string());
-    } else {
-      // Convert all the paths to absolute path to support configuring relative paths in
-      // driver.
-      std::vector<std::string> absolute_path;
-      for (const auto &path : code_search_path) {
-        absolute_path.emplace_back(boost::filesystem::absolute(path).string());
-      }
-      code_search_path = absolute_path;
+                    << " And you can add native libraries by '--ray_runtime_env'";
+      runtime_env.Set(
+          "native_libraries",
+          std::vector<std::string>{"file://localhost" + program_path.string()});
     }
+    // else {
+    //   // Convert all the paths to absolute path to support configuring relative paths
+    //   in
+    //   // driver.
+    //   std::vector<std::string> absolute_paths;
+    //   auto native_libraries =
+    //   runtime_env.Get<std::vector<std::string>>("native_libraries"); for (const auto
+    //   &path : native_libraries) {
+    //     absolute_paths.emplace_back(boost::filesystem::absolute(path).string());
+    //   }
+    //   runtime_env.Set("native_libraries", absolute_paths);
+    // }
   }
   if (worker_type == WorkerType::DRIVER) {
     ray_namespace =
@@ -223,5 +229,7 @@ void ConfigInternal::UpdateSessionDir(const std::string dir) {
     logs_dir = session_dir + "/logs";
   }
 }
+
+void ConfigInternal::Clear() { *this = ConfigInternal(); }
 }  // namespace internal
 }  // namespace ray

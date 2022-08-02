@@ -16,6 +16,7 @@ from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METAD
 from ray.dashboard.modules.job.job_manager import JobManager, generate_job_id
 from ray.job_submission import JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
+from ray._private.runtime_env.packaging import unzip_package
 
 TEST_NAMESPACE = "jobs_test_namespace"
 
@@ -278,17 +279,24 @@ class TestShellScriptExecution:
                 "https://runtime-env-test.s3.amazonaws.com/script_runtime_env.zip",
                 filename=f.name,
             )
-            job_id = job_manager.submit_job(
-                entrypoint="python script.py",
-                runtime_env={"working_dir": "file://" + filename},
-            )
-            await async_wait_for_condition(
-                check_job_succeeded, job_manager=job_manager, job_id=job_id
-            )
-            assert (
-                job_manager.get_job_logs(job_id)
-                == "Executing main() from script.py !!\n"
-            )
+            with tempfile.TemporaryDirectory() as temp_dir:
+                unzip_package(
+                    package_path=filename,
+                    target_dir=temp_dir,
+                    remove_top_level_directory=True,
+                    unlink_zip=False,
+                )
+                job_id = job_manager.submit_job(
+                    entrypoint="python script.py",
+                    runtime_env={"working_dir": "file://localhost/" + temp_dir},
+                )
+                await async_wait_for_condition(
+                    check_job_succeeded, job_manager=job_manager, job_id=job_id
+                )
+                assert (
+                    job_manager.get_job_logs(job_id)
+                    == "Executing main() from script.py !!\n"
+                )
 
 
 @pytest.mark.asyncio

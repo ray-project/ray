@@ -11,7 +11,7 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     delete_package,
     download_and_unpack_package,
-    get_local_dir_from_uri,
+    get_local_path_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
     is_whl_uri,
@@ -19,6 +19,7 @@ from ray._private.runtime_env.packaging import (
     parse_uri,
     upload_package_if_needed,
     upload_package_to_gcs,
+    UriType,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
@@ -29,7 +30,7 @@ default_logger = logging.getLogger(__name__)
 
 def _check_is_uri(s: str) -> bool:
     try:
-        protocol, path = parse_uri(s)
+        protocol, _, _, path = parse_uri(s)
     except ValueError:
         protocol, path = None, None
 
@@ -134,13 +135,16 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         try_to_create_directory(self._resources_dir)
 
     def _get_local_dir_from_uri(self, uri: str):
-        return get_local_dir_from_uri(uri, self._resources_dir)
+        return get_local_path_from_uri(uri, self._resources_dir)
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
-        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
+        parsed_uri = parse_uri(uri)
+        if parsed_uri.uri_type is not UriType.REMOTE:
+            return 0
+        local_dir = get_local_path_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
 
         deleted = delete_package(uri, self._resources_dir)
@@ -194,6 +198,9 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
+        parsed_uri = parse_uri(uri)
+        if parsed_uri.uri_type is not UriType.REMOTE:
+            return 0
         if is_whl_uri(uri):
             module_dir = await self._download_and_install_wheel(uri=uri, logger=logger)
 
@@ -220,5 +227,6 @@ class PyModulesPlugin(RuntimeEnvPlugin):
                     "not exist on the cluster. Something may have gone wrong while "
                     "downloading, unpacking or installing the py_modules files."
                 )
+            context.py_modules.append(str(module_dir))
             module_dirs.append(str(module_dir))
         set_pythonpath_in_context(os.pathsep.join(module_dirs), context)

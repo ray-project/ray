@@ -9,12 +9,13 @@ from ray._private.runtime_env.packaging import (
     Protocol,
     delete_package,
     download_and_unpack_package,
-    get_local_dir_from_uri,
+    get_local_path_from_uri,
     get_uri_for_directory,
     get_uri_for_package,
     parse_uri,
     upload_package_if_needed,
     upload_package_to_gcs,
+    UriType,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
@@ -47,7 +48,7 @@ def upload_working_dir_if_needed(
 
     # working_dir is already a URI -- just pass it through.
     try:
-        protocol, path = parse_uri(working_dir)
+        protocol, _, _, path = parse_uri(working_dir)
     except ValueError:
         protocol, path = None, None
 
@@ -116,7 +117,10 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
-        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
+        parsed_uri = parse_uri(uri)
+        if parsed_uri.uri_type is not UriType.REMOTE:
+            return 0
+        local_dir = get_local_path_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
 
         deleted = delete_package(uri, self._resources_dir)
@@ -139,6 +143,9 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
+        parsed_uri = parse_uri(uri)
+        if parsed_uri.uri_type is not UriType.REMOTE:
+            return 0
         local_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger
         )
@@ -156,7 +163,7 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
         # WorkingDirPlugin uses a single URI.
         uri = uris[0]
-        local_dir = get_local_dir_from_uri(uri, self._resources_dir)
+        local_dir = get_local_path_from_uri(uri, self._resources_dir)
         if not local_dir.exists():
             raise ValueError(
                 f"Local directory {local_dir} for URI {uri} does "

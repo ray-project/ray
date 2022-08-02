@@ -368,7 +368,10 @@ public class MyClass {
     subprocess.check_call(["jar", "-cf", "myJar.jar", "MyClass.class"], cwd=tmp_dir)
 
     ray.init(
-        runtime_env={"py_modules": ["file://localhost/" + tmp_dir]}),
+        runtime_env={
+            "py_modules": ["file://localhost/" + tmp_dir],
+            "java_jars": ["file://localhost/" + tmp_dir],
+        },
     )
 
     handle = java_actor_class("MyClass").remote()

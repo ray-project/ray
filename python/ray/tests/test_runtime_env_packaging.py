@@ -19,7 +19,7 @@ from ray._private.runtime_env.packaging import (
     _dir_travel,
     _get_excludes,
     _store_package_in_gcs,
-    get_local_dir_from_uri,
+    get_local_path_from_uri,
     get_top_level_dir_from_compressed_package,
     get_uri_for_directory,
     get_uri_for_package,
@@ -444,7 +444,7 @@ def test_travel(tmp_path):
 )
 def test_parsing(parsing_tuple):
     uri, protocol, package_name = parsing_tuple
-    parsed_protocol, parsed_package_name = parse_uri(uri)
+    parsed_protocol, _, parsed_package_name, _ = parse_uri(uri)
 
     assert protocol == parsed_protocol
     assert package_name == parsed_package_name
@@ -469,7 +469,7 @@ def test_get_uri_for_package():
 
 def test_get_local_dir_from_uri():
     uri = "gcs://<working_dir_content_hash>.zip"
-    assert get_local_dir_from_uri(uri, "base_dir") == Path(
+    assert get_local_path_from_uri(uri, "base_dir") == Path(
         "base_dir/<working_dir_content_hash>"
     )
 

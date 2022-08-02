@@ -1730,6 +1730,7 @@ def get_ray_jars_dir():
         )
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
+
 def get_ray_native_library_dir():
     """Return a directory where all ray-related native libraries and
     their dependencies locate."""
@@ -1742,6 +1743,7 @@ def get_ray_native_library_dir():
             "(pip install ray[cpp])"
         )
     return native_library_dir
+
 
 def build_java_worker_command(
     bootstrap_address: str,

@@ -8,13 +8,13 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 java -version
 
-# pushd "$ROOT_DIR"
-#   echo "Check java code format."
-#   # check google java style
-#   mvn -T16 spotless:check
-#   # check naming and others
-#   mvn -T16 checkstyle:check
-# popd
+pushd "$ROOT_DIR"
+  echo "Check java code format."
+  # check google java style
+  mvn -T16 spotless:check
+  # check naming and others
+  mvn -T16 checkstyle:check
+popd
 
 run_testng() {
     local pid
@@ -68,12 +68,12 @@ bazel build //java:all_tests_shaded.jar
 
 java/generate_jni_header_files.sh
 
-# if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
-#   echo "Files are changed after build. Common cases are:"
-#   echo "    * Java native methods doesn't match JNI files. You need to either update Java code or JNI code."
-#   echo "    * pom_template.xml and pom.xml doesn't match. You need to either update pom_template.xml or pom.xml."
-#   exit 1
-# fi
+if ! git diff --exit-code -- java src/ray/core_worker/lib/java; then
+  echo "Files are changed after build. Common cases are:"
+  echo "    * Java native methods doesn't match JNI files. You need to either update Java code or JNI code."
+  echo "    * pom_template.xml and pom.xml doesn't match. You need to either update pom_template.xml or pom.xml."
+  exit 1
+fi
 
 # NOTE(kfstrom): Java test troubleshooting only.
 # Set MAX_ROUNDS to a big number (e.g. 1000) to run Java tests repeatedly.
@@ -84,22 +84,22 @@ if [ $MAX_ROUNDS -gt 1 ]; then
 fi
 
 round=1
-# while true; do
-#   echo Starting cluster mode test round $round
+while true; do
+  echo Starting cluster mode test round $round
 
-#   echo "Running tests under cluster mode."
-#   # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
-#   # TestNG will exit with code 2. And bazel treats it as test failure.
-#   # bazel test //java:all_tests --config=ci || cluster_exit_code=$?
-#   run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+  echo "Running tests under cluster mode."
+  # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
+  # TestNG will exit with code 2. And bazel treats it as test failure.
+  # bazel test //java:all_tests --config=ci || cluster_exit_code=$?
+  run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
-#   echo Finished cluster mode test round $round
-#   date
-#   round=$((round+1))
-#   if (( round > MAX_ROUNDS )); then
-#     break
-#   fi
-# done
+  echo Finished cluster mode test round $round
+  date
+  round=$((round+1))
+  if (( round > MAX_ROUNDS )); then
+    break
+  fi
+done
 
 echo "Running tests under local mode."
 # run_testng java -Dray.run-mode="LOCAL" -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
@@ -112,29 +112,29 @@ case "${OSTYPE}" in
 esac
 RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --node-ip-address="$ip"
 RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_shaded.jar -Dray.address="$ip:6379"\
- -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_shaded.jar" io.ray.test.MultiDriverTest
+ -Dray.redis.password='123456' -Dray.job.runtime-env.jars.0="file://$PWD/bazel-bin/java/all_tests_shaded.jar" io.ray.test.MultiDriverTest
 ray stop
 
-# echo "Running documentation demo code."
-# docdemo_path="java/test/src/main/java/io/ray/docdemo/"
-# for file in "$docdemo_path"*.java; do
-#   file=${file#"$docdemo_path"}
-#   class=${file%".java"}
-#   echo "Running $class"
-#   java -cp bazel-bin/java/all_tests_shaded.jar -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
-# done
-# popd
+echo "Running documentation demo code."
+docdemo_path="java/test/src/main/java/io/ray/docdemo/"
+for file in "$docdemo_path"*.java; do
+  file=${file#"$docdemo_path"}
+  class=${file%".java"}
+  echo "Running $class"
+  java -cp bazel-bin/java/all_tests_shaded.jar -Dray.raylet.startup-token=0 "io.ray.docdemo.$class"
+done
+popd
 
-# pushd "$ROOT_DIR"
-# echo "Testing maven install."
-# mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
-# # Ensure mvn test works
-# mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
-# popd
+pushd "$ROOT_DIR"
+echo "Testing maven install."
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
+# Ensure mvn test works
+mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
+popd
 
-# pushd "$ROOT_DIR"
-# echo "Running performance test."
-# run_timeout 60 java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar io.ray.performancetest.test.ActorPerformanceTestCase1
-# # The performance process may be killed by run_timeout, so clear ray here.
-# ray stop
-# popd
+pushd "$ROOT_DIR"
+echo "Running performance test."
+run_timeout 60 java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_shaded.jar io.ray.performancetest.test.ActorPerformanceTestCase1
+# The performance process may be killed by run_timeout, so clear ray here.
+ray stop
+popd

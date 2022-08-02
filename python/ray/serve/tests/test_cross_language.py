@@ -1,7 +1,6 @@
 import pytest
 
 import ray
-from ray.job_config import JobConfig
 from ray import serve
 from ray.serve.config import ReplicaConfig, DeploymentConfig
 from ray.serve._private.utils import msgpack_serialize
@@ -15,7 +14,10 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
         num_cpus=8,
         namespace="default_test_namespace",
         # A dummy code search path to enable cross language.
-        runtime_env={"py_modules": "file://localhost/.", "java_jars": "file://localhost/."}),
+        runtime_env={
+            "py_modules": "file://localhost/.",
+            "java_jars": "file://localhost/.",
+        },
     )
     client = serve.start(detached=True)
 

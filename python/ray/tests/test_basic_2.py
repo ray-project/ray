@@ -712,7 +712,8 @@ class A:
 
 if __name__ == "__main__":
     current_path = os.path.dirname(__file__)
-    ray.init({}, runtime_env={"py_modules": ["file://localhost/" + current_path]})
+    runtime_env={{"py_modules": ["file://localhost/" + current_path]}}
+    ray.init({}, runtime_env=runtime_env)
     b = A.B.remote()
     print(ray.get(b.get.remote()))
 """

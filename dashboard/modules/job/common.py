@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from ray._private import ray_constants
-from ray._private.runtime_env.packaging import parse_uri
+from ray._private.runtime_env.packaging import parse_uri, UriType
 from ray.experimental.internal_kv import (
     _internal_kv_get,
     _internal_kv_initialized,
@@ -165,8 +165,10 @@ def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
         raise ValueError(f"package_uri ({package_uri}) does not end in .zip or .whl")
     # We need to strip the <protocol>:// prefix to make it possible to pass
     # the package_uri over HTTP.
-    protocol, package_name = parse_uri(package_uri)
-    return protocol.value, package_name
+    parsed_uri = parse_uri(package_uri)
+    if parsed_uri.uri_type is not UriType.REMOTE:
+        raise ValueError(f"package_uri ({package_uri}) should be a remote type uri.")
+    return parsed_uri.protocol.value, parsed_uri.package_name
 
 
 def http_uri_components_to_uri(protocol: str, package_name: str) -> str:

@@ -60,7 +60,7 @@ class ConfigInternal {
 
   std::vector<std::string> head_args = {};
 
-  boost::optional<RuntimeEnv> runtime_env;
+  RuntimeEnv runtime_env;
 
   int runtime_env_hash = 0;
 
@@ -83,7 +83,7 @@ class ConfigInternal {
 
   ConfigInternal(ConfigInternal const &) = delete;
 
-  void operator=(ConfigInternal const &) = delete;
+  void Clear();
 
  private:
   ConfigInternal(){};

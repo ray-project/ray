@@ -145,13 +145,10 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   job_config.set_default_actor_lifetime(
       ConfigInternal::Instance().default_actor_lifetime);
 
-  for (const auto &path : ConfigInternal::Instance().code_search_path) {
-    job_config.add_code_search_path(path);
-  }
   job_config.set_ray_namespace(ConfigInternal::Instance().ray_namespace);
-  if (ConfigInternal::Instance().runtime_env) {
+  if (!ConfigInternal::Instance().runtime_env.Empty()) {
     job_config.mutable_runtime_env_info()->set_serialized_runtime_env(
-        ConfigInternal::Instance().runtime_env->Serialize());
+        ConfigInternal::Instance().runtime_env.Serialize());
   }
   std::string serialized_job_config;
   RAY_CHECK(job_config.SerializeToString(&serialized_job_config));

@@ -630,19 +630,21 @@ TEST(RayClusterModeTest, RuntimeEnvTaskLevelEnvVarsTest) {
 
 TEST(RayClusterModeTest, RuntimeEnvJobLevelEnvVarsTest) {
   ray::RayConfig config;
-  ray::RuntimeEnv runtime_env;
-  std::map<std::string, std::string> env_vars{{"KEY1", "value1"}};
-  runtime_env.Set("env_vars", env_vars);
-  config.runtime_env = runtime_env;
+  // TODO(SongGuyang): We can't set runtime env by RayConfig here because the input
+  // runtime env from command line(`--ray_runtime_env`) will override it. We should
+  // support a way of merging for this two. ray::RuntimeEnv runtime_env;
+  // std::map<std::string, std::string> env_vars{{"JOB_LEVEL_KEY1", "job_level_value1"}};
+  // runtime_env.Set("env_vars", env_vars);
+  // config.runtime_env = runtime_env;
   ray::Init(config, cmd_argc, cmd_argv);
-  auto r0 = ray::Task(GetEnvVar).Remote("KEY1");
+  auto r0 = ray::Task(GetEnvVar).Remote("JOB_LEVEL_KEY1");
   auto get_result0 = *(ray::Get(r0));
-  EXPECT_EQ("value1", get_result0);
+  EXPECT_EQ("job_level_value1", get_result0);
 
   auto actor_handle = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
-  auto r1 = actor_handle.Task(&Counter::GetEnvVar).Remote("KEY1");
+  auto r1 = actor_handle.Task(&Counter::GetEnvVar).Remote("JOB_LEVEL_KEY1");
   auto get_result1 = *(ray::Get(r1));
-  EXPECT_EQ("value1", get_result1);
+  EXPECT_EQ("job_level_value1", get_result1);
 
   ray::Shutdown();
 }

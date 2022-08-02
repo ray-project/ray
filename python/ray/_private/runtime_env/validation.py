@@ -18,7 +18,7 @@ def validate_uri(uri: str):
     try:
         from ray._private.runtime_env.packaging import parse_uri, Protocol
 
-        protocol, path = parse_uri(uri)
+        protocol, _, _, path = parse_uri(uri)
     except ValueError:
         raise ValueError(
             f"{uri} is not a valid URI. Passing directories or modules to "

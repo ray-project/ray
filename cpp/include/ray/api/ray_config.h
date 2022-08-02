@@ -40,11 +40,6 @@ class RayConfig {
   // Whether or not to run this application in a local mode. This is used for debugging.
   bool local_mode = false;
 
-  // An array of directories or dynamic library files that specify the search path for
-  // user code. This parameter is not used when the application runs in local mode.
-  // Only searching the top level under a directory.
-  std::vector<std::string> code_search_path;
-
   // The command line args to be appended as parameters of the `ray start` command. It
   // takes effect only if Ray head is started by a driver. Run `ray start --help` for
   // details.

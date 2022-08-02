@@ -2,7 +2,8 @@ import hashlib
 import logging
 import os
 import shutil
-from enum import Enum
+from collections import namedtuple
+from enum import Enum, auto
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
@@ -63,7 +64,7 @@ class Protocol(Enum):
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
-        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
+        return [cls.HTTPS, cls.S3, cls.GS]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -144,7 +145,16 @@ def _hash_directory(
     return hash_val
 
 
-def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
+class UriType(Enum):
+    REMOTE = (auto(),)
+    USER_LOCAL = (auto(),)
+    CLUSTER_LOCAL = (auto(),)
+
+
+ParsedUri = namedtuple("ParsedUri", ["protocol", "uri_type", "package_name", "path"])
+
+
+def parse_uri(pkg_uri: str) -> ParsedUri:
     """
     Parse resource uri into protocol and package name based on its format.
     Note that the output of this function is not for handling actual IO, it's
@@ -190,15 +200,18 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             "gs_public-runtime-env-test_test_module.zip")
     For FILE URIs, the path will have '/' replaced with '_'. The package name
     will be the adjusted path with 'file_' prepended.
-        urlparse("file:///path/to/test_module.zip")
+        urlparse("file:///path/to/test_module")
             -> ParseResult(
                 scheme='file',
                 netloc='path',
-                path='/path/to/test_module.zip'
+                path='/path/to/test_module'
             )
-            -> ("file", "file__path_to_test_module.zip")
+            -> ("file", "file__path_to_test_module")
+    TODO
     """
     uri = urlparse(pkg_uri)
+    if uri.scheme == "":
+        return ParsedUri(Protocol.FILE, UriType.USER_LOCAL, None, uri.path)
     try:
         protocol = Protocol(uri.scheme)
     except ValueError as e:
@@ -206,25 +219,39 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             f"Invalid protocol for runtime_env URI {pkg_uri}. "
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
-    if protocol == Protocol.S3 or protocol == Protocol.GS:
-        return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
-    elif protocol == Protocol.HTTPS:
-        return (
+    if protocol == Protocol.FILE:
+        if uri.netloc == "":
+            return ParsedUri(protocol, UriType.USER_LOCAL, None, uri.path)
+        elif uri.netloc.lower() == "localhost":
+            return ParsedUri(protocol, UriType.CLUSTER_LOCAL, None, uri.path)
+        else:
+            return ParsedUri(
+                protocol,
+                UriType.REMOTE,
+                f"file_{uri.path.replace('/', '_')}",
+                uri.path,
+            )
+    elif protocol == Protocol.S3 or protocol == Protocol.GS:
+        return ParsedUri(
             protocol,
-            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
+            UriType.REMOTE,
+            f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}",
+            uri.path,
         )
-    elif protocol == Protocol.FILE:
-        return (
+    elif protocol == Protocol.HTTPS:
+        return ParsedUri(
             protocol,
-            f"file_{uri.path.replace('/', '_')}",
+            UriType.REMOTE,
+            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
+            uri.path,
         )
     else:
-        return (protocol, uri.netloc)
+        return ParsedUri(protocol, UriType.REMOTE, uri.netloc, uri.path)
 
 
 def is_zip_uri(uri: str) -> bool:
     try:
-        protocol, path = parse_uri(uri)
+        _, _, _, path = parse_uri(uri)
     except ValueError:
         return False
 
@@ -233,7 +260,7 @@ def is_zip_uri(uri: str) -> bool:
 
 def is_whl_uri(uri: str) -> bool:
     try:
-        _, path = parse_uri(uri)
+        _, _, _, path = parse_uri(uri)
     except ValueError:
         return False
 
@@ -242,7 +269,7 @@ def is_whl_uri(uri: str) -> bool:
 
 def is_jar_uri(uri: str) -> bool:
     try:
-        _, path = parse_uri(uri)
+        _, _, _, path = parse_uri(uri)
     except ValueError:
         return False
 
@@ -352,9 +379,14 @@ def _store_package_in_gcs(
     return len(data)
 
 
-def _get_local_path(base_directory: str, pkg_uri: str) -> str:
-    _, pkg_name = parse_uri(pkg_uri)
-    return os.path.join(base_directory, pkg_name)
+def _get_local_path(base_directory: str, pkg_uri: str) -> Tuple[str, UriType]:
+    _, uri_type, pkg_name, path = parse_uri(pkg_uri)
+    if uri_type is not UriType.REMOTE:
+        RELATIVE_PATH_PREFIX = "/./"
+        if path.startswith(RELATIVE_PATH_PREFIX):
+            path = path[len(RELATIVE_PATH_PREFIX) :]
+        return (path, uri_type)
+    return (os.path.join(base_directory, pkg_name), uri_type)
 
 
 def _zip_directory(
@@ -407,7 +439,7 @@ def package_exists(pkg_uri: str) -> bool:
     Return:
         True for package existing and False for not.
     """
-    protocol, pkg_name = parse_uri(pkg_uri)
+    protocol, _, _, _ = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         return _internal_kv_exists(pkg_uri)
     else:
@@ -470,7 +502,7 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
 
 
 def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
-    protocol, pkg_name = parse_uri(pkg_uri)
+    protocol, _, _, _ = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
@@ -539,7 +571,7 @@ def upload_package_if_needed(
     if package_exists(pkg_uri):
         return False
 
-    package_file = Path(_get_local_path(base_directory, pkg_uri))
+    package_file, _ = Path(_get_local_path(base_directory, pkg_uri))
     create_package(
         directory,
         package_file,
@@ -555,11 +587,13 @@ def upload_package_if_needed(
     return True
 
 
-def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
+def get_local_path_from_uri(uri: str, base_directory: str) -> Path:
     """Return the local directory corresponding to this URI."""
-    pkg_file = Path(_get_local_path(base_directory, uri))
-    local_dir = pkg_file.with_suffix("")
-    return local_dir
+    path, uri_type = _get_local_path(base_directory, uri)
+    if uri_type is UriType.REMOTE:
+        return Path(path).with_suffix("")
+    else:
+        return Path(path)
 
 
 async def download_and_unpack_package(
@@ -580,12 +614,12 @@ async def download_and_unpack_package(
 
         logger.debug(f"Fetching package for URI: {pkg_uri}")
 
-        local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
+        local_dir = get_local_path_from_uri(pkg_uri, base_directory)
         assert local_dir != pkg_file, "Invalid pkg_file!"
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
         else:
-            protocol, pkg_name = parse_uri(pkg_uri)
+            protocol, _, pkg_name, _ = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 # Download package from the GCS.
                 code = await gcs_aio_client.internal_kv_get(

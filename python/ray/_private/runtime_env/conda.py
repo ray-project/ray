@@ -290,7 +290,7 @@ class CondaPlugin(RuntimeEnvPlugin):
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
         logger.info(f"Got request to delete URI {uri}")
-        protocol, hash = parse_uri(uri)
+        protocol, _, hash, _ = parse_uri(uri)
         if protocol != Protocol.CONDA:
             raise ValueError(
                 "CondaPlugin can only delete URIs with protocol "
@@ -330,7 +330,7 @@ class CondaPlugin(RuntimeEnvPlugin):
             logger.debug(
                 "Setting up conda for runtime_env: " f"{runtime_env.serialize()}"
             )
-            protocol, hash = parse_uri(uri)
+            protocol, _, hash, _ = parse_uri(uri)
             conda_env_name = self._get_path_from_hash(hash)
 
             conda_dict = _get_conda_dict_with_ray_inserted(runtime_env, logger=logger)
@@ -370,7 +370,7 @@ class CondaPlugin(RuntimeEnvPlugin):
         if runtime_env.conda_env_name():
             conda_env_name = runtime_env.conda_env_name()
         else:
-            protocol, hash = parse_uri(runtime_env.conda_uri())
+            protocol, _, hash, _ = parse_uri(runtime_env.conda_uri())
             conda_env_name = self._get_path_from_hash(hash)
         context.py_executable = "python"
         context.command_prefix += get_conda_activate_commands(conda_env_name)

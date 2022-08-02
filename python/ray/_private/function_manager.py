@@ -505,6 +505,7 @@ class FunctionActorManager:
         if actor_class is None:
             # Load actor class.
             if self._worker.load_code_from_local:
+                logger.info("1111111.")
                 # Load actor class from local code first.
                 actor_class = self._load_actor_class_from_local(
                     actor_creation_function_descriptor

@@ -18,6 +18,7 @@ from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
+from ray._private.runtime_env.native_libraries import NativeLibrariesPlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.runtime_env.plugin import (
     RuntimeEnvPlugin,
@@ -187,6 +188,9 @@ class RuntimeEnvAgent(
         self._java_jars_plugin = JavaJarsPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
+        self._native_libraries_plugin = NativeLibrariesPlugin(
+            self._runtime_env_dir, self._gcs_aio_client
+        )
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
@@ -201,6 +205,7 @@ class RuntimeEnvAgent(
             self._conda_plugin,
             self._py_modules_plugin,
             self._java_jars_plugin,
+            self._native_libraries_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
         for plugin in self._base_plugins:
