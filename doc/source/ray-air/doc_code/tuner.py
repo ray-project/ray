@@ -32,7 +32,6 @@ tuner.fit()
 # __basic_end__
 
 # __xgboost_start__
-# Function that returns the training dataset
 import ray
 from ray import tune
 from ray.tune import Tuner
@@ -54,7 +53,7 @@ trainer = XGBoostTrainer(
 )
 
 param_space = {
-    # You can tune arguments that are passed directly into the XGBoostTrainer
+    # Tune parameters directly passed into the XGBoostTrainer
     "num_boost_round": tune.randint(20, 30),
     # `params` will be merged with the `params` defined in the above XGBoostTrainer
     "params": {
@@ -62,7 +61,7 @@ param_space = {
         # Below will overwrite the XGBoostTrainer setting
         "max_depth": tune.randint(1, 9),
     },
-    # We can also tune the number of distributed workers
+    # Tune the number of distributed workers
     "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
 }
 
