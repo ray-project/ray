@@ -11,7 +11,7 @@ To learn about the architecture underlying Ray Serve Autoscaling, see {ref}`serv
 
 ## Autoscaling parameters
 
-There are several parameters the autoscaling algorithm takes into consideration when deciding the target replicas for your deployment:
+There are several parameters the autoscaling algorithm takes into consideration when deciding the target number of replicas for your deployment:
 
 **min_replicas[default_value=1]**: The minimal number of replicas for the deployment. ``min_replicas`` will also be the initial number of replicas when the deployment is deployed.
 :::{note}
