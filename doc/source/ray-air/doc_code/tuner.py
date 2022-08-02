@@ -96,7 +96,7 @@ param_space = {
         # This will overwrite whatever was set when TorchTrainer was instantiated
         "batch_size": tune.choice([4, 8]),
     },
-    # We can also tune the number of distributed workers
+    # Tune the number of distributed workers
     "scaling_config": ScalingConfig(num_workers=tune.grid_search([1, 2])),
 }
 
