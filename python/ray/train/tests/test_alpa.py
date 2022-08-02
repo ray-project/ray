@@ -1,7 +1,7 @@
 import pytest
 import ray
 from ray.air.config import ScalingConfig
-from ray.train.constants import TRAINING_ITERATION
+from ray.tune.result import TRAINING_ITERATION
 from ray.train.examples.alpa_mnist_example import (
     train_func as alpa_mnist_train_func,
 )
@@ -15,6 +15,7 @@ import numpy as np
 from ray import tune
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+import alpa
 
 
 @pytest.fixture
@@ -41,13 +42,10 @@ def ray_start_1_cpu_1_gpu():
 
 
 def test_jax_get_device(ray_start_4_cpus_2_gpus):
-    def _train_fn(x):
-        return jax.lax.psum(x, "i")
-
     def train_fn():
         """Creates a barrier across all hosts/devices."""
         session.report(
-            dict(devices=jax.pmap(_train_fn, "i")(np.ones(jax.local_device_count())))
+            dict(devices=alpa.device_mesh.global_cluster.num_devices)
         )
 
     num_gpus_per_worker = 2
