@@ -29,6 +29,17 @@ The Ray docs present all the information you need to start running Ray workloads
         :type: ref
         :text: Get Started with Ray on Kubernetes
         :classes: btn-outline-info btn-block
+    ---
+    **Getting started**
+    ^^^
+
+    Try example Ray workloads on Kubernetes.
+
+    +++
+    .. link-button:: kuberay-examples
+        :type: ref
+        :text: Example workloads
+        :classes: btn-outline-info btn-block
 ```
 ## The KubeRay project
 
