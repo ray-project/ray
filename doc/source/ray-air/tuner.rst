@@ -2,28 +2,37 @@
 
 Hyperparameter Tuning
 =====================
-The Ray AIR Tuner API is the recommended way to launch hyperparameter tuning jobs in Ray AIR.
+The Ray AIR :class:`Tuner <ray.tune.Tuner>` is the recommended way to tune hyperparameters in Ray AIR.
 
-Suppose that you already have a Ray AIR trainer at hand.
-You have fitted it and obtained a model and training results.
+The `Tuner` provides an interface that works with AIR Trainers to perform distributed
+hyperparameter tuning. The `Tuner` component is part of Ray Tune and provides
+a variety of state-of-the-art hyperparameter tuning algorithms for optimizing model
+performance.
 
-Next, you may want to see if you can change some hyperparameters to further improve the model.
+This guide will demonstrate basic usage of the Tuner. If you are interested in
+reading more, please take a look at the :ref:`Ray Tune documentation <tune-main>`.
 
-The Tuner API allows you to plug in your existing Trainer. Additionally you can specify the search space
-and search algorithms for your hyperparameter tuning job.
+Key Concepts
+------------
 
-In this guide, we will show you how to do this.
+There are a couple key concepts for using the Tuner:
+
+* First, you need to specify the hyperparameters you want to tune in a `search space`.
+* You select a `search algorithm` to effectively optimize your parameters and optionally use a
+  `scheduler` to stop searches early and speed up your experiments.
+* Pass in the above objects with a `Trainer` into `Tuner`,
+  which runs the hyperparameter tuning workload by evaluating multiple hyperparameters in parallel.
+* Each individual hyperparameter evaluation run is called a `trial`.
+* The results are returned in a `ResultGrid`.
 
 .. note::
-   The Tuner API can also be used to launch hyperparameter tuning without using Ray AIR Trainers - see
+   The Tuner API can also be used to launch hyperparameter tuning without using Ray AIR Trainers. See
    :ref:`the Ray Tune documentation <tune-main>` for more guides examples.
 
 Basic usage
 -----------
 
-Suppose that you already have your Ray AIR Trainer at hand.
-You have fitted it and obtained a model and training results.
-Below, we demonstrate how you can plug in your existing Trainer into a Tuner.
+Below, we demonstrate how you can use a Trainer object with a Tuner.
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
@@ -31,17 +40,13 @@ Below, we demonstrate how you can plug in your existing Trainer into a Tuner.
     :end-before: __basic_end__
 
 
-Defining the search space
--------------------------
+How do I configure a search space?
+----------------------------------
 
-The Tuner API takes in a `param_space` argument where you can define the search space
+`Tuner` takes in a `param_space` argument where you can define the search space
 from which hyperparameter configurations will be sampled.
 
-Generally, you can search over most arguments and configurations provided by Ray AIR (and your own options).
-This includes Ray Datasets, Preprocessors, the distributed training configuration (ScalingConfig)
-and general hyperparameters.
-
-Examples for common parameters (depending on the Trainer and model) you can tune are:
+Depending on the model and dataset, you may want to tune:
 
 - The training batch size
 - The learning rate for SGD-based training (e.g. image classification)
@@ -56,63 +61,62 @@ The following shows some example code on how to specify the ``param_space``.
         :start-after: __xgboost_start__
         :end-before: __xgboost_end__
 
-.. tabbed:: Deep Learning
+.. tabbed:: Pytorch
 
     .. literalinclude:: doc_code/tuner.py
         :language: python
         :start-after: __torch_start__
         :end-before: __torch_end__
 
+Read more about :ref:`Tune search spaces here <tune-search-space-tutorial>`.
 
-As you can see in the above example, the Tuner API allows you to specify a search space over most parameters.
-The parameters will be passed to the Trainer.
+You can use the Tuner to tune most arguments and configurations in Ray AIR, including but
+not limited to:
 
-A couple gotchas about the behavior of merging parameters with Trainer:
-- Dictionaries will be merged
-- Scaling configs will be merged
-- Duplicate items (which are both defined in the Trainer and Tuner) will be overwritten by the ones defined in the Tuner
+- Ray Datasets
+- Preprocessors
+- Scaling configurations
+- and other hyperparameters.
 
-The Tuner API also offers the possibility to apply different data preprocessing steps, as shown in the following snippet.
+There are a couple gotchas about parameter specification when using Tuners with Trainers:
 
-.. literalinclude:: doc_code/tuner.py
-    :language: python
-    :start-after: __tune_preprocess_start__
-    :end-before: __tune_preprocess_end__
-
-The Tuner API allows you to even tune the train/validation datasets:
-
-.. literalinclude:: doc_code/tuner.py
-    :language: python
-    :start-after: __tune_dataset_start__
-    :end-before: __tune_dataset_end__
-
-In general, all the arguments accepted by your :ref:`Trainer <air-trainer-ref>` can be tuned.
-The main exclusion here are all arguments of the :class:`ray.air.config.RunConfig`, which are inherently un-tunable.
-Another exclusion is the :class:`ray.tune.tune_config.TuneConfig`, which defines the tuning behavior itself - the settings
-apply to all trials and thus can't be tuned.
+- By default, configuration dictionaries and config objects will be deep-merged
+- Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner specification
+- **Exception:** all arguments of the :class:`RunConfig <ray.air.config.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
 
 
-Specify TuneConfig
-------------------
-This config contains tuning specific settings, including the tuning algorithm to use, the metric and mode to rank results etc.
+Configuring the Tuner
+---------------------
 
-The following we showcase some common configuration of :class:`ray.tune.tune_config.TuneConfig`.
+There are two main configuration objects that can be passed into the Tuner: the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` and the :class:`RunConfig <ray.air.config.RunConfig>`.
+
+The :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` contains tuning specific settings, including:
+
+- the tuning algorithm to use
+- the metric and mode to rank results
+- the amount of parallelism to use
+
+Here are some common configurations for `TuneConfig`:
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
     :start-after: __tune_config_start__
     :end-before: __tune_config_end__
 
-See the :class:`Tuner <ray.tune.tuner.Tuner>` and the :class:`TuneConfig API reference <ray.tune.tune_config.TuneConfig>` for more details.
+See the :class:`TuneConfig API reference <ray.tune.tune_config.TuneConfig>` for more details.
 
+The :class:`RunConfig <ray.air.config.RunConfig>` contains configurations that are more generic than tuning specific settings.
+This may include:
 
-Specify RunConfig
------------------
-This config contains framework's runtime configurations that are more generic than tuning specific settings.
-This may include failure/retry configurations, verbosity levels, the name of the experiment, its logging directory,
-checkpoint configuration as well as its syncing configuration.
+- failure/retry configurations
+- verbosity levels
+- the name of the experiment
+- the logging directory
+- checkpoint configurations
+- custom callbacks
+- integration with cloud storage
 
-The following we showcase some common configuration of :class:`ray.air.config.RunConfig`.
+The following we showcase some common configuration of :class:`RunConfig <ray.air.config.RunConfig>`.
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
@@ -121,29 +125,70 @@ The following we showcase some common configuration of :class:`ray.air.config.Ru
 
 See the :class:`RunConfig API reference <ray.air.config.RunConfig>` for more details.
 
-Putting everything together
----------------------------
-We can now construct a Tuner and call ``Tuner.fit`` on it!
+
+How do I specify parallelism?
+-----------------------------
+
+You can specify parallelism via the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` by setting the following flags:
+
+- `num_samples` which specifies the number of trials to run in total
+- `max_concurrent_trials` which specifies the max number of trials to run concurrently
+
+Note that actual parallelism can be less than `max_concurrent_trials` and will be determined by how many trials
+can fit in the cluster at once (i.e., if you have a trial that requires 16 GPUs, your cluster has 32 GPUs,
+and `max_concurrent_trials=10`, the `Tuner` can only run 2 trials concurrently).
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
-    :start-after: __tuner_start__
-    :end-before: __tuner_end__
+    :start-after: __tune_parallelism_start__
+    :end-before: __tune_parallelism_end__
 
-.. note::
-    ``num_samples=2`` here will be applied to the whole suite of grid search. In other words,
-    we will generate 4 trials.
+Read more about this in :ref:`tune-parallelism` section.
 
-For a more end-to-end example, checkout our :doc:`/ray-air/examples/analyze_tuning_results` guide.
 
-Inspect result
---------------
-``Tuner.fit()`` generates a result grid, which you can inspect in the following way:
+How do I specify an optimization algorithm?
+-------------------------------------------
+
+You can specify your hyperparameter optimization method via the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` by setting the following flags:
+
+- `search_alg` which provides an optimizer for selecting the optimal hyperparameters
+- `scheduler` which provides a scheduling/resource allocation algorithm for accelerating the search process
+
+.. literalinclude:: doc_code/tuner.py
+    :language: python
+    :start-after: __tune_optimization_start__
+    :end-before: __tune_optimization_end__
+
+Read more about this in the :ref:`Search Algorithm <search-alg-ref>` and :ref:`Scheduler <schedulers-ref>` section.
+
+How to analyze results?
+-----------------------
+
+``Tuner.fit()`` generates a ResultGrid object. This object contains metrics, results, and checkpoints
+of each trial. Below is a simple usage example:
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
     :start-after: __result_grid_inspection_start__
     :end-before: __result_grid_inspection_end__
+
+Advanced Tuning
+---------------
+
+Tuners also offer the possibility to apply different data preprocessing steps, as shown in the following snippet.
+
+.. literalinclude:: doc_code/tuner.py
+    :language: python
+    :start-after: __tune_preprocess_start__
+    :end-before: __tune_preprocess_end__
+
+You can also sample different train/validation datasets:
+
+.. literalinclude:: doc_code/tuner.py
+    :language: python
+    :start-after: __tune_dataset_start__
+    :end-before: __tune_dataset_end__
+
 
 Restoring and resuming
 ----------------------
