@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class HuggingFacePredictor(Predictor):
     """A predictor for HuggingFace Transformers PyTorch models.
 
