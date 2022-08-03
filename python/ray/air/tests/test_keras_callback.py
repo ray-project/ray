@@ -4,7 +4,7 @@ import tensorflow as tf
 from ray.air import session
 from ray.air.callbacks.keras import Callback
 from ray.air.constants import MODEL_KEY
-from ray.air.examples.tf.tensorflow_linear_dataset_example import (
+from ray.air.examples.tf.tensorflow_regression_example import (
     build_model,
     get_dataset,
 )
