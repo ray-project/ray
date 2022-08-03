@@ -1,5 +1,5 @@
 from ray import serve
-from ray.serve.http_util import ASGIHTTPSender
+from ray.serve._private.http_util import ASGIHTTPSender
 from ray.util.annotations import PublicAPI
 
 import gradio as gr
