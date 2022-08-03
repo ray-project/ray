@@ -51,7 +51,7 @@ class ScalingConfigWithIPs(ScalingConfig):
         from ray.tune import PlacementGroupFactory
 
         trainer_resources = (
-            self.trainer_resources if self.trainer_resources else {"CPU": 1}
+            self.trainer_resources if self.trainer_resources else {"CPU": 1, 'node:10.0.2.91':1e-3}
         )
         trainer_bundle = [trainer_resources]
         worker_resources = {
@@ -65,18 +65,19 @@ class ScalingConfigWithIPs(ScalingConfig):
             {
                 **worker_resources,
                 **worker_resources_extra,
-                **{f"node:{self.ips[_]}": 1e-3},
+                # **{f"node:{self.ips[_]}": 1e-3},
             }
             for _ in range(self.num_workers if self.num_workers else 0)
         ]
 
         # added here to gives the deamon resources
         # otherwise hang out forever when the trainer is killed
-        daemon_worker_bundles = [
-            {**{f"node:{self.ips[_]}": 1e-3}, **{"CPU": 1}}
-            for _ in range(self.num_workers if self.num_workers else 0)
-        ]
-        bundles = trainer_bundle + worker_bundles + daemon_worker_bundles
+        # daemon_worker_bundles = [
+        #     {**{f"node:{self.ips[_]}": 1e-3}, **{"CPU": 1}}
+        #     for _ in range(self.num_workers if self.num_workers else 0)
+        # ]
+        bundles = trainer_bundle + worker_bundles 
+        # + daemon_worker_bundles
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
 
@@ -84,3 +85,71 @@ def update_jax_platform(platform):
     """Update the jax backend platform."""
     jax.config.update("jax_platform_name", platform)
     xb.get_backend.cache_clear()
+
+
+
+
+
+# Import placement group APIs.
+from ray.util.placement_group import (
+    placement_group,
+    placement_group_table,
+    remove_placement_group,
+)
+from ray._private.services import get_node_ip_address
+from ray.util.placement_group import get_current_placement_group, remove_placement_group
+
+
+# Initialize Ray.
+import ray
+from icecream import ic
+
+
+import re
+
+
+def get_bundle2ip(pg=None):
+    """get the ip address list from placement group
+
+    The ordering of the ip address are aligned with each bundle index.
+    """
+
+    if pg: 
+        pg_id = pg.id.hex()
+    # dictionary: bundle_group to node_ip
+    dict_bg2ip = dict()
+
+    resources_list = ray._private.state.state._available_resources_per_node().values()
+
+    for resource in resources_list:
+        resource_name_list = resource.keys()
+
+        # ic(resource_name_list, pg_id)
+        node_ip = None
+        bundle_index_list = []
+        for resource_name in resource_name_list:
+            # when bundles are created, pg resources are specified as [resource]_[bundle_index]_[pg_id]
+            if pg: 
+                try_bundle_index = re.findall(rf"bundle_group_(\d+)_{pg_id}", resource_name)
+            else: 
+                try_bundle_index = re.findall(r"bundle_group_(\d+)_.*", resource_name)
+
+            try_node_ip = re.findall(
+                r"^node:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$)", resource_name
+            )
+
+            if try_node_ip:
+                node_ip = try_node_ip[0]
+
+            if try_bundle_index:
+                bundle_index_list.append(try_bundle_index[0])
+
+        dict_bg2ip.update(
+            **dict(zip(bundle_index_list, [node_ip] * len(bundle_index_list)))
+        )
+
+    ip_list = []
+    for i in range(len(dict_bg2ip)):
+        ip_list.append(dict_bg2ip[str(i)])
+
+    return ip_list

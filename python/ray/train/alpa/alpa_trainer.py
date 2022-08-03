@@ -39,8 +39,11 @@ from ray.train.alpa.utils import (
     is_ray_node_resource,
     ScalingConfigWithIPs,
     update_jax_platform,
+    get_bundle2ip
 )
+from icecream import ic
 
+from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +77,11 @@ class AlpaTrainer(BaseTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        if not ray.is_initialized():
-            ray.init()
+        # if not ray.is_initialized():
+        #     ray.init()
 
-        update_jax_platform("cpu")
-        # connect to the ray cluster
+        # update_jax_platform("cpu")
+        # # connect to the ray cluster
         if not alpa.api.is_initialized:
             alpa.init("ray")
 
@@ -140,11 +143,11 @@ class AlpaTrainer(BaseTrainer):
             parent=None,
         )
 
-        alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
+        # alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
         cluster.host_info = node_info
         cluster.host_num_devices = [num_devices_per_host for i in range(num_workers)]
-        alpa.device_mesh.set_global_cluster(cluster)
+        # alpa.device_mesh.set_global_cluster(cluster)
 
         self._train_loop = train_loop_per_worker
         self._train_loop_config = train_loop_config
@@ -162,6 +165,16 @@ class AlpaTrainer(BaseTrainer):
         # otherwise RuntimeError: Backend 'gpu' failed to initialize:
         # FAILED_PRECONDITION: No visible GPU devices.
         os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
+        current_placement_group = get_current_placement_group()
+        ray.wait([current_placement_group.ready()])
+
+        ips = get_bundle2ip(current_placement_group)
+        ic(ips)
+        import time 
+        time.sleep(1000)
+        # print(current_placement_group)
+        exit()
         if self._train_loop_config:
             self._train_loop(self._train_loop_config)
         else:
@@ -244,6 +257,8 @@ class AlpaTrainer(BaseTrainer):
                         **updated_scaling_config_dict
                     )
 
+                print(updated_scaling_config.as_placement_group_factory())
+                # exit()
                 return updated_scaling_config.as_placement_group_factory()
 
         return TrainTrainable
