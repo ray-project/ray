@@ -103,6 +103,9 @@ Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
 - [Actors](ray-core/actors): Stateful worker processes created in the cluster.
 - [Objects](ray-core/objects): Immutable values accessible across the cluster.
 
+Ray runs on any machine, cluster, or cloud provider, and also features a growing
+[ecosystem of community integrations](ray-overview/ray-libraries).
+
 ## How to get involved?
 
 Ray is more than a framework for distributed applications but also an active community of developers, researchers, and folks that love machine learning.

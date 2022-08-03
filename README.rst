@@ -35,6 +35,9 @@ Or more about `Ray Core`_ and its key abstractions:
 - `Actors`_: Stateful worker processes created in the cluster.
 - `Objects`_: Immutable values accessible across the cluster.
 
+Ray runs on any machine, cluster, or cloud provider, and also features a growing
+`ecosystem of community integrations`_.
+
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
 
@@ -44,6 +47,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Train`: https://docs.ray.io/en/latest/train/train.html
 .. _`Tune`: https://docs.ray.io/en/latest/tune/index.html
 .. _`RLlib`: https://docs.ray.io/en/latest/rllib/index.html
+.. _`ecosystem of community integrations`: https://docs.ray.io/en/latest/ray-overview/ray-libraries.html
 
 More Information
 ----------------
