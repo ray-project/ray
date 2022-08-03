@@ -27,30 +27,20 @@ class MyFirstDeployment:
   def other_method(self, arg):
       return self.msg
 
-MyFirstDeployment.deploy("Hello world!")
+my_first_deployment = MyFirstDeployment.bind("Hello world!")
 ```
 
-Deployments can be exposed in two ways: over HTTP or in Python via the {ref}`servehandle-api`.
+Deployments can be exposed in two ways: exposed to an end user over HTTP, or 
+exposed to other deployments in Python by including them in the input argument of `.bind()` for other deployments,
+e.g. `deployment_1.bind(deployment_2)`.
 By default, HTTP requests will be forwarded to the `__call__` method of the class (or the function) and a `Starlette Request` object will be the sole argument.
 You can also define a deployment that wraps a FastAPI app for more flexible handling of HTTP requests. See {ref}`serve-fastapi-http` for details.
 
-To serve multiple deployments defined by the same class, use the `name` option:
+To deploy multiple deployments that serve the same class or function, use the `name` option:
 
 ```python
-MyFirstDeployment.options(name="hello_service").deploy("Hello!")
-MyFirstDeployment.options(name="hi_service").deploy("Hi!")
-```
-
-You can also list all available deployments and dynamically get references to them:
-
-```python
->> serve.list_deployments()
-{'A': Deployment(name=A,version=None,route_prefix=/A)}
-{'MyFirstDeployment': Deployment(name=MyFirstDeployment,version=None,route_prefix=/MyFirstDeployment}
-
-# Returns the same object as the original MyFirstDeployment object.
-# This can be used to redeploy, get a handle, etc.
-deployment = serve.get_deployment("MyFirstDeployment")
+MyFirstDeployment.options(name="hello_service").bind("Hello!")
+MyFirstDeployment.options(name="hi_service").bind("Hi!")
 ```
 
 ## HTTP Ingress
@@ -67,7 +57,7 @@ class HTTPDeployment:
       return "Hello world!"
 ```
 
-After creating the deployment, it is now exposed by the HTTP server and handles requests using the specified class.
+After binding the deployment and running `serve.run()`, it is now exposed by the HTTP server and handles requests using the specified class.
 We can query the model to verify that it's working.
 
 ```python
@@ -78,27 +68,27 @@ print(requests.get("http://127.0.0.1:8000/api").text)
 (serve-key-concepts-query-deployment)=
 ## ServeHandle
 
-We can also query the deployment using the {mod}`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
+We can also query the deployment from other deployments using the {mod}`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
 
 ```python
-# To get a handle from the same script, use the Deployment object directly:
-handle = HTTPDeployment.get_handle()
+deployment_1 = Deployment1.bind()
 
-# To get a handle from a different script, reference it by name:
-handle = serve.get_deployment("http_deployment").get_handle()
-
-print(ray.get(handle.remote()))
+# deployment_1 will be passed into the constructor of Deployment2 to use as a
+# Python handle (a ServeHandle) in the code for Deployment2.
+deployment_2 = Deployment2.bind(deployment_1)
 ```
 
 As noted above, there are two ways to expose deployments. The first is by using the {mod}`ServeHandle <ray.serve.handle.RayServeHandle>`
-interface. This method allows you to access deployments within a Python script or code, making it convenient for a
-Python developer. And the second is by using the HTTP request, allowing access to deployments via a web client application.
+interface. This method allows you to access deployments from within other deployments in Python code, making it convenient for a
+Python developer to compose models together. The second is by using an HTTP request, allowing access to deployments via a web client application.
 
 :::{note}
-  Let's look at a simple end-to-end example using both ways to expose and access deployments. Your output may
+  Let's look at a simple end-to-end example using ServeHandle to query intermediate deployments. Your output may
   vary due to random nature of how the prediction is computed; however, the example illustrates two things:
-  1) how to expose and use deployments and 2) how to use replicas, to which requests are sent. Note that each pid
-  is a separate replica associated with each deployment name, `rep-1` and `rep-2` respectively.
+  1) how to expose and use deployments and 2) how to use replicas, to which requests are sent. Note that each PID
+  is a separate replica associated with each deployment.
+
+  To run this code, first run `ray start --head` to start a single-node Ray cluster on your machine, then run the following script.
 
   ```{literalinclude} doc_code/create_deployment.py
   :end-before: __serve_example_end__
