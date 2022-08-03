@@ -13,6 +13,7 @@ import ray._private.services
 from ray._private.test_utils import run_string_as_driver
 from ray.client_builder import ClientContext
 from ray.cluster_utils import Cluster
+from ray.experimental.state.common import ray_address_to_api_server_url
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
@@ -380,6 +381,10 @@ def test_hosted_external_dashboard_url(shutdown_only):
     assert (
         info.address_info["webui_url_with_protocol"] == "https://external_dashboard_url"
     )
+    assert (
+        ray_address_to_api_server_url("auto")
+        == info.address_info["webui_url_with_protocol"]
+    )
     ray.shutdown()
 
     os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "external_dashboard_url"
@@ -389,6 +394,10 @@ def test_hosted_external_dashboard_url(shutdown_only):
     assert (
         info.address_info["webui_url_with_protocol"] == "http://external_dashboard_url"
     )
+    assert (
+        ray_address_to_api_server_url("auto")
+        == info.address_info["webui_url_with_protocol"]
+    )
     ray.shutdown()
 
     os.environ.pop(RAY_OVERRIDE_DASHBOARD_URL)
@@ -396,6 +405,10 @@ def test_hosted_external_dashboard_url(shutdown_only):
     assert info.dashboard_url.startswith("127.0.0.1")
     assert info.address_info["webui_url"].startswith("127.0.0.1")
     assert info.address_info["webui_url_with_protocol"].startswith("http://127.0.0.1")
+    assert (
+        ray_address_to_api_server_url("auto")
+        == info.address_info["webui_url_with_protocol"]
+    )
 
     if orig_external_dashboard_url:
         os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
