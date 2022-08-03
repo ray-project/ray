@@ -375,14 +375,27 @@ def test_hosted_external_dashboard_url(shutdown_only):
 
     os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "https://external_dashboard_url"
     info = ray.init()
-    assert info.dashboard_url == "https://external_dashboard_url"
-    assert info.address_info["webui_url"] == "https://external_dashboard_url"
+    assert info.dashboard_url == "external_dashboard_url"
+    assert info.address_info["webui_url"] == "external_dashboard_url"
+    assert (
+        info.address_info["webui_url_with_protocol"] == "https://external_dashboard_url"
+    )
+    ray.shutdown()
+
+    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "external_dashboard_url"
+    info = ray.init()
+    assert info.dashboard_url == "external_dashboard_url"
+    assert info.address_info["webui_url"] == "external_dashboard_url"
+    assert (
+        info.address_info["webui_url_with_protocol"] == "http://external_dashboard_url"
+    )
     ray.shutdown()
 
     os.environ.pop(RAY_OVERRIDE_DASHBOARD_URL)
     info = ray.init()
     assert info.dashboard_url.startswith("127.0.0.1")
     assert info.address_info["webui_url"].startswith("127.0.0.1")
+    assert info.address_info["webui_url_with_protocol"].startswith("http://127.0.0.1")
 
     if orig_external_dashboard_url:
         os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url

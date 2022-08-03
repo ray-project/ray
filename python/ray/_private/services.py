@@ -400,7 +400,6 @@ def get_webui_url_from_internal_kv():
     webui_url = ray.experimental.internal_kv._internal_kv_get(
         "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
-
     return ray._private.utils.decode(webui_url) if webui_url is not None else None
 
 

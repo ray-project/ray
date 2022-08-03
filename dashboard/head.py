@@ -243,10 +243,10 @@ class DashboardHead:
             if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ
             else f"{http_host}:{http_port}"
         )
-        # Add https protocol to dashboard URL if it doesn't
+        # Add http protocol to dashboard URL if it doesn't
         # already contain a protocol.
         if not urlparse(dashboard_address).scheme:
-            dashboard_address = "https://" + dashboard_address
+            dashboard_address = "http://" + dashboard_address
         internal_kv._internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS,
             dashboard_address,
