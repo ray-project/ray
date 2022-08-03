@@ -10,6 +10,7 @@ import requests
 import ray
 from ray._private.test_utils import (
     RayTestTimeoutException,
+    wait_for_condition,
     wait_until_succeeded_without_exception,
 )
 from ray._private.utils import init_grpc_channel
@@ -91,27 +92,14 @@ def test_worker_stats(shutdown_only):
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
 
-    timeout_seconds = 30
-    start_time = time.time()
-    print(reply)
-    while True:
-        if time.time() - start_time > timeout_seconds:
-            err_msg = (
-                f"Timeout({time.time() - start_time}) waiting for worker processes.",
-                f"Most recent reply: {reply}",
-            )
-            print(err_msg)
-            raise RayTestTimeoutException(err_msg)
+    # 1 actor + 1 worker for task + 1 driver
+    num_workers = 3
 
-        # Wait for the workers to start.
-        if len(reply.core_workers_stats) < num_cpus + 2:
-            time.sleep(1)
-            reply = try_get_node_stats()
-            print(reply)
-            continue
-
+    def verify():
+        reply = try_get_node_stats()
         # Check that the rest of the processes are workers, 1 for each CPU.
-        assert len(reply.core_workers_stats) == num_cpus + 2
+
+        assert len(reply.core_workers_stats) == num_workers
         # Check that all processes are Python.
         pids = [worker.pid for worker in reply.core_workers_stats]
         processes = [
@@ -119,7 +107,6 @@ def test_worker_stats(shutdown_only):
             for p in psutil.process_iter(attrs=["pid", "name"])
             if p.info["pid"] in pids
         ]
-        print(processes)
         for process in processes:
             # TODO(ekl) why does travis/mi end up in the process list
             assert (
@@ -131,7 +118,10 @@ def test_worker_stats(shutdown_only):
                 or "pytest" in process
                 or "ray" in process
             ), process
-        break
+
+        return True
+
+    wait_for_condition(verify)
 
 
 def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
