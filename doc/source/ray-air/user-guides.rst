@@ -87,12 +87,3 @@ AIR User Guides
         :type: ref
         :text: How to Deploy AIR
         :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: benchmarks
-        :type: ref
-        :text: Benchmarks
-        :classes: btn-link btn-block stretched-link

@@ -8,11 +8,11 @@ Ray AIR Trainers
 .. image:: images/train.svg
 
 
-Ray AIR Trainers provide a way to scale out training with popular machine learning frameworks
+Ray AIR Trainers provide a way to scale out training with popular machine learning frameworks.
 
-As part of Ray Train, Trainers provide a seamless abstraction for running distributed multi-node training with fault tolerance.
+As part of Ray Train, Trainers enable users to run distributed multi-node training with fault tolerance.
 
-Ray AIR Trainers also integrate with the rest of the Ray ecosystem. Trainers leverage :ref:`Ray Data <air-ingest>` to enable scalable preprocessing
+Trainers also integrate with the rest of the Ray ecosystem. Trainers leverage :ref:`Ray Data <air-ingest>` to enable scalable preprocessing
 and performant distributed data ingestion. After executing training, Trainers output the trained model in the form of
 a :class:`Checkpoint <ray.air.checkpoint.Checkpoint>`, which can be used for batch or online prediction inference. Trainers
 also can be composed with Tuners.
@@ -33,6 +33,10 @@ construct a Trainer, you can provide:
 * A :class:`run_config <ray.air.config.RunConfig>`, which configures a variety of runtime parameters such as fault tolerance, logging, and callbacks.
 * A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided dataset, which configures preprocessing and the datasets to ingest from.
 * `resume_from_checkpoint`, which is a checkpoint path to resume from, should your training run be interrupted.
+
+**Note about datasets:** If the ``datasets`` dict contains a training dataset (denoted by
+the "train" key), then it will be split into multiple dataset
+shards, with each worker training on a single shard. All the other datasets will not be split.
 
 After construction, you can invoke a trainer by calling :meth:`Trainer.fit() <ray.train.trainer.Trainer.fit>`.
 
@@ -139,7 +143,19 @@ Other Trainers
 HuggingFace Trainer
 ~~~~~~~~~~~~~~~~~~~
 
-HuggingFaceTrainer further extends TorchTrainer. The main logic is inside ``trainer_init_per_worker``.
+:class:`HuggingFaceTrainer <ray.train.huggingface.HuggingFaceTrainer>` further extends :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, built
+for interoperability with the HuggingFace Transformers library.
+
+Users are required to provide a ``trainer_init_per_worker`` function which returns a
+``transformers.Trainer`` object. The ``trainer_init_per_worker`` function
+will have access to preprocessed train and evaluation datasets.
+
+Upon calling `HuggingFaceTrainer.fit()`, multiple workers (ray actors) will be spawned,
+and each worker will create its own copy of a ``transformers.Trainer``.
+
+Each worker will then invoke ``transformers.Trainer.train()``, which will perform distributed
+training via Pytorch DDP.
+
 
 .. literalinclude:: doc_code/hf_trainer.py
     :language: python

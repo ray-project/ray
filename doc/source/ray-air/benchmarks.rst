@@ -207,6 +207,7 @@ Performance may vary greatly across different model, hardware, and cluster confi
       - 236.61 s (vs 220.97 s Pytorch)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 4 --use-gpu`
 
+
 .. _tf-training-parity:
 
 Tensorflow Training Parity
