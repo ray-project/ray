@@ -8,14 +8,12 @@ Ray AIR Trainers
 .. image:: images/train.svg
 
 
-Ray AIR Trainers provide a way to scale out training with popular machine learning frameworks.
+Ray AIR Trainers provide a way to scale out training with popular machine learning frameworks. As part of Ray Train, Trainers enable users to run distributed multi-node training with fault tolerance.
+Fully integrated with the Ray ecosystem, Trainers leverage :ref:`Ray Data <air-ingest>` to enable scalable preprocessing
+and performant distributed data ingestion. Also, Trainers can be composed with :class:`Tuners <ray.tune.Tuner>` for distributed hyperparameter tuning.
 
-As part of Ray Train, Trainers enable users to run distributed multi-node training with fault tolerance.
-
-Trainers also integrate with the rest of the Ray ecosystem. Trainers leverage :ref:`Ray Data <air-ingest>` to enable scalable preprocessing
-and performant distributed data ingestion. After executing training, Trainers output the trained model in the form of
-a :class:`Checkpoint <ray.air.checkpoint.Checkpoint>`, which can be used for batch or online prediction inference. Trainers
-also can be composed with Tuners.
+After executing training, Trainers output the trained model in the form of
+a :class:`Checkpoint <ray.air.checkpoint.Checkpoint>`, which can be used for batch or online prediction inference.
 
 There are three broad categories of Trainers that AIR offers:
 
@@ -34,7 +32,7 @@ construct a Trainer, you can provide:
 * A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided datasets, which configures preprocessing and the datasets to ingest from.
 * `resume_from_checkpoint`, which is a checkpoint path to resume from, should your training run be interrupted.
 
-After construction, you can invoke a trainer by calling :meth:`Trainer.fit() <ray.train.trainer.Trainer.fit>`.
+After instatiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() <ray.train.trainer.Trainer.fit>`.
 
 .. literalinclude:: doc_code/xgboost_trainer.py
     :language: python
@@ -54,6 +52,9 @@ the main training logic that runs on each training worker.
 
 Under the hood, Ray AIR will use the provided ``scaling_config`` to instantiate
 the correct number of workers.
+
+Upon instantiation, each worker will be able to reference a global :ref:`Session <air-session-ref>` object,
+which provides functionality for reporting metrics, saving checkpoints, and more.
 
 You can provide multiple datasets to a trainer via the ``datasets`` parameter.
 If ``datasets`` includes a training dataset (denoted by the "train" key), then it will be split into multiple dataset
@@ -85,7 +86,7 @@ Read more about :ref:`Ray Train's Deep Learning Trainers <train-user-guide>`.
 How to report metrics and checkpoints?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-During model training, you may want to save training metrics and checkpoints for downstream processing (e.g. serving the model).
+During model training, you may want to save training metrics and checkpoints for downstream processing (e.g., serving the model).
 
 Use the :ref:`Session <air-session-ref>` API to gather metrics and save checkpoints.
 Checkpoints are synced to driver or the cloud storage based on user's configurations,
@@ -167,8 +168,9 @@ Scikit-Learn Trainer
 
 .. note:: This trainer is not distributed.
 
-The Scikit-Learn Trainer is a thin wrapper for one to launch scikit-learn training within Ray AIR.
-It is not distributed but can still benefit from integrating with Ray Tune and batch/online prediction.
+The Scikit-Learn Trainer is a thin wrapper to launch scikit-learn training within Ray AIR.
+Even though this trainer is not distributed, you can still benefit from its integration with Ray Tune for distributed hyperparameter tuning
+and scalable batch/online prediction.
 
 .. literalinclude:: doc_code/sklearn_trainer.py
     :language: python
@@ -192,7 +194,7 @@ have to specify this in the ``config`` parameter of the ``RLTrainer``:
 How to interpret training results?
 ----------------------------------
 
-Calling ``Trainer.fit()`` will return a :class:`Result <ray.air.Result>` object.
+Calling ``Trainer.fit()`` returns a :class:`Result <ray.air.Result>`, providing you access to metrics, checkpoints, and errors.
 You can interact with a `Result` object as follows:
 
 .. code-block:: python
