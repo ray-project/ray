@@ -2,6 +2,8 @@ import asyncio
 import concurrent.futures
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import wraps
+import inspect
 from typing import Coroutine, Dict, Optional, Union
 import threading
 
@@ -27,6 +29,20 @@ from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _global_async_loop = None
+
+
+def _wrap_into_async_task(async_func):
+    """Wrap an async function so it returns async task instead of coroutine
+
+    This makes the returned value awaitable more than once.
+    """
+    assert inspect.iscoroutinefunction(async_func)
+
+    @wraps(async_func)
+    def wrapper(*args, **kwargs):
+        return asyncio.ensure_future(async_func(*args, **kwargs))
+
+    return wrapper
 
 
 def _create_or_get_async_loop_in_thread():
@@ -197,6 +213,7 @@ class RayServeHandle:
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
+    @_wrap_into_async_task
     async def remote(self, *args, **kwargs):
         """Issue an asynchronous request to the deployment.
 
@@ -290,7 +307,9 @@ class RayServeSyncHandle(RayServeHandle):
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
+
 USE_SYNC_LAZY_HANDLE = True
+
 
 @contextmanager
 def set_use_sync_lazy_handle(to):
@@ -299,6 +318,7 @@ def set_use_sync_lazy_handle(to):
     USE_SYNC_LAZY_HANDLE = to
     yield
     USE_SYNC_LAZY_HANDLE = old
+
 
 @DeveloperAPI
 class RayServeLazySyncHandle:

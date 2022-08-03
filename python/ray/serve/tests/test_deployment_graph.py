@@ -482,6 +482,5 @@ def test_suprious_call(serve_instance):
     assert ray.get(call_tracker.get.remote()) == ["predict"]
 
 
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
