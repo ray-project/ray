@@ -34,7 +34,7 @@ construct a Trainer, you can provide:
 * A collection of `datasets` and a `preprocessor` for the provided dataset, which configures preprocessing and the datasets to ingest from.
 * `resume_from_checkpoint`, which is a checkpoint path to resume from, should your training run be interrupted.
 
-After construction, you can invoke a trainer by calling `.fit()`.
+After construction, you can invoke a trainer by calling `Trainer.fit()`.
 
 .. literalinclude:: doc_code/xgboost_trainer.py
     :language: python
@@ -103,7 +103,7 @@ Ray Train offers 2 main tree-based trainers:
 
 
 XGBoost Trainer
----------------
+~~~~~~~~~~~~~~~
 
 Ray AIR also provides an easy to use :class:`XGBoostTrainer  <ray.train.xgboost.XGBoostTrainer>`
 for training xgboost models at scale.
@@ -113,6 +113,10 @@ To use this trainer, you will need to first run: ``pip install -U xgboost-ray``.
 .. literalinclude:: doc_code/xgboost_trainer.py
     :language: python
 
+LightGBMTrainer
+~~~~~~~~~~~~~~~
+
+TODO
 
 Other Trainers
 --------------
@@ -142,7 +146,10 @@ It is not distributed but can still benefit from integrating with Ray Tune and b
 
 RLlib Trainer
 ~~~~~~~~~~~~~
+
 RLTrainer provides an interface to RL Trainables.
+
+TODO
 
 .. literalinclude:: doc_code/rl_trainer.py
     :language: python
