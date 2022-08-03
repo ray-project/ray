@@ -81,9 +81,6 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 class ScalingConfig:
     """Configuration for scaling training.
 
-    This is the schema for the scaling_config dict, and after beta, this will be the
-    actual representation for Scaling config objects.
-
     Args:
         trainer_resources: Resources to allocate for the trainer. If None is provided,
             will default to 1 CPU.
