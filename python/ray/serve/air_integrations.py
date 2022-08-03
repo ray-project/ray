@@ -54,10 +54,10 @@ def _unpack_tensorarray_from_pandas(output_df: "pd.DataFrame") -> "pd.DataFrame"
     TensorArray to list to ensure output is json serializable as http
     response.
     """
-    from ray.data.extensions import TensorArray, TensorArrayElement
+    from ray.data.extensions import TensorDtype
 
-    for col in output_df:
-        if isinstance(output_df[col].values, (TensorArray, TensorArrayElement)):
+    for col in output_df.columns:
+        if isinstance(output_df.dtypes[col], TensorDtype):
             output_df[col] = output_df[col].to_numpy()
 
     return output_df
