@@ -12,9 +12,7 @@ import os
 from random import random
 
 import requests
-import starlette
-from starlette.requests import Request
-import ray
+import starlette.requests
 from ray import serve
 
 #
@@ -29,12 +27,12 @@ class Model:
     def __init__(self, path):
         self.path = path
 
-    def predict(self, data):
+    def predict(self, data: float) -> float:
         return random() + data if data > 0.5 else data
 
 
 @serve.deployment
-class Deployment:
+class Predictor:
     # Take in a path to load your desired model
     def __init__(self, path: str) -> None:
         self.path = path
@@ -43,81 +41,58 @@ class Deployment:
         self.pid = os.getpid()
 
     # Deployments are callable. Here we simply return a prediction from
-    # our request
-    def __call__(self, starlette_request) -> str:
-        # Request came via an HTTP
-        if isinstance(starlette_request, starlette.requests.Request):
-            data = starlette_request.query_params['data']
-        else:
-            # Request came via a ServerHandle API method call.
-            data = starlette_request
-        pred = self.model.predict(float(data))
-        return f"(pid: {self.pid}); path: {self.path}; data: {float(data):.3f}; prediction: {pred:.3f}"
+    # our request.
+    async def predict(self, data: float) -> str:
+        pred = self.model.predict(data)
+        return (f"(pid: {self.pid}); path: {self.path}; "
+                f"data: {float(data):.3f}; prediction: {pred:.3f}")
+
+    async def __call__(self, http_request: starlette.requests.Request) -> str:
+        data = float(await http_request.query_params['data'])
+        return await self.predict(data)
 
 
-if __name__ == '__main__':
+@serve.deployment
+class ServeHandleDemo:
+    def __init__(self, predictor_1: Predictor, predictor_2: Predictor):
+        self.predictor_1 = predictor_1
+        self.predictor_2 = predictor_2
 
-    # Start a Ray Serve instance. This will automatically start
-    # or connect to an existing Ray cluster.
-    serve.start()
+    async def run(self):
+        # Query each deployment twice to demonstrate that the requests
+        # get forwarded to different replicas (below, we will set
+        # num_replicas to 2 for each deployment).
+        for _ in range(2):
+            for predictor in [self.predictor_1, self.predictor_2]:
+                # Call our deployments from Python using the ServeHandle API.
+                random_prediction = await predictor.predict.remote(random())
+                print(f"prediction: {random_prediction}")
 
-    # Create two distinct deployments of the same class as
-    # two replicas. Associate each deployment with a unique 'name'.
-    # This name can be used as to fetch its respective serve handle.
-    # See code below for method 1.
-    Deployment.options(name="rep-1", num_replicas=2).deploy("/model/rep-1.pkl")
-    Deployment.options(name="rep-2", num_replicas=2).deploy("/model/rep-2.pkl")
+    async def __call__(self, http_request: starlette.requests.Request) -> str:
+        return await self.run()
 
-    # Get the current list of deployments
-    print(serve.list_deployments())
 
-    print("ServerHandle API responses: " + "--" * 5)
+predictor_1 = Predictor.options(num_replicas=2).bind("/model/model-1.pkl")
+predictor_2 = Predictor.options(num_replicas=2).bind("/model/model-2.pkl")
 
-    # Method 1) Access each deployment using the ServerHandle API
-    for _ in range(2):
-        for d_name in ["rep-1", "rep-2"]:
-            # Get handle to the each deployment and invoke its method.
-            # Which replica the request is dispatched to is determined
-            # by the Router actor.
-            handle = serve.get_deployment(d_name).get_handle()
-            print(f"handle name : {d_name}")
-            print(f"prediction  : {ray.get(handle.remote(random()))}")
-            print("-" * 2)
+# Pass in our deployments as arguments.  At runtime, these are resolved to ServeHandles.
+serve_handle_demo = ServeHandleDemo.bind(predictor_1, predictor_2)
 
-    print("HTTP responses: " + "--" * 5)
+# Start a local single-node Ray cluster and start Ray Serve. These will shut down upon
+# exiting this script. 
+serve.run(serve_handle_demo)
 
-    # Method 2) Access deployment via HTTP Request
-    for _ in range(2):
-        for d_name in ["rep-1", "rep-2"]:
-            # Send HTTP request along with data payload
-            url = f"http://127.0.0.1:8000/{d_name}"
-            print(f"handle name : {d_name}")
-            print(f"prediction  : {requests.get(url, params= {'data': random()}).text}")
+print("ServeHandle API responses: " + "--" * 5)
 
-# Output:
-# {'rep-1': Deployment(name=rep-1,version=None,route_prefix=/rep-1),
-# 'rep-2': Deployment(name=rep-2,version=None,route_prefix=/rep-2)}
-#
-# ServerHandle API responses: ----------
-# handle name : rep-1
-# prediction  : (pid: 62636); path: /model/rep-1.pkl; data: 0.600; prediction: 1.292
-# --
-# handle name : rep-2
-# prediction  : (pid: 62635); path: /model/rep-2.pkl; data: 0.075; prediction: 0.075
-# --
-# handle name : rep-1
-# prediction  : (pid: 62634); path: /model/rep-1.pkl; data: 0.186; prediction: 0.186
-# --
-# handle name : rep-2
-# prediction  : (pid: 62637); path: /model/rep-2.pkl; data: 0.751; prediction: 1.444
-# --
-# HTTP responses: ----------
-# handle name : rep-1
-# prediction  : (pid: 62636); path: /model/rep-1.pkl; data: 0.582; prediction: 1.481
-# handle name : rep-2
-# prediction  : (pid: 62637); path: /model/rep-2.pkl; data: 0.778; prediction: 1.678
-# handle name : rep-1
-# prediction  : (pid: 62634); path: /model/rep-1.pkl; data: 0.139; prediction: 0.139
-# handle name : rep-2
-# prediction  : (pid: 62635); path: /model/rep-2.pkl; data: 0.569; prediction: 1.262
+url = "http://127.0.0.1:8000/"
+response = requests.get(url)
+prediction = response.text
+print(f"prediction : {prediction}")
+
+# Output ("INFO" logs omitted for brevity):
+
+# (ServeReplica:ServeHandleDemo pid=16062) prediction: (pid: 16059); path: /model/model-1.pkl; data: 0.166; prediction: 0.166
+# (ServeReplica:ServeHandleDemo pid=16062) prediction: (pid: 16061); path: /model/model-2.pkl; data: 0.820; prediction: 0.986
+# (ServeReplica:ServeHandleDemo pid=16062) prediction: (pid: 16058); path: /model/model-1.pkl; data: 0.691; prediction: 0.857
+# (ServeReplica:ServeHandleDemo pid=16062) prediction: (pid: 16060); path: /model/model-2.pkl; data: 0.948; prediction: 1.113
 # __serve_example_end__

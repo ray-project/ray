@@ -86,8 +86,6 @@ Let's start with the first layer of DAG: Building user input to two preprocessor
 ```python
 import asyncio
 from ray import serve
-# We will later move Ray DAG related components
-# out of experimental in later stable release
 from ray.serve.dag import InputNode
 
 @serve.deployment
