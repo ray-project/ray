@@ -1502,8 +1502,11 @@ def init(
     if job_config and (
         # job_config.runtime_env.get("working_dir")
         job_config.runtime_env.get("py_modules")
+        or job_config.runtime_env.get("java_jars")
+        or job_config.runtime_env.get("native_libraries")
     ):
-        global_worker.set_load_code_from_local(True)
+        # global_worker.set_load_code_from_local(True)
+        pass
     else:
         # Because `ray.shutdown()` doesn't reset this flag, for multiple
         # sessions in one process, the 2nd `ray.init()` will reuse the

@@ -138,7 +138,10 @@ class FunctionActorManager:
 
     def load_function_or_class_from_local(self, module_name, function_or_class_name):
         """Try to load a function or class in the module from local."""
-        module = importlib.import_module(module_name)
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:
+            return None
         parts = [part for part in function_or_class_name.split(".") if part]
         object = module
         try:

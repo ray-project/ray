@@ -136,7 +136,6 @@ class WorkerPoolMock : public WorkerPool {
             {},
             nullptr,
             worker_commands,
-            "",
             []() {},
             0,
             [this]() { return current_time_ms_; }),
@@ -724,7 +723,6 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
       ActorID::Nil(), Language::JAVA, job_id, actor_id, actor_jvm_options, task_id);
 
   rpc::JobConfig job_config = rpc::JobConfig();
-  job_config.add_code_search_path("/test/code_search_path");
   job_config.add_jvm_options("-Xmx1g");
   job_config.add_jvm_options("-Xms500m");
   job_config.add_jvm_options("-Dmy-job.hello=world");
@@ -739,9 +737,6 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   // position of this new parameter. Do not modify the order of existing parameters.
   std::vector<std::string> expected_command;
   expected_command.push_back("java");
-  // Ray-defined per-job options
-  expected_command.insert(expected_command.end(),
-                          {"-Dray.job.code-search-path=/test/code_search_path"});
   // User-defined per-job options
   expected_command.insert(
       expected_command.end(),

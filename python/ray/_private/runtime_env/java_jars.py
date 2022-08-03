@@ -71,8 +71,13 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         if not uri:
             return 0
         parsed_uri = parse_uri(uri)
-        logger.info(f"parsed_uri {parsed_uri}")
-        if parsed_uri.uri_type is not UriType.REMOTE:
+        if parsed_uri.uri_type is UriType.USER_LOCAL:
+            raise ValueError(
+                f"{uri} is not a valid URI. Passing directories or modules to "
+                "be dynamically uploaded is only supported at the job level "
+                "(i.e., passed to `ray.init`)."
+            )
+        elif parsed_uri.uri_type is UriType.CLUSTER_LOCAL:
             return 0
         if is_jar_uri(uri):
             module_dir = await self._download_jars(uri=uri, logger=logger)

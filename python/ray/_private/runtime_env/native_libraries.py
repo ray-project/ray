@@ -59,7 +59,13 @@ class NativeLibrariesPlugin(RuntimeEnvPlugin):
         if not uri:
             return 0
         parsed_uri = parse_uri(uri)
-        if parsed_uri.uri_type is not UriType.REMOTE:
+        if parsed_uri.uri_type is UriType.USER_LOCAL:
+            raise ValueError(
+                f"{uri} is not a valid URI. Passing directories or modules to "
+                "be dynamically uploaded is only supported at the job level "
+                "(i.e., passed to `ray.init`)."
+            )
+        elif parsed_uri.uri_type is UriType.CLUSTER_LOCAL:
             return 0
         library_dir = await download_and_unpack_package(
             uri, self._resources_dir, self._gcs_aio_client, logger=logger

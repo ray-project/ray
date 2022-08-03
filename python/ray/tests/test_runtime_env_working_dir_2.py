@@ -67,10 +67,10 @@ def test_inheritance(start_cluster, option: str):
             env = {"working_dir": "."}
         elif option == "py_modules":
             env = {"py_modules": ["."]}
-        with pytest.raises(ValueError):
-            get_env.options(runtime_env=env).remote()
-        with pytest.raises(ValueError):
-            EnvGetter.options(runtime_env=env).remote()
+        with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+            ray.get(get_env.options(runtime_env=env).remote())
+        with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+            ray.get(EnvGetter.options(runtime_env=env).remote().get.remote())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")

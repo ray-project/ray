@@ -28,16 +28,16 @@ from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 default_logger = logging.getLogger(__name__)
 
 
-def _check_is_uri(s: str) -> bool:
+def _check_is_user_local_uri(s: str) -> bool:
     try:
-        protocol, _, _, path = parse_uri(s)
+        protocol, uri_type, _, path = parse_uri(s)
     except ValueError:
-        protocol, path = None, None
+        protocol, uri_type, path = None, None
 
     if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
         raise ValueError("Only .zip files supported for remote URIs.")
 
-    return protocol is not None
+    return uri_type is UriType.USER_LOCAL
 
 
 def upload_py_modules_if_needed(
@@ -83,7 +83,7 @@ def upload_py_modules_if_needed(
                 f"or imported modules, got {type(module)}."
             )
 
-        if _check_is_uri(module_path):
+        if not _check_is_user_local_uri(module_path):
             module_uri = module_path
         else:
             # module_path is a local path.
@@ -199,7 +199,13 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
         parsed_uri = parse_uri(uri)
-        if parsed_uri.uri_type is not UriType.REMOTE:
+        if parsed_uri.uri_type is UriType.USER_LOCAL:
+            raise ValueError(
+                f"{uri} is not a valid URI. Passing directories or modules to "
+                "be dynamically uploaded is only supported at the job level "
+                "(i.e., passed to `ray.init`)."
+            )
+        elif parsed_uri.uri_type is UriType.CLUSTER_LOCAL:
             return 0
         if is_whl_uri(uri):
             module_dir = await self._download_and_install_wheel(uri=uri, logger=logger)
