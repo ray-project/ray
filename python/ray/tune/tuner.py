@@ -28,7 +28,7 @@ _TUNER_INTERNAL = "_tuner_internal"
 _SELF = "self"
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Tuner:
     """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
 
