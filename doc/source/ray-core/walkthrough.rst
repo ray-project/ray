@@ -12,6 +12,8 @@ to estimate the ratio of the area of the circle to the area of the square.
 Given that we know the true ratio to be π/4, we can multiply our estimated ratio by 4 to approximate the value of π.
 The more points that we sample to calculate this approximation, the closer the value should be to the true value of π.
 
+.. image:: images/monte_carlo_pi.png
+
 We will use Ray :ref:`tasks <ray-remote-functions>` to distribute the work of sampling and Ray :ref:`actors <ray-remote-classes>` to track the progress of these distributed sampling tasks.
 The code can run on your laptop and can be easily scaled to large :ref:`clusters <cluster-index>` to increase the accuracy of the estimate.
 
@@ -34,7 +36,7 @@ First, let's include all modules needed for this tutorial and start a local Ray 
 Defining the Progress Actor
 ---------------------------
 Next, we will define a Ray actor that can be called by sampling tasks to update progress.
-Ray actors are essentially stateful services that everyone with handles can call.
+Ray actors are essentially stateful services that anyone with an instance (a handle) of the actor can call its methods.
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
@@ -97,7 +99,7 @@ While sampling tasks are running, we can periodically query the progress by call
 We can call actor method via ``actor.method.remote()``.
 This will immediately return an ``ObjectRef`` as a future
 and then execute the method asynchronously on the remote actor process.
-After that, we use the blocking :ref:`ray.get() <ray-get-ref>` to get the actual return value that ``ObjectRef`` represents.
+To fetch the actual returned value of ``ObjectRef``, we use the blocking :ref:`ray.get() <ray-get-ref>`.
 
 Calculating π
 -------------
@@ -109,17 +111,6 @@ Finally, we get number of samples inside the circle returned from sampling tasks
     :end-before: __calculating_pi_end__
 
 As we can see, besides a single ``ObjectRef``, :ref:`ray.get() <ray-get-ref>` can also take a list of ``ObjectRef`` and return a list of results.
-
-Shutting Down Ray
------------------
-After we are done, we can shutdown the local Ray cluster with :ref:`ray.shutdown() <ray-shutdown-ref>`
-or it will automatically run when the Python process exits.
-
-.. literalinclude:: doc_code/getting_started.py
-    :language: python
-    :start-after: __shutting_down_ray_start__
-    :end-before: __shutting_down_ray_end__
-
 
 If you run this tutorial, you will see output like:
 

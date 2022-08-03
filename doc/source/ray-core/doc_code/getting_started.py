@@ -12,14 +12,14 @@ ray.init()
 # __defining_actor_start__
 @ray.remote
 class ProgressActor:
-    def __init__(self, total_num_samples):
+    def __init__(self, total_num_samples: int):
         self.total_num_samples = total_num_samples
         self.num_samples_completed_per_task = {}
 
-    def report_progress(self, task_id, num_samples_completed):
+    def report_progress(self, task_id: int, num_samples_completed: int) -> None:
         self.num_samples_completed_per_task[task_id] = num_samples_completed
 
-    def get_progress(self):
+    def get_progress(self) -> float:
         return (
             sum(self.num_samples_completed_per_task.values()) / self.total_num_samples
         )
@@ -30,7 +30,8 @@ class ProgressActor:
 # fmt: off
 # __defining_task_start__
 @ray.remote
-def sampling_task(num_samples, task_id, progress_actor):
+def sampling_task(num_samples: int, task_id: int,
+                  progress_actor: ray.actor.ActorHandle) -> int:
     num_inside = 0
     for i in range(num_samples):
         x, y = random.uniform(-1, 1), random.uniform(-1, 1)
@@ -85,9 +86,5 @@ total_num_inside = sum(ray.get(results))
 pi = (total_num_inside * 4) / TOTAL_NUM_SAMPLES
 print(f"Estimated value of π is: {pi}")
 # __calculating_pi_end__
-
-# __shutting_down_ray_start__
-ray.shutdown()
-# __shutting_down_ray_end__
 
 assert str(pi).startswith("3.14")
