@@ -2,7 +2,7 @@
 
 # Serve 1.x to 2.x API Migration Guide
 
-This section is to help you how to migrate the deployment API from 1.x to 2.0.
+This section is to help you migrate the deployment API from 1.x to 2.x.
 
 ## What has been changed?
 
