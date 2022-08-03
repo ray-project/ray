@@ -8,7 +8,7 @@ Ray AIR Trainers
 .. image:: images/train.svg
 
 
-Ray AIR Trainers provide a way to scale out training with popular machine learning frameworks
+Ray AIR Trainers provide a way to scale out training with popular machine learning frameworks.
 
 As part of Ray Train, Trainers provide a seamless abstraction for running distributed multi-node training with fault tolerance.
 
