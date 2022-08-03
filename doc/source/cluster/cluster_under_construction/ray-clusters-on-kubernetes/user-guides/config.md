@@ -82,7 +82,10 @@ of a `workerGroupSpec` specifies the number of worker pods of each group to
 keep in the cluster.
 
 (kuberay-autoscaling-config)=
-## Autoscaling
+## Autoscaler configuration
+```{note}
+If you are deciding whether to use autoscaling, check out the discussion {ref}`Should I enable autoscaling?`
+```
 To enable the optional Ray Autoscaler support, set `enableInTreeAutoscaling:true`.
 The KubeRay operator will then automatically configure an autoscaling sidecar container
 for the Ray head pod. The autoscaler container collects resource metrics from the Ray head container
@@ -90,8 +93,8 @@ and automatically adjusts the `replicas` field of each `workerGroupSpec` as need
 the requirements of your Ray application.
 
 Use the fields `minReplicas` and `maxReplicas` to constrain the `replicas` of an autoscaling
-`workerGroup`. When deploying an autoscaling cluster, it is recommended to set `replicas` and `minReplicas` to the same value.
-The Ray autoscaler will then take over and modify the replicas field as needed by
+`workerGroup`. When deploying an autoscaling cluster, you would typically set `replicas` and `minReplicas` to the same value.
+The Ray autoscaler will then take over and modify the `replicas` field as needed by
 your Ray application.
 
 ### autoscalerOptions
