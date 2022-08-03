@@ -92,7 +92,7 @@ accelerating ML workloads:
 &nbsp;
 
 Learn more about [Ray AIR](ray-air/getting-started) and its libraries:
-- [Datasets](data/dataset): Distributed Data Loading and Preprocessing
+- [Datasets](data/dataset): Distributed Data Preprocessing
 - [Train](train/train): Distributed Training
 - [Tune](tune/index): Scalable Hyperparameter Tuning
 - [Serve](serve/index): Scalable and Programmable Serving
