@@ -7,7 +7,7 @@ import time
 
 import ray
 
-from ray._private.test_utils import Semaphore, wait_for_condition
+from ray._private.test_utils import Semaphore
 
 
 def test_nested_tasks(shutdown_only):
@@ -140,14 +140,9 @@ def test_zero_cpu_scheduling(shutdown_only):
     block_driver_ref = block_driver.acquire.remote()
 
     # Both tasks should be running, so the driver should be unblocked.
-    def verify():
-        timeout_value = 5 if sys.platform == "win32" else 1
-        _, not_ready = ray.wait([block_driver_ref], timeout=timeout_value)
-        assert len(not_ready) == 0
-
-        return True
-
-    wait_for_condition(verify)
+    timeout_value = 5 if sys.platform == "win32" else 1
+    _, not_ready = ray.wait([block_driver_ref], timeout=timeout_value)
+    assert len(not_ready) == 0
 
 
 def test_exponential_wait(shutdown_only):

@@ -1,6 +1,5 @@
 import os
 import platform
-import time
 
 import grpc
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -9,7 +8,6 @@ import requests
 
 import ray
 from ray._private.test_utils import (
-    RayTestTimeoutException,
     wait_for_condition,
     wait_until_succeeded_without_exception,
 )
@@ -23,7 +21,6 @@ _WIN32 = os.name == "nt"
 def test_worker_stats(shutdown_only):
     ray.init(num_cpus=2, include_dashboard=True)
     raylet = ray.nodes()[0]
-    num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(
         raylet["NodeManagerAddress"], ray.nodes()[0]["NodeManagerPort"]
     )
