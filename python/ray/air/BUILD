@@ -118,7 +118,7 @@ py_test(
 )
 
 py_test(
-    name = "torch_linear_dataset_example",
+    name = "torch_regression_example",
     size = "medium",
     main = "examples/pytorch/torch_regression_example.py",
     srcs = ["examples/pytorch/torch_regression_example.py"],
