@@ -543,11 +543,6 @@ class Node:
         return self._webui_url
 
     @property
-    def webui_url_with_protocol(self):
-        """Get the cluster's web UI URL including the URL protocol."""
-        return self._webui_url_with_protocol
-
-    @property
     def raylet_socket_name(self):
         """Get the node's raylet socket name."""
         return self._raylet_socket_name
