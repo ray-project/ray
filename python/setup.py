@@ -211,6 +211,8 @@ if setup_spec.type == SetupType.RAY:
             "fsspec",
         ],
         "default": [
+            # If adding dependencies necessary to launch the dashboard api server,
+            # please add it to dashboard/optional_deps.py as well.
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
