@@ -65,7 +65,6 @@ class _AlpaBackend(Backend):
         alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: AlpaConfig):
-
         alpa.device_mesh.global_cluster = None
         update_jax_platform("gpu")
 
