@@ -117,7 +117,7 @@ resp = requests.get("http://localhost:8000/model2", data="1")
 
 ### Migrate deployments with route prefixes
 
-Sometimes, you have customized route prefix for each deployment
+Sometimes, you have a customized route prefix for each deployment:
 
 ```python
 @serve.deployment(route_prefix="/my_model1")
