@@ -192,17 +192,24 @@ have to specify this in the ``config`` parameter of the ``RLTrainer``:
 How to interpret training results?
 ----------------------------------
 
-After specifying Trainer, one can then kick off training by simply calling ``fit()``.
-The following is how you can interact with training result:
+Calling ``Trainer.fit()`` will return a :class:`Result <ray.air.Result>` object.
+You can interact with a `Result` object as follows:
 
 .. code-block:: python
 
     result = trainer.fit()
 
+    # returns the last saved checkpoint
+    result.checkpoint
 
-- ``result.checkpoint`` gives last saved checkpoint.
-- ``result.best_checkpoints`` gives N best saved checkpoints, as configured in ``RunConfig.CheckpointConfig``.
-- ``result.metrics`` gives the final metrics as reported.
-- ``result.error`` will contain an Exception if training failed.
+    # returns the N best saved checkpoints, as configured in ``RunConfig.CheckpointConfig``
+    result.best_checkpoints
 
-See :class:`the Result class <ray.air.result.Result>` for more details.
+    # returns the final metrics as reported
+    result.metrics
+
+    # returns the contain an Exception if training failed.
+    result.error
+
+
+See :class:`the Result docstring <ray.air.result.Result>` for more details.
