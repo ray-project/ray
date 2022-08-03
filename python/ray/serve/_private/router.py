@@ -4,12 +4,15 @@ import inspect
 import itertools
 import logging
 import pickle
+from pydoc import resolve
 import random
 import sys
+from types import CoroutineType
 from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util import metrics
 
 from ray.serve._private.common import RunningReplicaInfo
@@ -46,20 +49,12 @@ class Query:
     metadata: RequestMetadata
 
     async def resolve_coroutines(self):
-        new_args = []
-        for arg in self.args:
-            if inspect.iscoroutine(arg):
-                new_args.append(await arg)
-            else:
-                new_args.append(arg)
-        new_kwargs = {}
-        for k, v in self.kwargs.items():
-            if inspect.iscoroutine(v):
-                new_kwargs[k] = await v
-            else:
-                new_kwargs[k] = v
-        self.args = tuple(new_args)
-        self.kwargs = new_kwargs
+        scanner = _PyObjScanner(scan_type=CoroutineType)
+        coros = scanner.find_nodes((self.args, self.kwargs))
+        if len(coros) > 0:
+            resolved = await asyncio.gather(*coros)
+            replacement_table = dict(zip(coros, resolved))
+            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
 
 
 class ReplicaSet:
