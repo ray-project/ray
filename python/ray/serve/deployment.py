@@ -336,7 +336,7 @@ class Deployment:
 
         if not _internal and version is not None:
             logger.warning(
-                "DeprecationWarning: `version` in `@Deployment.options()` has been "
+                "DeprecationWarning: `version` in `Deployment.options()` has been "
                 "deprecated. Explicitly specifying version will raise an error in the "
                 "future!"
             )
