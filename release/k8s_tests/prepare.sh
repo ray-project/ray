@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 set -ex
 
 aws secretsmanager get-secret-value \
