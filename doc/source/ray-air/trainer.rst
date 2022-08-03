@@ -66,22 +66,24 @@ You can read more about :ref:`data ingest <air-ingest>` here.
 
 Read more about :ref:`Ray Train's Deep Learning Trainers <train-user-guide>`.
 
-.. tabbed:: Torch
+.. dropdown:: Code examples
 
-    .. literalinclude:: doc_code/torch_trainer.py
-        :language: python
+    .. tabbed:: Torch
 
-.. tabbed:: Tensorflow
+        .. literalinclude:: doc_code/torch_trainer.py
+            :language: python
 
-    .. literalinclude:: doc_code/tf_starter.py
-        :language: python
-        :start-after: __air_tf_train_start__
-        :end-before: __air_tf_train_end__
+    .. tabbed:: Tensorflow
 
-.. tabbed:: Horovod
+        .. literalinclude:: doc_code/tf_starter.py
+            :language: python
+            :start-after: __air_tf_train_start__
+            :end-before: __air_tf_train_end__
 
-    .. literalinclude:: doc_code/hvd_trainer.py
-        :language: python
+    .. tabbed:: Horovod
+
+        .. literalinclude:: doc_code/hvd_trainer.py
+            :language: python
 
 
 How to report metrics and checkpoints?
@@ -96,10 +98,12 @@ Use the :ref:`Session <air-session-ref>` API to gather metrics and register chec
 Registered checkpoints are synced to driver or the cloud storage based on user's configurations,
 as specified in ``Trainer(run_config=...)``.
 
-.. literalinclude:: doc_code/report_metrics_and_save_checkpoints.py
-    :language: python
-    :start-after: __air_session_start__
-    :end-before: __air_session_end__
+.. dropdown:: Code example
+
+    .. literalinclude:: doc_code/report_metrics_and_save_checkpoints.py
+        :language: python
+        :start-after: __air_session_start__
+        :end-before: __air_session_end__
 
 .. _air-trainers-tree:
 
@@ -157,14 +161,16 @@ Each worker will then invoke ``transformers.Trainer.train()``, which will perfor
 training via Pytorch DDP.
 
 
-.. literalinclude:: doc_code/hf_trainer.py
-    :language: python
-    :start-after: __hf_trainer_start__
-    :end-before: __hf_trainer_end__
+.. dropdown:: Code example
+
+    .. literalinclude:: doc_code/hf_trainer.py
+        :language: python
+        :start-after: __hf_trainer_start__
+        :end-before: __hf_trainer_end__
 
 
-Scikit-learn Trainer
-~~~~~~~~~~~~~~~~~~~~~
+Scikit-Learn Trainer
+~~~~~~~~~~~~~~~~~~~~
 
 .. note:: This trainer is not distributed.
 

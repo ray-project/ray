@@ -3,4 +3,4 @@
 tensorflow_regression_example
 =============================
 
-.. literalinclude:: /../../python/ray/train/examples/tensorflow_regression_example.py
+.. literalinclude:: /../../python/ray/air/examples/tf/tensorflow_regression_example.py

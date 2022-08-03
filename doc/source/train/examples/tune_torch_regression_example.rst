@@ -3,4 +3,4 @@
 tune_torch_regression_example
 =============================
 
-.. literalinclude:: /../../python/ray/train/examples/tune_torch_regression_example.py
+.. literalinclude:: /../../python/ray/air/examples/pytorch/tune_torch_regression_example.py
