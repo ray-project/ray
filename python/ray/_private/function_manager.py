@@ -360,7 +360,11 @@ class FunctionActorManager:
 
         object = self.load_function_or_class_from_local(module_name, function_name)
         if object is not None:
-            function = object._function
+            # TODO(SongGuyang): Why raises `AttributeError: 'function' object has no attribute '_function'` here?
+            try:
+                function = object._function
+            except Exception:
+                return False
             self._function_execution_info[function_id] = FunctionExecutionInfo(
                 function=function,
                 function_name=function_name,
@@ -508,7 +512,6 @@ class FunctionActorManager:
         if actor_class is None:
             # Load actor class.
             if self._worker.load_code_from_local:
-                logger.info("1111111.")
                 # Load actor class from local code first.
                 actor_class = self._load_actor_class_from_local(
                     actor_creation_function_descriptor
