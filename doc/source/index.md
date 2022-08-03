@@ -101,7 +101,7 @@ Learn more about [Ray AIR](ray-air/getting-started) and its libraries:
 Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
 - [Tasks](ray-core/tasks): Stateless functions executed in the cluster.
 - [Actors](ray-core/actors): Stateful worker processes created in the cluster.
-- [Objects](ray-core/objects): Immutable shared-memory data accessible across the cluster.
+- [Objects](ray-core/objects): Immutable values accessible across the cluster.
 
 ## How to get involved?
 

@@ -33,7 +33,7 @@ Or more about `Ray Core`_ and its key abstractions:
 
 - `Tasks`_: Stateless functions executed in the cluster.
 - `Actors`_: Stateful worker processes created in the cluster.
-- `Objects`_: Immutable shared-memory data accessible across the cluster.
+- `Objects`_: Immutable values accessible across the cluster.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
