@@ -2,6 +2,8 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. _rllib-models-walkthrough:
+
 Models, Preprocessors, and Action Distributions
 ===============================================
 
