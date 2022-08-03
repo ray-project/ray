@@ -27,7 +27,7 @@ In this example pictured above, we have a single-node cluster with a deployment 
 For an overview of logging in Ray, see [Ray Logging](ray-logging).
 :::
 
-Ray Serve uses Python's standard `logging` facility with the `"ray.serve"` named logger.
+Ray Serve uses Python's standard `logging` facility with the logger named `"ray.serve"`.
 By default, logs are emitted from actors both to `stderr` and on disk on each node at `/tmp/ray/session_latest/logs/serve/`.
 This includes both system-level logs from the Serve controller and HTTP proxy as well as access logs and custom user logs produced from within deployment replicas.
 
@@ -224,21 +224,28 @@ The following metrics are exposed by Ray Serve:
      - The number of non-200 HTTP responses returned by each deployment.
 ```
 
-To see this in action, run `ray start --head --metrics-export-port=8080` in your terminal, and then run the following script:
+To see this in action, first run the following command to start Ray and set up the metrics export port:
 
-TODO(archit): Update snippet
+```bash
+ray start --head --metrics-export-port=8080
+```
+
+Then run the following script:
+
 ```{literalinclude} ../../../python/ray/serve/examples/doc/snippet_metrics.py
 ```
 
-In your web browser, navigate to `localhost:8080`.
+The requests will loop and can be canceled with `Ctrl-C`. 
+
+While this is running, in your web browser navigate to `localhost:8080`.
 In the output there, you can search for `serve_` to locate the metrics above.
 The metrics are updated once every ten seconds, and you will need to refresh the page to see the new values.
 
-For example, after running the script for some time and refreshing `localhost:8080` you might see something that looks like:
+For example, after running the script for some time and refreshing `localhost:8080` you should be able to find metrics similar to the following:
 
 ```
-ray_serve_deployment_processing_latency_ms_count{...,deployment="f",...} 99.0
-ray_serve_deployment_processing_latency_ms_sum{...,deployment="f",...} 99279.30498123169
+ray_serve_deployment_processing_latency_ms_count{..., replica="sleeper#jtzqhX"} 48.0
+ray_serve_deployment_processing_latency_ms_sum{..., replica="sleeper#jtzqhX"} 48160.6719493866
 ```
 
 which indicates that the average processing latency is just over one second, as expected.
@@ -249,6 +256,14 @@ Here's an example:
 ```{literalinclude} ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
 :end-before: __custom_metrics_deployment_end__
 :start-after: __custom_metrics_deployment_start__
+```
+
+And the emitted logs:
+
+```log
+# HELP ray_my_counter The number of odd-numbered requests to this deployment.
+# TYPE ray_my_counter gauge
+ray_my_counter{..., deployment="MyDeployment"} 5.0
 ```
 
 See the
