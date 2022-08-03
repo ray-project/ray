@@ -105,7 +105,7 @@ with InputNode() as http_request:
 The `with` statement (known as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it represents the input of our graph. In this case, that input will be an HTTP request. In [a future section](deployment-graph-drivers-http-adapters-intro), we'll show how you can change this input type using another Ray Serve-provided object called the driver.
 
 :::{note}
-It's important to note that the `InputNode` is merely a representation of the future graph input. In this example, for instance, `http_request`'s type is `InputNode`, not an actual HTTP request.
+`InputNode` is merely a representation of the future graph input. In this example, for instance, `http_request`'s type is `InputNode`, not an actual HTTP request. When the graph is deployed, incoming HTTP requests will be passed into the same functions and methods that `http_request` is passed into.
 :::
 
 We use the `InputNode` to indicate which node(s) the graph input should be passed to by passing the `InputNode` into `bind` calls within the context manager. In this case, the `http_request` is passed to only one node, `unpack_request`. The output of that bind call, `request_number` is a `FunctionNode`. `FunctionNodes` are produced when deployments containing functions are bound to arguments for that function using `bind`. In this case `request_number` represents the output of `unpack_request` when called on incoming HTTP requests. `unpack_request`, which is defined on line 26, processes the HTTP request's JSON body and returns a number that can be passed into arithmetic operations.
