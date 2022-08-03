@@ -374,6 +374,7 @@ def test_hosted_external_dashboard_url(shutdown_only):
     """
     orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
 
+    # Test external dashboard url with https protocol
     os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "https://external_dashboard_url"
     info = ray.init()
     assert info.dashboard_url == "external_dashboard_url"
@@ -388,6 +389,14 @@ def test_hosted_external_dashboard_url(shutdown_only):
     )
     ray.shutdown()
 
+    # Test external dashboard url with https protocol with ray client
+    with ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+        info = ray.init("ray://localhost:50051", logging_level=logging.INFO)
+    assert info.dashboard_url == "external_dashboard_url"
+    ray.shutdown()
+
+    # Test external dashboard url with no protocol -- should default to http
     os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "external_dashboard_url"
     info = ray.init()
     assert info.dashboard_url == "external_dashboard_url"
@@ -402,6 +411,7 @@ def test_hosted_external_dashboard_url(shutdown_only):
     )
     ray.shutdown()
 
+    # Test no external dashboard url
     os.environ.pop(RAY_OVERRIDE_DASHBOARD_URL)
     info = ray.init()
     assert info.dashboard_url.startswith("127.0.0.1")
