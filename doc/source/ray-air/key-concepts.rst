@@ -9,14 +9,20 @@ Here, we cover the main concepts in AIR.
     :local:
 
 
+Datasets
+--------
+
+:ref:`Ray Datasets <datasets>` are the standard way to load and exchange data in Ray AIR. In AIR, Datasets are used extensively for data loading, preprocessing, and batch inference.
+
+
 Preprocessors
--------------
+~~~~~~~~~~~~~
 
 Preprocessors are primitives that can be used to transform input data into features.
 
 A preprocessor can be fitted during Training, and applied at runtime in both Training and Serving on data batches in the same way. AIR comes with a collection of built-in preprocessors, and you can also define your own with simple templates.
 
-Preprocessors operate on :ref:`Ray Datasets <datasets>`, which makes them scalable and compatible with a variety of datasources and dataframe libraries.
+Preprocessors operate on :ref:`Datasets <datasets>`, which makes them scalable and compatible with a variety of datasources and dataframe libraries.
 
 
 .. literalinclude:: doc_code/air_key_concepts.py
@@ -46,30 +52,6 @@ Trainer objects will produce a :ref:`Result <air-results-ref>` object after call
     :start-after: __air_trainer_output_start__
     :end-before: __air_trainer_output_end__
 
-.. _air-session-key-concepts:
-
-Session
--------
-
-Ray AIR exposes a functional API for users to define training behavior, or for developers to create their own ``Trainer``\s.
-In both cases, there is a need for the following interactions:
-
-1. To disseminate information downstream, including ``trial_name``, ``trial_id``, ``trial_resources``, rank information etc.
-2. To report information to upstream, including metrics and checkpoint.
-
-To facilitate such interactions, we introduce the :ref:`Session <air-session-ref>` concept.
-
-The session concept exists on several levels: The execution layer (called `Tune Session`) and the Data Parallel training layer
-(called `Train Session`).
-The following figure shows how these two sessions look like in a Data Parallel training scenario.
-
-.. image:: images/session.svg
-   :width: 650px
-   :align: center
-
-..
-  https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit
-
 
 Tuner
 -----
@@ -84,7 +66,6 @@ Tuners can work seamlessly with any Trainer but also can support arbitrary train
     :end-before: __air_tuner_end__
 
 
-
 Batch Predictor
 ---------------
 
@@ -97,8 +78,8 @@ You can take a trained model and do batch inference using the BatchPredictor obj
 
 .. _air-key-concepts-online-inference:
 
-Online Inference
-----------------
+Deployments
+-----------
 
 Deploy the model as an inference service by using Ray Serve and the ``PredictorDeployment`` class.
 

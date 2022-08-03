@@ -42,7 +42,7 @@ It provides libraries for distributed
 [model serving](serve/index.rst), 
 and [more](ray-more-libs/index.rst). 
 +++
-```{link-button} ray-overview/index
+```{link-button} ray-air/getting-started
 :type: ref
 :text: Get Started
 :classes: btn-outline-info btn-block
