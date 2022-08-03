@@ -198,11 +198,7 @@ class Node:
             self._webui_url_with_protocol = (
                 ray._private.services.get_webui_url_from_internal_kv()
             )
-            self._webui_url = (
-                self._remove_protocol_from_url(self._webui_url_with_protocol)
-                if self._webui_url_with_protocol
-                else None
-            )
+            self._webui_url = self._remove_protocol_from_url(self._webui_url_with_protocol)
 
         self._init_temp()
 
@@ -897,11 +893,7 @@ class Node:
             port=self._ray_params.dashboard_port,
             redirect_logging=self.should_redirect_logs(),
         )
-        self._webui_url = (
-            self._remove_protocol_from_url(self._webui_url_with_protocol)
-            if self._webui_url_with_protocol is not None
-            else self._webui_url_with_protocol
-        )
+        self._webui_url = self._remove_protocol_from_url(self._webui_url_with_protocol)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
@@ -1495,10 +1487,12 @@ class Node:
         external_storage.setup_external_storage(deserialized_config, self.session_name)
         external_storage.reset_external_storage()
 
-    def _remove_protocol_from_url(self, url: str) -> str:
+    def _remove_protocol_from_url(self, url: Optional[str]) -> str:
         """
         Helper function to remove protocol from URL if it exists.
         """
+        if not url:
+            return url
         parsed_url = urllib.parse.urlparse(url)
         if parsed_url.scheme:
             # Construct URL without protocol
