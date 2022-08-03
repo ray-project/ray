@@ -120,8 +120,8 @@ py_test(
 py_test(
     name = "torch_linear_dataset_example",
     size = "medium",
-    main = "examples/pytorch/torch_linear_dataset_example.py",
-    srcs = ["examples/pytorch/torch_linear_dataset_example.py"],
+    main = "examples/pytorch/torch_regression_example.py",
+    srcs = ["examples/pytorch/torch_regression_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]
@@ -148,10 +148,10 @@ py_test(
 )
 
 py_test(
-    name = "tune_torch_linear_dataset_example.py",
+    name = "tune_torch_regression_example.py",
     size = "medium",
-    main = "examples/pytorch/tune_torch_linear_dataset_example.py",
-    srcs = ["examples/pytorch/tune_torch_linear_dataset_example.py"],
+    main = "examples/pytorch/tune_torch_regression_example.py",
+    srcs = ["examples/pytorch/tune_torch_regression_example.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"],
     args = ["--smoke-test"]

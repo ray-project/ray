@@ -1,6 +1,8 @@
 import argparse
-import random
 from typing import Tuple
+
+import numpy as np
+import pandas as pd
 from ray.air.checkpoint import Checkpoint
 
 import torch
@@ -16,15 +18,21 @@ from ray.train.torch import TorchPredictor, TorchTrainer
 from ray.air.config import ScalingConfig
 
 
-def get_datasets(a=5, b=10, size=1000, split=0.8) -> Tuple[Dataset]:
-    def get_dataset(a, b, size) -> Dataset:
-        items = [i / size for i in range(size)]
-        dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
-        return dataset
+def get_datasets(split: float = 0.7) -> Tuple[Dataset]:
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
 
-    dataset = get_dataset(a, b, size)
+    def combine_x(batch):
+        return pd.DataFrame(
+            {
+                "x": batch[[f"x{i:03d}" for i in range(100)]].values.tolist(),
+                "y": batch["y"],
+            }
+        )
 
-    train_dataset, validation_dataset = dataset.train_test_split(split, shuffle=True)
+    dataset = dataset.map_batches(combine_x)
+    train_dataset, validation_dataset = dataset.repartition(
+        num_blocks=4
+    ).train_test_split(split, shuffle=True)
     return train_dataset, validation_dataset
 
 
@@ -62,17 +70,19 @@ def validate_epoch(iterable_dataset, model, loss_fn, device):
 
 def train_func(config):
     batch_size = config.get("batch_size", 32)
-    hidden_size = config.get("hidden_size", 1)
+    hidden_size = config.get("hidden_size", 10)
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
     train_dataset_shard = session.get_dataset_shard("train")
     validation_dataset = session.get_dataset_shard("validation")
 
-    model = nn.Linear(1, hidden_size)
+    model = nn.Sequential(
+        nn.Linear(100, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1)
+    )
     model = train.torch.prepare_model(model)
 
-    loss_fn = nn.MSELoss()
+    loss_fn = nn.L1Loss()
 
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
@@ -107,9 +117,9 @@ def train_func(config):
     return results
 
 
-def train_linear(num_workers=2, use_gpu=False):
+def train_regression(num_workers=2, use_gpu=False):
     train_dataset, val_dataset = get_datasets()
-    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
+    config = {"lr": 1e-2, "hidden_size": 20, "batch_size": 4, "epochs": 3}
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
@@ -123,11 +133,13 @@ def train_linear(num_workers=2, use_gpu=False):
     return result
 
 
-def predict_linear(result: Result):
+def predict_regression(result: Result):
     batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
 
-    items = [{"x": random.uniform(0, 1) for _ in range(10)}]
-    prediction_dataset = ray.data.from_items(items)
+    df = pd.DataFrame(
+        [[np.random.uniform(0, 1, size=100)] for i in range(100)], columns=["x"]
+    )
+    prediction_dataset = ray.data.from_pandas(df)
 
     predictions = batch_predictor.predict(prediction_dataset, dtype=torch.float)
 
@@ -161,8 +173,9 @@ if __name__ == "__main__":
     if args.smoke_test:
         # 2 workers, 1 for trainer, 1 for datasets
         ray.init(num_cpus=4)
-        result = train_linear()
+        result = train_regression()
     else:
         ray.init(address=args.address)
-        result = train_linear(num_workers=args.num_workers, use_gpu=args.use_gpu)
-    predict_linear(result)
+        result = train_regression(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    predictions = predict_regression(result)
+    print(predictions.to_pandas())
