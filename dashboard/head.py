@@ -235,9 +235,16 @@ class DashboardHead:
         if not self.minimal:
             self.http_server = await self._configure_http_server(modules)
             http_host, http_port = self.http_server.get_address()
+
+        # Override with external ray dashboard URL if it exists
+        dashboard_address = (
+            os.environ.get(ray_constants.RAY_OVERRIDE_DASHBOARD_URL)
+            if ray_constants.RAY_OVERRIDE_DASHBOARD_URL in os.environ
+            else f"{http_host}:{http_port}"
+        )
         internal_kv._internal_kv_put(
             ray_constants.DASHBOARD_ADDRESS,
-            f"{http_host}:{http_port}",
+            dashboard_address,
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
