@@ -145,7 +145,7 @@ handle = serve.run(d)
 resp = requests.get("http://localhost:8000/my_model1", data="321")
 ```
 
-Or if you have multiple deployments and want to customize http route prefix for each model you can have the following code
+Or if you have multiple deployments and want to customize the HTTP route prefix for each model, you can use the following code:
 
 ```python
 @serve.deployment
