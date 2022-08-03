@@ -11,7 +11,7 @@ In Ray Serve 2.0, we released a [new deployment API](converting-to-ray-serve-dep
 
 ## Migrating the 1.x Deployment
 
-### Migrate single deployment to new deployment API 
+### Migrating a single deployment to the new deployment API 
 
 In the 1.x deployment API, we usually have the following code for deployment.
 ```python
