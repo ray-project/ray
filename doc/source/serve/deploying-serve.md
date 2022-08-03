@@ -262,9 +262,9 @@ This feature enables Serve to write all your deployment configuration and code i
 Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state.
 
 
-In Kubernetes environment, we recommend using KubeRay (a Kubernetes operator for Ray Serve) to help deploy your Serve applications with Kubernetes, and help you recover the node crash from Customized Resource.
+In Kubernetes environment, we recommend using KubeRay (a Kubernetes operator for Ray Serve, see {ref}`kuberay-index`) to help deploy your Serve applications with Kubernetes, and help you recover the node crash from Customized Resource.
 
-Feel free to open new github issues if you hit any problems from Failure Recovery.
+Feel free to open new GitHub issues if you hit any problems from Failure Recovery.
 
 [ingress]: https://kubernetes.io/docs/concepts/services-networking/ingress/
 [kubernetes default config]: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/example-full.yaml

@@ -454,7 +454,7 @@ deployment_statuses:
   message: ''
 ```
 
-`serve status` can also be used with KubeRay, a Kubernetes operator for Ray Serve, to help deploy your Serve applications with Kubernetes. There's also work in progress to provide closer integrations between some of the features from this document, like `serve status`, with Kubernetes to provide a clearer Serve deployment story.
+`serve status` can also be used with KubeRay ({ref}`kuberay-index`), a Kubernetes operator for Ray Serve, to help deploy your Serve applications with Kubernetes. There's also work in progress to provide closer integrations between some of the features from this document, like `serve status`, with Kubernetes to provide a clearer Serve deployment story.
 
 (serve-in-production-updating)=
 
