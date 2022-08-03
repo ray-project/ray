@@ -1,6 +1,3 @@
-.. warning::
-    This page is udner construction!
-
 .. include:: /_includes/clusters/we_are_hiring.rst
 
 .. _ref-cluster-setup-under-construction:
