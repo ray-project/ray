@@ -12,16 +12,16 @@ Ray AIR Trainers provide a way to scale out training with popular machine learni
 
 As part of Ray Train, Trainers provide a seamless abstraction for running distributed multi-node training with fault tolerance.
 
-Ray AIR Trainers also integrate with the rest of the Ray ecosystem. Trainers leverage Ray Data to enable scalable preprocessing
+Ray AIR Trainers also integrate with the rest of the Ray ecosystem. Trainers leverage :ref:`Ray Data <air-ingest>` to enable scalable preprocessing
 and performant distributed data ingestion. After executing training, Trainers output the trained model in the form of
-a :class:`checkpoint <ray.air.Checkpoint>`, which can be used for batch or online prediction inference. Trainers
+a :class:`Checkpoint <ray.air.checkpoint.Checkpoint>`, which can be used for batch or online prediction inference. Trainers
 also can be composed with Tuners.
 
 There are three broad categories of Trainers that AIR offers:
 
-* Deep Learning Trainers (Pytorch, Tensorflow, Horovod)
-* Tree-based Trainers (XGboost, LightGBM)
-* Other ML frameworks (HuggingFace, Scikit-Learn, RLlib)
+* :ref:`Deep Learning Trainers <air-trainers-dl>` (Pytorch, Tensorflow, Horovod)
+* :ref:`Tree-based Trainers <air-trainers-tree>` (XGboost, LightGBM)
+* :ref:`Other ML frameworks <air-trainers-other>` (HuggingFace, Scikit-Learn, RLlib)
 
 Trainer Basics
 --------------
@@ -29,15 +29,17 @@ Trainer Basics
 All trainers inherit from the :class:`BaseTrainer <ray.air.base_trainer.BaseTrainer>` interface. To
 construct a Trainer, you can provide:
 
-* A `scaling_config`, which specifies how many parallel training workers and what type of resources (cpus/gpus) to use per worker during training.
-* A `run_config`, which configures a variety of runtime parameters such as fault tolerance, logging, and callbacks.
-* A collection of `datasets` and a `preprocessor` for the provided dataset, which configures preprocessing and the datasets to ingest from.
+* A :class:`scaling_config <ray.air.config.ScalingConfig>`, which specifies how many parallel training workers and what type of resources (CPUs/GPUs) to use per worker during training.
+* A :class:`run_config <ray.air.config.RunConfig>`, which configures a variety of runtime parameters such as fault tolerance, logging, and callbacks.
+* A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided dataset, which configures preprocessing and the datasets to ingest from.
 * `resume_from_checkpoint`, which is a checkpoint path to resume from, should your training run be interrupted.
 
-After construction, you can invoke a trainer by calling `Trainer.fit()`.
+After construction, you can invoke a trainer by calling :meth:`Trainer.fit() <ray.train.trainer.Trainer.fit>`.
 
 .. literalinclude:: doc_code/xgboost_trainer.py
     :language: python
+
+.. _air-trainers-dl:
 
 Deep Learning Trainers
 ----------------------
@@ -81,18 +83,21 @@ Read more about :ref:`Ray Train's Deep Learning Trainers <train-user-guide>`.
 How to report metrics and checkpoints?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-One often needs to report metrics and save checkpoints for fault tolerance or future reference.
+A common use case is to collect training metrics and save checkpoints for fault tolerance during
+training or downstream processing (e.g. serving the model).
 This can be challenging in a distributed environment, where the calculation of metrics and
 the generation of checkpoints are spread out across multiple nodes in a cluster.
 
 Use the :ref:`Session <air-session-ref>` API to gather metrics and register checkpoints.
 Registered checkpoints are synced to driver or the cloud storage based on user's configurations,
-as specified in `Trainer(run_config=...)`.
+as specified in ``Trainer(run_config=...)``.
 
 .. literalinclude:: doc_code/report_metrics_and_save_checkpoints.py
     :language: python
     :start-after: __air_session_start__
     :end-before: __air_session_end__
+
+.. _air-trainers-tree:
 
 Tree-based Trainers
 -------------------
@@ -102,11 +107,13 @@ Ray Train offers 2 main tree-based trainers:
 :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`.
 
 
+
+
 XGBoost Trainer
 ~~~~~~~~~~~~~~~
 
-Ray AIR also provides an easy to use :class:`XGBoostTrainer  <ray.train.xgboost.XGBoostTrainer>`
-for training xgboost models at scale.
+Ray AIR also provides an easy to use :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>`
+for training XGBoost models at scale.
 
 To use this trainer, you will need to first run: ``pip install -U xgboost-ray``.
 
@@ -116,7 +123,15 @@ To use this trainer, you will need to first run: ``pip install -U xgboost-ray``.
 LightGBMTrainer
 ~~~~~~~~~~~~~~~
 
-TODO
+Similarly, Ray AIR comes with a :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`
+for training LightGBM models at scale.
+
+To use this trainer, you will need to first run ``pip install -U lightgbm-ray``.
+
+.. literalinclude:: doc_code/lightgbm_trainer.py
+    :language: python
+
+.. _air-trainers-other:
 
 Other Trainers
 --------------
