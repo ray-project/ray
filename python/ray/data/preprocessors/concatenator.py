@@ -2,7 +2,6 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-from ray.data.extensions import TensorArray
 from ray.data.preprocessor import Preprocessor
 
 
@@ -90,11 +89,7 @@ class Concatenator(Preprocessor):
         columns_to_concat = list(included_columns - set(self.exclude))
         concatenated = df[columns_to_concat].to_numpy(dtype=self.dtype)
         df = df.drop(columns=columns_to_concat)
-        try:
-            concatenated = TensorArray(concatenated)
-        except TypeError:
-            pass
-        df[self.output_column_name] = concatenated
+        df.loc[:, self.output_column_name] = list(concatenated)
         return df
 
     def __repr__(self):

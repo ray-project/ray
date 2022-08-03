@@ -2472,28 +2472,6 @@
 
   alert: default
 
-- name: serve_serve_cluster_fault_tolerance
-  group: Serve tests
-  working_dir: serve_tests
-
-  legacy:
-    test_name: serve_cluster_fault_tolerance
-    test_suite: serve_tests
-
-  frequency: nightly
-  team: serve
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_single_node.yaml
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_cluster_fault_tolerance.py
-    type: sdk_command
-    file_manager: job
-
-  alert: default
 
 - name: deployment_graph_long_chain
   group: Serve tests

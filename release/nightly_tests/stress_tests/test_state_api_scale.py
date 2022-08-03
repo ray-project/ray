@@ -1,16 +1,16 @@
 import click
+import json
 import ray
 from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME
 from ray._private.state_api_test_utils import (
     TEST_LOG_FILE_SIZE,
-    TEST_MAX_ACTORS,
-    TEST_MAX_OBJECTS,
-    TEST_MAX_TASKS,
+    STATE_LIST_LIMIT,
     StateAPIMetric,
     aggregate_perf_results,
     invoke_state_api,
     GLOBAL_STATE_STATS,
 )
+
 import ray._private.test_utils as test_utils
 import tqdm
 import asyncio
@@ -45,11 +45,13 @@ def test_many_tasks(num_tasks: int):
     if num_tasks == 0:
         print("Skipping test with no tasks")
         return
-    # No tasks
+    # No running tasks
     invoke_state_api(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample()")],
+        filters=[("name", "=", "pi4_sample()"), ("scheduling_state", "=", "RUNNING")],
+        key_suffix="0",
+        limit=STATE_LIST_LIMIT,
     )
 
     # Task definition adopted from:
@@ -78,21 +80,22 @@ def test_many_tasks(num_tasks: int):
         lambda res: len(res) == num_tasks,
         list_tasks,
         filters=[("name", "=", "pi4_sample()")],
+        key_suffix=f"{num_tasks}",
+        limit=STATE_LIST_LIMIT,
     )
 
     print("Waiting for tasks to finish...")
     ray.get(signal.send.remote())
     outputs = ray.get(results)
 
-    pi = sum(outputs) * 4.0 / num_tasks / SAMPLES
-    assert pi > 3 and pi < 4, f"Have a Pi={pi} from another universe."
-
     # Clean up
     # All compute tasks done other than the signal actor
     invoke_state_api(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample()")],
+        filters=[("name", "=", "pi4_sample()"), ("scheduling_state", "=", "RUNNING")],
+        key_suffix="0",
+        limit=STATE_LIST_LIMIT,
     )
 
     del signal
@@ -103,7 +106,7 @@ def test_many_actors(num_actors: int):
         print("Skipping test with no actors")
         return
 
-    @ray.remote(num_cpus=0.00001)
+    @ray.remote
     class TestActor:
         def running(self):
             return True
@@ -112,10 +115,13 @@ def test_many_actors(num_actors: int):
             ray.actor.exit_actor()
 
     actor_class_name = TestActor.__ray_metadata__.class_name
+
     invoke_state_api(
         lambda res: len(res) == 0,
         list_actors,
-        filters=[("class_name", "=", actor_class_name)],
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        key_suffix="0",
+        limit=STATE_LIST_LIMIT,
     )
 
     actors = [
@@ -129,7 +135,9 @@ def test_many_actors(num_actors: int):
     invoke_state_api(
         lambda res: len(res) == num_actors,
         list_actors,
-        filters=[("class_name", "=", actor_class_name)],
+        filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
+        key_suffix=f"{num_actors}",
+        limit=STATE_LIST_LIMIT,
     )
 
     exiting_actors = [actor.exit.remote() for actor in actors]
@@ -140,11 +148,8 @@ def test_many_actors(num_actors: int):
         lambda res: len(res) == 0,
         list_actors,
         filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
-    )
-    invoke_state_api(
-        lambda res: len(res) == num_actors,
-        list_actors,
-        filters=[("state", "=", "DEAD"), ("class_name", "=", actor_class_name)],
+        key_suffix="0",
+        limit=STATE_LIST_LIMIT,
     )
 
 
@@ -203,6 +208,8 @@ def test_many_objects(num_objects, num_actors):
             ("reference_type", "=", "LOCAL_REFERENCE"),
             ("type", "=", "Worker"),
         ],
+        key_suffix=f"{num_objects}",
+        limit=STATE_LIST_LIMIT,
     )
 
     exiting_actors = [actor.exit.remote() for actor in actors]
@@ -257,6 +264,18 @@ def test_large_log_file(log_file_size_byte: int):
     GLOBAL_STATE_STATS.calls["get_log"].append(metric)
 
 
+def _parse_input(num_tasks_str: str, num_actors_str: str, num_objects_str: str):
+    def _split_to_int(s):
+        tokens = s.split(",")
+        return [int(token) for token in tokens]
+
+    return (
+        _split_to_int(num_tasks_str),
+        _split_to_int(num_actors_str),
+        _split_to_int(num_objects_str),
+    )
+
+
 def no_resource_leaks():
     return test_utils.no_resource_leaks_excluding_node_resources()
 
@@ -265,22 +284,22 @@ def no_resource_leaks():
 @click.option(
     "--num-tasks",
     required=False,
-    default=TEST_MAX_TASKS,
-    type=int,
+    default="1,100,1000,10000",
+    type=str,
     help="Number of tasks to launch.",
 )
 @click.option(
     "--num-actors",
     required=False,
-    default=TEST_MAX_ACTORS,
-    type=int,
+    default="1,100,1000",
+    type=str,
     help="Number of actors to launch.",
 )
 @click.option(
     "--num-objects",
     required=False,
-    default=TEST_MAX_OBJECTS,
-    type=int,
+    default="100,1000,10000",
+    type=str,
     help="Number of actors to launch.",
 )
 @click.option(
@@ -315,28 +334,36 @@ def test(
     ray.init(address="auto", log_to_driver=False)
 
     if smoke_test:
-        num_tasks = 100
-        num_actors = 10
-        num_objects = 100
+        num_tasks = "100"
+        num_actors = "10"
+        num_objects = "100"
         log_file_size_byte = 1024
+
+    # Parse the input
+    num_tasks_arr, num_actors_arr, num_objects_arr = _parse_input(
+        num_tasks, num_actors, num_objects
+    )
 
     test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
     start_time = time.perf_counter()
     # Run some long-running tasks
-    print(f"\nRunning with many tasks={num_tasks}")
-    test_many_tasks(num_tasks=num_tasks)
-    print("\ntest_many_tasks() PASS")
+    for n in num_tasks_arr:
+        print(f"\nRunning with many tasks={n}")
+        test_many_tasks(num_tasks=n)
+        print(f"\ntest_many_tasks({n}) PASS")
 
     # Run many actors
-    print(f"\nRunning with many actors={num_actors}")
-    test_many_actors(num_actors=num_actors)
-    print("\ntest_many_actors() PASS")
+    for n in num_actors_arr:
+        print(f"\nRunning with many actors={n}")
+        test_many_actors(num_actors=n)
+        print(f"\ntest_many_actors({n}) PASS")
 
     # Create many objects
-    print(f"\nRunning with many objects={num_objects}")
-    test_many_objects(num_objects=num_objects, num_actors=num_actors_for_objects)
-    print("\ntest_many_objects() PASS")
+    for n in num_objects_arr:
+        print(f"\nRunning with many objects={n}")
+        test_many_objects(num_objects=n, num_actors=num_actors_for_objects)
+        print(f"\ntest_many_objects({n}) PASS")
 
     # Create large logs
     print(f"\nRunning with large file={log_file_size_byte} bytes")
@@ -353,30 +380,26 @@ def test(
     print(f"Peak memory usage per processes:\n {usage}")
     del monitor_actor
 
+    state_perf_result = aggregate_perf_results()
+    results = {
+        "time": end_time - start_time,
+        "success": "1",
+        "_peak_memory": round(used_gb, 2),
+        "_peak_process_memory": usage,
+        "perf_metrics": [
+            {
+                "perf_metric_name": "avg_state_api_latency_sec",
+                "perf_metric_value": state_perf_result["avg_state_api_latency_sec"],
+                "perf_metric_type": "LATENCY",
+            }
+        ],
+    }
     if "TEST_OUTPUT_JSON" in os.environ:
-        import json
-
         out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-
-        state_perf_result = aggregate_perf_results()
-
-        results = {
-            "time": end_time - start_time,
-            "success": "1",
-            "_peak_memory": round(used_gb, 2),
-            "_peak_process_memory": usage,
-            "perf_metrics": [
-                {
-                    "perf_metric_name": "avg_state_api_latency_sec",
-                    "perf_metric_value": state_perf_result["avg_state_api_latency_sec"],
-                    "perf_metric_type": "LATENCY",
-                }
-            ],
-        }
-
-        results.update(state_perf_result)
         json.dump(results, out_file)
-        print(json.dumps(results, indent=2))
+
+    results.update(state_perf_result)
+    print(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":
