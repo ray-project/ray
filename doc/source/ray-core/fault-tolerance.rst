@@ -1,14 +1,10 @@
 Fault tolerance
 ===============
 
-Ray is a distributed system, and a lot of failures can happen. Generally, it can
-be classified into two classes: 1) failure because of ray internally; 2) failure
-due to the applications. The first is likely to be triggered by node failure,
-network failure, or just bugs in Ray. The latter could happen because the user
-has bugs in their code or some external systems fail, and the failure is not
-handled well by the code. 
-Ray has built a lot of mechanisms to do its best to recover from the failure in
-both cases to ensure the distributed apps are fault tolerant.
+Ray is a distributed system, and that means failures can happen. Generally, failures can
+be classified into two classes: 1) failures internal to Ray, and 2) application-level failures. The first can be triggered by node failures,
+network failures, or just bugs in Ray. The latter can happen because of bugs in user-level code, or if external systems fail.
+Here, we describe the mechanisms that Ray provides to allow applications to recover from failures.
 
 .. _fault-tolerance_ownership:
 
