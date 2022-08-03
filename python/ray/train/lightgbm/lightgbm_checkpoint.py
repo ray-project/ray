@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LightGBMCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with LightGBM-specific
     functionality.
