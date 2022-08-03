@@ -36,7 +36,7 @@ class TaskType(enum.IntEnum):
     CHECKPOINT_TASK = 1
 
 
-@ray.remote(num_cpus=0.1)
+@ray.remote(num_cpus=0.1, retry_exceptions=True)
 def _checkpoint_task_output(workflow_id: str, task_id: TaskID, output) -> int:
     store = WorkflowStorage(workflow_id)
     return store.save_task_output(task_id, output, exception=None)
@@ -59,8 +59,7 @@ class WorkflowExecutor:
         - Error handling.
         - Responding callbacks.
 
-        It borrows some design of event loop in asyncio,
-        e.g., 'run_until_complete'.
+        It borrows some design of event loop in asyncio, e.g., 'run_until_complete'.
 
         Args:
             state: The initial state of the workflow.
@@ -199,6 +198,34 @@ class WorkflowExecutor:
         state.task_execution_metadata[task_id] = TaskExecutionMetadata(
             submit_time=time.time()
         )
+
+    def _submit_checkpoint_task(
+        self, task_id: TaskID, metadata: WorkflowExecutionMetadata
+    ) -> None:
+        """Submit a checkpoint task for checkpoint workflow task 'task_id'."""
+        state = self._state
+        target_task_id = state.continuation_root.get(task_id, task_id)
+        output_ref = state.output_map[target_task_id]
+        if metadata.node_id:
+            # Try to launch a checkpoint task in the same node as the associated
+            # task. This makes sure the checkpoint task can access the task
+            # output with shared memory (zero-copy).
+            _checkpoint_task = _checkpoint_task_output.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    metadata.node_id, soft=True
+                )
+            )
+        else:
+            _checkpoint_task = _checkpoint_task_output
+        # create a checkpoint task, and put the task into the completion queue
+        checkpoint_task_ref = _checkpoint_task.remote(
+            state.task_context[task_id].workflow_id, task_id, output_ref.ref
+        )
+        state.checkpoint_task_map[target_task_id] = checkpoint_task_ref
+        future = asyncio.wrap_future(checkpoint_task_ref.future())
+        future.type = TaskType.CHECKPOINT_TASK
+        future.metadata = task_id
+        future.add_done_callback(self._completion_queue.put_nowait)
 
     def _post_process_submit_task(
         self, task_id: TaskID, store: "WorkflowStorage"
@@ -391,26 +418,7 @@ class WorkflowExecutor:
             target_task_id = state.continuation_root.get(task_id, task_id)
             state.output_map[target_task_id] = output_ref
             if state.tasks[task_id].options.checkpoint:
-                if metadata.node_id:
-                    # Try to launch a checkpoint task in the same node as the associated
-                    # task. This makes sure the checkpoint task can access the task
-                    # output with shared memory (zero-copy).
-                    _checkpoint_task = _checkpoint_task_output.options(
-                        scheduling_strategy=NodeAffinitySchedulingStrategy(
-                            metadata.node_id, soft=True
-                        )
-                    )
-                else:
-                    _checkpoint_task = _checkpoint_task_output
-                # create a checkpoint task, and put the task into the completion queue
-                checkpoint_task_ref = _checkpoint_task.remote(
-                    state.task_context[task_id].workflow_id, task_id, output_ref.ref
-                )
-                state.checkpoint_task_map[target_task_id] = checkpoint_task_ref
-                future = asyncio.wrap_future(checkpoint_task_ref.future())
-                future.type = TaskType.CHECKPOINT_TASK
-                future.metadata = task_id
-                future.add_done_callback(self._completion_queue.put_nowait)
+                self._submit_checkpoint_task(task_id, metadata)
             else:
                 state.done_tasks.add(target_task_id)
             # TODO(suquark): cleanup callbacks when a result is set?
