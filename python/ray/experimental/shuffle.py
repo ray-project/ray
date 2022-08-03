@@ -337,7 +337,7 @@ def main():
     parser.add_argument("--num-partitions", type=int, default=5)
     parser.add_argument("--partition-size", type=float, default=200e6)
     parser.add_argument("--num-nodes", type=int, default=None)
-    parser.add_argument("--num-cpus", type=int, default=16)
+    parser.add_argument("--num-cpus", type=int, default=8)
     parser.add_argument("--no-streaming", action="store_true", default=False)
     parser.add_argument("--use-wait", action="store_true", default=False)
     args = parser.parse_args()
