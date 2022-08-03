@@ -81,9 +81,9 @@ async def adapter(request: Request):
 serve.start(detached=True)
 deployment = PredictorDeployment.options(name="XGBoostService")
 
-deployment.deploy(
+serve.run(deployment.bind(
     XGBoostPredictor, checkpoint, batching_params=False, http_adapter=adapter
-)
+))
 
 print(deployment.url)
 
