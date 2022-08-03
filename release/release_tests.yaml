@@ -2739,10 +2739,10 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
-    timeout: 18000
+    timeout: 1800
     script: python learning_tests/run.py --yaml-sub-dir=cql
     type: sdk_command
     file_manager: job
