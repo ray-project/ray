@@ -83,7 +83,9 @@ class RuntimeEnvContext:
 
             class_path_args = [
                 "-cp",
-                ray_jars,
+                # TODO(SongGuyang): Remove java jars from class path. We should
+                # use code-search-path.
+                ray_jars + str(":".join(local_java_jars)),
                 "-Dray.job.code-search-path=" + str(":".join(local_java_jars)),
             ]
             passthrough_args = class_path_args + passthrough_args

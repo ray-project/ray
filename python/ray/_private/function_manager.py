@@ -360,7 +360,8 @@ class FunctionActorManager:
 
         object = self.load_function_or_class_from_local(module_name, function_name)
         if object is not None:
-            # TODO(SongGuyang): Why raises `AttributeError: 'function' object has no attribute '_function'` here?
+            # TODO(SongGuyang): Why raises `AttributeError: 'function' object
+            # has no attribute '_function'` here?
             try:
                 function = object._function
             except Exception:
