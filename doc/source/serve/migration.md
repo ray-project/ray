@@ -14,34 +14,17 @@ In Ray Serve 2.0, we released a [new deployment API](converting-to-ray-serve-dep
 ### Migrating a single deployment to the new deployment API 
 
 In the 1.x deployment API, we usually have the following code for deployment.
-```python
-@serve.deployment
-class Model:
-    def forward(self, input):
-        # some inference work
-        print(input)
-        return
-
-serve.start()
-Model.deploy()
-handle = Model.get_handle()
-handle.forward.remote(1)
+```{literalinclude} ../serve/doc_code/migration_example.py
+:start-after: __single_deployment_old_api_start__
+:end-before: __single_deployment_old_api_end__
+:language: python
 ```
 
 With the 2.0 deployment API, you can use the following code to update the above one.
-```python
-@serve.deployment
-class Model:
-    def forward(self, input):
-        # some inference work
-        print(input)
-        return
-
-with InputNode() as dag_input:
-    model = Model.bind()
-    d = DAGDriver.bind(model.forward.bind(dag_input))
-handle = serve.run(d)
-handle.predict.remote(1)
+```{literalinclude} ../serve/doc_code/migration_example.py
+:start-after: __single_deployment_new_api_start__
+:end-before: __single_deployment_new_api_end__
+:language: python
 ```
 
 :::{note}
@@ -52,58 +35,18 @@ handle.predict.remote(1)
 
 When you have multiple deployments, here is the normal code for 1.x API
 
-```python
-@serve.deployment
-class Model:
-    def forward(self, input):
-        # some inference work
-        print(input)
-        return
-
-@serve.deployment
-class Model2:
-    def forward(self, input):
-        # some inference work
-        print(input)
-        return
-
-serve.start()
-Model.deploy()
-Model2.deploy()
-handle = Model.get_handle()
-handle.forward.remote(1)
-
-handle2 = Model2.get_handle()
-handle2.forward.remote(1)
+```{literalinclude} ../serve/doc_code/migration_example.py
+:start-after: __multi_deployments_old_api_start__
+:end-before: __multi_deployments_old_api_end__
+:language: python
 ```
 
 With the 2.0 deployment API, you can use the following code to update the above one.
 
-```python
-@serve.deployment
-class Model:
-    def forward(self, input):
-        # some inference work
-        print(input)
-        return
-
-@serve.deployment
-class Model2:
-    def forward(self, input):
-        # some inference work
-        print(input)
-        return
-
-with InputNode() as dag_input:
-    model = Model.bind()
-    model2 = Model2.bind()
-    d = DAGDriver.bind({"/model1": model.forward.bind(dag_input), "/model2": model2.forward.bind(dag_input)})
-handle = serve.run(d)
-handle.predict_with_route.remote("/model1", 1)
-handle.predict_with_route.remote("/model2", 1)
-
-resp = requests.get("http://localhost:8000/model1", data="1")
-resp = requests.get("http://localhost:8000/model2", data="1")
+```{literalinclude} ../serve/doc_code/migration_example.py
+:start-after: __multi_deployments_new_api_start__
+:end-before: __multi_deployments_new_api_end__
+:language: python
 ```
 
 
@@ -119,51 +62,24 @@ resp = requests.get("http://localhost:8000/model2", data="1")
 
 Sometimes, you have a customized route prefix for each deployment:
 
-```python
-@serve.deployment(route_prefix="/my_model1")
-class Model:
-    def __call__(self, req):
-        # some inference work
-        return "done"
-
-serve.start()
-Model.deploy()
-resp = requests.get("http://localhost:8000/my_model1", data="321")
+```{literalinclude} ../serve/doc_code/migration_example.py
+:start-after: __customized_route_old_api_start__
+:end-before: __customized_route_old_api_end__
+:language: python
 ```
 
 With the 2.0 deployment API, you can use the following code to update the above one.
 
-```python
-@serve.deployment
-class Model:
-    def __call__(self, req):
-        # some inference work
-        return "done"
-
-d = DAGDriver.options(route_prefix="/my_model1").bind(Model.bind())
-handle = serve.run(d)
-resp = requests.get("http://localhost:8000/my_model1", data="321")
+```{literalinclude} ../serve/doc_code/migration_example.py
+:start-after: __customized_route_old_api_1_start__
+:end-before: __customized_route_old_api_1_end__
+:language: python
 ```
 
 Or if you have multiple deployments and want to customize the HTTP route prefix for each model, you can use the following code:
 
-```python
-@serve.deployment
-class Model:
-    def __call__(self, req):
-        # some inference work
-        return "done"
-
-@serve.deployment
-class Model2:
-    def __call__(self, req):
-        # some inference work
-        return "done"
-
-d = DAGDriver.bind({"/my_model1": Model.bind(), "/my_model2": Model2.bind()})
-handle = serve.run(d)
-resp = requests.get("http://localhost:8000/my_model1", data="321")
-resp = requests.get("http://localhost:8000/my_model2", data="321")
+```{literalinclude} ../serve/doc_code/migration_example.py
+:start-after: __customized_route_old_api_2_start__
+:end-before: __customized_route_old_api_2_end__
+:language: python
 ```
-
-:::
