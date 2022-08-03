@@ -22,6 +22,8 @@ AIR User Guides
         :type: ref
         :text: Using Preprocessors
         :classes: btn-link btn-block stretched-link
+
+
     ---
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
@@ -54,9 +56,9 @@ AIR User Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: /ray-air/examples/analyze_tuning_results
+    .. link-button:: /ray-air/tuner
         :type: ref
-        :text: Analyzing Tune Results
+        :text: Configuring Hyperparameter Tuning
         :classes: btn-link btn-block stretched-link
 
     ---
