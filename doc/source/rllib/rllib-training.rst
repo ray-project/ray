@@ -884,9 +884,9 @@ directly as ``compute_action()`` does:
 
         if state is None:
             state = []
-        preprocessed = self.workers.local_worker().preprocessors[
+        preprocessed = self.local_worker.preprocessors[
             policy_id].transform(observation)
-        filtered_obs = self.workers.local_worker().filters[policy_id](
+        filtered_obs = self.local_worker.filters[policy_id](
             preprocessed, update=False)
         if state:
             return self.get_policy(policy_id).compute_single_action(

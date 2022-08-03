@@ -174,7 +174,7 @@ class A2C(A3C):
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
 
         with self._timers[COMPUTE_GRADS_TIMER]:
-            grad, info = self.workers.local_worker().compute_gradients(
+            grad, info = self.local_worker.compute_gradients(
                 train_batch, single_agent=True
             )
             # New microbatch accumulation phase.
@@ -199,7 +199,7 @@ class A2C(A3C):
             # Apply gradients.
             apply_timer = self._timers[APPLY_GRADS_TIMER]
             with apply_timer:
-                self.workers.local_worker().apply_gradients(self._microbatches_grads)
+                self.local_worker.apply_gradients(self._microbatches_grads)
                 apply_timer.push_units_processed(self._microbatches_counts)
 
             # Reset microbatch information.
@@ -213,7 +213,7 @@ class A2C(A3C):
             }
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(
-                    policies=self.workers.local_worker().get_policies_to_train(),
+                    policies=self.local_worker.get_policies_to_train(),
                     global_vars=global_vars,
                 )
 

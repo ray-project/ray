@@ -380,7 +380,7 @@ class DQN(SimpleQ):
 
             # Old-style replay buffers return None if learning has not started
             if train_batch is None or len(train_batch) == 0:
-                self.workers.local_worker().set_global_vars(global_vars)
+                self.local_worker.set_global_vars(global_vars)
                 break
 
             # Postprocess batch before we learn on it
@@ -415,8 +415,8 @@ class DQN(SimpleQ):
             ]
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
             if cur_ts - last_update >= self.config["target_network_update_freq"]:
-                to_update = self.workers.local_worker().get_policies_to_train()
-                self.workers.local_worker().foreach_policy_to_train(
+                to_update = self.local_worker.get_policies_to_train()
+                self.local_worker.foreach_policy_to_train(
                     lambda p, pid: pid in to_update and p.update_target()
                 )
                 self._counters[NUM_TARGET_UPDATES] += 1

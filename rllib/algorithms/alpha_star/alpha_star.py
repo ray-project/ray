@@ -343,7 +343,7 @@ class AlphaStar(appo.APPO):
         # provided in the multiagent config.
         if self.config["max_num_policies_to_train"] is None:
             self.config["max_num_policies_to_train"] = len(
-                self.workers.local_worker().get_policies_to_train()
+                self.local_worker.get_policies_to_train()
             )
 
         # Single CPU replay shard (co-located with GPUs so we can place the
@@ -372,7 +372,7 @@ class AlphaStar(appo.APPO):
             replay_actor_args=replay_actor_args,
         )
         for pid, policy_spec in ma_cfg["policies"].items():
-            if pid in self.workers.local_worker().get_policies_to_train():
+            if pid in self.local_worker.get_policies_to_train():
                 distributed_learners.add_policy(pid, policy_spec)
 
         # Store distributed_learners on all RolloutWorkers
@@ -424,7 +424,7 @@ class AlphaStar(appo.APPO):
         with self._timers[SAMPLE_TIMER]:
             # if there are no remote workers (e.g. num_workers=0)
             if not self.workers.remote_workers():
-                worker = self.workers.local_worker()
+                worker = self.local_worker
                 statistics = worker.apply(self._sample_and_send_to_buffer)
                 sample_results = {worker: [statistics]}
             else:

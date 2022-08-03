@@ -213,8 +213,8 @@ class CRR(Algorithm):
 
         if cur_ts - last_update >= self.config["target_network_update_freq"]:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
-                to_update = self.workers.local_worker().get_policies_to_train()
-                self.workers.local_worker().foreach_policy_to_train(
+                to_update = self.local_worker.get_policies_to_train()
+                self.local_worker.foreach_policy_to_train(
                     lambda p, pid: pid in to_update and p.update_target()
                 )
             self._counters[NUM_TARGET_UPDATES] += 1

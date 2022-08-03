@@ -239,7 +239,7 @@ class UpdateKL:
 
         # Update KL on all trainable policies within the local (trainer)
         # Worker.
-        self.workers.local_worker().foreach_policy_to_train(update)
+        self.local_worker.foreach_policy_to_train(update)
 
 
 def warn_about_bad_reward_scales(config, result):
@@ -469,7 +469,7 @@ class PPO(Algorithm):
                 )
 
         # Update global vars on local worker as well.
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.local_worker.set_global_vars(global_vars)
 
         return train_results
 

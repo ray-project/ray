@@ -406,10 +406,10 @@ class ApexDQN(DQN):
             ],
             ray_wait_timeout_s=self.config["timeout_s_sampler_manager"],
         )
-        self.learner_thread = LearnerThread(self.workers.local_worker())
+        self.learner_thread = LearnerThread(self.local_worker)
         self.learner_thread.start()
         self.steps_since_update = defaultdict(int)
-        weights = self.workers.local_worker().get_weights()
+        weights = self.local_worker.get_weights()
         self.curr_learner_weights = ray.put(weights)
         self.curr_num_samples_collected = 0
         self._num_ts_trained_since_last_target_update = 0
@@ -454,7 +454,7 @@ class ApexDQN(DQN):
         # in the case the num_workers = 0
         if not self.workers.remote_workers():
             with self._timers[SAMPLE_TIMER]:
-                local_sampling_worker = self.workers.local_worker()
+                local_sampling_worker = self.local_worker
                 batch = local_sampling_worker.sample()
                 actor = random.choice(self._replay_actors)
                 ray.get(actor.add.remote(batch))
@@ -510,7 +510,7 @@ class ApexDQN(DQN):
         # the learner worker's weights
         if self.learner_thread.weights_updated:
             self.learner_thread.weights_updated = False
-            weights = self.workers.local_worker().get_weights()
+            weights = self.local_worker.get_weights()
             self.curr_learner_weights = ray.put(weights)
 
         num_workers_updated = 0
@@ -616,7 +616,7 @@ class ApexDQN(DQN):
                 self.update_target_networks(env_steps)
                 self._counters[NUM_ENV_STEPS_TRAINED] += env_steps
                 self._counters[NUM_AGENT_STEPS_TRAINED] += agent_steps
-                self.workers.local_worker().set_global_vars(
+                self.local_worker.set_global_vars(
                     {"timestep": self._counters[NUM_ENV_STEPS_TRAINED]}
                 )
             else:
@@ -635,8 +635,8 @@ class ApexDQN(DQN):
         ):
             self._num_ts_trained_since_last_target_update = 0
             with self._timers[TARGET_NET_UPDATE_TIMER]:
-                to_update = self.workers.local_worker().get_policies_to_train()
-                self.workers.local_worker().foreach_policy_to_train(
+                to_update = self.local_worker.get_policies_to_train()
+                self.local_worker.foreach_policy_to_train(
                     lambda p, pid: pid in to_update and p.update_target()
                 )
             self._counters[NUM_TARGET_UPDATES] += 1

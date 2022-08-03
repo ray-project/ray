@@ -185,7 +185,7 @@ class UpdateTargetAndKL:
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
             # Update Target Network
-            self.workers.local_worker().foreach_policy_to_train(
+            self.local_worker.foreach_policy_to_train(
                 lambda p, _: p.update_target()
             )
             # Also update KL Coeff
@@ -199,7 +199,7 @@ class APPO(Impala):
         super().__init__(config, *args, **kwargs)
 
         # After init: Initialize target net.
-        self.workers.local_worker().foreach_policy_to_train(
+        self.local_worker.foreach_policy_to_train(
             lambda p, _: p.update_target()
         )
 
@@ -241,7 +241,7 @@ class APPO(Impala):
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
             # Update our target network.
-            self.workers.local_worker().foreach_policy_to_train(
+            self.local_worker.foreach_policy_to_train(
                 lambda p, _: p.update_target()
             )
 
@@ -265,7 +265,7 @@ class APPO(Impala):
 
                 # Update KL on all trainable policies within the local (trainer)
                 # Worker.
-                self.workers.local_worker().foreach_policy_to_train(update)
+                self.local_worker.foreach_policy_to_train(update)
 
     @override(Impala)
     def training_step(self) -> ResultDict:

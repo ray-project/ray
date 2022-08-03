@@ -190,7 +190,7 @@ class A3C(Algorithm):
 
     def training_step(self) -> ResultDict:
         # Shortcut.
-        local_worker = self.workers.local_worker()
+        local_worker = self.local_worker
 
         # Define the function executed in parallel by all RolloutWorkers to collect
         # samples + compute and return gradients (and other information).

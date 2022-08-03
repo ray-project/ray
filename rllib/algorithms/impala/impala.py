@@ -431,7 +431,7 @@ class BroadcastUpdateLearnerWeights:
             self.steps_since_broadcast >= self.broadcast_interval
             and self.learner_thread.weights_updated
         ):
-            self.weights = ray.put(self.workers.local_worker().get_weights())
+            self.weights = ray.put(self.local_worker.get_weights())
             self.steps_since_broadcast = 0
             self.learner_thread.weights_updated = False
             # Update metrics.
@@ -439,7 +439,7 @@ class BroadcastUpdateLearnerWeights:
             metrics.counters["num_weight_broadcasts"] += 1
         actor.set_weights.remote(self.weights, _get_global_vars())
         # Also update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(_get_global_vars())
+        self.local_worker.set_global_vars(_get_global_vars())
 
 
 class Impala(Algorithm):
@@ -610,7 +610,7 @@ class Impala(Algorithm):
 
             # Create and start the learner thread.
             self._learner_thread = make_learner_thread(
-                self.workers.local_worker(), self.config
+                self.local_worker, self.config
             )
             self._learner_thread.start()
             self.workers_that_need_updates = set()
@@ -803,7 +803,7 @@ class Impala(Algorithm):
         else:
             # only sampling on the local worker
             sample_batches = {
-                self.workers.local_worker(): [self.workers.local_worker().sample()]
+                self.local_worker: [self.local_worker.sample()]
             }
         return sample_batches
 
@@ -915,7 +915,7 @@ class Impala(Algorithm):
             >= self.config["broadcast_interval"]
             and self.workers_that_need_updates
         ):
-            weights = ray.put(self.workers.local_worker().get_weights())
+            weights = ray.put(self.local_worker.get_weights())
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._learner_thread.weights_updated = False
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
@@ -925,7 +925,7 @@ class Impala(Algorithm):
             self.workers_that_need_updates = set()
 
         # Update global vars of the local worker.
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.local_worker.set_global_vars(global_vars)
 
     @override(Algorithm)
     def on_worker_failures(

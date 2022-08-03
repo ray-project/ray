@@ -146,7 +146,7 @@ class Algorithm(Trainable):
 
     Algorithms contain a WorkerSet under `self.workers`. A WorkerSet is
     normally composed of a single local worker
-    (self.workers.local_worker()), used to compute and apply learning updates,
+    (self.local_worker), used to compute and apply learning updates,
     and optionally one or more remote workers (self.workers.remote_workers()),
     used to generate environment samples in parallel.
 
@@ -465,7 +465,7 @@ class Algorithm(Trainable):
             # unpreprocessed spaces).
             self.config["multiagent"][
                 "policies"
-            ] = self.workers.local_worker().policy_dict
+            ] = self.local_worker.policy_dict
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -643,7 +643,7 @@ class Algorithm(Trainable):
         results: ResultDict = {}
 
         local_worker = (
-            self.workers.local_worker()
+            self.local_worker
             if hasattr(self.workers, "local_worker")
             else None
         )
@@ -675,7 +675,7 @@ class Algorithm(Trainable):
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
             self._sync_filters_if_needed(
-                from_worker=self.workers.local_worker(),
+                from_worker=self.local_worker,
                 workers=self.workers,
                 timeout_seconds=self.config[
                     "sync_filters_on_rollout_workers_timeout_s"
@@ -745,10 +745,10 @@ class Algorithm(Trainable):
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
             self.evaluation_workers.sync_weights(
-                from_worker=self.workers.local_worker()
+                from_worker=self.local_worker
             )
             self._sync_filters_if_needed(
-                from_worker=self.workers.local_worker(),
+                from_worker=self.local_worker,
                 workers=self.evaluation_workers,
                 timeout_seconds=self.config[
                     "sync_filters_on_rollout_workers_timeout_s"
@@ -770,7 +770,7 @@ class Algorithm(Trainable):
         else:
             if (
                 self.evaluation_workers is None
-                and self.workers.local_worker().input_reader is None
+                and self.local_worker.input_reader is None
             ):
                 raise ValueError(
                     "Cannot evaluate w/o an evaluation worker set in "
@@ -821,13 +821,13 @@ class Algorithm(Trainable):
                 # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    batch = self.workers.local_worker().sample()
+                    batch = self.local_worker.sample()
                     agent_steps_this_iter += batch.agent_steps()
                     env_steps_this_iter += batch.env_steps()
                     if self.reward_estimators:
                         all_batches.append(batch)
                 metrics = collect_metrics(
-                    self.workers.local_worker(),
+                    self.local_worker,
                     keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
                     timeout_seconds=eval_cfg["metrics_episode_collection_timeout_s"],
                 )
@@ -1118,7 +1118,7 @@ class Algorithm(Trainable):
                 f"PolicyID '{policy_id}' not found in PolicyMap of the "
                 f"Trainer's local worker!"
             )
-        local_worker = self.workers.local_worker()
+        local_worker = self.local_worker
 
         # Check the preprocessor and preprocess, if necessary.
         pp = local_worker.preprocessors[policy_id]
@@ -1242,7 +1242,7 @@ class Algorithm(Trainable):
         policy = self.get_policy(policy_id)
         filtered_obs, filtered_state = [], []
         for agent_id, ob in observations.items():
-            worker = self.workers.local_worker()
+            worker = self.local_worker
             preprocessed = worker.preprocessors[policy_id].transform(ob)
             filtered = worker.filters[policy_id](preprocessed, update=False)
             filtered_obs.append(filtered)
@@ -1315,7 +1315,7 @@ class Algorithm(Trainable):
         Args:
             policy_id: ID of the policy to return.
         """
-        return self.workers.local_worker().get_policy(policy_id)
+        return self.local_worker.get_policy(policy_id)
 
     @PublicAPI
     def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
@@ -1325,7 +1325,7 @@ class Algorithm(Trainable):
             policies: Optional list of policies to return weights for,
                 or None for all policies.
         """
-        return self.workers.local_worker().get_weights(policies)
+        return self.local_worker.get_weights(policies)
 
     @PublicAPI
     def set_weights(self, weights: Dict[PolicyID, dict]):
@@ -1334,7 +1334,7 @@ class Algorithm(Trainable):
         Args:
             weights: Map of policy ids to weights to set.
         """
-        self.workers.local_worker().set_weights(weights)
+        self.local_worker.set_weights(weights)
 
     @PublicAPI
     def add_policy(
@@ -1746,7 +1746,7 @@ class Algorithm(Trainable):
         assert worker_set is not None
         # Broadcast the new policy weights to all evaluation workers.
         logger.info("Synchronizing weights to workers.")
-        weights = ray.put(self.workers.local_worker().save())
+        weights = ray.put(self.local_worker.save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
     @classmethod
@@ -2193,7 +2193,7 @@ class Algorithm(Trainable):
         # Search for failed workers and try to recover (restart) them.
         if recreate:
             removed_workers, new_workers = worker_set.recreate_failed_workers(
-                local_worker_for_synching=self.workers.local_worker()
+                local_worker_for_synching=self.local_worker
             )
         elif ignore:
             removed_workers = worker_set.remove_failed_workers()
@@ -2275,7 +2275,7 @@ class Algorithm(Trainable):
     def __getstate__(self) -> dict:
         state = {}
         if hasattr(self, "workers"):
-            state["worker"] = self.workers.local_worker().save()
+            state["worker"] = self.local_worker.save()
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
         if self.local_replay_buffer is not None and self.config.get(
@@ -2290,7 +2290,7 @@ class Algorithm(Trainable):
 
     def __setstate__(self, state: dict):
         if hasattr(self, "workers") and "worker" in state:
-            self.workers.local_worker().restore(state["worker"])
+            self.local_worker.restore(state["worker"])
             remote_state = ray.put(state["worker"])
             for r in self.workers.remote_workers():
                 r.restore.remote(remote_state)
@@ -2609,6 +2609,10 @@ class Algorithm(Trainable):
     @Deprecated(new="logic moved into `self.step()`", error=True)
     def step_attempt(self):
         pass
+
+    @property
+    def local_worker(self):
+        return self.workers.local_worker()
 
     @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
     def _make_workers(

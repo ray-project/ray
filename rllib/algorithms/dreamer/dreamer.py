@@ -341,10 +341,10 @@ class Dreamer(Algorithm):
 
             # Prefill episode buffer with initial exploration (uniform sampling)
             while (
-                total_sampled_timesteps(self.workers.local_worker())
+                total_sampled_timesteps(self.local_worker)
                 < self.config["prefill_timesteps"]
             ):
-                samples = self.workers.local_worker().sample()
+                samples = self.local_worker.sample()
                 self.local_replay_buffer.add(samples)
 
     @staticmethod
@@ -382,7 +382,7 @@ class Dreamer(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        local_worker = self.workers.local_worker()
+        local_worker = self.local_worker
 
         # Number of sub-iterations for Dreamer
         dreamer_train_iters = self.config["dreamer_train_iters"]

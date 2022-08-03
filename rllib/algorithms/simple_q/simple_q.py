@@ -323,7 +323,7 @@ class SimpleQ(Algorithm):
             The results dict from executing the training iteration.
         """
         batch_size = self.config["train_batch_size"]
-        local_worker = self.workers.local_worker()
+        local_worker = self.local_worker
 
         # Sample n MultiAgentBatches from n workers.
         new_sample_batches = synchronous_parallel_sample(
@@ -347,7 +347,7 @@ class SimpleQ(Algorithm):
         # If not yet learning, early-out here and do not perform learning, weight-
         # synching, or target net updating.
         if train_batch is None or len(train_batch) == 0:
-            self.workers.local_worker().set_global_vars(global_vars)
+            self.local_worker.set_global_vars(global_vars)
             return {}
 
         # Learn on the training batch.
