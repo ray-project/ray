@@ -214,12 +214,12 @@ class BatchPredictor:
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
                 override_prep = BatchMapper(lambda x: x)
                 batch_fn = preprocessor._transform_batch
-                data = data.map_batches(batch_fn, batch_format="pandas")
+                data = data.map_batches(batch_fn, batch_format="numpy")
 
         prediction_results = data.map_batches(
             ScoringWrapper,
             compute=compute,
-            batch_format="pandas",
+            batch_format="numpy",
             batch_size=batch_size,
             **ray_remote_args,
         )

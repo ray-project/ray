@@ -8,6 +8,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
+    import numpy as np
     import pyarrow
 
     from ray.air.data_batch_type import DataBatchType
@@ -192,12 +193,15 @@ class Preprocessor(abc.ABC):
         * Implementation is defined as overriding the method in a sub-class.
         """
 
-        assert data_format in ("pandas", "arrow")
+        assert data_format in ("pandas", "arrow", "numpy")
         has_transform_arrow = (
             self.__class__._transform_arrow != Preprocessor._transform_arrow
         )
         has_transform_pandas = (
             self.__class__._transform_pandas != Preprocessor._transform_pandas
+        )
+        has_transform_numpy = (
+            self.__class__._transform_numpy != Preprocessor._transform_numpy
         )
 
         if has_transform_arrow and has_transform_pandas:
@@ -207,6 +211,8 @@ class Preprocessor(abc.ABC):
                 transform_type = "pandas"
             elif data_format == "arrow":
                 transform_type = "arrow"
+        elif has_transform_numpy and data_format == "numpy":
+            transform_type = "numpy"
         elif has_transform_pandas:
             transform_type = "pandas"
         elif has_transform_arrow:
@@ -222,10 +228,10 @@ class Preprocessor(abc.ABC):
         # The default may be too small for some datasets and too large for others.
 
         dataset_format = dataset._dataset_format()
-        if dataset_format not in ("pandas", "arrow"):
+        if dataset_format not in ("pandas", "arrow", "numpy"):
             raise ValueError(
-                f"Unsupported Dataset format: '{dataset_format}'. Only 'pandas' and "
-                "'arrow' Dataset formats are supported."
+                f"Unsupported Dataset format: '{dataset_format}'. Only 'pandas', "
+                "'arrow' abd 'numpy' Dataset formats are supported."
             )
 
         transform_type = self._determine_transform_to_use(dataset_format)
@@ -234,42 +240,52 @@ class Preprocessor(abc.ABC):
             return dataset.map_batches(self._transform_pandas, batch_format="pandas")
         elif transform_type == "arrow":
             return dataset.map_batches(self._transform_arrow, batch_format="pyarrow")
+        elif transform_type == "numpy":
+            return dataset.map_batches(self._transform_numpy, batch_format="numpy")
         else:
             raise ValueError(
                 "Invalid transform type returned from _determine_transform_to_use; "
-                f'"pandas" and "arrow" allowed, but got: {transform_type}'
+                f'"pandas", "arrow" and "numpy" allowed, but got: {transform_type}'
             )
 
-    def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":
+    def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
         import pandas as pd
+        import numpy as np
 
         try:
             import pyarrow
         except ImportError:
             pyarrow = None
 
-        if isinstance(df, pd.DataFrame):
+        if isinstance(data, pd.DataFrame):
             data_format = "pandas"
-        elif pyarrow is not None and isinstance(df, pyarrow.Table):
+        elif pyarrow is not None and isinstance(data, pyarrow.Table):
             data_format = "arrow"
+        elif np is not None and isinstance(data, (dict, np.ndarray)):
+            data_format = "numpy"
         else:
             raise NotImplementedError(
-                "`transform_batch` is currently only implemented for Pandas DataFrames "
-                f"and PyArrow Tables. Got {type(df)}."
+                "`transform_batch` is currently only implemented for Pandas DataFrames, "
+                f"PyArrow Tables and Numpy ndarray Got {type(data)}."
             )
 
         transform_type = self._determine_transform_to_use(data_format)
 
         if transform_type == "pandas":
             if data_format == "pandas":
-                return self._transform_pandas(df)
+                return self._transform_pandas(data)
             else:
-                return self._transform_pandas(df.to_pandas())
+                return self._transform_pandas(data.to_pandas())
         elif transform_type == "arrow":
             if data_format == "arrow":
-                return self._transform_arrow(df)
+                return self._transform_arrow(data)
             else:
-                return self._transform_arrow(pyarrow.Table.from_pandas(df))
+                return self._transform_arrow(pyarrow.Table.from_pandas(data))
+        elif transform_type == "numpy":
+            if data_format == "numpy":
+                return self._transform_numpy(data)
+            else:
+                raise NotImplementedError("Not sure how to handle non-numpy data foramt yet.")
 
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
@@ -279,4 +295,9 @@ class Preprocessor(abc.ABC):
     @DeveloperAPI
     def _transform_arrow(self, table: "pyarrow.Table") -> "pyarrow.Table":
         """Run the transformation on a data batch in a PyArrow Table format."""
+        raise NotImplementedError()
+
+    @DeveloperAPI
+    def _transform_numpy(self, np_array: "np.ndarray") -> "np.ndarray":
+        """Run the transformation on a data batch in a Numpy ndarray format."""
         raise NotImplementedError()
