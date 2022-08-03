@@ -1,6 +1,8 @@
 (serve-api)=
 # Ray Serve API
 
+(core-apis)=
+
 ## Core APIs
 
 ```{eval-rst}
@@ -46,6 +48,8 @@
 ```{eval-rst}
 .. autofunction:: ray.serve.batch(max_batch_size=10, batch_wait_timeout_s=0.0)
 ```
+
+(serve-rest-api)=
 
 ## Serve REST API
 
@@ -205,6 +209,8 @@ Content-Type: application/json
 .. autopydantic_model:: ray.serve.schema.ServeStatusSchema
 
 ```
+
+(serve-cli)=
 
 ## Serve CLI
 
