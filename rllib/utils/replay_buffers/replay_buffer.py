@@ -220,7 +220,21 @@ class ReplayBuffer(ParallelIteratorWorker):
 
         elif self.storage_unit == StorageUnit.EPISODES:
             for eps in batch.split_by_episode():
-                self._add_single_batch(eps, **kwargs)
+                if (
+                    eps.get(SampleBatch.T, [0])[0] == 0
+                    and eps.get(SampleBatch.DONES, [True])[-1] == True  # noqa E712
+                ):
+                    # Only add full episodes to the buffer
+                    # Check only if info is available
+                    self._add_single_batch(eps, **kwargs)
+                else:
+                    if log_once("only_full_episodes"):
+                        logger.info(
+                            "This buffer uses episodes as a storage "
+                            "unit and thus allows only full episodes "
+                            "to be added to it. Some samples may be "
+                            "dropped."
+                        )
 
         elif self.storage_unit == StorageUnit.FRAGMENTS:
             self._add_single_batch(batch, **kwargs)
