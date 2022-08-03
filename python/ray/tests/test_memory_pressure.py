@@ -57,6 +57,10 @@ def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
     return bytes_needed
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
 def test_memory_pressure_kill_worker(shutdown_only):
     memory_usage_threshold_fraction = 0.7
     memory_monitor_interval_ms = 100
@@ -80,6 +84,10 @@ def test_memory_pressure_kill_worker(shutdown_only):
         ray.get(leaker.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
 def test_memory_pressure_kill_newest_worker(shutdown_only):
     memory_usage_threshold_fraction = 0.7
     memory_monitor_interval_ms = 100
@@ -104,7 +112,7 @@ def test_memory_pressure_kill_newest_worker(shutdown_only):
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.8)
     with pytest.raises(ray.exceptions.RayActorError) as _:
-        ray.get(leaker1.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+        ray.get(leaker2.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
     actors = ray.util.list_named_actors()
     assert len(actors) == 1
