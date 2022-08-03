@@ -12,7 +12,7 @@ from fastapi import Body, Depends, FastAPI
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.http_util import ASGIHTTPSender
-from ray.serve.handle import RayServeLazySyncHandle
+from ray.serve.handle import RayServeLazySyncHandle, set_use_sync_lazy_handle
 from ray.serve.exceptions import RayServeException
 from ray import serve
 
@@ -107,7 +107,8 @@ class DAGDriver:
                     @self.app.get(f"{route}")
                     @self.app.post(f"{route}")
                     async def handle_request(inp=Depends(http_adapter)):
-                        return await handle.remote(inp)
+                        # TODO: this should just call multi route predict under the hood.
+                        return await (await handle.remote(inp))
 
                 # bind current handle with endpoint creation function
                 endpoint_create_func = functools.partial(endpoint_create, handle)
@@ -132,10 +133,14 @@ class DAGDriver:
 
     async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
-        return await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
+        with set_use_sync_lazy_handle(False):
+            return await (
+                await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
+            )
 
     async def predict_with_route(self, route_path, *args, **kwargs):
         """Perform inference directly without HTTP for multi dags."""
+        # TODO: use set_use_sync_lazy_handle
         if route_path not in self.dags:
             raise RayServeException(f"{route_path} does not exist in dags routes")
-        return await self.dags[route_path].remote(*args, **kwargs)
+        return await (await self.dags[route_path].remote(*args, **kwargs))

@@ -31,11 +31,12 @@ class RayServeDAGHandle:
     def __reduce__(self):
         return RayServeDAGHandle._deserialize, (self.dag_node_json,)
 
-    def remote(self, *args, **kwargs):
+    async def remote(self, *args, **kwargs):
         if self.dag_node is None:
             from ray.serve._private.json_serde import dagnode_from_json
 
             self.dag_node = json.loads(
                 self.dag_node_json, object_hook=dagnode_from_json
             )
-        return self.dag_node.execute(*args, **kwargs)
+        ref = self.dag_node.execute(*args, **kwargs)
+        return await ref

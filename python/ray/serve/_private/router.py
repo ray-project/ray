@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass
+import inspect
 import itertools
 import logging
 import pickle
@@ -43,6 +44,22 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
+
+    async def resolve_coroutines(self):
+        new_args = []
+        for arg in self.args:
+            if inspect.iscoroutine(arg):
+                new_args.append(await arg)
+            else:
+                new_args.append(arg)
+        new_kwargs = {}
+        for k, v in self.kwargs.items():
+            if inspect.iscoroutine(v):
+                new_kwargs[k] = await v
+            else:
+                new_kwargs[k] = v
+        self.args = tuple(new_args)
+        self.kwargs = new_kwargs
 
 
 class ReplicaSet:
@@ -176,6 +193,7 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
+        await query.resolve_coroutines()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(

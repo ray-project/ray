@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Coroutine, Dict, Optional, Union
 import threading
@@ -289,6 +290,15 @@ class RayServeSyncHandle(RayServeHandle):
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
+USE_SYNC_LAZY_HANDLE = True
+
+@contextmanager
+def set_use_sync_lazy_handle(to):
+    global USE_SYNC_LAZY_HANDLE
+    old = USE_SYNC_LAZY_HANDLE
+    USE_SYNC_LAZY_HANDLE = to
+    yield
+    USE_SYNC_LAZY_HANDLE = old
 
 @DeveloperAPI
 class RayServeLazySyncHandle:
@@ -314,7 +324,7 @@ class RayServeLazySyncHandle:
         if not self.handle:
             handle = serve._private.api.get_deployment(
                 self.deployment_name
-            )._get_handle()
+            )._get_handle(sync=USE_SYNC_LAZY_HANDLE)
             self.handle = handle.options(method_name=self.handle_options.method_name)
         # TODO (jiaodong): Polish async handles later for serve pipeline
         return self.handle.remote(*args, **kwargs)
