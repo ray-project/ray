@@ -110,7 +110,7 @@ resp = requests.get("http://localhost:8000/model2", data="1")
 :::{note}
 - Similar to `predict` method, `predict_with_route` method is defined inside `DAGDriver` class as an entry point to fulfil requests.
 - `DAGDriver.bind` can accept dictionary and each key is represented as entry point route path.
-- `predict_with_route` accept route path as first argument to select which model to use.
+- `predict_with_route` accepts a route path as the first argument to select which model to use.
 - In the example, you can also use http request to fulfill your request, different model will bind with different route path based on the user inputs. E.g. http://localhost:8000/model1 and http://localhost:8000/model2
 :::
 
