@@ -245,6 +245,16 @@ def parse_uri(pkg_uri: str) -> ParsedUri:
             f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
             uri.path,
         )
+    elif protocol == Protocol.GCS:
+        return ParsedUri(
+            protocol,
+            UriType.REMOTE,
+            uri.netloc,
+            # We replace path with uri.netloc here because the GCS URI isn't standard.
+            # For example, `gcs://my-package.whl` haven't netloc and the uri.path will
+            # be parsed to empty by urlparse.
+            uri.netloc,
+        )
     else:
         return ParsedUri(protocol, UriType.REMOTE, uri.netloc, uri.path)
 
@@ -263,7 +273,7 @@ def is_whl_uri(uri: str) -> bool:
         _, _, _, path = parse_uri(uri)
     except ValueError:
         return False
-
+    print(path)
     return Path(path).suffix == ".whl"
 
 
@@ -571,7 +581,8 @@ def upload_package_if_needed(
     if package_exists(pkg_uri):
         return False
 
-    package_file, _ = Path(_get_local_path(base_directory, pkg_uri))
+    path, _ = _get_local_path(base_directory, pkg_uri)
+    package_file = Path(path)
     create_package(
         directory,
         package_file,
@@ -607,7 +618,8 @@ async def download_and_unpack_package(
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
     """
-    pkg_file = Path(_get_local_path(base_directory, pkg_uri))
+    path, _ = _get_local_path(base_directory, pkg_uri)
+    pkg_file = Path(path)
     with FileLock(str(pkg_file) + ".lock"):
         if logger is None:
             logger = default_logger
@@ -802,7 +814,12 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
     """
 
     deleted = False
-    path = Path(_get_local_path(base_directory, pkg_uri))
+    local_path, uri_type = _get_local_path(base_directory, pkg_uri)
+    if uri_type is not UriType.REMOTE:
+        raise RuntimeError(
+            f"The deletion of the package with {uri_type} type is forbidden."
+        )
+    path = Path(local_path)
     with FileLock(str(path) + ".lock"):
         path = path.with_suffix("")
         if path.exists():

@@ -48,11 +48,11 @@ def upload_working_dir_if_needed(
 
     # working_dir is already a URI -- just pass it through.
     try:
-        protocol, _, _, path = parse_uri(working_dir)
+        protocol, uri_type, _, path = parse_uri(working_dir)
     except ValueError:
         protocol, path = None, None
 
-    if protocol is not None:
+    if protocol is not None and uri_type is not UriType.USER_LOCAL:
         if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
             raise ValueError("Only .zip files supported for remote URIs.")
         return runtime_env
@@ -172,4 +172,5 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
             )
 
         context.command_prefix += [f"cd {local_dir}"]
+        # context.py_modules.append(str(local_dir))
         set_pythonpath_in_context(python_path=str(local_dir), context=context)

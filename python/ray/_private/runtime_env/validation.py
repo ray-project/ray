@@ -16,10 +16,12 @@ def validate_uri(uri: str):
         )
 
     try:
-        from ray._private.runtime_env.packaging import parse_uri, Protocol
+        from ray._private.runtime_env.packaging import parse_uri, UriType, Protocol
 
-        protocol, _, _, path = parse_uri(uri)
+        protocol, uri_type, _, path = parse_uri(uri)
     except ValueError:
+        raise ValueError(f"{uri} is not a valid URI.")
+    if uri_type is UriType.USER_LOCAL:
         raise ValueError(
             f"{uri} is not a valid URI. Passing directories or modules to "
             "be dynamically uploaded is only supported at the job level "

@@ -457,7 +457,7 @@ def test_is_whl_uri():
 
 
 def test_is_zip_uri():
-    assert is_zip_uri("s3://my-package.zip")
+    assert is_zip_uri("s3://localhost/my-package.zip")
     assert is_zip_uri("gcs://asdf.zip")
     assert not is_zip_uri("invalid_format")
     assert not is_zip_uri("gcs://a.whl")
