@@ -73,6 +73,11 @@ class OrdinalEncoder(Preprocessor):
         0                 Shaolin Soccer  [2, 0, 4]
         1                          Moana  [1, 0, 2]
         2  The Smartest Guys in the Room        [3]
+
+    .. seealso::
+
+        :py:class:`OneHotEncoder`
+            Another preprocessor that encodes categorical data.
     """
 
     def __init__(self, columns: List[str], *, encode_lists: bool = True):
@@ -119,51 +124,78 @@ class OrdinalEncoder(Preprocessor):
 
 
 class OneHotEncoder(Preprocessor):
-    """Encode columns as new columns using one-hot encoding.
+    """One-hot encode categorical data.
 
-    The transformed dataset will have a new column in the form ``{column}_{value}``
-    for each of the values from the fitted dataset. The value of a column will
-    be set to 1 if the value matches, otherwise 0.
+    This preprocessor creates a column named ``{column}_{category}``
+    for each unique ``{category}`` in ``{column}``. The value of a column is
+    1 if the category matches and 0 otherwise.
 
-    Transforming values not included in the fitted dataset or not among
-    the top popular values (see ``max_categories``) will result in all of the encoded
-    column values being 0.
+    To learn more about one-hot encoding, read the
+    `Wikapedia section on the topic <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_.
 
-    All column values must be hashable or lists. Lists will be treated as separate
-    categories. If you would like to encode list elements,
-    use :class:`MultiHotEncoder`.
+    If you encode an infrequent category (see ``max_categories``) or a category
+    that isn't in the fitted dataset, then the category is encoded as all 0s.
 
-    Example:
+    Columns must contain hashable objects or lists of hashable objects.
 
-    .. code-block:: python
-
-        ohe = OneHotEncoder(
-            columns=[
-                "trip_start_hour",
-                "trip_start_day",
-                "trip_start_month",
-                "dropoff_census_tract",
-                "pickup_community_area",
-                "dropoff_community_area",
-                "payment_type",
-                "company",
-            ],
-            max_categories={
-                "dropoff_census_tract": 25,
-                "pickup_community_area": 20,
-                "dropoff_community_area": 20,
-                "payment_type": 2,
-                "company": 7,
-            },
-        )
+    .. note::
+        Lists are treated as categories. If you want to encode individual list
+        elements, use :class:`MultiHotEncoder`.
 
     Args:
-        columns: The columns that will individually be encoded.
-        max_categories: If set, only the top "max_categories" number of most popular
-            values become categorical variables. The less frequent ones will result in
-            all the encoded column values being 0. This is a dict of column to its
-            corresponding limit. The column in this dictionary has to be in
-            ``columns``.
+        columns: The columns to separately encode.
+        max_categories: A dictionary that maps column names to the maximum number of
+            categories to consider. If set, this preprocessor creates columns
+            for only the most frequent categories.
+
+    Example:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import OneHotEncoder
+
+        >>> df = pd.DataFrame({"color": ["red", "green", "red", "red", "blue", "green"]})
+        >>> ds = ray.data.from_pandas(df)
+        >>> encoder = OneHotEncoder(columns=["color"])
+        >>> encoder.fit_transform(ds).to_pandas()
+           color_blue  color_green  color_red
+        0           0            0          1
+        1           0            1          0
+        2           0            0          1
+        3           0            0          1
+        4           1            0          0
+        5           0            1          0
+
+        If you one-hot encode a value that isn't in the fitted dataset, then the
+        value is encoded with zeros.
+
+        >>> df = pd.DataFrame({"color": ["yellow"]})
+        >>> batch = ray.data.from_pandas(df)
+        >>> encoder.transform(batch).to_pandas()
+           color_blue  color_green  color_red
+        0           0            0          0
+
+        Likewise, if you one-hot encode an infrequent value, then the value is encoded
+        with zeros.
+
+        >>> encoder = OneHotEncoder(columns=["color"], max_categories={"color": 2})
+        >>> encoder.fit_transform(ds).to_pandas()
+           color_red  color_green
+        0          1            0
+        1          0            1
+        2          1            0
+        3          1            0
+        4          0            0
+        5          0            1
+
+    .. seealso::
+
+        :py:class:`MultiHotEncoder`
+            If you want to encode individual list elements, use
+            :class:`MultiHotEncoder`.
+
+        :py:class:`OrdinalEncoder`
+            If your categories are ordered, you may want to use
+            :py:class:`OrdinalEncoder`.
     """
 
     def __init__(
