@@ -31,12 +31,8 @@ construct a Trainer, you can provide:
 
 * A :class:`scaling_config <ray.air.config.ScalingConfig>`, which specifies how many parallel training workers and what type of resources (CPUs/GPUs) to use per worker during training.
 * A :class:`run_config <ray.air.config.RunConfig>`, which configures a variety of runtime parameters such as fault tolerance, logging, and callbacks.
-* A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided dataset, which configures preprocessing and the datasets to ingest from.
+* A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided datasets, which configures preprocessing and the datasets to ingest from.
 * `resume_from_checkpoint`, which is a checkpoint path to resume from, should your training run be interrupted.
-
-**Note about datasets:** If the ``datasets`` dict contains a training dataset (denoted by
-the "train" key), then it will be split into multiple dataset
-shards, with each worker training on a single shard. All the other datasets will not be split.
 
 After construction, you can invoke a trainer by calling :meth:`Trainer.fit() <ray.train.trainer.Trainer.fit>`.
 
@@ -59,9 +55,9 @@ the main training logic that runs on each training worker.
 Under the hood, Ray AIR will use the provided ``scaling_config`` to instantiate
 the correct number of workers.
 
-If provided a dataset, the dataset will be automatically
-sharded across all the workers such that each worker gets a different
-set of data. You can access the data shard within a worker via ``session.get_dataset_shard()``.
+You can provide multiple datasets to a trainer via the ``datasets`` parameter.
+If ``datasets`` includes a training dataset (denoted by the "train" key), then it will be split into multiple dataset
+shards, with each worker training on a single shard. All other datasets will not be split. You can access the data shard within a worker via ``session.get_dataset_shard()``.
 You can read more about :ref:`data ingest <air-ingest>` here.
 
 Read more about :ref:`Ray Train's Deep Learning Trainers <train-user-guide>`.
@@ -89,13 +85,10 @@ Read more about :ref:`Ray Train's Deep Learning Trainers <train-user-guide>`.
 How to report metrics and checkpoints?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A common use case is to collect training metrics and save checkpoints for fault tolerance during
-training or downstream processing (e.g. serving the model).
-This can be challenging in a distributed environment, where the calculation of metrics and
-the generation of checkpoints are spread out across multiple nodes in a cluster.
+During model training, you may want to save training metrics and checkpoints for downstream processing (e.g. serving the model).
 
-Use the :ref:`Session <air-session-ref>` API to gather metrics and register checkpoints.
-Registered checkpoints are synced to driver or the cloud storage based on user's configurations,
+Use the :ref:`Session <air-session-ref>` API to gather metrics and save checkpoints.
+Checkpoints are synced to driver or the cloud storage based on user's configurations,
 as specified in ``Trainer(run_config=...)``.
 
 .. dropdown:: Code example
