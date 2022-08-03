@@ -23,6 +23,8 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 
+from rllib.utils.test_utils import check_reproducibilty
+
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = SampleBatch(
     {
@@ -87,6 +89,14 @@ class TestPPO(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
+
+    def test_reproducibility(self):
+        """Tests whether the algorithm is reproducible within 3 iterations"""
+        check_reproducibilty(
+            algo_class=ppo.PPO,
+            algo_config=ppo.PPOConfig(),
+            training_iteration=3,
+        )
 
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
@@ -238,7 +248,7 @@ class TestPPO(unittest.TestCase):
             assert len(matching) == 1, matching
             log_std_var = matching[0]
 
-            def get_value():
+            def get_value(fw=fw, policy=policy, log_std_var=log_std_var):
                 if fw == "tf":
                     return policy.get_session().run(log_std_var)[0]
                 elif fw == "torch":
