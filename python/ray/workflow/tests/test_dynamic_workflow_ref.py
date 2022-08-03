@@ -22,7 +22,7 @@ def test_dynamic_workflow_ref(workflow_start_regular_shared):
         == 1
     )
     # TODO (yic) We need re-run to make this test work
-    # assert second_step.run("test_dynamic_workflow_ref") == 2
+    # assert second_task.run("test_dynamic_workflow_ref") == 2
 
 
 if __name__ == "__main__":
