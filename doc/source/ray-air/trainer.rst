@@ -8,10 +8,9 @@ Ray AIR Trainers
 .. image:: images/train.svg
 
 
-Ray AIR Trainers provide a way to scale out training with popular machine learning frameworks.
+Ray AIR Trainers provide a way to scale out training with popular machine learning frameworks
 
-As part of Ray Train, Trainers integrate with frameworks such as Pytorch, Tensorflow, and XGBoost
-and provide a seamless abstraction for running distributed multi-node training with fault tolerance.
+As part of Ray Train, Trainers provide a seamless abstraction for running distributed multi-node training with fault tolerance.
 
 Ray AIR Trainers also integrate with the rest of the Ray ecosystem. Trainers leverage Ray Data to enable scalable preprocessing
 and performant distributed data ingestion. After executing training, Trainers output the trained model in the form of
@@ -37,6 +36,8 @@ construct a Trainer, you can provide:
 
 After construction, you can invoke a trainer by calling `.fit()`.
 
+.. literalinclude:: doc_code/xgboost_trainer.py
+    :language: python
 
 Deep Learning Trainers
 ----------------------
@@ -49,7 +50,7 @@ Ray Train offers 3 main deep learning trainers:
 These three trainers all take a ``train_loop_per_worker`` parameter, which is a function that defines
 the main training logic that runs on each training worker.
 
-Under the hood, Ray AIR will use the provided `scaling_config` to instantiate
+Under the hood, Ray AIR will use the provided ``scaling_config`` to instantiate
 the correct number of workers.
 
 If provided a dataset, the dataset will be automatically
@@ -61,19 +62,19 @@ Read more about :ref:`Ray Train's Deep Learning Trainers <train-user-guide>`.
 
 .. tabbed:: Torch
 
-    .. literalinclude:: examples/torch_trainer.py
+    .. literalinclude:: doc_code/torch_trainer.py
         :language: python
 
 .. tabbed:: Tensorflow
 
-    .. literalinclude:: examples/tf_starter.py
+    .. literalinclude:: doc_code/tf_starter.py
         :language: python
         :start-after: __air_tf_train_start__
         :end-before: __air_tf_train_end__
 
 .. tabbed:: Horovod
 
-    .. literalinclude:: examples/hvd_trainer.py
+    .. literalinclude:: doc_code/hvd_trainer.py
         :language: python
 
 
