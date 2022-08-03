@@ -1,12 +1,14 @@
 from typing import Dict, List, Iterator, Optional, Tuple, TYPE_CHECKING
 
 import asyncio
+import enum
 import logging
 import time
 from collections import defaultdict
 
 import ray
 from ray.exceptions import RayTaskError, RayError
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 from ray.workflow.common import (
     WorkflowRef,
@@ -21,12 +23,23 @@ from ray.workflow.workflow_state import (
     TaskExecutionMetadata,
     Task,
 )
+from ray.workflow.workflow_storage import WorkflowStorage
 
 if TYPE_CHECKING:
     from ray.workflow.workflow_context import WorkflowTaskContext
-    from ray.workflow.workflow_storage import WorkflowStorage
 
 logger = logging.getLogger(__name__)
+
+
+class TaskType(enum.IntEnum):
+    WORKFLOW_TASK = 0
+    CHECKPOINT_TASK = 1
+
+
+@ray.remote(num_cpus=0.1)
+def _checkpoint_task_output(workflow_id: str, task_id: TaskID, output):
+    store = WorkflowStorage(workflow_id)
+    store.save_task_output(task_id, output, exception=None)
 
 
 class WorkflowExecutor:
@@ -60,7 +73,10 @@ class WorkflowExecutor:
 
     def is_running(self) -> bool:
         """The state is running, if there are tasks to be run or running tasks."""
-        return bool(self._state.frontier_to_run or self._state.running_frontier)
+        state = self._state
+        return bool(
+            state.frontier_to_run or state.running_frontier or state.checkpoint_task_map
+        )
 
     def get_state(self) -> WorkflowExecutionState:
         return self._state
@@ -157,6 +173,11 @@ class WorkflowExecutor:
             workflow_refs=[
                 state.get_input(d) for d in state.upstream_dependencies[task_id]
             ],
+            upstream_checkpoint_tasks={
+                d: state.checkpoint_task_map[d]
+                for d in state.upstream_dependencies[task_id]
+                if d in state.checkpoint_task_map
+            },
         )
         task = state.tasks[task_id]
         executor = get_task_executor(task.options)
@@ -168,8 +189,10 @@ class WorkflowExecutor:
             baked_inputs,
             task.options,
         )
+        state.staged_tasks.remove(task_id)
         # The input workflow is not a reference to an executed workflow.
         future = asyncio.wrap_future(metadata_ref.future())
+        future.type = TaskType.WORKFLOW_TASK
         future.add_done_callback(self._completion_queue.put_nowait)
 
         state.insert_running_frontier(future, WorkflowRef(task_id, ref=output_ref))
@@ -193,7 +216,8 @@ class WorkflowExecutor:
                 state.reference_set[c].remove(task_id)
                 if not state.reference_set[c]:
                     del state.reference_set[c]
-                    state.free_outputs.add(c)
+                    if c not in state.checkpoint_task_map:
+                        state.free_outputs.add(c)
 
     def _garbage_collect(self) -> None:
         """Garbage collect the output refs of tasks.
@@ -227,59 +251,40 @@ class WorkflowExecutor:
             yield task_id, state.tasks[task_id]
             task_id = state.task_context[task_id].creator_task_id
 
-    def _retry_failed_task(
-        self, workflow_id: str, failed_task_id: TaskID, exc: Exception
-    ) -> bool:
-        state = self._state
-        is_application_error = isinstance(exc, RayTaskError)
-        options = state.tasks[failed_task_id].options
-        if not is_application_error or options.retry_exceptions:
-            if state.task_retries[failed_task_id] < options.max_retries:
-                state.task_retries[failed_task_id] += 1
-                logger.info(
-                    f"Retry [{workflow_id}@{failed_task_id}] "
-                    f"({state.task_retries[failed_task_id]}/{options.max_retries})"
-                )
-                state.construct_scheduling_plan(failed_task_id)
-                return True
-        return False
-
-    async def _catch_failed_task(
-        self, workflow_id: str, failed_task_id: TaskID, exc: Exception
-    ) -> bool:
-        # lookup a creator task that catches the exception
-        is_application_error = isinstance(exc, RayTaskError)
-        exception_catcher = None
-        if is_application_error:
-            for t, task in self._iter_callstack(failed_task_id):
-                if task.options.catch_exceptions:
-                    exception_catcher = t
-                    break
-        if exception_catcher is not None:
-            logger.info(
-                f"Exception raised by '{workflow_id}@{failed_task_id}' is caught by "
-                f"'{workflow_id}@{exception_catcher}'"
-            )
-            # assign output to exception catching task;
-            # compose output with caught exception
-            await self._post_process_ready_task(
-                exception_catcher,
-                metadata=WorkflowExecutionMetadata(),
-                output_ref=WorkflowRef(failed_task_id, ray.put((None, exc))),
-            )
-            # TODO(suquark): cancel other running tasks?
-            return True
-        return False
-
     async def _handle_ready_task(
         self, fut: asyncio.Future, workflow_id: str, wf_store: "WorkflowStorage"
     ) -> None:
         """Handle ready task, especially about its exception."""
         state = self._state
+        if fut.type == TaskType.CHECKPOINT_TASK:
+            task_id = fut.metadata
+            target_task_id = state.continuation_root.get(task_id, task_id)
+            del state.checkpoint_task_map[target_task_id]
+            try:
+                fut.result()
+                state.checkpoint_map[target_task_id] = WorkflowRef(task_id)
+                state.done_tasks.add(target_task_id)
+                # GC the task output if there is no reference to the output
+                # and the checkpoint task completes
+                if not state.reference_set.get(target_task_id):
+                    state.free_outputs.add(target_task_id)
+                return
+            except RayError:
+                logger.info(
+                    f"Checkpoint task [{workflow_id}@{task_id}] failed, "
+                    "restarting the task."
+                )
+                state.output_map.pop(target_task_id, None)
+                state.construct_scheduling_plan(task_id)
+                return
+
         output_ref = state.pop_running_frontier(fut)
         task_id = output_ref.task_id
         try:
             metadata: WorkflowExecutionMetadata = fut.result()
+            if metadata.upstream_checkpointing_failed:
+                state.construct_scheduling_plan(task_id)
+                return
             state.task_execution_metadata[task_id].finish_time = time.time()
             logger.info(
                 f"Task status [{WorkflowStatus.SUCCESSFUL}]\t"
@@ -338,7 +343,7 @@ class WorkflowExecutor:
                 # compose output with caught exception
                 await self._post_process_ready_task(
                     exception_catcher,
-                    metadata=WorkflowExecutionMetadata(),
+                    metadata=WorkflowExecutionMetadata(""),
                     output_ref=WorkflowRef(task_id, ray.put((None, e))),
                 )
                 # TODO(suquark): cancel other running tasks?
@@ -383,8 +388,25 @@ class WorkflowExecutor:
             target_task_id = state.continuation_root.get(task_id, task_id)
             state.output_map[target_task_id] = output_ref
             if state.tasks[task_id].options.checkpoint:
-                state.checkpoint_map[target_task_id] = WorkflowRef(task_id)
-            state.done_tasks.add(target_task_id)
+                if metadata.node_id:
+                    # launch a checkpoint task with affinity
+                    _checkpoint_task = _checkpoint_task_output.options(
+                        scheduling_strategy=NodeAffinitySchedulingStrategy(
+                            metadata.node_id, soft=True
+                        )
+                    )
+                else:
+                    _checkpoint_task = _checkpoint_task_output
+                checkpoint_task_ref = _checkpoint_task.remote(
+                    state.task_context[task_id].workflow_id, task_id, output_ref.ref
+                )
+                state.checkpoint_task_map[target_task_id] = checkpoint_task_ref
+                future = asyncio.wrap_future(checkpoint_task_ref.future())
+                future.type = TaskType.CHECKPOINT_TASK
+                future.metadata = task_id
+                future.add_done_callback(self._completion_queue.put_nowait)
+            else:
+                state.done_tasks.add(target_task_id)
             # TODO(suquark): cleanup callbacks when a result is set?
             if target_task_id in self._task_done_callbacks:
                 for callback in self._task_done_callbacks[target_task_id]:

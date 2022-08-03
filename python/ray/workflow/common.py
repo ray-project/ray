@@ -194,8 +194,13 @@ class WorkflowTaskRuntimeOptions:
 class WorkflowExecutionMetadata:
     """Dataclass for the metadata of the workflow execution."""
 
+    # The ID of the node the workflow task executes on.
+    node_id: str
     # True if the workflow task returns a workflow DAG.
     is_output_workflow: bool = False
+    # True if the upstream checkpointing tasks failed.
+    # The workflow task exits before execution in this case.
+    upstream_checkpointing_failed: bool = False
 
 
 @dataclass

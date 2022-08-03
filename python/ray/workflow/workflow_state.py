@@ -100,6 +100,8 @@ class WorkflowExecutionState:
     # the continuation lineage, so all other tasks in the continuation points
     # to the output of the last task instead of the output of themselves.
     output_map: Dict[TaskID, WorkflowRef] = field(default_factory=dict)
+    # The map from a task to its checkpointing task.
+    checkpoint_task_map: Dict[TaskID, ray.ObjectRef] = field(default_factory=dict)
     # The map from a task to its in-storage checkpoints. Normally it is the checkpoint
     # created by the underlying Ray task. For continuations, the semantics is similar
     # to 'output_map'.
@@ -134,7 +136,10 @@ class WorkflowExecutionState:
     # already complete; if the task that is the root of all continuation completes,
     # then all its continuations would complete.
     done_tasks: Set[TaskID] = field(default_factory=set)
-
+    # The set of staged tasks. The dependencies (upstream inputs etc.) of these
+    # tasks have been constructed and they are ready to be submitted later.
+    # Once a task is submitted, it is moved out of this set.
+    staged_tasks: Set[TaskID] = field(default_factory=set)
     # -------------------------------- external -------------------------------- #
 
     # The ID of the output task.
@@ -203,18 +208,24 @@ class WorkflowExecutionState:
 
     def construct_scheduling_plan(self, task_id: TaskID) -> None:
         """Analyze upstream dependencies of a task to construct the scheduling plan."""
+        assert task_id not in self.running_frontier_set, (
+            f"Cannot construct the scheduling plan of the task '{task_id}' "
+            f"that has been running."
+        )
+        if task_id in self.staged_tasks:
+            return
+
         if self.get_input(task_id) is not None:
             # This case corresponds to the scenario that the task is a
             # checkpoint or ref.
             return
 
-        visited_nodes = set()
         dag_visit_queue = deque([task_id])
         while dag_visit_queue:
             tid = dag_visit_queue.popleft()
-            if tid in visited_nodes:
+            if tid in self.staged_tasks:
                 continue
-            visited_nodes.add(tid)
+            self.staged_tasks.add(tid)
             self.pending_input_set[tid] = set()
             for in_task_id in self.upstream_dependencies[tid]:
                 self.reference_set[in_task_id].add(tid)

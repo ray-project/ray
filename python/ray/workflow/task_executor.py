@@ -5,6 +5,7 @@ from typing import List, Tuple, Any, Dict, Callable, TYPE_CHECKING
 import ray
 from ray import ObjectRef
 from ray._private import signature
+from ray.exceptions import RayError
 
 from ray.dag import DAGNode
 from ray.workflow import workflow_context
@@ -68,10 +69,21 @@ def _workflow_task_executor(
     """
     with workflow_context.workflow_task_context(context):
         store = workflow_storage.get_workflow_storage()
+        execution_metadata = WorkflowExecutionMetadata(
+            node_id=ray.get_runtime_context().get_node_id()
+        )
+
         # Part 1: resolve inputs
         args, kwargs = baked_inputs.resolve(store)
 
-        # Part 2: execute the task
+        # Part 2: block util upstream checkpoint tasks completes successfully.
+        try:
+            baked_inputs.wait_upstream_checkpoint_tasks()
+        except RayError:
+            execution_metadata.upstream_checkpointing_failed = True
+            return execution_metadata, None
+
+        # Part 3: execute the task
         try:
             store.save_task_prerun_metadata(task_id, {"start_time": time.time()})
             with workflow_context.workflow_execution():
@@ -85,19 +97,16 @@ def _workflow_task_executor(
 
         if isinstance(output, DAGNode):
             output = workflow_state_from_dag(output, None, context.workflow_id)
-            execution_metadata = WorkflowExecutionMetadata(is_output_workflow=True)
+            execution_metadata.is_output_workflow = True
         else:
-            execution_metadata = WorkflowExecutionMetadata()
             if runtime_options.catch_exceptions:
                 output = (output, None)
 
-        # Part 3: save outputs
+        # Part 4: save outputs
         # TODO(suquark): Validate checkpoint options before commit the task.
         if CheckpointMode(runtime_options.checkpoint) == CheckpointMode.SYNC:
             if isinstance(output, WorkflowExecutionState):
                 store.save_workflow_execution_state(task_id, output)
-            else:
-                store.save_task_output(task_id, output, exception=None)
         return execution_metadata, output
 
 
@@ -125,6 +134,8 @@ class _BakedWorkflowInputs:
 
     args: "ObjectRef"
     workflow_refs: "List[WorkflowRef]"
+    # Dict of upstream checkpoint tasks (task_id -> checkpoint task).
+    upstream_checkpoint_tasks: Dict[TaskID, ObjectRef]
 
     def resolve(self, store: workflow_storage.WorkflowStorage) -> Tuple[List, Dict]:
         """
@@ -161,3 +172,7 @@ class _BakedWorkflowInputs:
             ray.get(a) if isinstance(a, ObjectRef) else a for a in flattened_args
         ]
         return signature.recover_args(flattened_args)
+
+    def wait_upstream_checkpoint_tasks(self):
+        """Wait until all upstream checkpoint tasks are completed successfully."""
+        ray.get(list(self.upstream_checkpoint_tasks.values()))
