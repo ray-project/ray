@@ -133,6 +133,8 @@ class DAGDriver:
 
     async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
+        with set_use_sync_lazy_handle(True):
+            return await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
         with set_use_sync_lazy_handle(False):
             return await (
                 await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)

@@ -51,8 +51,11 @@ class Query:
     async def resolve_coroutines(self):
         scanner = _PyObjScanner(scan_type=CoroutineType)
         coros = scanner.find_nodes((self.args, self.kwargs))
+        print("resolving coros", coros)
         if len(coros) > 0:
-            resolved = await asyncio.gather(*coros)
+            # Allow multiple await on the same coroutine
+            futures = [asyncio.ensure_future(coro) for coro in coros]
+            resolved = await asyncio.gather(*futures)
             replacement_table = dict(zip(coros, resolved))
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
 
