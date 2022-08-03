@@ -180,7 +180,7 @@ You can install and use Ray C++ API as follows.
 
 .. note::
 
-  If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `here <https://github.com/ray-project/ray/issues/26031>`_.
+  If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
 
 .. _apple-silcon-supprt:
 
