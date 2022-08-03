@@ -1,5 +1,6 @@
+import io
 import pathlib
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING, Tuple, Optional
 
 import numpy as np
 
@@ -38,8 +39,9 @@ class ImageFolderDatasource(BinaryDatasource):
     Datasets read with this datasource contain two columns: ``'image'`` and ``'label'``.
 
     * The ``'image'`` column is of type
-      :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype` and contains
-      tensors of shape :math:`(H, W, C)`.
+      :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`. The shape of the
+      tensors are :math:`(H, W)` if the images are grayscale and :math:`(H, W, C)`
+      otherwise.
     * The ``'label'`` column contains strings representing class names (e.g., 'cat').
 
     Examples:
@@ -76,24 +78,41 @@ class ImageFolderDatasource(BinaryDatasource):
     def create_reader(
         self,
         root: str,
-        size: Tuple[int, int],
+        size: Optional[Tuple[int, int]] = None,
+        mode: Optional[str] = None,
     ) -> "Reader[T]":
-        """Return a :py:class:`Reader` that reads images.
+        """Return a :py:class:`~ray.data.datasource.Reader` that reads images.
+
+        .. warning::
+            If your dataset contains images of varying sizes and you don't specify
+            ``size``, this datasource will error. To prevent errors, specify ``size``
+            or :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
 
         Args:
             root: Path to the dataset root.
-            size: The desired height and width of loaded images.
+            size: The desired height and width of loaded images. If unspecified, images
+                retain their original shape.
+            mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_
+                describing the desired type and depth of pixels. If unspecified, image
+                modes are inferred by
+                `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
 
         Raises:
             ValueError: if ``size`` contains non-positive numbers.
-        """
-        if size[0] < 0 or size[1] < 0:
+            ValueError: if ``mode`` is unsupported.
+        """  # noqa: E501
+        if size is not None and len(size) != 2:
             raise ValueError(
-                "Expected `size` to contain positive integers, but got {size}."
+                "Expected `size` to contain 2 integers for height and width, "
+                f"but got {len(size)} integers instead."
+            )
+        if size is not None and (size[0] < 0 or size[1] < 0):
+            raise ValueError(
+                f"Expected `size` to contain positive integers, but got {size} instead."
             )
 
-        _check_import(self, module="imageio", package="imagio")
-        _check_import(self, module="skimage", package="scikit-image")
+        _check_import(self, module="PIL", package="Pillow")
+        _check_import(self, module="pandas", package="pandas")
 
         # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
         # in the same way as the paths passed to `_get_class_from_path`.
@@ -106,22 +125,30 @@ class ImageFolderDatasource(BinaryDatasource):
             filesystem=filesystem,
             root=root,
             size=size,
+            mode=mode,
         )
 
     def _read_file(
-        self, f: "pyarrow.NativeFile", path: str, root: str, size: Tuple[int, int]
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+        root: str,
+        size: Optional[Tuple[int, int]],
+        mode: Optional[str],
     ):
-        import imageio as iio
         import pandas as pd
-        import skimage
+        from PIL import Image
 
         records = super()._read_file(f, path, include_paths=True)
         assert len(records) == 1
         path, data = records[0]
 
-        image = iio.imread(data)
-        image = skimage.transform.resize(image, size)
-        image = skimage.util.img_as_ubyte(image)
+        image = Image.open(io.BytesIO(data))
+        if size is not None:
+            height, width = size
+            image = image.resize((width, height))
+        if mode is not None:
+            image = image.convert(mode)
 
         label = _get_class_from_path(path, root)
 
