@@ -20,7 +20,7 @@ _WIN32 = os.name == "nt"
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_worker_stats(shutdown_only):
-    ray.init(num_cpus=1, include_dashboard=True)
+    ray.init(num_cpus=2, include_dashboard=True)
     raylet = ray.nodes()[0]
     num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(
