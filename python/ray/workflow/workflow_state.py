@@ -139,6 +139,8 @@ class WorkflowExecutionState:
     # The set of staged tasks. The dependencies (upstream inputs etc.) of these
     # tasks have been constructed and they are ready to be submitted later.
     # Once a task is submitted, it is moved out of this set.
+    # This field is checked and updated when reconstruct dependencies of failed
+    # tasks to eliminate concurrent issues like reconstructing a task multiple times.
     staged_tasks: Set[TaskID] = field(default_factory=set)
     # -------------------------------- external -------------------------------- #
 
