@@ -9,6 +9,11 @@ interface for managing Ray clusters. Each Ray cluster consist of a head pod and 
 Optional autoscaling support allows the KubeRay Operator to size your Ray clusters according to the requirements
 of your Ray workload, adding and removing Ray pods as needed.
 
+```{eval-rst}
+.. image:: /cluster/cluster_under_construction/ray-clusters-on-kubernetes/images/ray_on_kubernetes.png
+    :align: center
+```
+
 ## Learn More
 
 The Ray docs present all the information you need to start running Ray workloads on Kubernetes.
