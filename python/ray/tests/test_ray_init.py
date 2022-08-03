@@ -379,11 +379,12 @@ def test_hosted_external_dashboard_url(shutdown_only):
     assert info.dashboard_url == "external_dashboard_url"
     assert info.address_info["webui_url"] == "external_dashboard_url"
     assert (
-        info.address_info["webui_url_with_protocol"] == "https://external_dashboard_url"
+        ray._private.worker._global_node._webui_url_with_protocol
+        == "https://external_dashboard_url"
     )
     assert (
         ray_address_to_api_server_url("auto")
-        == info.address_info["webui_url_with_protocol"]
+        == ray._private.worker._global_node._webui_url_with_protocol
     )
     ray.shutdown()
 
@@ -392,11 +393,12 @@ def test_hosted_external_dashboard_url(shutdown_only):
     assert info.dashboard_url == "external_dashboard_url"
     assert info.address_info["webui_url"] == "external_dashboard_url"
     assert (
-        info.address_info["webui_url_with_protocol"] == "http://external_dashboard_url"
+        ray._private.worker._global_node._webui_url_with_protocol
+        == "http://external_dashboard_url"
     )
     assert (
         ray_address_to_api_server_url("auto")
-        == info.address_info["webui_url_with_protocol"]
+        == ray._private.worker._global_node._webui_url_with_protocol
     )
     ray.shutdown()
 
@@ -404,10 +406,12 @@ def test_hosted_external_dashboard_url(shutdown_only):
     info = ray.init()
     assert info.dashboard_url.startswith("127.0.0.1")
     assert info.address_info["webui_url"].startswith("127.0.0.1")
-    assert info.address_info["webui_url_with_protocol"].startswith("http://127.0.0.1")
+    ray._private.worker._global_node._webui_url_with_protocol.startswith(
+        "http://127.0.0.1"
+    )
     assert (
         ray_address_to_api_server_url("auto")
-        == info.address_info["webui_url_with_protocol"]
+        == ray._private.worker._global_node._webui_url_with_protocol
     )
 
     if orig_external_dashboard_url:

@@ -580,7 +580,6 @@ class Node:
             "object_store_address": self._plasma_store_socket_name,
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,
-            "webui_url_with_protocol": self._webui_url_with_protocol,
             "session_dir": self._session_dir,
             "metrics_export_port": self._metrics_export_port,
             "gcs_address": self.gcs_address,
@@ -895,8 +894,8 @@ class Node:
         )
         self._webui_url = (
             self._remove_protocol_from_url(self._webui_url_with_protocol)
-            if self._webui_url_with_protocol
-            else None
+            if self._webui_url_with_protocol is not None
+            else self._webui_url_with_protocol
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:

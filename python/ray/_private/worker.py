@@ -1471,7 +1471,7 @@ def init(
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
-    dashboard_url = _global_node.address_info["webui_url_with_protocol"]
+    dashboard_url = _global_node._webui_url_with_protocol
     # We logged the address before attempting the connection, so we don't need
     # to log it again.
     info_str = "Connected to Ray cluster."
