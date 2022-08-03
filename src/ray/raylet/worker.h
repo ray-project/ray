@@ -214,7 +214,7 @@ class Worker : public WorkerInterface {
   };
 
   const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime()
-      const override {
+      const {
     return task_assign_time_;
   };
 

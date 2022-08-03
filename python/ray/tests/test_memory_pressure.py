@@ -104,7 +104,7 @@ def test_memory_pressure_kill_newest_worker(shutdown_only):
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.8)
     with pytest.raises(ray.exceptions.RayActorError) as _:
-        ray.get(leaker2.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+        ray.get(leaker1.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
 
     actors = ray.util.list_named_actors()
     assert len(actors) == 1
