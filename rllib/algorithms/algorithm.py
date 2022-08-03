@@ -463,9 +463,7 @@ class Algorithm(Trainable):
             # Now that workers have been created, update our policies
             # dict in config[multiagent] (with the correct original/
             # unpreprocessed spaces).
-            self.config["multiagent"][
-                "policies"
-            ] = self.local_worker.policy_dict
+            self.config["multiagent"]["policies"] = self.local_worker.policy_dict
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
@@ -643,9 +641,7 @@ class Algorithm(Trainable):
         results: ResultDict = {}
 
         local_worker = (
-            self.local_worker
-            if hasattr(self.workers, "local_worker")
-            else None
+            self.local_worker if hasattr(self.workers, "local_worker") else None
         )
 
         # Parallel eval + training: Kick off evaluation-loop and parallel train() call.
@@ -744,9 +740,7 @@ class Algorithm(Trainable):
 
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
-            self.evaluation_workers.sync_weights(
-                from_worker=self.local_worker
-            )
+            self.evaluation_workers.sync_weights(from_worker=self.local_worker)
             self._sync_filters_if_needed(
                 from_worker=self.local_worker,
                 workers=self.evaluation_workers,

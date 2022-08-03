@@ -318,9 +318,7 @@ class DDPPO(PPO):
             self.config["keep_local_weights_in_sync"]
             and first_worker in sample_and_update_results
         ):
-            self.local_worker.set_weights(
-                ray.get(first_worker.get_weights.remote())
-            )
+            self.local_worker.set_weights(ray.get(first_worker.get_weights.remote()))
         # Return merged laarner into results.
         new_learner_info = learner_info_builder.finalize()
         if new_learner_info:

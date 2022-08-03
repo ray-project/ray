@@ -609,9 +609,7 @@ class Impala(Algorithm):
             )
 
             # Create and start the learner thread.
-            self._learner_thread = make_learner_thread(
-                self.local_worker, self.config
-            )
+            self._learner_thread = make_learner_thread(self.local_worker, self.config)
             self._learner_thread.start()
             self.workers_that_need_updates = set()
 
@@ -802,9 +800,7 @@ class Impala(Algorithm):
             ] = self._sampling_actor_manager.get_ready()
         else:
             # only sampling on the local worker
-            sample_batches = {
-                self.local_worker: [self.local_worker.sample()]
-            }
+            sample_batches = {self.local_worker: [self.local_worker.sample()]}
         return sample_batches
 
     def place_processed_samples_on_learner_queue(self) -> None:

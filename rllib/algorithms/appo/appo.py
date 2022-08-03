@@ -185,9 +185,7 @@ class UpdateTargetAndKL:
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
             # Update Target Network
-            self.local_worker.foreach_policy_to_train(
-                lambda p, _: p.update_target()
-            )
+            self.local_worker.foreach_policy_to_train(lambda p, _: p.update_target())
             # Also update KL Coeff
             if self.config["use_kl_loss"]:
                 self.update_kl(fetches)
@@ -199,9 +197,7 @@ class APPO(Impala):
         super().__init__(config, *args, **kwargs)
 
         # After init: Initialize target net.
-        self.local_worker.foreach_policy_to_train(
-            lambda p, _: p.update_target()
-        )
+        self.local_worker.foreach_policy_to_train(lambda p, _: p.update_target())
 
     @override(Impala)
     def setup(self, config: PartialAlgorithmConfigDict):
@@ -241,9 +237,7 @@ class APPO(Impala):
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
             # Update our target network.
-            self.local_worker.foreach_policy_to_train(
-                lambda p, _: p.update_target()
-            )
+            self.local_worker.foreach_policy_to_train(lambda p, _: p.update_target())
 
             # Also update the KL-coefficient for the APPO loss, if necessary.
             if self.config["use_kl_loss"]:
