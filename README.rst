@@ -23,27 +23,27 @@ Ray is a unified framework for scaling AI and Python applications. Ray consists 
 
 Learn more about `Ray AIR`_ and its libraries:
 
-- `Datasets`_: Distributed Data Loading and Compute
-- `Train`_: Distributed Deep Learning
+- `Datasets`_: Distributed Data Loading and Preprocessing
+- `Train`_: Distributed Model Training
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `Serve`_: Scalable and Programmable Serving
 
 Or more about `Ray Core`_ and its key abstractions:
 
-- `Tasks`_: Stateless tasks executed in the cluster.
+- `Tasks`_: Stateless functions executed in the cluster.
 - `Actors`_: Stateful worker processes created in the cluster.
-- `Objects`_: Shared-memory objects accessible across the cluster.
+- `Objects`_: Immutable shared-memory data accessible across the cluster.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
-`Installation page <https://docs.ray.io/en/master/installation.html>`__.
+`Installation page <https://docs.ray.io/en/latest/installation.html>`__.
 
-.. _`Serve`: https://docs.ray.io/en/master/serve/index.html
-.. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
-.. _`Workflow`: https://docs.ray.io/en/master/workflows/concepts.html
-.. _`Train`: https://docs.ray.io/en/master/train/train.html
-.. _`Tune`: https://docs.ray.io/en/master/tune/index.html
-.. _`RLlib`: https://docs.ray.io/en/master/rllib/index.html
+.. _`Serve`: https://docs.ray.io/en/latest/serve/index.html
+.. _`Datasets`: https://docs.ray.io/en/latest/data/dataset.html
+.. _`Workflow`: https://docs.ray.io/en/latest/workflows/concepts.html
+.. _`Train`: https://docs.ray.io/en/latest/train/train.html
+.. _`Tune`: https://docs.ray.io/en/latest/tune/index.html
+.. _`RLlib`: https://docs.ray.io/en/latest/rllib/index.html
 
 More Information
 ----------------
@@ -51,6 +51,7 @@ More Information
 - `Documentation`_
 - `Ray Architecture whitepaper`_
 - `Exoshuffle: large-scale data shuffle in Ray`_
+- `Ownership: a distributed futures system for fine-grained tasks`_
 - `RLlib paper`_
 - `Tune paper`_
 
@@ -59,14 +60,15 @@ More Information
 - `Ray paper`_
 - `Ray HotOS paper`_
 
-.. _`Ray AIR`: https://docs.ray.io/en/master/ray-air/getting-started.html
-.. _`Ray Core`: https://docs.ray.io/en/master/ray-core/walkthrough.html
-.. _`Tasks`: https://docs.ray.io/en/master/ray-core/tasks.html
-.. _`Actors`: https://docs.ray.io/en/master/ray-core/actors.html
-.. _`Objects`: https://docs.ray.io/en/master/ray-core/objects.html
-.. _`Documentation`: http://docs.ray.io/en/master/index.html
+.. _`Ray AIR`: https://docs.ray.io/en/latest/ray-air/getting-started.html
+.. _`Ray Core`: https://docs.ray.io/en/latest/ray-core/walkthrough.html
+.. _`Tasks`: https://docs.ray.io/en/latest/ray-core/tasks.html
+.. _`Actors`: https://docs.ray.io/en/latest/ray-core/actors.html
+.. _`Objects`: https://docs.ray.io/en/latest/ray-core/objects.html
+.. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
 .. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
+.. _`Ownership: a distributed futures system for fine-grained tasks`: https://www.usenix.org/system/files/nsdi21-wang.pdf
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381

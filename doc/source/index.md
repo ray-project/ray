@@ -92,16 +92,16 @@ accelerating ML workloads:
 &nbsp;
 
 Learn more about [Ray AIR](ray-air/getting-started) and its libraries:
-- [Datasets](data/dataset): Distributed Data Loading and Compute
-- [Train](train/train): Distributed Deep Learning
+- [Datasets](data/dataset): Distributed Data Loading and Preprocessing
+- [Train](train/train): Distributed Training
 - [Tune](tune/index): Scalable Hyperparameter Tuning
 - [Serve](serve/index): Scalable and Programmable Serving
 - [RLlib](rllib/index): Scalable Reinforcement Learning
 
 Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
-- [Tasks](ray-core/tasks): Stateless tasks executed in the cluster.
+- [Tasks](ray-core/tasks): Stateless functions executed in the cluster.
 - [Actors](ray-core/actors): Stateful worker processes created in the cluster.
-- [Objects](ray-core/objects): Shared-memory objects accessible across the cluster.
+- [Objects](ray-core/objects): Immutable shared-memory data accessible across the cluster.
 
 ## How to get involved?
 
@@ -114,7 +114,7 @@ Here's a list of tips for getting involved with the Ray community:
 If you're interested in contributing to Ray, check out our
 [contributing guide for this release](ray-contribute/getting-involved)
 or see the
-[latest version of our contributing guide](https://docs.ray.io/en/master/ray-contribute/getting-involved.html)
+[latest version of our contributing guide](https://docs.ray.io/en/latest/ray-contribute/getting-involved.html)
 to read about the contribution process and see what you can work on.
 
 ## What documentation resource is right for you?

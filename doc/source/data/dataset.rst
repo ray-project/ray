@@ -2,9 +2,9 @@
 
 .. _datasets:
 
-==================================================
-Ray Datasets: Distributed Data Loading and Compute
-==================================================
+========================================================
+Ray Datasets: Distributed Data Loading and Preprocessing
+========================================================
 
 .. _datasets-intro:
 
@@ -29,7 +29,7 @@ is already supported.
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
 
-Ray Datasets simplifies general purpose parallel GPU and CPU compute in Ray; for
+Ray Datasets also simplifies general purpose parallel GPU and CPU compute in Ray; for
 instance, for :ref:`GPU batch inference <transforming_datasets>`.
 It provides a higher-level API for Ray tasks and actors for such embarrassingly parallel compute,
 internally handling operations like batching, pipelining, and memory management.
