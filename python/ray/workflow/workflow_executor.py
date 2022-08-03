@@ -274,6 +274,9 @@ class WorkflowExecutor:
                     f"Checkpoint task [{workflow_id}@{task_id}] failed, "
                     "restarting the task."
                 )
+                # The checkpoint task failed, it is almost surely that the task
+                # associated with the checkpoint task also failed. Reconstruct
+                # the task here.
                 state.output_map.pop(target_task_id, None)
                 state.construct_scheduling_plan(task_id)
                 return
@@ -389,7 +392,9 @@ class WorkflowExecutor:
             state.output_map[target_task_id] = output_ref
             if state.tasks[task_id].options.checkpoint:
                 if metadata.node_id:
-                    # launch a checkpoint task with affinity
+                    # Try to launch a checkpoint task in the same node as the associated
+                    # task. This makes sure the checkpoint task can access the task
+                    # output with shared memory (zero-copy).
                     _checkpoint_task = _checkpoint_task_output.options(
                         scheduling_strategy=NodeAffinitySchedulingStrategy(
                             metadata.node_id, soft=True
@@ -397,6 +402,7 @@ class WorkflowExecutor:
                     )
                 else:
                     _checkpoint_task = _checkpoint_task_output
+                # create a checkpoint task, and put the task into the completion queue
                 checkpoint_task_ref = _checkpoint_task.remote(
                     state.task_context[task_id].workflow_id, task_id, output_ref.ref
                 )

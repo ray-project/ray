@@ -107,6 +107,8 @@ def _workflow_task_executor(
         if CheckpointMode(runtime_options.checkpoint) == CheckpointMode.SYNC:
             if isinstance(output, WorkflowExecutionState):
                 store.save_workflow_execution_state(task_id, output)
+            # For normal workflow outputs, we checkpoint them with a checkpoint task
+            # created by workflow management actor.
         return execution_metadata, output
 
 
