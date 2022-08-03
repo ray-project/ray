@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class XGBoostPredictor(Predictor):
     """A predictor for XGBoost models.
 

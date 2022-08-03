@@ -8,7 +8,7 @@ from ray.util import PublicAPI
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TuneConfig:
     """Tune specific configs.
 

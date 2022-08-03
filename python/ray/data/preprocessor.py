@@ -13,14 +13,14 @@ if TYPE_CHECKING:
     from ray.air.data_batch_type import DataBatchType
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class PreprocessorNotFittedException(RuntimeError):
     """Error raised when the preprocessor needs to be fitted first."""
 
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Preprocessor(abc.ABC):
     """Implements an ML preprocessing operation.
 

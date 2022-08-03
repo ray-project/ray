@@ -27,7 +27,7 @@ GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
 
@@ -322,7 +322,7 @@ class BaseTrainer(abc.ABC):
         """
         raise NotImplementedError
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="beta")
     def fit(self) -> Result:
         """Runs training.
 

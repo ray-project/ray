@@ -77,7 +77,7 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ScalingConfig:
     """Configuration for scaling training.
 
@@ -264,7 +264,7 @@ class ScalingConfig:
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
@@ -428,7 +428,7 @@ class DatasetConfig:
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class FailureConfig:
     """Configuration related to failure handling of each run/trial.
 
@@ -463,7 +463,7 @@ class FailureConfig:
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class CheckpointConfig:
     """Configurable parameters for defining the checkpointing strategy.
 
@@ -543,7 +543,7 @@ class CheckpointConfig:
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RunConfig:
     """Runtime configuration for individual trials that are run.
 
