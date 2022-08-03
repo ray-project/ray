@@ -151,7 +151,7 @@ def dump_to_storage(
     workflow_id: str,
     storage: "workflow_storage.WorkflowStorage",
     update_existing=True,
-) -> None:
+) -> int:
     """Serializes and puts arbitrary object, handling references. The object will
         be uploaded at `paths`. Any object references will be uploaded to their
         global, remote storage.
@@ -165,10 +165,13 @@ def dump_to_storage(
                 `storage.put` will be called on them individually.
         update_existing: If False, the object will not be uploaded if the path
                 exists.
+
+    Returns:
+        Total number of bytes written to the storage.
     """
     if not update_existing:
         if storage._exists(key):
-            return
+            return 0
 
     tasks = []
 
@@ -193,7 +196,9 @@ def dump_to_storage(
         pickler.dump(obj)
         f.seek(0)
         # use the underlying storage to avoid cyclic calls of "dump_to_storage"
-        storage._storage.put(key, f.read())
+        data = f.read()
+        storage._storage.put(key, data)
+        return len(data)
 
 
 @ray.remote

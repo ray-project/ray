@@ -37,9 +37,9 @@ class TaskType(enum.IntEnum):
 
 
 @ray.remote(num_cpus=0.1)
-def _checkpoint_task_output(workflow_id: str, task_id: TaskID, output):
+def _checkpoint_task_output(workflow_id: str, task_id: TaskID, output) -> int:
     store = WorkflowStorage(workflow_id)
-    store.save_task_output(task_id, output, exception=None)
+    return store.save_task_output(task_id, output, exception=None)
 
 
 class WorkflowExecutor:

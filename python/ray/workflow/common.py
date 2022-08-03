@@ -195,6 +195,9 @@ class WorkflowExecutionMetadata:
     """Dataclass for the metadata of the workflow execution."""
 
     # The ID of the node the workflow task executes on.
+    # This can be used for co-locating scheduling, for example, the checkpoint task
+    # could be scheduled to the same node as the task to be checkpointed, this enables
+    # efficient data transfer via shared memory.
     node_id: str
     # True if the workflow task returns a workflow DAG.
     is_output_workflow: bool = False

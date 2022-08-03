@@ -318,7 +318,7 @@ class WorkflowStorage:
         ret: Any,
         *,
         exception: Optional[Exception],
-    ) -> None:
+    ) -> int:
         """When a workflow task returns,
         1. If the returned object is a workflow, this means we are a nested
            workflow. We save the output metadata that points to the workflow.
@@ -329,11 +329,14 @@ class WorkflowStorage:
                 it means we are in the workflow job driver process.
             ret: The returned object from a workflow task.
             exception: This task should throw exception.
+
+        Returns:
+            Total number of bytes written to the storage.
         """
         if exception is None:
             # This workflow task returns a object.
             ret = ray.get(ret) if isinstance(ret, ray.ObjectRef) else ret
-            serialization.dump_to_storage(
+            return serialization.dump_to_storage(
                 self._key_task_output(task_id),
                 ret,
                 self._workflow_id,
@@ -343,7 +346,7 @@ class WorkflowStorage:
             # TODO (yic): Delete exception file
         else:
             assert ret is None
-            serialization.dump_to_storage(
+            return serialization.dump_to_storage(
                 self._key_task_exception(task_id),
                 exception,
                 self._workflow_id,

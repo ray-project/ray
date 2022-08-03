@@ -78,7 +78,13 @@ def _workflow_task_executor(
 
         # Part 2: block util upstream checkpoint tasks completes successfully.
         try:
-            baked_inputs.wait_upstream_checkpoint_tasks()
+            start = time.time()
+            sizes_dict = baked_inputs.wait_upstream_checkpoint_tasks()
+            duration = time.time() - start
+            logger.debug(
+                f"Total time pending on upstream checkpoints: {duration}\n"
+                f"Upstream checkpoint sizes: {sizes_dict}"
+            )
         except RayError:
             execution_metadata.upstream_checkpointing_failed = True
             return execution_metadata, None
@@ -175,6 +181,11 @@ class _BakedWorkflowInputs:
         ]
         return signature.recover_args(flattened_args)
 
-    def wait_upstream_checkpoint_tasks(self):
-        """Wait until all upstream checkpoint tasks are completed successfully."""
-        ray.get(list(self.upstream_checkpoint_tasks.values()))
+    def wait_upstream_checkpoint_tasks(self) -> Dict[TaskID, int]:
+        """Wait until all upstream checkpoint tasks are completed successfully.
+
+        Returns:
+            A dict of tasks and the size of their checkpoints.
+        """
+        sizes = ray.get(list(self.upstream_checkpoint_tasks.values()))
+        return dict(zip(self.upstream_checkpoint_tasks.keys(), sizes))
