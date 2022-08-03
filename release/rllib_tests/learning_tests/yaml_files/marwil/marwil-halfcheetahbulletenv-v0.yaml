@@ -2,11 +2,11 @@ marwil-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: MARWIL
     pass_criteria:
-        Can not check throughput for offline methods.
+        # Can not check throughput for offline methods.
         evaluation/episode_reward_mean: 400.0
         timesteps_total: 2500000
     stop:
-        time_total_s: 3600
+        time_total_s: 1800
     config:
         framework: "torch"
         # Use input produced by expert SAC algo.

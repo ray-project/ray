@@ -109,6 +109,8 @@ class MARWILTorchPolicy(ValueNetworkMixin, PostprocessAdvantages, TorchPolicyV2)
         p_loss = -torch.mean(exp_advs * (logprobs + logstd_coeff * logstds))
         model.tower_stats["p_loss"] = p_loss
         # Combine both losses.
+        self.v_loss = v_loss
+        self.p_loss = p_loss
         total_loss = p_loss + self.config["vf_coeff"] * v_loss
         model.tower_stats["total_loss"] = total_loss
         return total_loss

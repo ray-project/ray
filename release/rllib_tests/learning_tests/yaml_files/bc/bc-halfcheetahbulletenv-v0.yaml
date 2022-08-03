@@ -3,9 +3,9 @@ bc-halfcheetahbulletenv-v0:
     run: BC
     pass_criteria:
         evaluation/episode_reward_mean: 400.0
-        timesteps_total: 1000000
+        timesteps_total: 2500000
     stop:
-        time_total_s: 3600
+        time_total_s: 1800
     config:
         # Use input produced by expert SAC algo.
         input: "dataset"
