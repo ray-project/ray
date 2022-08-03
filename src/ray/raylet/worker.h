@@ -213,8 +213,7 @@ class Worker : public WorkerInterface {
     task_assign_time_ = std::chrono::high_resolution_clock::now();
   };
 
-  const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime()
-      const {
+  const std::chrono::high_resolution_clock::time_point GetAssignedTaskTime() const {
     return task_assign_time_;
   };
 
