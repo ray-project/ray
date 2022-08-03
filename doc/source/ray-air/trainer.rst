@@ -106,7 +106,7 @@ Ray Train offers 2 main tree-based trainers:
 :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>` and
 :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`.
 
-
+See :ref:`here for a more detailed user-guide <air-trainers-gbdt-user-guide>`.
 
 
 XGBoost Trainer
@@ -162,16 +162,20 @@ It is not distributed but can still benefit from integrating with Ray Tune and b
 RLlib Trainer
 ~~~~~~~~~~~~~
 
-RLTrainer provides an interface to RL Trainables.
+RLTrainer provides an interface to RL Trainables. This enables you to use the same abstractions
+as in the other trainers to define the scaling behavior, and to use Ray Data for offline training.
 
-TODO
+Please note that some scaling behavior still has to be defined separately.
+The :class:`scaling_config <ray.air.config.ScalingConfig>` will set the number of
+training workers ("Rollout workers"). To set the number of e.g. evaluation workers, you will
+have to specify this in the ``config`` parameter of the ``RLTrainer``:
 
 .. literalinclude:: doc_code/rl_trainer.py
     :language: python
 
 
-How to interprete training results?
------------------------------------
+How to interpret training results?
+----------------------------------
 
 After specifying Trainer, one can then kick off training by simply calling ``fit()``.
 The following is how you can interact with training result:
@@ -181,6 +185,9 @@ The following is how you can interact with training result:
     result = trainer.fit()
 
 
-- ``result.checkpoint`` gives last saved checkpoint
+- ``result.checkpoint`` gives last saved checkpoint.
 - ``result.best_checkpoints`` gives N best saved checkpoints, as configured in ``RunConfig.CheckpointConfig``.
 - ``result.metrics`` gives the final metrics as reported.
+- ``result.error`` will contain an Exception if training failed.
+
+See :class:`the Result class <ray.air.result.Result>` for more details.
