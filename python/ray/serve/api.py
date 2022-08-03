@@ -352,6 +352,12 @@ def deployment(
             "autoscaling_config is provided."
         )
 
+    if version is not None:
+        logger.warning(
+            "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
+            "Explicitly specifying version will raise an error in the future!"
+        )
+
     config = DeploymentConfig.from_default(
         ignore_none=True,
         num_replicas=num_replicas,
