@@ -1,10 +1,8 @@
 import asyncio
 from dataclasses import dataclass
-import inspect
 import itertools
 import logging
 import pickle
-from pydoc import resolve
 import random
 import sys
 from types import CoroutineType
