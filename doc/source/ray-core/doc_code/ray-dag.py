@@ -19,6 +19,8 @@ assert ray.get(c_ref.execute()) == 9 # ((1 + 2) + 3) + (1 + 2) = 9
 # __dag_tasks_end__
 # fmt: on
 
+ray.shutdown()
+
 # fmt: off
 # __dag_actors_begin__
 import ray
@@ -58,6 +60,8 @@ dag = combine.bind(a1.get.bind(), a2.get.bind())
 assert ray.get(dag.execute()) == 32
 # __dag_actors_end__
 # fmt: on
+
+ray.shutdown()
 
 # fmt: off
 # __dag_input_node_begin__
