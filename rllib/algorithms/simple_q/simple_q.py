@@ -347,7 +347,7 @@ class SimpleQ(Algorithm):
         # If not yet learning, early-out here and do not perform learning, weight-
         # synching, or target net updating.
         if train_batch is None or len(train_batch) == 0:
-            self.local_worker.set_global_vars(global_vars)
+            self.set_global_vars(global_vars)
             return {}
 
         # Learn on the training batch.

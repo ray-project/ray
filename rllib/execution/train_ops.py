@@ -380,7 +380,7 @@ class MultiGPUTrainOneStep:
                     e.set_weights.remote(weights, _get_global_vars())
 
         # Also update global vars of the local worker.
-        self.local_worker.set_global_vars(_get_global_vars())
+        self.set_global_vars(_get_global_vars())
         return samples, learner_info
 
 
@@ -463,7 +463,7 @@ class ApplyGradients:
             apply_timer.push_units_processed(count)
 
         # Also update global vars of the local worker.
-        self.local_worker.set_global_vars(_get_global_vars())
+        self.set_global_vars(_get_global_vars())
 
         if self.update_all:
             if self.workers.remote_workers():

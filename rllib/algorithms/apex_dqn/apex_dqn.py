@@ -616,7 +616,7 @@ class ApexDQN(DQN):
                 self.update_target_networks(env_steps)
                 self._counters[NUM_ENV_STEPS_TRAINED] += env_steps
                 self._counters[NUM_AGENT_STEPS_TRAINED] += agent_steps
-                self.local_worker.set_global_vars(
+                self.set_global_vars(
                     {"timestep": self._counters[NUM_ENV_STEPS_TRAINED]}
                 )
             else:
