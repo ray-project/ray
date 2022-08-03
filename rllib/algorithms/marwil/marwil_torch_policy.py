@@ -75,10 +75,13 @@ class MARWILTorchPolicy(ValueNetworkMixin, PostprocessAdvantages, TorchPolicyV2)
             # Policy loss.
             # Update averaged advantage norm.
             rate = self.config["moving_average_sqd_adv_norm_update_rate"]
-            self._moving_average_sqd_adv_norm.add_(
-                rate * (adv_squared_mean - self._moving_average_sqd_adv_norm)
+            self._moving_average_sqd_adv_norm = (
+                rate * (adv_squared_mean.detach() - self._moving_average_sqd_adv_norm)
+                + self._moving_average_sqd_adv_norm
             )
-            self._moving_average_sqd_adv_norm = (rate *(adv_squared_mean - self._moving_average_sqd_adv_norm) + self._moving_average_sqd_adv_norm)
+            model.tower_stats[
+                "_moving_average_sqd_adv_norm"
+            ] = self._moving_average_sqd_adv_norm
             # Exponentially weighted advantages.
             exp_advs = torch.exp(
                 self.config["beta"]
@@ -113,16 +116,20 @@ class MARWILTorchPolicy(ValueNetworkMixin, PostprocessAdvantages, TorchPolicyV2)
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         stats = {
-            "policy_loss": self.p_loss,
-            "total_loss": self.total_loss,
+            "policy_loss": self.get_tower_stats("p_loss")[0].item(),
+            "total_loss": self.get_tower_stats("total_loss")[0].item(),
         }
         if self.config["beta"] != 0.0:
-            stats["moving_average_sqd_adv_norm"] = self._moving_average_sqd_adv_norm
-            stats["vf_explained_var"] = self.explained_variance
-            stats["vf_loss"] = self.v_loss
+            stats["moving_average_sqd_adv_norm"] = self.get_tower_stats(
+                "_moving_average_sqd_adv_norm"
+            )[0].item()
+            stats["vf_explained_var"] = self.get_tower_stats("explained_variance")[
+                0
+            ].item()
+            stats["vf_loss"] = self.get_tower_stats("v_loss")[0].item()
         return convert_to_numpy(stats)
 
-    # def extra_grad_process(
-    #     self, optimizer: "torch.optim.Optimizer", loss: TensorType
-    # ) -> Dict[str, TensorType]:
-    #     return apply_grad_clipping(self, optimizer, loss)
+    def extra_grad_process(
+        self, optimizer: "torch.optim.Optimizer", loss: TensorType
+    ) -> Dict[str, TensorType]:
+        return apply_grad_clipping(self, optimizer, loss)

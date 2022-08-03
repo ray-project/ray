@@ -22,7 +22,6 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     EnvType,

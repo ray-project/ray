@@ -1,10 +1,10 @@
 marwil-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: MARWIL
-    # pass_criteria:
-        # Can not check throughput for offline methods.
-        # evaluation/episode_reward_mean: 400.0
-        # timesteps_total: 10000000
+    pass_criteria:
+        Can not check throughput for offline methods.
+        evaluation/episode_reward_mean: 400.0
+        timesteps_total: 2500000
     stop:
         time_total_s: 3600
     config:
@@ -13,7 +13,7 @@ marwil-halfcheetahbulletenv-v0:
         input: "dataset"
         input_config:
             format: "json"
-            paths: "half_cheetah_data/output-2022-07-22_20-02-25_worker-0_0.json"
+            paths: "s3://air-example-data/rllib/half_cheetah/half_cheetah.json"
         actions_in_input_normalized: true
         # Switch off input evaluation (data does not contain action probs).
         off_policy_estimation_methods: {}
@@ -34,4 +34,4 @@ marwil-halfcheetahbulletenv-v0:
         num_workers: 8
         lr: 0.001
         grad_clip: 40
-        # min_time_s_per_iteration: 30
+        min_time_s_per_iteration: 30

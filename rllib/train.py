@@ -257,7 +257,6 @@ def run(args, parser):
             )
         ray.init(address=cluster.address)
     else:
-        runtime_env = {"working_dir": "/home/ray/workspace-project-avnish-dev/scratch/"}
         ray.init(
             include_dashboard=args.ray_ui,
             address=args.ray_address,
@@ -265,7 +264,6 @@ def run(args, parser):
             num_cpus=args.ray_num_cpus,
             num_gpus=args.ray_num_gpus,
             local_mode=args.local_mode,
-            runtime_env=runtime_env,
         )
 
     run_experiments(
