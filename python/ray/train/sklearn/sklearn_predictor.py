@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class SklearnPredictor(Predictor):
     """A predictor for scikit-learn compatible estimators.
 

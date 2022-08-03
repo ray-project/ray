@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class SklearnCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with sklearn-specific
     functionality.

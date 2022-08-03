@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class RLTrainer(BaseTrainer):
     """Reinforcement learning trainer.
 

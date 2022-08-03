@@ -11,7 +11,7 @@ RL_TRAINER_CLASS_FILE = "trainer_class.pkl"
 RL_CONFIG_FILE = "config.pkl"
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class RLCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with RLlib-specific
     functionality.

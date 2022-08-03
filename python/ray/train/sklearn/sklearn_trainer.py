@@ -43,7 +43,7 @@ ScoringType = Union[MetricType, Iterable[MetricType], Dict[str, MetricType]]
 CVType = Union[int, Iterable, BaseCrossValidator]
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class SklearnTrainer(BaseTrainer):
     """A Trainer for scikit-learn estimator training.
 

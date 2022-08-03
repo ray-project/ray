@@ -107,7 +107,7 @@ class _DataParallelSyncingCheckpointManager(_DataParallelCheckpointManager):
         )._process_persistent_checkpoint(checkpoint=sync_checkpoint)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpha")
 class HuggingFaceTrainer(TorchTrainer):
     """A Trainer for data parallel HuggingFace Transformers on PyTorch training.
 
