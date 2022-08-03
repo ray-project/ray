@@ -124,11 +124,11 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
                 "wis": {"type": WeightedImportanceSampling},
                 "dm_fqe": {
                     "type": DirectMethod,
-                    "q_model_config": {"type": FQETorchModel, "tau": 0.05},
+                    "q_model_config": {"type": FQETorchModel, "polyak_coef": 0.05},
                 },
                 "dr_fqe": {
                     "type": DoublyRobust,
-                    "q_model_config": {"type": FQETorchModel, "tau": 0.05},
+                    "q_model_config": {"type": FQETorchModel, "polyak_coef": 0.05},
                 },
             },
         )
