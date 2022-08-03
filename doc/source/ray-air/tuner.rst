@@ -20,7 +20,7 @@ reading more, please take a look at the :ref:`Ray Tune documentation <tune-main>
 Key Concepts
 ------------
 
-There are a number of key concepts to understand when using a Tuner:
+There are a number of key concepts that dictate proper use of a Tuner:
 
 * A set of hyperparameters you want to tune in a `search space`.
 * A `search algorithm` to effectively optimize your parameters and optionally use a
