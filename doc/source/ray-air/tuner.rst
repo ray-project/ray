@@ -5,29 +5,30 @@ Configuring Hyperparameter Tuning
 
 The Ray AIR :class:`Tuner <ray.tune.Tuner>` is the recommended way to tune hyperparameters in Ray AIR.
 
-.. image:: images/tuner.svg
+.. figure:: images/tuner.svg
     :align: center
 
-`Tuner` provides an interface that works with AIR Trainers to perform distributed
-hyperparameter tuning. `Tuner` is part of Ray Tune and provides
-a variety of state-of-the-art hyperparameter tuning algorithms for optimizing model
+    The `Tuner` will take in a `Trainer` and execute multiple training runs, each with different hyperparameter configurations.
+
+As part of Ray Tune, the `Tuner` provides an interface that works with AIR Trainers to perform distributed
+hyperparameter tuning. It provides a variety of state-of-the-art hyperparameter tuning algorithms for optimizing model
 performance.
 
-This page will cover basic usage examples of a Tuner. If you are interested in
+What follows next is basic coverage of what a Tuner is and how you can use it for basic examples. If you are interested in
 reading more, please take a look at the :ref:`Ray Tune documentation <tune-main>`.
 
 Key Concepts
 ------------
 
-There are a couple key concepts for using a Tuner:
+There are a number of key concepts to understand when using a Tuner:
 
-* First, you need to specify the hyperparameters you want to tune in a `search space`.
-* You select a `search algorithm` to effectively optimize your parameters and optionally use a
+* A set of hyperparameters you want to tune in a `search space`.
+* A `search algorithm` to effectively optimize your parameters and optionally use a
   `scheduler` to stop searches early and speed up your experiments.
-* Pass in the above objects with a `Trainer` into a `Tuner`,
+* The `search space`, `search algorithm`, `scheduler`, and `Trainer` are passed to a `Tuner`,
   which runs the hyperparameter tuning workload by evaluating multiple hyperparameters in parallel.
 * Each individual hyperparameter evaluation run is called a `trial`.
-* The results are returned in a `ResultGrid`.
+* The `Tuner` returns its results in a `ResultGrid`.
 
 .. note::
    Tuners can also be used to launch hyperparameter tuning without using Ray AIR Trainers. See
@@ -44,8 +45,8 @@ Below, we demonstrate how you can use a Trainer object with a Tuner.
     :end-before: __basic_end__
 
 
-How do I configure a search space?
-----------------------------------
+How to configure a search space?
+--------------------------------
 
 A `Tuner` takes in a `param_space` argument where you can define the search space
 from which hyperparameter configurations will be sampled.
@@ -53,8 +54,8 @@ from which hyperparameter configurations will be sampled.
 Depending on the model and dataset, you may want to tune:
 
 - The training batch size
-- The learning rate for SGD-based training (e.g. image classification)
-- The maximum depth for tree-based models (e.g. XGBoost)
+- The learning rate for SGD-based training (e.g., image classification)
+- The maximum depth for tree-based models (e.g., XGBoost)
 
 The following shows some example code on how to specify the ``param_space``.
 
@@ -84,13 +85,13 @@ not limited to:
 
 There are a couple gotchas about parameter specification when using Tuners with Trainers:
 
-- By default, configuration dictionaries and config objects will be deep-merged
-- Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``
+- By default, configuration dictionaries and config objects will be deep-merged.
+- Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``.
 - **Exception:** all arguments of the :class:`RunConfig <ray.air.config.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
 
 
-How to configure a Tuner
-------------------------
+How to configure a Tuner?
+-------------------------
 
 There are two main configuration objects that can be passed into a Tuner: the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` and the :class:`RunConfig <ray.air.config.RunConfig>`.
 
@@ -120,7 +121,7 @@ This may include:
 - custom callbacks
 - integration with cloud storage
 
-The following we showcase some common configuration of :class:`RunConfig <ray.air.config.RunConfig>`.
+Below we showcase some common configurations of :class:`RunConfig <ray.air.config.RunConfig>`.
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
@@ -130,8 +131,8 @@ The following we showcase some common configuration of :class:`RunConfig <ray.ai
 See the :class:`RunConfig API reference <ray.air.config.RunConfig>` for more details.
 
 
-How do I specify parallelism?
------------------------------
+How to specify parallelism?
+---------------------------
 
 You can specify parallelism via the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` by setting the following flags:
 
@@ -150,8 +151,8 @@ and `max_concurrent_trials=10`, the `Tuner` can only run 2 trials concurrently).
 Read more about this in :ref:`tune-parallelism` section.
 
 
-How do I specify an optimization algorithm?
--------------------------------------------
+How to specify an optimization algorithm?
+-----------------------------------------
 
 You can specify your hyperparameter optimization method via the :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` by setting the following flags:
 
@@ -168,8 +169,8 @@ Read more about this in the :ref:`Search Algorithm <search-alg-ref>` and :ref:`S
 How to analyze results?
 -----------------------
 
-``Tuner.fit()`` generates a ResultGrid object. This object contains metrics, results, and checkpoints
-of each trial. Below is a simple usage example:
+``Tuner.fit()`` generates a `ResultGrid` object. This object contains metrics, results, and checkpoints
+of each trial. Below is a simple example:
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
@@ -179,14 +180,14 @@ of each trial. Below is a simple usage example:
 Advanced Tuning
 ---------------
 
-Tuners also offer the possibility to apply different data preprocessing steps, as shown in the following snippet.
+Tuners also offer the ability to tune different data preprocessing steps, as shown in the following snippet.
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
     :start-after: __tune_preprocess_start__
     :end-before: __tune_preprocess_end__
 
-You can also sample different train/validation datasets:
+Additionally, you can sample different train/validation datasets:
 
 .. literalinclude:: doc_code/tuner.py
     :language: python
@@ -201,10 +202,10 @@ A Tuner regularly saves its state, so that a tuning run can be resumed after bei
 Additionally, if trials fail during a tuning run, they can be retried - either from scratch or
 from the latest available checkpoint.
 
-To restore the Tuner state, you just pass the path to the experiment directory to ``Tuner.restore()``.
+To restore the Tuner state, pass the path to the experiment directory as an argument to ``Tuner.restore(...)``.
 
-This path can be obtained e.g. from the output of a tuning run (it's called "Result logdir"). If you
-specify a ``name`` in the :class:`RunConfig <ray.air.config.RunConfig>`, it will usually be found
+This path is obtained from the output of a tuning run, namely "Result logdir".
+However, if you specify a ``name`` in the :class:`RunConfig <ray.air.config.RunConfig>`, it is located
 under ``~/ray_results/<name>``.
 
 .. literalinclude:: doc_code/tuner.py
