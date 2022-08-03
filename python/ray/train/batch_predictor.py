@@ -12,7 +12,7 @@ from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class BatchPredictor:
     """Batch predictor class.
 
