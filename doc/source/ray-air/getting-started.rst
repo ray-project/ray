@@ -160,7 +160,7 @@ Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms
   distributed Python APIs enable scaling of ML workloads without the burden of
   setting up or orchestrating separate distributed systems.
 
-AIR is for both ML practitioners and ML engineers. Consider using AIR when you want to:
+AIR is for both data scientists and ML engineers. Consider using AIR when you want to:
  * Scale a single workload.
  * Scale end-to-end ML applications.
  * Build a custom ML platform for your organization.

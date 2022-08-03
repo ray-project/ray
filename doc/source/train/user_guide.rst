@@ -553,7 +553,7 @@ The session concept exists on several levels: The execution layer (called `Tune 
 (called `Train Session`).
 The following figure shows how these two sessions look like in a Data Parallel training scenario.
 
-.. image:: images/session.svg
+.. image:: ../ray-air/images/session.svg
    :width: 650px
    :align: center
 
