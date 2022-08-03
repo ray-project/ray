@@ -202,6 +202,42 @@ $ python hello_client.py
 Hola Dora
 ```
 
+(deployment-graph-intro-testing)=
+### Testing the Call Graph with Python API
+
+All `MethodNodes` and `FunctionNodes` have an `execute` method. You can use this method to test your graph in Python, without using HTTP requests. 
+
+To test your graph,
+
+1. Call `execute` on the `MethodNode` or `FunctionNode` that you would pass into the `DAGDriver`.
+2. Pass in the input to the graph as the argument. **This argument becomes the input represented by `InputNode`**. Make sure to refactor your call graph accordingly, since it will take in this input directly, instead of an HTTP request.
+3. `execute` returns a reference to the result, so the graph can execute asynchronously. Call `ray.get` on this reference to get the final result.
+
+As an example, we can rewrite the [arithmetic call graph example](deployment-graph-intro-arithmetic-graph) from above to use `execute`:
+
+```python
+with InputNode() as request_number:
+    add_2_output = add_2.add.bind(request_number)
+    subtract_1_output = subtract_one_fn.bind(add_2_output)
+    add_3_output = add_3.add.bind(subtract_1_output)
+
+ref = add_3_output.execute(5)
+result = ray.get(ref)
+print(result)
+```
+
+Then we can run the script directly:
+
+```
+$ python arithmetic.py
+
+9
+```
+
+:::{note}
+The `execute` method deploys your deployment code inside Ray tasks and actors instead of Ray Serve deployments. It's useful for testing because you don't need to launch entire deployments and ping them with HTTP requests, but it's not suitable for production.
+:::
+
 (deployment-graph-drivers-http-adapters-intro)=
 ## Drivers and HTTP Adapters
 
