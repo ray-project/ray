@@ -47,16 +47,17 @@ def train_func(config: dict):
     dataset = session.get_dataset_shard("train")
 
     for _ in range(config.get("epoch", 3)):
-        tf_dataset = prepare_dataset_shard(
-            dataset.to_tf(
-                label_column="y",
-                output_signature=(
-                    tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None), dtype=tf.float32),
-                ),
-                batch_size=32,
-            )
+        tf_dataset = tf.data.Dataset.from_generator(
+            lambda: (
+                (tf.expand_dims(batch["x"], 1), batch["y"])
+                for batch in dataset.iter_tf_batches(batch_size=32)
+            ),
+            output_signature=(
+                tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+                tf.TensorSpec(shape=(None), dtype=tf.float32),
+            ),
         )
+        tf_dataset = prepare_dataset_shard(tf_dataset)
         multi_worker_model.fit(tf_dataset, callbacks=[Callback()])
 
 
