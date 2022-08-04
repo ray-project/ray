@@ -2,17 +2,32 @@
 (kuberay-index)=
 ## Overview
 
-You can execute your distributed Ray programs on a Kubernetes cluster.
+In this section we cover how to execute your distributed Ray programs on a Kubernetes cluster.
 
-The [KubeRay Operator](https://ray-project.github.io/kuberay/components/operator/) provides a Kubernetes-native
-interface for managing Ray clusters. Each Ray cluster consist of a head pod and collection of worker pods.
-Optional autoscaling support allows the KubeRay Operator to size your Ray clusters according to the requirements
-of your Ray workload, adding and removing Ray pods as needed.
+The [KubeRay Operator](https://ray-project.github.io/kuberay/components/operator/) is the recommended way to do so. It provides a Kubernetes-native way to manage Ray clusters. Each Ray cluster consist of
+a head pod and collection of worker pods. Optional autoscaling support allows the KubeRay Operator
+to size your Ray clusters according to the requirements of your Ray workload, adding and removing
+Ray pods as needed. KubeRay supports running multiple Ray clusters with different Ray versions in the
+same Kubernetes cluster.
 
 ```{eval-rst}
 .. image:: /cluster/cluster_under_construction/ray-clusters-on-kubernetes/images/ray_on_kubernetes.png
     :align: center
+
+..
+  https://docs.google.com/drawings/d/1E3FQgWWLuj8y2zPdKXjoWKrfwgYXw6RV_FWRwK8dVlg/edit
 ```
+
+
+Concretely you will learn how to:
+
+- Set up and configure Ray on an existing Kubernetes cluster or a managed Kubernetes service
+- Deploy batch Ray applications on Kubernetes via Ray Jobs
+- Utilize GPUs to run Ray machine learning workloads (e.g. with Ray AIR)
+- Set up networking to connect your Ray applications with third party applications in the Kubernetes cluster
+- Use Autoscaling to scale your cluster up and down based on utilization
+- Deploy online Ray applications on Kubernetes
+- Monitor your Ray applications on Kubernetes
 
 ## Learn More
 
