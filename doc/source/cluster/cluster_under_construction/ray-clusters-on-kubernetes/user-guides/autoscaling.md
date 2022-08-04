@@ -70,7 +70,7 @@ by considerations of scalability.
 The Ray Autoscaler and the
 [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) complement each other.
 After the Ray autoscaler decides to create a Ray pod, the Kubernetes Cluster Autoscaler
-can scale up a Kubernetes node so that the pod can be placed.
+can scale up a Kubernetes Node so that the pod can be placed.
 Similarly, after the Ray autoscaler decides to delete an idle pod, the Kubernetes
 Cluster Autoscaler can clean up the idle Kubernetes Node that remains.
 It is recommended to configure your RayCluster so that only one Ray pod fits per Kubernetes Node.
