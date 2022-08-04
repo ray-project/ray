@@ -1016,7 +1016,7 @@ Status CoreWorker::ForwardToOtherWorker(const ObjectID &object_id,
   request.set_object_id(object_id.Binary());
   request.mutable_borrower_address()->CopyFrom(borrower_address);
   request.set_call_site(CurrentCallSite());
-
+  request.set_is_reconstructable(true);
   for (auto &contained_object_id : contained_object_ids) {
     request.add_contained_object_ids(contained_object_id.Binary());
   }
@@ -1662,7 +1662,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info);
-  builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
+  builder.SetNormalTaskSpec(1, retry_exceptions, scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
@@ -1670,7 +1670,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     returned_refs = ExecuteTaskLocalMode(task_spec);
   } else {
     returned_refs = task_manager_->AddPendingTask(
-        task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
+        task_spec.CallerAddress(), task_spec, CurrentCallSite(), 1);
     io_service_.post(
         [this, task_spec]() {
           RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
@@ -3303,6 +3303,7 @@ void CoreWorker::HandleUpdateForwardedObject(const rpc::UpdateForwardedObjectReq
     RAY_LOG(ERROR) << "Handling updating raylet for " << object_id;
     reference_counter_->UpdateObjectSize(object_id, return_object.size());
     reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
+    task_manager_->AddReconstructableObject(object_id);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

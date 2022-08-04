@@ -123,12 +123,14 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
+    RAY_LOG(ERROR) << "finding in submissible tasks...";
     if (it == submissible_tasks_.end()) {
       // This can happen when the task has already been
       // retried up to its max attempts.
+      RAY_LOG(ERROR) << "Cannot find the task in submissible tasks";
       return false;
     }
-
+    RAY_LOG(ERROR) << "found in submissible tasks";
     if (!it->second.IsPending()) {
       resubmit = true;
       it->second.status = rpc::TaskStatus::WAITING_FOR_DEPENDENCIES;
@@ -353,8 +355,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
+    RAY_LOG(ERROR) << "task " << task_id << " state: num_retries_left=" << it->second.num_retries_left;
     bool task_retryable = it->second.num_retries_left != 0 &&
                           !it->second.reconstructable_return_ids.empty();
+    RAY_LOG(ERROR) << "task " << task_id << "retryable is " << task_retryable;
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
@@ -380,6 +384,15 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 
   ShutdownIfNeeded();
+}
+
+void TaskManager::AddReconstructableObject(const ObjectID &object_id) {
+  absl::MutexLock lock(&mu_);
+  auto task_id = object_id.TaskId();
+  auto it = submissible_tasks_.find(task_id);
+  RAY_CHECK(it != submissible_tasks_.end())
+        << "Tried to add reconstructable object to finished task" << task_id;
+  it->second.reconstructable_return_ids.insert(object_id);
 }
 
 bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {

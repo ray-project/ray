@@ -69,6 +69,9 @@ class TaskManagerTest : public ::testing::Test {
                const rpc::Address &borrower_address,
                const rpc::Address &owner_address,
                const size_t object_size) { return Status::OK(); },
+            [](const rpc::PushTaskReply &reply,
+               const std::string &raylet_id,
+               const rpc::Address &owner_address) { return Status::OK(); },
             max_lineage_bytes) {}
 
   virtual void TearDown() { AssertNoLeaks(); }

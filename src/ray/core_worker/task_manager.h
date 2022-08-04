@@ -284,6 +284,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
+  /// Add a reconstructable object to a task, used in forward
+  void AddReconstructableObject(const ObjectID &object_id);
+
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg,
