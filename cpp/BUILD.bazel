@@ -177,6 +177,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         "ray_api",
+        "@boost//:filesystem",
         "@com_google_googletest//:gtest_main",
     ],
 )
