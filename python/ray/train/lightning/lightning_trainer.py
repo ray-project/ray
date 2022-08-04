@@ -131,6 +131,14 @@ class LightningTrainer(TorchTrainer):
                 "'_lightning_module_init_config' is a reserved key in "
                 "`trainer_init_config`."
             )
+        if (
+            "strategy" in trainer_init_config
+            and trainer_init_config["strategy"] != "ddp"
+        ):
+            raise ValueError(
+                "The 'strategy' key in '_lightning_module_init_config' can only be "
+                "'ddp'."
+            )
         if any(
             isinstance(logger, TrainReportLogger)
             for logger in trainer_init_config.get("loggers", [])
@@ -149,6 +157,7 @@ def _lightning_train_loop_per_worker(config):
 
     LightningModule = config.pop("_lightning_module")
     lightning_module_init_config = config.pop("_lightning_module_init_config")
+    lightning_module_init_config["strategy"] = "ddp"
     lightning_module_instance = LightningModule(**lightning_module_init_config)
 
     # TODO: is KeyError raised if a key is not set in datasets?
