@@ -6,10 +6,20 @@ This guide covers the key aspects of Ray cluster configuration on Kubernetes.
 
 ## Introduction
 
-Deployments of Ray on Kubernetes follow the standard Operator pattern.
+Deployments of Ray on Kubernetes follow the standard [operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/) consisting of a
+- A [Custom Resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/)
+    called a `RayCluster` describing the desired state of a Ray Cluster.
+- A [Custom Controller](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#custom-controllers),
+    the KubeRay operator, which processes `RayCluster` resources and manages Ray pods.
 
-This guide covers the salient features of RayCluster CR configuration.
+To deploy a Ray cluster, one creates a `RayCluster` custom resource (CR):
+```shell
+kubectl apply -f raycluster.yaml
+```
 
+This guide covers the salient features of `RayCluster` CR configuration.
+
+For reference, here is a condensed example of a `RayCluster` CR in yaml format.
 ```yaml
 apiVersion: ray.io/v1alpha1
 kind: RayCluster
