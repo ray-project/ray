@@ -1,8 +1,6 @@
-from weakref import WeakValueDictionary
-import ray
-
 import io
 import sys
+from typing import Generic, List, Dict, Any, Type, TypeVar
 
 # For python < 3.8 we need to explicitly use pickle5 to support protocol 5
 if sys.version_info < (3, 8):
@@ -13,7 +11,7 @@ if sys.version_info < (3, 8):
 else:
     import pickle  # noqa: F401
 
-from typing import Generic, List, Dict, Any, Type, TypeVar
+import ray
 from ray.dag.base import DAGNodeBase
 
 
