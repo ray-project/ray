@@ -135,9 +135,10 @@ as either `Arrow Tables <https://arrow.apache.org/docs/python/generated/pyarrow.
 or `Pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
 
 Different ways of creating Datasets leads to a different starting internal format:
+
 * Reading tabular files (Parquet, CSV, JSON) creates Arrow blocks initially.
 * Converting from Pandas, Dask, Modin, and Mars creates Pandas blocks initially.
-* Reading NumPy files or converting from NumPy ndarrays creaates Arrow blocks.
+* Reading NumPy files or converting from NumPy ndarrays creates Arrow blocks.
 
 However, this internal format is not exposed to the user. Datasets converts between formats
 as needed internally depending on the specified ``batch_format`` of transformations.
