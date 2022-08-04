@@ -19,7 +19,7 @@ pip install ray
 
 ### Install and Configure Azure CLI
 
-Next, install the Azure CLI (`pip install azure-cli azure-identity`) then login using (`az login`).
+Next, install the Azure CLI (`pip install azure-cli azure-identity`) then login using (`az login`).  
 
 ```
 # install azure cli.
@@ -33,8 +33,11 @@ az login
 ### Start Ray with Ray Cluster Launcher
 
 
-The provided [example-full.yaml](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/azure/example-full.yaml) cluster config file will create a small cluster with a Standard DS2v3 node (on-demand) configured to autoscale up to two Standard DS2v3 worker nodes ([spot-instances](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms)).
-Note that you'll need to fill in your resource group and location in those templates.
+The provided [example-full.yaml](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) cluster config file will create a small cluster with a Standard DS2v3 node (on-demand) configured to autoscale up to two Standard DS2v3 worker nodes ([spot-instances](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms)).
+
+Note that you'll need to fill in your [resource group](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [location](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set subscription to use from the command line `az account set -s <subscription_id>` or by filling the [subscription_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config.
+
+
 
 Test that it works by running the following commands from your local machine:
 
@@ -42,16 +45,19 @@ Test that it works by running the following commands from your local machine:
 # Download the example-full.yaml
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/azure/example-full.yaml
 
+# Update the example-full.yaml to update resource group, location, and subscription_id.
+# vi example-full.yaml
+
 # Create or update the cluster. When the command finishes, it will print
 # out the command that can be used to SSH into the cluster head node.
 ray up example-full.yaml
 
 # Get a remote screen on the head node.
-ray attach ray/python/ray/autoscaler/aws/example-full.yaml
+ray attach example-full.yaml
 # Try running a Ray program.
 
 # Tear down the cluster.
-ray down ray/python/ray/autoscaler/aws/example-full.yaml
+ray down example-full.yaml
 ```
 
 Congrats, you have started a Ray cluster on Azure!

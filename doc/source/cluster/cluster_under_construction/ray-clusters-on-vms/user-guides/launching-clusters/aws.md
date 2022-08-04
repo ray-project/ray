@@ -49,14 +49,14 @@ wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autosca
 ray up example-full.yaml
 
 # Get a remote screen on the head node.
-ray attach ray/python/ray/autoscaler/aws/example-full.yaml
+ray attach example-full.yaml
 
 # Try running a Ray program.
 python -c 'import ray; ray.init()'
 exit
 
 # Tear down the cluster.
-ray down ray/python/ray/autoscaler/aws/example-full.yaml
+ray down example-full.yaml
 ```
 
 Congrats, you have started a Ray cluster on AWS!
