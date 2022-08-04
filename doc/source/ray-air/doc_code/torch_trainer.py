@@ -33,8 +33,10 @@ def train_loop_per_worker():
     model = train.torch.prepare_model(model)
 
     for epoch in range(num_epochs):
-        for batches in dataset_shard.iter_torch_batches(batch_size=32):
-            inputs, labels = batches["x"], batches["y"]
+        for batches in dataset_shard.iter_torch_batches(
+            batch_size=32, dtypes=torch.float
+        ):
+            inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
             output = model(inputs)
             loss = loss_fn(output, labels)
             optimizer.zero_grad()
