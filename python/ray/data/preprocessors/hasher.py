@@ -33,17 +33,12 @@ class FeatureHasher(Preprocessor):
 
     def _transform_pandas(self, df: pd.DataFrame):
         # TODO(matt): Use sparse matrix for efficiency.
-        joined_columns = "_".join(self.columns)
-
         def row_feature_hasher(row):
             hash_counts = collections.defaultdict(int)
             for column in self.columns:
-                hashed_value = simple_hash(row[column], self.num_features)
-                hash_counts[hashed_value] = hash_counts[hashed_value] + 1
-            return {
-                f"hash_{joined_columns}_{i}": hash_counts[i]
-                for i in range(self.num_features)
-            }
+                hashed_value = simple_hash(column, self.num_features)
+                hash_counts[hashed_value] += row[column]
+            return {f"hash{i}": hash_counts[i] for i in range(self.num_features)}
 
         feature_columns = df.loc[:, self.columns].apply(
             row_feature_hasher, axis=1, result_type="expand"
