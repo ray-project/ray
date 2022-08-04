@@ -3,6 +3,9 @@
 Configurations User Guide
 =========================
 
+The following overviews how to configure scale-out, run options, and fault-tolerance for Train.
+For more details on how to configure data ingest, also refer to :ref:`air-ingest`.
+
 Scaling configuration (``ScalingConfig``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

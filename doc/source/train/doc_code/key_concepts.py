@@ -85,13 +85,13 @@ trainer.fit()
 from ray.air import ScalingConfig
 
 scaling_config = ScalingConfig(
-    # Number of distributed workers
+    # Number of distributed workers.
     num_workers=2,
-    # Turn on/off GPU
+    # Turn on/off GPU.
     use_gpu=True,
-    # Specify resources used for trainer
+    # Specify resources used for trainer.
     trainer_resources={"CPU": 1},
-    # Try to schedule workers on different nodes
+    # Try to schedule workers on different nodes.
     placement_strategy="SPREAD",
 )
 # __scaling_config_end__
@@ -100,11 +100,11 @@ scaling_config = ScalingConfig(
 from ray.air import RunConfig
 
 run_config = RunConfig(
-    # Name of the training run (directory name)
+    # Name of the training run (directory name).
     name="my_train_run",
-    # Directory to store results in (will be local_dir/name)
+    # Directory to store results in (will be local_dir/name).
     local_dir="~/ray_results",
-    # Low training verbosity
+    # Low training verbosity.
     verbose=1,
 )
 # __run_config_end__
@@ -114,7 +114,7 @@ from ray.air import RunConfig, FailureConfig
 
 run_config = RunConfig(
     failure_config=FailureConfig(
-        # Tries to recover a run up to this many times
+        # Tries to recover a run up to this many times.
         max_failures=2
     )
 )
@@ -126,7 +126,7 @@ from ray.tune import SyncConfig
 
 run_config = RunConfig(
     sync_config=SyncConfig(
-        # This will store checkpoints on S3
+        # This will store checkpoints on S3.
         upload_dir="s3://remote-bucket/location"
     )
 )
@@ -137,7 +137,7 @@ from ray.air import RunConfig, CheckpointConfig
 
 run_config = RunConfig(
     checkpoint_config=CheckpointConfig(
-        # Only keep this many checkpoints
+        # Only keep this many checkpoints.
         num_to_keep=2
     )
 )
