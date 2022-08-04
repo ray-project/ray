@@ -1,8 +1,12 @@
+import logging
 from dataclasses import dataclass
+import ray
 from ray.util.annotations import PublicAPI
 from typing import TYPE_CHECKING, List, Optional
 import re
 from ray.air.config import ScalingConfig
+from ray.util.placement_group import get_current_placement_group
+from ray._private.ray_constants import env_integer
 
 if TYPE_CHECKING:
     from ray.tune.execution.placement_groups import PlacementGroupFactory
@@ -10,12 +14,7 @@ import jax
 from jax._src.lib import xla_bridge as xb
 import alpa
 
-from ray.train.constants import (
-    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
-    TRAIN_ENABLE_WORKER_SPREAD_ENV,
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-)
+from ray.train.constants import TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV
 
 
 try:
@@ -25,6 +24,8 @@ except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "alpa isn't installed. To install alpa, run 'pip install " "alpa'."
     )
+
+logger = logging.getLogger(__name__)
 
 def is_ray_node_resource(resource_key):
     """Check if the current resource is the host ip."""
@@ -101,28 +102,6 @@ def update_jax_platform(platform):
     jax.config.update("jax_platform_name", platform)
     xb.get_backend.cache_clear()
 
-
-
-
-
-# Import placement group APIs.
-from ray.util.placement_group import (
-    placement_group,
-    placement_group_table,
-    remove_placement_group,
-)
-from ray._private.services import get_node_ip_address
-from ray.util.placement_group import get_current_placement_group, remove_placement_group
-
-
-# Initialize Ray.
-import ray
-from icecream import ic
-
-
-import re
-
-
 def get_bundle2ip(pg=None):
     """get the ip address list from placement group
 
@@ -169,8 +148,6 @@ def get_bundle2ip(pg=None):
 
     return ip_list
 
-
-
 class AlpaManager:
     """AlpaManager is responsible for cluster setup and management.
     """
@@ -178,7 +155,6 @@ class AlpaManager:
         # collect ray cluster info
         # constrain according to the ScalingConfig
         
-
         # scaling parameters
         self.scaling_config = scaling_config
 
@@ -295,8 +271,6 @@ class AlpaManager:
             current_placement_group is None
             or not should_capture_child_tasks_in_placement_group
         )
-
-        ic(should_create_placement_group)
 
         if should_create_placement_group:
             additional_resources_per_worker = (

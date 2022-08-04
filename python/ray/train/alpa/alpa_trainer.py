@@ -42,7 +42,6 @@ from ray.train.alpa.utils import (
     get_bundle2ip, 
     AlpaManager
 )
-from icecream import ic
 
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -79,7 +78,6 @@ class AlpaTrainer(BaseTrainer):
     ):
         # set up alpa cluster manager
         self.alpa_manager = AlpaManager(scaling_config) 
-        self.host_ips = self.alpa_manager.host_ips
 
         self._train_loop = train_loop_per_worker
         self._train_loop_config = train_loop_config
@@ -93,11 +91,8 @@ class AlpaTrainer(BaseTrainer):
         )
 
     def training_loop(self) -> None:
-        # needs to add this to the head node
-        # otherwise RuntimeError: Backend 'gpu' failed to initialize:
-        # FAILED_PRECONDITION: No visible GPU devices.
-        # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-        
+        """Training loop for AlpaTrainer.
+        """
         # intialize alpa cluster
         self.alpa_manager.init_global_cluster()
 
@@ -105,86 +100,3 @@ class AlpaTrainer(BaseTrainer):
             self._train_loop(self._train_loop_config)
         else:
             self._train_loop()
-
-    def as_trainable(self) -> Type[Trainable]:
-        """Convert self to a ``tune.Trainable`` class."""
-
-        base_config = self._param_dict
-        trainer_cls = self.__class__
-        scaling_config = self.scaling_config
-
-        def train_func(config, checkpoint_dir=None):
-            # config already contains merged values.
-            # Instantiate new Trainer in Trainable.
-            trainer = trainer_cls(**config)
-
-            if checkpoint_dir:
-                trainer.resume_from_checkpoint = Checkpoint.from_directory(
-                    checkpoint_dir
-                )
-
-            trainer.setup()
-            trainer.preprocess_datasets()
-            trainer.training_loop()
-
-        # Change the name of the training function to match the name of the Trainer
-        # class. This will mean the Tune trial name will match the name of Trainer on
-        # stdout messages and the results directory.
-        train_func.__name__ = trainer_cls.__name__
-
-        trainable_cls = wrap_function(train_func)
-
-        class TrainTrainable(trainable_cls):
-            """Add default resources to the Trainable."""
-
-            # Workaround for actor name not being logged correctly
-            # if __repr__ is not directly defined in a class.
-            def __repr__(self):
-                return super().__repr__()
-
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-
-                # Create a new config by merging the dicts.
-                # run_config is not a tunable hyperparameter so it does not need to be
-                # merged.
-                run_config = base_config.pop("run_config", None)
-                self._merged_config = merge_dicts(base_config, self.config)
-                self._merged_config["run_config"] = run_config
-
-            def _trainable_func(self, config, reporter, checkpoint_dir):
-                # We ignore the config passed by Tune and instead use the merged
-                # config which includes the initial Trainer args.
-                super()._trainable_func(self._merged_config, reporter, checkpoint_dir)
-
-            @classmethod
-            def default_resource_request(cls, config):
-                # `config["scaling_config"] is a dataclass when passed via the
-                # `scaling_config` argument in `Trainer` and is a dict when passed
-                # via the `scaling_config` key of `param_spec`.
-
-                # Conversion logic must be duplicated in `TrainTrainable.__init__`
-                # because this is a class method.
-                updated_scaling_config = config.get("scaling_config", scaling_config)
-                updated_scaling_config_dict = updated_scaling_config.__dict__
-                # adding the ip address of the head node to the config
-                # `alpa` needs to allocate resources on the fixed node
-                updated_scaling_config_dict["ips"] = self.host_ips
-
-                assert updated_scaling_config_dict["num_workers"] <= len(
-                    self.host_ips
-                ), (
-                    "The number of workers must not exceed the number of hosts. "
-                    "Either decrease the number of workers or check whether "
-                    "connected to the ray cluster via `ray.init('auto')`"
-                )
-                if isinstance(updated_scaling_config_dict, dict):
-                    updated_scaling_config = ScalingConfigWithIPs(
-                        **updated_scaling_config_dict
-                    )
-
-                # print(updated_scaling_config.as_placement_group_factory())
-                # exit()
-                return updated_scaling_config.as_placement_group_factory()
-
-        return TrainTrainable
