@@ -156,16 +156,21 @@ ParsedUri = namedtuple("ParsedUri", ["protocol", "uri_type", "package_name", "pa
 
 def parse_uri(pkg_uri: str) -> ParsedUri:
     """
-    Parse resource uri into protocol and package name based on its format.
+    Parse resource uri into `ParsedUri` based on its format.
     Note that the output of this function is not for handling actual IO, it's
     only for setting up local directory folders by using package name as path.
-    For GCS URIs, netloc is the package name.
+    For GCS URIs, netloc is the package name and path.
         urlparse("gcs://_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-            -> ParseResult(
+            -> ParsedUri(
                 scheme='gcs',
                 netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
             )
-            -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
+            -> (
+                "gcs",
+                UriType.REMOTE,
+                "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip",
+                "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip",
+                )
     For HTTPS URIs, the netloc will have '.' replaced with '_', and
     the path will have '/' replaced with '_'. The package name will be the
     adjusted path with 'https_' prepended.
@@ -177,8 +182,12 @@ def parse_uri(pkg_uri: str) -> ParsedUri:
                 netloc='github.com',
                 path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
             )
-            -> ("https",
-            "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
+            -> (
+                "https",
+                UriType.REMOTE,
+                "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip",
+                "/shrekris-anyscale/test_repo/archive/HEAD.zip",
+                )
     For S3 URIs, the bucket and path will have '/' replaced with '_'. The
     package name will be the adjusted path with 's3_' prepended.
         urlparse("s3://bucket/dir/file.zip")
@@ -187,7 +196,12 @@ def parse_uri(pkg_uri: str) -> ParsedUri:
                 netloc='bucket',
                 path='/dir/file.zip'
             )
-            -> ("s3", "bucket_dir_file.zip")
+            -> (
+                "s3",
+                UriType.REMOTE,
+                "bucket_dir_file.zip",
+                "/dir/file.zip",
+                )
     For GS URIs, the path will have '/' replaced with '_'. The package name
     will be the adjusted path with 'gs_' prepended.
         urlparse("gs://public-runtime-env-test/test_module.zip")
@@ -196,20 +210,75 @@ def parse_uri(pkg_uri: str) -> ParsedUri:
                 netloc='public-runtime-env-test',
                 path='/test_module.zip'
             )
-            -> ("gs",
-            "gs_public-runtime-env-test_test_module.zip")
+            -> (
+                "gs",
+                UriType.REMOTE,
+                "gs_public-runtime-env-test_test_module.zip",
+                "/test_module.zip",
+                )
     For FILE URIs, the path will have '/' replaced with '_'. The package name
     will be the adjusted path with 'file_' prepended.
-        urlparse("file:///path/to/test_module")
+        There are three cases:
+        (1) "file:///home/admin/app_modules" represent a user side local path(such as
+            ray client side or driver side).
+        urlparse("file:///home/admin/app_modules")
             -> ParseResult(
                 scheme='file',
-                netloc='path',
-                path='/path/to/test_module'
+                netloc='',
+                path='/home/admin/app_modules'
             )
-            -> ("file", "file__path_to_test_module")
-    TODO
+            -> (
+                "file",
+                UriType.USER_LOCAL,
+                None,
+                "/home/admin/app_modules"
+                )
+
+        (2) "file://localhost/home/admin/app_modules" represent a path of ray
+            cluster side local path.
+        urlparse("file://localhost/home/admin/app_modules")
+            -> ParseResult(
+                scheme='file',
+                netloc='localhost',
+                path='/home/admin/app_modules'
+            )
+            -> (
+                "file",
+                UriType.CLUSTER_LOCAL,
+                None,
+                "/home/admin/app_modules"
+                )
+
+        (3) "file://hostname/home/admin/app_modules" represent a remote path
+            from a special hostname.
+        urlparse("file://hostname/home/admin/app_modules")
+            -> ParseResult(
+                scheme='file',
+                netloc='hostname',
+                path='/home/admin/app_modules'
+            )
+            -> (
+                "file",
+                UriType.REMOTE,
+                "file__hostname_home_admin_app_modules",
+                "/home/admin/app_modules"
+                )
+    For path of file system, the path will be parsed to a user local URI.
+        urlparse("/home/admin/app_modules")
+            -> ParseResult(
+                scheme='',
+                netloc='',
+                path='/home/admin/app_modules'
+            )
+            -> (
+                "file",
+                UriType.USER_LOCAL,
+                None,
+                "/home/admin/app_modules"
+                )
     """
     uri = urlparse(pkg_uri)
+    # Path of file system.
     if uri.scheme == "":
         return ParsedUri(Protocol.FILE, UriType.USER_LOCAL, None, uri.path)
     try:
@@ -273,7 +342,6 @@ def is_whl_uri(uri: str) -> bool:
         _, _, _, path = parse_uri(uri)
     except ValueError:
         return False
-    print(path)
     return Path(path).suffix == ".whl"
 
 
@@ -392,6 +460,7 @@ def _store_package_in_gcs(
 def _get_local_path(base_directory: str, pkg_uri: str) -> Tuple[str, UriType]:
     _, uri_type, pkg_name, path = parse_uri(pkg_uri)
     if uri_type is not UriType.REMOTE:
+        # Support relative path for tests.
         RELATIVE_PATH_PREFIX = "/./"
         if path.startswith(RELATIVE_PATH_PREFIX):
             path = path[len(RELATIVE_PATH_PREFIX) :]
@@ -817,7 +886,7 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
     local_path, uri_type = _get_local_path(base_directory, pkg_uri)
     if uri_type is not UriType.REMOTE:
         raise RuntimeError(
-            f"The deletion of the package with {uri_type} type is forbidden."
+            f"The deletion of the package of {uri_type} type is forbidden."
         )
     path = Path(local_path)
     with FileLock(str(path) + ".lock"):

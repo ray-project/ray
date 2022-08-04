@@ -160,15 +160,6 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema["runtime_env"] = env
         RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
-    # @pytest.mark.parametrize("env", get_invalid_runtime_envs())
-    # def test_ray_actor_options_invalid_runtime_env(self, env):
-    #     # Test invalid runtime_env configurations
-
-    #     ray_actor_options_schema = self.get_valid_ray_actor_options_schema()
-    #     ray_actor_options_schema["runtime_env"] = env
-    #     with pytest.raises(ValueError):
-    #         RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-
     def test_extra_fields_invalid_ray_actor_options(self):
         # Undefined fields should be forbidden in the schema
 
@@ -451,15 +442,6 @@ class TestServeApplicationSchema:
         serve_application_schema = self.get_valid_serve_application_schema()
         serve_application_schema["runtime_env"] = env
         ServeApplicationSchema.parse_obj(serve_application_schema)
-
-    # @pytest.mark.parametrize("env", get_invalid_runtime_envs())
-    # def test_serve_application_invalid_runtime_env(self, env):
-    #     # Test invalid runtime_env configurations
-
-    #     serve_application_schema = self.get_valid_serve_application_schema()
-    #     serve_application_schema["runtime_env"] = env
-    #     with pytest.raises(ValueError):
-    #         ServeApplicationSchema.parse_obj(serve_application_schema)
 
     @pytest.mark.parametrize("path", get_valid_import_paths())
     def test_serve_application_valid_import_path(self, path):

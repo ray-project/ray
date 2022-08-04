@@ -11,14 +11,14 @@ from ray._private.services import get_ray_jars_dir, get_ray_native_library_dir
 
 logger = logging.getLogger(__name__)
 
-_WIN32 = os.name == "nt"
 _LINUX = sys.platform.startswith("linux")
 _MACOS = sys.platform.startswith("darwin")
-if _WIN32:
-    _LIBRARY_PATH_ENV_NAME = "DYLD_LIBRARY_PATH"
-elif _LINUX:
+if _LINUX:
     _LIBRARY_PATH_ENV_NAME = "LD_LIBRARY_PATH"
 elif _MACOS:
+    _LIBRARY_PATH_ENV_NAME = "DYLD_LIBRARY_PATH"
+else:
+    # Win32
     _LIBRARY_PATH_ENV_NAME = "PATH"
 
 

@@ -167,7 +167,7 @@ def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
     # the package_uri over HTTP.
     parsed_uri = parse_uri(package_uri)
     if parsed_uri.uri_type is not UriType.REMOTE:
-        raise ValueError(f"package_uri ({package_uri}) should be a remote type uri.")
+        raise ValueError(f"Package URI ({package_uri}) must be remote type.")
     return parsed_uri.protocol.value, parsed_uri.package_name
 
 

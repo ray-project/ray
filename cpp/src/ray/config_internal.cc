@@ -193,18 +193,6 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
           "native_libraries",
           std::vector<std::string>{"file://localhost" + program_path.string()});
     }
-    // else {
-    //   // Convert all the paths to absolute path to support configuring relative paths
-    //   in
-    //   // driver.
-    //   std::vector<std::string> absolute_paths;
-    //   auto native_libraries =
-    //   runtime_env.Get<std::vector<std::string>>("native_libraries"); for (const auto
-    //   &path : native_libraries) {
-    //     absolute_paths.emplace_back(boost::filesystem::absolute(path).string());
-    //   }
-    //   runtime_env.Set("native_libraries", absolute_paths);
-    // }
   }
   if (worker_type == WorkerType::DRIVER) {
     ray_namespace =

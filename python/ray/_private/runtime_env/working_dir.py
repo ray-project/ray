@@ -178,5 +178,4 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
             )
 
         context.command_prefix += [f"cd {local_dir}"]
-        # context.py_modules.append(str(local_dir))
         set_pythonpath_in_context(python_path=str(local_dir), context=context)

@@ -641,10 +641,14 @@ TEST(RayClusterModeTest, RuntimeEnvJobLevelEnvVarsTest) {
   ray::RayConfig config;
   // TODO(SongGuyang): We can't set runtime env by RayConfig here because the input
   // runtime env from command line(`--ray_runtime_env`) will override it. We should
-  // support a way of merging for this two. ray::RuntimeEnv runtime_env;
+  // support a way of merging for this two.
+  // ray::RuntimeEnv runtime_env;
   // std::map<std::string, std::string> env_vars{{"JOB_LEVEL_KEY1", "job_level_value1"}};
   // runtime_env.Set("env_vars", env_vars);
   // config.runtime_env = runtime_env;
+
+  // The job level runtime env `env_vars` must be set by cc_test args in
+  // `cpp/BUILD.bazel`.
   ray::Init(config, cmd_argc, cmd_argv);
   auto r0 = ray::Task(GetEnvVar).Remote("JOB_LEVEL_KEY1");
   auto get_result0 = *(ray::Get(r0));
