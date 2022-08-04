@@ -144,9 +144,9 @@ class OneHotEncoder(Preprocessor):
 
     Args:
         columns: The columns to separately encode.
-        max_categories: A dictionary that maps column names to the maximum number of
-            categories to consider. If set, this preprocessor creates columns
-            for only the most frequent categories.
+        max_categories: The maximum number of features to create for each column.
+            If a value isn't specified for a column, then a feature is created
+            for every category in that column.
 
     Example:
         >>> import pandas as pd
@@ -240,56 +240,71 @@ class OneHotEncoder(Preprocessor):
 
 
 class MultiHotEncoder(Preprocessor):
-    """Encode columns using multi-hot encoding.
+    """Multi-hot encode categorical data.
 
-    A column of lists or scalars (treated as one element lists) will be
-    encoded as a column of one-hot encoded lists. This is useful for eg.
-    generating embeddings for recommender systems.
+    This preprocessor replaces each list of categories with an :math:`m`-length binary
+    list, where :math:`m` is the number of unique categories in the column or the value
+    specified in ``max_categories``. The :math:`i\\text{-th}` element of the binary list is
+    :math:`1` if category :math:`i` is in the input list and :math:`0` otherwise.
 
-    Example:
+    Columns must contain hashable objects or lists of hashable objects.
+    Also, you can't have both types in the same column.
 
-    .. code-block:: python
+    .. tip::
+        The logic is similar to scikit-learn's `MultiLabelBinarizer \
+    <https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
+    .MultiLabelBinarizer.html>`_.
 
-        import ray.data
-        from ray.data.preprocessors import MultiHotEncoder
-        import pandas as pd
-        mhe = MultiHotEncoder(columns=["A", "B"])
-        batch = pd.DataFrame(
-            {
-                "A": [["warm"], [], ["hot", "warm", "cold"], ["cold", "cold"]],
-                "B": ["warm", "cold", "hot", "cold"],
-            },
-        )
-        mhe.fit(ray.data.from_pandas(batch))
-        transformed_batch = mhe.transform_batch(batch)
-        expected_batch = pd.DataFrame(
-            {
-                "A": [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]],
-                "B": [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]],
-            }
-        )
-        assert transformed_batch.equals(expected_batch)
-
-    Transforming values not included in the fitted dataset or not among
-    the top popular values (see ``max_categories``) will result in all of the encoded
-    column values being 0.
-
-    The logic is similar to scikit-learn's `MultiLabelBinarizer \
-<https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
-.MultiLabelBinarizer.html>`_.
-
-    All column values must be hashable scalars or lists of hashable values. Those
-    two types cannot be mixed.
-
-    See also: :class:`OneHotEncoder`.
 
     Args:
-        columns: The columns that will individually be encoded.
-        max_categories: If set, only the top "max_categories" number of most popular
-            values become categorical variables. The less frequent ones will result in
-            all the encoded values being 0. This is a dict of column to its
-            corresponding limit. The column in this dictionary has to be in
-            ``columns``.
+        columns: The columns to separately encode.
+        max_categories: The maximum number of features to create for each column.
+            If a value isn't specified for a column, then a feature is created
+            for every unique category in that column.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import MultiHotEncoder
+        >>>
+        >>> df = pd.DataFrame({
+        ...     "name": ["Shaolin Soccer", "Moana", "The Smartest Guys in the Room"],
+        ...     "genre": [
+        ...         ["comedy", "action", "sports"],
+        ...         ["animation", "comedy",  "action"],
+        ...         ["documentary"],
+        ...     ],
+        ... })
+        >>> ds = ray.data.from_pandas(df)
+        >>>
+        >>> encoder = MultiHotEncoder(columns=["genre"])
+        >>> encoder.fit_transform(ds).to_pandas()
+                                    name            genre
+        0                 Shaolin Soccer  [1, 0, 1, 0, 1]
+        1                          Moana  [1, 1, 1, 0, 0]
+        2  The Smartest Guys in the Room  [0, 0, 0, 1, 0]
+
+        If you specify ``max_categories``, then :class:`MultiHotEncoder`
+        creates features for only the most frequent categories.
+
+        >>> encoder = MultiHotEncoder(columns=["genre"], max_categories={"genre": 3})
+        >>> encoder.fit_transform(ds).to_pandas()
+                                    name      genre
+        0                 Shaolin Soccer  [1, 1, 1]
+        1                          Moana  [1, 1, 0]
+        2  The Smartest Guys in the Room  [0, 0, 0]
+        >>> enocder.stats_
+        OrderedDict([('unique_values(genre)', {'comedy': 0, 'action': 1, 'sports': 2})])
+
+    .. seealso::
+
+        :py:class:`OneHotEncoder`
+            If you're encoding individual categories instead of lists of
+            categories, use :class:`OneHotEncoder`.
+
+        :py:class:`OrdinalEncoder`
+            If your categories are ordered, you may want to use
+            :py:class:`OrdinalEncoder`.
     """
 
     def __init__(
