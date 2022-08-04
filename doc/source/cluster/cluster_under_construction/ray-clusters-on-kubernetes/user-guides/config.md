@@ -337,7 +337,7 @@ Ray pods.
 
 (kuberay-idle-timeout)=
 #### idleTimeoutSeconds
-`IdleTimeoutSeconds` is the number of seconds to wait before scaling down a worker pod
+`idleTimeoutSeconds` is the number of seconds to wait before scaling down a worker pod
 which is not using resources. In this context, "resources" are the logical Ray resources
 (such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
 Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
