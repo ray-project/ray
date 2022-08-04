@@ -8,7 +8,6 @@ from ray.rllib.utils.test_utils import check_reproducibilty
 
 
 class TestReproPPO(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -30,6 +29,7 @@ class TestReproPPO(unittest.TestCase):
             fw_kwargs={"frameworks": ("tf", "torch")},
             training_iteration=3,
         )
+
 
 if __name__ == "__main__":
     import pytest

@@ -1,5 +1,6 @@
 import gym
 
+
 class DeterministicCartPole(gym.Env):
     def __init__(self, seed=0):
         self.env = gym.make("CartPole-v0")
