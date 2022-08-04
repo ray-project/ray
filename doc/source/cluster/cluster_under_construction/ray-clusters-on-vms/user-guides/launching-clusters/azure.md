@@ -73,11 +73,10 @@ Once the template is successfully deployed the deployment Outputs page provides 
 Use the following code in a Jupyter notebook (using the conda environment specified in the template input, py38_tensorflow by default) to connect to the Ray cluster.
 
 ```
-import ray
-ray.init()
+import ray; ray.init()
 ```
 
-Note that on each node the [azure-init.sh](https://github.com/ray-project/ray/blob/master/doc/azure/azure-init.sh) script is executed and performs the following actions:
+Under the hood, the [azure-init.sh](https://github.com/ray-project/ray/blob/master/doc/azure/azure-init.sh) script is executed and performs the following actions:
 
 1. Activates one of the conda environments available on DSVM
 2. Installs Ray and any other user-specified dependencies
