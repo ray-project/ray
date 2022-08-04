@@ -14,7 +14,7 @@ public class StrategyCalcOnRayServe {
 
   // [deploy-start]
   public void deploy() {
-    Serve.start(true, false, null, null);
+    Serve.start(true, false, null);
 
     Deployment deployment =
         Serve.deployment()

@@ -1,6 +1,6 @@
 # Managing Java Deployments
 
-Java is one of the mainstream programming languages for production services. Ray Serve natively supports Java API for creating, updating and managing deployments. You can create deployment using Java and call them via Python, or vice versa.
+Java is one of the mainstream programming languages for production services. Ray Serve natively supports Java API for creating, updating, and managing deployments. You can create Ray Serve deployments using Java and call them via Python, or vice versa.
 
 This section should help you:
 
@@ -16,9 +16,9 @@ This section should help you:
 By specifying the full name of the class, we can create and deploy a deployment of the class.
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
-:end-before: [create-end]
+:end-before: create-end
 :language: java
-:start-after: [create-start]
+:start-after: create-start
 ```
 
 ## Querying a Deployment
@@ -26,9 +26,9 @@ By specifying the full name of the class, we can create and deploy a deployment 
 A deployed deployment can be found by its name.
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
-:end-before: [query-end]
+:end-before: query_end
 :language: java
-:start-after: [query-start]
+:start-after: query_start
 ```
 
 ## Updating a Deployment
@@ -36,9 +36,9 @@ A deployed deployment can be found by its name.
 We can update the code and the configuration of a deployment and redeploy it. The following example updates the initial value of the deployment 'counter' to 2.
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
-:end-before: [update-end]
+:end-before: __update_end__
 :language: java
-:start-after: [update-start]
+:start-after: __update_start__
 ```
 
 ## Configuring a Deployment

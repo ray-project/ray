@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class ManageDeployment {
 
-  // [create-start]
+  // create-start
   public static class Counter {
 
     private AtomicInteger value;
@@ -31,15 +31,15 @@ public class ManageDeployment {
         .create()
         .deploy(true);
   }
-  // [create-end]
+  // create-end
 
-  // [query-start]
+  // query_start
   public void query() {
     Deployment deployment = Serve.getDeployment("counter");
   }
-  // [query-end]
+  // query_end
 
-  // [update-start]
+  // __update_start__
   public void update() {
     Serve.deployment()
         .setName("counter")
@@ -49,7 +49,7 @@ public class ManageDeployment {
         .create()
         .deploy(true);
   }
-  // [update-end]
+  // __update_end__
 
   // [scale-start]
   public void scaleOut() {
