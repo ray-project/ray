@@ -890,6 +890,20 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
 
+py_test(
+    name = "test_repro_dqn_gpu",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
+)
+
+py_test(
+    name = "test_repro_dqn",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
+)
+
 # Dreamer
 py_test(
     name = "test_dreamer",
@@ -972,6 +986,20 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
+)
+
+py_test(
+    name = "test_repro_ppo_gpu",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
+)
+
+py_test(
+    name = "test_repro_ppo",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
 )
 
 # QMix
