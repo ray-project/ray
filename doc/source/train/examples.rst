@@ -15,9 +15,6 @@ General Examples
 PyTorch
 ~~~~~~~
 
-* :doc:`/train/examples/torch_linear_example`:
-  Bare-bones basic example for PyTorch.
-
 * :doc:`/train/examples/torch_fashion_mnist_example`:
   End-to-end example for PyTorch.
 
@@ -45,9 +42,6 @@ Logger/Callback Examples
 
 Ray Tune Integration Examples
 -----------------------------
-
-* :doc:`/train/examples/tune_linear_example`:
-  Simple example for tuning a PyTorch model.
 
 * :doc:`/train/examples/tune_tensorflow_mnist_example`:
   End-to-end example for tuning a TensorFlow model.

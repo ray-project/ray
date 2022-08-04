@@ -24,15 +24,15 @@ There are three broad categories of Trainers that AIR offers:
 Trainer Basics
 --------------
 
-All trainers inherit from the :class:`BaseTrainer <ray.air.base_trainer.BaseTrainer>` interface. To
+All trainers inherit from the :class:`BaseTrainer <ray.train.base_trainer.BaseTrainer>` interface. To
 construct a Trainer, you can provide:
 
 * A :class:`scaling_config <ray.air.config.ScalingConfig>`, which specifies how many parallel training workers and what type of resources (CPUs/GPUs) to use per worker during training.
 * A :class:`run_config <ray.air.config.RunConfig>`, which configures a variety of runtime parameters such as fault tolerance, logging, and callbacks.
 * A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided datasets, which configures preprocessing and the datasets to ingest from.
-* `resume_from_checkpoint`, which is a checkpoint path to resume from, should your training run be interrupted.
+* ``resume_from_checkpoint``, which is a checkpoint path to resume from, should your training run be interrupted.
 
-After instatiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() <ray.train.trainer.Trainer.fit>`.
+After instatiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() <ray.air.Trainer.fit>`.
 
 .. literalinclude:: doc_code/xgboost_trainer.py
     :language: python
@@ -58,7 +58,9 @@ which provides functionality for reporting metrics, saving checkpoints, and more
 
 You can provide multiple datasets to a trainer via the ``datasets`` parameter.
 If ``datasets`` includes a training dataset (denoted by the "train" key), then it will be split into multiple dataset
-shards, with each worker training on a single shard. All other datasets will not be split. You can access the data shard within a worker via ``session.get_dataset_shard()``.
+shards, with each worker training on a single shard. All other datasets will not be split.
+You can access the data shard within a worker via ``session.get_dataset_shard()``, and use `iter_tf_batches` or `iter_torch_batches`
+to generate batches of Tensorflow or Pytorch tensors.
 You can read more about :ref:`data ingest <air-ingest>` here.
 
 Read more about :ref:`Ray Train's Deep Learning Trainers <train-user-guide>`.

@@ -12,7 +12,7 @@ communication during training (e.g. gradient synchronization) is handled by the 
 For example, when running Ray Train with the ``TorchTrainer``,
 distributed training communication is done with Torch's ``DistributedDataParallel``.
 
-Take a look at the :ref:`Pytorch <pytorch-training-parity>` and :ref:`Tensorflow <tf-training-parity>`` benchmarks to check performance parity.
+Take a look at the :ref:`Pytorch <pytorch-training-parity>` and :ref:`Tensorflow <tf-training-parity>` benchmarks to check performance parity.
 
 How do I set resources?
 -----------------------
