@@ -37,7 +37,8 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
-  pip uninstall -y ray # clean removal of previous install, otherwise version number may cause pip not to upgrade
+  # Clean removal of previous install
+  pip uninstall -y ray
   # Install Ray with support for the dashboard + cluster launcher
   pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 
