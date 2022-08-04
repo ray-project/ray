@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TensorflowPredictor(DLPredictor):
     """A predictor for TensorFlow models.
 
