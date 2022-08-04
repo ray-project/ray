@@ -49,102 +49,25 @@ class JaxTrainer(DataParallelTrainer):
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging.
-            train.report(...)
+            session.report(...)
 
             # Checkpoints the provided args as restorable state.
-            train.save_checkpoint(...)
+            session.save_checkpoint(...)
 
             # Returns dict of last saved checkpoint.
-            train.load_checkpoint()
+            session.load_checkpoint()
 
             # Returns the Ray Dataset shard for the given key.
-            train.get_dataset_shard("my_dataset")
+            session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
-            train.get_world_size()
+            session.get_world_size()
 
             # Returns the rank of this worker.
-            train.get_world_rank()
+            session.get_world_rank()
 
             # Returns the rank of the worker on the current node.
-            train.get_local_rank()
-
-    You can also use any of the :ref:`jax specific function utils
-    <train-api-jax-utils>`.
-
-    .. code-block:: python
-
-        def train_loop_per_worker():
-            # Prepares model for distribted training by wrapping in
-            # `DistributedDataParallel` and moving to correct device.
-            train.jax.prepare_model(...)
-
-            # Configures the dataloader for distributed training by adding a
-            # `DistributedSampler`.
-            # You should NOT use this if you are doing
-            # `train.get_dataset_shard(...).to_jax(...)`
-            train.jax.prepare_data_loader(...)
-
-            # Returns the current jax device.
-            train.jax.get_device()
-
-    To save a model to use for the ``jaxPredictor``, you must save it under the
-    "model" kwarg in ``train.save_checkpoint()``.
-
-    Example:
-        .. code-block:: python
-
-            import jax
-            import jax.nn as nn
-
-            import ray
-            from ray import train
-            from ray.air.train.integrations.jax import JaxTrainer
-
-            input_size = 1
-            layer_size = 15
-            output_size = 1
-            num_epochs = 3
-
-            class NeuralNetwork(nn.Module):
-                def __init__(self):
-                    super(NeuralNetwork, self).__init__()
-                    self.layer1 = nn.Linear(input_size, layer_size)
-                    self.relu = nn.ReLU()
-                    self.layer2 = nn.Linear(layer_size, output_size)
-
-                def forward(self, input):
-                    return self.layer2(self.relu(self.layer1(input)))
-
-            def train_loop_per_worker():
-                dataset_shard = train.get_dataset_shard("train")
-                model = NeuralNetwork()
-                loss_fn = nn.MSELoss()
-                optimizer = optim.SGD(model.parameters(), lr=0.1)
-
-                model = train.jax.prepare_model(model)
-
-                for epoch in range(num_epochs):
-                    for batch in iter(dataset_shard.to_jax(batch_size=32)):
-                        output = model(input)
-                        loss = loss_fn(output, labels)
-                        optimizer.zero_grad()
-                        loss.backward()
-                        optimizer.step()
-                        print(f"epoch: {epoch}, loss: {loss.item()}")
-
-                    train.save_checkpoint(model=model.state_dict())
-
-            train_dataset = ray.data.from_items([1, 2, 3])
-            scaling_config = {"num_workers": 3}
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = {"num_workers": 3, "use_gpu": True}
-            trainer = JaxTrainer(
-                train_loop_per_worker=train_loop_per_worker,
-                scaling_config=scaling_config,
-                datasets={"train": train_dataset})
-            result = trainer.fit()
-
+            session.get_local_rank()
     Args:
         train_loop_per_worker: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
