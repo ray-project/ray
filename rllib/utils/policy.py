@@ -1,7 +1,7 @@
 import gym
-import pickle
 from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
+from ray import cloudpickle as pickle
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import merge_dicts
