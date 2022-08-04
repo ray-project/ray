@@ -55,28 +55,43 @@ Key Concepts
       :align: center
       :width: 600px
 
+This page introduces several key concepts that are helpful when creating and managing Ray clusters.
+
+.. contents::
+    :local:
+
+.. _cluster-worker-nodes-under-construction:
+
+Worker nodes
+------------
+A Ray cluster consists of a set of one or more **worker nodes**. Ray tasks and actors
+can be scheduled onto the worker nodes. Each worker node runs helper processes which
+implement distributed scheduling and :ref:`memory management<memory>`.
+
+.. figure:: ray-cluster.jpg
+    :align: center
+    :width: 600px
+
+    A Ray cluster consists of a set of one or more worker nodes, one of which is designated
+    as the head node. Each node runs Ray helper processes and Ray application code.
+
+The number of worker nodes in a cluster may change with application demand, according
+to your Ray cluster configuration. The :ref:`head node<cluster-head-node-under-construction>`
+runs the logic which implements autoscaling.
+
+.. note::
+    A *node* means an individual machine. However, :ref:`on Kubernetes<kuberay-index>`, nodes are implemented as pods.
+
 .. _cluster-head-node-under-construction:
 
 Head node
-~~~~~~~~~
-
-The head node is the first node started by the Ray cluster launcher when trying
-to launch a Ray
-cluster. Among other things, the head node holds the :ref:`Global Control Store
-(GCS)<memory>` and runs the :ref:`autoscaler<cluster-autoscaler>`. Once the head
-node is started, it will be responsible for launching any additional
-:ref:`worker nodes<cluster-worker-node>`. The head node itself will also execute
-tasks and actors to utilize its capacity.
-
-.. _cluster-worker-node-under-construction:
-
-Worker node
-~~~~~~~~~~~
-
-A worker node is any node in the Ray cluster that is not functioning as head node.
-Therefore, worker nodes are simply responsible for executing tasks and actors.
-When a worker node is launched, it will be given the address of the head node to
-form a cluster.
+---------
+Every Ray cluster has one :ref:`worker node<cluster-worker-nodes-under-construction>`
+which is designated as the **head node** of the cluster. The head node runs
+important processes such as the :ref:`autoscaler<cluster-autoscaler-under-construction>`
+and the Ray driver processes, :ref:`which run the top-level Ray application
+<cluster-clients-and-jobs-under-construction>`. Ray may schedule tasks and actors
+on the head node just like any other worker node.
 
 .. _cluster-autoscaler-under-construction:
 
@@ -91,6 +106,8 @@ demands of the Ray workload exceed the current capacity of the cluster, the
 autoscaler will try to add nodes. Conversely, if a node is idle for long enough,
 the autoscaler will remove it from the cluster. To learn more about autoscaling,
 refer to the :ref:`Ray cluster deployment guide<deployment-guide-autoscaler>`.
+
+.. _cluster-clients-and-jobs-under-construction:
 
 Clients and Jobs
 ----------------
