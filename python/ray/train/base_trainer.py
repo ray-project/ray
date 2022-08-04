@@ -84,13 +84,15 @@ class BaseTrainer(abc.ABC):
                 # preprocessed by self.preprocessor
                 dataset = self.datasets["train"]
 
-                torch_ds = dataset.to_torch(label_column="y")
+                torch_ds = dataset.iter_torch_batches()
                 loss_fn = torch.nn.MSELoss()
 
                 for epoch_idx in range(10):
                     loss = 0
                     num_batches = 0
-                    for X, y in iter(torch_ds):
+                    for batch in torch_ds:
+                        X = batch["x"]
+                        y = batch["y"]
                         # Compute prediction error
                         pred = self.model(X)
                         batch_loss = loss_fn(pred, y.float())

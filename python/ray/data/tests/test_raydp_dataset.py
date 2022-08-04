@@ -42,16 +42,18 @@ def test_raydp_to_spark(spark):
     assert values == rows
 
 
-def test_raydp_to_torch_iter(spark):
+def test_raydp_iter_torch_batches(spark):
     spark_df = spark.createDataFrame([(1, 0), (2, 0), (3, 1)], ["feature", "label"])
     data_size = spark_df.count()
     features = [r["feature"] for r in spark_df.take(data_size)]
-    features = torch.tensor(features).reshape(data_size, 1)
+    features = torch.tensor(features)
     labels = [r["label"] for r in spark_df.take(data_size)]
-    labels = torch.tensor(labels).reshape(data_size, 1)
+    labels = torch.tensor(labels)
     ds = ray.data.from_spark(spark_df)
-    dataset = ds.to_torch(label_column="label", batch_size=3)
-    data_features, data_labels = next(dataset.__iter__())
+    dataset = ds.iter_torch_batches(batch_size=3)
+    batch = next(dataset.__iter__())
+    data_features = batch["feature"]
+    data_labels = batch["label"]
     assert torch.equal(data_features, features) and torch.equal(data_labels, labels)
 
 

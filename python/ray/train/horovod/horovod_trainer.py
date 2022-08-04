@@ -123,14 +123,11 @@ class HorovodTrainer(DataParallelTrainer):
             )
             for epoch in range(num_epochs):
                 model.train()
-                for inputs, labels in iter(
-                    dataset_shard.to_torch(
-                        label_column="y",
-                        label_column_dtype=torch.float,
-                        feature_column_dtypes=torch.float,
-                        batch_size=32,
-                    )
+                for batch in dataset_shard.iter_torch_batches(
+                    batch_size=32,
                 ):
+                    inputs = batch["x"]
+                    labels = batch["y"]
                     inputs.to(device)
                     labels.to(device)
                     outputs = model(inputs)
