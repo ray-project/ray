@@ -79,18 +79,36 @@ Just as with the Kubernetes built-ins, the key pieces of configuration are
 * Pod specification
 * Scale information (how many pods are desired)
 
-The key difference is that a RayCluster is specialized for running Ray applications.
+The difference is that a RayCluster is specialized for running Ray applications.
 A RayCluster consists of
 
 * One **head pod** which hosts global control processes for the Ray cluster. The head pod can also run Ray tasks and actors.
-* Any number of **worker pods**, which run Ray tasks and actors. Workers come in **groups** of identically configured pods.
+* Any number of **worker pods**, which run Ray tasks and actors. Workers come in **worker groups** of identically configured pods.
 
 The head pod’s configuration is
 specified under `headGroupSpec`, while configuration for worker pods is
 specified under `workerGroupSpecs`. There may be multiple worker groups,
-each group with its own configuration `template`. The `replicas` field
-of a `workerGroupSpec` specifies the number of worker pods of each group to
+each group with its own configuration. The `replicas` field
+of a `workerGroupSpec` specifies the number of worker pods of that group to
 keep in the cluster.
+
+### template
+The bulk of the configuration of a `headGroupSpec` or
+`workerGroupSpec`'s goes in the `template` field. The `template` is a Kubernetes Pod
+template which determines the configuration for the pods in the group.
+Here are some of the subfields of `template` to pay attention to:
+
+#### resources
+It’s important to specify container CPU and memory requests and limits for
+each group spec. For GPU workloads, you may also wish to specify GPU
+limits e.g. `nvidia.com/gpu: 1` if using an nvidia GPU device plugin.
+
+It is ideal when possible to size each Ray pod such that it takes up the
+entire Kubernetes node on which it is scheduled. In other words, it’s
+best to run one large Ray pod per Kubernetes node.
+Broadly speaking, it is more efficient to use a few large Ray pods than many small ones;
+this pattern enables more efficient use of each Ray pod's shared memory object store
+and reduces redundancy of Ray pod control structures (such as Raylets).
 
 (kuberay-autoscaling-config)=
 ## Autoscaler configuration
