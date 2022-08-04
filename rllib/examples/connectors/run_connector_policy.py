@@ -28,6 +28,7 @@ assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 
 
 def run():
+    # __sphinx_doc_begin__
     # Restore policy.
     policies = load_policies_from_checkpoint(args.checkpoint_file, [args.policy_id])
     policy = policies[args.policy_id]
@@ -42,6 +43,7 @@ def run():
 
         # Use local_policy_inference() to run inference, so we do not have to
         # provide policy states or extra fetch dictionaries.
+        # "env_1" and "agent_1" are dummy env and agent IDs to run connectors with.
         policy_outputs = local_policy_inference(policy, "env_1", "agent_1", obs)
         assert len(policy_outputs) == 1
         action, _, _ = policy_outputs[0]
@@ -49,7 +51,7 @@ def run():
 
         # Step environment forward one more step.
         obs, _, done, _ = env.step(action[0])
-
+    # __sphinx_doc_end__
 
 if __name__ == "__main__":
     run()
