@@ -76,7 +76,7 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
         to internal data structures, preventing actually writing them to
         the buffer.
         """
-        if obj is _get_object or obj is _get_object:
+        if obj is _get_node or obj is _get_object:
             # Only fall back to cloudpickle for these two functions.
             return super().reducer_override(obj)
         elif isinstance(obj, self.source_type):
