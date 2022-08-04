@@ -36,7 +36,7 @@ Where to go from here?
     :column: col-lg-6 px-3 py-2
     :card:
 
-    **I want to learn key Ray concepts**
+    **I want to learn key Ray cluster concepts**
     ^^^
     Understand the key concepts and main ways of interacting with a Ray cluster.
 
