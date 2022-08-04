@@ -47,9 +47,9 @@ AIR User Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: air-scaling-config
+    .. link-button:: trainer
         :type: ref
-        :text: Configuring Trainer Scaling
+        :text: Using Trainers
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -86,13 +86,4 @@ AIR User Guides
     .. link-button:: air-deployment
         :type: ref
         :text: How to Deploy AIR
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: benchmarks
-        :type: ref
-        :text: Benchmarks
         :classes: btn-link btn-block stretched-link
