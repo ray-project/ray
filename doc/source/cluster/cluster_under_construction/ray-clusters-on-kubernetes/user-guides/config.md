@@ -72,6 +72,8 @@ spec:
     ...
 ```
 
+The rest of this guide will discuss the `RayCluster` CR's config fields.
+
 ## The Ray version
 The field `rayVersion` specifies the version of Ray used in the Ray cluster.
 The Ray version is used when filling out default values for certain config fields.
@@ -86,13 +88,15 @@ Just as with the Kubernetes built-ins, the key pieces of configuration are
 * Pod specification
 * Scale information (how many pods are desired)
 
-The difference is that a RayCluster is specialized for running Ray applications.
-A RayCluster consists of
+The key difference between a Deployment and a `RayCluster` is that a RayCluster is
+specialized for running Ray applications. A RayCluster consists of
 
 * One **head pod** which hosts global control processes for the Ray cluster.
   The head pod can also run Ray tasks and actors.
 * Any number of **worker pods**, which run Ray tasks and actors.
   Workers come in **worker groups** of identically configured pods.
+  For each worker group, we may specify **replicas**, the number of
+  pods we want of that group.
 
 The head pod’s configuration is
 specified under `headGroupSpec`, while configuration for worker pods is
@@ -101,11 +105,11 @@ each group with its own configuration. The `replicas` field
 of a `workerGroupSpec` specifies the number of worker pods of that group to
 keep in the cluster.
 
-### template
+### Pod templates
 The bulk of the configuration of a `headGroupSpec` or
 `workerGroupSpec`'s goes in the `template` field. The `template` is a Kubernetes Pod
 template which determines the configuration for the pods in the group.
-Here are some of the subfields of `template` to pay attention to:
+Here are some of the subfields of the pod `template` to pay attention to:
 
 #### ports
 Under `headGroupSpec`, the Ray head container should list the ports for the services it exposes.
@@ -121,8 +125,8 @@ name: client
 The KubeRay operator will configure a Kubernetes Service exposing these ports.
 The name of the configured Kubernetes service is the name, `metadata.name`, of the RayCluster
 followed by the suffix `-head-svc`. For the example CR given on this page, the name will
-be `raycluster-example-head-svc`.
-(Sentence about KubeDNS.)
+be `raycluster-example-head-svc`. Kubernetes networking (`kube-dns`) then allows us to address
+the Ray head's services using the name `raycluster-example-head-svc`.
 For example, the Ray Client server will be accessible from a pod
 in the same Kubernetes namespace using `ray.init("ray://raycluster-example-head-svc:10001")`.
 The Ray Client server will be accessible from a pod in another namespace using
@@ -130,12 +134,13 @@ The Ray Client server will be accessible from a pod in another namespace using
 (If the Ray cluster is a non-default namespace, use that namespace in
 place of `default`.)
 Ray Client and other services can be made accessible from outside the Kubernetes cluster
-using port-forwarding or an ingress. (Networking notes.)
+using port-forwarding or an ingress. See {ref}`<kuberay-networking>` for more details.
 
 #### resources
 It’s important to specify container CPU and memory requests and limits for
 each group spec. For GPU workloads, you may also wish to specify GPU
-limits e.g. `nvidia.com/gpu: 1` if using an nvidia GPU device plugin. See {ref}`kuberay-gpu`.
+limits e.g. `nvidia.com/gpu: 1` if using an nvidia GPU device plugin.
+See {ref}`kuberay-gpu` for more details.
 
 It is ideal when possible to size each Ray pod such that it takes up the
 entire Kubernetes node on which it is scheduled. In other words, it’s
@@ -144,7 +149,7 @@ Broadly speaking, it is more efficient to use a few large Ray pods than many sma
 The pattern of fewer large Ray pods has the following advantages:
 - enables more efficient use of each Ray pod's shared memory object store
 - reduces communication overhead between Ray pods
-- reduces redundancy of per-pod Ray control processes such as Raylets.
+- reduces redundancy of per-pod Ray control structures such as Raylets
 
 #### nodeSelector and tolerations
 You can control the scheduling of worker groups' Ray pods by setting the `nodeSelector` and
