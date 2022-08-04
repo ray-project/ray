@@ -265,8 +265,8 @@ class Preprocessor(abc.ABC):
             data_format = "numpy"
         else:
             raise NotImplementedError(
-                "`transform_batch` is currently only implemented for Pandas DataFrames, "
-                f"PyArrow Tables and Numpy ndarray Got {type(data)}."
+                "`transform_batch` is currently only implemented for Pandas "
+                f"DataFrames, PyArrow Tables and Numpy ndarray Got {type(data)}."
             )
 
         transform_type = self._determine_transform_to_use(data_format)
