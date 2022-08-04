@@ -143,14 +143,14 @@ ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 (If the Ray cluster is a non-default namespace, use that namespace in
 place of `default`.)
 Ray Client and other services can be made accessible from outside the Kubernetes cluster
-using port-forwarding or an ingress. See {ref}`kuberay-networking` for more details.
+using port-forwarding or an ingress. See {ref}`this guide <kuberay-networking>` for more details.
 
 #### resources
 It’s important to specify container CPU and memory requests and limits for
 each group spec. For GPU workloads, you may also wish to specify GPU
 limits. For example, set `nvidia.com/gpu:2` if using an nvidia GPU device plugin
 and you wish to specify a pod with access to 2 GPUs.
-See {ref}`kuberay-gpu` for more details.
+See {ref}`this guide <kuberay-gpu>` for more details.
 
 It is ideal when possible to size each Ray pod such that it takes up the
 entire Kubernetes node on which it is scheduled. In other words, it’s
@@ -189,7 +189,7 @@ In any case, do make sure that all Ray images in your CR carry the same Ray vers
 Python version.
 To distribute custom code dependencies across your cluster, you can build a custom container image,
 using one of the [official Ray images](https://hub.docker.com/r/rayproject/ray>) as the base.
-Read more about the official Ray images at {ref}`docker-images`.
+See {ref}`this guide<docker-images>` to learn more about the official Ray images.
 For dynamic dependency management geared towards iteration and developement,
 you can also use {ref}`Runtime Environments<runtime-environments>`.
 
