@@ -289,7 +289,8 @@ carries the following subfields:
 The `upscalingMode` field can be used to control the rate of Ray pod upscaling.
 
 UpscalingMode is "Conservative", "Default", or "Aggressive."
-- `Conservative`: Upscaling is rate-limited; the number of pending worker pods is at most the size of the Ray cluster.
+- `Conservative`: Upscaling is rate-limited; the number of pending worker pods is at most the number
+  of worker pods connected to the Ray cluster.
 - `Default`: Upscaling is not rate-limited.
 - `Aggressive`: An alias for Default; upscaling is not rate-limited.
 
