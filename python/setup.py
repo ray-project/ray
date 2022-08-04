@@ -211,6 +211,8 @@ if setup_spec.type == SetupType.RAY:
             "fsspec",
         ],
         "default": [
+            # If adding dependencies necessary to launch the dashboard api server,
+            # please add it to dashboard/optional_deps.py as well.
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
@@ -218,6 +220,7 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
+            "pydantic",
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],

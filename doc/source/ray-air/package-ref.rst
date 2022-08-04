@@ -1,7 +1,7 @@
 .. _air-api-ref:
 
-Ray AIR API
-===========
+API Reference
+=============
 
 .. contents::
     :local:
@@ -24,9 +24,10 @@ Built-in Preprocessors
     :members:
     :show-inheritance:
 
-.. autofunction:: ray.air.train_test_split
+.. automethod:: ray.data.Dataset.train_test_split
+    :noindex:
 
-.. _air-trainer-ref:
+.. _air-abstract-trainer-ref:
 
 Trainer
 ~~~~~~~
@@ -65,8 +66,6 @@ Trainer Configs
 .. automodule:: ray.air.config
     :members:
 
-.. autoclass:: ray.air.config.CheckpointConfig
-
 Checkpoint
 ~~~~~~~~~~
 
@@ -100,6 +99,12 @@ Tuner
 .. autoclass:: ray.tune.tuner.Tuner
     :members:
 
+TuneConfig
+##########
+
+.. automodule:: ray.tune.tune_config
+    :members:
+
 Tuner Results
 #############
 
@@ -114,6 +119,8 @@ Serving
 .. autoclass:: ray.serve.air_integrations.PredictorDeployment
 
 .. autoclass:: ray.serve.air_integrations.PredictorWrapper
+
+.. _air-trainer-ref:
 
 Trainer and Predictor Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

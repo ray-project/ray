@@ -133,11 +133,13 @@ test_core() {
 }
 
 prepare_docker() {
+    rm "${WORKSPACE_DIR}"/python/dist/* ||:
     pushd "${WORKSPACE_DIR}/python"
     python setup.py bdist_wheel
     tmp_dir="/tmp/prepare_docker_$RANDOM"
     mkdir -p $tmp_dir
     cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
+    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
     base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
     echo "
     FROM $base_image
@@ -147,7 +149,7 @@ prepare_docker() {
     COPY ./*.whl /
     EXPOSE 8000
     EXPOSE 10001
-    RUN pip install ray[serve] --no-index --find-links=/ && pip install redis
+    RUN pip install /${wheel}[serve]
     RUN sudo apt update && sudo apt install curl -y
     " > $tmp_dir/Dockerfile
 
@@ -189,6 +191,10 @@ test_python() {
       -python/ray/tests:test_k8s_operator_unit_tests
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
+      -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
+      -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -754,13 +760,23 @@ test_minimal() {
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
   # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
+  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
   # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
+  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
   # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
+  # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_output
   # shellcheck disable=SC2086

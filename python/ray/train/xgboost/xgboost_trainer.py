@@ -1,9 +1,9 @@
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
+from ray.train.xgboost.xgboost_checkpoint import XGBoostCheckpoint
 from ray.util.annotations import PublicAPI
-from ray.train.xgboost.utils import load_checkpoint
 
 import xgboost
 import xgboost_ray
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class XGBoostTrainer(GBDTTrainer):
     """A Trainer for data parallel XGBoost training.
 
@@ -66,6 +66,11 @@ class XGBoostTrainer(GBDTTrainer):
     _ray_params_cls: type = xgboost_ray.RayParams
     _tune_callback_report_cls: type = TuneReportCallback
     _tune_callback_checkpoint_cls: type = TuneReportCheckpointCallback
+    _default_ray_params: Dict[str, Any] = {
+        "num_actors": 1,
+        "cpus_per_actor": 1,
+        "gpus_per_actor": 0,
+    }
     _init_model_arg_name: str = "xgb_model"
 
     def _train(self, **kwargs):
@@ -74,7 +79,8 @@ class XGBoostTrainer(GBDTTrainer):
     def _load_checkpoint(
         self, checkpoint: Checkpoint
     ) -> Tuple[xgboost.Booster, Optional["Preprocessor"]]:
-        return load_checkpoint(checkpoint)
+        checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+        return checkpoint.get_model(), checkpoint.get_preprocessor()
 
     def _save_model(self, model: xgboost.Booster, path: str):
         model.save_model(path)

@@ -2,9 +2,9 @@
 
 .. _datasets:
 
-==================================================
-Ray Datasets: Distributed Data Loading and Compute
-==================================================
+============================================
+Ray Datasets: Distributed Data Preprocessing
+============================================
 
 .. _datasets-intro:
 
@@ -29,7 +29,19 @@ is already supported.
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
 
-Ray Datasets simplifies general purpose parallel GPU and CPU compute in Ray; for
+Data Loading and Preprocessing for ML Training
+==============================================
+
+Ray Datasets is designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
+Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
+
+Ray Datasets is not intended as a replacement for more general data processing systems.
+:ref:`Learn more about how Ray Datasets works with other ETL systems <datasets-ml-preprocessing>`.
+
+Datasets for Parallel Compute
+=============================
+
+Datasets also simplifies general purpose parallel GPU and CPU compute in Ray; for
 instance, for :ref:`GPU batch inference <transforming_datasets>`.
 It provides a higher-level API for Ray tasks and actors for such embarrassingly parallel compute,
 internally handling operations like batching, pipelining, and memory management.
@@ -40,15 +52,6 @@ internally handling operations like batching, pipelining, and memory management.
 
 As part of the Ray ecosystem, Ray Datasets can leverage the full functionality of Ray's distributed scheduler,
 e.g., using actors for optimizing setup time and GPU scheduling.
-
-Data Loading and Preprocessing for ML Training
-==============================================
-
-Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`.
-Compared to other loading solutions, Datasets are more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
-
-Ray Datasets is not intended as a replacement for more general data processing systems.
-:ref:`Learn more about how Ray Datasets works with other ETL systems <datasets-ml-preprocessing>`.
 
 ----------------------
 Where to Go from Here?
@@ -83,7 +86,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
 
     Understand the key concepts behind Ray Datasets.
     Learn what :ref:`Datasets<dataset_concept>` and :ref:`Dataset Pipelines<dataset_pipeline_concept>` are
-    and :ref:`how they get executed<dataset_execution_concept>` in Ray Datasets.
+    and how they get executed in Ray Datasets.
 
     +++
     .. link-button:: data_key_concepts
@@ -97,7 +100,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
 
     Learn how to :ref:`create datasets<creating_datasets>`, :ref:`save
     datasets<saving_datasets>`, :ref:`transform datasets<transforming_datasets>`,
-    :ref:`access and exchange datasets<accessing_datasets>`, :ref:`pipeline
+    :ref:`access and exchange datasets<consuming_datasets>`, :ref:`pipeline
     transformations<pipelining_datasets>`, :ref:`load and process data for ML<datasets-ml-preprocessing>`,
     work with :ref:`tensor data<datasets_tensor_support>`, or :ref:`use pipelines<data_pipeline_usage>`.
 

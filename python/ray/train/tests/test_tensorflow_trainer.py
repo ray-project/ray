@@ -6,7 +6,7 @@ import pytest
 import ray
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.examples.tf.tensorflow_linear_dataset_example import (
+from ray.air.examples.tf.tensorflow_regression_example import (
     get_dataset,
     train_func as tensorflow_linear_train_func,
 )
@@ -28,7 +28,9 @@ def build_model():
 
     model = tf.keras.Sequential(
         [
-            tf.keras.layers.InputLayer(input_shape=(1,)),
+            tf.keras.layers.InputLayer(input_shape=()),
+            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
+            tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(1),
         ]
     )

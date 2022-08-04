@@ -23,23 +23,6 @@ def test_wf_run(workflow_start_regular_shared, tmp_path):
     assert counter.read_text() == "1"
 
 
-def test_wf_no_run(shutdown_only):
-    # workflow should be able to run without explicit init
-    ray.shutdown()
-
-    @ray.remote
-    def f1():
-        pass
-
-    f1.bind()
-
-    @ray.remote
-    def f2(*w):
-        pass
-
-    workflow.run(f2.bind(*[f1.bind() for _ in range(10)]))
-
-
 def test_dedupe_indirect(workflow_start_regular_shared, tmp_path):
     counter = Path(tmp_path) / "counter.txt"
     lock = Path(tmp_path) / "lock.txt"
@@ -60,7 +43,7 @@ def test_dedupe_indirect(workflow_start_regular_shared, tmp_path):
     def join(*a):
         return counter.read_text()
 
-    # Here a is passed to two steps and we need to ensure
+    # Here a is passed to two tasks and we need to ensure
     # it's only executed once
     a = incr.bind()
     i1 = identity.bind(a)
@@ -105,9 +88,9 @@ def test_task_id_generation(workflow_start_regular_shared, request):
 
     workflow_id = "test_task_id_generation"
     ret = workflow.run_async(x, workflow_id=workflow_id)
-    outputs = [workflow.get_output_async(workflow_id, name="simple")]
+    outputs = [workflow.get_output_async(workflow_id, task_id="simple")]
     for i in range(1, n):
-        outputs.append(workflow.get_output_async(workflow_id, name=f"simple_{i}"))
+        outputs.append(workflow.get_output_async(workflow_id, task_id=f"simple_{i}"))
     assert ray.get(ret) == n - 1
     assert ray.get(outputs) == list(range(n))
 

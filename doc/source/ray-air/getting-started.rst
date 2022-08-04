@@ -3,37 +3,31 @@
 Ray AI Runtime (AIR)
 ====================
 
-Ray AI Runtime (AIR) is an open-source toolkit for building end-to-end ML applications. By leveraging Ray and its library ecosystem, it brings scalability and programmability to ML platforms.
-
 .. tip::
-    **Getting involved with Ray AIR.** Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved. We'll be holding office hours, development sprints, and other activities as we get closer to the Ray AIR Beta/GA release. Join us!
 
-.. image:: images/ai_runtime.jpg
+    AIR is currently in **beta**. Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved. We'll be holding office hours, development sprints, and other activities as we get closer to the GA release. Join us!
 
+Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks, all in just Python.
 
-The main focuses of the Ray AI Runtime:
+.. image:: images/ray-air.svg
 
-* Ray AIR focuses on providing the compute layer for ML workloads.
-* It is designed to interoperate with other systems for storage and metadata needs.
+AIR comes with ready-to-use libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>`, as well as an ecosystem of integrations.
 
-Ray AIR consists of 5 key components:
+Ray AIR focuses on the compute aspects of ML:
+ * It provides scalability by leveraging Ray’s distributed compute layer for ML workloads.
+ * It is designed to interoperate with other systems for storage and metadata needs.
 
-- Data processing (:ref:`Ray Data <datasets>`)
-- Model Training (:ref:`Ray Train <train-docs>`)
-- Reinforcement Learning (:ref:`Ray RLlib <rllib-index>`)
-- Hyperparameter Tuning (:ref:`Ray Tune <tune-main>`)
-- Model Serving (:ref:`Ray Serve <rayserve>`).
+Get started by installing Ray AIR:
 
-Users can use these libraries interchangeably to scale different parts of standard ML workflows.
+.. code:: bash
 
-To get started, install Ray AIR via ``pip install -U "ray[air]"``
-
+    pip install -U ray[air]
 
 Quick Start
 -----------
 
-Below, we demonstrate how you can use the Ray libraries in a seamless flow
-between distributed frameworks (e.g., XGBoost, Pytorch, and Tensorflow): 
+Below, we demonstrate how AIR enables simple scaling of end-to-end ML workflows, focusing on
+a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow):
 
 Preprocessing
 ~~~~~~~~~~~~~
@@ -153,26 +147,38 @@ Use the trained model for scalable batch prediction with a ``BatchPredictor``.
         :start-after: __air_tf_batchpred_start__
         :end-before: __air_tf_batchpred_end__
 
-
-See the :ref:`Key Concepts <air-key-concepts>` for more that Ray AIR has to offer.
-
-
 Why Ray AIR?
 ------------
 
-There are so many machine learning frameworks, platforms, and tools nowadays. What makes Ray AIR different?
+Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by taking a scalable, single-system approach to ML infrastructure (i.e., leveraging Ray as a unified compute framework):
 
-We believe Ray AIR provides unique value deriving from Ray.
+**1. Seamless Dev to Prod**: AIR reduces friction going from development to production. Traditional orchestration approaches introduce separate systems and operational overheads. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
 
+**2. Unified API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new library like HuggingFace? Thanks to the flexibility of AIR, you can do this by just swapping out a single class, without needing to set up new systems or change other aspects of your workflow.
 
-**Seamless development to production**: Ray AIR reduces development friction going from development to production. Unlike in other frameworks, scaling Ray applications from a laptop to large clusters doesn't require a separate way of running -- the same code scales up seamlessly.
-This means data scientists and ML practitioners spend less time fighting YAMLs and refactoring code. Smaller teams and companies that don’t have the resources to invest heavily on MLOps can now deploy ML models at a much faster rate with Ray AIR.
+**3. Open and Evolvable**: Ray core and libraries are fully open-source and can run on any cluster, cloud, or Kubernetes, reducing the costs of platform lock-in. Want to go out of the box? Run any framework you want using AIR's integration APIs, or build advanced use cases directly on Ray core.
 
+.. figure:: images/why-air.png
 
-**Multi-cloud and Framework-interoperable**: Ray AIR is multi-cloud and framework-interoperable. The Ray compute layer and libraries freely operate with Cloud platforms and frameworks in the ecosystem, reducing lock-in to any particular choices of ML tech.
-Ex: why framework interoperability is unique to Ray--- it's easy to run Torch distributed or elastic Horovod within Ray, but not vice versa.
+  AIR enables a single-system / single-script approach to scaling ML. Ray's
+  distributed Python APIs enable scaling of ML workloads without the burden of
+  setting up or orchestrating separate distributed systems.
 
-**Future-proof via flexibility and scalability**: Ray's scalability and flexibility makes Ray AIR future-proof. Advanced serving pipelines, elastic training, online learning, reinforcement learning applications are being built and scaled today on Ray. Common patterns are being incorporated into libraries like Ray Serve.
+AIR is for both data scientists and ML engineers. Consider using AIR when you want to:
+ * Scale a single workload.
+ * Scale end-to-end ML applications.
+ * Build a custom ML platform for your organization.
+
+AIR Ecosystem
+-------------
+
+AIR comes with built-in integrations with the most popular ecosystem libraries. The following diagram provides an overview of the AIR libraries, ecosystem integrations, and their readiness.
+AIR's developer APIs also enable *custom integrations* to be easily created.
+
+..
+  https://docs.google.com/drawings/d/1pZkRrkAbRD8jM-xlGlAaVo3T66oBQ_HpsCzomMT7OIc/edit
+
+.. image:: images/air-ecosystem.svg
 
 Next Steps
 ----------
@@ -181,4 +187,3 @@ Next Steps
 - `Examples <https://github.com/ray-project/ray/tree/master/python/ray/air/examples>`__
 - :ref:`Deployment Guide <air-deployment>`
 - :ref:`API reference <air-api-ref>`
-

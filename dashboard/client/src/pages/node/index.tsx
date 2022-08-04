@@ -42,6 +42,8 @@ const columns = [
   "IP / PID",
   "CPU Usage",
   "Memory",
+  "GPU",
+  "GRAM",
   "Object Store Memory",
   "Disk(root)",
   "Sent",
@@ -278,9 +280,10 @@ const Nodes = () => {
                   )
                   .map((node, i) => (
                     <NodeRows
-                      key={node.hostname + i}
+                      key={node.raylet.nodeId}
                       node={node}
                       isRefreshing={isRefreshing}
+                      startExpanded={i === 0}
                     />
                   ))}
               </TableBody>

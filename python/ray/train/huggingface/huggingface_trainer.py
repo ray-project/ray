@@ -17,6 +17,7 @@ from ray.air import session
 from ray.air._internal.checkpointing import (
     save_preprocessor_to_dir,
 )
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.constants import (
@@ -38,7 +39,6 @@ from ray.train.trainer import GenDataset
 from ray.tune.trainable import Trainable
 from ray.tune.utils.file_transfer import delete_on_node, sync_dir_between_nodes
 from ray.util import PublicAPI, get_node_ip_address
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -119,7 +119,7 @@ class HuggingFaceTrainer(TorchTrainer):
     The training function ran on every Actor will first run the
     specified ``trainer_init_per_worker`` function to obtain an instantiated
     ``transformers.Trainer`` object. The ``trainer_init_per_worker`` function
-    will have access to preprocessed train and evaluation datsets.
+    will have access to preprocessed train and evaluation datasets.
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
@@ -198,7 +198,7 @@ class HuggingFaceTrainer(TorchTrainer):
             )
             ray_train_ds = ray.data.from_huggingface(lm_datasets["train"])
             ray_evaluation_ds = ray.data.from_huggingface(
-                lm_datasets["evaluation"]
+                lm_datasets["validation"]
             )
 
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):

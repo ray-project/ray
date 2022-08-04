@@ -4,7 +4,7 @@ import argparse
 import time
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.air import session
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
@@ -54,20 +54,21 @@ if __name__ == "__main__":
     # 'training_iteration' is incremented every time `trainable.step` is called
     stopping_criteria = {"training_iteration": 1 if args.smoke_test else 9999}
 
-    analysis = tune.run(
-        easy_objective,
-        name="asynchyperband_test",
-        metric="mean_loss",
-        mode="min",
-        scheduler=scheduler,
-        stop=stopping_criteria,
-        num_samples=20,
-        verbose=1,
-        resources_per_trial={"cpu": 1, "gpu": 0},
-        config={  # Hyperparameter space
+    tuner = tune.Tuner(
+        tune.with_resources(easy_objective, {"cpu": 1, "gpu": 0}),
+        run_config=air.RunConfig(
+            name="asynchyperband_test",
+            stop=stopping_criteria,
+            verbose=1,
+        ),
+        tune_config=tune.TuneConfig(
+            metric="mean_loss", mode="min", scheduler=scheduler, num_samples=20
+        ),
+        param_space={  # Hyperparameter space
             "steps": 100,
             "width": tune.uniform(10, 100),
             "height": tune.uniform(0, 100),
         },
     )
-    print("Best hyperparameters found were: ", analysis.best_config)
+    results = tuner.fit()
+    print("Best hyperparameters found were: ", results.get_best_result().config)

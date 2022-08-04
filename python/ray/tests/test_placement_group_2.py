@@ -18,11 +18,7 @@ from ray._private.test_utils import (
 )
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import get_current_placement_group
-
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @ray.remote
@@ -376,7 +372,11 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
 
             def schedule_nested_actor_outside_pg(self):
                 # Don't use placement group.
-                actor = NestedActor.options(placement_group=None).remote()
+                actor = NestedActor.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=None
+                    )
+                ).remote()
                 ray.get(actor.ready.remote())
                 self.actors.append(actor)
 
@@ -706,7 +706,8 @@ ray.shutdown()
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=10,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -748,7 +749,8 @@ def test_create_placement_group_after_gcs_server_restart(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=10,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,
@@ -776,7 +778,8 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            num_heartbeats_timeout=10, gcs_rpc_server_reconnect_timeout_s=60
+            gcs_failover_worker_reconnect_timeout=10,
+            gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
     indirect=True,

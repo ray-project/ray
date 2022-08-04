@@ -6,7 +6,7 @@ This document will explain Ray's logging system and its best practices.
 
 Driver logs
 ~~~~~~~~~~~
-An entry point of Ray applications that calls ``ray.init(address='auto')`` or ``ray.init()`` is called a driver.
+An entry point of Ray applications that calls ``ray.init()`` is called a driver.
 All the driver logs are handled in the same way as normal Python programs. 
 
 Worker logs
