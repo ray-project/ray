@@ -46,7 +46,7 @@ The Horizontal Pod Autoscaler determines scale based on physical usage metrics l
 and memory. By contrast, the Ray autoscaler uses the logical resources expressed in
 task and actor annotations. For instance, if each Ray container spec in your RayCluster CR indicates
 a limit of 10 CPUs, and you submit twenty tasks annotated with `@ray.remote(num_cpus=5)`,
-10 Ray pods will created to satisfy the 100-CPU resource demand.
+10 Ray pods will be created to satisfy the 100-CPU resource demand.
 In this respect, the Ray autoscaler is similar to the
 [Kuberentes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler),
 which makes scaling decisions based on the logical resources expressed in container
