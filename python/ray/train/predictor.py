@@ -1,6 +1,5 @@
 import abc
-from typing import Dict, Type, Optional, Callable
-import time
+from typing import Dict, Type, Optional, Callable, Union
 
 import numpy as np
 import pandas as pd
@@ -145,29 +144,27 @@ class Predictor(abc.ABC):
             DataBatchType: Prediction result. The return type will be the same as the
                 input type.
         """
-        # data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
-
         if not hasattr(self, "_preprocessor"):
             raise NotImplementedError(
                 "Subclasses of Predictor must call Predictor.__init__(preprocessor)."
             )
 
+        if not isinstance(data, (np.ndarray, dict)):
+            data = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
 
         if self._preprocessor:
-            start = time.time()
-            data_df = self._preprocessor.transform_batch(data)
-            print(f">>> [7] Took {(time.time() - start) * 1000} ms")
+            data_transformed = self._preprocessor.transform_batch(data)
 
-        start = time.time()
-        predictions_df = self._predict_pandas(data_df, **kwargs)
-        print(f">>> [8] Took {(time.time() - start) * 1000} ms")
-
-        return predictions_df
-        # return convert_pandas_to_batch_type(
-        #     predictions_df,
-        #     type=TYPE_TO_ENUM[type(data)],
-        #     cast_tensor_columns=self._cast_tensor_columns,
-        # )
+        if isinstance(data, (np.ndarray, dict)):
+            # Numpy serves as its own batch type without need of extra casting
+            return self._predict_numpy(data_transformed, **kwargs)
+        else:
+            predictions_df = self._predict_pandas(data_transformed, **kwargs)
+            return convert_pandas_to_batch_type(
+                predictions_df,
+                type=TYPE_TO_ENUM[type(data)],
+                cast_tensor_columns=self._cast_tensor_columns,
+            )
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":
@@ -199,6 +196,28 @@ class Predictor(abc.ABC):
 
         Returns:
             An Arrow Table containing the prediction result.
+        """
+
+        raise NotImplementedError
+
+    @DeveloperAPI
+    def _predict_numpy(
+        self,
+        data: Union["np.ndarray", Dict[str, "np.ndarray"]],
+        **kwargs,
+    ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
+        """Perform inference on an Numpy ndarray.
+
+        Predictors can implement this method instead of ``_predict_pandas``
+        for better performance when the input batch type is a Numpy array, dict
+        of numpy arrays as conversion from these types are zero copy.
+
+        Args:
+            data: A ndarray or dict of ndarrays to perform predictions on.
+            kwargs: Arguments specific to the predictor implementation.
+
+        Returns:
+            A ndarray or dict of ndarrays containing the prediction result.
         """
 
         raise NotImplementedError

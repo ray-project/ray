@@ -27,8 +27,7 @@ class BatchMapper(Preprocessor):
         return self.fn(df)
 
     def _transform_numpy(
-        self,
-        np_array: Union["numpy.ndarray", Dict[str, "numpy.ndarray"]]
+        self, np_array: Union["numpy.ndarray", Dict[str, "numpy.ndarray"]]
     ) -> Union["numpy.ndarray", Dict[str, "numpy.ndarray"]]:
         return self.fn(np_array)
 

@@ -285,7 +285,9 @@ class Preprocessor(abc.ABC):
             if data_format == "numpy":
                 return self._transform_numpy(data)
             else:
-                raise NotImplementedError("Not sure how to handle non-numpy data foramt yet.")
+                raise NotImplementedError(
+                    "Not sure how to handle non-numpy data foramt yet."
+                )
 
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":

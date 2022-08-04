@@ -1,7 +1,6 @@
 import inspect
 from typing import Any, Dict, Optional, List, Type, Union, Callable
 import pandas as pd
-import time
 
 import ray
 from ray.air import Checkpoint
@@ -10,6 +9,7 @@ from ray.data import Preprocessor
 from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
+from ray.train._internal.dl_predictor import DLPredictor
 from ray.util.annotations import PublicAPI
 
 
@@ -171,6 +171,10 @@ class BatchPredictor:
         ):
             predictor_kwargs["use_gpu"] = True
 
+        # For DLPredictor, we use numpy first for better dev API as well as
+        # improved performance of zero-copy data conversion
+        batch_format = "numpy" if issubclass(predictor_cls, DLPredictor) else "pandas"
+
         ctx = DatasetContext.get_current()
         cast_tensor_columns = ctx.enable_tensor_extension_casting
 
@@ -188,34 +192,33 @@ class BatchPredictor:
 
             def __call__(self, batch):
                 if feature_columns:
-                    # prediction_batch = {
-                    #     column: batch[column]
-                    #     for column in feature_columns
-                    # }
-                    start = time.time()
-                    prediction_batch = batch["image"]
-                    print(f">>> [3] Took {(time.time() - start) * 1000} ms")
+                    if batch_format == "numpy":
+                        prediction_batch = {
+                            k: v for k, v in batch.items() if k in feature_columns
+                        }
+                    else:
+                        prediction_batch = batch[feature_columns]
                 else:
                     prediction_batch = batch
-
-                start = time.time()
                 prediction_output = self._predictor.predict(
                     prediction_batch, **predict_kwargs
                 )
-                print(f">>> [4] Took {(time.time() - start) * 1000} ms")
-
-                start = time.time()
                 if keep_columns:
-                    prediction_output[0]["image"] = batch["image"]
-                print(f">>> [5] Took {(time.time() - start) * 1000} ms")
+                    if batch_format == "numpy":
+                        for k, v in batch.items():
+                            if k in keep_columns:
+                                prediction_output[k] = v
+                    else:
+                        prediction_output[keep_columns] = batch[keep_columns]
 
-                start = time.time()
-                rst = pd.DataFrame(prediction_output)
-                print(f">>> [6] Took {(time.time() - start) * 1000} ms")
-                return rst
-                # return convert_batch_type_to_pandas(
-                #     prediction_output, cast_tensor_columns
-                # )
+                if batch_format == "numpy":
+                    # No casting or pandas conversion needed for numpy here
+                    # we only need it once at final predictor output level
+                    return prediction_output
+                else:
+                    return convert_batch_type_to_pandas(
+                        prediction_output, cast_tensor_columns
+                    )
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers
@@ -232,12 +235,12 @@ class BatchPredictor:
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
                 override_prep = BatchMapper(lambda x: x)
                 batch_fn = preprocessor._transform_batch
-                data = data.map_batches(batch_fn, batch_format="numpy")
+                data = data.map_batches(batch_fn, batch_format=batch_format)
 
         prediction_results = data.map_batches(
             ScoringWrapper,
             compute=compute,
-            batch_format="numpy",
+            batch_format=batch_format,
             batch_size=batch_size,
             **ray_remote_args,
         )

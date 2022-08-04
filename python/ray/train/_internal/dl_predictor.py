@@ -1,6 +1,6 @@
 import abc
 from typing import Dict, TypeVar, Union
-import time
+import collections
 
 import numpy as np
 import pandas as pd
@@ -63,39 +63,50 @@ class DLPredictor(Predictor):
         """
         raise NotImplementedError
 
-    def _predict_pandas(
-        self, data: pd.DataFrame, dtype: Union[TensorDtype, Dict[str, TensorDtype]]
-    ) -> pd.DataFrame:
-        # We should get pytorch tensors here
-        start = time.time()
+    def _predict_numpy(
+        self,
+        data: Union[np.ndarray, Dict[str, np.ndarray]],
+        dtype: Union[TensorDtype, Dict[str, TensorDtype]],
+    ):
+        if isinstance(data, dict) and len(data) == 1:
+            # If just a single column, return as a single numpy array.
+            data = next(iter(data.values()))
         model_input = self._arrays_to_tensors(data, dtype)
-        print(f">>> [1] Took {(time.time() - start) * 1000} ms")
+        model_output = self.call_model(model_input)
 
-        start = time.time()
-        output = self.call_model(model_input)
-        print(f">>> [9] Took {(time.time() - start) * 1000} ms")
-
-        if isinstance(output, dict):
-            return {k: self._tensor_to_array(v) for k, v in output.items()}
-        elif isinstance(output, list) and isinstance(output[0], dict):
-            # Cover the sdd model return type
-            start = time.time()
-            rst = [
-                {k: self._tensor_to_array(v) for k, v in objects.items()}
-                for objects in output
-            ]
-            print(f">>> [2] Took {(time.time() - start) * 1000} ms")
-            return rst
+        if isinstance(model_output, dict):
+            return {k: self._tensor_to_array(v) for k, v in model_output.items()}
+        elif isinstance(model_output, list) and isinstance(model_output[0], dict):
+            # Rebatching for model such as ssd300_vgg16 that returns
+            # List[Dict[str, Tensor]] where each Dict[str, Tensor] corresponds
+            # to one record
+            output = collections.defaultdict(list)
+            for record in model_output:
+                for k, v in record.items():
+                    output[k].append(self._tensor_to_array(v))
+            return {k: np.array(v) for k, v in output.items()}
         else:
             return self._tensor_to_array(output)
 
+    def _predict_pandas(
+        self, data: pd.DataFrame, dtype: Union[TensorDtype, Dict[str, TensorDtype]]
+    ) -> pd.DataFrame:
+        tensors = convert_pandas_to_batch_type(
+            data,
+            DataType.NUMPY,
+            self._cast_tensor_columns,
+        )
+        model_input = self._arrays_to_tensors(tensors, dtype)
+
+        output = self.call_model(model_input)
+
         # Handle model multi-output. For example if model outputs 2 images.
-        # if isinstance(output, dict):
-        #     return pd.DataFrame(
-        #         {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
-        #     )
-        # else:
-        #     return pd.DataFrame(
-        #         {"predictions": TensorArray(self._tensor_to_array(output))},
-        #         columns=["predictions"],
-        #     )
+        if isinstance(output, dict):
+            return pd.DataFrame(
+                {k: TensorArray(self._tensor_to_array(v)) for k, v in output.items()}
+            )
+        else:
+            return pd.DataFrame(
+                {"predictions": TensorArray(self._tensor_to_array(output))},
+                columns=["predictions"],
+            )
