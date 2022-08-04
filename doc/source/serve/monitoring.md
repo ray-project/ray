@@ -260,7 +260,7 @@ Here's an example:
 
 And the emitted logs:
 
-```log
+```
 # HELP ray_my_counter The number of odd-numbered requests to this deployment.
 # TYPE ray_my_counter gauge
 ray_my_counter{..., deployment="MyDeployment"} 5.0
