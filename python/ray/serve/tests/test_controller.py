@@ -52,10 +52,13 @@ def test_redeploy_start_time(serve_instance):
         ("ray_actor_options", False),
     ],
 )
-def test_generate_deployment_config_versions(
+def test_config_versions_deployments_update(
     last_config_had_option: bool, option_to_update: str, config_update: bool
 ):
-    """Check that controller._generate_deployment_config_versions() has correct behavior."""
+    """
+    Check that controller._generate_deployment_config_versions() has correct behavior
+    when the config options in the ``deployments`` field is updated.
+    """
 
     options = {
         "num_replicas": {"old": 1, "new": 2},
@@ -87,10 +90,48 @@ def test_generate_deployment_config_versions(
     new_config["deployments"][0][option_to_update] = options[option_to_update]["new"]
 
     versions = {"f": "v1"}
-    new_versions = _generate_deployment_config_versions(new_config, old_config, versions)
+    new_versions = _generate_deployment_config_versions(
+        new_config, old_config, versions
+    )
     assert (
         new_versions.get("f") is not None
         and (new_versions.get("f") == versions.get("f")) == config_update
+    )
+
+
+@pytest.mark.parametrize("field_to_update", ["import_path", "runtime_env", "both"])
+def test_config_versions_non_deployments_update(field_to_update: str):
+    """
+    Check that controller._generate_deployment_config_versions() has correct behavior
+    when the the ``import_path`` and ``runtime_env`` fields are updated.
+    """
+
+    old_config = {
+        "import_path": "ray.serve.tests.test_config_files.pid.node",
+        "deployments": [
+            {
+                "name": "f",
+                "num_replicas": 1,
+                "ray_actor_options": {"num_cpus": 0.1},
+            }
+        ],
+    }
+
+    new_config = copy.deepcopy(old_config)
+    if field_to_update == "import_path":
+        new_config["import_path"] = "ray.serve.tests.test_config_files.pid.bnode"
+    elif field_to_update == "runtime_env":
+        new_config["runtime_env"] = {"env_vars": {"test_var": "test_val"}}
+    elif field_to_update == "both":
+        new_config["import_path"] = "ray.serve.tests.test_config_files.pid.bnode"
+        new_config["runtime_env"] = {"env_vars": {"test_var": "test_val"}}
+
+    versions = {"f": "v1"}
+    new_versions = _generate_deployment_config_versions(
+        new_config, old_config, versions
+    )
+    assert new_versions.get("f") is not None and (
+        new_versions.get("f") != versions.get("f")
     )
 
 
