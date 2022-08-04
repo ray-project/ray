@@ -11,23 +11,24 @@ Here are some considerations to keep in mind when choosing whether to use autosc
 ### Autoscaling: Pros
 **Cope with unknown resource requirements** If you don't know how much compute your Ray
 workload will require, autoscaling can adjust your Ray cluster to the right size.
+
 **Save on costs** Idle compute is automatically scaled down, potentially leading to cost savings,
 especially when you are using expensive resources like GPUs.
 
 ### Autoscaling: Cons
 **Less predictable when resource requirements are known.** If you already know exactly
-how much compute your workload requires, it could make sense to provision a statically-sized Ray cluster.
+how much compute your workload requires, it could make sense to provision a static Ray cluster
+of the appropriate fixed size.
 
 **Longer end-to-end runtime.** Autoscaling entails provisioning compute for Ray workers
 while the Ray application is running. On the other hand, if you pre-provision a fixed
-number of Ray nodes,
-all of the Ray nodes can be started in parallel, potentially reducing your application's
+number of Ray workers, all of the Ray workers can be started in parallel, potentially reducing your application's
 runtime.
 
-**Resource usage.** The autoscaler itself uses CPU and memory resources.
+**Resource usage.** The autoscaler itself consumes CPU and memory resources.
 These resources must be accounted for when considering the Ray head pod's scheduling.
-(The default autoscaler container resources are .5 CPU requests and limits, 512 megabyte memory request and limits.
-See the {ref}`configuration guide<kuberay-autoscaling-config>` for details.)
+The default autoscaler container resources are .5 CPU requests and limits, 512 megabytes memory request and limits.
+See the {ref}`configuration guide<kuberay-autoscaling-config>` for details.
 
 ## Ray Autoscaler vs. other autoscalers
 We describe the relationship of the Ray autoscaler to other autoscalers in the Kubernetes
@@ -68,14 +69,14 @@ by considerations of scalability.
 ### Ray Autoscaler with Kubernetes cluster autoscaler
 The Ray autoscaler and the
 [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) complement each other.
-After the Ray autoscaler decides to create a Ray pod, the cluster autoscaler
+After the Ray autoscaler decides to create a Ray pod, the Kubernetes Cluster Autoscaler
 can scale up a Kubernetes node so that the pod can be placed.
 Similarly, after the Ray autoscaler decides to delete an idle pod, the Kubernetes
-cluster autoscaler can clean up the idle Kubernetes node that remains.
-If you configure your RayCluster so that one Ray pod fits on a Kubernetes node,
-Ray autoscaler pod scaling events will correspond roughly one-to-one with cluster autoscaler
-node scaling events. ("Roughly" because it is possible for a Ray pod be deleted and replaced
-with a new Ray pod before the underlying Kubernetes node is scaled down.)
+Cluster Autoscaler can clean up the idle Kubernetes Node that remains.
+It is recommended to configure your RayCluster so that only one Ray pod fits per Kubernetes Node.
+If you follow this pattern, Ray autoscaler Pod scaling events will correspond roughly one-to-one with cluster autoscaler
+Node scaling events. ("Roughly" because it is possible for a Ray pod be deleted and replaced
+with a new Ray pod before the underlying Kubernetes Node is scaled down.)
 
 
 ### Vertical pod autoscaler
@@ -84,6 +85,7 @@ There is no relationship between the Ray Autoscaler and the Kubernetes
 which is meant to size individual pods to the appropriate size based on current and past usage.
 If you find that the load on your individual Ray pods is too high, there are a number
 of manual techniques to decrease the load.
-One method is to schedule fewer tasks/actors per node by increasing the resources specified in the `ray.remote` annotation.
+One method is to schedule fewer tasks/actors per node by increasing the resource
+requirements specified in the `ray.remote` annotation.
 For example, changing `@ray.remote(num_cpus=2)` to `@ray.remote(num_cpus=4)`.
 will will halve the number of that task or actor that can fit in a given Ray pod.
