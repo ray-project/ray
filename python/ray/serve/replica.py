@@ -184,7 +184,7 @@ def create_replica_wrapper(name: str):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.replica.handle_request(query)
 
-        async def handle_request_java(
+        async def handle_request_from_java(
             self,
             proto_request_metadata: bytes,
             *request_args,
@@ -369,7 +369,7 @@ class RayServeReplica:
             f"{_format_replica_actor_name(self.deployment_name)}.handle_request"
         )
         method_stat_java = actor_stats.get(
-            f"{_format_replica_actor_name(self.deployment_name)}.handle_request_java"
+            f"{_format_replica_actor_name(self.deployment_name)}.handle_request_from_java"
         )
         return merge_dict(method_stat, method_stat_java)
 

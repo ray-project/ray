@@ -38,11 +38,12 @@ public class ReplicaSet {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ReplicaSet.class);
 
-  /** Map<><ActorName/ObjectRefSet> */
+  // The key is the name of the actor, and the value is a set of all flight queries objectrefs of
+  // the actor.
   private final Map<String, Set<ObjectRef<Object>>> inFlightQueries;
 
-  /** Map<><ActorName/BaseActorHandle> */
-  private final Map<String, BaseActorHandle> actorHandlerMap;
+  // Map the actor name to the handle of the actor.
+  private final Map<String, BaseActorHandle> allActorHandles;
 
   private DeploymentLanguage language;
 
@@ -54,7 +55,7 @@ public class ReplicaSet {
 
   public ReplicaSet(String deploymentName) {
     this.inFlightQueries = new ConcurrentHashMap<>();
-    this.actorHandlerMap = new ConcurrentHashMap<>();
+    this.allActorHandles = new ConcurrentHashMap<>();
     try {
       Deployment deployment = Serve.getDeployment(deploymentName);
       this.language = deployment.getConfig().getDeploymentLanguage();
@@ -83,21 +84,17 @@ public class ReplicaSet {
       Set<String> removed = new HashSet<>(Sets.difference(inFlightQueries.keySet(), actorNameSet));
       added.forEach(
           name -> {
-            try {
-              Optional<BaseActorHandle> handleOptional =
-                  Ray.getActor(name, Constants.SERVE_NAMESPACE);
-              if (handleOptional.isPresent()) {
-                actorHandlerMap.put(name, handleOptional.get());
-                inFlightQueries.put(name, Sets.newConcurrentHashSet());
-              } else {
-                LOGGER.warn("Can not get actor handle. actor name is {}", name);
-              }
-            } catch (Throwable e) {
-              LOGGER.warn("Failed to get actor handle. The exception is ", e);
+            Optional<BaseActorHandle> handleOptional =
+                Ray.getActor(name, Constants.SERVE_NAMESPACE);
+            if (handleOptional.isPresent()) {
+              allActorHandles.put(name, handleOptional.get());
+              inFlightQueries.put(name, Sets.newConcurrentHashSet());
+            } else {
+              LOGGER.warn("Can not get actor handle. actor name is {}", name);
             }
           });
       removed.forEach(inFlightQueries::remove);
-      removed.forEach(actorHandlerMap::remove);
+      removed.forEach(allActorHandles::remove);
       if (added.size() > 0 || removed.size() > 0) {
         LOGGER.info("ReplicaSet: +{}, -{} replicas.", added.size(), removed.size());
       }
@@ -148,7 +145,7 @@ public class ReplicaSet {
       }
       loopCount++;
     }
-    List<BaseActorHandle> handles = new ArrayList<>(actorHandlerMap.values());
+    List<BaseActorHandle> handles = new ArrayList<>(allActorHandles.values());
     if (CollectionUtil.isEmpty(handles)) {
       throw new RayServeException("ReplicaSet found no replica.");
     }
@@ -159,7 +156,7 @@ public class ReplicaSet {
     if (language == DeploymentLanguage.PYTHON) {
       return ((PyActorHandle) replica)
           .task(
-              PyActorMethod.of("handle_request_java"),
+              PyActorMethod.of("handle_request_from_java"),
               query.getMetadata().toByteArray(),
               query.getArgs())
           .remote();
