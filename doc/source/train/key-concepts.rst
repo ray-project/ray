@@ -277,8 +277,6 @@ to perform scalable batch prediction.
 - :class:`HuggingFaceCheckpoint <ray.train.huggingface.HuggingFaceCheckpoint>`
 - :class:`RLCheckpoint <ray.train.rl.RLCheckpoint>`
 
-
-
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
     :start-after: __results_start__
