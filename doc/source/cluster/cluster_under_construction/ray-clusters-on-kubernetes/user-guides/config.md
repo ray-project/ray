@@ -342,7 +342,7 @@ which is not using resources. In this context, "resources" are the logical Ray r
 (such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
 Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
 
-`IdleTimeoutSeconds` defaults to 60 seconds.
+`idleTimeoutSeconds` defaults to 60 seconds.
 
 #### resources
 The `resources` subfield of `autoscalerOptions` sets optional resource overrides
