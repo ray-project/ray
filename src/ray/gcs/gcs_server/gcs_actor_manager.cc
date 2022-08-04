@@ -741,7 +741,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   const auto creation_callbacks = callback_it != actor_to_create_callbacks_.end()
                                       ? std::move(callback_it->second)
                                       : std::vector<CreateActorCallback>{};
-  actor_to_create_callbacks_.erase(callback_it);
+  if (callback_it != actor_to_create_callbacks_.end()) {
+    actor_to_create_callbacks_.erase(callback_it);
+  }
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO) << "Tried to destroy actor that does not exist " << actor_id;

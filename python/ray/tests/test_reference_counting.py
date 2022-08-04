@@ -567,14 +567,8 @@ def test_actor_constructor_borrow_cancellation(ray_start_regular):
                 "should be cancelled before the actor is scheduled."
             )
 
-    # Test with explicit cancellation via ray.kill().
-    ref = ray.put(1)
-    a = Actor.remote({"foo": ref})
-    ray.kill(a)
-    del ref
-
-    # Confirm that the ref object is not leaked.
-    check_refcounts({})
+        def should_not_be_run(self):
+            raise ValueError("This method should never be reached.")
 
     # Test with implicit cancellation by letting the actor handle go out-of-scope.
     def test_implicit_cancel():
@@ -584,6 +578,22 @@ def test_actor_constructor_borrow_cancellation(ray_start_regular):
     test_implicit_cancel()
     # Confirm that the ref object is not leaked.
     check_refcounts({})
+
+    # Test with explicit cancellation via ray.kill().
+    ref = ray.put(1)
+    a = Actor.remote({"foo": ref})
+    ray.kill(a)
+    del ref
+
+    # Confirm that the ref object is not leaked.
+    check_refcounts({})
+
+    # Check that actor death cause is propagated.
+    with pytest.raises(
+        ray.exceptions.RayActorError, match="it was killed by `ray.kill"
+    ) as exc_info:
+        ray.get(a.should_not_be_run.remote())
+    print(exc_info._excinfo[1])
 
 
 if __name__ == "__main__":

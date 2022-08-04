@@ -55,7 +55,10 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               if (status.IsSchedulingCancelled()) {
                 RAY_LOG(DEBUG) << "Actor creation cancelled, actor id = " << actor_id;
                 task_finisher_->MarkTaskCanceled(task_id);
-                ray_error_info.mutable_actor_died_error()->CopyFrom(reply.death_cause());
+                if (reply.has_death_cause()) {
+                  ray_error_info.mutable_actor_died_error()->CopyFrom(
+                      reply.death_cause());
+                }
               } else {
                 RAY_LOG(INFO) << "Failed to create actor " << actor_id
                               << " with status: " << status.ToString();
