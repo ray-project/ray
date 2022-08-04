@@ -121,7 +121,7 @@ system. Here are examples for some of the commonly used trainers:
         :start-after: __torch_distributed_begin__
         :end-before: __torch_distributed_end__
 
-    Then, instantiate a ``Trainer`` that uses a ``"torch"`` backend
+    Then, instantiate a ``TorchTrainer``
     with 4 workers, and use it to run the new training function!
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
@@ -170,8 +170,8 @@ system. Here are examples for some of the commonly used trainers:
         :start-after: __tf_distributed_begin__
         :end-before: __tf_distributed_end__
 
-    Then, instantiate a ``Trainer`` that uses a ``"tensorflow"`` backend
-    with 4 workers, and use it to run the new training function!
+    Then, instantiate a ``TensorflowTrainer`` with 4 workers,
+    and use it to run the new training function!
 
     .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
         :language: python
