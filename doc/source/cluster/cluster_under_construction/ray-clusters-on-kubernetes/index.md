@@ -22,13 +22,9 @@ running multiple Ray clusters with different Ray versions in the same Kubernetes
 
 Concretely you will learn how to:
 
-- Set up and configure Ray on an existing Kubernetes cluster or a managed Kubernetes service
-- Deploy batch Ray applications on Kubernetes via Ray Jobs
-- Utilize GPUs to run Ray machine learning workloads (e.g. with Ray AIR)
-- Set up networking to connect your Ray applications with third party applications in the Kubernetes cluster
-- Use Autoscaling to scale your cluster up and down based on utilization
-- Deploy online Ray applications on Kubernetes
-- Monitor your Ray applications on Kubernetes
+- Set up and configure Ray on a Kubernetes cluster
+- Deploy and monitor Ray applications
+- Integrate Ray applications with Kubernetes networking
 
 ## Learn More
 
