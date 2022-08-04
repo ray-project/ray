@@ -36,7 +36,10 @@ class LightningTrainer(TorchTrainer):
 
     If the ``datasets`` dict contains a training dataset (denoted by the "train"
     key), then it will be split into multiple dataset shards, with each Actor
-    training on a single shard. All the other datasets will not be split.
+    training on a single shard. All the other datasets will not be split. To specify
+    a batch size for your datasets, you should set the ``batch_size`` key of
+    ``lightning_module_init_config``. Note that in your ``LightningModule``'s
+    ``__init__``, you should not accept a ``batch_size`` argument.
 
     This Trainer requires ``pytorch-lightning>=1.7.0`` package.
 
@@ -158,6 +161,7 @@ def _lightning_train_loop_per_worker(config):
     LightningModule = config.pop("_lightning_module")
     lightning_module_init_config = config.pop("_lightning_module_init_config")
     lightning_module_init_config["strategy"] = "ddp"
+    # TODO: trim kwargs based on `LightningModule.__init__` signature?
     lightning_module_instance = LightningModule(**lightning_module_init_config)
 
     # TODO: is KeyError raised if a key is not set in datasets?
@@ -166,6 +170,7 @@ def _lightning_train_loop_per_worker(config):
         session.get_dataset_shard("val"),
         session.get_dataset_shard("test"),
         session.get_dataset_shard("predict"),
+        batch_size=lightning_module_init_config.pop("batch_size", None),
     )
 
     # TODO: do we need to do anything for Train checkpointing? 
