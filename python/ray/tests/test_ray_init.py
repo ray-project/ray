@@ -368,29 +368,38 @@ def test_ray_init_using_hostname(ray_start_cluster):
     assert node_table[0].get("NodeManagerHostname", "") == hostname
 
 
-def test_hosted_external_dashboard_url_with_ray_client(shutdown_only):
-    """
-    Test setting external dashboard URL through environment variable
-    with Ray client.
-    """
+@pytest.fixture
+def set_override_dashboard_url(request):
     orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
-    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "https://external_dashboard_url"
+    override_url = getattr(request, "param", "https://external_dashboard_url")
+    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = override_url
 
-    with ray_start_client_server() as given_connection:
-        given_connection.disconnect()
-        with ray.init("ray://localhost:50051") as info:
-            assert info.dashboard_url == "external_dashboard_url"
+    yield
 
     if orig_external_dashboard_url:
         os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
 
 
-def test_hosted_external_dashboard_url(shutdown_only):
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25553"],
+    indirect=True,
+)
+def test_hosted_external_dashboard_url_with_ray_client(
+    set_override_dashboard_url, call_ray_start
+):
+    """
+    Test setting external dashboard URL through environment variable
+    with Ray client.
+    """
+    info = ray.init("ray://localhost:25553")
+    assert info.dashboard_url == "external_dashboard_url"
+
+
+def test_hosted_external_dashboard_url(set_override_dashboard_url, shutdown_only):
     """
     Test setting external dashboard URL through environment variable.
     """
-    orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
-
     # Test external dashboard url with https protocol
     os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "https://external_dashboard_url"
     info = ray.init()
@@ -433,9 +442,6 @@ def test_hosted_external_dashboard_url(shutdown_only):
         ray_address_to_api_server_url("auto")
         == ray._private.worker._global_node.webui_url_with_protocol
     )
-
-    if orig_external_dashboard_url:
-        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
 
 
 if __name__ == "__main__":
