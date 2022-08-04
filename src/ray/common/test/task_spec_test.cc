@@ -100,15 +100,26 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
               TaskSpecification::GetSchedulingClass(descriptor9));
 }
 
-TEST(TaskSpecTest, TestActorCreationSchedulingClass) {
-  FunctionDescriptor descriptor = FunctionDescriptorBuilder::BuildPython("a", "", "", "");
-  ResourceSet placement_resources(
-      absl::flat_hash_map<std::string, double>({{"CPU", 1.0}}));
-  ResourceSet resources(absl::flat_hash_map<std::string, double>({}));
-  SchedulingClassDescriptor descriptor(resources, descriptor, 0, scheduling_strategy);
+TEST(TaskSpecTest, TestActorSchedulingClass) {
+  // This test ensures that an actor's lease request's scheduling class is
+  // determined by the placement resources, not the regular resources.
 
-  TaskSpecification actor_task;
-  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_CREATION_TASK);
+  const std::unordered_map<std::string, double> one_cpu = {{"CPU", 1}};
+
+  rpc::TaskSpec actor_task_spec_proto;
+  actor_task_spec_proto.set_type(TaskType::ACTOR_CREATION_TASK);
+  actor_task_spec_proto.mutable_required_placement_resources()->insert(one_cpu.begin(), one_cpu.end());
+
+  TaskSpecification actor_task(actor_task_spec_proto);
+
+
+  rpc::TaskSpec regular_task_spec_proto;
+  actor_task_spec_proto.set_type(TaskType::NORMAL_TASK);
+  actor_task_spec_proto.mutable_required_resources()->insert(one_cpu.begin(), one_cpu.end());
+
+  TaskSpecification regular_task(regular_task_spec_proto);
+
+  ASSERT_EQ(regular_task.GetSchedulingClass(), actor_task.GetSchedulingClass());
 }
 
 TEST(TaskSpecTest, TestTaskSpecification) {
