@@ -7,43 +7,39 @@ Ray Train: Scalable Model Training
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
-.. tip:: Get in touch with us if you're using or considering using `Ray Train <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
+.. tip::
 
-Ray Train is a library for scalable model training, allowing you
-to scale up and speed up training for various popular machine learning frameworks.
+    Train is currently in **beta**. Fill out `this short form <https://forms.gle/PXFcJmHwszCwQhqX7>`_ to get involved with Train development!
 
-The main features are:
+Ray Train scales model training for popular ML frameworks such as Torch, XGBoost, TensorFlow, and more. It seamlessly integrates with other Ray libraries such as Tune and Predictors:
 
-- **Ease of use**: Scale your single process training code to a cluster in just a couple lines of code.
-- **Interactivity**: Ray Train fits in your workflow with support to run from any environment, including seamless Jupyter notebook support.
-- **Composability**: Ray Train interoperates with :ref:`Ray Tune <tune-main>` to tune your distributed model and :ref:`Ray Datasets <datasets>` to train on large amounts of data.
+.. https://docs.google.com/drawings/d/1FezcdrXJuxLZzo6Rjz1CHyJzseH8nPFZp6IUepdn3N4/edit
 
+.. image:: images/train-specific.svg
 
 Intro to Ray Train
 ------------------
 
-**Frameworks**: Ray Train is built to abstract away the complexity of scaling up training
+**Framework support**: Train abstracts away the complexity of scaling up training
 for common machine learning frameworks such as XGBoost, Pytorch, and Tensorflow.
-
-There are three broad categories of Trainers that Ray Train offers:
+There are three broad categories of Trainers that Train offers:
 
 * :ref:`Deep Learning Trainers <train-dl-guide>` (Pytorch, Tensorflow, Horovod)
 * :ref:`Tree-based Trainers <train-gbdt-guide>` (XGboost, LightGBM)
 * Other ML frameworks (HuggingFace, Scikit-Learn, RLlib)
 
-**Built for data scientists/ML practitioners**: Ray Train has support for standard ML tools and features that practitioners love:
+**Built for ML practitioners**: Train supports standard ML tools and features that practitioners love:
 
 * Callbacks for early stopping
 * Checkpointing
 * Integration with TensorBoard, Weights/Biases, and MLflow
 * Jupyter notebooks
 
-**Integration with Ray Ecosystem**: Ray Train is part of :ref:`Ray AIR <air>` and seamlessly operates
-with the rest of the Ray ecosystem.
+**Batteries included**: Train is part of :ref:`Ray AIR <air>` and seamlessly operates in the Ray ecosystem.
 
-* Use :ref:`Ray Datasets <datasets>` with Ray Train to handle and train on large amounts of data.
-* Use :ref:`Ray Tune <tune-main>` with Ray Train to leverage cutting edge hyperparameter techniques and distribute both your training and tuning.
-* Leverage the :ref:`Ray cluster launcher <cluster-cloud>` to launch autoscaling or spot instance clusters to train your model at scale on any cloud.
+* Use :ref:`Ray Datasets <datasets>` with Train to load and process datasets both small and large.
+* Use :ref:`Ray Tune <tune-main>` with Train to sweep parameter grids and leverage cutting edge hyperparameter search algorithms.
+* Leverage the :ref:`Ray cluster launcher <cluster-cloud>` to launch autoscaling or spot instance clusters on any cloud.
 
 
 Quick Start
@@ -81,11 +77,48 @@ Quick Start
       :language: python
 
 
-**Next steps:** Check out:
+Framework Catalog
+-----------------
 
-* :ref:`Getting started guide <train-getting-started>`
+Here is a catalog of the framework-specific Trainer, Checkpoint, and Predictor classes that ship out of the box with Train:
+
+.. list-table::
+
+    * - **Trainer Class**
+      - **Checkpoint Class**
+      - **Predictor Class**
+    * - :class:`TorchTrainer <ray.train.torch.TorchTrainer>`
+      - :class:`TorchCheckpoint <ray.train.torch.TorchCheckpoint>`
+      - :class:`TorchPredictor <ray.train.torch.TorchPredictor>`
+    * - :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`
+      - :class:`TensorflowCheckpoint <ray.train.tensorflow.TensorflowCheckpoint>`
+      - :class:`TensorflowPredictor <ray.train.tensorflow.TensorflowPredictor>`
+    * - :class:`HorovodTrainer <ray.train.horovod.HorovodTrainer>`
+      - (Torch/TF Checkpoint)
+      - (Torch/TF Predictor)
+    * - :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>`
+      - :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>`
+      - :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
+    * - :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`
+      - :class:`LightGBMCheckpoint <ray.train.lightgbm.LightGBMCheckpoint>`
+      - :class:`LightGBMPredictor <ray.train.lightgbm.LightGBMPredictor>`
+    * - :class:`SklearnTrainer <ray.train.sklearn.SklearnTrainer>`
+      - :class:`SklearnCheckpoint <ray.train.sklearn.SklearnCheckpoint>`
+      - :class:`SklearnPredictor <ray.train.sklearn.SklearnPredictor>`
+    * - :class:`HuggingFaceTrainer <ray.train.huggingface.HuggingFaceTrainer>`
+      - :class:`HuggingFaceCheckpoint <ray.train.huggingface.HuggingFaceCheckpoint>`
+      - :class:`HuggingFacePredictor <ray.train.huggingface.HuggingFacePredictor>`
+    * - :class:`RLTrainer <ray.train.rl.RLTrainer>`
+      - :class:`RLCheckpoint <ray.train.rl.RLCheckpoint>`
+      - :class:`RLPredictor <ray.train.rl.RLPredictor>`
+
+
+Next steps
+----------
+
+* :ref:`Getting Started <train-getting-started>`
 * :ref:`Key Concepts for Ray Train <train-key-concepts>`
-* :ref:`User Guide for Deep Learning trainers <train-dl-guide>`
-* :ref:`User Guide for Tree-based trainers <train-gbdt-guide>`
+* :ref:`User Guide for Deep Learning Trainers <train-dl-guide>`
+* :ref:`User Guide for Tree-Based Trainers <train-gbdt-guide>`
 
 .. include:: /_includes/train/announcement_bottom.rst

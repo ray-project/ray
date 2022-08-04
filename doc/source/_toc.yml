@@ -70,6 +70,7 @@ parts:
           - file: train/key-concepts
           - file: train/user-guides
             sections:
+              - file: train/config_guide
               - file: train/dl_guide
               - file: train/gbdt
               - file: train/architecture

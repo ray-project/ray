@@ -1,7 +1,7 @@
 .. _train-gbdt-guide:
 
-Ray Train XGBoost/LightGBM User Guide
-=====================================
+XGBoost / LightGBM User Guide
+=============================
 
 Ray Train has Trainers for XGBoost and LightGBM. These trainers:
 

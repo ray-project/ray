@@ -1,7 +1,7 @@
 .. _train-dl-guide:
 
-Ray Train Deep Learning User Guide
-==================================
+Deep Learning User Guide
+========================
 
 .. tip:: Get in touch with us if you're using or considering using `Ray Train <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
 

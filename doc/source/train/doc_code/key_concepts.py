@@ -152,5 +152,4 @@ print("Observed metrics:", result.metrics)
 
 checkpoint_data = result.checkpoint.to_dict()
 print("Checkpoint data:", checkpoint_data["step"])
-
 # __results_end__

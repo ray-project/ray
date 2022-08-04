@@ -3,7 +3,7 @@
 Getting Started
 ===============
 
-Ray Train offers multiple ``Trainers`` which perform scalable model training for different machine learning frameworks.
+Ray Train offers multiple ``Trainers`` which implement scalable model training for different machine learning frameworks.
 Here are examples for some of the commonly used trainers:
 
 .. tabbed:: XGBoost
@@ -28,7 +28,7 @@ Here are examples for some of the commonly used trainers:
 
     We then instantiate our XGBoostTrainer by passing in:
 
-    - The aforementioned `ScalingConfig`
+    - The aforementioned ``ScalingConfig``.
     - The ``label_column`` refers to the column name containing the labels in the Ray Dataset
     - The ``params`` are `XGBoost training parameters <https://xgboost.readthedocs.io/en/stable/parameter.html>`__
 
@@ -66,7 +66,7 @@ Here are examples for some of the commonly used trainers:
 
     We then instantiate our LightGBMTrainer by passing in:
 
-    - The aforementioned `ScalingConfig`
+    - The aforementioned ``ScalingConfig``
     - The ``label_column`` refers to the column name containing the labels in the Ray Dataset
     - The ``params`` are core `LightGBM training parameters <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`__
 
@@ -179,10 +179,3 @@ Here are examples for some of the commonly used trainers:
         :end-before: __tf_trainer_end__
 
     See :ref:`train-porting-code` for a more comprehensive example.
-
-
-**Next steps:** For next steps, check out:
-
-* :ref:`Key Concepts for Ray Train <train-key-concepts>`
-* :ref:`User Guide for Deep Learning trainers <train-dl-guide>`
-* :ref:`User Guide for Tree-based trainers <train-gbdt-guide>`

@@ -10,9 +10,18 @@ User Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
+    .. link-button:: config_guide
+        :type: ref
+        :text: Configurations User Guide
+        :classes: btn-link btn-block stretched-link
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
     .. link-button:: dl_guide
         :type: ref
-        :text: Using Ray Train for distributed deep learning
+        :text: Deep Learning User Guide
         :classes: btn-link btn-block stretched-link
 
 
@@ -22,7 +31,7 @@ User Guides
     +++
     .. link-button:: gbdt
         :type: ref
-        :text: Using Ray Train for training tree-based models
+        :text: XGBoost / LightGBM User Guide
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -31,6 +40,6 @@ User Guides
     +++
     .. link-button:: architecture
         :type: ref
-        :text: Ray Train Architecture for Distributed Deep Learning
+        :text: Ray Train Architecture
         :classes: btn-link btn-block stretched-link
 
