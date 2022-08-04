@@ -3,22 +3,13 @@
 Key Concepts
 ============
 
-Ray Train mainly revolves around the ``Trainer`` concept.
+Trainers
+--------
+``Trainers`` are the centerpiece of Ray Train and are responsible for executing a (distributed) training run.
+Trainers are configured with two main configuration objects:
 
-.. note::
-
-    This page explains Ray Train concepts and trainers in more detail.
-    For a quick overview of the available trainers, take a look at the
-    :ref:`Ray AIR trainers <air-trainers>` page in the Ray AIR documentation.
-
-
-Trainer
--------
-The ``Trainer`` concept is the centerpiece of Ray Train.
-A Trainer objects holds all the configuration and state to execute a (distributed) training run.
-It can be configured with general setting that are applicable to all trainers (such as the
-:class:`RunConfig <ray.air.config.RunConfig>` and the :class:`ScalingConfig <ray.air.config.ScalingConfig>`),
-and with trainer-specific options.
+* :class:`RunConfig <ray.air.config.RunConfig>` and
+* :class:`ScalingConfig <ray.air.config.ScalingConfig>`.
 
 Trainers can also handle :ref:`datasets <air-ingest>` and :ref:`preprocessors <air-preprocessors>` for
 scalable data ingest and preprocessing.
@@ -81,84 +72,90 @@ metrics from the training run and the latest saved :ref:`model checkpoint <air-c
 
 Configuration
 -------------
+
 Trainers can be configured with configuration objects. There are two main configuration classes,
-the :class:`scaling_config <ray.air.config.ScalingConfig>` and the :class:`run_config <ray.air.config.RunConfig>`.
-The latter contains subconfigurations, such as the :class:`failure_config <ray.air.config.FailureConfig>`,
-:class:`sync_config <ray.tune.syncer.SyncConfig>` and :class:`run_config <ray.air.config.CheckpointConfig>`.
+the :class:`ScalingConfig <ray.air.config.ScalingConfig>` and the :class:`RunConfig <ray.air.config.RunConfig>`.
+The latter contains subconfigurations, such as the :class:`FailureConfig <ray.air.config.FailureConfig>`,
+:class:`SyncConfig <ray.tune.syncer.SyncConfig>` and :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`.
 
-.. tabbed::  Scaling configuration
+Scaling configuration (``ScalingConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    The scaling configuration specifies distributed training properties like the number of workers or the
-    resources per worker.
+The scaling configuration specifies distributed training properties like the number of workers or the
+resources per worker.
 
-    The properties of the scaling configuration are :ref:`tunable <air-tuner-search-space>`.
+The properties of the scaling configuration are :ref:`tunable <air-tuner-search-space>`.
 
-    :class:`ScalingConfig API reference <ray.air.config.ScalingConfig>`
+For more info, take a look at the :class:`ScalingConfig API reference <ray.air.config.ScalingConfig>`.
 
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __scaling_config_start__
-        :end-before: __scaling_config_end__
-
-
-.. tabbed::  Run configuration
-
-    The run configuration specifies distributed training properties like the number of workers or the
-    resources per worker.
-
-    The properties of the run configuration are :ref:`not tunable <air-tuner-search-space>`.
-
-    :class:`RunConfig API reference <ray.air.config.RunConfig>`
-
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __run_config_start__
-        :end-before: __run_config_end__
-
-.. tabbed::  Failure configuration
-
-    The failure configuration specifies how training failures should be dealt with.
-
-    As part of the run-config, the properties of the failure configuration
-    are :ref:`not tunable <air-tuner-search-space>`.
-
-    :class:`FailureConfig API reference <ray.air.config.FailureConfig>`
-
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __failure_config_start__
-        :end-before: __failure_config_end__
-
-.. tabbed::  Sync configuration
-
-    The sync configuration specifies how to synchronize checkpoints between the
-    Ray cluster and remote storage.
-
-    As part of the run-config, the properties of the sync configuration
-    are :ref:`not tunable <air-tuner-search-space>`.
-
-    :class:`SyncConfig API reference <ray.tune.syncer.SyncConfig>`
-
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __sync_config_start__
-        :end-before: __sync_config_end__
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __scaling_config_start__
+    :end-before: __scaling_config_end__
 
 
-.. tabbed::  Checkpoint configuration
+Run configuration (``RunConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    The checkpoint configuration specifies how often to checkpoint training state
-    and how many checkpoints to keep.
+The run configuration specifies distributed training properties like the number of workers or the
+resources per worker.
 
-    As part of the run-config, the properties of the checkpoint configuration
-    are :ref:`not tunable <air-tuner-search-space>`.
+The properties of the run configuration are :ref:`not tunable <air-tuner-search-space>`.
 
-    :class:`CheckpointConfig API reference <ray.air.config.CheckpointConfig>`
+:class:`RunConfig API reference <ray.air.config.RunConfig>`
 
-    .. literalinclude:: doc_code/key_concepts.py
-        :language: python
-        :start-after: __checkpoint_config_start__
-        :end-before: __checkpoint_config_end__
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __run_config_start__
+    :end-before: __run_config_end__
+
+Failure configuration (``FailureConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The failure configuration specifies how training failures should be dealt with.
+
+As part of the RunConfig, the properties of the failure configuration
+are :ref:`not tunable <air-tuner-search-space>`.
+
+:class:`FailureConfig API reference <ray.air.config.FailureConfig>`
+
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __failure_config_start__
+    :end-before: __failure_config_end__
+
+Sync configuration (``SyncConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The sync configuration specifies how to synchronize checkpoints between the
+Ray cluster and remote storage.
+
+As part of the RunConfig, the properties of the sync configuration
+are :ref:`not tunable <air-tuner-search-space>`.
+
+:class:`SyncConfig API reference <ray.tune.syncer.SyncConfig>`
+
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __sync_config_start__
+    :end-before: __sync_config_end__
+
+
+Checkpoint configuration (``CheckpointConfig``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The checkpoint configuration specifies how often to checkpoint training state
+and how many checkpoints to keep.
+
+As part of the RunConfig, the properties of the checkpoint configuration
+are :ref:`not tunable <air-tuner-search-space>`.
+
+:class:`CheckpointConfig API reference <ray.air.config.CheckpointConfig>`
+
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __checkpoint_config_start__
+    :end-before: __checkpoint_config_end__
 
 
 .. _train-key-concepts-session:

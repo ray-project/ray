@@ -13,18 +13,36 @@ system. Here are examples for some of the commonly used trainers:
     First, we load the dataset from S3 using Ray Datasets and split it into a
     train and validation dataset.
 
-    We then instantiate our XGBoostTrainer:
+    .. literalinclude:: doc_code/gbdt_user_guide.py
+       :language: python
+       :start-after: __xgb_detail_intro_start__
+       :end-before: __xgb_detail_intro_end__
 
-    - In the :class:`scaling_config <ray.air.config.ScalingConfig>`, we configure the number of workers to use
-    - The ``label_column`` refers to the column name containing the labels in the Ray Dataset
-    - The ``params`` are core `XGBoost training parameters <https://xgboost.readthedocs.io/en/stable/parameter.html>`__
-
-    And lastly we call ``trainer.fit()`` to kick off training and obtain the results.
+    In the :class:`ScalingConfig <ray.air.config.ScalingConfig>`,
+    we configure the number of workers to use:
 
     .. literalinclude:: doc_code/gbdt_user_guide.py
        :language: python
-       :start-after: __xgboost_start__
-       :end-before: __xgboost_end__
+       :start-after: __xgb_detail_scaling_start__
+       :end-before: __xgb_detail_scaling_end__
+
+    We then instantiate our XGBoostTrainer by passing in:
+
+    - The aforementioned `ScalingConfig`
+    - The ``label_column`` refers to the column name containing the labels in the Ray Dataset
+    - The ``params`` are `XGBoost training parameters <https://xgboost.readthedocs.io/en/stable/parameter.html>`__
+
+    .. literalinclude:: doc_code/gbdt_user_guide.py
+        :language: python
+        :start-after: __xgb_detail_training_start__
+        :end-before: __xgb_detail_training_end__
+
+    Lastly, we call ``trainer.fit()`` to kick off training and obtain the results.
+
+    .. literalinclude:: doc_code/gbdt_user_guide.py
+        :language: python
+        :start-after: __xgb_detail_fit_start__
+        :end-before: __xgb_detail_fit_end__
 
 .. tabbed:: LightGBM
 
@@ -33,18 +51,36 @@ system. Here are examples for some of the commonly used trainers:
     First, we load the dataset from S3 using Ray Datasets and split it into a
     train and validation dataset.
 
-    We then instantiate our LightGBMTrainer:
+    .. literalinclude:: doc_code/gbdt_user_guide.py
+        :language: python
+        :start-after: __lgbm_detail_intro_start__
+        :end-before: __lgbm_detail_intro_end__
 
-    - In the :class:`scaling_config <ray.air.config.ScalingConfig>`, we configure the number of workers to use
+    In the :class:`ScalingConfig <ray.air.config.ScalingConfig>`,
+    we configure the number of workers to use:
+
+    .. literalinclude:: doc_code/gbdt_user_guide.py
+        :language: python
+        :start-after: __xgb_detail_scaling_start__
+        :end-before: __xgb_detail_scaling_end__
+
+    We then instantiate our LightGBMTrainer by passing in:
+
+    - The aforementioned `ScalingConfig`
     - The ``label_column`` refers to the column name containing the labels in the Ray Dataset
     - The ``params`` are core `LightGBM training parameters <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`__
+
+    .. literalinclude:: doc_code/gbdt_user_guide.py
+        :language: python
+        :start-after: __lgbm_detail_training_start__
+        :end-before: __lgbm_detail_training_end__
 
     And lastly we call ``trainer.fit()`` to kick off training and obtain the results.
 
     .. literalinclude:: doc_code/gbdt_user_guide.py
-       :language: python
-       :start-after: __lightgbm_start__
-       :end-before: __lightgbm_end__
+        :language: python
+        :start-after: __lgbm_detail_fit_start__
+        :end-before: __lgbm_detail_fit_end__
 
 .. tabbed:: PyTorch
 
@@ -53,24 +89,24 @@ system. Here are examples for some of the commonly used trainers:
     First, set up your dataset and model.
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
-       :language: python
-       :start-after: __torch_setup_begin__
-       :end-before: __torch_setup_end__
+        :language: python
+        :start-after: __torch_setup_begin__
+        :end-before: __torch_setup_end__
 
 
     Now define your single-worker PyTorch training function.
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
-       :language: python
-       :start-after: __torch_single_begin__
-       :end-before: __torch_single_end__
+        :language: python
+        :start-after: __torch_single_begin__
+        :end-before: __torch_single_end__
 
     This training function can be executed with:
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
-       :language: python
-       :start-after: __torch_single_run_begin__
-       :end-before: __torch_single_run_end__
+        :language: python
+        :start-after: __torch_single_run_begin__
+        :end-before: __torch_single_run_end__
 
     Now let's convert this to a distributed multi-worker training function!
 
@@ -81,17 +117,17 @@ system. Here are examples for some of the commonly used trainers:
     and place it on the right device, and add ``DistributedSampler`` to your DataLoaders.
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
-       :language: python
-       :start-after: __torch_distributed_begin__
-       :end-before: __torch_distributed_end__
+        :language: python
+        :start-after: __torch_distributed_begin__
+        :end-before: __torch_distributed_end__
 
     Then, instantiate a ``Trainer`` that uses a ``"torch"`` backend
     with 4 workers, and use it to run the new training function!
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
-       :language: python
-       :start-after: __torch_trainer_begin__
-       :end-before: __torch_trainer_end__
+        :language: python
+        :start-after: __torch_trainer_begin__
+        :end-before: __torch_trainer_end__
 
     See :ref:`train-porting-code` for a more comprehensive example.
 
@@ -103,23 +139,23 @@ system. Here are examples for some of the commonly used trainers:
     First, set up your dataset and model.
 
     .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
-       :language: python
-       :start-after: __tf_setup_begin__
-       :end-before: __tf_setup_end__
+        :language: python
+        :start-after: __tf_setup_begin__
+        :end-before: __tf_setup_end__
 
     Now define your single-worker TensorFlow training function.
 
     .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
-           :language: python
-           :start-after: __tf_single_begin__
-           :end-before: __tf_single_end__
+        :language: python
+        :start-after: __tf_single_begin__
+        :end-before: __tf_single_end__
 
     This training function can be executed with:
 
     .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
-       :language: python
-       :start-after: __tf_single_run_begin__
-       :end-before: __tf_single_run_end__
+        :language: python
+        :start-after: __tf_single_run_begin__
+        :end-before: __tf_single_run_end__
 
     Now let's convert this to a distributed multi-worker training function!
     All you need to do is:
@@ -130,16 +166,23 @@ system. Here are examples for some of the commonly used trainers:
        we use the ``MultiWorkerMirroredStrategy``.
 
     .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
-       :language: python
-       :start-after: __tf_distributed_begin__
-       :end-before: __tf_distributed_end__
+        :language: python
+        :start-after: __tf_distributed_begin__
+        :end-before: __tf_distributed_end__
 
     Then, instantiate a ``Trainer`` that uses a ``"tensorflow"`` backend
     with 4 workers, and use it to run the new training function!
 
     .. literalinclude:: /../../python/ray/train/examples/tensorflow_quick_start.py
-       :language: python
-       :start-after: __tf_trainer_begin__
-       :end-before: __tf_trainer_end__
+        :language: python
+        :start-after: __tf_trainer_begin__
+        :end-before: __tf_trainer_end__
 
     See :ref:`train-porting-code` for a more comprehensive example.
+
+
+**Next steps:** For next steps, check out:
+
+* :ref:`Key Concepts for Ray Train <train-key-concepts>`
+* :ref:`User Guide for Deep Learning trainers <train-dl-guide>`
+* :ref:`User Guide for Tree-based trainers <train-gbdt-guide>`
