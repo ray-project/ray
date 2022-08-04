@@ -4,25 +4,14 @@
 
 This section should help you:
 
-- Understand how Ray Serve autoscaling works.
-- Learn how to configure the parameters for your workload.
+- Learn how to use the Serve Autoscaling API.
+- Learn how to optimize the Serve Autoscaling parameters for your workload.
 
-
-## Autoscaling architecture
-Ray Serve's autoscaling feature automatically increases or decreases a deployment's number of replicas based on its load. 
-
-![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling.svg)
-
-- Each ServeHandle and each worker replica periodically push the stats to the autoscaler.
-- The autoscaler requires ServeHandle queue metrics and replicas queries metrics to make decision whether to scale (up or down) the replicas.
-- ServeHandle continues to poll the updated group of replicas from the controller. Upon discovery of the new replicas, it will send any buffered or new queries to the replica until `max_concurrent_queries` is reached
-
-:::{note}
-When the controller dies, the client will still be able to send queries, but autoscaling will be paused. When the controller recovers, the autoscaling will resume, but all previous metrics collected will be lost.
-:::
+To learn about the architecture underlying Ray Serve Autoscaling, see {ref}`serve-autoscaling-architecture`.
 
 ## Autoscaling parameters
-There are several parameters the autoscaling algorithm takes into consideration when deciding the target replicas for your deployment
+
+There are several parameters the autoscaling algorithm takes into consideration when deciding the target number of replicas for your deployment:
 
 **min_replicas[default_value=1]**: The minimal number of replicas for the deployment. ``min_replicas`` will also be the initial number of replicas when the deployment is deployed.
 :::{note}
@@ -33,7 +22,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 **target_num_ongoing_requests_per_replica[default_value=1]**: The config is to maintain how many ongoing requests are expected to run concurrently per replica at most. If the number is lower, the scale up will be done more aggressively.
 :::{note}
 - It is always recommended to load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_num_ongoing_requests_per_replica` number to maintain high performance.
-- Internally, the autoscaler will compare RUNNING + PENNING tasks of each replicas and `target_num_ongoing_requests_per_replica` to decide scale up/down.
+- Internally, the autoscaler will decide to scale up or down by comparing `target_num_ongoing_requests_per_replica` to the number of `RUNNING` and `PENDING` tasks on each replica.
 - `target_num_ongoing_requests_per_replica` is only a target value used for autoscaling (not a hard limit), the real ongoing requests number can be higher than the config.
 :::
 

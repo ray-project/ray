@@ -29,14 +29,14 @@ TYPE_TO_ENUM: Dict[Type[DataBatchType], DataType] = {
 }
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class PredictorNotSerializableException(RuntimeError):
     """Error raised when trying to serialize a Predictor instance."""
 
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
 
@@ -76,6 +76,9 @@ class Predictor(abc.ABC):
     def __init__(self, preprocessor: Optional[Preprocessor] = None):
         """Subclasseses must call Predictor.__init__() to set a preprocessor."""
         self._preprocessor: Optional[Preprocessor] = preprocessor
+        # Whether tensor columns should be automatically cast from/to the tensor
+        # extension type at UDF boundaries. This can be overridden by subclasses.
+        self._cast_tensor_columns = False
 
     @classmethod
     @abc.abstractmethod
@@ -120,6 +123,15 @@ class Predictor(abc.ABC):
         """Set the preprocessor to use prior to executing predictions."""
         self._preprocessor = preprocessor
 
+    def _set_cast_tensor_columns(self):
+        """Enable automatic tensor column casting.
+
+        If this is called on a predictor, the predictor will cast tensor columns to
+        NumPy ndarrays in the input to the preprocessors and cast tensor columns back to
+        the tensor extension type in the prediction outputs.
+        """
+        self._cast_tensor_columns = True
+
     def predict(self, data: DataBatchType, **kwargs) -> DataBatchType:
         """Perform inference on a batch of data.
 
@@ -132,7 +144,7 @@ class Predictor(abc.ABC):
             DataBatchType: Prediction result. The return type will be the same as the
                 input type.
         """
-        data_df = convert_batch_type_to_pandas(data)
+        data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
 
         if not hasattr(self, "_preprocessor"):
             raise NotImplementedError(
@@ -144,7 +156,9 @@ class Predictor(abc.ABC):
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
         return convert_pandas_to_batch_type(
-            predictions_df, type=TYPE_TO_ENUM[type(data)]
+            predictions_df,
+            type=TYPE_TO_ENUM[type(data)],
+            cast_tensor_columns=self._cast_tensor_columns,
         )
 
     @DeveloperAPI

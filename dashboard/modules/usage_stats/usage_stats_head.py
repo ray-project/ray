@@ -17,9 +17,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self.usage_stats_enabled = ray_usage_lib.usage_stats_enabled()
         self.usage_stats_prompt_enabled = ray_usage_lib.usage_stats_prompt_enabled()
-        self.cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
-            os.path.expanduser("~/ray_bootstrap_config.yaml")
-        )
+        self.cluster_config_to_report = None
         self.session_dir = dashboard_head.session_dir
         self.client = ray_usage_lib.UsageReportClient()
         # The total number of report succeeded.
@@ -95,6 +93,9 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         await self._report_usage_async()
 
     async def run(self, server):
+        self.cluster_config_to_report = ray_usage_lib.get_cluster_config_to_report(
+            os.path.expanduser("~/ray_bootstrap_config.yaml")
+        )
         if not self.usage_stats_enabled:
             logger.info("Usage reporting is disabled.")
             return
