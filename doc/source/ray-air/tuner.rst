@@ -56,7 +56,7 @@ from which hyperparameter configurations will be sampled.
 Depending on the model and dataset, you may want to tune:
 
 - The training batch size
-- The learning rate for SGD-based training (e.g., image classification)
+- The learning rate for deep learning training (e.g., image classification)
 - The maximum depth for tree-based models (e.g., XGBoost)
 
 The following shows some example code on how to specify the ``param_space``.

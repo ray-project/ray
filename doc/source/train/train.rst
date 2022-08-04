@@ -43,7 +43,7 @@ with the rest of the Ray ecosystem.
 
 * Use :ref:`Ray Datasets <datasets>` with Ray Train to handle and train on large amounts of data.
 * Use :ref:`Ray Tune <tune-main>` with Ray Train to leverage cutting edge hyperparameter techniques and distribute both your training and tuning.
-* You can leverage the :ref:`Ray cluster launcher <cluster-cloud>` to launch autoscaling or spot instance clusters to train your model at scale on any cloud.
+* Leverage the :ref:`Ray cluster launcher <cluster-cloud>` to launch autoscaling or spot instance clusters to train your model at scale on any cloud.
 
 
 Quick Start
