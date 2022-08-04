@@ -1,5 +1,6 @@
 import abc
 from typing import Dict, Type, Optional, Callable
+import time
 
 import numpy as np
 import pandas as pd
@@ -144,22 +145,29 @@ class Predictor(abc.ABC):
             DataBatchType: Prediction result. The return type will be the same as the
                 input type.
         """
-        data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
+        # data_df = convert_batch_type_to_pandas(data, self._cast_tensor_columns)
 
         if not hasattr(self, "_preprocessor"):
             raise NotImplementedError(
                 "Subclasses of Predictor must call Predictor.__init__(preprocessor)."
             )
 
-        if self._preprocessor:
-            data_df = self._preprocessor.transform_batch(data_df)
 
+        if self._preprocessor:
+            start = time.time()
+            data_df = self._preprocessor.transform_batch(data)
+            print(f">>> [7] Took {(time.time() - start) * 1000} ms")
+
+        start = time.time()
         predictions_df = self._predict_pandas(data_df, **kwargs)
-        return convert_pandas_to_batch_type(
-            predictions_df,
-            type=TYPE_TO_ENUM[type(data)],
-            cast_tensor_columns=self._cast_tensor_columns,
-        )
+        print(f">>> [8] Took {(time.time() - start) * 1000} ms")
+
+        return predictions_df
+        # return convert_pandas_to_batch_type(
+        #     predictions_df,
+        #     type=TYPE_TO_ENUM[type(data)],
+        #     cast_tensor_columns=self._cast_tensor_columns,
+        # )
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

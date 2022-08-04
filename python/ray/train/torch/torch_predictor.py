@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
@@ -132,8 +133,10 @@ class TorchPredictor(DLPredictor):
             The model outputs, either as a single tensor or a dictionary of tensors.
 
         """
+        start = time.time()
         with torch.no_grad():
             output = self.model(tensor)
+        print(f">>> [10] Took {(time.time() - start) * 1000} ms")
         return output
 
     def predict(

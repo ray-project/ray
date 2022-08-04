@@ -1,4 +1,4 @@
-from typing import Callable, TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING, Union, Dict
 
 from ray.data.preprocessor import Preprocessor
 
@@ -26,9 +26,11 @@ class BatchMapper(Preprocessor):
     def _transform_pandas(self, df: "pandas.DataFrame") -> "pandas.DataFrame":
         return self.fn(df)
 
-    def _transform_numpy(self, np_array: "numpy.ndarray") -> "numpy.ndarray":
-        """Run the transformation on a data batch in a Numpy ndarray format."""
-        raise self.fn(np_array)
+    def _transform_numpy(
+        self,
+        np_array: Union["numpy.ndarray", Dict[str, "numpy.ndarray"]]
+    ) -> Union["numpy.ndarray", Dict[str, "numpy.ndarray"]]:
+        return self.fn(np_array)
 
     def __repr__(self):
         fn_name = getattr(self.fn, "__name__", self.fn)

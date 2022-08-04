@@ -1,6 +1,7 @@
 import inspect
 from typing import Any, Dict, Optional, List, Type, Union, Callable
 import pandas as pd
+import time
 
 import ray
 from ray.air import Checkpoint
@@ -187,17 +188,34 @@ class BatchPredictor:
 
             def __call__(self, batch):
                 if feature_columns:
-                    prediction_batch = batch[feature_columns]
+                    # prediction_batch = {
+                    #     column: batch[column]
+                    #     for column in feature_columns
+                    # }
+                    start = time.time()
+                    prediction_batch = batch["image"]
+                    print(f">>> [3] Took {(time.time() - start) * 1000} ms")
                 else:
                     prediction_batch = batch
+
+                start = time.time()
                 prediction_output = self._predictor.predict(
                     prediction_batch, **predict_kwargs
                 )
+                print(f">>> [4] Took {(time.time() - start) * 1000} ms")
+
+                start = time.time()
                 if keep_columns:
-                    prediction_output[keep_columns] = batch[keep_columns]
-                return convert_batch_type_to_pandas(
-                    prediction_output, cast_tensor_columns
-                )
+                    prediction_output[0]["image"] = batch["image"]
+                print(f">>> [5] Took {(time.time() - start) * 1000} ms")
+
+                start = time.time()
+                rst = pd.DataFrame(prediction_output)
+                print(f">>> [6] Took {(time.time() - start) * 1000} ms")
+                return rst
+                # return convert_batch_type_to_pandas(
+                #     prediction_output, cast_tensor_columns
+                # )
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers
