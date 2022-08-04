@@ -59,7 +59,7 @@ to scale down. The KubeRay operator then deletes that pod.
 By contrast, the Horizontal Pod Autoscaler can only decrease a replica count, without much
 control over which pods are deleted. For a Ray application, downscaling a random
 pod could be dangerous.
-## Architecture: One Ray autoscaler per Ray cluster.
+## Architecture: One Ray Autoscaler per Ray Cluster.
 Horizontal Pod Autoscaling is centrally controlled by a manager in the Kubernetes control plane;
 the manager controls the scale of many Kubernetes objects.
 By contrast, each Ray cluster is managed by its own Ray autoscaler process,
