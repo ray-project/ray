@@ -243,6 +243,27 @@ Use the fields `minReplicas` and `maxReplicas` to constrain the `replicas` of an
 The Ray autoscaler will then take over and modify the `replicas` field as needed by
 the Ray application.
 
+### Autoscaler operation
+
+#### Scale up
+The autoscaler scales worker pods up when...
+
+The autoscaler scales Ray worker pods up by...
+
+#### Scale down
+The autoscaler scales a worker pod down when the pod has not been using resources
+for a {ref}`set period of time`. Resources means...
+
+The autoscaler scales Ray worker pods down by adding the Ray pods' names to the RayCluster CR's
+`scaleStrategy.workersToDelete` list and decrementing the `replicas` field of the relevant
+`workerGroupSpec`.
+
+Note that you may manually adjust the scale by editing the `replicas` or workersTo
+. (It is also possible to implement custom scaling
+logic that adjusts the scale on your behalf.)
+It is however, not recommended to manually edit these fields for a RayCluster with
+autoscaling enabled.
+
 ### autoscalerOptions
 To enable Ray autoscaler support, it is enough to set `enableInTreeAutoscaling:true`.
 Should you need to adjust autoscaling behavior or change the autoscaler container's configuration,
