@@ -6,38 +6,95 @@ from ray.data.preprocessor import Preprocessor
 
 
 class Concatenator(Preprocessor):
-    """Creates a tensor column via concatenation.
+    """Combine numeric columns into a column of type
+    :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`.
 
-    A tensor column is a column consisting of ndarrays as elements.
-    The tensor column will be generated from the provided list
-    of columns and will take on the provided "output" label.
-    Columns that are included in the concatenation
-    will be dropped, while columns that are not included in concatenation
-    will be preserved.
-
-    Example:
-        >>> import ray
-        >>> import pandas as pd
-        >>> from ray.data.preprocessors import Concatenator
-        >>> df = pd.DataFrame({"a": [1, 2, 3, 4], "b": [1, 2, 3, 4],})
-        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
-        >>> prep = Concatenator(output_column_name="c") # doctest: +SKIP
-        >>> new_ds = prep.transform(ds) # doctest: +SKIP
-        >>> assert set(new_ds.take(1)[0]) == {"c"} # doctest: +SKIP
+    This preprocessor concatenates numeric columns and stores the result in a new
+    column. The new column contains
+    :py:class:`~ray.air.util.tensor_extensions.pandas.TensorArrayElement` objects of
+    shape :math:`(m,)`, where :math:`m` is the number of columns concatenated.
+    The :math:`m` concatenated columns are dropped after concatenation.
 
     Args:
-        output_column_name: output_column_name is a string that represents the
-            name of the outputted, concatenated tensor column. Defaults to
-            "concat_out".
-        include: A list of column names to be included for
-            concatenation. If None, then all columns will be included.
-            Included columns will be dropped after concatenation.
-        exclude: List of column names to be excluded
-            from concatenation. Exclude takes precedence over include.
-        dtype: Optional. The dtype to convert the output column array to.
-        raise_if_missing: Optional. If True, an error will be raised if any
-            of the columns to in 'include' or 'exclude' are
-            not present in the dataset schema.
+        output_column_name: The desired name for the new column.
+            Defaults to ``"concat_out"``.
+        include: A list of columns to concatenate. If ``None``, all columns are
+            concatenated.
+        exclude: A list of column to exclude from concatenation.
+            If a column is in both ``include`` and ``exclude``, the column is excluded
+            from concatenation.
+        dtype: The ``dtype`` to convert the output tensors to. If unspecified,
+            the ``dtype`` is determined by standard coercion rules.
+        raise_if_missing: If ``True``, an error is raised if any
+            of the columns in ``include`` or ``exclude`` don't exist.
+            Defaults to ``False``.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import Concatenator
+
+        :py:class:`Concatenator` combines numeric columns into a column of
+        :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`.
+
+        >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9]})
+        >>> ds = ray.data.from_pandas(df)
+        >>> concatenator = Concatenator()
+        >>> concatenator.fit_transform(ds).to_pandas()
+           concat_out
+        0  [0.5, 0.0]
+        1  [0.2, 3.0]
+        2  [0.9, 1.0]
+
+        By default, the created column is called `"concat_out"`, but you can specify
+        a different name.
+
+        >>> concatenator = Concatenator(output_column_name="tensor")
+        >>> concatenator.fit_transform(ds).to_pandas()
+               tensor
+        0  [0.0, 0.5]
+        1  [3.0, 0.2]
+        2  [1.0, 0.9]
+
+        Sometimes, you might not want to concatenate all of of the columns in your
+        dataset. In this case, you can exclude columns with the ``exclude`` parameter.
+
+        >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9], "Y": ["blue", "orange", "blue"]})
+        >>> ds = ray.data.from_pandas(df)
+        >>> concatenator = Concatenator(exclude=["Y"])
+        >>> concatenator.fit_transform(ds).to_pandas()
+                Y  concat_out
+        0    blue  [0.0, 0.5]
+        1  orange  [3.0, 0.2]
+        2    blue  [1.0, 0.9]
+
+        Alternatively, you can specify which columns to concatenate with the
+        ``include`` parameter.
+
+        >>> concatenator = Concatenator(include=["X0", "X1"])
+        >>> concatenator.fit_transform(ds).to_pandas()
+                Y  concat_out
+        0    blue  [0.0, 0.5]
+        1  orange  [3.0, 0.2]
+        2    blue  [1.0, 0.9]
+
+        Note that if a column is in both ``include`` and ``exclude``, the column is
+        excluded.
+
+        >>> concatenator = Concatenator(include=["X0", "X1", "Y"], exclude=["Y"])
+        >>> concatenator.fit_transform(ds).to_pandas()
+                Y  concat_out
+        0    blue  [0.5, 0.0]
+        1  orange  [0.2, 3.0]
+        2    blue  [0.9, 1.0]
+
+        By default, the concatenated tensor is a ``dtype`` common to the input columns.
+        However, you can also explicitly set the ``dtype`` with the ``dtype``
+        parameter.
+
+        >>> concatenator = Concatenator(include=["X0", "X1"], dtype=np.float32)
+        >>> concatenator.fit_transform(ds).schema()
+        Dataset(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
 
     Raises:
         ValueError if `raise_if_missing=True` and any column name in
