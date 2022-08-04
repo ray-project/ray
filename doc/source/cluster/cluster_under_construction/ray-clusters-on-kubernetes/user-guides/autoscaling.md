@@ -67,7 +67,7 @@ running as a sidecar container in the Ray head pod. This design choice is motiva
 by considerations of scalability.
 
 ### Ray Autoscaler with Kubernetes cluster autoscaler
-The Ray autoscaler and the
+The Ray Autoscaler and the
 [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) complement each other.
 After the Ray autoscaler decides to create a Ray pod, the Kubernetes Cluster Autoscaler
 can scale up a Kubernetes node so that the pod can be placed.
