@@ -88,4 +88,4 @@ of manual techniques to decrease the load.
 One method is to schedule fewer tasks/actors per node by increasing the resource
 requirements specified in the `ray.remote` annotation.
 For example, changing `@ray.remote(num_cpus=2)` to `@ray.remote(num_cpus=4)`.
-will will halve the number of that task or actor that can fit in a given Ray pod.
+will halve the quantity of that task or actor that can fit in a given Ray pod.
