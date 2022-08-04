@@ -102,13 +102,13 @@ TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
 
 TEST(TaskSpecTest, TestActorCreationSchedulingClass) {
   FunctionDescriptor descriptor = FunctionDescriptorBuilder::BuildPython("a", "", "", "");
-  ResourceSet placement_resources(absl::flat_hash_map<std::string, double>({{"CPU", 1.0}}));
+  ResourceSet placement_resources(
+      absl::flat_hash_map<std::string, double>({{"CPU", 1.0}}));
   ResourceSet resources(absl::flat_hash_map<std::string, double>({}));
   SchedulingClassDescriptor descriptor(resources, descriptor, 0, scheduling_strategy);
 
   TaskSpecification actor_task;
   task_spec.GetMutableMessage().set_type(TaskType::ACTOR_CREATION_TASK);
-
 }
 
 TEST(TaskSpecTest, TestTaskSpecification) {
