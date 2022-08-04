@@ -51,10 +51,10 @@ with open(LABEL_PATH, "w") as f:
 # __doc_define_servable_begin__
 @serve.deployment(route_prefix="/classifier")
 class BoostingModel:
-    def __init__(self):
-        with open(MODEL_PATH, "rb") as f:
+    def __init__(self, model_path, label_path):
+        with open(model_path, "rb") as f:
             self.model = pickle.load(f)
-        with open(LABEL_PATH) as f:
+        with open(label_path) as f:
             self.label_list = json.load(f)
 
     async def __call__(self, starlette_request):
@@ -74,5 +74,5 @@ class BoostingModel:
 
 
 # __doc_deploy_begin__
-app = BoostingModel.bind()
+app = BoostingModel.bind(MODEL_PATH, LABEL_PATH)
 # __doc_deploy_end__

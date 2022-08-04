@@ -226,7 +226,7 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 ```
 
 :::{note} 
-`BoostingModel.bind()` returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](deployment-graph-e2e-tutorial).
+`BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](deployment-graph-e2e-tutorial).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.

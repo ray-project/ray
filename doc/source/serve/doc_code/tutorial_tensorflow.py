@@ -5,6 +5,8 @@ from ray import serve
 import os
 import tempfile
 import numpy as np
+
+import tensorflow as tf
 # __doc_import_end__
 # fmt: on
 
@@ -13,8 +15,6 @@ TRAINED_MODEL_PATH = os.path.join(tempfile.gettempdir(), "mnist_model.h5")
 
 
 def train_and_save_model():
-    import tensorflow as tf
-
     # Load mnist dataset
     mnist = tf.keras.datasets.mnist
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
