@@ -31,7 +31,7 @@ The default autoscaler container resources are .5 CPU requests and limits, 512 m
 See the {ref}`configuration guide<kuberay-autoscaling-config>` for details.
 
 ## Ray Autoscaler vs. other autoscalers
-We describe the relationship of the Ray autoscaler to other autoscalers in the Kubernetes
+We describe the relationship between the Ray autoscaler and other autoscalers in the Kubernetes
 ecosystem.
 
 ### Ray Autoscaler vs. Horizontal Pod Autoscaler
