@@ -23,17 +23,6 @@ AIR User Guides
         :text: Using Preprocessors
         :classes: btn-link btn-block stretched-link
 
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: /ray-air/checkpoints
-        :type: ref
-        :text: Using Checkpoints
-        :classes: btn-link btn-block stretched-link
-
-
     ---
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
