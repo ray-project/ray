@@ -119,7 +119,7 @@ class HuggingFaceTrainer(TorchTrainer):
     The training function ran on every Actor will first run the
     specified ``trainer_init_per_worker`` function to obtain an instantiated
     ``transformers.Trainer`` object. The ``trainer_init_per_worker`` function
-    will have access to preprocessed train and evaluation datsets.
+    will have access to preprocessed train and evaluation datasets.
 
     If the ``datasets`` dict contains a training dataset (denoted by
     the "train" key), then it will be split into multiple dataset
@@ -198,7 +198,7 @@ class HuggingFaceTrainer(TorchTrainer):
             )
             ray_train_ds = ray.data.from_huggingface(lm_datasets["train"])
             ray_evaluation_ds = ray.data.from_huggingface(
-                lm_datasets["evaluation"]
+                lm_datasets["validation"]
             )
 
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):

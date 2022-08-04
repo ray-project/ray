@@ -1,13 +1,10 @@
 import numpy as np
 import tensorflow as tf
 
+import ray
 from ray.air import session
 from ray.air.callbacks.keras import Callback
 from ray.air.constants import MODEL_KEY
-from ray.air.examples.tf.tensorflow_linear_dataset_example import (
-    build_model,
-    get_dataset,
-)
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.air.config import ScalingConfig
 from ray.train.tensorflow import (
@@ -15,6 +12,25 @@ from ray.train.tensorflow import (
     prepare_dataset_shard,
     TensorflowPredictor,
 )
+
+
+def get_dataset(a=5, b=10, size=1000):
+    items = [i / size for i in range(size)]
+    dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
+    return dataset
+
+
+def build_model() -> tf.keras.Model:
+    model = tf.keras.Sequential(
+        [
+            tf.keras.layers.InputLayer(input_shape=()),
+            # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(10),
+            tf.keras.layers.Dense(1),
+        ]
+    )
+    return model
 
 
 def train_func(config: dict):

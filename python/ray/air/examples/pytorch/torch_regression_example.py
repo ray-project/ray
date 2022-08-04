@@ -1,5 +1,9 @@
 import argparse
-from typing import Dict, Tuple
+from typing import Tuple
+
+import numpy as np
+import pandas as pd
+from ray.air.checkpoint import Checkpoint
 
 import torch
 import torch.nn as nn
@@ -7,37 +11,29 @@ import torch.nn as nn
 import ray
 import ray.train as train
 from ray.air import session
-from ray.air.config import DatasetConfig, ScalingConfig
+from ray.air.result import Result
 from ray.data import Dataset
-from ray.train.torch import TorchTrainer
+from ray.train.batch_predictor import BatchPredictor
+from ray.train.torch import TorchPredictor, TorchTrainer
+from ray.air.config import ScalingConfig
 
 
-def get_datasets_and_configs(
-    a=5, b=10, size=1000, split=0.8
-) -> Tuple[Dict[str, Dataset], Dict[str, DatasetConfig]]:
-    def get_dataset(a, b, size) -> Dataset:
-        items = [i / size for i in range(size)]
-        dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
-        return dataset
+def get_datasets(split: float = 0.7) -> Tuple[Dataset]:
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
 
-    dataset = get_dataset(a, b, size)
+    def combine_x(batch):
+        return pd.DataFrame(
+            {
+                "x": batch[[f"x{i:03d}" for i in range(100)]].values.tolist(),
+                "y": batch["y"],
+            }
+        )
 
-    train_dataset, validation_dataset = dataset.random_shuffle().split_proportionately(
-        [split]
-    )
-
-    datasets = {
-        "train": train_dataset,
-        "validation": validation_dataset,
-    }
-
-    # Use dataset pipelining
-    dataset_configs = {
-        "train": DatasetConfig(use_stream_api=True),
-        "validation": DatasetConfig(use_stream_api=True),
-    }
-
-    return datasets, dataset_configs
+    dataset = dataset.map_batches(combine_x)
+    train_dataset, validation_dataset = dataset.repartition(
+        num_blocks=4
+    ).train_test_split(split, shuffle=True)
+    return train_dataset, validation_dataset
 
 
 def train_epoch(iterable_dataset, model, loss_fn, optimizer, device):
@@ -74,28 +70,26 @@ def validate_epoch(iterable_dataset, model, loss_fn, device):
 
 def train_func(config):
     batch_size = config.get("batch_size", 32)
-    hidden_size = config.get("hidden_size", 1)
+    hidden_size = config.get("hidden_size", 10)
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
-    train_dataset_pipeline_shard = session.get_dataset_shard("train")
-    validation_dataset_pipeline_shard = session.get_dataset_shard("validation")
+    train_dataset_shard = session.get_dataset_shard("train")
+    validation_dataset = session.get_dataset_shard("validation")
 
-    model = nn.Linear(1, hidden_size)
+    model = nn.Sequential(
+        nn.Linear(100, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1)
+    )
     model = train.torch.prepare_model(model)
 
-    loss_fn = nn.MSELoss()
+    loss_fn = nn.L1Loss()
 
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    train_dataset_iterator = train_dataset_pipeline_shard.iter_epochs()
-    validation_dataset_iterator = validation_dataset_pipeline_shard.iter_epochs()
+    results = []
 
     for _ in range(epochs):
-        train_dataset = next(train_dataset_iterator)
-        validation_dataset = next(validation_dataset_iterator)
-
-        train_torch_dataset = train_dataset.to_torch(
+        train_torch_dataset = train_dataset_shard.to_torch(
             label_column="y",
             feature_columns=["x"],
             label_column_dtype=torch.float,
@@ -113,24 +107,43 @@ def train_func(config):
         device = train.torch.get_device()
 
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
-        result = validate_epoch(validation_torch_dataset, model, loss_fn, device)
-        session.report(result)
+        if session.get_world_rank() == 0:
+            result = validate_epoch(validation_torch_dataset, model, loss_fn, device)
+        else:
+            result = {}
+        results.append(result)
+        session.report(result, checkpoint=Checkpoint.from_dict(dict(model=model)))
 
-
-def train_linear(num_workers=2, use_gpu=False):
-    datasets, dataset_configs = get_datasets_and_configs()
-
-    config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
-    trainer = TorchTrainer(
-        train_func,
-        train_loop_config=config,
-        datasets=datasets,
-        dataset_config=dataset_configs,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
-    )
-    results = trainer.fit()
-    print(results.metrics)
     return results
+
+
+def train_regression(num_workers=2, use_gpu=False):
+    train_dataset, val_dataset = get_datasets()
+    config = {"lr": 1e-2, "hidden_size": 20, "batch_size": 4, "epochs": 3}
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_func,
+        train_loop_config=config,
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        datasets={"train": train_dataset, "validation": val_dataset},
+    )
+
+    result = trainer.fit()
+    print(result.metrics)
+    return result
+
+
+def predict_regression(result: Result):
+    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
+
+    df = pd.DataFrame(
+        [[np.random.uniform(0, 1, size=100)] for i in range(100)], columns=["x"]
+    )
+    prediction_dataset = ray.data.from_pandas(df)
+
+    predictions = batch_predictor.predict(prediction_dataset, dtype=torch.float)
+
+    return predictions
 
 
 if __name__ == "__main__":
@@ -158,10 +171,11 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        # 1 for datasets, 1 for Trainable actor
-        num_cpus = args.num_workers + 2
-        num_gpus = args.num_workers if args.use_gpu else 0
-        ray.init(num_cpus=num_cpus, num_gpus=num_gpus)
+        # 2 workers, 1 for trainer, 1 for datasets
+        ray.init(num_cpus=4)
+        result = train_regression()
     else:
         ray.init(address=args.address)
-    train_linear(num_workers=args.num_workers, use_gpu=args.use_gpu)
+        result = train_regression(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    predictions = predict_regression(result)
+    print(predictions.to_pandas())

@@ -1,6 +1,7 @@
 import argparse
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 
 import ray
@@ -18,15 +19,24 @@ from ray.air.config import ScalingConfig
 
 
 def get_dataset(a=5, b=10, size=1000) -> Dataset:
-    items = [i / size for i in range(size)]
-    dataset = ray.data.from_items([{"x": x, "y": a * x + b} for x in items])
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
+
+    def combine_x(batch):
+        return pd.DataFrame(
+            {
+                "x": batch[[f"x{i:03d}" for i in range(100)]].values.tolist(),
+                "y": batch["y"],
+            }
+        )
+
+    dataset = dataset.map_batches(combine_x)
     return dataset
 
 
 def build_model() -> tf.keras.Model:
     model = tf.keras.Sequential(
         [
-            tf.keras.layers.InputLayer(input_shape=()),
+            tf.keras.layers.InputLayer(input_shape=(100,)),
             # Add feature dimension, expanding (batch_size,) to (batch_size, 1).
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(10),
@@ -46,7 +56,7 @@ def train_func(config: dict):
         multi_worker_model = build_model()
         multi_worker_model.compile(
             optimizer=tf.keras.optimizers.SGD(learning_rate=config.get("lr", 1e-3)),
-            loss=tf.keras.losses.mean_squared_error,
+            loss=tf.keras.losses.mean_absolute_error,
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
@@ -58,7 +68,7 @@ def train_func(config: dict):
             dataset.to_tf(
                 label_column="y",
                 output_signature=(
-                    tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+                    tf.TensorSpec(shape=(None, 100), dtype=tf.float32),
                     tf.TensorSpec(shape=(None), dtype=tf.float32),
                 ),
                 batch_size=batch_size,
@@ -71,7 +81,7 @@ def train_func(config: dict):
     return results
 
 
-def train_tensorflow_linear(num_workers: int = 2, use_gpu: bool = False) -> Result:
+def train_tensorflow_regression(num_workers: int = 2, use_gpu: bool = False) -> Result:
     dataset_pipeline = get_dataset()
     config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
     scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
@@ -86,13 +96,15 @@ def train_tensorflow_linear(num_workers: int = 2, use_gpu: bool = False) -> Resu
     return results
 
 
-def predict_linear(result: Result) -> Dataset:
+def predict_regression(result: Result) -> Dataset:
     batch_predictor = BatchPredictor.from_checkpoint(
         result.checkpoint, TensorflowPredictor, model_definition=build_model
     )
 
-    items = [{"x": np.random.uniform(0, 1)} for _ in range(10)]
-    prediction_dataset = ray.data.from_items(items)
+    df = pd.DataFrame(
+        [[np.random.uniform(0, 1, size=100)] for i in range(100)], columns=["x"]
+    )
+    prediction_dataset = ray.data.from_pandas(df)
 
     predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
 
@@ -130,10 +142,10 @@ if __name__ == "__main__":
         # 2 workers, 1 for trainer, 1 for datasets
         num_gpus = args.num_workers if args.use_gpu else 0
         ray.init(num_cpus=4, num_gpus=num_gpus)
-        result = train_tensorflow_linear(num_workers=2, use_gpu=args.use_gpu)
+        result = train_tensorflow_regression(num_workers=2, use_gpu=args.use_gpu)
     else:
         ray.init(address=args.address)
-        result = train_tensorflow_linear(
+        result = train_tensorflow_regression(
             num_workers=args.num_workers, use_gpu=args.use_gpu
         )
-    predict_linear(result)
+    predict_regression(result)

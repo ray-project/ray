@@ -56,7 +56,7 @@ def PublicAPI(*args, **kwargs):
     return wrap
 
 
-def DeveloperAPI(obj):
+def DeveloperAPI(*args, **kwargs):
     """Annotation for documenting developer APIs.
 
     Developer APIs are lower-level methods explicitly exposed to advanced Ray
@@ -69,12 +69,19 @@ def DeveloperAPI(obj):
         ... def func(x):
         ...     return x
     """
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        return DeveloperAPI()(args[0])
 
-    if not obj.__doc__:
-        obj.__doc__ = ""
-    obj.__doc__ += "\n    DeveloperAPI: This API may change across minor Ray releases."
-    _mark_annotated(obj)
-    return obj
+    def wrap(obj):
+        if not obj.__doc__:
+            obj.__doc__ = ""
+        obj.__doc__ += (
+            "\n    DeveloperAPI: This API may change across minor Ray releases."
+        )
+        _mark_annotated(obj)
+        return obj
+
+    return wrap
 
 
 def Deprecated(*args, **kwargs):
