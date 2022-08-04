@@ -222,47 +222,14 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
         block_format: str = "list",
         tensor_shape: Tuple = (1,),
     ) -> List[ReadTask]:
-        return _RangeDatasourceReader(self, n, block_format, tensor_shape)
-
-    # Example of a read task. In a real datasource, this would pull data
-    # from an external system instead of generating dummy data.
-    def make_block(
-        self,
-        start: int,
-        count: int,
-        block_format: str,
-        tensor_shape: Tuple,
-    ) -> Block:
-        if block_format == "arrow":
-            import pyarrow as pa
-
-            return pa.Table.from_arrays(
-                [np.arange(start, start + count)], names=["value"]
-            )
-        elif block_format == "tensor":
-            import pyarrow as pa
-
-            tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                np.arange(start, start + count),
-                tuple(range(1, 1 + len(tensor_shape))),
-            )
-            return BlockAccessor.batch_to_block(tensor)
-        else:
-            return list(builtins.range(start, start + count))
+        return _RangeDatasourceReader(n, block_format, tensor_shape)
 
 
 class _RangeDatasourceReader(Reader):
-    def __init__(
-        self,
-        ds: RangeDatasource,
-        n: int,
-        block_format: str = "list",
-        tensor_shape: Tuple = (1,),
-    ):
+    def __init__(self, n: int, block_format: str = "list", tensor_shape: Tuple = (1,)):
         self._n = n
         self._block_format = block_format
         self._tensor_shape = tensor_shape
-        self._delegate = ds
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         if self._block_format == "tensor":
@@ -281,7 +248,25 @@ class _RangeDatasourceReader(Reader):
         tensor_shape = self._tensor_shape
         block_size = max(1, n // parallelism)
 
-        make_block = self._delegate.make_block
+        # Example of a read task. In a real datasource, this would pull data
+        # from an external system instead of generating dummy data.
+        def make_block(start: int, count: int) -> Block:
+            if block_format == "arrow":
+                import pyarrow as pa
+
+                return pa.Table.from_arrays(
+                    [np.arange(start, start + count)], names=["value"]
+                )
+            elif block_format == "tensor":
+                import pyarrow as pa
+
+                tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
+                    np.arange(start, start + count),
+                    tuple(range(1, 1 + len(tensor_shape))),
+                )
+                return BlockAccessor.batch_to_block(tensor)
+            else:
+                return list(builtins.range(start, start + count))
 
         i = 0
         while i < n:
@@ -314,16 +299,9 @@ class _RangeDatasourceReader(Reader):
                 input_files=None,
                 exec_stats=None,
             )
-
-            def task(
-                i=i,
-                count=count,
-                block_format=block_format,
-                tensor_shape=tensor_shape,
-            ):
-                return [make_block(i, count, block_format, tensor_shape)]
-
-            read_tasks.append(ReadTask(task, meta))
+            read_tasks.append(
+                ReadTask(lambda i=i, count=count: [make_block(i, count)], meta)
+            )
             i += block_size
 
         return read_tasks

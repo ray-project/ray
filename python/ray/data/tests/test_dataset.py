@@ -20,7 +20,7 @@ from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, _sliding_window
-from ray.data.datasource.datasource import RangeDatasource, Datasource, ReadTask
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
@@ -1449,21 +1449,35 @@ def test_limit_no_redundant_read(ray_start_regular_shared, limit, expected):
         def reset(self):
             self.count = 0
 
-    class CountingRangeDatasource(RangeDatasource):
+    class CountingRangeDatasource(Datasource):
         def __init__(self):
             self.counter = Counter.remote()
 
-        def make_block(self, start, count, block_format, tensor_shape):
-            ray.get(self.counter.increment.remote())
-            return super().make_block(start, count, block_format, tensor_shape)
+        def prepare_read(self, parallelism, n):
+            def range_(i):
+                ray.get(self.counter.increment.remote())
+                return [list(range(parallelism * i, parallelism * i + n))]
+
+            return [
+                ReadTask(
+                    lambda i=i: range_(i),
+                    BlockMetadata(
+                        num_rows=n,
+                        size_bytes=None,
+                        schema=None,
+                        input_files=None,
+                        exec_stats=None,
+                    ),
+                )
+                for i in range(parallelism)
+            ]
 
     source = CountingRangeDatasource()
 
     ds = ray.data.read_datasource(
         source,
         parallelism=10,
-        n=100,
-        block_format="list",
+        n=10,
     )
     ds2 = ds.limit(limit)
     # Check content.
