@@ -287,6 +287,7 @@ The autoscaler scales Ray worker pods up by editing the `replicas` field of the 
 The autoscaler scales a worker pod down when the pod has not been using any logical resources
 for a {ref}`set period of time<kuberay-idle-timeout>`. Resources in this context are the logical Ray resources
 (such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
+Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
 
 The autoscaler scales Ray worker pods down by adding the Ray pods' names to the RayCluster CR's
 `scaleStrategy.workersToDelete` list and decrementing the `replicas` field of the relevant
@@ -331,6 +332,7 @@ Ray pods.
 `IdleTimeoutSeconds` is the number of seconds to wait before scaling down a worker pod
 which is not using resources. Resources in this context are the logical Ray resources
 (such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
+Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
 
 `IdleTimeoutSeconds` defaults to 60 seconds.
 
