@@ -1,4 +1,4 @@
-(configuring-serve-deployments)=
+(serve-configuring-serve-deployments)=
 
 # Configuring Serve Deployments
 

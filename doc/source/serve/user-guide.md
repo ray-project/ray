@@ -5,7 +5,7 @@ If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick St
 
 This user guide will help you navigate the Ray Serve project and show you how achieve several tasks, for instance
 you will learn
-- [Configuring Serve Deployments](configuring-serve-deployments)
+- [Configuring Serve Deployments](serve-configuring-serve-deployments)
 - [Configuring HTTP and Bring Your own FastAPI app](http-guide)
 - [Using HTTP Adapters](http-adapters)
 - [Composing Deployments](handle-guide)
