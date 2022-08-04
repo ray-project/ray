@@ -63,7 +63,7 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
         # List of other objects found during the serializatoin pass.
         # This is used to store references to objects so they won't be
         # serialized by cloudpickle.
-        self._objects = WeakValueDictionary()
+        self._objects = []
         # Replacement table to consult during deserialization.
         self._replace_table: Dict[SourceType, TransformedType] = None
         _instances[id(self)] = self
