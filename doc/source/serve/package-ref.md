@@ -63,7 +63,7 @@ Gets latest config that Serve has received. This config represents the current g
 
 ```
 GET /api/serve/deployments/ HTTP 1.1
-Host: http://localhost:8265/
+Host: http://localhost:52365/
 Accept: application/json
 ```
 
@@ -94,7 +94,7 @@ Declaratively deploys the Serve application. Starts Serve on the Ray cluster if 
 
 ```
 PUT /api/serve/deployments/ HTTP 1.1
-Host: http://localhost:8265/
+Host: http://localhost:52365/
 Accept: application/json
 
 {
@@ -126,7 +126,7 @@ Gets the Serve application's current status, including all the deployment status
 
 ```
 GET /api/serve/deployments/ HTTP 1.1
-Host: http://localhost:8265/
+Host: http://localhost:52365/
 Accept: application/json
 ```
 
@@ -181,7 +181,7 @@ effect if Serve is not running on the Ray cluster.
 
 ```
 DELETE /api/serve/deployments/ HTTP 1.1
-Host: http://localhost:8265/
+Host: http://localhost:52365/
 Accept: application/json
 ```
 
