@@ -173,42 +173,61 @@ for container envs.
 ## Ray Start Parameters
 The ``rayStartParams`` field of each group spec is a string-string map of arguments to the Ray
 container’s `ray start` entrypoint. For the full list of arguments, refer to
-the documentation for `ray start`. We make special note of the following arguments:
+the documentation for {ref}`ray start<ray-start-doc>`. We make special note of the following arguments:
 
--   **block**: This field tells the Ray scheduler how many CPUs are
-    available to the Ray pod. The CPU count can be autodetected from the
-    Kubernetes resource limits specified in the group spec’s pod
-    `template`. It is sometimes useful to override this autodetected
-    value. For example, setting `num-cpus:"0"` will prevent Ray
-    workloads with non-zero CPU requirements from being scheduled on the
-    head node.
+#### block
+For most use-cases, this field should be set to "true" for all Ray pod. The container's Ray
+entrypoint will then block forever until a Ray process exits, at which point the container
+will exit. If this field is omitted, `ray start` will start Ray processes in the background and the container
+will subsequently sleep forever until terminated. (Future versions of KubeRay might set
+block to true by default. See [KubeRay issue #368](https://github.com/ray-project/kuberay/issues/368).)
 
--   **dashboard-host**: This field tells the Ray scheduler how many CPUs are
-    available to the Ray pod. The CPU count can be autodetected from the
-    Kubernetes resource limits specified in the group spec’s pod
-    `template`. It is sometimes useful to override this autodetected
-    value. For example, setting `num-cpus:"0"` will prevent Ray
-    workloads with non-zero CPU requirements from being scheduled on the
-    head node.
+#### dashboard-host
+For most use-cases, this field should be set to "0.0.0.0" for the Ray head pod.
+This is required to expose the Ray dashboard outside the Ray cluster. (Future versions might set
+this parameter by default.)
 
--   **num-cpus**: This field tells the Ray scheduler how many CPUs are
-    available to the Ray pod. The CPU count can be autodetected from the
-    Kubernetes resource limits specified in the group spec’s pod
-    `template`. It is sometimes useful to override this autodetected
-    value. For example, setting `num-cpus:"0"` will prevent Ray
-    workloads with non-zero CPU requirements from being scheduled on the
-    head node.
+#### num-cpus
+This optional field tells the Ray scheduler and autoscaler how many CPUs are
+available to the Ray pod. The CPU count can be autodetected from the
+Kubernetes resource limits specified in the group spec’s pod
+`template`. However, it is sometimes useful to override this autodetected
+value. For example, setting `num-cpus:"0"` for the Ray head pod will prevent Ray
+workloads with non-zero CPU requirements from being scheduled on the head.
 
--   **num-gpus**: This specifies the number of GPUs available to the Ray
-    pod. At the time of writing, this field is **not** detected from the
-    group spec’s pod `template`. Thus, `num-gpus` must be set explicitly
-    for GPU workloads.
+#### num-gpus
+This optional field specifies the number of GPUs available to the Ray pod.
+In KubeRay versions since 0.3.0, the number of GPUs can be auto-detected from Ray container resource limits.
+
+#### resources
+This field can be used to specify custom resource capacities for the Ray pod.
+These resource capacities will be advertised to the Ray scheduler and Ray autoscaler.
+For example, the following annotation will mark a Ray pod as having 1 unit of `Custom1` capacity
+and 5 units of `Custom2` capacity.
+```yaml
+rayStartParams:
+    resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
+```
+You can then annotate tasks and actors with annotations like `@ray.remote(resources={"Custom2": 1})`.
+The Ray scheduler and autoscaler will take appropriate action to schedule such tasks.
+
+Note the format used to express the resources string. In particular, note
+that the backslashes are present as literal characters in the string.
+If you are specifying a RayCluster programmatically, you may have to
+[escape the backslashes](https://github.com/ray-project/ray/blob/cd9cabcadf1607bcda1512d647d382728055e688/python/ray/tests/kuberay/test_autoscaling_e2e.py#L92) to make sure they are processed as part of the string.
 
 ## Managing compute resources
 Memory and CPU specified in Ray container.
 
 ## Ports, exposing Ray services
 Under `headGroupSpec`, the head pod's container should list the ports for the services it exposes.
+```yaml
+ports:
+- containerPort: 6379
+name: gcs
+- containerPort: 8265
+name: dashboard
+- containerPort: 10001
+name: client
+```
 The KubeRay operator will configure a Service exposing these ports.
-
-## Volume mounts, logging
