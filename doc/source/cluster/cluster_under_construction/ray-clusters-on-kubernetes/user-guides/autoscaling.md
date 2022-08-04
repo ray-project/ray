@@ -66,7 +66,7 @@ By contrast, each Ray cluster is managed by its own Ray autoscaler process,
 running as a sidecar container in the Ray head pod. This design choice is motivated
 by considerations of scalability.
 
-### Ray Autoscaler with Kubernetes cluster autoscaler
+### Ray Autoscaler with Kubernetes Cluster Autoscaler
 The Ray Autoscaler and the
 [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) complement each other.
 After the Ray autoscaler decides to create a Ray pod, the Kubernetes Cluster Autoscaler
@@ -79,7 +79,7 @@ Node scaling events. (We say "roughly" because it is possible for a Ray pod be d
 with a new Ray pod before the underlying Kubernetes Node is scaled down.)
 
 
-### Vertical pod autoscaler
+### Vertical Pod Autoscaler
 There is no relationship between the Ray Autoscaler and the Kubernetes
 [Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) (VPA),
 which is meant to size individual pods to the appropriate size based on current and past usage.
