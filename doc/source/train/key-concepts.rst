@@ -33,7 +33,7 @@ construct a Trainer, you can provide:
 
 After instatiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() <ray.air.Trainer.fit>`.
 
-.. literalinclude:: doc_code/xgboost_trainer.py
+.. literalinclude:: /ray-air/doc_code/xgboost_trainer.py
     :language: python
 
 

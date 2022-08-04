@@ -69,7 +69,7 @@ parts:
         sections:
           - file: train/getting-started
           - file: train/key-concepts
-          - file: train/user-guide
+          - file: train/user-guides
             sections:
               - file: train/dl_guide
               - file: train/gbdt
