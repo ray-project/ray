@@ -414,6 +414,7 @@ class ServeController:
         config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if config_checkpoint is not None:
             _, last_config_dict, last_version_dict = pickle.loads(config_checkpoint)
+            # If import_path or runtime_env is changed, it is considered a code change
             if last_config_dict.get("import_path") == config_dict.get(
                 "import_path"
             ) and last_config_dict.get("runtime_env") == config_dict.get("runtime_env"):

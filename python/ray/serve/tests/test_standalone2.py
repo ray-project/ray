@@ -615,12 +615,7 @@ class TestDeployApp:
                 "import_path"
             ] = "ray.serve.tests.test_config_files.pid.bnode"
         elif field_to_update == "runtime_env":
-            config_template["runtime_env"] = {
-                "working_dir": (
-                    "https://github.com/ray-project/test_dag/archive/"
-                    "76a741f6de31df78411b1f302071cde46f098418.zip"
-                )
-            }
+            config_template["runtime_env"] = {"env_vars": {"test_var": "test_val"}}
         elif field_to_update == "deployments":
             updated_options = {
                 "num_replicas": 2,
