@@ -3,18 +3,15 @@
 Key Concepts
 ============
 
-Trainers
---------
-``Trainers`` are the centerpiece of Ray Train and are responsible for executing a (distributed) training run.
-Trainers are configured with two main configuration objects:
+There are 4 main concepts in the Ray Train library.
 
-* :class:`RunConfig <ray.air.config.RunConfig>`
-* :class:`ScalingConfig <ray.air.config.ScalingConfig>`
+Each `Trainer` generates a `result` and framework-specific `model checkpoint`.
+The checkpoint can be used with a `framework-specific predictor`
+to perform scalable batch prediction.
 
-The output of a Ray training run is a :ref:`result object <train-key-concepts-results>` that contains
-metrics from the training run and the latest saved :ref:`model checkpoint <air-checkpoint-ref>`.
+.. https://docs.google.com/drawings/d/1FezcdrXJuxLZzo6Rjz1CHyJzseH8nPFZp6IUepdn3N4/edit
 
-Each Trainer generates a framework-specific checkpoint, which is used with a framework-specific predictor.
+.. image:: images/train-specific.svg
 
 .. list-table::
 
@@ -45,6 +42,18 @@ Each Trainer generates a framework-specific checkpoint, which is used with a fra
     * - :class:`RLTrainer <ray.train.rl.RLTrainer>`
       - :class:`RLCheckpoint <ray.train.rl.RLCheckpoint>`
       - :class:`RLPredictor <ray.train.rl.RLPredictor>`
+
+
+Trainers
+--------
+``Trainers`` are the centerpiece of Ray Train and are responsible for executing a (distributed) training run.
+Trainers are configured with two main configuration objects:
+
+* :class:`RunConfig <ray.air.config.RunConfig>`
+* :class:`ScalingConfig <ray.air.config.ScalingConfig>`
+
+The output of a Ray training run is a :ref:`result object <train-key-concepts-results>` that contains
+metrics from the training run and the latest saved :ref:`model checkpoint <air-checkpoint-ref>`.
 
 Trainers can also handle :ref:`datasets <air-ingest>` and :ref:`preprocessors <air-preprocessors>` for
 scalable data ingest and preprocessing.
