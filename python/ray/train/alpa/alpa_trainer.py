@@ -36,6 +36,13 @@ class AlpaTrainer(BaseTrainer):
         https://arxiv.org/pdf/2201.12023.pdf
     """
 
+    _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
+        "num_workers",
+        "resources_per_worker",
+        "use_gpu",
+        "placement_strategy",
+    ]
+
     _dataset_config = {
         TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=False),
         WILDCARD_KEY: DatasetConfig(split=False),
