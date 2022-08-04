@@ -35,7 +35,9 @@ async def test_submit_no_ray_address(call_ray_start):  # noqa: F811
     """Test that a job script with an unspecified Ray address works."""
 
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(address=address_info['gcs_address'], nums_reconnect_retry=0)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
     job_manager = JobManager(gcs_aio_client)
 
     init_ray_no_address_script = """
@@ -78,7 +80,9 @@ def shared_ray_instance():
 @pytest.fixture
 async def job_manager(shared_ray_instance):
     address_info = shared_ray_instance
-    gcs_aio_client = GcsAioClient(address=address_info['gcs_address'], nums_reconnect_retry=0)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
     yield JobManager(gcs_aio_client)
 
 
@@ -471,7 +475,9 @@ class TestRuntimeEnv:
         """
         run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
         runtime_env = {"env_vars": env_vars}
-        job_id = await job_manager.submit_job(entrypoint=run_cmd, runtime_env=runtime_env)
+        job_id = await job_manager.submit_job(
+            entrypoint=run_cmd, runtime_env=runtime_env
+        )
 
         await async_wait_for_condition_async_predicate(
             check_job_succeeded, job_manager=job_manager, job_id=job_id

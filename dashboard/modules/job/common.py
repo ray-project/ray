@@ -1,3 +1,4 @@
+import asyncio
 import pickle
 import time
 from dataclasses import dataclass, replace
@@ -158,7 +159,17 @@ class JobInfoStorageClient:
                 self.JOB_DATA_KEY_PREFIX
             ), "Unexpected format for internal_kv key for Job submission"
             job_ids.append(job_id_with_prefix[len(self.JOB_DATA_KEY_PREFIX) :])
-        return {job_id: await self.get_info(job_id) for job_id in job_ids}
+
+        async def get_job_info(job_id: str):
+            job_info = await self.get_info(job_id)
+            return job_id, job_info
+
+        return {
+            job_id: job_info
+            for job_id, job_info in await asyncio.gather(
+                *[get_job_info(job_id) for job_id in job_ids]
+            )
+        }
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
