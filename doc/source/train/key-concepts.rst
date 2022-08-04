@@ -8,14 +8,47 @@ Trainers
 ``Trainers`` are the centerpiece of Ray Train and are responsible for executing a (distributed) training run.
 Trainers are configured with two main configuration objects:
 
-* :class:`RunConfig <ray.air.config.RunConfig>` and
-* :class:`ScalingConfig <ray.air.config.ScalingConfig>`.
+* :class:`RunConfig <ray.air.config.RunConfig>`
+* :class:`ScalingConfig <ray.air.config.ScalingConfig>`
+
+The output of a Ray training run is a :ref:`result object <train-key-concepts-results>` that contains
+metrics from the training run and the latest saved :ref:`model checkpoint <air-checkpoint-ref>`.
+
+Each Trainer generates a framework-specific checkpoint, which is used with a framework-specific predictor.
+
+.. list-table::
+
+    * - **Trainer Class**
+      - **Checkpoint Class**
+      - **Predictor Class**
+    * - :class:`TorchTrainer <ray.train.torch.TorchTrainer>`
+      - :class:`TorchCheckpoint <ray.train.torch.TorchCheckpoint>`
+      - :class:`TorchPredictor <ray.train.torch.TorchPredictor>`
+    * - :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`
+      - :class:`TensorflowCheckpoint <ray.train.tensorflow.TensorflowCheckpoint>`
+      - :class:`TensorflowPredictor <ray.train.tensorflow.TensorflowPredictor>`
+    * - :class:`HorovodTrainer <ray.train.horovod.HorovodTrainer>`
+      - Torch/Tensorflow Checkpoint
+      - Torch/Tensorflow Predictor
+    * - :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>`
+      - :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>`
+      - :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
+    * - :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`
+      - :class:`LightGBMCheckpoint <ray.train.lightgbm.LightGBMCheckpoint>`
+      - :class:`LightGBMPredictor <ray.train.lightgbm.LightGBMPredictor>`
+    * - :class:`SklearnTrainer <ray.train.sklearn.SklearnTrainer>`
+      - :class:`SklearnCheckpoint <ray.train.sklearn.SklearnCheckpoint>`
+      - :class:`SklearnPredictor <ray.train.sklearn.SklearnPredictor>`
+    * - :class:`HuggingFaceTrainer <ray.train.huggingface.HuggingFaceTrainer>`
+      - :class:`HuggingFaceCheckpoint <ray.train.huggingface.HuggingFaceCheckpoint>`
+      - :class:`HuggingFacePredictor <ray.train.huggingface.HuggingFacePredictor>`
+    * - :class:`RLTrainer <ray.train.rl.RLTrainer>`
+      - :class:`RLCheckpoint <ray.train.rl.RLCheckpoint>`
+      - :class:`RLPredictor <ray.train.rl.RLPredictor>`
 
 Trainers can also handle :ref:`datasets <air-ingest>` and :ref:`preprocessors <air-preprocessors>` for
 scalable data ingest and preprocessing.
 
-The output of a Ray training run is a :ref:`result object <train-key-concepts-results>` that contains
-metrics from the training run and the latest saved :ref:`model checkpoint <air-checkpoint-ref>`.
 
 .. tabbed::  Deep learning trainers
 
@@ -73,7 +106,7 @@ metrics from the training run and the latest saved :ref:`model checkpoint <air-c
 Configuration
 -------------
 
-Trainers can be configured with configuration objects. There are two main configuration classes,
+Trainers is configured with configuration objects. There are two main configuration classes,
 the :class:`ScalingConfig <ray.air.config.ScalingConfig>` and the :class:`RunConfig <ray.air.config.RunConfig>`.
 The latter contains subconfigurations, such as the :class:`FailureConfig <ray.air.config.FailureConfig>`,
 :class:`SyncConfig <ray.tune.syncer.SyncConfig>` and :class:`CheckpointConfig <ray.air.config.CheckpointConfig>`.
@@ -86,7 +119,7 @@ resources per worker.
 
 The properties of the scaling configuration are :ref:`tunable <air-tuner-search-space>`.
 
-For more info, take a look at the :class:`ScalingConfig API reference <ray.air.config.ScalingConfig>`.
+:class:`ScalingConfig API reference <ray.air.config.ScalingConfig>`
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -160,11 +193,12 @@ are :ref:`not tunable <air-tuner-search-space>`.
 
 .. _train-key-concepts-session:
 
-Session
--------
+Session (DL Trainers)
+---------------------
+
 The session object is used to interact with the Ray Train training run from within your custom functions.
 
-For instance, a :class:`DataParallelTrainer <ray.train.data_parallel_trainer.DataParallelTrainer>` accepts
+For instance, TorchTrainers and TensorflowTrainers accept
 a ``train_loop_per_worker`` argument.
 In this train loop, you can use :func:`session.report() <ray.air.session.report>` to report
 training results or checkpoints to Ray Train.
@@ -222,10 +256,13 @@ checkpoints.
 
 Predictors
 ----------
-Predictors are the counterpart to Trainers. A Trainer trains a model on a dataset. A predictor
+
+Predictors are the counterpart to Trainers. A Trainer trains a model on a dataset, and a predictor
 uses the resulting model and performs inference on it.
 
-Each Trainer has a respective Predictor implementation that is compatible with the generated checkpoints.
+Each Trainer has a respective Predictor implementation that is compatible with its generated checkpoints.
+
+See :ref:`the Predictors user guide <air-predictors>` for more information and examples.
 
 .. dropdown:: Example: :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
 
@@ -237,7 +274,8 @@ Each Trainer has a respective Predictor implementation that is compatible with t
 
 BatchPredictor
 ~~~~~~~~~~~~~~
-The BatchPredictor can be used to scale up prediction over a Ray cluster. It takes
+
+The BatchPredictor is used to scale up prediction over a Ray cluster. It takes
 a Ray Dataset as input.
 
 .. dropdown:: Example: Batch prediction with :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`

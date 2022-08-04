@@ -160,7 +160,7 @@ system. Here are examples for some of the commonly used trainers:
     Now let's convert this to a distributed multi-worker training function!
     All you need to do is:
 
-    1. Set the *global* batch size - each worker will process the same size
+    1. Set the per-worker batch size - each worker will process the same size
        batch as in the single-worker code.
     2. Choose your TensorFlow distributed training strategy. In this example
        we use the ``MultiWorkerMirroredStrategy``.

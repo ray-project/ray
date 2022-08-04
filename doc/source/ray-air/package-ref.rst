@@ -174,6 +174,14 @@ Scikit-Learn
     :members:
     :show-inheritance:
 
+
+Reinforcement Learning (RLlib)
+##############################
+
+.. automodule:: ray.train.rl
+    :members:
+    :show-inheritance:
+
 .. _air-builtin-callbacks:
 
 Monitoring Integrations
