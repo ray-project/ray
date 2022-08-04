@@ -548,31 +548,38 @@ def test_override_failure(shutdown_only):
     """Tests invalid override behaviors."""
     ray.init()
 
-    with pytest.raises(ValueError):
-
-        @ray.remote(runtime_env={"working_dir": "."})
-        def f():
-            pass
+    @ray.remote(runtime_env={"working_dir": "."})
+    def f():
+        pass
 
     @ray.remote
     def g():
         pass
 
-    with pytest.raises(ValueError):
-        g.options(runtime_env={"working_dir": "."})
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+        ray.get(f.remote())
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+        ray.get(g.options(runtime_env={"working_dir": "."}).remote())
 
-        @ray.remote(runtime_env={"working_dir": "."})
-        class A:
+
+    @ray.remote(runtime_env={"working_dir": "."})
+    class A:
+        def f(self):
             pass
 
     @ray.remote
     class B:
-        pass
+        def f(self):
+            pass
 
-    with pytest.raises(ValueError):
-        B.options(runtime_env={"working_dir": "."})
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+        a = A.remote()
+        ray.get(a.f.remote())
+
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+        b = B.options(runtime_env={"working_dir": "."}).remote()
+        ray.get(b.f.remote())
 
 
 if __name__ == "__main__":

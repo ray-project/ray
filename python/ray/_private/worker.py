@@ -1505,7 +1505,7 @@ def init(
         or job_config.runtime_env.get("java_jars")
         or job_config.runtime_env.get("native_libraries")
     ):
-        # global_worker.set_load_code_from_local(True)
+        global_worker.set_load_code_from_local(True)
         pass
     else:
         # Because `ray.shutdown()` doesn't reset this flag, for multiple
