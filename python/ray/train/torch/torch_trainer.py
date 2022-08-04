@@ -124,13 +124,16 @@ class TorchTrainer(DataParallelTrainer):
                 dataset_shard = session.get_dataset_shard("train")
                 model = NeuralNetwork()
                 loss_fn = nn.MSELoss()
-                optimizer = optim.SGD(model.parameters(), lr=0.1)
+                optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
                 model = train.torch.prepare_model(model)
 
                 for epoch in range(num_epochs):
-                    for batch in iter(dataset_shard.to_torch(batch_size=32)):
-                        output = model(input)
+                    for batches in dataset_shard.iter_torch_batches(
+                        batch_size=32, dtypes=torch.float
+                    ):
+                        inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
+                        output = model(inputs)
                         loss = loss_fn(output, labels)
                         optimizer.zero_grad()
                         loss.backward()
@@ -144,7 +147,9 @@ class TorchTrainer(DataParallelTrainer):
                         ),
                     )
 
-            train_dataset = ray.data.from_items([1, 2, 3])
+            train_dataset = ray.data.from_items(
+                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+            )
             scaling_config = ScalingConfig(num_workers=3)
             # If using GPUs, use the below scaling config instead.
             # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
