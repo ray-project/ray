@@ -8,7 +8,23 @@ if TYPE_CHECKING:
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 import jax
 from jax._src.lib import xla_bridge as xb
+import alpa
 
+from ray.train.constants import (
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+)
+
+
+try:
+    import alpa
+    from alpa.device_mesh import VirtualPhysicalMesh, DeviceCluster
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "alpa isn't installed. To install alpa, run 'pip install " "alpa'."
+    )
 
 def is_ray_node_resource(resource_key):
     """Check if the current resource is the host ip."""
@@ -152,3 +168,170 @@ def get_bundle2ip(pg=None):
         ip_list.append(dict_bg2ip[str(i)])
 
     return ip_list
+
+
+
+class AlpaManager:
+    """AlpaManager is responsible for cluster setup and management.
+    """
+    def __init__(self, scaling_config): 
+        # collect ray cluster info
+        # constrain according to the ScalingConfig
+        
+
+        # scaling parameters
+        self.scaling_config = scaling_config
+
+        self.resources_per_worker = self.scaling_config.resources_per_worker
+
+        num_workers = self.scaling_config.num_workers
+        num_gpus = int(self.scaling_config.use_gpu)
+        if "GPU" in self.resources_per_worker:
+            num_gpus = self.resources_per_worker["GPU"]
+
+        # head node info
+        from ray._private.worker import _global_node as ray_global_node
+        self.head_info = ray_global_node.address_info
+        self.head_ip = self.head_info["node_ip_address"]
+
+        # Gather host ids
+        self.host_info = []
+        self.host_ips = []
+
+        for node in ray.nodes():
+            for key in node["Resources"]:
+                if is_ray_node_resource(key):
+                    self.host_info.append(node)
+                    self.host_ips.append(key.split("node:")[-1])
+
+        # Gather device info
+        self.host_num_devices = []
+        for host_info in self.host_info:
+            number = host_info["Resources"]["GPU"]
+            assert number.is_integer()
+            self.host_num_devices.append(int(number))
+
+        # map: host ip to host info
+        self.dict_host_ip2info = dict(zip(self.host_ips, self.host_info))
+
+        # number of workers filter
+        # the number of workers can not exceeed the number of devices
+        num_workers = min(num_workers, len(self.host_info))
+        node_ids = list(range(num_workers))
+
+        # filter the number of gpus per worker
+        self.host_num_devices = [self.host_num_devices[i] for i in range(num_workers)]
+        num_devices_per_host = min(self.host_num_devices)
+        num_devices_per_host = min(num_gpus, num_devices_per_host)
+
+        self.num_devices_per_host = num_devices_per_host
+        self.node_ids = node_ids
+        self.num_workers = num_workers
+
+
+        self.placement_group = None
+
+
+    def init_global_cluster(self): 
+        # initilize the global cluster and virtual 
+        # physical mesh cluster
+
+        # construction is same to `init_global_cluster`
+        # https://github.com/alpa-projects/alpa/blob/388594f00d1ee0fe4dc0d51c2d8567da13226fdf/alpa/device_mesh.py#L2085-L2096
+        # and adapt the cluster construction according to
+        # placement group
+        alpa.api.is_initialized = True
+        update_jax_platform("cpu")
+
+        # get the placement group
+        self._create_placement_group()
+
+
+        # get bundle's ip address
+        ips = get_bundle2ip(self.placement_group)
+        bundle_specs = self.placement_group.bundle_specs
+
+        # filter out the bundle index with device (GPUs)
+        device_bundle_idx_list = [i for i, bundle_spec in enumerate(bundle_specs) if bundle_spec.get('GPU', 0) > 0]
+        ips = [ ips[bundle_idx] for bundle_idx in device_bundle_idx_list]
+
+        # filter nodes according to the placment group
+        node_info = [self.dict_host_ip2info[ip] for ip in ips]
+
+        # setup Device Cluster
+        cluster = DeviceCluster()
+        cluster.host_info = node_info
+        cluster.host_num_devices = [self.num_devices_per_host for i in range(self.num_workers)]
+        alpa.device_mesh.set_global_cluster(cluster)
+
+
+        # setup Virtual Physical Mesh
+        vp_mesh = VirtualPhysicalMesh(
+            host_ids=self.node_ids,
+            host_info=node_info,
+            head_ip=self.head_ip,
+            num_devices_per_host=self.num_devices_per_host,
+            parent=None,
+        )
+        alpa.device_mesh.set_global_virtual_physical_mesh(vp_mesh)
+
+    def _create_placement_group(self):
+        """Creates a placement group if it does not exist.
+
+        If a placement group is already detected (Tune) this will be a no-op.
+
+        By default the placement group will be created with `SPREAD` strategy.
+        This is optimized for colocating GPUs on different nodes.
+
+        If a placement group is created it will be stored as
+        self._placement_group.
+        """
+        current_placement_group = get_current_placement_group()
+        worker = ray._private.worker.global_worker
+        should_capture_child_tasks_in_placement_group = (
+            worker.should_capture_child_tasks_in_placement_group
+        )
+        should_create_placement_group = (
+            current_placement_group is None
+            or not should_capture_child_tasks_in_placement_group
+        )
+
+        ic(should_create_placement_group)
+
+        if should_create_placement_group:
+            additional_resources_per_worker = (
+                self._additional_resources_per_worker or {}
+            )
+            bundle = {
+                "CPU": self._num_cpus_per_worker,
+                "GPU": self._num_gpus_per_worker,
+                **additional_resources_per_worker,
+            }
+            bundles = [bundle.copy() for _ in range(self._num_workers)]
+
+            # AlpaTrainer: `SPREAD` strategy is required 
+            strategy = "SPREAD"
+
+            placement_group = ray.util.placement_group(bundles, strategy=strategy)
+            logger.debug("Waiting for placement group to start.")
+            timeout = env_integer(TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, 100)
+            ready, _ = ray.wait([placement_group.ready()], timeout=timeout)
+            if ready:
+                logger.debug("Placement group has started.")
+            else:
+                raise TimeoutError(
+                    "Placement group creation timed out. Make sure your "
+                    "cluster either has enough resources or use an "
+                    "autoscaling cluster. If you are running on a cluster, "
+                    "make sure you specify an address in `ray.init()`, for example, "
+                    '`ray.init("auto")`. You can also increase the timeout by setting '
+                    "the TRAIN_PLACEMENT_GROUP_TIMEOUT_S environment variable. "
+                    "Current resources available: {}, resources requested by the "
+                    "placement group: {}".format(
+                        ray.available_resources(), placement_group.bundle_specs
+                    )
+                )
+            self.placement_group = placement_group
+
+        else: 
+            self.placement_group = current_placement_group

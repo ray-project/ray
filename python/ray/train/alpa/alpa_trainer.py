@@ -29,7 +29,7 @@ from ray.air.config import DatasetConfig
 
 try:
     import alpa
-    from alpa.device_mesh import VirtualPhysicalMesh
+    from alpa.device_mesh import VirtualPhysicalMesh, DeviceCluster
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "alpa isn't installed. To install alpa, run 'pip install " "alpa'."
@@ -39,7 +39,8 @@ from ray.train.alpa.utils import (
     is_ray_node_resource,
     ScalingConfigWithIPs,
     update_jax_platform,
-    get_bundle2ip
+    get_bundle2ip, 
+    AlpaManager
 )
 from icecream import ic
 
@@ -76,89 +77,9 @@ class AlpaTrainer(BaseTrainer):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-
-        # if not ray.is_initialized():
-        #     ray.init()
-
-        # update_jax_platform("cpu")
-        # # connect to the ray cluster
-        if not alpa.api.is_initialized:
-            alpa.init("ray")
-
-        self.cluster = alpa.get_global_cluster()
-
-
-        logger.info(
-            "Distributed Training with Alpa using "
-            f"{self.cluster.num_cpus} cpus and {self.cluster.num_devices} gpus."
-        )
-
-        # scaling parameters
-        self.scaling_config = scaling_config
-        self.resources_per_worker = self.scaling_config.resources_per_worker
-
-        num_workers = self.scaling_config.num_workers
-        num_gpus = int(self.scaling_config.use_gpu)
-        if "GPU" in self.resources_per_worker:
-            num_gpus = self.resources_per_worker["GPU"]
-
-        # head node info
-        from ray._private.worker import _global_node as ray_global_node
-
-        self.head_info = ray_global_node.address_info
-        self.head_ip = self.head_info["node_ip_address"]
-
-        # Gather host ids
-        self.host_info = []
-        self.host_ips = []
-
-        for node in ray.nodes():
-            for key in node["Resources"]:
-                if is_ray_node_resource(key):
-                    self.host_info.append(node)
-                    self.host_ips.append(key.split("node:")[-1])
-
-        # Gather device info
-        self.host_num_devices = []
-        for host_info in self.host_info:
-            number = host_info["Resources"]["GPU"]
-            assert number.is_integer()
-            self.host_num_devices.append(int(number))
-
-        self.dict_host_ip2info = dict(zip(self.host_ips, self.host_info))
-        # ic(self.dict_host_ip2info)
-        # exit()
-        # ic(self.host_info)
-        # exit()
-
-        # number of workers filter
-        # the number of workers can not exceeed the number of devices
-        num_workers = min(num_workers, len(self.host_info))
-        node_ids = list(range(num_workers))
-        # node_info = [self.host_info[i] for i in range(num_workers)]
-
-        # filter the number of gpus per worker
-        self.host_num_devices = [self.host_num_devices[i] for i in range(num_workers)]
-        num_devices_per_host = min(self.host_num_devices)
-        num_devices_per_host = min(num_gpus, num_devices_per_host)
-
-        self.num_devices_per_host = num_devices_per_host
-        self.node_ids = node_ids
-
-        # define later
-        # self.vp_mesh = VirtualPhysicalMesh(
-        #     host_ids=node_ids,
-        #     host_info=node_info,
-        #     head_ip=self.head_ip,
-        #     num_devices_per_host=num_devices_per_host,
-        #     parent=None,
-        # )
-
-        # alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
-
-        # self.cluster.host_info = node_info
-        self.cluster.host_num_devices = [num_devices_per_host for i in range(num_workers)]
-        # alpa.device_mesh.set_global_cluster(cluster)
+        # set up alpa cluster manager
+        self.alpa_manager = AlpaManager(scaling_config) 
+        self.host_ips = self.alpa_manager.host_ips
 
         self._train_loop = train_loop_per_worker
         self._train_loop_config = train_loop_config
@@ -176,35 +97,9 @@ class AlpaTrainer(BaseTrainer):
         # otherwise RuntimeError: Backend 'gpu' failed to initialize:
         # FAILED_PRECONDITION: No visible GPU devices.
         # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-
-        current_placement_group = get_current_placement_group()
-        ray.wait([current_placement_group.ready()])
-
-        ips = get_bundle2ip(current_placement_group)
-
-        bundle_specs = current_placement_group.bundle_specs
-
-        # filter out the bundle index with device (GPUs)
-        device_bundle_idx_list = [i for i, bundle_spec in enumerate(bundle_specs) if bundle_spec.get('GPU', 0) > 0]
-        # ic(ips, device_bundle_idx_list)
-        ips = [ ips[bundle_idx] for bundle_idx in device_bundle_idx_list]
-        ic(ips)
-        node_info = [self.dict_host_ip2info[ip] for ip in ips]
-
-        self.cluster.host_info = node_info
-        alpa.device_mesh.set_global_cluster(self.cluster)
-
-        vp_mesh = VirtualPhysicalMesh(
-            host_ids=self.node_ids,
-            host_info=node_info,
-            head_ip=self.head_ip,
-            num_devices_per_host=self.num_devices_per_host,
-            parent=None,
-        )
-
-        alpa.device_mesh.set_global_virtual_physical_mesh(vp_mesh)
-
+        
+        # intialize alpa cluster
+        self.alpa_manager.init_global_cluster()
 
         if self._train_loop_config:
             self._train_loop(self._train_loop_config)
@@ -288,7 +183,7 @@ class AlpaTrainer(BaseTrainer):
                         **updated_scaling_config_dict
                     )
 
-                print(updated_scaling_config.as_placement_group_factory())
+                # print(updated_scaling_config.as_placement_group_factory())
                 # exit()
                 return updated_scaling_config.as_placement_group_factory()
 
