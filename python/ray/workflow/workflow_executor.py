@@ -15,7 +15,7 @@ from ray.workflow.common import (
     TaskID,
 )
 from ray.workflow.exceptions import WorkflowCancellationError, WorkflowExecutionError
-from ray.workflow.step_executor import get_step_executor, _BakedWorkflowInputs
+from ray.workflow.task_executor import get_task_executor, _BakedWorkflowInputs
 from ray.workflow.workflow_state import (
     WorkflowExecutionState,
     TaskExecutionMetadata,
@@ -23,7 +23,7 @@ from ray.workflow.workflow_state import (
 )
 
 if TYPE_CHECKING:
-    from ray.workflow.workflow_context import WorkflowStepContext
+    from ray.workflow.workflow_context import WorkflowTaskContext
     from ray.workflow.workflow_storage import WorkflowStorage
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class WorkflowExecutor:
         return self._state.output_task_id
 
     async def run_until_complete(
-        self, job_id: str, context: "WorkflowStepContext", wf_store: "WorkflowStorage"
+        self, job_id: str, context: "WorkflowTaskContext", wf_store: "WorkflowStorage"
     ):
         """Drive the state util it completes.
 
@@ -159,7 +159,7 @@ class WorkflowExecutor:
             ],
         )
         task = state.tasks[task_id]
-        executor = get_step_executor(task.options)
+        executor = get_task_executor(task.options)
         metadata_ref, output_ref = executor(
             task.func_body,
             state.task_context[task_id],

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TensorflowCheckpoint(Checkpoint):
     """A :py:class:`~ray.air.checkpoint.Checkpoint` with TensorFlow-specific
     functionality.
