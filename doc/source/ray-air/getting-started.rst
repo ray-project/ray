@@ -21,7 +21,7 @@ Get started by installing Ray AIR:
 
 .. code:: bash
 
-    pip install -U ray[air]
+    pip install -U "ray[air]"
 
 Quick Start
 -----------
