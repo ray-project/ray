@@ -23,23 +23,6 @@ def test_wf_run(workflow_start_regular_shared, tmp_path):
     assert counter.read_text() == "1"
 
 
-def test_wf_no_run(shutdown_only):
-    # workflow should be able to run without explicit init
-    ray.shutdown()
-
-    @ray.remote
-    def f1():
-        pass
-
-    f1.bind()
-
-    @ray.remote
-    def f2(*w):
-        pass
-
-    workflow.run(f2.bind(*[f1.bind() for _ in range(10)]))
-
-
 def test_dedupe_indirect(workflow_start_regular_shared, tmp_path):
     counter = Path(tmp_path) / "counter.txt"
     lock = Path(tmp_path) / "lock.txt"
@@ -60,7 +43,7 @@ def test_dedupe_indirect(workflow_start_regular_shared, tmp_path):
     def join(*a):
         return counter.read_text()
 
-    # Here a is passed to two steps and we need to ensure
+    # Here a is passed to two tasks and we need to ensure
     # it's only executed once
     a = incr.bind()
     i1 = identity.bind(a)

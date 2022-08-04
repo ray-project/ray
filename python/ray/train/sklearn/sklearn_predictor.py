@@ -6,6 +6,7 @@ from sklearn.base import BaseEstimator
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
 from ray.train.sklearn._sklearn_utils import _set_cpu_params
 from ray.train.sklearn.sklearn_checkpoint import SklearnCheckpoint
@@ -34,6 +35,12 @@ class SklearnPredictor(Predictor):
     ):
         self.estimator = estimator
         super().__init__(preprocessor)
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(estimator={self.estimator!r}, "
+            f"preprocessor={self._preprocessor!r})"
+        )
 
     @classmethod
     def from_checkpoint(cls, checkpoint: Checkpoint) -> "SklearnPredictor":
@@ -124,6 +131,7 @@ class SklearnPredictor(Predictor):
 
         if TENSOR_COLUMN_NAME in data:
             data = data[TENSOR_COLUMN_NAME].to_numpy()
+            data = _unwrap_ndarray_object_type_if_needed(data)
             if feature_columns:
                 data = data[:, feature_columns]
         elif feature_columns:

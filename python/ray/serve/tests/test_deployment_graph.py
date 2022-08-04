@@ -11,7 +11,7 @@ from ray import serve
 from ray.serve.application import Application
 from ray.serve.api import build as build_app
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve.deployment_graph import ClassNode, InputNode
 from ray.serve.drivers import DAGDriver
 import starlette.requests
@@ -480,6 +480,37 @@ def test_suprious_call(serve_instance):
 
     call_tracker = CallTracker.get_handle()
     assert ray.get(call_tracker.get.remote()) == ["predict"]
+
+
+def test_sharing_call_for_broadcast(serve_instance):
+    # https://github.com/ray-project/ray/issues/27415
+    @serve.deployment
+    class FiniteSource:
+        def __init__(self) -> None:
+            self.called = False
+
+        def __call__(self, inp):
+            if self.called is False:
+                self.called = True
+                return inp
+            else:
+                raise Exception("I can only be called once.")
+
+    @serve.deployment
+    def adder(inp):
+        return inp + 1
+
+    @serve.deployment
+    def combine(*inp):
+        return sum(inp)
+
+    with InputNode() as inp:
+        source = FiniteSource.bind()
+        out = source.__call__.bind(inp)
+        dag = combine.bind(adder.bind(out), adder.bind(out))
+
+    handle = serve.run(DAGDriver.bind(dag))
+    assert ray.get(handle.predict.remote(1)) == 4
 
 
 if __name__ == "__main__":

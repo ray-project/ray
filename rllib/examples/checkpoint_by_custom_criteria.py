@@ -2,7 +2,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -43,7 +43,14 @@ if __name__ == "__main__":
     }
 
     # Run tune for some iterations and generate checkpoints.
-    results = tune.run(args.run, config=config, stop=stop, checkpoint_freq=1)
+    tuner = tune.Tuner(
+        args.run,
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop, checkpoint_config=air.CheckpointConfig(checkpoint_frequency=1)
+        ),
+    )
+    results = tuner.fit()
 
     # Get the best of the 3 trials by using some metric.
     # NOTE: Choosing the min `episodes_this_iter` automatically picks the trial
@@ -56,33 +63,29 @@ if __name__ == "__main__":
     # Setting scope to "avg" will compare (using `mode`=min|max) the average
     # values over the entire run.
     metric = "episodes_this_iter"
-    best_trial = results.get_best_trial(metric=metric, mode="min", scope="all")
-    value_best_metric = best_trial.metric_analysis[metric]["min"]
+    # notice here `scope` is `all`, meaning for each trial,
+    # all results (not just the last one) will be examined.
+    best_result = results.get_best_result(metric=metric, mode="min", scope="all")
+    value_best_metric = best_result.metrics_dataframe[metric].min()
     print(
         "Best trial's lowest episode length (over all "
         "iterations): {}".format(value_best_metric)
     )
 
     # Confirm, we picked the right trial.
-    assert all(
-        value_best_metric <= results.results[t][metric] for t in results.results.keys()
-    )
+    assert value_best_metric <= results.get_dataframe()[metric].min()
 
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
-    ckpt = results.get_best_checkpoint(
-        best_trial,
-        metric="info/learner/default_policy/learner_stats/policy_loss",
-        mode="min",
-    )
+    ckpt = results.get_best_result(
+        metric="info/learner/default_policy/learner_stats/policy_loss", mode="min"
+    ).checkpoint
     print("Lowest pol-loss: {}".format(ckpt))
 
     # Checkpoint with the highest value-function loss:
-    ckpt = results.get_best_checkpoint(
-        best_trial,
-        metric="info/learner/default_policy/learner_stats/vf_loss",
-        mode="max",
-    )
+    ckpt = results.get_best_result(
+        metric="info/learner/default_policy/learner_stats/vf_loss", mode="max"
+    ).checkpoint
     print("Highest vf-loss: {}".format(ckpt))
 
     ray.shutdown()

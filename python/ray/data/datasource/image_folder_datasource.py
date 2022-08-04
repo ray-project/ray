@@ -1,14 +1,16 @@
+import io
 import pathlib
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Tuple, Optional
 
 import numpy as np
+
+from ray.data._internal.util import _check_import
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     _resolve_paths_and_filesystem,
     FileExtensionFilter,
 )
-from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -37,22 +39,22 @@ class ImageFolderDatasource(BinaryDatasource):
     Datasets read with this datasource contain two columns: ``'image'`` and ``'label'``.
 
     * The ``'image'`` column is of type
-      :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype` and contains
-      tensors of shape :math:`(H, W, C)`.
+      :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`. The shape of the
+      tensors are :math:`(H, W)` if the images are grayscale and :math:`(H, W, C)`
+      otherwise.
     * The ``'label'`` column contains strings representing class names (e.g., 'cat').
 
     Examples:
         >>> import ray
         >>> from ray.data.datasource import ImageFolderDatasource
-        >>>
         >>> ds = ray.data.read_datasource(  # doctest: +SKIP
         ...     ImageFolderDatasource(),
-        ...     paths=["/data/imagenet/train"]
+        ...     root="/data/imagenet/train",
+        ...     size=(224, 224)
         ... )
-        >>>
         >>> sample = ds.take(1)[0]  # doctest: +SKIP
         >>> sample["image"].to_numpy().shape  # doctest: +SKIP
-        (469, 387, 3)
+        (224, 224, 3)
         >>> sample["label"]  # doctest: +SKIP
         'n01443537'
 
@@ -61,15 +63,13 @@ class ImageFolderDatasource(BinaryDatasource):
 
         >>> import ray
         >>> from ray.data.preprocessors import OrdinalEncoder
-        >>>
         >>> ds = ray.data.read_datasource(  # doctest: +SKIP
         ...     ImageFolderDatasource(),
-        ...     paths=["/data/imagenet/train"]
+        ...     root="/data/imagenet/train",
+        ...     size=(224, 224)
         ... )
         >>> oe = OrdinalEncoder(columns=["label"])  # doctest: +SKIP
-        >>>
         >>> ds = oe.fit_transform(ds)  # doctest: +SKIP
-        >>>
         >>> sample = ds.take(1)[0]  # doctest: +SKIP
         >>> sample["label"]  # doctest: +SKIP
         71
@@ -77,58 +77,84 @@ class ImageFolderDatasource(BinaryDatasource):
 
     def create_reader(
         self,
-        paths: Union[str, List[str]],
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        partition_filter: PathPartitionFilter = None,
-        **kwargs,
+        root: str,
+        size: Optional[Tuple[int, int]] = None,
+        mode: Optional[str] = None,
     ) -> "Reader[T]":
-        if len(paths) != 1:
+        """Return a :py:class:`~ray.data.datasource.Reader` that reads images.
+
+        .. warning::
+            If your dataset contains images of varying sizes and you don't specify
+            ``size``, this datasource will error. To prevent errors, specify ``size``
+            or :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
+
+        Args:
+            root: Path to the dataset root.
+            size: The desired height and width of loaded images. If unspecified, images
+                retain their original shape.
+            mode: A `Pillow mode <https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes>`_
+                describing the desired type and depth of pixels. If unspecified, image
+                modes are inferred by
+                `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_.
+
+        Raises:
+            ValueError: if ``size`` contains non-positive numbers.
+            ValueError: if ``mode`` is unsupported.
+        """  # noqa: E501
+        if size is not None and len(size) != 2:
             raise ValueError(
-                "`ImageFolderDatasource` expects 1 path representing the dataset "
-                f"root, but it got {len(paths)} paths instead. To fix this "
-                "error, pass in a single-element list containing the dataset root "
-                '(for example, `paths=["s3://imagenet/train"]`)'
+                "Expected `size` to contain 2 integers for height and width, "
+                f"but got {len(size)} integers instead."
+            )
+        if size is not None and (size[0] < 0 or size[1] < 0):
+            raise ValueError(
+                f"Expected `size` to contain positive integers, but got {size} instead."
             )
 
-        try:
-            import imageio  # noqa: F401
-        except ImportError:
-            raise ImportError(
-                "`ImageFolderDatasource` depends on 'imageio', but 'imageio' couldn't "
-                "be imported. You can install 'imageio' by running "
-                "`pip install imageio`."
-            )
-
-        if partition_filter is None:
-            partition_filter = FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS)
+        _check_import(self, module="PIL", package="Pillow")
+        _check_import(self, module="pandas", package="pandas")
 
         # We call `_resolve_paths_and_filesystem` so that the dataset root is formatted
         # in the same way as the paths passed to `_get_class_from_path`.
-        paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        self.root = paths[0]
+        paths, filesystem = _resolve_paths_and_filesystem([root])
+        root = paths[0]
 
         return super().create_reader(
             paths=paths,
+            partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
             filesystem=filesystem,
-            partition_filter=partition_filter,
-            **kwargs,
+            root=root,
+            size=size,
+            mode=mode,
         )
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
-        import imageio as iio
+    def _read_file(
+        self,
+        f: "pyarrow.NativeFile",
+        path: str,
+        root: str,
+        size: Optional[Tuple[int, int]],
+        mode: Optional[str],
+    ):
         import pandas as pd
-        from ray.data.extensions import TensorArray
+        from PIL import Image
 
         records = super()._read_file(f, path, include_paths=True)
         assert len(records) == 1
         path, data = records[0]
 
-        image = iio.imread(data)
-        label = _get_class_from_path(path, self.root)
+        image = Image.open(io.BytesIO(data))
+        if size is not None:
+            height, width = size
+            image = image.resize((width, height))
+        if mode is not None:
+            image = image.convert(mode)
+
+        label = _get_class_from_path(path, root)
 
         return pd.DataFrame(
             {
-                "image": TensorArray([np.array(image)]),
+                "image": [np.array(image)],
                 "label": [label],
             }
         )

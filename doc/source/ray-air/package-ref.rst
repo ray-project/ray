@@ -24,7 +24,8 @@ Built-in Preprocessors
     :members:
     :show-inheritance:
 
-.. autofunction:: ray.air.train_test_split
+.. automethod:: ray.data.Dataset.train_test_split
+    :noindex:
 
 .. _air-trainer-ref:
 
@@ -96,6 +97,12 @@ Tuner
 ~~~~~
 
 .. autoclass:: ray.tune.tuner.Tuner
+    :members:
+
+TuneConfig
+##########
+
+.. automodule:: ray.tune.tune_config
     :members:
 
 Tuner Results

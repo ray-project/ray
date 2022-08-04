@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LightGBMTrainer(GBDTTrainer):
     """A Trainer for data parallel LightGBM training.
 
@@ -75,6 +75,9 @@ class LightGBMTrainer(GBDTTrainer):
     _default_ray_params: Dict[str, Any] = {
         "checkpoint_frequency": 1,
         "allow_less_than_two_cpus": True,
+        "num_actors": 1,
+        "cpus_per_actor": 2,
+        "gpus_per_actor": 0,
     }
     _init_model_arg_name: str = "init_model"
 

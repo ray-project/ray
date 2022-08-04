@@ -7,16 +7,19 @@ import os
 import sys
 import time
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
+from ray._private.dict import flatten_dict
 
 from ray.tune.callback import Callback
 from ray.tune.logger import logger, pretty_print
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
     DEFAULT_METRIC,
+    DONE,
     EPISODE_REWARD_MEAN,
+    EXPERIMENT_TAG,
     MEAN_ACCURACY,
     MEAN_LOSS,
     NODE_IP,
@@ -24,8 +27,10 @@ from ray.tune.result import (
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
     TRAINING_ITERATION,
+    TRIAL_ID,
 )
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
+from ray.tune.trainable import Trainable
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -50,6 +55,9 @@ try:
     IS_NOTEBOOK = True if "Terminal" not in class_name else False
 except NameError:
     IS_NOTEBOOK = False
+
+
+SKIP_RESULTS_IN_REPORT = {"config", TRIAL_ID, EXPERIMENT_TAG, DONE}
 
 
 @PublicAPI
@@ -225,10 +233,10 @@ class TuneReporterBase(ProgressReporter):
     def set_search_properties(self, metric: Optional[str], mode: Optional[str]):
         if (self._metric and metric) or (self._mode and mode):
             raise ValueError(
-                "You passed a `metric` or `mode` argument to `tune.run()`, but "
+                "You passed a `metric` or `mode` argument to `tune.TuneConfig()`, but "
                 "the reporter you are using was already instantiated with their "
                 "own `metric` and `mode` parameters. Either remove the arguments "
-                "from your reporter or from your call to `tune.run()`"
+                "from your reporter or from your call to `tune.TuneConfig()`"
             )
 
         if metric:
@@ -340,8 +348,8 @@ class TuneReporterBase(ProgressReporter):
             self._metric_columns.update(user_metrics)
         messages = [
             "== Status ==",
-            time_passed_str(self._start_time, time.time()),
-            memory_debug_str(),
+            _time_passed_str(self._start_time, time.time()),
+            _memory_debug_str(),
             *sys_info,
         ]
         if done:
@@ -354,13 +362,13 @@ class TuneReporterBase(ProgressReporter):
         current_best_trial, metric = self._current_best_trial(trials)
         if current_best_trial:
             messages.append(
-                best_trial_str(current_best_trial, metric, self._parameter_columns)
+                _best_trial_str(current_best_trial, metric, self._parameter_columns)
             )
 
         if has_verbosity(Verbosity.V1_EXPERIMENT):
             # Will filter the table in `trial_progress_str`
             messages.append(
-                trial_progress_str(
+                _trial_progress_str(
                     trials,
                     metric_columns=self._metric_columns,
                     parameter_columns=self._parameter_columns,
@@ -375,7 +383,7 @@ class TuneReporterBase(ProgressReporter):
                     sort_by_metric=self._sort_by_metric,
                 )
             )
-            messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
+            messages.append(_trial_errors_str(trials, fmt=fmt, max_rows=max_error))
 
         return delim.join(messages) + delim
 
@@ -419,7 +427,7 @@ class TuneReporterBase(ProgressReporter):
                 continue
             if metric not in t.last_result:
                 continue
-            if not best_metric or t.last_result[metric] * metric_op > best_metric:
+            if not best_trial or t.last_result[metric] * metric_op > best_metric:
                 best_metric = t.last_result[metric] * metric_op
                 best_trial = t
         return best_trial, metric
@@ -528,7 +536,7 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
                 "If this leads to unformatted output (e.g. like "
                 "<IPython.core.display.HTML object>), consider passing "
                 "a `CLIReporter` as the `progress_reporter` argument "
-                "to `tune.run()` instead."
+                "to `air.RunConfig()` instead."
             )
 
         self._overwrite = overwrite
@@ -633,7 +641,7 @@ class CLIReporter(TuneReporterBase):
         print(self._progress_str(trials, done, *sys_info))
 
 
-def memory_debug_str():
+def _memory_debug_str():
     try:
         import ray  # noqa F401
 
@@ -659,7 +667,7 @@ def memory_debug_str():
         return "Unknown memory usage. Please run `pip install psutil` to resolve)"
 
 
-def time_passed_str(start_time: float, current_time: float):
+def _time_passed_str(start_time: float, current_time: float):
     current_time_dt = datetime.datetime.fromtimestamp(current_time)
     start_time_dt = datetime.datetime.fromtimestamp(start_time)
     delta: datetime.timedelta = current_time_dt - start_time_dt
@@ -695,7 +703,7 @@ def _get_trials_by_state(trials: List[Trial]):
     return trials_by_state
 
 
-def trial_progress_str(
+def _trial_progress_str(
     trials: List[Trial],
     metric_columns: Union[List[str], Dict[str, str]],
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
@@ -768,7 +776,7 @@ def trial_progress_str(
     )
 
     if force_table or (has_verbosity(Verbosity.V2_TRIAL_NORM) and done):
-        messages += trial_progress_table(
+        messages += _trial_progress_table(
             trials=trials,
             metric_columns=metric_columns,
             parameter_columns=parameter_columns,
@@ -811,7 +819,7 @@ def _max_len(value: Any, max_len: int = 20, add_addr: bool = False) -> Any:
     return result
 
 
-def trial_progress_table(
+def _trial_progress_table(
     trials: List[Trial],
     metric_columns: Union[List[str], Dict[str, str]],
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
@@ -931,7 +939,7 @@ def trial_progress_table(
     return messages
 
 
-def trial_errors_str(
+def _trial_errors_str(
     trials: List[Trial], fmt: str = "psql", max_rows: Optional[int] = None
 ):
     """Returns a readable message regarding trial errors.
@@ -965,7 +973,7 @@ def trial_errors_str(
     return delim.join(messages)
 
 
-def best_trial_str(
+def _best_trial_str(
     trial: Trial,
     metric: str,
     parameter_columns: Optional[Union[List[str], Dict[str, str]]] = None,
@@ -1093,11 +1101,18 @@ class TrialProgressCallback(Callback):
 
     """
 
-    def __init__(self, metric: Optional[str] = None):
+    def __init__(
+        self, metric: Optional[str] = None, progress_metrics: Optional[List[str]] = None
+    ):
         self._last_print = collections.defaultdict(float)
         self._completed_trials = set()
         self._last_result_str = {}
         self._metric = metric
+        self._progress_metrics = set(progress_metrics or [])
+
+        # Only use progress metrics if at least two metrics are in there
+        if self._metric and self._progress_metrics:
+            self._progress_metrics.add(self._metric)
 
     def on_trial_result(
         self,
@@ -1179,20 +1194,31 @@ class TrialProgressCallback(Callback):
             self._last_print[trial] = time.time()
 
     def _print_result(self, result: Dict):
-        print_result = result.copy()
-        print_result.pop("config", None)
-        print_result.pop("hist_stats", None)
-        print_result.pop("trial_id", None)
-        print_result.pop("experiment_tag", None)
-        print_result.pop("done", None)
-        for auto_result in AUTO_RESULT_KEYS:
-            print_result.pop(auto_result, None)
+        if self._progress_metrics:
+            # If progress metrics are given, only report these
+            flat_result = flatten_dict(result)
 
-        print_result_str = ",".join([f"{k}={v}" for k, v in print_result.items()])
+            print_result = {}
+            for metric in self._progress_metrics:
+                print_result[metric] = flat_result.get(metric)
+
+        else:
+            # Else, skip auto populated results
+            print_result = result.copy()
+
+            for skip_result in SKIP_RESULTS_IN_REPORT:
+                print_result.pop(skip_result, None)
+
+            for auto_result in AUTO_RESULT_KEYS:
+                print_result.pop(auto_result, None)
+
+        print_result_str = ",".join(
+            [f"{k}={v}" for k, v in print_result.items() if v is not None]
+        )
         return print_result_str
 
 
-def detect_reporter(**kwargs) -> TuneReporterBase:
+def _detect_reporter(**kwargs) -> TuneReporterBase:
     """Detect progress reporter class.
 
     Will return a :class:`JupyterNotebookReporter` if a IPython/Jupyter-like
@@ -1206,3 +1232,13 @@ def detect_reporter(**kwargs) -> TuneReporterBase:
     else:
         progress_reporter = CLIReporter(**kwargs)
     return progress_reporter
+
+
+def _detect_progress_metrics(
+    trainable: Optional[Union["Trainable", Callable]]
+) -> Optional[List[str]]:
+    """Detect progress metrics to report."""
+    if not trainable:
+        return None
+
+    return getattr(trainable, "_progress_metrics", None)

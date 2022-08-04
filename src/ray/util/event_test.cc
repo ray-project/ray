@@ -14,9 +14,9 @@
 
 #include "ray/util/event.h"
 
-#include <boost/filesystem.hpp>
 #include <boost/range.hpp>
 #include <csignal>
+#include <filesystem>
 #include <fstream>
 #include <set>
 #include <thread>
@@ -177,7 +177,7 @@ class EventTest : public ::testing::Test {
 
   virtual void TearDown() {
     TestEventReporter::event_list.clear();
-    boost::filesystem::remove_all(log_dir.c_str());
+    std::filesystem::remove_all(log_dir.c_str());
     EventManager::Instance().ClearReporters();
     ray::RayEventContext::Instance().ResetEventContext();
   }
@@ -424,7 +424,7 @@ TEST_F(EventTest, TestLogRotate) {
 
   int cnt = 0;
   for (auto &entry :
-       boost::make_iterator_range(boost::filesystem::directory_iterator(log_dir), {})) {
+       boost::make_iterator_range(std::filesystem::directory_iterator(log_dir), {})) {
     if (entry.path().string().find("event_RAYLET") != std::string::npos) {
       cnt++;
     }
@@ -607,7 +607,7 @@ TEST_F(EventTest, TestLogEvent) {
   EXPECT_THAT(vc[1], testing::HasSubstr("Event"));
   EXPECT_THAT(vc[1], testing::HasSubstr("test fatal"));
 
-  boost::filesystem::remove_all(log_dir.c_str());
+  std::filesystem::remove_all(log_dir.c_str());
 
   // Set log level smaller than event level.
   ray::RayLog::StartRayLog("event_test", ray::RayLogLevel::INFO, log_dir);

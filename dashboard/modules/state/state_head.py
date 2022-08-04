@@ -18,6 +18,7 @@ from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.utils import Change
 from ray.experimental.state.common import (
+    RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
     GetLogOptions,
     SummaryApiOptions,
@@ -166,6 +167,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             if req.query.get("limit") is not None
             else DEFAULT_LIMIT
         )
+
+        if limit > RAY_MAX_LIMIT_FROM_API_SERVER:
+            raise ValueError(
+                f"Given limit {limit} exceeds the supported "
+                f"limit {RAY_MAX_LIMIT_FROM_API_SERVER}. Use a lower limit."
+            )
+
         timeout = int(req.query.get("timeout"))
         filter_keys = req.query.getall("filter_keys", [])
         filter_predicates = req.query.getall("filter_predicates", [])
@@ -313,7 +321,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         node_ip = req.query.get("node_ip", None)
         timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
 
-        # TODO(sang): Do input validation from the middleware instead.
         if not node_id and not node_ip:
             return self._reply(
                 success=False,
@@ -346,8 +353,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @routes.get("/api/v0/logs/{media_type}")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
-        # TODO(sang): We need a better error handling for streaming
-        # when we refactor the server framework.
         options = GetLogOptions(
             timeout=int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT)),
             node_id=req.query.get("node_id", None),
