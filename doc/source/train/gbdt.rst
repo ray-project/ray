@@ -1,3 +1,5 @@
+.. _air-trainers-gbdt-user-guide:
+
 
 Ray Train XGBoost/LightGBM User Guide
 =====================================
@@ -6,7 +8,7 @@ Ray Train has Trainers for XGBoost and LightGBM. These trainers:
 
 * enable `multi-node <#usage>`_ and `multi-GPU <#multi-gpu-training>`_ training
 * integrate seamlessly with distributed `hyperparameter optimization <#hyperparameter-tuning>`_ library `Ray Tune <http://tune.io>`_
-* support `distributed dataframes and distributed data loading <#distributed-data-loading>`_
+* support `distributed data loading <#distributed-data-loading>`_
 
 
 Basic Usage

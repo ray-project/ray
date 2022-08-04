@@ -7,7 +7,7 @@ from ray.air.config import ScalingConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
-from torch_linear_dataset_example import train_func, get_datasets
+from torch_regression_example import train_func, get_datasets
 
 
 def tune_linear(num_workers, num_samples, use_gpu):
