@@ -1,6 +1,7 @@
 (kuberay-autoscaler-discussion)=
 # Autoscaling
 This page discusses autoscaling in the context of Ray on Kubernetes.
+For details on autoscaler configuration see {ref}`kuberay-autoscaling-config`.
 
 (autoscaler-pro-con)=
 ## Should I enable autoscaling?
@@ -24,7 +25,7 @@ all of the Ray nodes can be started in parallel, potentially reducing your appli
 runtime.
 
 **Resource usage.** The autoscaler itself uses CPU and memory resources.
-The resources must be accounted for when considering the Ray head pod's scheduling.
+These resources must be accounted for when considering the Ray head pod's scheduling.
 (The default autoscaler container resources are .5 CPU requests and limits, 512 megabyte memory request and limits.
 See the {ref}`configuration guide<kuberay-autoscaling-config>` for details.)
 
@@ -45,13 +46,14 @@ and memory. By contrast, the Ray autoscaler uses the logical resources expressed
 task and actor annotations. For instance, if each Ray container spec in your RayCluster CR indicates
 a limit of 10 CPUs, and you submit twenty tasks annotated with `@ray.remote(num_cpus=5)`,
 10 Ray pods will created to satisfy the 100-CPU resource demand.
-In this respect, the Ray autoscaler is similar to the Kuberentes cluster autoscaler,
+In this respect, the Ray autoscaler is similar to the
+[Kuberentes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler),
 which makes scaling decisions based on the logical resources expressed in container
 resource requests.
 ## Fine-grained control of scale-down
 To accommodate the statefulness of Ray applications, the Ray autoscaler has more
 fine-grained control over scale-down than the Horizontal Pod Autoscaler. In addition to
-determining desired scale, the Ray Autoscaler is able to select precisely which pod
+determining desired scale, the Ray Autoscaler is able to select precisely which pods
 to scale down. The KubeRay operator then deletes that pod.
 By contrast, the Horizontal Pod Autoscaler can only decrease a replica count, without much
 control over which pods are deleted. For a Ray application, downscaling a random
