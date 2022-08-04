@@ -32,7 +32,7 @@ construct a Trainer, you can provide:
 * A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided datasets, which configures preprocessing and the datasets to ingest from.
 * ``resume_from_checkpoint``, which is a checkpoint path to resume from, should your training run be interrupted.
 
-After instatiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() <ray.air.Trainer.fit>`.
+After instantiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() <ray.air.Trainer.fit>`.
 
 .. literalinclude:: doc_code/xgboost_trainer.py
     :language: python
