@@ -13,10 +13,11 @@ You can install the latest official version of Ray as follows.
 
 .. code-block:: bash
 
-  pip install -U ray  # minimal install
+  # Install Ray with support for the dashboard + cluster launcher
+  pip install -U "ray[default]"
 
-  # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U "ray[default]"`
+  # Install Ray with minimal dependencies
+  # pip install -U ray
 
 To install Ray libraries:
 
