@@ -133,20 +133,82 @@ which is not using resources. Resources in this context are the logical Ray reso
 `IdleTimeoutSeconds` defaults to 60 seconds.
 
 #### resources
+The `resources` subfield of `autoscalerOptions` sets optional resource overrides
+for the autoscaler sidecar container. These overrides
+should be specified in the standard [container resource
+spec format](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#resources).
+The default values are as indicated below:
+```
+resources:
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+  requests:
+    cpu: "500m"
+    memory: "512Mi"
+```
+These defaults should be suitable for most use-cases.
+However, we do recommend monitoring autoscaler container resource usage and adjusting as needed.
 
-#### image
+#### image and imagePullPolicy
+The `image` subfield of `autoscalerOptions` optionally overrides the autoscaler container image.
+If your RayCluster's `spec.RayVersion` is at least `2.0.0`, the autoscaler will default to using
+**the same image** as the Ray container. (Ray autoscaler code is bundled with the rest of Ray.)
+For older Ray versions, the autoscaler will default to the image `rayproject/ray:2.0.0`.
 
-#### imagePullPolicy
+The `imagePullPolicy` subfield of `autoscalerOptions` optionally overrides the autoscaler container's
+image pull policy. The default is `Always`.
 
-#### env
+The `image` and `imagePullPolicy` overrides are provided primarily for the purposes of autoscaler testing and
+development.
 
-#### envFrom
+#### env and envFrom
+
+The `env` and `envFrom` fields specify autoscaler container
+environment variables, for debugging and development purposes.
+These fields should be formatted following the
+[Kuberentes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
+for container envs.
 
 ## Ray Start Parameters
+The ``rayStartParams`` field of each group spec is a string-string map of arguments to the Ray
+container’s `ray start` entrypoint. For the full list of arguments, refer to
+the documentation for `ray start`. We make special note of the following arguments:
+
+-   **block**: This field tells the Ray scheduler how many CPUs are
+    available to the Ray pod. The CPU count can be autodetected from the
+    Kubernetes resource limits specified in the group spec’s pod
+    `template`. It is sometimes useful to override this autodetected
+    value. For example, setting `num-cpus:"0"` will prevent Ray
+    workloads with non-zero CPU requirements from being scheduled on the
+    head node.
+
+-   **dashboard-host**: This field tells the Ray scheduler how many CPUs are
+    available to the Ray pod. The CPU count can be autodetected from the
+    Kubernetes resource limits specified in the group spec’s pod
+    `template`. It is sometimes useful to override this autodetected
+    value. For example, setting `num-cpus:"0"` will prevent Ray
+    workloads with non-zero CPU requirements from being scheduled on the
+    head node.
+
+-   **num-cpus**: This field tells the Ray scheduler how many CPUs are
+    available to the Ray pod. The CPU count can be autodetected from the
+    Kubernetes resource limits specified in the group spec’s pod
+    `template`. It is sometimes useful to override this autodetected
+    value. For example, setting `num-cpus:"0"` will prevent Ray
+    workloads with non-zero CPU requirements from being scheduled on the
+    head node.
+
+-   **num-gpus**: This specifies the number of GPUs available to the Ray
+    pod. At the time of writing, this field is **not** detected from the
+    group spec’s pod `template`. Thus, `num-gpus` must be set explicitly
+    for GPU workloads.
 
 ## Managing compute resources
+Memory and CPU specified in Ray container.
 
 ## Ports, exposing Ray services
-The Ray container should expose
+Under `headGroupSpec`, the head pod's container should list the ports for the services it exposes.
+The KubeRay operator will configure a Service exposing these ports.
 
 ## Volume mounts, logging
