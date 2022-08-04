@@ -544,8 +544,9 @@ class CheckpointConfig:
 class RunConfig:
     """Runtime configuration for training and tuning runs.
 
-    Upon resuming from a training or tuning run checkpoint, Ray Train/Tune will automatically
-    apply the RunConfig from the previously checkpointed run.
+    Upon resuming from a training or tuning run checkpoint,
+    Ray Train/Tune will automatically apply the RunConfig from
+    the previously checkpointed run.
 
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced

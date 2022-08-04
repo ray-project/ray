@@ -198,7 +198,7 @@ class HuggingFaceTrainer(TorchTrainer):
             )
             ray_train_ds = ray.data.from_huggingface(lm_datasets["train"])
             ray_evaluation_ds = ray.data.from_huggingface(
-                lm_datasets["evaluation"]
+                lm_datasets["validation"]
             )
 
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):

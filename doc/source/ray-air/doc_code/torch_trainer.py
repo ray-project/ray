@@ -33,7 +33,8 @@ def train_loop_per_worker():
     model = train.torch.prepare_model(model)
 
     for epoch in range(num_epochs):
-        for inputs, labels in dataset_shard.iter_torch_batches(batch_size=32):
+        for batches in dataset_shard.iter_torch_batches(batch_size=32):
+            inputs, labels = batches["x"], batches["y"]
             output = model(inputs)
             loss = loss_fn(output, labels)
             optimizer.zero_grad()
@@ -49,7 +50,7 @@ def train_loop_per_worker():
         )
 
 
-train_dataset = ray.data.from_items([{"x": x, "y": 2 * x + 1} for x in [1, 2, 3]])
+train_dataset = ray.data.from_items([{"x": x, "y": 2 * x + 1} for x in range(200)])
 scaling_config = ScalingConfig(num_workers=3)
 # If using GPUs, use the below scaling config instead.
 # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)

@@ -19,8 +19,7 @@ from ray.air.config import ScalingConfig
 
 
 def get_dataset(a=5, b=10, size=1000) -> Dataset:
-    # dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
-    dataset = ray.data.read_csv("/tmp/regression.csv")
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
 
     def combine_x(batch):
         return pd.DataFrame(

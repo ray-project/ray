@@ -53,7 +53,7 @@ lm_datasets = tokenized_datasets.map(
     num_proc=1,
 )
 ray_train_ds = ray.data.from_huggingface(lm_datasets["train"])
-ray_evaluation_ds = ray.data.from_huggingface(lm_datasets["evaluation"])
+ray_evaluation_ds = ray.data.from_huggingface(lm_datasets["validation"])
 
 
 def trainer_init_per_worker(train_dataset, eval_dataset, **config):
@@ -64,6 +64,7 @@ def trainer_init_per_worker(train_dataset, eval_dataset, **config):
         evaluation_strategy="epoch",
         learning_rate=2e-5,
         weight_decay=0.01,
+        no_cuda=True,  # Set to False for GPU training
     )
     return transformers.Trainer(
         model=model,
