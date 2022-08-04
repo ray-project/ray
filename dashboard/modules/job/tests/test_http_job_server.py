@@ -363,14 +363,16 @@ def test_invalid_runtime_env(job_sdk_client):
     client = job_sdk_client
     with pytest.raises(ValueError, match="Only .zip files supported"):
         client.submit_job(
-            entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
+            entrypoint="echo hello",
+            runtime_env={"working_dir": "s3://hostname/not_a_zip"},
         )
 
 
 def test_runtime_env_setup_failure(job_sdk_client):
     client = job_sdk_client
     job_id = client.submit_job(
-        entrypoint="echo hello", runtime_env={"working_dir": "s3://does_not_exist.zip"}
+        entrypoint="echo hello",
+        runtime_env={"working_dir": "s3://hostname/does_not_exist.zip"},
     )
 
     wait_for_condition(_check_job_failed, client=client, job_id=job_id)

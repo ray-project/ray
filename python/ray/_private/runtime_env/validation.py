@@ -16,11 +16,15 @@ def validate_uri(uri: str):
         )
 
     try:
-        from ray._private.runtime_env.packaging import parse_uri, Protocol
+        from ray._private.runtime_env.packaging import parse_uri, Protocol, UriType
 
-        protocol, _, _, path = parse_uri(uri)
+        protocol, uri_type, _, path = parse_uri(uri)
     except ValueError:
         raise ValueError(f"{uri} is not a valid URI.")
+
+    if uri_type is UriType.USER_LOCAL:
+        if not Path(path).exists():
+            raise ValueError(f"{uri} is not a valid URI. It doesn't exist.")
 
     if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
         raise ValueError("Only .zip files supported for remote URIs.")

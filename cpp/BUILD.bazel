@@ -285,7 +285,7 @@ cc_test(
         "src/ray/test/examples/*.cc",
     ]),
     args = [
-        "--ray_runtime_env='{\"native_libraries\": [\"$(location simple_kv_store.so)\"]}'",
+        "--ray_runtime_env='{\"native_libraries\": [\"file://localhost/./$(location simple_kv_store.so)\"]}'",
         "--ray_head_args '--include-dashboard false'",
     ],
     copts = COPTS,

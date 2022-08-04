@@ -36,12 +36,12 @@ def test_reference_table():
         uris_parser, unused_uris_processor, unused_runtime_env_processor
     )
     runtime_env_1 = RuntimeEnv(
-        working_dir="s3://working_dir_1.zip",
-        py_modules=["s3://py_module_A.zip", "s3://py_module_B.zip"],
+        working_dir="s3://hostname/working_dir_1.zip",
+        py_modules=["s3://hostname/py_module_A.zip", "s3://hostname/py_module_B.zip"],
     )
     runtime_env_2 = RuntimeEnv(
-        working_dir="s3://working_dir_2.zip",
-        py_modules=["s3://py_module_A.zip", "s3://py_module_C.zip"],
+        working_dir="s3://hostname/working_dir_2.zip",
+        py_modules=["s3://hostname/py_module_A.zip", "s3://hostname/py_module_C.zip"],
     )
     # Add runtime env 1
     reference_table.increase_reference(
@@ -57,8 +57,8 @@ def test_reference_table():
     )
 
     # Remove runtime env 1
-    expected_unused_uris.append(("s3://working_dir_1.zip", "working_dir"))
-    expected_unused_uris.append(("s3://py_module_B.zip", "py_modules"))
+    expected_unused_uris.append(("s3://hostname/working_dir_1.zip", "working_dir"))
+    expected_unused_uris.append(("s3://hostname/py_module_B.zip", "py_modules"))
     expected_unused_runtime_env = runtime_env_1.serialize()
     reference_table.decrease_reference(
         runtime_env_1, runtime_env_1.serialize(), "raylet"
@@ -67,9 +67,9 @@ def test_reference_table():
     assert not expected_unused_runtime_env
 
     # Remove runtime env 2
-    expected_unused_uris.append(("s3://working_dir_2.zip", "working_dir"))
-    expected_unused_uris.append(("s3://py_module_A.zip", "py_modules"))
-    expected_unused_uris.append(("s3://py_module_C.zip", "py_modules"))
+    expected_unused_uris.append(("s3://hostname/working_dir_2.zip", "working_dir"))
+    expected_unused_uris.append(("s3://hostname/py_module_A.zip", "py_modules"))
+    expected_unused_uris.append(("s3://hostname/py_module_C.zip", "py_modules"))
     expected_unused_runtime_env = runtime_env_2.serialize()
     reference_table.decrease_reference(
         runtime_env_2, runtime_env_2.serialize(), "raylet"
