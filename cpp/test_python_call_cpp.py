@@ -6,7 +6,14 @@ from ray.exceptions import CrossLanguageError, RayActorError
 
 
 def test_cross_language_cpp():
-    ray.init(runtime_env={"native_libraries": ["../../plus.so", "../../counter.so"]})
+    ray.init(
+        runtime_env={
+            "native_libraries": [
+                "file://localhost/./../../plus.so",
+                "file://localhost/./../../counter.so",
+            ]
+        }
+    )
     obj = ray.cross_language.cpp_function("Plus1").remote(1)
     assert 2 == ray.get(obj)
 

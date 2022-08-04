@@ -10,7 +10,8 @@ import requests
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
-from pydantic import ValidationError
+
+# from pydantic import ValidationError
 from ray.serve.drivers import DAGDriver
 
 
@@ -234,9 +235,7 @@ def test_deployment_error_handling(serve_instance):
     def f():
         pass
 
-    with pytest.raises(
-        ValidationError, match="1 validation error for RayActorOptionsSchema.*"
-    ):
+    with pytest.raises(RuntimeError, match="The Deployment constructor failed"):
         # This is an invalid configuration since dynamic upload of working
         # directories is not supported. The error this causes in the controller
         # code should be caught and reported back to the `deploy` caller.

@@ -562,7 +562,6 @@ def test_override_failure(shutdown_only):
     with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(g.options(runtime_env={"working_dir": "."}).remote())
 
-
     @ray.remote(runtime_env={"working_dir": "."})
     class A:
         def f(self):
