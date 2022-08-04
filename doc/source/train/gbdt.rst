@@ -1,5 +1,4 @@
-.. _air-trainers-gbdt-user-guide:
-
+.. _train-gbdt-guide:
 
 Ray Train XGBoost/LightGBM User Guide
 =====================================

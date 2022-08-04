@@ -63,7 +63,7 @@ You can access the data shard within a worker via ``session.get_dataset_shard()`
 to generate batches of Tensorflow or Pytorch tensors.
 You can read more about :ref:`data ingest <air-ingest>` here.
 
-Read more about :ref:`Ray Train's Deep Learning Trainers <train-user-guide>`.
+Read more about :ref:`Ray Train's Deep Learning Trainers <train-dl-guide>`.
 
 .. dropdown:: Code examples
 
@@ -110,7 +110,7 @@ Ray Train offers 2 main tree-based trainers:
 :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>` and
 :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`.
 
-See :ref:`here for a more detailed user-guide <air-trainers-gbdt-user-guide>`.
+See :ref:`here for a more detailed user-guide <train-gbdt-guide>`.
 
 
 XGBoost Trainer

@@ -1,4 +1,4 @@
-.. _train-user-guide:
+.. _train-dl-guide:
 
 Ray Train Deep Learning User Guide
 ==================================
@@ -7,12 +7,12 @@ Ray Train Deep Learning User Guide
 
 Ray Train provides solutions for training machine learning models in a distributed manner on Ray.
 This guide focuses on deep learning with PyTorch, TensorFlow and Horovod.
+
 For other model types, distributed training support is available through other Trainers & libraries:
 
 * **Reinforcement Learning:** :ref:`RLlib <rllib-index>`
 * **XGBoost:** :doc:`/ray-air/examples/xgboost_example`
 * **LightGBM:** :doc:`/ray-air/examples/lightgbm_example`
-* **Scikit-Learn** :doc:`/ray-air/examples/sklearn_example`
 * **Hugging Face** :doc:`/ray-air/examples/huggingface_text_classification`
 * **PyTorch Lightning:** :ref:`ray-lightning`
 
