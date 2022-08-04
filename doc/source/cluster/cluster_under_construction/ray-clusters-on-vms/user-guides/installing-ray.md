@@ -1,13 +1,8 @@
-:::{warning}
-This page is under construction!
-:::
-
-
 
 # Installing Ray
 
-We highly recommand you to use :ref:`Ray cluster launchers to  <Ray-ports>` to set up a Ray cluster.
-However, you can also manually install Ray via `pip`, or using Ray docker images.
+We highly recommand you to use [Ray Cluster Lancher](./launching-clusters/aws.html) to set up a Ray cluster.
+However, you can also manually install Ray via Python package installer `pip`, or using Ray docker images.
 
 ## Install Ray via pip
 
@@ -24,10 +19,10 @@ You can install the latest official version of Ray as follows.
 To install Ray libraries:
 
 ```
-  pip install -U "ray[air]" # installs Ray + dependencies for Ray AI Runtime
+  pip install -U "ray[air]"   # installs Ray + dependencies for Ray AI Runtime
   pip install -U "ray[tune]"  # installs Ray + dependencies for Ray Tune
-  pip install -U "ray[rllib]"  # installs Ray + dependencies for Ray RLlib
-  pip install -U "ray[serve]"  # installs Ray + dependencies for Ray Serve
+  pip install -U "ray[rllib]" # installs Ray + dependencies for Ray RLlib
+  pip install -U "ray[serve]" # installs Ray + dependencies for Ray Serve
 ```
 
 
@@ -41,36 +36,21 @@ Image releases are tagged using the following format:
 
 |Tag	|Description	|
 |---	|---	|
-|
-latest	|
-The most recent Ray release.	|
+|latest	|The most recent Ray release.	|
 |---	|---	|
-|
-1.x.x	|
-A specific Ray release.	|
-|
-nightly	|
-The most recent Ray build (the most recent commit on Github `master`)	|
-|
-Git SHA	|
-A specific nightly build (uses a SHA from the Github `master`).	|
+|1.x.x	| A specific Ray release.	|
+|nightly	| The most recent Ray build (the most recent commit on Github `master`)	|
+|Git SHA	|A specific nightly build (uses a SHA from the Github `master`).	|
 
 Some tags also have variants that add or change functionality:
 
 |Variant	|Description	|
 |---	|---	|
-|
--cpu	|
-These are based off of an Ubuntu image.	|
+|-cpu	|These are based off of an Ubuntu image.	|
 |---	|---	|
-|
--cuXX	|
-These are based off of an NVIDIA CUDA image with the specified CUDA version. They require the Nvidia Docker Runtime.	|
-|
--gpu	|
-Aliases to a specific `-cuXX` tagged image.	|
-|
-<no tag>	|
+|-cuXX	| These are based off of an NVIDIA CUDA image with the specified CUDA version. They require the Nvidia Docker Runtime.	|
+|-gpu	| Aliases to a specific `-cuXX` tagged image.	|
+|<no tag>	|
 Aliases to `-cpu` tagged images. For `ray-ml` image, aliases to `-gpu` tagged image.	|
 
 If you want to tweak some aspect of these images and build them locally, refer to the following script:
