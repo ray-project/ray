@@ -77,8 +77,7 @@ The rest of this guide will discuss the `RayCluster` CR's config fields.
 
 ## The Ray version
 The field `rayVersion` specifies the version of Ray used in the Ray cluster.
-The `rayVersion` is used to fill default values for certain config fields,
-such as the Ray autoscaler image.
+The `rayVersion` is used to fill default values for certain config fields.
 The Ray container images specified in the RayCluster CR should carry
 the same Ray version as the CR's `rayVersion`. If you are using a nightly or development
 Ray image, it is fine to set `rayVersion` to the latest release version of Ray.
@@ -125,7 +124,7 @@ name: dashboard
 name: client
 ```
 The KubeRay operator will configure a Kubernetes Service exposing these ports.
-The name of the configured Kubernetes service is the name, `metadata.name`, of the RayCluster
+The name of the configured Kubernetes Service is the name, `metadata.name`, of the RayCluster
 followed by the suffix\
 `-head-svc`. For the example CR given on this page, the name of
 the head service will be\
