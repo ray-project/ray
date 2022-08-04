@@ -8,7 +8,7 @@ tblib
 torch==1.9.0+cu102
 torchvision==0.10.0+cu102
 
--f https://data.pyg.org/whl/torch-1.9.0+cu111.html
+-f https://data.pyg.org/whl/torch-1.9.0+cu102.html
 torch-scatter==2.0.9
 torch-sparse==0.6.12
 
