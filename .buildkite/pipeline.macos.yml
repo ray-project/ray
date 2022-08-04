@@ -9,6 +9,7 @@ common: &common
     LANG: en_US.UTF-8
 
 prelude_commands: &prelude_commands |-
+  set -ex
   rm -rf /tmp/bazel_event_logs
   cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
   (which bazel && bazel clean) || true;
