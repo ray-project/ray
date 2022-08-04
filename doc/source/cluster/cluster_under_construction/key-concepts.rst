@@ -55,7 +55,7 @@ Key Concepts
       :align: center
       :width: 600px
 
-This page introduces several key concepts that are helpful when creating and managing Ray clusters.
+This page introduces the following key concepts, an understanding of which is helpful when creating and managing Ray clusters:
 
 .. contents::
     :local:
@@ -80,7 +80,7 @@ to your Ray cluster configuration. The :ref:`head node<cluster-head-node-under-c
 runs the logic which implements autoscaling.
 
 .. note::
-    A *node* means an individual machine. However, :ref:`on Kubernetes<kuberay-index>`, nodes are implemented as pods.
+    Here, a *node* means an individual machine. However, :ref:`on Kubernetes<kuberay-index>`, nodes are implemented as pods.
 
 .. _cluster-head-node-under-construction:
 
@@ -98,14 +98,16 @@ on the head node just like any other worker node.
 Autoscaler
 ----------
 
-The autoscaler is a process that runs on the :ref:`head node<cluster-head-node>`
-and is responsible for adding or removing :ref:`worker nodes<cluster-worker-node>`
-to meet the needs of the Ray workload while matching the specification in the
-:ref:`cluster config file<cluster-config>`. In particular, if the resource
-demands of the Ray workload exceed the current capacity of the cluster, the
-autoscaler will try to add nodes. Conversely, if a node is idle for long enough,
-the autoscaler will remove it from the cluster. To learn more about autoscaling,
-refer to the :ref:`Ray cluster deployment guide<deployment-guide-autoscaler>`.
+The autoscaler is a process that runs on the :ref:`head node<cluster-head-node-under-construction>`.
+It is responsible for provisioning or deprovisioning :ref:`worker nodes<cluster-worker-nodes-under-construction>`
+to meet the needs of the Ray workload. In particular, if the resource demands of the Ray workload exceed the
+current capacity of the cluster, the autoscaler will attempt to add more nodes. Conversely, if
+a node is idle for long enough, the autoscaler will remove it from the cluster.
+
+To learn more about the autoscaler and how to configure it, refer to the following user guides:
+
+* :ref:`Configuring Autoscaling on VMs<deployment-guide-autoscaler-under-construction>`.
+* :ref:`Configuring Autoscaling on Kubernetes<kuberay-index>` (TODO cade@ update this link.)
 
 .. _cluster-clients-and-jobs-under-construction:
 
