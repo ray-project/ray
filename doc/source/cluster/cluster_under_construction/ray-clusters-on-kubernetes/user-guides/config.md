@@ -136,23 +136,24 @@ in the same Kubernetes namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc:10001")
 ```
-The Ray Client server will be accessible from a pod in another namespace using
+The Ray Client server can be accessed from a pod in another namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 ```
-(If the Ray cluster is a non-default namespace, use that namespace in
+(This assume the Ray cluster was deployed into the default Kuberentes namespace.
+If the Ray cluster is deployed in a non-default namespace, use that namespace in
 place of `default`.)
-Ray Client and other services can be made accessible from outside the Kubernetes cluster
+Ray Client and other services can be exposed outside the Kubernetes cluster
 using port-forwarding or an ingress. See {ref}`this guide <kuberay-networking>` for more details.
 
 #### resources
 It’s important to specify container CPU and memory requests and limits for
 each group spec. For GPU workloads, you may also wish to specify GPU
-limits. For example, set `nvidia.com/gpu:2` if using an nvidia GPU device plugin
+limits. For example, set `Nvidia.com/gpu:2` if using an nvidia GPU device plugin
 and you wish to specify a pod with access to 2 GPUs.
-See {ref}`this guide <kuberay-gpu>` for more details.
+See {ref}`this guide <kuberay-gpu>` for more details on GPU support.
 
-It is ideal when possible to size each Ray pod such that it takes up the
+It's ideal to size each Ray pod to take up the
 entire Kubernetes node on which it is scheduled. In other words, it’s
 best to run one large Ray pod per Kubernetes node.
 Broadly speaking, it is more efficient to use a few large Ray pods than many small ones.
