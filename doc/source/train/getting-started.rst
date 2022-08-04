@@ -3,8 +3,8 @@
 Getting Started
 ===============
 
-Ray Train abstracts away the complexity of setting up a distributed training
-system. Here are examples for some of the commonly used trainers:
+Ray Train offers multiple ``Trainers`` which perform scalable model training for different machine learning frameworks.
+Here are examples for some of the commonly used trainers:
 
 .. tabbed:: XGBoost
 
