@@ -12,19 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cstdio>
-#include <filesystem>
+#include <boost/filesystem.hpp>
 
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 
-using namespace std::filesystem;
+using namespace boost::filesystem;
 
 namespace plasma {
 namespace {
 const int64_t kMB = 1024 * 1024;
 std::string CreateTestDir() {
-  path directory = std::tmpnam(nullptr);
+  path directory = temp_directory_path() / unique_path();
   create_directories(directory);
   return directory.string();
 }
