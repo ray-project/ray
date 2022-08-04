@@ -16,7 +16,6 @@
 
 #include <boost/dll/runtime_symbol_info.hpp>
 #include <charconv>
-#include <filesystem>
 
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
@@ -196,7 +195,7 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       // driver.
       std::vector<std::string> absolute_path;
       for (const auto &path : code_search_path) {
-        absolute_path.emplace_back(std::filesystem::absolute(path).string());
+        absolute_path.emplace_back(boost::filesystem::absolute(path).string());
       }
       code_search_path = absolute_path;
     }
