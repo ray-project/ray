@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class HorovodTrainer(DataParallelTrainer):
     """A Trainer for data parallel Horovod training.
 

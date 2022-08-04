@@ -19,7 +19,7 @@ The Ray docs present all the information you need to start running Ray workloads
     :column: col-lg-12 p-2
     :card:
 
-    **Getting started**
+    **Getting Started**
     ^^^
 
     Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
@@ -28,6 +28,28 @@ The Ray docs present all the information you need to start running Ray workloads
     .. link-button:: kuberay-quickstart
         :type: ref
         :text: Get Started with Ray on Kubernetes
+        :classes: btn-outline-info btn-block
+    ---
+    **Examples**
+    ^^^
+
+    Try example Ray workloads on Kubernetes.
+
+    +++
+    .. link-button:: kuberay-examples
+        :type: ref
+        :text: Example workloads
+        :classes: btn-outline-info btn-block
+    ---
+    **User Guides**
+    ^^^
+
+    Learn best practices for configuring Ray clusters on Kubernetes.
+
+    +++
+    .. link-button:: kuberay-guides
+        :type: ref
+        :text: User Guides
         :classes: btn-outline-info btn-block
 ```
 ## The KubeRay project
