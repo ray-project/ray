@@ -414,9 +414,14 @@ class ServeController:
         config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if config_checkpoint is not None:
             _, last_config_dict, last_version_dict = pickle.loads(config_checkpoint)
-            updated_version_dict = _generate_new_version_config(
-                config_dict, last_config_dict, last_version_dict
-            )
+            if last_config_dict.get("import_path") == config_dict.get(
+                "import_path"
+            ) and last_config_dict.get("runtime_env") == config_dict.get("runtime_env"):
+                updated_version_dict = _generate_new_version_config(
+                    config_dict, last_config_dict, last_version_dict
+                )
+            else:
+                updated_version_dict = _generate_new_version_config(config_dict, {}, {})
         else:
             updated_version_dict = _generate_new_version_config(config_dict, {}, {})
 
