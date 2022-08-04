@@ -20,9 +20,9 @@ First of all, using Java Ray Serve needs the following dependency in you `pom.xm
 Our example use case is derived from production workflow of a financial application. The application needs to compute the best strategy to interact with different banks for a single task.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/Strategy.java
-:end-before: [strategy-end]
+:end-before: docs-strategy-end
 :language: java
-:start-after: [strategy-start]
+:start-after: docs-strategy-start
 ```
 
 This `Strategy` class is used to calculate the indicators of a number of banks.
@@ -35,9 +35,9 @@ This `Strategy` class is used to calculate the indicators of a number of banks.
 This is the code that uses the `Strategy` class:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalc.java
-:end-before: [strategy-calc-end]
+:end-before: docs-strategy-calc-end
 :language: java
-:start-after: [strategy-calc-start]
+:start-after: docs-strategy-calc-start
 ```
 
 When the scale of banks and indicators expands, the three-tier `for` loop will slow down the calculation. Even if the thread pool is used to calculate each indicator in parallel, we may encounter a single machine performance bottleneck. Moreover, this `Strategy`  object cannot be reused as a resident service.
@@ -49,17 +49,17 @@ Through Ray Serve, the core computing logic of `Strategy` can be deployed as a s
 First, we can extract the indicator calculation of each institution into a separate `StrategyOnRayServe` class:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyOnRayServe.java
-:end-before: [strategy-end]
+:end-before: docs-strategy-end
 :language: java
-:start-after: [strategy-start]
+:start-after: docs-strategy-start
 ```
 
 Next, we start the Ray Serve runtime and deploy `StrategyOnRayServe` as a deployment.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
-:end-before: [deploy-end]
+:end-before: docs-deploy-end
 :language: java
-:start-after: [deploy-start]
+:start-after: docs-deploy-start
 ```
 
 The `Deployment.create` makes a `Deployment` object named "strategy". After executing `Deployment.deploy`, this "strategy" deployment is deployed in the instance of Ray Serve with 4 replicas, and we can access it for distributed parallel computing.
@@ -69,25 +69,25 @@ The `Deployment.create` makes a `Deployment` object named "strategy". After exec
 Now we can test the "strategy" deployment using RayServeHandle inside Ray:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
-:end-before: [calc-end]
+:end-before: docs-calc-end
 :language: java
-:start-after: [calc-start]
+:start-after: docs-calc-start
 ```
 
 At present, the calculation of each bank's each indicator is still in series, and just sended to Ray for execution. We can make the calculation concurrent, which not only improves the calculation efficiency, but also solves the bottleneck of single machine.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
-:end-before: [parallel-calc-end]
+:end-before: docs-parallel-calc-end
 :language: java
-:start-after: [parallel-calc-start]
+:start-after: docs-parallel-calc-start
 ```
 
 Now, we can use `StrategyCalcOnRayServe` like the example in the `main` method:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
-:end-before: [main-end]
+:end-before: docs-main-end
 :language: java
-:start-after: [main-start]
+:start-after: docs-main-start
 ```
 
 ## Calling Ray Serve Deployment with HTTP
@@ -101,9 +101,9 @@ Another way to call a deployment is through the HTTP request. But there are now 
 If we want to call the "strategy" deployment via HTTP, the class can be rewritten like this: 
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyOnRayServe.java
-:end-before: [http-strategy-end]
+:end-before: docs-strategy-end
 :language: java
-:start-after: [http-strategy-start]
+:start-after: docs-strategy-start
 ```
 
 After deploying this deployment, we can access it through `curl` command:
@@ -115,31 +115,31 @@ curl -d '{"time":1641038674, "bank":"test_bank", "indicator":"test_indicator"}' 
 It can also be accessed using HTTP Client in Java code:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
-:end-before: [http-calc-end]
+:end-before: docs-http-end
 :language: java
-:start-after: [http-calc-start]
+:start-after: docs-http-start
 ```
 
 The example of strategy calculation using HTTP to access deployment is as follows:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
-:end-before: [calc-end]
+:end-before: docs-calc-end
 :language: java
-:start-after: [calc-start]
+:start-after: docs-calc-start
 ```
 
 This code can also be rewritten to support concurrency:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
-:end-before: [parallel-calc-end]
+:end-before: docs-parallel-calc-end
 :language: java
-:start-after: [parallel-calc-start]
+:start-after: docs-parallel-calc-start
 ```
 
 Now, the complete usage of `HttpStrategyCalcOnRayServe` is like this:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
-:end-before: [main-end]
+:end-before: docs-main-end
 :language: java
-:start-after: [main-start]
+:start-after: docs-main-start
 ```

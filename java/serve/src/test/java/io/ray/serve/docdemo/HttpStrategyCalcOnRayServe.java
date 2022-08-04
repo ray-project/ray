@@ -30,7 +30,7 @@ public class HttpStrategyCalcOnRayServe {
     deployment.deploy(true);
   }
 
-  // [http-calc-start]
+  // docs-http-start
   private Gson gson = new Gson();
 
   public String httpCalc(long time, String bank, String indicator) {
@@ -53,9 +53,9 @@ public class HttpStrategyCalcOnRayServe {
 
     return result;
   }
-  // [http-calc-end]
+  // docs-http-end
 
-  // [calc-start]
+  // docs-calc-start
   public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
 
     List<String> results = new ArrayList<>();
@@ -69,9 +69,9 @@ public class HttpStrategyCalcOnRayServe {
     }
     return results;
   }
-  // [calc-end]
+  // docs-calc-end
 
-  // [parallel-calc-start]
+  // docs-parallel-calc-start
   private ExecutorService executorService = Executors.newFixedThreadPool(4);
 
   public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
@@ -95,9 +95,9 @@ public class HttpStrategyCalcOnRayServe {
     }
     return results;
   }
-  // [parallel-calc-end]
+  // docs-parallel-calc-end
 
-  // [main-start]
+  // docs-main-start
   public static void main(String[] args) {
     long time = System.currentTimeMillis();
     String bank1 = "demo_bank_1";
@@ -115,5 +115,5 @@ public class HttpStrategyCalcOnRayServe {
 
     System.out.println(results);
   }
-  // [main-end]
+  // docs-main-end
 }

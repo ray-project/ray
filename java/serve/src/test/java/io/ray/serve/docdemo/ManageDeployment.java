@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class ManageDeployment {
 
-  // create-start
+  // docs-create-start
   public static class Counter {
 
     private AtomicInteger value;
@@ -31,15 +31,15 @@ public class ManageDeployment {
         .create()
         .deploy(true);
   }
-  // create-end
+  // docs-create-end
 
-  // query_start
+  // docs-query-start
   public void query() {
     Deployment deployment = Serve.getDeployment("counter");
   }
-  // query_end
+  // docs-query-end
 
-  // __update_start__
+  // docs-update-start
   public void update() {
     Serve.deployment()
         .setName("counter")
@@ -49,9 +49,9 @@ public class ManageDeployment {
         .create()
         .deploy(true);
   }
-  // __update_end__
+  // docs-update-end
 
-  // [scale-start]
+  // docs-scale-start
   public void scaleOut() {
     Deployment deployment = Serve.getDeployment("counter");
 
@@ -61,9 +61,9 @@ public class ManageDeployment {
     // Scale down to 1 replica.
     deployment.options().setNumReplicas(1).create().deploy(true);
   }
-  // [scale-end]
+  // docs-scale-end
 
-  // [resource-start]
+  // docs-resource-start
   public void manageResource() {
     Map<String, Object> rayActorOptions = new HashMap<>();
     rayActorOptions.put("num_gpus", 1);
@@ -74,5 +74,5 @@ public class ManageDeployment {
         .create()
         .deploy(true);
   }
-  // [resource-end]
+  // docs-resource-end
 }
