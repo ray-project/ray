@@ -5,7 +5,9 @@ Key Concepts
 
 There are 4 main concepts in the Ray Train library.
 
-Each `Trainer` generates a `result` and framework-specific `model checkpoint`.
+Each `Trainer`, which are configured with configuration objects (`ScalingConfig` and `RunConfig`),
+execute distributed training. After training, Trainers will generate a `result`, which can include
+a framework-specific `model checkpoint`.
 The checkpoint can be used with a `framework-specific predictor`
 to perform scalable batch prediction.
 
@@ -61,8 +63,11 @@ scalable data ingest and preprocessing.
 
 .. tabbed::  Deep learning trainers
 
-    Deep learning trainers utilize deep learning frameworks such as PyTorch, Tensorflow, or Horovod
-    for training.
+    Ray Train has multiple deep learning trainers that enable distributed deep learning:
+
+    - :class:`TorchTrainer <ray.train.torch.TorchTrainer>`
+    - :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`
+    - :class:`HorovodTrainer <ray.train.horovod.HorovodTrainer>`
 
     For these trainers, you usually define your own training function. Please see the
     :ref:`Session <train-key-concepts-session>` section for details on how to interact with
@@ -81,6 +86,9 @@ scalable data ingest and preprocessing.
     Tree-based trainers utilize gradient-based decision trees for training. The most popular libraries
     for this are XGBoost and LightGBM.
 
+    - :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>`
+    - :class:`LightGBMTrainer <ray.train.lightgbm.LightGBMTrainer>`
+
     For these trainers, you just pass a dataset and parameters. The training loop is configured
     automatically.
 
@@ -95,11 +103,11 @@ scalable data ingest and preprocessing.
 
 .. tabbed::  Other trainers
 
-    Some trainers don't fit into the other two categories, such as the
-    :class:`Huggingface trainer <ray.train.huggingface.HuggingfaceTrainer>` for NLP,
-    the :class:`RL trainer <ray.train.rl.RLTrainer>` for reinforcement learning, and
-    the :class:`SKlearn trainer <ray.train.sklearn.SKlearnTrainer>` for (non-distributed) training of
-    SKlearn models.
+    Some trainers don't fit into the other two categories, such as:
+
+    - :class:`Huggingface Trainer <ray.train.huggingface.HuggingfaceTrainer>` for NLP
+    - :class:`RL Trainer <ray.train.rl.RLTrainer>` for reinforcement learning
+    - :class:`Scikit-Learn Trainer <ray.train.sklearn.SKlearnTrainer>` for (non-distributed) training of SKlearn models.
 
     - :ref:`Quick overview of other trainers in the Ray AIR documentation <air-trainers-other>`
 
@@ -213,7 +221,6 @@ In this train loop, you can use :func:`session.report() <ray.air.session.report>
 training results or checkpoints to Ray Train.
 
 
-
 .. tabbed::  Reporting results
 
     To report results, use :func:`session.report() <ray.air.session.report>` as in this example:
@@ -247,14 +254,30 @@ training results or checkpoints to Ray Train.
 
 .. _train-key-concepts-results:
 
-Results
--------
+Results / Checkpoints
+---------------------
+
 Calling ``Trainer.fit()`` returns a :class:`Result <ray.air.result.Result>` object.
 
 The result object contains information about the run, such as the reported metrics and the saved
 checkpoints.
 
-:class:`Result API reference <ray.air.result.Result>`
+The checkpoint can be used with a `framework-specific predictor`
+to perform scalable batch prediction.
+
+
+:class:`Result API reference <ray.air.Result>`
+:class:`Checkpoint API reference <ray.air.Checkpoint>`
+
+- :class:`TorchCheckpoint <ray.train.torch.TorchCheckpoint>`
+- :class:`TensorflowCheckpoint <ray.train.tensorflow.TensorflowCheckpoint>`
+- :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>`
+- :class:`LightGBMCheckpoint <ray.train.lightgbm.LightGBMCheckpoint>`
+- :class:`SklearnCheckpoint <ray.train.sklearn.SklearnCheckpoint>`
+- :class:`HuggingFaceCheckpoint <ray.train.huggingface.HuggingFaceCheckpoint>`
+- :class:`RLCheckpoint <ray.train.rl.RLCheckpoint>`
+
+
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -271,8 +294,6 @@ uses the resulting model and performs inference on it.
 
 Each Trainer has a respective Predictor implementation that is compatible with its generated checkpoints.
 
-See :ref:`the Predictors user guide <air-predictors>` for more information and examples.
-
 .. dropdown:: Example: :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
 
     .. literalinclude:: /train/doc_code/xgboost_train_predict.py
@@ -281,11 +302,9 @@ See :ref:`the Predictors user guide <air-predictors>` for more information and e
         :end-before: __train_predict_end__
 
 
-BatchPredictor
-~~~~~~~~~~~~~~
-
-The BatchPredictor is used to scale up prediction over a Ray cluster. It takes
-a Ray Dataset as input.
+A predictor can be passed into a :class:`BatchPredictor <ray.train.batch_predictor.BatchPredictor>`
+is used to scale up prediction over a Ray cluster.
+It takes a Ray Dataset as input.
 
 .. dropdown:: Example: Batch prediction with :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
 
@@ -293,3 +312,5 @@ a Ray Dataset as input.
         :language: python
         :start-after: __batch_predict_start__
         :end-before: __batch_predict_end__
+
+See :ref:`the Predictors user guide <air-predictors>` for more information and examples.
