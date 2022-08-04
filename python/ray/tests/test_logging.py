@@ -34,7 +34,7 @@ def set_logging_config(monkeypatch, max_bytes, backup_count):
 
 
 def test_reopen_changed_inode(tmp_path):
-    """ Make sure that when we reopen a file because the inode has changed, we
+    """Make sure that when we reopen a file because the inode has changed, we
     open to the right location."""
 
     path1 = tmp_path / "file"
@@ -55,13 +55,12 @@ def test_reopen_changed_inode(tmp_path):
         file_handle=None,
         is_err_file=False,
         job_id=None,
-        worker_pid = None
+        worker_pid=None,
     )
 
     file_info.reopen_if_necessary()
     for _ in range(1000):
         file_info.file_handle.readline()
-
 
     orig_file_pos = file_info.file_handle.tell()
     file_info.file_position = orig_file_pos
@@ -73,7 +72,6 @@ def test_reopen_changed_inode(tmp_path):
 
     assert file_info.file_position == orig_file_pos
     assert file_info.file_handle.tell() == orig_file_pos
-
 
 
 def test_log_rotation_config(ray_start_cluster, monkeypatch):
