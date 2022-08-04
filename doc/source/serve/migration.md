@@ -11,6 +11,26 @@ In Ray Serve 2.0, we released a [new deployment API](converting-to-ray-serve-dep
 
 ## Migrating the 1.x Deployment
 
+### Migrating handle pass between deployments
+In the 1.x deployment, we usually pass handle of deployment to chain the deployments.
+```{literalinclude} ../serve/doc_code/migration_example.py
+:start-after: __raw_handle_graph_start__
+:end-before: __raw_handle_graph_end__
+:language: python
+```
+
+With the 2.0 deployment API, you can use the following code to update the above one.
+```{literalinclude} ../serve/doc_code/migration_example.py
+:start-after: __graph_with_new_api_start__
+:end-before: __graph_with_new_api_end__
+:language: python
+```
+
+:::{note}
+- `get_handle` can be replaced by `bind()` function to fulfill same functionality.
+- `serve.run` will return the entry point deployment handle for your whole chained deployments.
+:::
+
 ### Migrating a single deployment to the new deployment API 
 
 In the 1.x deployment API, we usually have the following code for deployment.
@@ -27,9 +47,6 @@ With the 2.0 deployment API, you can use the following code to update the above 
 :language: python
 ```
 
-:::{note}
-`predict` method is defined inside `DAGDriver` class as an entry point to fulfil requests
-:::
 
 ### Migrate Multiple deployment to new deployment API
 
@@ -51,7 +68,9 @@ With the 2.0 deployment API, you can use the following code to update the above 
 
 
 :::{note}
+- `predict` method is defined inside `DAGDriver` class as an entry point to fulfil requests
 - Similar to `predict` method, `predict_with_route` method is defined inside `DAGDriver` class as an entry point to fulfil requests.
+- `DAGDriver` is a special class to handle multi entry points for different deployments 
 - `DAGDriver.bind` can accept dictionary and each key is represented as entry point route path.
 - `predict_with_route` accepts a route path as the first argument to select which model to use.
 - In the example, you can also use an HTTP request to fulfill your request. Different models will bind with different route paths based on the user inputs; e.g. http://localhost:8000/model1 and http://localhost:8000/model2

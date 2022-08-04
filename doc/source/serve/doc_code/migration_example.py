@@ -1,6 +1,9 @@
+import ray
 from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.dag.input_node import InputNode
+from ray.serve.handle import RayServeLazySyncHandle
+from ray.serve.handle import RayServeSyncHandle
 
 import requests
 import starlette
@@ -8,18 +11,50 @@ import starlette
 serve.start()
 
 
+# __raw_handle_graph_start__
+
+
+@serve.deployment
+class Model:
+    def forward(self, input):
+        # do some inference work
+        return "done"
+
+
+@serve.deployment
+class Preprocess:
+    def __init__(self, model_handle: RayServeSyncHandle):
+        self.model_handle = model_handle
+
+    async def __call__(self, input):
+        # do some preprocessing works for your inputs
+        return await self.model_handle.forward.remote(input)
+
+
+Model.deploy()
+model_handle = Model.get_handle()
+
+Preprocess.deploy(model_handle)
+preprocess_handle = Preprocess.get_handle()
+ray.get(preprocess_handle.remote(1))
+
+# __raw_handle_graph_end__
+
+serve.shutdown()
+serve.start()
+
+
 # __single_deployment_old_api_start__
 @serve.deployment
 class Model:
-    def forward(self, input: int):
+    def __call__(self, input: int):
         # some inference work
-        print(input)
         return
 
 
 Model.deploy()
 handle = Model.get_handle()
-handle.forward.remote(1)
+handle.remote(1)
 # __single_deployment_old_api_end__
 
 serve.shutdown()
@@ -31,7 +66,6 @@ serve.start()
 class Model:
     def forward(self, input: int):
         # some inference work
-        print(input)
         return
 
 
@@ -39,7 +73,6 @@ class Model:
 class Model2:
     def forward(self, input: int):
         # some inference work
-        print(input)
         return
 
 
@@ -74,17 +107,13 @@ serve.shutdown()
 # __single_deployment_new_api_start__
 @serve.deployment
 class Model:
-    def forward(self, input: int):
+    def __call__(self, input: int):
         # some inference work
-        print(input)
         return
 
 
-with InputNode() as dag_input:
-    model = Model.bind()
-    d = DAGDriver.bind(model.forward.bind(dag_input))
-handle = serve.run(d)
-handle.predict.remote(1)
+handle = serve.run(Model.bind())
+handle.remote(1)
 # __single_deployment_new_api_end__
 
 serve.shutdown()
@@ -95,7 +124,6 @@ serve.shutdown()
 class Model:
     def forward(self, input: int):
         # some inference work
-        print(input)
         return
 
 
@@ -103,7 +131,6 @@ class Model:
 class Model2:
     def forward(self, input: int):
         # some inference work
-        print(input)
         return
 
 
@@ -163,3 +190,27 @@ handle = serve.run(d)
 resp = requests.get("http://localhost:8000/my_model1", data="321")
 resp = requests.get("http://localhost:8000/my_model2", data="321")
 # __customized_route_old_api_2_end__
+
+serve.shutdown()
+
+# __graph_with_new_api_start__
+@serve.deployment
+class Model:
+    def forward(self, input):
+        # do some inference work
+        return "done"
+
+
+@serve.deployment
+class Preprocess:
+    def __init__(self, model_handle: RayServeLazySyncHandle):
+        self.model_handle = model_handle
+
+    async def __call__(self, input):
+        # do some preprocessing works for your inputs
+        return await self.model_handle.forward.remote(input)
+
+
+handle = serve.run(Preprocess.bind(Model.bind()))
+ray.get(handle.remote(1))
+# __graph_with_new_api_end__
