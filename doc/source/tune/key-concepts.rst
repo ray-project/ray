@@ -153,6 +153,8 @@ Here's an example of uniformly sampling between ``[0, 1]`` for ``a`` and ``b``:
 To learn more about the various ways of configuring your Tune runs,
 check out the :ref:`Tuner API reference<tune-run-ref>`.
 
+.. _search-alg-ref:
+
 Search Algorithms
 -----------------
 
