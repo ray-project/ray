@@ -1,4 +1,7 @@
 from typing import Type, Optional, Dict
+from distutils.version import LooseVersion
+from inspect import isclass
+import os
 
 import pytorch_lightning
 
@@ -8,6 +11,9 @@ from ray.air.config import ScalingConfig, DatasetConfig, RunConfig
 from ray.train.trainer import GenDataset
 from ray.data.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
+from ray.air import session
+from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.lightning._lightning_utils import process_datasets, TrainReportLogger
 
 
 @PublicAPI(stability="alpha")
@@ -23,14 +29,16 @@ class LightningTrainer(TorchTrainer):
     of the provided ``lightning_module`` class object, which is a subclass of
     ``pytorch_lightning.LightningModule`` using the arguments provided in
     ``lightning_module_init_config``. The training function will then convert the
-    Ray Dataset shards to ``pytorch_lightning.LightningDataModule``s. Then, the
+    Ray Dataset shards to a ``pytorch_lightning.LightningDataModule``. Then, the
     training function will initialize an instance of ``pytorch_lightning.Trainer``
     using the arguments provided in ``trainer_init_config`` and then run
-    ``pytorch_lightning.Trainer``.
+    ``pytorch_lightning.Trainer.fit``.
 
     If the ``datasets`` dict contains a training dataset (denoted by the "train"
     key), then it will be split into multiple dataset shards, with each Actor
     training on a single shard. All the other datasets will not be split.
+
+    This Trainer requires ``pytorch-lightning>=1.7.0`` package.
 
     Args:
         lightning_module: A class object (not a class instance) that is a subclass
@@ -73,21 +81,30 @@ class LightningTrainer(TorchTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        # TODO (s10a): check PTL version
+        # Functionality required for LightningTrainer only added in this
+        # version
+        if LooseVersion(pytorch_lightning.__version__) < LooseVersion("1.7.0"):
+            raise RuntimeError(
+                "HuggingFaceTrainer requires pytorch-lightning>=1.7.0, but you "
+                f"have {pytorch_lightning.__version__} which is incompatible. "
+                "Update on all nodes with `pip install -U 'pytorch-lightning>=4.19.0'`."
+            )
 
-        # TODO (s10a): validate `lightning_module` is a class object, not instance
+        if not isclass(lightning_module):
+            raise ValueError(
+                "'lightning_module' must be a class, not a class instance."
+            )
+        if not issubclass(lightning_module, pytorch_lightning.LightningModule):
+            raise ValueError(
+                "'lightning_module' must be a subclass of "
+                "'pytorch_lightning.LightningModule'"
+            )
+        # TODO (s10a): assert that `lightning_module`
+        # does not specify dataloader functions
 
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
-        if "_lightning_module" in trainer_init_config:
-            raise ValueError(
-                "'_lightning_module' is a reserved key in `trainer_init_config`."
-            )
+        self._validate_trainer_init_config(trainer_init_config)
         trainer_init_config["_lightning_module"] = lightning_module
-        if "_lightning_module_init_config" in trainer_init_config:
-            raise ValueError(
-                "'_lightning_module_init_config' is a reserved key in "
-                "`trainer_init_config`."
-            )
         trainer_init_config[
             "_lightning_module_init_config"
         ] = lightning_module_init_config
@@ -104,14 +121,46 @@ class LightningTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
+    def _validate_trainer_init_config(self, trainer_init_config: Dict) -> None:
+        if "_lightning_module" in trainer_init_config:
+            raise ValueError(
+                "'_lightning_module' is a reserved key in `trainer_init_config`."
+            )
+        if "_lightning_module_init_config" in trainer_init_config:
+            raise ValueError(
+                "'_lightning_module_init_config' is a reserved key in "
+                "`trainer_init_config`."
+            )
+        if any(
+            isinstance(logger, TrainReportLogger)
+            for logger in trainer_init_config.get("loggers", [])
+        ):
+            raise ValueError(
+                "Do not pass in a Ray Train reporting logger to "
+                "`trainer_init_config`."
+            )
+
 
 def _lightning_train_loop_per_worker(config):
-    lightning_module = config.pop("_lightning_module")
+    # TODO: is this enough for manual DDP w/ Lightning? 
+    os.environ["RANK"] = str(session.get_world_rank())
+    os.environ["WORLD_SIZE"] = str(session.get_world_size())
+    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
+
+    LightningModule = config.pop("_lightning_module")
     lightning_module_init_config = config.pop("_lightning_module_init_config")
-    # TODO (s10a)
-    # 1. Create a pytorch_lightning.Trainer, populating its args with the user
-    #    provided scaling config and trainer_init_config
-    # 2. Take the Dataset shard and convert to a PTL DataModule
-    # 3. Call ptl_trainer.fit() with the user provided LightningModule and the
-    #    DataModule that we created
-    pass
+    lightning_module_instance = LightningModule(**lightning_module_init_config)
+
+    # TODO: is KeyError raised if a key is not set in datasets?
+    datamodule = process_datasets(
+        session.get_dataset_shard(TRAIN_DATASET_KEY),
+        session.get_dataset_shard("val"),
+        session.get_dataset_shard("test"),
+        session.get_dataset_shard("predict"),
+    )
+
+    # TODO: do we need to do anything for Train checkpointing? 
+    config["loggers"] = [*config.get("loggers", []), TrainReportLogger()]
+    trainer = pytorch_lightning.Trainer(**config)
+    # TODO: disable PTL checkpointing because we checkpoint in Train?
+    trainer.fit(lightning_module_instance, datamodule=datamodule)
