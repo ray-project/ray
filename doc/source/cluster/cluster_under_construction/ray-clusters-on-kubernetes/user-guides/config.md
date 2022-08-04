@@ -7,10 +7,10 @@ This guide covers the key aspects of Ray cluster configuration on Kubernetes.
 ## Introduction
 
 Deployments of Ray on Kubernetes follow the [operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/). The key players are
-- A [Custom Resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/)
+- A [custom resource](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/)
     called a `RayCluster` describing the desired state of a Ray cluster.
-- A [Custom Controller](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#custom-controllers),
-    the KubeRay operator, which manages Ray pods to match the `RayCluster`'s spec.
+- A [custom controller](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#custom-controllers),
+    the KubeRay operator, which manages Ray pods in order to match the `RayCluster`'s spec.
 
 To deploy a Ray cluster, one creates a `RayCluster` custom resource (CR):
 ```shell
@@ -81,7 +81,7 @@ The Ray version is used to fill default values for certain config fields,
 such as the Ray autoscaler image.
 The Ray container images specified in the RayCluster CR should carry
 the same Ray version as the CR's `rayVersion`. If you are using a nightly or development
-Ray image, it is fine to specify the latest release version of Ray.
+Ray image, it is fine to set `rayVersion` to the latest release version of Ray.
 
 ## Pod configuration: headGroupSpec and workerGroupSpecs
 
@@ -131,7 +131,7 @@ followed by the suffix\
 the head service will be\
 `raycluster-example-head-svc`. Kubernetes networking (`kube-dns`) then allows us to address
 the Ray head's services using the name `raycluster-example-head-svc`.
-For example, the Ray Client server will be accessible from a pod
+For example, the Ray Client server can be accessed from a pod
 in the same Kubernetes namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc:10001")
