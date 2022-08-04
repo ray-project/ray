@@ -65,6 +65,8 @@ def test_reopen_changed_inode(tmp_path):
     orig_file_pos = file_info.file_handle.tell()
     file_info.file_position = orig_file_pos
 
+    # NOTE: On windows, an open file can't be deleted.
+    file_info.file_handle.close()
     os.remove(path1)
     os.rename(path2, path1)
 
