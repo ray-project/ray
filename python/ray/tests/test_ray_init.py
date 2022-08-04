@@ -378,8 +378,8 @@ def test_hosted_external_dashboard_url_with_ray_client(shutdown_only):
 
     with ray_start_client_server() as given_connection:
         given_connection.disconnect()
-        info = ray.init("ray://localhost:50051", logging_level=logging.INFO)
-    assert info.dashboard_url == "external_dashboard_url"
+        with ray.init("ray://localhost:50051") as info:
+            assert info.dashboard_url == "external_dashboard_url"
 
     if orig_external_dashboard_url:
         os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
