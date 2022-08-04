@@ -9,7 +9,7 @@ recommended way to do so. The operator provides a Kubernetes-native way to manag
 Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional
 autoscaling support allows the KubeRay Operator to size your Ray clusters according to the
 requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports
-heterogenous compute nodes including GPUs as well as running multiple Ray clusters with
+heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with
 different Ray versions in the same Kubernetes cluster.
 
 ```{eval-rst}
