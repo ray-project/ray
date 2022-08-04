@@ -64,6 +64,7 @@ def trainer_init_per_worker(train_dataset, eval_dataset, **config):
         evaluation_strategy="epoch",
         learning_rate=2e-5,
         weight_decay=0.01,
+        no_cuda=True,  # Set to False for GPU training
     )
     return transformers.Trainer(
         model=model,
