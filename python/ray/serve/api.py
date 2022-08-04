@@ -320,9 +320,9 @@ def deployment(
         user_config (Optional[Any]): Config to pass to the
             reconfigure method of the deployment. This can be updated
             dynamically without changing the version of the deployment and
-            restarting its replicas. The user_config needs to be hashable to
-            keep track of updates, so it must only contain hashable types, or
-            hashable types nested in lists and dictionaries.
+            restarting its replicas. The user_config must be json-serializable
+            to keep track of updates, so it must only contain json-serializable
+            types, or json-serializable types nested in lists and dictionaries.
         max_concurrent_queries (Optional[int]): The maximum number of queries
             that will be sent to a replica of this deployment without receiving
             a response. Defaults to 100.
@@ -350,6 +350,12 @@ def deployment(
         raise ValueError(
             "Manually setting num_replicas is not allowed when "
             "autoscaling_config is provided."
+        )
+
+    if version is not None:
+        logger.warning(
+            "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
+            "Explicitly specifying version will raise an error in the future!"
         )
 
     config = DeploymentConfig.from_default(
@@ -417,7 +423,7 @@ def list_deployments() -> Dict[str, Deployment]:
     return _private_api.list_deployments()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def run(
     target: Union[ClassNode, FunctionNode],
     _blocking: bool = True,
@@ -435,8 +441,10 @@ def run(
             A user-built Serve Application or a ClassNode that acts as the
             root node of DAG. By default ClassNode is the Driver
             deployment unless user provides a customized one.
-        host: The host passed into serve.start().
-        port: The port passed into serve.start().
+        host: Host for HTTP servers to listen on. Defaults to
+            "127.0.0.1". To expose Serve publicly, you probably want to set
+            this to "0.0.0.0".
+        port: Port for HTTP server. Defaults to 8000.
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
