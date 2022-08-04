@@ -11,7 +11,7 @@ from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.util.annotations import PublicAPI
-
+from ray.air.constants import TENSOR_COLUMN_NAME
 
 @PublicAPI(stability="beta")
 class BatchPredictor:
@@ -214,7 +214,15 @@ class BatchPredictor:
                 if batch_format == "numpy":
                     # No casting or pandas conversion needed for numpy here
                     # we only need it once at final predictor output level
-                    return prediction_output
+                    try:
+                        return convert_batch_type_to_pandas(
+                            prediction_output, cast_tensor_columns
+                        )
+                    # TODO(jiaodong): Add a dedicated casting exception type
+                    except Exception:
+                        return convert_batch_type_to_pandas(
+                            prediction_output, cast_tensor_columns=False
+                        )
                 else:
                     return convert_batch_type_to_pandas(
                         prediction_output, cast_tensor_columns
@@ -237,13 +245,27 @@ class BatchPredictor:
                 batch_fn = preprocessor._transform_batch
                 data = data.map_batches(batch_fn, batch_format=batch_format)
 
-        prediction_results = data.map_batches(
-            ScoringWrapper,
-            compute=compute,
-            batch_format=batch_format,
-            batch_size=batch_size,
-            **ray_remote_args,
-        )
+        # TODO(jiaodong): Dirty hack, need to properly disable the last step casting only for this step
+        try:
+            prediction_results = data.map_batches(
+                ScoringWrapper,
+                compute=compute,
+                batch_format=batch_format,
+                batch_size=batch_size,
+                **ray_remote_args,
+            )
+        except Exception:
+            ctx = DatasetContext.get_current()
+            ctx.enable_tensor_extension_casting = False
+            cast_tensor_columns = False
+
+            prediction_results = data.map_batches(
+                ScoringWrapper,
+                compute=compute,
+                batch_format=batch_format,
+                batch_size=batch_size,
+                **ray_remote_args,
+            )
 
         return prediction_results
 
