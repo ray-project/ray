@@ -62,6 +62,14 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
             "This is in the format of seconds since unix epoch."
         ),
     )
+    last_activity_at: Optional[float] = Field(
+        None,
+        description=(
+            "Timestamp when last actvity of this Ray component finished in format of "
+            "seconds since unix epoch. This field does not need to be populated "
+            "for Ray components where it is not meaningful."
+        ),
+    )
 
     @validator("reason", always=True)
     def reason_required(cls, v, values, **kwargs):
@@ -212,13 +220,30 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             )
 
             num_active_drivers = 0
+            latest_job_end_time = 0
             for job_table_entry in reply.job_info_list:
                 is_dead = bool(job_table_entry.is_dead)
                 in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
                     "_ray_internal_"
                 )
+                latest_job_end_time = (
+                    max(latest_job_end_time, job_table_entry.end_time)
+                    if job_table_entry.end_time
+                    else latest_job_end_time
+                )
                 if not is_dead and not in_internal_namespace:
                     num_active_drivers += 1
+
+            current_timestamp = datetime.now().timestamp()
+            # Latest job end time must be before or equal to the current timestamp.
+            # Job end times may be provided in epoch milliseconds. Check if this
+            # is true, and convert to seconds
+            if latest_job_end_time > current_timestamp:
+                latest_job_end_time = latest_job_end_time / 1000
+                assert current_timestamp >= latest_job_end_time, (
+                    f"Most recent job end time {latest_job_end_time} must be "
+                    f"before or equal to the current timestamp {current_timestamp}"
+                )
 
             is_active = (
                 RayActivityStatus.ACTIVE
@@ -230,7 +255,10 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 reason=f"Number of active drivers: {num_active_drivers}"
                 if num_active_drivers
                 else None,
-                timestamp=datetime.now().timestamp(),
+                timestamp=current_timestamp,
+                # If latest_job_end_time == 0, no jobs have finished yet so don't
+                # populate last_activity_at
+                last_activity_at=latest_job_end_time if latest_job_end_time else None,
             )
         except Exception as e:
             logger.exception("Failed to get activity status of Ray drivers.")

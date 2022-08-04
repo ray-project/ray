@@ -117,6 +117,10 @@ struct Invoker {
     if constexpr (is_object_ref_v<T>) {
       // Construct an ObjectRef<T> by id.
       return T(std::string(args_buffer.data(), args_buffer.size()));
+    } else if constexpr (is_actor_handle_v<T>) {
+      auto actor_handle =
+          Serializer::Deserialize<std::string>(args_buffer.data(), args_buffer.size());
+      return T::FromBytes(actor_handle);
     } else {
       auto [success, value] =
           Serializer::DeserializeWhenNil<T>(args_buffer.data(), args_buffer.size());
