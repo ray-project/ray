@@ -430,7 +430,7 @@ def in_interactive_shell():
     return not hasattr(main, "__file__")
 
 
-def deprecated(*args, **kwargs):
+def guarded_deprecation_warning(*args, **kwargs):
     """Wrapper for deprecation warnings, guarded by a flag."""
     if os.environ.get("SERVE_WARN_V1_DEPRECATIONS", "0") == "1":
         from ray._private.utils import deprecated

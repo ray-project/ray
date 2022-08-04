@@ -42,7 +42,7 @@ from ray.serve._private.utils import (
     ensure_serialization_context,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
-    deprecated,
+    guarded_deprecation_warning,
 )
 
 from ray.serve._private import api as _private_api
@@ -50,7 +50,7 @@ from ray.serve._private import api as _private_api
 logger = logging.getLogger(__file__)
 
 
-@deprecated(instructions=MIGRATION_MESSAGE)
+@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
 @Deprecated(message=MIGRATION_MESSAGE)
 def start(
     detached: bool = False,
@@ -383,7 +383,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
-@deprecated(instructions=MIGRATION_MESSAGE)
+@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
 @Deprecated(message=MIGRATION_MESSAGE)
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
@@ -407,7 +407,7 @@ def get_deployment(name: str) -> Deployment:
     return _private_api.get_deployment(name)
 
 
-@deprecated(instructions=MIGRATION_MESSAGE)
+@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
 @Deprecated(message=MIGRATION_MESSAGE)
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.

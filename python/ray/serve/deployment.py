@@ -20,7 +20,7 @@ from ray.serve.config import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve._private.utils import DEFAULT, deprecated
+from ray.serve._private.utils import DEFAULT, guarded_deprecation_warning
 from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
@@ -200,7 +200,7 @@ class Deployment:
                 },
             )
 
-    @deprecated(instructions=MIGRATION_MESSAGE)
+    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
     @Deprecated(message=MIGRATION_MESSAGE)
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
@@ -242,7 +242,7 @@ class Deployment:
             _blocking=_blocking,
         )
 
-    @deprecated(instructions=MIGRATION_MESSAGE)
+    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
     @Deprecated(message=MIGRATION_MESSAGE)
     def delete(self):
         """Delete this deployment."""
@@ -255,7 +255,7 @@ class Deployment:
 
         return get_global_client().delete_deployments([self._name])
 
-    @deprecated(instructions=MIGRATION_MESSAGE)
+    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
     @Deprecated(message=MIGRATION_MESSAGE)
     def get_handle(
         self, sync: Optional[bool] = True
