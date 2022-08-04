@@ -49,8 +49,8 @@ and ``get_progress()`` method to get the overall progress.
 
 Defining the Sampling Task
 --------------------------
-Next, we will define a Ray task that does the sampling up to the given times and returns the number of samples that are inside the circle.
-Ray tasks are stateless functions that will be executed asynchronously and in parallel.
+After our actor is defined, we will now define a Ray task that does the sampling up to the given times and returns the number of samples that are inside the circle.
+Ray tasks are stateless functions. They execute asynchronously, and run in parallel.
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
@@ -70,9 +70,9 @@ Once the actor is defined, we can create an instance of it.
     :start-after: __creating_actor_start__
     :end-before: __creating_actor_end__
 
-We create an instance of the progress actor by calling ``remote()`` method with arguments to the constructor.
+To create an instance of the progress actor, simply call ``Actor.remote()`` method with arguments to the constructor.
 This will create and run the actor on a remote worker process.
-The return value of ``Actor.remote(...)`` is an actor handle that can be used to call the actor later on.
+The return value of ``Actor.remote(...)`` is an actor handle that can be used to call the actor methods.
 
 Executing Sampling Tasks
 ------------------------
