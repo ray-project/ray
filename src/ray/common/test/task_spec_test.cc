@@ -108,14 +108,15 @@ TEST(TaskSpecTest, TestActorSchedulingClass) {
 
   rpc::TaskSpec actor_task_spec_proto;
   actor_task_spec_proto.set_type(TaskType::ACTOR_CREATION_TASK);
-  actor_task_spec_proto.mutable_required_placement_resources()->insert(one_cpu.begin(), one_cpu.end());
+  actor_task_spec_proto.mutable_required_placement_resources()->insert(one_cpu.begin(),
+                                                                       one_cpu.end());
 
   TaskSpecification actor_task(actor_task_spec_proto);
 
-
   rpc::TaskSpec regular_task_spec_proto;
   actor_task_spec_proto.set_type(TaskType::NORMAL_TASK);
-  actor_task_spec_proto.mutable_required_resources()->insert(one_cpu.begin(), one_cpu.end());
+  actor_task_spec_proto.mutable_required_resources()->insert(one_cpu.begin(),
+                                                             one_cpu.end());
 
   TaskSpecification regular_task(regular_task_spec_proto);
 
