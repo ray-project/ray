@@ -131,16 +131,16 @@ the head service will be\
 `raycluster-example-head-svc`. Kubernetes networking (`kube-dns`) then allows us to address
 the Ray head's services using the name `raycluster-example-head-svc`.
 For example, the Ray Client server can be accessed from a pod
-in the same Kubernetes namespace using
+in the same Kubernetes Namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc:10001")
 ```
-The Ray Client server can be accessed from a pod in another namespace using
+The Ray Client server can be accessed from a pod in another Namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 ```
-(This assume the Ray cluster was deployed into the default Kuberentes namespace.
-If the Ray cluster is deployed in a non-default namespace, use that namespace in
+(This assumes the Ray cluster was deployed into the default Kuberentes Namespace.
+If the Ray cluster is deployed in a non-default Namespace, use that Namespace in
 place of `default`.)
 Ray Client and other services can be exposed outside the Kubernetes cluster
 using port-forwarding or an ingress. See {ref}`this guide <kuberay-networking>` for more details.
@@ -155,14 +155,14 @@ See {ref}`this guide <kuberay-gpu>` for more details on GPU support.
 It's ideal to size each Ray pod to take up the
 entire Kubernetes node on which it is scheduled. In other words, it’s
 best to run one large Ray pod per Kubernetes node.
-Broadly speaking, it is more efficient to use a few large Ray pods than many small ones.
+In general, it is more efficient to use a few large Ray pods than many small ones.
 The pattern of fewer large Ray pods has the following advantages:
 - more efficient use of each Ray pod's shared memory object store
 - reduced communication overhead between Ray pods
 - reduced redundancy of per-pod Ray control structures such as Raylets
 
 The CPU, GPU, and memory **limits** specified in the Ray container config
-will be automatically advertised to the Ray. These values will be used as
+will be automatically advertised to Ray. These values will be used as
 the logical resource capacities of Ray pods in the head or worker group.
 (The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.)
 
@@ -218,15 +218,22 @@ Kubernetes resource limits specified in the group spec’s pod
 `template`. However, it is sometimes useful to override this autodetected
 value. For example, setting `num-cpus:"0"` for the Ray head pod will prevent Ray
 workloads with non-zero CPU requirements from being scheduled on the head.
+Note that the values of all Ray start parameters, including `num-cpus`,
+must be supplied as **strings**.
 
 #### num-gpus
 This optional field specifies the number of GPUs available to the Ray container.
 In KubeRay versions since 0.3.0, the number of GPUs can be auto-detected from Ray container resource limits.
 For certain advanced use-cases, you may wish to use `num-gpus` to set an {ref}`override<kuberay-gpu-override>`.
+Note that the values of all Ray start parameters, including `num-gpus`,
+must be supplied as **strings**.
 
 #### memory
 The memory available to the Ray is detected automatically from the Kubernetes resource
-limits. If you wish, you may override this autodetected value.
+limits. If you wish, you may override this autodetected value by setting the desired memory value,
+in bytes, under `rayStartParams.memory`.
+Note that the values of all Ray start parameters, including `memory`,
+must be supplied as **strings**.
 
 #### resources
 This field can be used to specify custom resource capacities for the Ray pod.
@@ -241,7 +248,7 @@ You can then annotate tasks and actors with annotations like `@ray.remote(resour
 The Ray scheduler and autoscaler will take appropriate action to schedule such tasks.
 
 Note the format used to express the resources string. In particular, note
-that the backslashes are present as literal characters in the string.
+that the backslashes are present as actual characters in the string.
 If you are specifying a RayCluster programmatically, you may have to
 [escape the backslashes](https://github.com/ray-project/ray/blob/cd9cabcadf1607bcda1512d647d382728055e688/python/ray/tests/kuberay/test_autoscaling_e2e.py#L92) to make sure they are processed as part of the string.
 
@@ -254,7 +261,7 @@ fields, use the Ray start parameters `num-cpus`, `num-gpus`, or `memory`.
 ## Autoscaler configuration
 ```{note}
 If you are deciding whether to use autoscaling for a particular Ray application,
-check out the discussion {ref}`Should I enable autoscaling?`
+check out this {ref}`discussion<autoscaler-pro-con>`.
 ```
 To enable the optional Ray Autoscaler support, set `enableInTreeAutoscaling:true`.
 The KubeRay operator will then automatically configure an autoscaling sidecar container
@@ -263,7 +270,8 @@ and automatically adjusts the `replicas` field of each `workerGroupSpec` as need
 the requirements of your Ray application.
 
 Use the fields `minReplicas` and `maxReplicas` to constrain the `replicas` of an autoscaling
-`workerGroup`. When deploying an autoscaling cluster, one typically sets `replicas` and `minReplicas` to the same value.
+`workerGroup`. When deploying an autoscaling cluster, one typically sets `replicas` and `minReplicas`
+to the same value.
 The Ray autoscaler will then take over and modify the `replicas` field as needed by
 the Ray application.
 
@@ -278,14 +286,14 @@ from your Ray application. For example, suppose you submit a task requesting 2 G
 ...
 ```
 If your Ray cluster does not currently have any GPU worker pods, and if your configuration
-specifies specifies a worker type with at least 2 units of GPU capacity, a GPU pod will be
+specifies a worker type with at least 2 units of GPU capacity, a GPU pod will be
 upscaled.
 
 The autoscaler scales Ray worker pods up by editing the `replicas` field of the relevant `workerGroupSpec`.
 
 #### Scale down
 The autoscaler scales a worker pod down when the pod has not been using any logical resources
-for a {ref}`set period of time<kuberay-idle-timeout>`. Resources in this context are the logical Ray resources
+for a {ref}`set period of time<kuberay-idle-timeout>`. In this context, "resources" are the logical Ray resources
 (such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
 Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
 
@@ -294,8 +302,8 @@ The autoscaler scales Ray worker pods down by adding the Ray pods' names to the 
 `workerGroupSpec`.
 
 #### Manually scaling
-Note that you may manually adjust the scale by editing the `replicas` or `workersToDelete` fields.
-(It is also possible to implement custom scaling logic that adjusts the scale on your behalf.)
+You may manually adjust a RayCluster's scale by editing the `replicas` or `workersToDelete` fields.
+(It is also possible to implement custom scaling logic that adjusts scale on your behalf.)
 It is however, not recommended to manually edit `replicas` or `workersToDelete` for a RayCluster with
 autoscaling enabled.
 
@@ -315,7 +323,7 @@ UpscalingMode is "Conservative", "Default", or "Aggressive."
 - `Aggressive`: An alias for Default; upscaling is not rate-limited.
 
 You may wish to use `Conservative` upscaling if you plan to submit many short-lived tasks
-to your RayCluster. Otherwise, you may observe the following `thrashing` behavior:
+to your Ray cluster. In this situation, `Default` upscaling may trigger the _thrashing_ behavior:
 - The autoscaler sees resource demands from the submitted short-lived tasks.
 - The autoscaler immediately creates Ray pods to accomodate the demand.
 - By the time the additional Ray pods are provisioned, the tasks have already run to completion.
@@ -330,7 +338,7 @@ Ray pods.
 (kuberay-idle-timeout)=
 #### idleTimeoutSeconds
 `IdleTimeoutSeconds` is the number of seconds to wait before scaling down a worker pod
-which is not using resources. Resources in this context are the logical Ray resources
+which is not using resources. In this context, "resources" are the logical Ray resources
 (such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
 Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
 
