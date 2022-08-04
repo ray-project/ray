@@ -26,21 +26,21 @@ $ pip install "tensorflow>=2.0" requests
 
 Open a new Python file called `tutorial_tensorflow.py`. First, let's import Ray Serve and some other helpers.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_tensorflow.py
+```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
 ```
 
 Next, let's train a simple MNIST model using Keras.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_tensorflow.py
+```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_train_model_begin__
 :end-before: __doc_train_model_end__
 ```
 
 Next, we define a class `TFMnistModel` that will accept HTTP requests and run the MNIST model that we trained. It is decorated with `@serve.deployment` to make it a deployment object so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_tensorflow.py
+```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_define_servable_begin__
 :end-before: __doc_define_servable_end__
 ```
@@ -51,7 +51,7 @@ When `TFMnistModel` is deployed and instantiated, it will load the Tensorflow mo
 
 Now that we've defined our Serve deployment, let's prepare it so that it can be deployed.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_tensorflow.py
+```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_deploy_begin__
 :end-before: __doc_deploy_end__
 ```
@@ -103,14 +103,14 @@ $ pip install torch torchvision requests
 
 Open a new Python file called `tutorial_pytorch.py`. First, let's import Ray Serve and some other helpers.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_pytorch.py
+```{literalinclude} ../doc_code/tutorial_pytorch.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
 ```
 
 We define a class `ImageModel` that parses the input data, transforms the images, and runs the ResNet18 model loaded from `torchvision`. It is decorated with `@serve.deployment` to make it a deployment object so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_pytorch.py
+```{literalinclude} ../doc_code/tutorial_pytorch.py
 :start-after: __doc_define_servable_begin__
 :end-before: __doc_define_servable_end__
 ```
@@ -121,7 +121,7 @@ When `ImageModel` is deployed and instantiated, it will load the resnet18 model 
 
 Now that we've defined our Serve deployment, let's prepare it so that it can be deployed.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_pytorch.py
+```{literalinclude} ../doc_code/tutorial_pytorch.py
 :start-after: __doc_deploy_begin__
 :end-before: __doc_deploy_end__
 ```
@@ -172,7 +172,7 @@ $ pip install scikit-learn requests
 
 Open a new Python file called `tutorial_sklearn.py`. Let's import Ray Serve and some other helpers.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_sklearn.py
+```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
 ```
@@ -184,21 +184,21 @@ We will train a classifier with the [iris dataset](https://scikit-learn.org/stab
 
 First, let's instantiate a `GradientBoostingClassifier` loaded from Scikit-Learn.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_sklearn.py
+```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_instantiate_model_begin__
 :end-before: __doc_instantiate_model_end__
 ```
 
 Next, load the iris dataset and split the data into training and validation sets.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_sklearn.py
+```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_data_begin__
 :end-before: __doc_data_end__
 ```
 
 We then train the model and save it to file.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_sklearn.py
+```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_train_model_begin__
 :end-before: __doc_train_model_end__
 ```
@@ -209,7 +209,7 @@ Finally, we are ready to deploy the classifier using Ray Serve!
 
 We define a class `BoostingModel` that runs inference on the `GradientBoosingClassifier` model we trained and returns the resulting label. It is decorated with `@serve.deployment` to make it a deployment object so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_sklearn.py
+```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_define_servable_begin__
 :end-before: __doc_define_servable_end__
 ```
@@ -220,7 +220,7 @@ When `BoostingModel` is deployed and instantiated, it will load the classifier m
 
 Now that we've defined our Serve deployment, let's prepare it so that it can be deployed.
 
-```{literalinclude} ../../../../python/ray/serve/examples/doc/tutorial_sklearn.py
+```{literalinclude} ../doc_code/tutorial_sklearn.py
 :start-after: __doc_deploy_begin__
 :end-before: __doc_deploy_end__
 ```
