@@ -244,24 +244,34 @@ The Ray autoscaler will then take over and modify the `replicas` field as needed
 the Ray application.
 
 ### Autoscaler operation
+We describe how the autoscaler interacts with the RayCluster CR.
 
 #### Scale up
-The autoscaler scales worker pods up when...
+The autoscaler scales worker pods up to accomodate the load of logical resources
+from your Ray application. For example, suppose you submit a task requesting 2 GPUs:
+```python
+@ray.remote(num_gpus=2)
+...
+```
+If your Ray cluster does not currently have any GPU worker pods, and if your configuration
+specifies specifies a worker type with at least 2 units of GPU capacity, a GPU pod will be
+upscaled.
 
-The autoscaler scales Ray worker pods up by...
+The autoscaler scales Ray worker pods up by editing the `replicas` field of the relevant `workerGroupSpec`.
 
 #### Scale down
-The autoscaler scales a worker pod down when the pod has not been using resources
-for a {ref}`set period of time`. Resources means...
+The autoscaler scales a worker pod down when the pod has not been using any logical resources
+for a {ref}`set period of time<kuberay-idle-timeout>`. Resources in this context are the logical Ray resources
+(such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
 
 The autoscaler scales Ray worker pods down by adding the Ray pods' names to the RayCluster CR's
 `scaleStrategy.workersToDelete` list and decrementing the `replicas` field of the relevant
 `workerGroupSpec`.
 
-Note that you may manually adjust the scale by editing the `replicas` or workersTo
-. (It is also possible to implement custom scaling
-logic that adjusts the scale on your behalf.)
-It is however, not recommended to manually edit these fields for a RayCluster with
+#### Manually scaling
+Note that you may manually adjust the scale by editing the `replicas` or `workersToDelete` fields.
+(It is also possible to implement custom scaling logic that adjusts the scale on your behalf.)
+It is however, not recommended to manually edit `replicas` or `workersToDelete` for a RayCluster with
 autoscaling enabled.
 
 ### autoscalerOptions
@@ -291,6 +301,7 @@ a few long-running tasks over many short-running tasks. Ensuring that each task 
 a non-trivial amount of work to do will also help prevent the autoscaler from over-provisioning
 Ray pods.
 
+(kuberay-idle-timeout)=
 #### idleTimeoutSeconds
 `IdleTimeoutSeconds` is the number of seconds to wait before scaling down a worker pod
 which is not using resources. Resources in this context are the logical Ray resources
