@@ -4,17 +4,42 @@ Getting Started
 ===============
 
 Ray Train abstracts away the complexity of setting up a distributed training
-system. Let's take following simple examples:
+system. Here are examples for some of the commonly used trainers:
 
 .. tabbed:: XGBoost
 
-   To use
+    In this example we will train a model using distributed XGBoost.
+
+    First, we load the dataset from S3 using Ray Datasets and split it into a
+    train and validation dataset.
+
+    We then instantiate our XGBoostTrainer:
+
+    - In the :class:`scaling_config <ray.air.config.ScalingConfig>`, we configure the number of workers to use
+    - The ``label_column`` refers to the column name containing the labels in the Ray Dataset
+    - The ``params`` are core `XGBoost training parameters <https://xgboost.readthedocs.io/en/stable/parameter.html>`__
+
+    And lastly we call ``trainer.fit()`` to kick off training and obtain the results.
+
     .. literalinclude:: doc_code/gbdt_user_guide.py
        :language: python
        :start-after: __xgboost_start__
        :end-before: __xgboost_end__
 
 .. tabbed:: LightGBM
+
+    In this example we will train a model using distributed LightGBM.
+
+    First, we load the dataset from S3 using Ray Datasets and split it into a
+    train and validation dataset.
+
+    We then instantiate our LightGBMTrainer:
+
+    - In the :class:`scaling_config <ray.air.config.ScalingConfig>`, we configure the number of workers to use
+    - The ``label_column`` refers to the column name containing the labels in the Ray Dataset
+    - The ``params`` are core `LightGBM training parameters <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`__
+
+    And lastly we call ``trainer.fit()`` to kick off training and obtain the results.
 
     .. literalinclude:: doc_code/gbdt_user_guide.py
        :language: python

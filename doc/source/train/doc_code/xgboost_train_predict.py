@@ -1,3 +1,6 @@
+# flake8: noqa
+# isort: skip_file
+
 # __train_predict_start__
 import numpy as np
 import ray
@@ -25,6 +28,6 @@ batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, XGBoostPredi
 predictions = batch_predictor.predict(
     data=ray.data.from_items([{"x": x} for x in range(32)]),
     batch_size=8,
-    min_scoring_workers=2
+    min_scoring_workers=2,
 )
 # __batch_predict_end__
