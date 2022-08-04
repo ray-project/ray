@@ -1,7 +1,7 @@
 (kuberay-autoscaler-discussion)=
 # Autoscaling
 This page discusses autoscaling in the context of Ray on Kubernetes.
-For details on autoscaler configuration see {ref}`kuberay-autoscaling-config`.
+For details on autoscaler configuration see the {ref}`configuration guide<kuberay-autoscaling-config>`.
 
 (autoscaler-pro-con)=
 ## Should I enable autoscaling?
