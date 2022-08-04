@@ -35,7 +35,7 @@ Or more about `Ray Core`_ and its key abstractions:
 - `Actors`_: Stateful worker processes created in the cluster.
 - `Objects`_: Immutable values accessible across the cluster.
 
-Ray runs on any machine, cluster, cloud provider, and Kubernetes, and also features a growing
+Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 `ecosystem of community integrations`_.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
