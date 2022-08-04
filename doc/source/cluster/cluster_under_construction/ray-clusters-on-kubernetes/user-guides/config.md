@@ -101,14 +101,16 @@ Here are some of the subfields of `template` to pay attention to:
 #### resources
 It’s important to specify container CPU and memory requests and limits for
 each group spec. For GPU workloads, you may also wish to specify GPU
-limits e.g. `nvidia.com/gpu: 1` if using an nvidia GPU device plugin.
+limits e.g. `nvidia.com/gpu: 1` if using an nvidia GPU device plugin. See {ref}`kuberay-gpu`.
 
 It is ideal when possible to size each Ray pod such that it takes up the
 entire Kubernetes node on which it is scheduled. In other words, it’s
 best to run one large Ray pod per Kubernetes node.
-Broadly speaking, it is more efficient to use a few large Ray pods than many small ones;
-this pattern enables more efficient use of each Ray pod's shared memory object store
-and reduces redundancy of Ray pod control structures (such as Raylets).
+Broadly speaking, it is more efficient to use a few large Ray pods than many small ones.
+The pattern of fewer large Ray pods has the following advantages:
+- enables more efficient use of each Ray pod's shared memory object store
+- reduces communication overhead between Ray pods
+- reduces redundancy of per-pod Ray control processes such as Raylets.
 
 (kuberay-autoscaling-config)=
 ## Autoscaler configuration
