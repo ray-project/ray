@@ -65,23 +65,17 @@ def create_keras_model(input_features):
 
 
 def to_tf_dataset(dataset, batch_size):
-    def to_tensor_iterator():
-        data_iterator = dataset.iter_batches(
-            batch_format="numpy", batch_size=batch_size
-        )
-        for d in data_iterator:
-            yield (
-                # "concat_out" is the output column of the Concatenator.
-                tf.convert_to_tensor(d["concat_out"], dtype=tf.float32),
-                tf.convert_to_tensor(d["target"], dtype=tf.float32),
-            )
-
     output_signature = (
         tf.TensorSpec(shape=(None, num_features), dtype=tf.float32),
         tf.TensorSpec(shape=(None), dtype=tf.float32),
     )
     tf_dataset = tf.data.Dataset.from_generator(
-        to_tensor_iterator, output_signature=output_signature
+        lambda: (
+            # "concat_out" is the output column of the Concatenator.
+            (batch["concat_out"], batch["target"])
+            for batch in dataset.iter_tf_batches(batch_size=batch_size)
+        ),
+        output_signature=output_signature,
     )
     return prepare_dataset_shard(tf_dataset)
 
