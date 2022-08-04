@@ -40,7 +40,7 @@ IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 
 try:
     import gpustat.core as gpustat
-except (ModuleNotFoundError, ImportError):
+except ModuleNotFoundError:
     gpustat = None
     if log_once("gpustat_import_warning"):
         warnings.warn(
@@ -48,6 +48,13 @@ except (ModuleNotFoundError, ImportError):
             "not available. To have full functionality of the "
             "dashboard please install `pip install ray["
             "default]`.)"
+        )
+except ImportError as e:
+    gpustat = None
+    if log_once("gpustat_import_warning"):
+        warnings.warn(
+            "Importing gpustat failed, fix this to have full "
+            "functionality of the dashboard. The original error was:\n\n" + e.msg
         )
 
 
