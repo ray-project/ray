@@ -39,6 +39,10 @@ void AddActorInfo(const ray::gcs::GcsActor *actor,
   mutable_actor_died_error_ctx->set_ray_namespace(actor->GetRayNamespace());
   mutable_actor_died_error_ctx->set_class_name(actor->GetActorTableData().class_name());
   mutable_actor_died_error_ctx->set_actor_id(actor->GetActorID().Binary());
+  const auto actor_state = actor->GetState();
+  mutable_actor_died_error_ctx->set_never_started(
+      actor_state == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY ||
+      actor_state == ray::rpc::ActorTableData::PENDING_CREATION);
 }
 
 const ray::rpc::ActorDeathCause GenNodeDiedCause(const ray::gcs::GcsActor *actor,
