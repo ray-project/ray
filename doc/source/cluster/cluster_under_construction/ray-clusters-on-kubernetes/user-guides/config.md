@@ -77,7 +77,8 @@ The rest of this guide will discuss the `RayCluster` CR's config fields.
 
 ## The Ray version
 The field `rayVersion` specifies the version of Ray used in the Ray cluster.
-The Ray version is used to fill default values for certain config fields.
+The Ray version is used to fill default values for certain config fields,
+such as the Ray autoscaler image.
 The Ray container images specified in the RayCluster CR should carry
 the same Ray version as the CR's `rayVersion`. If you are using a nightly or development
 Ray image, it is fine to specify the latest release version of Ray.
