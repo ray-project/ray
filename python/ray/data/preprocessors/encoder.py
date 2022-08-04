@@ -400,19 +400,47 @@ class LabelEncoder(Preprocessor):
 
 
 class Categorizer(Preprocessor):
-    """Transform Dataset columns to Categorical data type.
+    """Convert columns to ``pd.CategoricalDtype``.
 
-    Note that in case of automatic inferrence, you will most
-    likely want to run this preprocessor on the entire dataset
-    before splitting it (e.g. into train and test sets), so
-    that all of the categories are inferred. There is no risk
-    of data leakage when using this preprocessor.
+    Use this preprocessor with frameworks that have built-in support for
+    ``pd.CategoricalDtype`` like LightGBM.
+
+    .. warning::
+
+        If you don't specify ``dtypes``, fit this preprocessor before splitting
+        your dataset into train and test splits. This ensures categories are
+        consistent across splits.
 
     Args:
-        columns: The columns to change to `pd.CategoricalDtype`.
-        dtypes: An optional dictionary that maps columns to `pd.CategoricalDtype`
-            objects. If you don't include a column in `dtypes`, then the categories
-            will be inferred.
+        columns: The columns to convert to ``pd.CategoricalDtype``.
+        dtypes: An optional dictionary that maps columns to ``pd.CategoricalDtype``
+            objects. If you don't include a column in ``dtypes``, the categories
+            are inferred.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import Categorizer
+
+        >>> df = pd.DataFrame(
+        ... {
+        ...     "sex": ["male", "female", "male", "female"],
+        ...     "level": ["L4", "L5", "L3", "L4"],
+        ... })
+        >>> ds = ray.data.from_pandas(df)
+        >>> categorizer = Categorizer(columns=["sex", "level"])
+        >>> categorizer.fit_transform(ds).schema().types
+        [CategoricalDtype(categories=['female', 'male'], ordered=False), CategoricalDtype(categories=['L3', 'L4', 'L5'], ordered=False)]
+
+        If you know the categories in advance, you can specify the categories with the
+        ``dtypes`` parameter.
+
+        >>> concatenator = Categorizer(
+        ...     columns=["sex", "level"],
+        ...     dtypes={"level": pd.CategoricalDtype(["L3", "L4", "L5", "L6"], ordered=True)},
+        ... )
+        >>> concatenator.fit_transform(ds).schema().types
+        [CategoricalDtype(categories=['female', 'male'], ordered=False), CategoricalDtype(categories=['L3', 'L4', 'L5', 'L6'], ordered=True)]
     """
 
     def __init__(
