@@ -455,9 +455,9 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.torch_linear_dataset_example import train_linear
+    from ray.air.examples.pytorch.torch_regression_example import train_regression
 
-    assert train_linear(num_workers=2, use_gpu=True)
+    assert train_regression(num_workers=2, use_gpu=True)
 
 
 # TODO: Refactor as a backend test.
