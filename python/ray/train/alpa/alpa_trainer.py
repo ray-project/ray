@@ -85,11 +85,12 @@ class AlpaTrainer(BaseTrainer):
         if not alpa.api.is_initialized:
             alpa.init("ray")
 
-        cluster = alpa.get_global_cluster()
+        self.cluster = alpa.get_global_cluster()
+
 
         logger.info(
             "Distributed Training with Alpa using "
-            f"{cluster.num_cpus} cpus and {cluster.num_devices} gpus."
+            f"{self.cluster.num_cpus} cpus and {self.cluster.num_devices} gpus."
         )
 
         # scaling parameters
@@ -124,29 +125,39 @@ class AlpaTrainer(BaseTrainer):
             assert number.is_integer()
             self.host_num_devices.append(int(number))
 
+        self.dict_host_ip2info = dict(zip(self.host_ips, self.host_info))
+        # ic(self.dict_host_ip2info)
+        # exit()
+        # ic(self.host_info)
+        # exit()
+
         # number of workers filter
         # the number of workers can not exceeed the number of devices
         num_workers = min(num_workers, len(self.host_info))
         node_ids = list(range(num_workers))
-        node_info = [self.host_info[i] for i in range(num_workers)]
+        # node_info = [self.host_info[i] for i in range(num_workers)]
 
         # filter the number of gpus per worker
         self.host_num_devices = [self.host_num_devices[i] for i in range(num_workers)]
         num_devices_per_host = min(self.host_num_devices)
         num_devices_per_host = min(num_gpus, num_devices_per_host)
 
-        self.vp_mesh = VirtualPhysicalMesh(
-            host_ids=node_ids,
-            host_info=node_info,
-            head_ip=self.head_ip,
-            num_devices_per_host=num_devices_per_host,
-            parent=None,
-        )
+        self.num_devices_per_host = num_devices_per_host
+        self.node_ids = node_ids
+
+        # define later
+        # self.vp_mesh = VirtualPhysicalMesh(
+        #     host_ids=node_ids,
+        #     host_info=node_info,
+        #     head_ip=self.head_ip,
+        #     num_devices_per_host=num_devices_per_host,
+        #     parent=None,
+        # )
 
         # alpa.device_mesh.set_global_virtual_physical_mesh(self.vp_mesh)
 
-        cluster.host_info = node_info
-        cluster.host_num_devices = [num_devices_per_host for i in range(num_workers)]
+        # self.cluster.host_info = node_info
+        self.cluster.host_num_devices = [num_devices_per_host for i in range(num_workers)]
         # alpa.device_mesh.set_global_cluster(cluster)
 
         self._train_loop = train_loop_per_worker
@@ -164,17 +175,37 @@ class AlpaTrainer(BaseTrainer):
         # needs to add this to the head node
         # otherwise RuntimeError: Backend 'gpu' failed to initialize:
         # FAILED_PRECONDITION: No visible GPU devices.
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+        # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 
         current_placement_group = get_current_placement_group()
         ray.wait([current_placement_group.ready()])
 
         ips = get_bundle2ip(current_placement_group)
+
+        bundle_specs = current_placement_group.bundle_specs
+
+        # filter out the bundle index with device (GPUs)
+        device_bundle_idx_list = [i for i, bundle_spec in enumerate(bundle_specs) if bundle_spec.get('GPU', 0) > 0]
+        # ic(ips, device_bundle_idx_list)
+        ips = [ ips[bundle_idx] for bundle_idx in device_bundle_idx_list]
         ic(ips)
-        import time 
-        time.sleep(1000)
-        # print(current_placement_group)
-        exit()
+        node_info = [self.dict_host_ip2info[ip] for ip in ips]
+
+        self.cluster.host_info = node_info
+        alpa.device_mesh.set_global_cluster(self.cluster)
+
+        vp_mesh = VirtualPhysicalMesh(
+            host_ids=self.node_ids,
+            host_info=node_info,
+            head_ip=self.head_ip,
+            num_devices_per_host=self.num_devices_per_host,
+            parent=None,
+        )
+
+        alpa.device_mesh.set_global_virtual_physical_mesh(vp_mesh)
+
+
         if self._train_loop_config:
             self._train_loop(self._train_loop_config)
         else:
