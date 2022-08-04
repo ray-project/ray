@@ -119,7 +119,7 @@ class NoargDriver:
         self.dag = dag
 
     async def __call__(self):
-        return await self.dag.remote()
+        return await (await self.dag.remote())
 
 
 # TODO(Shreyas): Enable use_build once serve.build() PR is out.

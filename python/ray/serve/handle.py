@@ -1,6 +1,5 @@
 import asyncio
 import concurrent.futures
-from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 import inspect
@@ -308,20 +307,8 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
-USE_SYNC_LAZY_HANDLE = True
-
-
-@contextmanager
-def set_use_sync_lazy_handle(to):
-    global USE_SYNC_LAZY_HANDLE
-    old = USE_SYNC_LAZY_HANDLE
-    USE_SYNC_LAZY_HANDLE = to
-    yield
-    USE_SYNC_LAZY_HANDLE = old
-
-
 @DeveloperAPI
-class RayServeLazySyncHandle:
+class RayServeLazyAsyncHandle:
     """Lazily initialized handle that only gets fulfilled upon first execution."""
 
     def __init__(
@@ -333,20 +320,19 @@ class RayServeLazySyncHandle:
         self.handle_options = handle_options or HandleOptions()
         # For Serve DAG we need placeholder in DAG binding and building without
         # requirement of serve.start; Thus handle is fulfilled at runtime.
-        self.handle = None
+        self.handle: RayServeHandle = None
 
     def options(self, *, method_name: str):
         return self.__class__(
             self.deployment_name, HandleOptions(method_name=method_name)
         )
 
-    def remote(self, *args, **kwargs):
+    def remote(self, *args, **kwargs) -> asyncio.Task:
         if not self.handle:
             handle = serve._private.api.get_deployment(
                 self.deployment_name
-            )._get_handle(sync=USE_SYNC_LAZY_HANDLE)
+            )._get_handle(sync=False)
             self.handle = handle.options(method_name=self.handle_options.method_name)
-        # TODO (jiaodong): Polish async handles later for serve pipeline
         return self.handle.remote(*args, **kwargs)
 
     @classmethod
@@ -359,7 +345,7 @@ class RayServeLazySyncHandle:
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
         }
-        return RayServeLazySyncHandle._deserialize, (serialized_data,)
+        return RayServeLazyAsyncHandle._deserialize, (serialized_data,)
 
     def __getattr__(self, name):
         return self.options(method_name=name)

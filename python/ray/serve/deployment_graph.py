@@ -1,4 +1,5 @@
 import json
+import ray
 
 from ray.dag.class_node import ClassNode  # noqa: F401
 from ray.dag.function_node import FunctionNode  # noqa: F401
@@ -31,12 +32,12 @@ class RayServeDAGHandle:
     def __reduce__(self):
         return RayServeDAGHandle._deserialize, (self.dag_node_json,)
 
-    async def remote(self, *args, **kwargs):
+    async def remote(self, *args, **kwargs) -> ray.ObjectRef:
+        """Execute the request, returns a ObjectRef representing final result."""
         if self.dag_node is None:
             from ray.serve._private.json_serde import dagnode_from_json
 
             self.dag_node = json.loads(
                 self.dag_node_json, object_hook=dagnode_from_json
             )
-        ref = self.dag_node.execute(*args, **kwargs)
-        return await ref
+        return await self.dag_node.execute(*args, **kwargs)

@@ -5,7 +5,6 @@ import logging
 import pickle
 import random
 import sys
-from types import CoroutineType
 from typing import Any, Dict, List, Optional
 
 import ray
@@ -48,14 +47,13 @@ class Query:
     metadata: RequestMetadata
 
     async def resolve_coroutines(self):
-        scanner = _PyObjScanner(scan_type=CoroutineType)
-        coros = scanner.find_nodes((self.args, self.kwargs))
-        print("resolving coros", coros)
-        if len(coros) > 0:
-            # Allow multiple await on the same coroutine
-            futures = [asyncio.ensure_future(coro) for coro in coros]
-            resolved = await asyncio.gather(*futures)
-            replacement_table = dict(zip(coros, resolved))
+        """Find all unresolved asyncio.Task and gather them all at once."""
+        scanner = _PyObjScanner(source_type=asyncio.Task)
+        tasks = scanner.find_nodes((self.args, self.kwargs))
+
+        if len(tasks) > 0:
+            resolved = await asyncio.gather(*tasks)
+            replacement_table = dict(zip(tasks, resolved))
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
 
 
