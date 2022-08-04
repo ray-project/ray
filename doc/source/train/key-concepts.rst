@@ -5,7 +5,6 @@ Key Concepts
 
 Ray Train mainly revolves around the ``Trainer`` concept.
 
-
 .. note::
 
     This page explains Ray Train concepts and trainers in more detail.
@@ -18,75 +17,148 @@ Trainer
 The ``Trainer`` concept is the centerpiece of Ray Train.
 A Trainer objects holds all the configuration and state to execute a (distributed) training run.
 It can be configured with general setting that are applicable to all trainers (such as the
-:class:`RunConfig <ray.air.config.run_config>` and the :class:`ScalingConfig <ray.air.config.scaling_config>`),
+:class:`RunConfig <ray.air.config.RunConfig>` and the :class:`ScalingConfig <ray.air.config.ScalingConfig>`),
 and with trainer-specific options.
 
-Currently there are three broad categories of Trainers:
+Trainers can also handle :ref:`datasets <air-ingest>` and :ref:`preprocessors <air-preprocessors>` for
+scalable data ingest and preprocessing.
 
-* :ref:`Deep Learning Trainers <train-key-concepts-dl-trainers>` (Pytorch, Tensorflow, Horovod)
-* :ref:`Tree-based Trainers <train-key-concepts-tree>` (XGboost, LightGBM)
-* :ref:`Other ML frameworks <train-key-concepts-other>` (HuggingFace, Scikit-Learn, RLlib)
+The output of a Ray training run is a :ref:`result object <train-key-concepts-results>` that contains
+metrics from the training run and the latest saved :ref:`model checkpoint <air-checkpoint-ref>`.
 
-.. _train-key-concepts-dl-trainers:
+.. tabbed::  Deep learning trainers
 
-Deep learning trainers
-~~~~~~~~~~~~~~~~~~~~~~
-These trainers utilize deep learning frameworks such as PyTorch, Tensorflow, or Horovod
-for training.
+    Deep learning trainers utilize deep learning frameworks such as PyTorch, Tensorflow, or Horovod
+    for training.
 
-For these trainers, you usually define your own training function. Please see the
-:ref:`Session <train-key-concepts-session>` section for details on how to interact with
-Ray Train in these functions.
+    For these trainers, you usually define your own training function. Please see the
+    :ref:`Session <train-key-concepts-session>` section for details on how to interact with
+    Ray Train in these functions.
 
-- :ref:`Deep learning user guide <train-dl-guide>`
-- :ref:`Quick overview of deep-learning trainers in the Ray AIR documentation <air-trainers-dl>`
+    - :ref:`Deep learning user guide <train-dl-guide>`
+    - :ref:`Quick overview of deep-learning trainers in the Ray AIR documentation <air-trainers-dl>`
 
-.. _train-key-concepts-tree:
+    .. dropdown:: Example: :class:`TorchTrainer <ray.train.torch.TorchTrainer>`
 
-Tree-based trainers
-~~~~~~~~~~~~~~~~~~~~~~
-These trainers utilize gradient-based decision trees for training. The most popular libraries
-for this are XGBoost and LightGBM.
+        .. literalinclude:: /ray-air/doc_code/torch_trainer.py
+            :language: python
 
-For these trainers, you just pass a dataset and parameters. Distributed training will be started
-automatically.
+.. tabbed::  Tree-based trainers
 
-- :ref:`XGBoost/LightGBM user guide <train-gbdt-guide>`
-- :ref:`Quick overview of tree-based trainers in the Ray AIR documentation <air-trainers-tree>`
+    Tree-based trainers utilize gradient-based decision trees for training. The most popular libraries
+    for this are XGBoost and LightGBM.
 
-.. _train-key-concepts-other:
+    For these trainers, you just pass a dataset and parameters. The training loop is configured
+    automatically.
 
-Other trainers
-~~~~~~~~~~~~~~
-Some trainers don't fit into the above categories, such as the
-:class:`Huggingface trainer <ray.train.huggingface.HuggingfaceTrainer>` for NLP,
-the :class:`RL trainer <ray.train.rl.RLTrainer>` for reinforcement learning, and
-the :class:`SKlearn trainer <ray.train.sklearn.SKlearnTrainer>` for (non-distributed) training of
-SKlearn models.
+    - :ref:`XGBoost/LightGBM user guide <train-gbdt-guide>`
+    - :ref:`Quick overview of tree-based trainers in the Ray AIR documentation <air-trainers-tree>`
 
-- :ref:`Quick overview of other trainers in the Ray AIR documentation <air-trainers-other>`
+    .. dropdown:: Example: :class:`XGBoostTrainer <ray.train.xgboost.XGBoostTrainer>`
+
+        .. literalinclude:: /ray-air/doc_code/xgboost_trainer.py
+            :language: python
 
 
-Overview of Trainers
---------------------
+.. tabbed::  Other trainers
 
-All trainers inherit from the :class:`BaseTrainer <ray.train.base_trainer.BaseTrainer>` interface. To
-construct a Trainer, you can provide:
+    Some trainers don't fit into the other two categories, such as the
+    :class:`Huggingface trainer <ray.train.huggingface.HuggingfaceTrainer>` for NLP,
+    the :class:`RL trainer <ray.train.rl.RLTrainer>` for reinforcement learning, and
+    the :class:`SKlearn trainer <ray.train.sklearn.SKlearnTrainer>` for (non-distributed) training of
+    SKlearn models.
 
-* A :class:`scaling_config <ray.air.config.ScalingConfig>`, which specifies how many parallel training workers and what type of resources (CPUs/GPUs) to use per worker during training.
-* A :class:`run_config <ray.air.config.RunConfig>`, which configures a variety of runtime parameters such as fault tolerance, logging, and callbacks.
-* A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided datasets, which configures preprocessing and the datasets to ingest from.
-* ``resume_from_checkpoint``, which is a checkpoint path to resume from, should your training run be interrupted.
+    - :ref:`Quick overview of other trainers in the Ray AIR documentation <air-trainers-other>`
 
-After instantiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() <ray.air.Trainer.fit>`.
+    .. dropdown:: Example: :class:`HuggingfaceTrainer <ray.train.huggingface.HuggingfaceTrainer>`
 
-.. literalinclude:: /ray-air/doc_code/xgboost_trainer.py
-    :language: python
-
+        .. literalinclude:: /ray-air/doc_code/hf_trainer.py
+            :language: python
+            :start-after: __hf_trainer_start__
+            :end-before: __hf_trainer_end__
 
 .. _train-key-concepts-config:
+
 Configuration
 -------------
+Trainers can be configured with configuration objects. There are two main configuration classes,
+the :class:`scaling_config <ray.air.config.ScalingConfig>` and the :class:`run_config <ray.air.config.RunConfig>`.
+The latter contains subconfigurations, such as the :class:`failure_config <ray.air.config.FailureConfig>`,
+:class:`sync_config <ray.tune.syncer.SyncConfig>` and :class:`run_config <ray.air.config.CheckpointConfig>`.
+
+.. tabbed::  Scaling configuration
+
+    The scaling configuration specifies distributed training properties like the number of workers or the
+    resources per worker.
+
+    The properties of the scaling configuration are :ref:`tunable <air-tuner-search-space>`.
+
+    :class:`ScalingConfig API reference <ray.air.config.ScalingConfig>`
+
+    .. literalinclude:: doc_code/key_concepts.py
+        :language: python
+        :start-after: __scaling_config_start__
+        :end-before: __scaling_config_end__
+
+
+.. tabbed::  Run configuration
+
+    The run configuration specifies distributed training properties like the number of workers or the
+    resources per worker.
+
+    The properties of the run configuration are :ref:`not tunable <air-tuner-search-space>`.
+
+    :class:`RunConfig API reference <ray.air.config.RunConfig>`
+
+    .. literalinclude:: doc_code/key_concepts.py
+        :language: python
+        :start-after: __run_config_start__
+        :end-before: __run_config_end__
+
+.. tabbed::  Failure configuration
+
+    The failure configuration specifies how training failures should be dealt with.
+
+    As part of the run-config, the properties of the failure configuration
+    are :ref:`not tunable <air-tuner-search-space>`.
+
+    :class:`FailureConfig API reference <ray.air.config.FailureConfig>`
+
+    .. literalinclude:: doc_code/key_concepts.py
+        :language: python
+        :start-after: __failure_config_start__
+        :end-before: __failure_config_end__
+
+.. tabbed::  Sync configuration
+
+    The sync configuration specifies how to synchronize checkpoints between the
+    Ray cluster and remote storage.
+
+    As part of the run-config, the properties of the sync configuration
+    are :ref:`not tunable <air-tuner-search-space>`.
+
+    :class:`SyncConfig API reference <ray.tune.syncer.SyncConfig>`
+
+    .. literalinclude:: doc_code/key_concepts.py
+        :language: python
+        :start-after: __sync_config_start__
+        :end-before: __sync_config_end__
+
+
+.. tabbed::  Checkpoint configuration
+
+    The checkpoint configuration specifies how often to checkpoint training state
+    and how many checkpoints to keep.
+
+    As part of the run-config, the properties of the checkpoint configuration
+    are :ref:`not tunable <air-tuner-search-space>`.
+
+    :class:`CheckpointConfig API reference <ray.air.config.CheckpointConfig>`
+
+    .. literalinclude:: doc_code/key_concepts.py
+        :language: python
+        :start-after: __checkpoint_config_start__
+        :end-before: __checkpoint_config_end__
 
 
 .. _train-key-concepts-session:
@@ -106,10 +178,10 @@ training results or checkpoints to Ray Train.
 
     To report results, use :func:`session.report() <ray.air.session.report>` as in this example:
 
-        .. literalinclude:: doc_code/key_concepts.py
-            :language: python
-            :start-after: __session_report_start__
-            :end-before: __session_report_end__
+    .. literalinclude:: doc_code/key_concepts.py
+        :language: python
+        :start-after: __session_report_start__
+        :end-before: __session_report_end__
 
 .. tabbed::  Load and save checkpoints
 
@@ -117,10 +189,10 @@ training results or checkpoints to Ray Train.
 
     To save checkpoints, pass them to :func:`session.report() <ray.air.session.report>`.
 
-        .. literalinclude:: doc_code/key_concepts.py
-            :language: python
-            :start-after: __session_checkpoint_start__
-            :end-before: __session_checkpoint_end__
+    .. literalinclude:: doc_code/key_concepts.py
+        :language: python
+        :start-after: __session_checkpoint_start__
+        :end-before: __session_checkpoint_end__
 
 .. tabbed::  Get dataset shard and worker info
 
@@ -128,11 +200,52 @@ training results or checkpoints to Ray Train.
 
     To get information about the local/global rank and world sizes, see this example:
 
-        .. literalinclude:: doc_code/key_concepts.py
-            :language: python
-            :start-after: __session_data_info_start__
-            :end-before: __session_data_info_end__
+    .. literalinclude:: doc_code/key_concepts.py
+        :language: python
+        :start-after: __session_data_info_start__
+        :end-before: __session_data_info_end__
 
+.. _train-key-concepts-results:
 
 Results
 -------
+Calling ``Trainer.fit()`` returns a :class:`Result <ray.air.result.Result>` object.
+
+The result object contains information about the run, such as the reported metrics and the saved
+checkpoints.
+
+:class:`Result API reference <ray.air.result.Result>`
+
+.. literalinclude:: doc_code/key_concepts.py
+    :language: python
+    :start-after: __results_start__
+    :end-before: __results_end__
+
+.. _train-key-concepts-predictors:
+
+Predictors
+----------
+Predictors are the counterpart to Trainers. A Trainer trains a model on a dataset. A predictor
+uses the resulting model and performs inference on it.
+
+Each Trainer has a respective Predictor implementation that is compatible with the generated checkpoints.
+
+.. dropdown:: Example: :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
+
+    .. literalinclude:: /train/doc_code/xgboost_train_predict.py
+        :language: python
+        :start-after: __train_predict_start__
+        :end-before: __train_predict_end__
+
+
+BatchPredictor
+~~~~~~~~~~~~~~
+The BatchPredictor can be used to scale up prediction over a Ray cluster. It takes
+a Ray Dataset as input.
+
+.. dropdown:: Example: Batch prediction with :class:`XGBoostPredictor <ray.train.xgboost.XGBoostPredictor>`
+
+    .. literalinclude:: /train/doc_code/xgboost_train_predict.py
+        :language: python
+        :start-after: __batch_predict_start__
+        :end-before: __batch_predict_end__

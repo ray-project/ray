@@ -66,6 +66,14 @@ Trainer Configs
 .. automodule:: ray.air.config
     :members:
 
+Result
+~~~~~~~~~~
+
+.. _air-result-ref:
+
+.. automodule:: ray.air.result
+    :members:
+
 Checkpoint
 ~~~~~~~~~~
 

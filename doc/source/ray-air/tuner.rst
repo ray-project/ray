@@ -45,6 +45,8 @@ Below, we demonstrate how you can use a Trainer object with a Tuner.
     :end-before: __basic_end__
 
 
+.. _air-tuner-search-space:
+
 How to configure a search space?
 --------------------------------
 
