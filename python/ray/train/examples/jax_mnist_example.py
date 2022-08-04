@@ -1,3 +1,6 @@
+# This example showcases how to use Jax (pmap) with Ray Train.
+# Original code: (without pmap)
+# https://github.com/google/flax/blob/main/examples/mnist/train.py
 import argparse
 from typing import Dict
 from ray.air import session

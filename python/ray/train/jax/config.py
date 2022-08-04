@@ -12,6 +12,7 @@ from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
+RAY_TPU_DEV_ENV = "RAY_TPU_DEV"
 
 @PublicAPI(stability="beta")
 @dataclass
@@ -106,13 +107,12 @@ class _JaxBackend(Backend):
             # Get setup tasks in order to throw errors on failure.
 
             if use_tpu:
-                try_remove_tpulib_lock = bool(os.environ.get("RAY_TPU_DEV"))
+                try_remove_tpulib_lock = bool(os.environ.get(RAY_TPU_DEV_ENV, False))
 
                 setup_futures = []
                 for i in range(len(worker_group)):
                     setup_futures.append(
-                        worker_group.execute_single_async(
-                            i,
+                        worker_group.execute_async(
                             release_tpu_lock,
                             try_remove_tpulib_lock=try_remove_tpulib_lock,
                         )

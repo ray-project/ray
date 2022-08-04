@@ -1,6 +1,8 @@
+# Note: these requirements are only used for the purpose of testing the jax
+# backend. They are not used for the docker images.
+# Reference: `ray/.buildkite/pipeline.gpu.large.yml`
+
 tensorflow==2.9.1; python_version >= '3.7'
-tensorflow-probability==0.16.0; python_version >= '3.7'
-tensorflow_estimator==2.9.0; python_version >= '3.7'
 flax==0.5.3
 einops==0.4.1
 tensorflow_datasets==4.6.0
