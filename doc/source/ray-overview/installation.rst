@@ -13,10 +13,11 @@ You can install the latest official version of Ray as follows.
 
 .. code-block:: bash
 
-  pip install -U ray  # minimal install
+  # Install Ray with support for the dashboard + cluster launcher
+  pip install -U "ray[default]"
 
-  # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U "ray[default]"`
+  # Install Ray with minimal dependencies
+  # pip install -U ray
 
 To install Ray libraries:
 
@@ -36,11 +37,13 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
-  pip uninstall -y ray # clean removal of previous install, otherwise version number may cause pip not to upgrade
-  pip install -U LINK_TO_WHEEL.whl  # minimal install
+  # Clean removal of previous install
+  pip uninstall -y ray
+  # Install Ray with support for the dashboard + cluster launcher
+  pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 
-  # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U 'ray[default] @ LINK_TO_WHEEL.whl'`
+  # Install Ray with minimal dependencies
+  # pip install -U LINK_TO_WHEEL.whl
 
 
 ====================  ====================  =======================
