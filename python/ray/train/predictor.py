@@ -29,14 +29,14 @@ TYPE_TO_ENUM: Dict[Type[DataBatchType], DataType] = {
 }
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class PredictorNotSerializableException(RuntimeError):
     """Error raised when trying to serialize a Predictor instance."""
 
     pass
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Predictor(abc.ABC):
     """Predictors load models from checkpoints to perform inference.
 

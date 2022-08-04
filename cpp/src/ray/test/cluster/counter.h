@@ -38,6 +38,7 @@ class Counter {
   bool CheckRestartInActorCreationTask();
   bool CheckRestartInActorTask();
   ray::ActorHandle<Counter> CreateChildActor(std::string actor_name);
+  int Plus1ForActor(ray::ActorHandle<Counter> actor);
 
   std::string GetNamespaceInActor();
 
