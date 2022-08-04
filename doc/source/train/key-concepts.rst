@@ -40,4 +40,22 @@ After instatiating a Trainer, you can invoke it by calling :meth:`Trainer.fit() 
 Deep Learning Trainers
 ----------------------
 
+TODO: Overview offering of deep learning trainers.
+ * talk about Sessions
+ * Talk about how datasets interacts with deep learning trainers
+
+
+Tree-based Trainers
+-------------------
+
+TODO: ...
+
+Other Trainers
+--------------
+
+TODO:
+
+
+
+
 
