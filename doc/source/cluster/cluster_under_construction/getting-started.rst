@@ -14,7 +14,7 @@ What is a Ray cluster?
 One of Ray's strengths is the ability to leverage multiple machines for
 distributed execution. Ray is great for multiprocessing on a single machine.
 However, the real power of Ray is the ability to seamlessly scale to a cluster
-of machines
+of machines.
 
 A Ray cluster is a set of one or more nodes that are running Ray and share the same :ref:`head node<cluster-head-node-under-construction>`.
 Ray clusters can either be a fixed-size number of nodes or :ref:`can autoscale<cluster-autoscaler-under-construction>` (i.e., automatically provision or deprovision the number of nodes in a cluster) according to the demand of the Ray workload.
