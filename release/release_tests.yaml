@@ -2742,7 +2742,7 @@
     cluster_compute: 1gpu_16cpus.yaml
 
   run:
-    timeout: 1800
+    timeout: 18000
     script: python learning_tests/run.py --yaml-sub-dir=cql
     type: sdk_command
     file_manager: job
