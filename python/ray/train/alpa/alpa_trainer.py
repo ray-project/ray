@@ -1,5 +1,4 @@
-import os
-from typing import Optional, Dict, Type, Union, Callable, TYPE_CHECKING
+from typing import Optional, Dict, Union, Callable, TYPE_CHECKING
 
 
 from ray.air.checkpoint import Checkpoint
@@ -8,17 +7,13 @@ from ray.train.trainer import BaseTrainer, GenDataset
 
 from ray.train.alpa.config import AlpaConfig
 
-from ray.tune import Trainable
 from ray.util import PublicAPI
-from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
-from ray.tune.trainable import wrap_function
 
 import logging
 
-import ray
 from ray.train.constants import (
     TRAIN_DATASET_KEY,
     WILDCARD_KEY,
@@ -26,24 +21,7 @@ from ray.train.constants import (
 
 from ray.air.config import DatasetConfig
 
-
-try:
-    import alpa
-    from alpa.device_mesh import VirtualPhysicalMesh, DeviceCluster
-except ModuleNotFoundError:
-    raise ModuleNotFoundError(
-        "alpa isn't installed. To install alpa, run 'pip install " "alpa'."
-    )
-
-from ray.train.alpa.utils import (
-    is_ray_node_resource,
-    ScalingConfigWithIPs,
-    update_jax_platform,
-    get_bundle2ip, 
-    AlpaManager
-)
-
-from ray.util.placement_group import get_current_placement_group, remove_placement_group
+from ray.train.alpa.utils import AlpaManager
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +55,7 @@ class AlpaTrainer(BaseTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         # set up alpa cluster manager
-        self.alpa_manager = AlpaManager(scaling_config) 
+        self.alpa_manager = AlpaManager(scaling_config)
 
         self._train_loop = train_loop_per_worker
         self._train_loop_config = train_loop_config
@@ -91,8 +69,7 @@ class AlpaTrainer(BaseTrainer):
         )
 
     def training_loop(self) -> None:
-        """Training loop for AlpaTrainer.
-        """
+        """Training loop for AlpaTrainer."""
         # intialize alpa cluster
         self.alpa_manager.init_global_cluster()
 

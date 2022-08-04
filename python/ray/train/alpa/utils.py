@@ -18,7 +18,6 @@ from ray.train.constants import TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV
 
 
 try:
-    import alpa
     from alpa.device_mesh import VirtualPhysicalMesh, DeviceCluster
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
@@ -26,6 +25,7 @@ except ModuleNotFoundError:
     )
 
 logger = logging.getLogger(__name__)
+
 
 def is_ray_node_resource(resource_key):
     """Check if the current resource is the host ip."""
@@ -68,7 +68,9 @@ class ScalingConfigWithIPs(ScalingConfig):
         from ray.tune import PlacementGroupFactory
 
         trainer_resources = (
-            self.trainer_resources if self.trainer_resources else {"CPU": 1, 'node:10.0.2.91':1e-3}
+            self.trainer_resources
+            if self.trainer_resources
+            else {"CPU": 1, "node:10.0.2.91": 1e-3}
         )
         trainer_bundle = [trainer_resources]
         worker_resources = {
@@ -90,8 +92,7 @@ class ScalingConfigWithIPs(ScalingConfig):
         # added here to gives the deamon resources
         # otherwise hang out forever when the trainer is killed
         daemon_worker_bundles = [
-            {**{"CPU": 1}}
-            for _ in range(self.num_workers if self.num_workers else 0)
+            {**{"CPU": 1}} for _ in range(self.num_workers if self.num_workers else 0)
         ]
         bundles = trainer_bundle + worker_bundles + daemon_worker_bundles
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
@@ -102,13 +103,14 @@ def update_jax_platform(platform):
     jax.config.update("jax_platform_name", platform)
     xb.get_backend.cache_clear()
 
+
 def get_bundle2ip(pg=None):
     """get the ip address list from placement group
 
     The ordering of the ip address are aligned with each bundle index.
     """
 
-    if pg: 
+    if pg:
         pg_id = pg.id.hex()
     # dictionary: bundle_group to node_ip
     dict_bg2ip = dict()
@@ -122,10 +124,13 @@ def get_bundle2ip(pg=None):
         node_ip = None
         bundle_index_list = []
         for resource_name in resource_name_list:
-            # when bundles are created, pg resources are specified as [resource]_[bundle_index]_[pg_id]
-            if pg: 
-                try_bundle_index = re.findall(rf"bundle_group_(\d+)_{pg_id}", resource_name)
-            else: 
+            # when bundles are created, pg resources are
+            # specified as [resource]_[bundle_index]_[pg_id]
+            if pg:
+                try_bundle_index = re.findall(
+                    rf"bundle_group_(\d+)_{pg_id}", resource_name
+                )
+            else:
                 try_bundle_index = re.findall(r"bundle_group_(\d+)_.*", resource_name)
 
             try_node_ip = re.findall(
@@ -148,13 +153,14 @@ def get_bundle2ip(pg=None):
 
     return ip_list
 
+
 class AlpaManager:
-    """AlpaManager is responsible for cluster setup and management.
-    """
-    def __init__(self, scaling_config): 
+    """AlpaManager is responsible for cluster setup and management."""
+
+    def __init__(self, scaling_config):
         # collect ray cluster info
         # constrain according to the ScalingConfig
-        
+
         # scaling parameters
         self.scaling_config = scaling_config
 
@@ -167,6 +173,7 @@ class AlpaManager:
 
         # head node info
         from ray._private.worker import _global_node as ray_global_node
+
         self.head_info = ray_global_node.address_info
         self.head_ip = self.head_info["node_ip_address"]
 
@@ -204,12 +211,10 @@ class AlpaManager:
         self.node_ids = node_ids
         self.num_workers = num_workers
 
-
         self.placement_group = None
 
-
-    def init_global_cluster(self): 
-        # initilize the global cluster and virtual 
+    def init_global_cluster(self):
+        # initilize the global cluster and virtual
         # physical mesh cluster
 
         # construction is same to `init_global_cluster`
@@ -222,14 +227,17 @@ class AlpaManager:
         # get the placement group
         self._create_placement_group()
 
-
         # get bundle's ip address
         ips = get_bundle2ip(self.placement_group)
         bundle_specs = self.placement_group.bundle_specs
 
         # filter out the bundle index with device (GPUs)
-        device_bundle_idx_list = [i for i, bundle_spec in enumerate(bundle_specs) if bundle_spec.get('GPU', 0) > 0]
-        ips = [ ips[bundle_idx] for bundle_idx in device_bundle_idx_list]
+        device_bundle_idx_list = [
+            i
+            for i, bundle_spec in enumerate(bundle_specs)
+            if bundle_spec.get("GPU", 0) > 0
+        ]
+        ips = [ips[bundle_idx] for bundle_idx in device_bundle_idx_list]
 
         # filter nodes according to the placment group
         node_info = [self.dict_host_ip2info[ip] for ip in ips]
@@ -237,9 +245,10 @@ class AlpaManager:
         # setup Device Cluster
         cluster = DeviceCluster()
         cluster.host_info = node_info
-        cluster.host_num_devices = [self.num_devices_per_host for i in range(self.num_workers)]
+        cluster.host_num_devices = [
+            self.num_devices_per_host for i in range(self.num_workers)
+        ]
         alpa.device_mesh.set_global_cluster(cluster)
-
 
         # setup Virtual Physical Mesh
         vp_mesh = VirtualPhysicalMesh(
@@ -283,7 +292,7 @@ class AlpaManager:
             }
             bundles = [bundle.copy() for _ in range(self._num_workers)]
 
-            # AlpaTrainer: `SPREAD` strategy is required 
+            # AlpaTrainer: `SPREAD` strategy is required
             strategy = "SPREAD"
 
             placement_group = ray.util.placement_group(bundles, strategy=strategy)
@@ -307,5 +316,5 @@ class AlpaManager:
                 )
             self.placement_group = placement_group
 
-        else: 
+        else:
             self.placement_group = current_placement_group
