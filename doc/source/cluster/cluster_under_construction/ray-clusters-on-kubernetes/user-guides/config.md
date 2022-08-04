@@ -77,7 +77,7 @@ The rest of this guide will discuss the `RayCluster` CR's config fields.
 
 ## The Ray version
 The field `rayVersion` specifies the version of Ray used in the Ray cluster.
-The Ray version is used to fill default values for certain config fields,
+The `rayVersion` is used to fill default values for certain config fields,
 such as the Ray autoscaler image.
 The Ray container images specified in the RayCluster CR should carry
 the same Ray version as the CR's `rayVersion`. If you are using a nightly or development
@@ -149,7 +149,7 @@ using port-forwarding or an ingress. See {ref}`this guide <kuberay-networking>` 
 #### resources
 It’s important to specify container CPU and memory requests and limits for
 each group spec. For GPU workloads, you may also wish to specify GPU
-limits. For example, set `Nvidia.com/gpu:2` if using an nvidia GPU device plugin
+limits. For example, set `nvidia.com/gpu:2` if using an Nvidia GPU device plugin
 and you wish to specify a pod with access to 2 GPUs.
 See {ref}`this guide <kuberay-gpu>` for more details on GPU support.
 
