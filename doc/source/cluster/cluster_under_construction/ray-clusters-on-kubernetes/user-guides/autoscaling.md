@@ -75,7 +75,7 @@ Similarly, after the Ray autoscaler decides to delete an idle pod, the Kubernete
 Cluster Autoscaler can clean up the idle Kubernetes Node that remains.
 It is recommended to configure your RayCluster so that only one Ray pod fits per Kubernetes Node.
 If you follow this pattern, Ray autoscaler Pod scaling events will correspond roughly one-to-one with cluster autoscaler
-Node scaling events. ("Roughly" because it is possible for a Ray pod be deleted and replaced
+Node scaling events. (We say "roughly" because it is possible for a Ray pod be deleted and replaced
 with a new Ray pod before the underlying Kubernetes Node is scaled down.)
 
 
