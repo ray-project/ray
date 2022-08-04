@@ -72,7 +72,7 @@ The Ray docs present all the information you need to start running Ray workloads
 ```
 ## The KubeRay project
 
-Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/).
+Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). It is used by several companies to run Ray in production.
 
 - Visit the [KubeRay GitHub repo](https://github.com/ray-project/kuberay) to track progress, report bugs, propose new features, or contribute to
 the project.
