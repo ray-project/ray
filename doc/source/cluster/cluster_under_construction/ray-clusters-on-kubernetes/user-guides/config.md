@@ -131,10 +131,14 @@ the head service will be\
 `raycluster-example-head-svc`. Kubernetes networking (`kube-dns`) then allows us to address
 the Ray head's services using the name `raycluster-example-head-svc`.
 For example, the Ray Client server will be accessible from a pod
-in the same Kubernetes namespace using\
-`ray.init("ray://raycluster-example-head-svc:10001")`.
+in the same Kubernetes namespace using
+```python
+ray.init("ray://raycluster-example-head-svc:10001")
+```
 The Ray Client server will be accessible from a pod in another namespace using
-`ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")`.
+```python
+ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
+```
 (If the Ray cluster is a non-default namespace, use that namespace in
 place of `default`.)
 Ray Client and other services can be made accessible from outside the Kubernetes cluster
@@ -143,7 +147,8 @@ using port-forwarding or an ingress. See {ref}`kuberay-networking` for more deta
 #### resources
 It’s important to specify container CPU and memory requests and limits for
 each group spec. For GPU workloads, you may also wish to specify GPU
-limits e.g. `nvidia.com/gpu: 1` if using an nvidia GPU device plugin.
+limits. For example, set `nvidia.com/gpu:2` if using an nvidia GPU device plugin
+and you wish to specify a pod with access to 2 GPUs.
 See {ref}`kuberay-gpu` for more details.
 
 It is ideal when possible to size each Ray pod such that it takes up the
@@ -155,6 +160,14 @@ The pattern of fewer large Ray pods has the following advantages:
 - reduced communication overhead between Ray pods
 - reduced redundancy of per-pod Ray control structures such as Raylets
 
+The CPU, GPU, and memory **limits** specified in the Ray container config
+will be automatically advertised to the Ray. These values will be used as
+the logical resource capacities of Ray pods in the head or worker group.
+(The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.)
+
+On the other hand CPU, GPU, and memory **requests** will be ignored by Ray.
+For this reason, it is best when possible to set resource requests equal to resource limits.
+
 #### nodeSelector and tolerations
 You can control the scheduling of worker groups' Ray pods by setting the `nodeSelector` and
 `tolerations` fields of the pod spec. Specifically, these fields determine on which Kubernetes
@@ -165,8 +178,8 @@ for more about Pod-to-Node assignment.
 #### image
 The Ray container images specified in the RayCluster CR should carry
 the same Ray version as the CR's `spec.rayVersion`.
-(If you are using a nightly or development Ray image, it is fine to specify Ray's
-latest release version under `spec.rayVersion`.)
+If you are using a nightly or development Ray image, it is fine to specify Ray's
+latest release version under `spec.rayVersion`.
 
 Code dependencies for a given Ray task or actor must be installed on each Ray node that
 might run the task or actor.
@@ -174,11 +187,12 @@ To achieve this, it is simplest to use the same Ray image for the Ray head and a
 In any case, do make sure that all Ray images in your CR carry the same Ray version and
 Python version.
 To distribute custom code dependencies across your cluster, you can build a custom container image,
-using one of the `official Ray images <https://hub.docker.com/r/rayproject/ray>`_ as the base.
+using one of the [official Ray images](https://hub.docker.com/r/rayproject/ray>) as the base.
 Read more about the official Ray images at {ref}`docker-images`.
 For dynamic dependency management geared towards iteration and developement,
 you can also use {ref}`Runtime Environments<runtime-environments>`.
 
+(rayStartParams)=
 ## Ray Start Parameters
 The ``rayStartParams`` field of each group spec is a string-string map of arguments to the Ray
 container’s `ray start` entrypoint. For the full list of arguments, refer to
