@@ -1,5 +1,6 @@
 package io.ray.serve.docdemo;
 
+// [strategy-calc-start]
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -24,3 +25,4 @@ public class StrategyCalc {
     System.out.println(results);
   }
 }
+// [strategy-calc-end]

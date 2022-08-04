@@ -1,5 +1,6 @@
 package io.ray.serve.docdemo;
 
+// [http-strategy-start]
 import com.google.gson.Gson;
 import java.util.Map;
 
@@ -16,3 +17,4 @@ public class HttpStrategyOnRayServe {
     return bank + "-" + indicator + "-" + time; // Demo;
   }
 }
+// [http-strategy-end]

@@ -1,5 +1,6 @@
 package io.ray.serve.docdemo;
 
+// [strategy-start]
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,3 +32,4 @@ public class Strategy {
     return bank + "-" + indicator + "-" + time; // Demo;
   }
 }
+// [strategy-end]

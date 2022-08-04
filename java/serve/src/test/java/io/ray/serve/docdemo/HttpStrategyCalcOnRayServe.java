@@ -18,10 +18,6 @@ import org.apache.hc.client5.http.fluent.Request;
 
 public class HttpStrategyCalcOnRayServe {
 
-  private Gson gson = new Gson();
-
-  private ExecutorService executorService = Executors.newFixedThreadPool(4);;
-
   public void deploy() {
     Serve.start(true, false, null, null);
 
@@ -34,6 +30,32 @@ public class HttpStrategyCalcOnRayServe {
     deployment.deploy(true);
   }
 
+  // [http-calc-start]
+  private Gson gson = new Gson();
+
+  public String httpCalc(long time, String bank, String indicator) {
+    Map<String, Object> data = new HashMap<>();
+    data.put("time", time);
+    data.put("bank", bank);
+    data.put("indicator", indicator);
+
+    String result;
+    try {
+      result =
+          Request.post("http://127.0.0.1:8000/strategy")
+              .bodyString(gson.toJson(data), null)
+              .execute()
+              .returnContent()
+              .asString();
+    } catch (IOException e) {
+      result = "error";
+    }
+
+    return result;
+  }
+  // [http-calc-end]
+
+  // [calc-start]
   public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
 
     List<String> results = new ArrayList<>();
@@ -47,6 +69,10 @@ public class HttpStrategyCalcOnRayServe {
     }
     return results;
   }
+  // [calc-end]
+
+  // [parallel-calc-start]
+  private ExecutorService executorService = Executors.newFixedThreadPool(4);
 
   public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
 
@@ -69,28 +95,9 @@ public class HttpStrategyCalcOnRayServe {
     }
     return results;
   }
+  // [parallel-calc-end]
 
-  public String httpCalc(long time, String bank, String indicator) {
-    Map<String, Object> data = new HashMap<>();
-    data.put("time", time);
-    data.put("bank", bank);
-    data.put("indicator", indicator);
-
-    String result;
-    try {
-      result =
-          Request.post("http://127.0.0.1:8000/strategy")
-              .bodyString(gson.toJson(data), null)
-              .execute()
-              .returnContent()
-              .asString();
-    } catch (IOException e) {
-      result = "error";
-    }
-
-    return result;
-  }
-
+  // [main-start]
   public static void main(String[] args) {
     long time = System.currentTimeMillis();
     String bank1 = "demo_bank_1";
@@ -108,4 +115,5 @@ public class HttpStrategyCalcOnRayServe {
 
     System.out.println(results);
   }
+  // [main-end]
 }

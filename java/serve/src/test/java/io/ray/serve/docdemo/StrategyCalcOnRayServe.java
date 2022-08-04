@@ -12,6 +12,7 @@ import java.util.Map.Entry;
 
 public class StrategyCalcOnRayServe {
 
+  // [deploy-start]
   public void deploy() {
     Serve.start(true, false, null, null);
 
@@ -23,7 +24,9 @@ public class StrategyCalcOnRayServe {
             .create();
     deployment.deploy(true);
   }
+  // [deploy-end]
 
+  // [calc-start]
   public List<String> calc(long time, Map<String, List<List<String>>> banksAndIndicators) {
     Deployment deployment = Serve.getDeployment("strategy");
 
@@ -44,7 +47,9 @@ public class StrategyCalcOnRayServe {
     }
     return results;
   }
+  // [calc-end]
 
+  // [parallel-calc-start]
   public List<String> parallelCalc(long time, Map<String, List<List<String>>> banksAndIndicators) {
     Deployment deployment = Serve.getDeployment("strategy");
 
@@ -63,7 +68,9 @@ public class StrategyCalcOnRayServe {
     }
     return results;
   }
+  // [parallel-calc-end]
 
+  // [main-start]
   public static void main(String[] args) {
     long time = System.currentTimeMillis();
     String bank1 = "demo_bank_1";
@@ -81,4 +88,5 @@ public class StrategyCalcOnRayServe {
 
     System.out.println(results);
   }
+  // [main-end]
 }

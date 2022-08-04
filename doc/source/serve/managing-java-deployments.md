@@ -1,12 +1,12 @@
 # Managing Java Deployments
 
-Java is one of the mainstream programming languages. Some users are used to using Java for daily development. Therefore, we provide the Ray Serve Java API. Through this Java API, users can manage the deployments written in Java. At the same time, Java API can also manage Python model deployments across languages.
+Java is one of the mainstream programming languages for production services. Ray Serve natively supports Java API for creating, updating and managing deployments. You can create deployment using Java and call them via Python, or vice versa.
 
 This section should help you:
 
 - create, query, update and configure Java deployments
 - configure resources of your Java deployments
-- manage Python deployments
+- manage Python deployments using Java API
 
 ```{contents}
 ```
@@ -15,72 +15,30 @@ This section should help you:
 
 By specifying the full name of the class, we can create and deploy a deployment of the class.
 
-```java
-import io.ray.serve.api.Serve;
-import java.util.concurrent.atomic.AtomicInteger;
-
-public class ManageDeployment {
-
-  public static class Counter {
-
-    private AtomicInteger value;
-
-    public Counter(Integer value) {
-      this.value = new AtomicInteger(value);
-    }
-
-    public String call(String delta) {
-      return String.valueOf(value.addAndGet(Integer.valueOf(delta)));
-    }
-  }
-
-  public void create() {
-    Serve.deployment()
-        .setName("counter")
-        .setDeploymentDef(Counter.class.getName())
-        .setInitArgs(new Object[] {1})
-        .setNumReplicas(2)
-        .create()
-        .deploy(true);
-  }
-}
+```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:end-before: [create-end]
+:language: java
+:start-after: [create-start]
 ```
 
 ## Querying a Deployment
 
 A deployed deployment can be found by its name.
 
-```java
-import io.ray.serve.api.Serve;
-import io.ray.serve.deployment.Deployment;
-
-public class ManageDeployment {
-
-  public void query() {
-    Deployment deployment = Serve.getDeployment("counter");
-  }
-}
+```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:end-before: [query-end]
+:language: java
+:start-after: [query-start]
 ```
 
 ## Updating a Deployment
 
 We can update the code and the configuration of a deployment and redeploy it. The following example updates the initial value of the deployment 'counter' to 2.
 
-```java
-import io.ray.serve.api.Serve;
-
-public class ManageDeployment {
-
-  public void update() {
-    Serve.deployment()
-        .setName("counter")
-        .setDeploymentDef(Counter.class.getName())
-        .setInitArgs(new Object[] {2})
-        .setNumReplicas(2)
-        .create()
-        .deploy(true);
-  }
-}
+```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:end-before: [update-end]
+:language: java
+:start-after: [update-start]
 ```
 
 ## Configuring a Deployment
@@ -89,44 +47,20 @@ public class ManageDeployment {
 
 By specifying the `numReplicas` parameter, you can change the number of deployment replicas:
 
-```java
-import io.ray.serve.api.Serve;
-import io.ray.serve.deployment.Deployment;
-
-public class ManageDeployment {
-
-  public void scaleOut() {
-    Deployment deployment = Serve.getDeployment("counter");
-
-    // Scale up to 10 replicas.
-    deployment.options().setNumReplicas(10).create().deploy(true);
-
-    // Scale down to 1 replica.
-    deployment.options().setNumReplicas(1).create().deploy(true);
-  }
-}
+```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:end-before: [scale-end]
+:language: java
+:start-after: [scale-start]
 ```
 
 ### Resource Management (CPUs, GPUs)
 
 Through the `rayActorOptions` parameter, you can set the resources of deployment, such as using one GPU:
 
-```java
-import io.ray.serve.api.Serve;
-
-public class ManageDeployment {
-
-  public void manageResouce() {
-    Map<String, Object> rayActorOptions = new HashMap<>();
-    rayActorOptions.put("num_gpus", 1);
-    Serve.deployment()
-        .setName("counter")
-        .setDeploymentDef(Counter.class.getName())
-        .setRayActorOptions(rayActorOptions)
-        .create()
-        .deploy(true);
-  }
-}
+```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:end-before: [resource-end]
+:language: java
+:start-after: [resource-start]
 ```
 
 ## Managing a Python Deployment
@@ -187,7 +121,7 @@ public class ManagePythonDeployment {
 ## Future Roadmap
 
 In the future, we will provide more features on Ray Serve Java, such as:
-- better Java API experience
-- HTTP ingress for Ray Serve Java
-- deploy a Java Spring project as a deployment
+- improved API to match the Python version
+- HTTP ingress support
+- bring your own Java Spring project as a deployment
 

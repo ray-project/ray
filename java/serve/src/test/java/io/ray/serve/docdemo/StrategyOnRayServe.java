@@ -1,5 +1,6 @@
 package io.ray.serve.docdemo;
 
+// [strategy-start]
 public class StrategyOnRayServe {
 
   public String calcIndicator(long time, String bank, String indicator) {
@@ -7,3 +8,4 @@ public class StrategyOnRayServe {
     return bank + "-" + indicator + "-" + time; // Demo;
   }
 }
+// [strategy-end]
