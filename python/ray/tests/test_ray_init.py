@@ -368,6 +368,23 @@ def test_ray_init_using_hostname(ray_start_cluster):
     assert node_table[0].get("NodeManagerHostname", "") == hostname
 
 
+def test_hosted_external_dashboard_url_with_ray_client(shutdown_only):
+    """
+    Test setting external dashboard URL through environment variable
+    with Ray client.
+    """
+    orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
+    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "https://external_dashboard_url"
+
+    with ray_start_client_server() as given_connection:
+        given_connection.disconnect()
+        info = ray.init("ray://localhost:50051", logging_level=logging.INFO)
+    assert info.dashboard_url == "external_dashboard_url"
+
+    if orig_external_dashboard_url:
+        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
+
+
 def test_hosted_external_dashboard_url(shutdown_only):
     """
     Test setting external dashboard URL through environment variable.
@@ -387,13 +404,6 @@ def test_hosted_external_dashboard_url(shutdown_only):
         ray_address_to_api_server_url("auto")
         == ray._private.worker._global_node.webui_url_with_protocol
     )
-    ray.shutdown()
-
-    # Test external dashboard url with https protocol with ray client
-    with ray_start_client_server() as given_connection:
-        given_connection.disconnect()
-        info = ray.init("ray://localhost:50051", logging_level=logging.INFO)
-    assert info.dashboard_url == "external_dashboard_url"
     ray.shutdown()
 
     # Test external dashboard url with no protocol -- should default to http
