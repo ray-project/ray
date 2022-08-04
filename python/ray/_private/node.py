@@ -198,7 +198,9 @@ class Node:
             self._webui_url_with_protocol = (
                 ray._private.services.get_webui_url_from_internal_kv()
             )
-            self._webui_url = self._remove_protocol_from_url(self._webui_url_with_protocol)
+            self._webui_url = self._remove_protocol_from_url(
+                self._webui_url_with_protocol
+            )
 
         self._init_temp()
 
