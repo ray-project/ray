@@ -26,7 +26,7 @@ class MyPytorchTrainer(BaseTrainer):
             num_batches = 0
             for batch in dataset.iter_torch_batches():
                 # Compute prediction error
-                X, y = batch["x"], batch["y"]
+                X, y = torch.unsqueeze(batch["x"], 1), batch["y"]
                 pred = self.model(X.float())
                 batch_loss = loss_fn(pred, y.float())
 

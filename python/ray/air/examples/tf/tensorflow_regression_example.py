@@ -64,16 +64,18 @@ def train_func(config: dict):
 
     results = []
     for _ in range(epochs):
-        tf_dataset = prepare_dataset_shard(
-            dataset.to_tf(
-                label_column="y",
-                output_signature=(
-                    tf.TensorSpec(shape=(None, 100), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None), dtype=tf.float32),
-                ),
-                batch_size=batch_size,
-            )
+        tf_dataset = tf.data.Dataset.from_generator(
+            lambda: (
+                (batch["x"], batch["y"])
+                for batch in dataset.iter_tf_batches(batch_size=batch_size)
+            ),
+            output_signature=(
+                tf.TensorSpec(shape=(None, 100), dtype=tf.float32),
+                tf.TensorSpec(shape=(None), dtype=tf.float32),
+            ),
         )
+        tf_dataset = prepare_dataset_shard(tf_dataset)
+
         history = multi_worker_model.fit(
             tf_dataset, callbacks=[TrainCheckpointReportCallback()]
         )
