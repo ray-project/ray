@@ -23,17 +23,15 @@ import yaml
 from gym.spaces import Box
 
 import ray
-from ray.rllib.algorithms import Algorithm
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray import air, tune
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED, NUM_ENV_STEPS_TRAINED
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import CLIReporter, run_experiments
 
+
 if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray import tune
+    from ray.rllib.algorithms import Algorithm, AlgorithmConfig
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -938,10 +936,10 @@ def check_same_batch(batch1, batch2) -> None:
 
 
 def check_reproducibilty(
-    algo_class: Type[Algorithm],
-    algo_config: AlgorithmConfig,
+    algo_class: Type["Algorithm"],
+    algo_config: "AlgorithmConfig",
     *,
-    frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
+    fw_kwargs: Dict[str, Any],
     training_iteration: int = 1,
 ) -> None:
     # TODO @kourosh: we can get rid of examples/deterministic_training.py once
@@ -957,7 +955,7 @@ def check_reproducibilty(
     Args:
         algo_class: Algorithm class to test.
         algo_config: Base config to use for the algorithm.
-        frameworks: List of frameworks to test.
+        fw_kwargs: Framework iterator keyword arguments.
         training_iteration: Number of training iterations to run.
 
     Returns:
@@ -966,6 +964,8 @@ def check_reproducibilty(
     Raises:
         It raises an AssertionError if the algorithm is not reproducible.
     """
+    from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+    from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 
     stop_dict = {
         "training_iteration": training_iteration,
@@ -977,23 +977,26 @@ def check_reproducibilty(
             .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
         )
 
-        for fw in framework_iterator(
-            algo_config, frameworks=frameworks, with_eager_tracing=True
-        ):
+        for fw in framework_iterator(algo_config, **fw_kwargs):
             print(
                 f"Testing reproducibility of {algo_class.__name__}"
-                f"with {num_workers} workers on fw = {fw}"
+                f" with {num_workers} workers on fw = {fw}"
             )
             # test tune.run() reproducibility
-            results1 = tune.run(
-                algo_class, config=algo_config.to_dict(), stop=stop_dict
-            )
-            results2 = tune.run(
-                algo_class, config=algo_config.to_dict(), stop=stop_dict
-            )
-
+            results1 = tune.Tuner(
+                algo_class,
+                param_space=algo_config.to_dict(),
+                run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            ).fit()
             results1 = results1.get_best_result().metrics
+
+            results2 = tune.Tuner(
+                algo_class,
+                param_space=algo_config.to_dict(),
+                run_config=air.RunConfig(stop=stop_dict, verbose=1),
+            ).fit()
             results2 = results2.get_best_result().metrics
+
             # Test rollout behavior.
             check(results1["hist_stats"], results2["hist_stats"])
             # As well as training behavior (minibatch sequence during SGD
