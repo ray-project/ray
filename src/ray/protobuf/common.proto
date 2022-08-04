@@ -87,8 +87,6 @@ message Address {
   int32 port = 3;
   // Optional unique id for the worker.
   bytes worker_id = 4;
-  // Optional name of the actor. Used by global owners.
-  string actor_name = 5;
 }
 
 /// Function descriptor for Java.

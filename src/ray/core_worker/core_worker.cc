@@ -1135,6 +1135,7 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
 
+  // TODO:
   if (spilled_url) {
     RAY_CHECK(!global_owner_id.IsNil());
     std::promise<std::string> sync_promise;

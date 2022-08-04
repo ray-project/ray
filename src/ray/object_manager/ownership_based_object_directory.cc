@@ -368,7 +368,6 @@ bool OwnershipBasedObjectDirectory::ReSubscribeObjectLocations(
                              callback);
     return true;
   } else {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
     auto resubscribe_callback = [this,
          callback_id,
          object_id,
