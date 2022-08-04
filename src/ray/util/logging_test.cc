@@ -255,7 +255,6 @@ TEST(PrintLogTest, TestCheckOp) {
   ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
 }
 
-#ifndef _WIN32
 std::string TestFunctionLevel0() {
   std::ostringstream oss;
   oss << ray::StackTrace();
@@ -301,7 +300,6 @@ TEST(PrintLogTest, TestTerminateHandler) {
   ASSERT_DEATH(TerminateHandlerLevel1(),
                ".*TerminateHandlerLevel0.*TerminateHandlerLevel1.*");
 }
-#endif
 
 TEST(PrintLogTest, TestFailureSignalHandler) {
   ray::RayLog::InstallFailureSignalHandler(nullptr);
