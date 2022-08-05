@@ -16,7 +16,7 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/filesystem.hpp>
+#include <fstream>
 
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
