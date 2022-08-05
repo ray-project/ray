@@ -31,9 +31,9 @@ class OrdinalEncoder(Preprocessor):
         ...     "sex": ["male", "female", "male", "female"],
         ...     "level": ["L4", "L5", "L3", "L4"],
         ... })
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> encoder = OrdinalEncoder(columns=["sex", "level"])
-        >>> encoder.fit_transform(ds).to_pandas()
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
            sex  level
         0    1      1
         1    0      2
@@ -44,8 +44,8 @@ class OrdinalEncoder(Preprocessor):
         is encoded as ``float("nan")``.
 
         >>> df = pd.DataFrame({"sex": ["female"], "level": ["L6"]})
-        >>> ds = ray.data.from_pandas(df)
-        >>> encoder.transform(ds).to_pandas()
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> encoder.transform(ds).to_pandas()  # doctest: +SKIP
            sex  level
         0    0    NaN
 
@@ -59,9 +59,9 @@ class OrdinalEncoder(Preprocessor):
         ...         ["documentary"],
         ...     ],
         ... })
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> encoder = OrdinalEncoder(columns=["genre"])
-        >>> encoder.fit_transform(ds).to_pandas()
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
                                     name      genre
         0                 Shaolin Soccer  [2, 0, 4]
         1                          Moana  [1, 2, 0]
@@ -145,9 +145,9 @@ class OneHotEncoder(Preprocessor):
         >>> from ray.data.preprocessors import OneHotEncoder
         >>>
         >>> df = pd.DataFrame({"color": ["red", "green", "red", "red", "blue", "green"]})
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> encoder = OneHotEncoder(columns=["color"])
-        >>> encoder.fit_transform(ds).to_pandas()
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
            color_blue  color_green  color_red
         0           0            0          1
         1           0            1          0
@@ -160,8 +160,8 @@ class OneHotEncoder(Preprocessor):
         value is encoded with zeros.
 
         >>> df = pd.DataFrame({"color": ["yellow"]})
-        >>> batch = ray.data.from_pandas(df)
-        >>> encoder.transform(batch).to_pandas()
+        >>> batch = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> encoder.transform(batch).to_pandas()  # doctest: +SKIP
            color_blue  color_green  color_red
         0           0            0          0
 
@@ -169,7 +169,7 @@ class OneHotEncoder(Preprocessor):
         with zeros.
 
         >>> encoder = OneHotEncoder(columns=["color"], max_categories={"color": 2})
-        >>> encoder.fit_transform(ds).to_pandas()
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
            color_red  color_green
         0          1            0
         1          0            1
@@ -265,10 +265,10 @@ class MultiHotEncoder(Preprocessor):
         ...         ["documentary"],
         ...     ],
         ... })
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>>
         >>> encoder = MultiHotEncoder(columns=["genre"])
-        >>> encoder.fit_transform(ds).to_pandas()
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
                                     name            genre
         0                 Shaolin Soccer  [1, 0, 1, 0, 1]
         1                          Moana  [1, 1, 1, 0, 0]
@@ -278,7 +278,7 @@ class MultiHotEncoder(Preprocessor):
         creates features for only the most frequent categories.
 
         >>> encoder = MultiHotEncoder(columns=["genre"], max_categories={"genre": 3})
-        >>> encoder.fit_transform(ds).to_pandas()
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
                                     name      genre
         0                 Shaolin Soccer  [1, 1, 1]
         1                          Moana  [1, 1, 0]
@@ -358,11 +358,11 @@ class LabelEncoder(Preprocessor):
         ...     "sepal_height": [3.5, 3.2, 3, 3.4],
         ...     "species": ["setosa", "versicolor", "setosa", "virginica"]
         ... })
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>>
         >>> from ray.data.preprocessors import LabelEncoder
         >>> encoder = LabelEncoder(label_column="species")
-        >>> encoder.fit_transform(ds).to_pandas()
+        >>> encoder.fit_transform(ds).to_pandas()  # doctest: +SKIP
            sepal_width  sepal_height  species
         0          5.1           3.5        0
         1          7.0           3.2        1
@@ -377,8 +377,8 @@ class LabelEncoder(Preprocessor):
         ...     "sepal_height": [2.7],
         ...     "species": ["bracteata"]
         ... })
-        >>> ds = ray.data.from_pandas(df)
-        >>> encoder.transform(ds).to_pandas()
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> encoder.transform(ds).to_pandas()  # doctest: +SKIP
            sepal_width  sepal_height  species
         0          4.2           2.7      NaN
 
@@ -432,9 +432,9 @@ class Categorizer(Preprocessor):
         ...     "sex": ["male", "female", "male", "female"],
         ...     "level": ["L4", "L5", "L3", "L4"],
         ... })
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> categorizer = Categorizer(columns=["sex", "level"])
-        >>> categorizer.fit_transform(ds).schema().types
+        >>> categorizer.fit_transform(ds).schema().types  # doctest: +SKIP
         [CategoricalDtype(categories=['female', 'male'], ordered=False), CategoricalDtype(categories=['L3', 'L4', 'L5'], ordered=False)]
 
         If you know the categories in advance, you can specify the categories with the
@@ -444,7 +444,7 @@ class Categorizer(Preprocessor):
         ...     columns=["sex", "level"],
         ...     dtypes={"level": pd.CategoricalDtype(["L3", "L4", "L5", "L6"], ordered=True)},
         ... )
-        >>> categorizer.fit_transform(ds).schema().types
+        >>> categorizer.fit_transform(ds).schema().types  # doctest: +SKIP
         [CategoricalDtype(categories=['female', 'male'], ordered=False), CategoricalDtype(categories=['L3', 'L4', 'L5', 'L6'], ordered=True)]
 
     Args:

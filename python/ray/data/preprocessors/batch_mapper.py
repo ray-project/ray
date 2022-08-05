@@ -28,13 +28,13 @@ class BatchMapper(Preprocessor):
         >>> from ray.data.preprocessors import BatchMapper
         >>>
         >>> df = pd.DataFrame({"X": [0, 1, 2], "Y": [3, 4, 5]})
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>>
         >>> def fn(batch: pd.DataFrame) -> pd.DataFrame:
         ...     return batch.drop("Y", axis="columns")
         >>>
         >>> preprocessor = BatchMapper(fn)
-        >>> preprocessor.transform(ds)
+        >>> preprocessor.transform(ds)  # doctest: +SKIP
         Dataset(num_blocks=1, num_rows=3, schema={X: int64})
 
     Args:

@@ -13,13 +13,13 @@ class Tokenizer(Preprocessor):
         >>> import pandas as pd
         >>> import ray
         >>> df = pd.DataFrame({"text": ["Hello, world!", "foo bar\\nbaz"]})
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
 
         The default ``tokenization_fn`` delimits strings using the space character.
 
         >>> from ray.data.preprocessors import Tokenizer
         >>> tokenizer = Tokenizer(columns=["text"])
-        >>> tokenizer.transform(ds).to_pandas()
+        >>> tokenizer.transform(ds).to_pandas()  # doctest: +SKIP
                        text
         0  [Hello,, world!]
         1   [foo, bar\\nbaz]
@@ -33,7 +33,7 @@ class Tokenizer(Preprocessor):
         ...         s = s.replace(character, "")
         ...     return s.split()
         >>> tokenizer = Tokenizer(columns=["text"], tokenization_fn=tokenization_fn)
-        >>> tokenizer.transform(ds).to_pandas()
+        >>> tokenizer.transform(ds).to_pandas()  # doctest: +SKIP
                       text
         0   [Hello, world]
         1  [foo, bar, baz]

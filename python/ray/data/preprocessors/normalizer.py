@@ -31,8 +31,8 @@ class Normalizer(Preprocessor):
         >>> from ray.data.preprocessors import Normalizer
         >>>
         >>> df = pd.DataFrame({"X1": [1, 1], "X2": [1, 0], "X3": [0, 1]})
-        >>> ds = ray.data.from_pandas(df)
-        >>> ds.to_pandas()
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
            X1  X2  X3
         0   1   1   0
         1   1   0   1
@@ -41,7 +41,7 @@ class Normalizer(Preprocessor):
         :math:`L^2`-norm of the second sample is :math:`1`.
 
         >>> preprocessor = Normalizer(columns=["X1", "X2"])
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
                  X1        X2  X3
         0  0.707107  0.707107   0
         1  1.000000  0.000000   1
@@ -50,7 +50,7 @@ class Normalizer(Preprocessor):
         :math:`L^1`-norm of the second sample is :math:`1`.
 
         >>> preprocessor = Normalizer(columns=["X1", "X2"], norm="l1")
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
             X1   X2  X3
         0  0.5  0.5   0
         1  1.0  0.0   1
@@ -58,7 +58,7 @@ class Normalizer(Preprocessor):
         The :math:`L^\infty`-norm of the both samples is :math:`1`.
 
         >>> preprocessor = Normalizer(columns=["X1", "X2"], norm="max")
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
             X1   X2  X3
         0  1.0  1.0   0
         1  1.0  0.0   1

@@ -17,8 +17,8 @@ class SimpleImputer(Preprocessor):
         >>> import ray
         >>> from ray.data.preprocessors import SimpleImputer
         >>> df = pd.DataFrame({"X": [0, None, 3, 3], "Y": [None, "b", "c", "c"]})
-        >>> ds = ray.data.from_pandas(df)
-        >>> ds.to_pandas()
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
              X     Y
         0  0.0  None
         1  NaN     b
@@ -29,7 +29,7 @@ class SimpleImputer(Preprocessor):
         values. This strategy doesn't work with categorical data.
 
         >>> preprocessor = SimpleImputer(columns=["X"], strategy="mean")
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
              X     Y
         0  0.0  None
         1  2.0     b
@@ -40,7 +40,7 @@ class SimpleImputer(Preprocessor):
         value in each column.
 
         >>> preprocessor = SimpleImputer(columns=["X", "Y"], strategy="most_frequent")
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
              X  Y
         0  0.0  c
         1  3.0  b
@@ -55,7 +55,7 @@ class SimpleImputer(Preprocessor):
         ...     strategy="constant",
         ...     fill_value="?",
         ... )
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
              X  Y
         0  0.0  ?
         1  NaN  b

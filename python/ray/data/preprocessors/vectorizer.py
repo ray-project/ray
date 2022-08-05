@@ -65,10 +65,10 @@ class HashingVectorizer(Preprocessor):
         ...         "Bob also likes fruit jerky"
         ...     ]
         ... })
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>>
         >>> vectorizer = HashingVectorizer(["corpus"], num_features=8)
-        >>> vectorizer.fit_transform(ds).to_pandas()
+        >>> vectorizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
            hash_corpus_0  hash_corpus_1  hash_corpus_2  hash_corpus_3  hash_corpus_4  hash_corpus_5  hash_corpus_6  hash_corpus_7
         0              1              0              1              0              0              0              0              1
         1              1              0              1              0              0              0              1              1
@@ -169,10 +169,10 @@ class CountVectorizer(Preprocessor):
         ...         "Bob also likes fruit jerky"
         ...     ]
         ... })
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>>
         >>> vectorizer = CountVectorizer(["corpus"])
-        >>> vectorizer.fit_transform(ds).to_pandas()
+        >>> vectorizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
            corpus_likes  corpus_volleyball  corpus_Bob  corpus_Jimmy  corpus_too  corpus_also  corpus_fruit  corpus_jerky
         0             1                  1           0             1           0            0             0             0
         1             1                  1           1             0           1            0             0             0
@@ -181,7 +181,7 @@ class CountVectorizer(Preprocessor):
         You can limit the number of tokens in the vocabulary with ``max_features``.
 
         >>> vectorizer = CountVectorizer(["corpus"], max_features=3)
-        >>> vectorizer.fit_transform(ds).to_pandas()
+        >>> vectorizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
            corpus_likes  corpus_volleyball  corpus_Bob
         0             1                  1           0
         1             1                  1           1

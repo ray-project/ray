@@ -22,14 +22,14 @@ class Chain(Preprocessor):
         ...     "X1": [3, 4, 5],
         ...     "Y": ["orange", "blue", "orange"],
         ... })
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>>
         >>> preprocessor = Chain(
         ...     StandardScaler(columns=["X0", "X1"]),
         ...     Concatenator(include=["X0", "X1"], output_column_name="X"),
         ...     LabelEncoder(label_column="Y")
         ... )
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
            Y                                         X
         0  1  [-1.224744871391589, -1.224744871391589]
         1  0                                [0.0, 0.0]

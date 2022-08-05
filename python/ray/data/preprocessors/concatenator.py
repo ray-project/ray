@@ -24,7 +24,7 @@ class Concatenator(Preprocessor):
         :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`.
 
         >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9]})
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> concatenator = Concatenator()
         >>> concatenator.fit_transform(ds).to_pandas()  # doctest: +SKIP
            concat_out
@@ -79,7 +79,7 @@ class Concatenator(Preprocessor):
         parameter.
 
         >>> concatenator = Concatenator(include=["X0", "X1"], dtype=np.float32)
-        >>> concatenator.fit_transform(ds)
+        >>> concatenator.fit_transform(ds)  # doctest: +SKIP
         Dataset(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
 
     Args:

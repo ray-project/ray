@@ -35,8 +35,8 @@ class StandardScaler(Preprocessor):
         >>> from ray.data.preprocessors import StandardScaler
         >>>
         >>> df = pd.DataFrame({"X1": [-2, 0, 2], "X2": [-3, -3, 3], "X3": [1, 1, 1]})
-        >>> ds = ray.data.from_pandas(df)
-        >>> ds.to_pandas()
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
            X1  X2  X3
         0  -2  -3   1
         1   0  -3   1
@@ -45,7 +45,7 @@ class StandardScaler(Preprocessor):
         Columns are scaled separately.
 
         >>> preprocessor = StandardScaler(columns=["X1", "X2"])
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
                  X1        X2  X3
         0 -1.224745 -0.707107   1
         1  0.000000 -0.707107   1
@@ -54,7 +54,7 @@ class StandardScaler(Preprocessor):
         Constant-valued columns get filled with zeros.
 
         >>> preprocessor = StandardScaler(columns=["X3"])
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
            X1  X2   X3
         0  -2  -3  0.0
         1   0  -3  0.0
@@ -118,8 +118,8 @@ class MinMaxScaler(Preprocessor):
         >>> from ray.data.preprocessors import MinMaxScaler
         >>>
         >>> df = pd.DataFrame({"X1": [-2, 0, 2], "X2": [-3, -3, 3], "X3": [1, 1, 1]})   # noqa: E501
-        >>> ds = ray.data.from_pandas(df)
-        >>> ds.to_pandas()
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
            X1  X2  X3
         0  -2  -3   1
         1   0  -3   1
@@ -128,7 +128,7 @@ class MinMaxScaler(Preprocessor):
         Columns are scaled separately.
 
         >>> preprocessor = MinMaxScaler(columns=["X1", "X2"])
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
             X1   X2  X3
         0  0.0  0.0   1
         1  0.5  0.0   1
@@ -137,7 +137,7 @@ class MinMaxScaler(Preprocessor):
         Constant-valued columns get filled with zeros.
 
         >>> preprocessor = MinMaxScaler(columns=["X3"])
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
            X1  X2   X3
         0  -2  -3  0.0
         1   0  -3  0.0
@@ -200,8 +200,8 @@ class MaxAbsScaler(Preprocessor):
         >>> from ray.data.preprocessors import MaxAbsScaler
         >>>
         >>> df = pd.DataFrame({"X1": [-6, 3], "X2": [2, -4], "X3": [0, 0]})   # noqa: E501
-        >>> ds = ray.data.from_pandas(df)
-        >>> ds.to_pandas()
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
            X1  X2  X3
         0  -6   2   0
         1   3  -4   0
@@ -209,7 +209,7 @@ class MaxAbsScaler(Preprocessor):
         Columns are scaled separately.
 
         >>> preprocessor = MaxAbsScaler(columns=["X1", "X2"])
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
             X1   X2  X3
         0 -1.0  0.5   0
         1  0.5 -1.0   0
@@ -217,7 +217,7 @@ class MaxAbsScaler(Preprocessor):
         Zero-valued columns aren't scaled.
 
         >>> preprocessor = MaxAbsScaler(columns=["X3"])
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
            X1  X2   X3
         0  -6   2  0.0
         1   3  -4  0.0
@@ -277,8 +277,8 @@ class RobustScaler(Preprocessor):
         ...     "X2": [13, 5, 14, 2, 8],
         ...     "X3": [1, 2, 2, 2, 3],
         ... })
-        >>> ds = ray.data.from_pandas(df)
-        >>> ds.to_pandas()
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
            X1  X2  X3
         0   1  13   1
         1   2   5   2
@@ -289,7 +289,7 @@ class RobustScaler(Preprocessor):
         :class:`RobustScaler` separately scales each column.
 
         >>> preprocessor = RobustScaler(columns=["X1", "X2"])
-        >>> preprocessor.fit_transform(ds).to_pandas()
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
             X1     X2  X3
         0 -1.0  0.625   1
         1 -0.5 -0.375   2
