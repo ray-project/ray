@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray import tune
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.data.preprocessor import Preprocessor
 from ray.tune.impl import tuner_internal
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -336,6 +337,23 @@ def test_trainable_name_is_overriden_gbdt_trainer(ray_start_4_cpus):
     )
 
     _is_trainable_name_overriden(trainer)
+
+
+def test_repr():
+    def training_loop(self):
+        pass
+
+    trainer = DummyTrainer(
+        training_loop,
+        datasets={
+            "train": ray.data.from_items([1, 2, 3]),
+        },
+    )
+
+    representation = repr(trainer)
+
+    assert "DummyTrainer" in representation
+    assert len(representation) < MAX_REPR_LENGTH
 
 
 if __name__ == "__main__":
