@@ -116,7 +116,7 @@ TEST(TaskSpecTest, TestActorSchedulingClass) {
   rpc::TaskSpec regular_task_spec_proto;
   regular_task_spec_proto.set_type(TaskType::NORMAL_TASK);
   regular_task_spec_proto.mutable_required_resources()->insert(one_cpu.begin(),
-                                                             one_cpu.end());
+                                                               one_cpu.end());
 
   TaskSpecification regular_task(regular_task_spec_proto);
 
