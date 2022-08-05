@@ -369,7 +369,8 @@ class RayServeReplica:
             f"{_format_replica_actor_name(self.deployment_name)}.handle_request"
         )
         method_stat_java = actor_stats.get(
-            f"{_format_replica_actor_name(self.deployment_name)}.handle_request_from_java"
+            f"{_format_replica_actor_name(self.deployment_name)}"
+            f".handle_request_from_java"
         )
         return merge_dict(method_stat, method_stat_java)
 
