@@ -131,16 +131,16 @@ the head service will be\
 `raycluster-example-head-svc`. Kubernetes networking (`kube-dns`) then allows us to address
 the Ray head's services using the name `raycluster-example-head-svc`.
 For example, the Ray Client server can be accessed from a pod
-in the same Kubernetes Namespace using
+in the same Kubernetes namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc:10001")
 ```
-The Ray Client server can be accessed from a pod in another Namespace using
+The Ray Client server can be accessed from a pod in another namespace using
 ```python
 ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 ```
-(This assumes the Ray cluster was deployed into the default Kuberentes Namespace.
-If the Ray cluster is deployed in a non-default Namespace, use that Namespace in
+(This assumes the Ray cluster was deployed into the default Kuberentes namespace.
+If the Ray cluster is deployed in a non-default namespace, use that namespace in
 place of `default`.)
 Ray Client and other services can be exposed outside the Kubernetes cluster
 using port-forwarding or an ingress. See {ref}`this guide <kuberay-networking>` for more details.
