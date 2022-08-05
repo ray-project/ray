@@ -10,7 +10,7 @@ This section helps you:
 
 Ray Serve's **deployment graph** API lets you compose your deployments together by describing how to route a request through your deployments. This is particularly useful if you're using ML model composition or mixing business logic and model inference in your application. You can encapsulate each of your models and each of your business logic steps in independent deployments. Then, you can connect these deployments together in a deployment graph.
 
-## Implicit Composition: Cross-Deployment Calls
+## Calling Deployments using ServeHandles
 
 You can connect your models together in an implicit deployment graph by calling deployment methods from within other deployments. This lets you divide your application's steps (such as preprocessing, model inference, and post-processing) into independent deployments that can be independently scaled and configured. You can route requests to a single "driver" deployment that can partially process and/or forward the requests to other deployments by calling those deployments' methods.
 
@@ -113,7 +113,7 @@ Hola Dora
 ```
 
 (deployment-graph-intro-call-graph)=
-## Explicit Composition: The Call Graph
+## Deployment Graph API
 
 ```{note}
 Note: The call graph is in Alpha, so APIs are subject to change.
