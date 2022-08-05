@@ -27,7 +27,7 @@ class PowerTransformer(Preprocessor):
     Args:
         columns: The columns to separately transform.
         power: A parameter that determines how your data is transformed. Practioners
-            typically set ``power`` between :math:`-2.5` and :math:`2.5`, athough you
+            typically set ``power`` between :math:`-2.5` and :math:`2.5`, although you
             may need to try different values to find one that works well.
         method: A string representing which transformation to apply. Supports
             ``"yeo-johnson"`` and ``"box-cox"``. If you choose ``"box-cox"``, your data
