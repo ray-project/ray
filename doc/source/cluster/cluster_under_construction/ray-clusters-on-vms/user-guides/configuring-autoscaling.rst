@@ -2,55 +2,47 @@
 
 .. _deployment-guide-autoscaler-under-construction:
 
-Autoscaling with Ray
---------------------
+Configuring the Ray Autoscaler
+==============================
 
-Ray is designed to support highly elastic workloads which are most efficient on
-an autoscaling cluster. At a high level, the autoscaler attempts to
-launch/terminate nodes in order to ensure that workloads have sufficient
-resources to run, while minimizing the idle resources.
+This page provides an overview of the parameters for the Ray autoscaler. A Ray cluster by default runs an autoscaler that modifies
+the number of nodes based on the resources requested by the task, actor, or placement group. If there is insufficient resource to serve
+the request they will be put into pending and will not execute. The autoscaler runs a bin-packing algorithm to determine the list of nodes
+the cluster should use to satisfy the resource requests, and adds / removes nodes from the cluster to maximize the cluster utilization
+while providing sufficient resource to execute the requests.
 
-It does this by taking into consideration:
+.. note::
+  The autoscaler currently only looks at the amount of cpu and gpu requested and adds / removes nodes accordingly. It does not take into
+  the account the memory request nor the disk usage.
 
-* User specified hard limits (min/max workers).
-* User specified node types (nodes in a Ray cluster do _not_ have to be
-  homogenous).
-* Information from the Ray core's scheduling layer about the current resource
-  usage/demands of the cluster.
-* Programmatic autoscaling hints.
+Parameters
+==========
 
-Take a look at :ref:`the cluster reference <cluster-config>` to learn more
-about configuring the autoscaler.
+**max_workers[default_value=2, min_value=0]**: Indicates the maximum number of workers the cluster will have at any given time. This number
+excludes the head node where there is always exactly one.
 
+.. note::
+  When this value changes and drops below the number of running workers, the autoscaler will remove nodes to satisfy the new constraint even
+  if the node is running some workload. Workers that are the least recently used will be removed first.
 
-How does it work?
-^^^^^^^^^^^^^^^^^
+**upscaling_speed[default_value=1.0, min_value=0.0]**: The number of nodes allowed to be pending as a multiple of the current number of nodes.
+For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending
+launches are allowed. The mininum number of pending launches is 5 regardless of this setting.
 
-The Ray Cluster Launcher will automatically enable a load-based autoscaler. The
-autoscaler resource demand scheduler will look at the pending tasks, actors,
-and placement groups resource demands from the cluster, and try to add the
-minimum list of nodes that can fulfill these demands. Autoscaler uses a simple 
-binpacking algorithm to binpack the user demands into
-the available cluster resources. The remaining unfulfilled demands are placed
-on the smallest list of nodes that satisfies the demand while maximizing
-utilization (starting from the smallest node).
+**idle_timeout_minutes[default_value=5, min_value=0]**: The number of minutes that need to pass before an idle worker node is removed by the
+autoscaler. Worker nodes are idle when there are no active tasks or actors running. This parameter does not affect the head node.
 
-**Downscaling**: When worker nodes are
-idle (without active Tasks or Actors running on it) 
-for more than :ref:`idle_timeout_minutes
-<cluster-configuration-idle-timeout-minutes>`, they are subject to
-removal from the cluster. But there are two important additional conditions
-to note: 
+.. note::
+  If the Ray object store is used, and a worker node still holds objects (including spilled objects on disk), it won't be removed.
 
-* The head node is never removed unless the cluster is torn down.
-* If the Ray Object Store is used, and a Worker node still holds objects (including spilled objects on disk), it won't be removed.
+**available_node_types.<node_type_name>.min_workers[default_value=0, min_value=0]**: The minimum number of worker nodes of a given type to launch. If this number
+is set to greater than zero, the autoscaler will maintain the number of nodes regardless of utilization. The sum of the min worker of all the node types
+must be less than or equal to the max_workers for the cluster.
 
+**available_node_types.<node_type_name>.max_workers[default_value=0, min_value=0]**: The maximum number of worker nodes of a given type to launch. This must be
+greater than or equal to available_node_types.<node_type_name>.min_workers. It must be less than or equal to the max_workers for the cluster.
 
-
-**Here is "A Glimpse into the Ray Autoscaler" and how to debug/monitor your cluster:**
-
-2021-19-01 by Ameer Haj-Ali, Anyscale Inc.
-
-.. youtube:: BJ06eJasdu4
-
+.. note::
+  When this value changes and drops below the number of running workers for the given type, the autoscaler will remove nodes to satisfy the new constraint even
+  if the node is running some workload. Workers that are the least recently used will be removed first.
 
