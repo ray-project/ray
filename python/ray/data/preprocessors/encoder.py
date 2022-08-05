@@ -254,13 +254,6 @@ class MultiHotEncoder(Preprocessor):
     <https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
     .MultiLabelBinarizer.html>`_.
 
-
-    Args:
-        columns: The columns to separately encode.
-        max_categories: The maximum number of features to create for each column.
-            If a value isn't specified for a column, then a feature is created
-            for every unique category in that column.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -294,6 +287,12 @@ class MultiHotEncoder(Preprocessor):
         2  The Smartest Guys in the Room  [0, 0, 0]
         >>> encoder.stats_
         OrderedDict([('unique_values(genre)', {'comedy': 0, 'action': 1, 'sports': 2})])
+
+    Args:
+        columns: The columns to separately encode.
+        max_categories: The maximum number of features to create for each column.
+            If a value isn't specified for a column, then a feature is created
+            for every unique category in that column.
 
     .. seealso::
 

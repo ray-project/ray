@@ -17,9 +17,9 @@ class HashingVectorizer(Preprocessor):
     the size of your vocabulary, then each column approximately corresponds to the
     frequency of a unique token.
 
-    This preprocessor is memory efficient and quick to pickle. However, given a transformed
-    column, you can't know which tokens correspond to it. This might make it hard
-    to determine which tokens are important to your model.
+    This preprocessor is memory efficient and quick to pickle. However, given a
+    transformed column, you can't know which tokens correspond to it. This might make it
+    hard to determine which tokens are important to your model.
 
     .. note::
 
@@ -53,16 +53,6 @@ class HashingVectorizer(Preprocessor):
         Sparse matrices aren't supported. If you use a large ``num_features``, this
         preprocessor might behave poorly.
 
-    Args:
-        columns: The columns to separately tokenize and count.
-        num_features: The number of features used to represent the vocabulary. You
-            should choose a value large enough to prevent hash collisions between
-            distinct tokens.
-        tokenization_fn: The function used to generate tokens. This function
-            should accept a string as input and return a list of tokens as
-            output. If unspecified, the tokenizer uses a function equivalent to
-            ``lambda s: s.split(" ")``.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -83,6 +73,16 @@ class HashingVectorizer(Preprocessor):
         0              1              0              1              0              0              0              0              1
         1              1              0              1              0              0              0              1              1
         2              0              0              1              1              0              2              1              0
+
+    Args:
+        columns: The columns to separately tokenize and count.
+        num_features: The number of features used to represent the vocabulary. You
+            should choose a value large enough to prevent hash collisions between
+            distinct tokens.
+        tokenization_fn: The function used to generate tokens. This function
+            should accept a string as input and return a list of tokens as
+            output. If unspecified, the tokenizer uses a function equivalent to
+            ``lambda s: s.split(" ")``.
 
     .. seealso::
 

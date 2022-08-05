@@ -14,9 +14,6 @@ class Chain(Preprocessor):
         When you call ``fit``, each preprocessor is fit on the dataset produced by the
         preceeding preprocessor's ``fit_transform``.
 
-    Args:
-        preprocessors: The preprocessors to sequentially compose.
-
     Example:
         >>> import pandas as pd
         >>> import ray
@@ -39,6 +36,9 @@ class Chain(Preprocessor):
         0  1  [-1.224744871391589, -1.224744871391589]
         1  0                                [0.0, 0.0]
         2  1    [1.224744871391589, 1.224744871391589]
+
+    Args:
+        preprocessors: The preprocessors to sequentially compose.
     """
 
     def fit_status(self):

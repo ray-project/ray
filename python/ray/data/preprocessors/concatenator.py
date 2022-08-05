@@ -15,24 +15,6 @@ class Concatenator(Preprocessor):
     shape :math:`(m,)`, where :math:`m` is the number of columns concatenated.
     The :math:`m` concatenated columns are dropped after concatenation.
 
-    Args:
-        output_column_name: The desired name for the new column.
-            Defaults to ``"concat_out"``.
-        include: A list of columns to concatenate. If ``None``, all columns are
-            concatenated.
-        exclude: A list of column to exclude from concatenation.
-            If a column is in both ``include`` and ``exclude``, the column is excluded
-            from concatenation.
-        dtype: The ``dtype`` to convert the output tensors to. If unspecified,
-            the ``dtype`` is determined by standard coercion rules.
-        raise_if_missing: If ``True``, an error is raised if any
-            of the columns in ``include`` or ``exclude`` don't exist.
-            Defaults to ``False``.
-
-    Raises:
-        ValueError: if `raise_if_missing` is `True` and a column in `include` or
-            `exclude` doesn't exist in the dataset.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -99,6 +81,24 @@ class Concatenator(Preprocessor):
         >>> concatenator = Concatenator(include=["X0", "X1"], dtype=np.float32)
         >>> concatenator.fit_transform(ds).schema()
         Dataset(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
+
+    Args:
+        output_column_name: The desired name for the new column.
+            Defaults to ``"concat_out"``.
+        include: A list of columns to concatenate. If ``None``, all columns are
+            concatenated.
+        exclude: A list of column to exclude from concatenation.
+            If a column is in both ``include`` and ``exclude``, the column is excluded
+            from concatenation.
+        dtype: The ``dtype`` to convert the output tensors to. If unspecified,
+            the ``dtype`` is determined by standard coercion rules.
+        raise_if_missing: If ``True``, an error is raised if any
+            of the columns in ``include`` or ``exclude`` don't exist.
+            Defaults to ``False``.
+
+    Raises:
+        ValueError: if `raise_if_missing` is `True` and a column in `include` or
+            `exclude` doesn't exist in the dataset.
     """
 
     _is_fittable = False
