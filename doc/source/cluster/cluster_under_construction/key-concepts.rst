@@ -11,45 +11,47 @@ This page introduces the following key concepts concerning Ray clusters:
 .. contents::
     :local:
 
-..
-    notes
-    * Replace old diagram with new diagram
-    * Add Ray Cluster key concept
-    * Change the notion of head node = worker node + things, to
-    cluster is comprised of one head node and 0+ worker nodes
-
-.. _cluster-worker-nodes-under-construction:
-
-Worker nodes
+Ray cluster
 ------------
-A Ray cluster consists of a set of one or more **worker nodes**. Ray tasks and actors
-can be scheduled onto the worker nodes. Each worker node runs helper processes which
-implement distributed scheduling and :ref:`memory management<memory>`.
+A **Ray cluster** is comprised of a :ref:`head node<cluster-head-node-under-construction>`
+and any number of :ref:`worker nodes<cluster-worker-nodes-under-construction>`.
 
-.. figure:: ray-cluster.jpg
+.. figure:: images/ray-cluster.svg
     :align: center
     :width: 600px
-
-    A Ray cluster consists of a set of one or more worker nodes, one of which is designated
-    as the head node. Each node runs Ray helper processes and Ray application code.
+    
+    *A Ray cluster with two worker nodes. Each node runs Ray helper processes to
+    facilitate distributed scheduling and memory management. The head node runs
+    additional helper processes, which are highlighted.*
 
 The number of worker nodes in a cluster may change with application demand, according
-to your Ray cluster configuration. The :ref:`head node<cluster-head-node-under-construction>`
-runs the logic which implements autoscaling.
+to your Ray cluster configuration. This is known as *autoscaling*. The head node runs
+the :ref:`autoscaler<cluster-autoscaler-under-construction>`.
 
 .. note::
     Nodes are implemented as pods when :ref:`running on Kubernetes<kuberay-index>`.
 
+Users can submit jobs for execution on the Ray cluster, or can interactively use the
+cluster by connecting to the head node and running `ray.init`. See
+:ref:`Clients and Jobs<cluster-clients-and-jobs-under-construction>` for more information.
+
+.. _cluster-worker-nodes-under-construction:
+
+Worker nodes
+~~~~~~~~~~~~
+**Worker nodes** are nodes which run Ray and are connected to the head node. Ray may schedule
+tasks and actors onto worker nodes. Each worker node runs helper processes which
+implement distributed scheduling and :ref:`memory management<memory>`.
+
 .. _cluster-head-node-under-construction:
 
 Head node
----------
-Every Ray cluster has one :ref:`worker node<cluster-worker-nodes-under-construction>`
-which is designated as the **head node** of the cluster. The head node runs
-singleton processes responsible for cluster management such as the :ref:`autoscaler<cluster-autoscaler-under-construction>`
-and the Ray driver processes, :ref:`which run the top-level Ray application
-<cluster-clients-and-jobs-under-construction>`. Ray may schedule tasks and actors
-on the head node just like any other worker node.
+~~~~~~~~~
+Every Ray cluster has one node which is designated as the **head node** of the cluster.
+The head node runs singleton processes responsible for cluster management such as the
+:ref:`autoscaler<cluster-autoscaler-under-construction>` and the Ray driver processes
+:ref:`which run Ray jobs<cluster-clients-and-jobs-under-construction>`. Ray may schedule
+tasks and actors on the head node just like any other worker node unless configured otherwise.
 
 .. note::
     :ref:`On Kubernetes<kuberay-index>`, the autoscaler process runs inside a sidecar container in the head pod,
@@ -61,7 +63,7 @@ on the head node just like any other worker node.
 Autoscaler
 ----------
 
-The autoscaler is a process that runs on the :ref:`head node<cluster-head-node-under-construction>`.
+The **autoscaler** is a process that runs on the :ref:`head node<cluster-head-node-under-construction>`.
 It is responsible for provisioning or deprovisioning :ref:`worker nodes<cluster-worker-nodes-under-construction>`
 to meet the needs of the Ray workload. In particular, if the resource demands of the Ray workload exceed the
 current capacity of the cluster, the autoscaler will attempt to add more nodes. Conversely, if
