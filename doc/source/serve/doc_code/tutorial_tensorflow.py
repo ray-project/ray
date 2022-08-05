@@ -46,7 +46,7 @@ if not os.path.exists(TRAINED_MODEL_PATH):
 
 
 # __doc_define_servable_begin__
-@serve.deployment(route_prefix="/mnist")
+@serve.deployment
 class TFMnistModel:
     def __init__(self, model_path):
         import tensorflow as tf
@@ -69,5 +69,5 @@ class TFMnistModel:
 
 
 # __doc_deploy_begin__
-app = TFMnistModel.bind(TRAINED_MODEL_PATH)
+mnist_model = TFMnistModel.bind(TRAINED_MODEL_PATH)
 # __doc_deploy_end__

@@ -49,7 +49,7 @@ with open(LABEL_PATH, "w") as f:
 
 
 # __doc_define_servable_begin__
-@serve.deployment(route_prefix="/classifier")
+@serve.deployment
 class BoostingModel:
     def __init__(self, model_path, label_path):
         with open(model_path, "rb") as f:
@@ -74,5 +74,5 @@ class BoostingModel:
 
 
 # __doc_deploy_begin__
-app = BoostingModel.bind(MODEL_PATH, LABEL_PATH)
+boosting_model = BoostingModel.bind(MODEL_PATH, LABEL_PATH)
 # __doc_deploy_end__

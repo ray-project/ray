@@ -122,7 +122,7 @@ for _ in range(5):
 
     print(f"-> Sending observation {obs}")
     resp = requests.get(
-        "http://localhost:8000/cartpole-ppo", json={"observation": obs.tolist()}
+        "http://localhost:8000/", json={"observation": obs.tolist()}
     )
     print(f"<- Received response {resp.json()}")
 ```

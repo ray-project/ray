@@ -13,7 +13,7 @@ from torchvision.models import resnet18
 
 
 # __doc_define_servable_begin__
-@serve.deployment(route_prefix="/image_predict")
+@serve.deployment
 class ImageModel:
     def __init__(self):
         self.model = resnet18(pretrained=True).eval()
@@ -48,5 +48,5 @@ class ImageModel:
 
 
 # __doc_deploy_begin__
-app = ImageModel.bind()
+image_model = ImageModel.bind()
 # __doc_deploy_end__
