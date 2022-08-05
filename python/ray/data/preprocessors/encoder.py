@@ -424,12 +424,6 @@ class Categorizer(Preprocessor):
         your dataset into train and test splits. This ensures categories are
         consistent across splits.
 
-    Args:
-        columns: The columns to convert to ``pd.CategoricalDtype``.
-        dtypes: An optional dictionary that maps columns to ``pd.CategoricalDtype``
-            objects. If you don't include a column in ``dtypes``, the categories
-            are inferred.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -454,6 +448,12 @@ class Categorizer(Preprocessor):
         ... )
         >>> categorizer.fit_transform(ds).schema().types
         [CategoricalDtype(categories=['female', 'male'], ordered=False), CategoricalDtype(categories=['L3', 'L4', 'L5', 'L6'], ordered=True)]
+
+    Args:
+        columns: The columns to convert to ``pd.CategoricalDtype``.
+        dtypes: An optional dictionary that maps columns to ``pd.CategoricalDtype``
+            objects. If you don't include a column in ``dtypes``, the categories
+            are inferred.
     """
 
     def __init__(
