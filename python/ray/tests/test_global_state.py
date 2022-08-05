@@ -414,11 +414,16 @@ def test_default_load_reports(shutdown_only):
             return num_infeasible == 2
         return False
 
-    # foo.remote()
-    Foo.remote()
+    # Assign to variables to keep the ref counter happy.
+    handle = Foo.remote()
+    ref = foo.remote()
 
     wait_for_condition(actor_and_task_queued_together, timeout=2)
     global_state_accessor.disconnect()
+
+    # Do something with the variables so lint is happy.
+    del handle
+    del ref
 
 
 def test_heartbeat_ip(shutdown_only):
