@@ -57,6 +57,9 @@ class JobLogStorageClient:
     JOB_LOGS_PATH = "job-driver-{job_id}.log"
     # Number of last N lines to put in job message upon failure.
     NUM_LOG_LINES_ON_ERROR = 10
+    # Maximum number of characters to print out of the logs to avoid
+    # HUGE log outputs that bring down the api server
+    MAX_LOG_SIZE = 20000
 
     def get_logs(self, job_id: str) -> str:
         try:
@@ -73,11 +76,17 @@ class JobLogStorageClient:
     ) -> str:
         log_tail_iter = self.tail_logs(job_id)
         log_tail_deque = deque(maxlen=num_log_lines)
+        line_length = 0
         for line in log_tail_iter:
-            if line is None:
+            if line is None or line_length >= self.MAX_LOG_SIZE:
                 break
             else:
+                new_line_length = len(line) + line_length
+                if new_line_length > self.MAX_LOG_SIZE:
+                    line = line[0 : self.MAX_LOG_SIZE - line_length]
+                    new_line_length = len(line) + line_length
                 log_tail_deque.append(line)
+                line_length = new_line_length
         return "".join(log_tail_deque)
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
