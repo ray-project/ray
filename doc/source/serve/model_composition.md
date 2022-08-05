@@ -268,7 +268,7 @@ See [the guide](serve-http-adapters) on `http_adapters` to learn more.
 
 ### Visualizing the Graph
 
-You can visualize your deployment graph as you develop it to better understand how the different nodes connect.
+You can render an illustration of your deployment graph to see its nodes and their connection.
 
 Make sure you have `pydot` and `graphviz` to follow this section:
 
@@ -292,14 +292,13 @@ pip install -U pydot && sudo apt-get install -y graphviz
 
 Here's an example graph:
 
-```{eval-rst}
-.. literalinclude:: ../doc_code/model_composition/deployment_graph_viz.py
-   :language: python
+```{literalinclude} ../doc_code/model_composition/deployment_graph_viz.py
+:language: python
 ```
 
 The `ray.dag.vis_utils._dag_to_dot` method takes in a `DeploymentNode` and produces a graph visualization. You can see the string form of the visualization by running the script:
 
-```
+```console
 $ python deployment_graph_viz.py
 
 digraph G {
@@ -335,10 +334,6 @@ This path includes only the dependencies needed to generate `m1_output`.
 On the other hand, when the script visualizes choose the final graph output, `combine_output`, it captures all nodes used in execution since they're all required to create the final output.
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_full.svg)
-
-:::{tip}
-If you run the code above inside a Jupyter notebook, it automatically displays within the cell. You can print the dot file as a string and render it with `graphviz` tools such as [https://dreampuf.github.io/GraphvizOnline](https://dreampuf.github.io/GraphvizOnline), or you can save it as a .dot file.
-:::
 
 ## Next Steps
 
