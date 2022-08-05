@@ -295,7 +295,5 @@ tutorial is available [here](https://github.com/mlflow/mlflow/tree/master/exampl
 Ray Serve seamlessly integrates with popular Python ML libraries.
 Below are tutorials with some of these frameworks to help get you started.
 
-- [PyTorch Tutorial](serve-pytorch-tutorial)
-- [Scikit-Learn Tutorial](serve-sklearn-tutorial)
-- [Keras and Tensorflow Tutorial](serve-tensorflow-tutorial)
+- [Tensorflow, PyTorch, and Scikit-Learn Tutorials](serve-ml-models-tutorial)
 - [RLlib Tutorial](serve-rllib-tutorial)

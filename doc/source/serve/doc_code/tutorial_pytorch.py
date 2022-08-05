@@ -1,11 +1,9 @@
 # fmt: off
-import ray
 # __doc_import_begin__
 from ray import serve
 
 from io import BytesIO
 from PIL import Image
-import requests
 
 import torch
 from torchvision import transforms
@@ -46,24 +44,9 @@ class ImageModel:
             output_tensor = self.model(input_tensor)
         print("[3/3] Inference done!")
         return {"class_index": int(torch.argmax(output_tensor[0]))}
+        # __doc_define_servable_end__
 
 
-# __doc_define_servable_end__
-
-ray.init(num_cpus=8)
 # __doc_deploy_begin__
-serve.start()
-ImageModel.deploy()
+app = ImageModel.bind()
 # __doc_deploy_end__
-
-# __doc_query_begin__
-ray_logo_bytes = requests.get(
-    "https://github.com/ray-project/ray/raw/"
-    "master/doc/source/images/ray_header_logo.png"
-).content
-
-resp = requests.post("http://localhost:8000/image_predict", data=ray_logo_bytes)
-print(resp.json())
-# Output
-# {'class_index': 463}
-# __doc_query_end__
