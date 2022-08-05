@@ -4,15 +4,11 @@ from ray.util.annotations import PublicAPI
 
 import starlette
 
-errored = False
 try:
     import gradio as gr
 except ModuleNotFoundError:
-    errored = True
-if errored:
-    raise ModuleNotFoundError(
-        "Gradio isn't installed. Run `pip install gradio` to install Gradio."
-    )
+    print("Gradio isn't installed. Run `pip install gradio` to install Gradio.")
+    raise
 
 
 @PublicAPI(stability="alpha")
