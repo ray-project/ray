@@ -7,7 +7,7 @@ This guide explains how to use Train to scale PyTorch, TensorFlow and Horovod.
 
 In this guide, we cover examples for the following use cases:
 
-* How do I :ref:`port my code <train-porting-code>` to using Ray Train?
+* How do I :ref:`port my code <train-porting-code>` to use Ray Train?
 * How do I use Ray Train to :ref:`train with a large dataset <train-datasets>`?
 * How do I :ref:`monitor <train-monitoring>` my training?
 * How do I run my training on pre-emptible instances
