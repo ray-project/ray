@@ -16,20 +16,20 @@ class BatchAdder:
     def __init__(self, matrix: np.ndarray):
         self.matrix = matrix
 
-    @serve.batch(max_batch_size=10)
-    async def handle_batch(self, numbers: List):
-        numbers = [await request.json() for request in numbers]
-        input_array = np.column_stack(numbers)
-        print("Our input array has shape:", input_array.shape)
-        output_array = self.matrix.dot(input_array)
+    @serve.batch(max_batch_size=4)
+    async def handle_batch(self, arrays: List):
+        input_matrix = np.column_stack(arrays)
+        print("Our input array has shape:", input_matrix.shape)
+
+        output_array = self.matrix.dot(input_matrix)
         return output_array.transpose().tolist()
 
     async def __call__(self, request: Request):
-        return await self.handle_batch(request)
+        return await self.handle_batch(await request.json())
         # __doc_define_servable_end__
 
 
 # __doc_deploy_begin__
-matrix = np.random.rand(2, 2)
+matrix = np.random.rand(50, 50)
 adder = BatchAdder.bind(matrix)
 # __doc_deploy_end__

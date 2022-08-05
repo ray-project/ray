@@ -64,8 +64,8 @@ finishes, a larger batch may be executed. This behavior can be tuned using the
 timeout may improve throughput at the cost of latency under low load.
 :::
 
-Let's define a deployment that takes in a list of requests, extracts the input value,
-converts them into an array, and uses NumPy to add 1 to each element.
+Let's define a deployment that takes in a list of vectors, combines them into a 
+matrix, and multiples the combined vectors by a another fixed matrix.
 
 ```{literalinclude} ../doc_code/tutorial_batch.py
 :end-before: __doc_define_servable_end__
@@ -97,13 +97,12 @@ import requests
 import numpy as np
 
 @ray.remote
-def send_query(number):
-    resp = requests.get("http://localhost:8000/?number={}".format(number))
-    return resp.text
-
+def send_query(array):
+    resp = requests.get("http://localhost:8000/", json=array.tolist())
+    return resp.json()
 
 # Let's use Ray to send all queries in parallel
-results = ray.get([send_query.remote(np.random.rand(5)) for _ in range(9)])
+results = ray.get([send_query.remote(np.random.rand(50)) for _ in range(9)])
 print("Result returned:", results)
 ```
 
@@ -111,10 +110,10 @@ You should get an output like the following. As you can see, the first batch has
 batch size of 1, and the subsequent queries have a batch size of 4. Even though each 
 query is issued independently, Ray Serve was able to evaluate them in batches.
 ```bash
-(pid=...) Our input array has shape: (1,)
-(pid=...) Our input array has shape: (4,)
-(pid=...) Our input array has shape: (4,)
-Result returned: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+(pid=...) Our input array has shape: (50, 1)
+(pid=...) Our input array has shape: (50, 4)
+(pid=...) Our input array has shape: (50, 4)
+Result returned: [[13.17880051093083, 11.36916172468337, ...],[12.725841867183606,11.44933768139967, ...], ...]
 ```
 
 ## Deploy the Deployment using Python API
@@ -135,10 +134,11 @@ returns immediatelywith a [Ray ObjectRef](ray-object-refs). You can call `ray.ge
 retrieve the result. Add the following to the same Python script.
 
 ```python
-input_batch = list(range(9))
+input_batch = [np.random.rand(50) for _ in range(9)]
 print("Input batch is", input_batch)
 
-result_batch = ray.get([handle.handle_batch.remote(np.random.rand(5)) for _ in range(9)])
+import ray
+result_batch = ray.get([handle.handle_batch.remote(batch) for batch in input_batch])
 print("Result batch is", result_batch)
 ```
 
@@ -149,11 +149,8 @@ $ python tutorial_batch.py
 
 You should get an output like the following.
 ```bash
-(pid=...) Current context is python
-(pid=...) Our input array has shape: (1,)
-(pid=...) Current context is python
-(pid=...) Our input array has shape: (4,)
-(pid=...) Current context is python
-(pid=...) Our input array has shape: (4,)
-Result batch is [1, 2, 3, 4, 5, 6, 7, 8, 9]
+(pid=...) Our input array has shape: (50, 1)
+(pid=...) Our input array has shape: (50, 4)
+(pid=...) Our input array has shape: (50, 4)
+Result returned: [[13.43188362773026, 10.635865255218478, ...], [13.161842646470665, 11.92617474588417, ...], ...]
 ```
