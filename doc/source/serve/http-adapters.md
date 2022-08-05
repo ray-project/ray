@@ -60,7 +60,7 @@ PredictorDeployment.options(name="my_model").deploy(
 
 ## Serve Deployment Graph `DAGDriver`
 
-When using a [Serve Deployment Graph](serve-deployment-graph), you can configure
+When using a [Serve Deployment Graph](serve-model-composition-deployment-graph), you can configure
 `ray.serve.drivers.DAGDriver` to accept an HTTP adapter via its `http_adapter` field.
 
 For example, the `json_request` adapter parses JSON in the HTTP body:

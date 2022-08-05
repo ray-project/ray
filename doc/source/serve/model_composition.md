@@ -1,4 +1,4 @@
-(serve-model-composition)=
+(serve-model-composition-guide)=
 
 # Model Composition
 
@@ -66,7 +66,7 @@ $ python hello_client.py
 Hola Dora
 ```
 
-(deployment-graph-intro-call-graph)=
+(serve-model-composition-deployment-graph)=
 ## Deployment Graph API
 
 ```{note}
@@ -127,6 +127,7 @@ $ python echo_client.py
 foo
 ```
 
+(deployment-graph-call-graph)
 ### Building the Call Graph: MethodNodes and FunctionNodes
 
 After defining your `ClassNodes`, you can specify how HTTP requests should be processed using the call graph. As an example, let's look at a deployment graph that implements this chain of arithmetic operations:
@@ -137,7 +138,7 @@ output = request + 2 - 1 + 3
 
 Here's the graph:
 
-(deployment-graph-intro-arithmetic-graph)=
+(deployment-graph-arithmetic-graph)=
 ```{literalinclude} ../doc_code/model_composition/arithmetic.py
 :start-after: __graph_start__
 :end-before: __graph_end__
@@ -155,7 +156,7 @@ with InputNode() as http_request:
     add_3_output = add_3.add.bind(subtract_1_output)
 ```
 
-The `with` statement (known as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it represents the input of our graph. In this case, that input represents an HTTP request. In [a future section](deployment-graph-drivers-http-adapters-intro), we'll show how you can change this input type using another Ray Serve-provided object called the driver.
+The `with` statement (known as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it represents the input of our graph. In this case, that input represents an HTTP request. In [a future section](deployment-graph-drivers-http-adapters), we'll show how you can change this input type using another Ray Serve-provided object called the driver.
 
 :::{note}
 `InputNode` is merely a representation of the future graph input. In this example, for instance, `http_request`'s type is `InputNode`, not an actual HTTP request. When the graph is deployed, incoming HTTP requests are passed into the same functions and methods that `http_request` is passed into.
@@ -164,7 +165,7 @@ The `with` statement (known as a "context manager" in Python) initializes a spec
 We use the `InputNode` to indicate which node(s) the graph input should be passed to by passing the `InputNode` into `bind` calls within the context manager. In this case, the `http_request` is passed to only one node, `unpack_request`. The output of that bind call, `request_number` is a `FunctionNode`. `FunctionNodes` are produced when deployments containing functions are bound to arguments for that function using `bind`. In this case `request_number` represents the output of `unpack_request` when called on incoming HTTP requests. `unpack_request`, which is defined on line 26, processes the HTTP request's JSON body and returns a number that can be passed into arithmetic operations.
 
 :::{tip}
-If you don't want to manually unpack HTTP requests, check out this guide's section on [HTTP adapters](deployment-graph-drivers-http-adapters-intro), which can handle unpacking for you.
+If you don't want to manually unpack HTTP requests, check out this guide's section on [HTTP adapters](deployment-graph-drivers-http-adapters), which can handle unpacking for you.
 :::
 
 The graph then passes `request_number` into a `bind` call on `add_2`'s `add` method. The output of this call, `add_2_output` is a `MethodNode`. `MethodNodes` are produced when `ClassNode` methods are bound to arguments using `bind`. In this case, `add_2_output` represents the result of adding 2 to the number in the request.
@@ -205,7 +206,7 @@ $ python arithmetic_client.py
 9
 ```
 
-(deployment-graph-intro-testing)=
+(deployment-graph-call-graph-testing)=
 ### Testing the Call Graph with the Python API
 
 All `MethodNodes` and `FunctionNodes` have an `execute` method. You can use this method to test your graph in Python, without using HTTP requests. 
@@ -216,7 +217,7 @@ To test your graph,
 2. Pass in the input to the graph as the argument. **This argument becomes the input represented by `InputNode`**. Make sure to refactor your call graph accordingly, since it takes in this input directly, instead of an HTTP request.
 3. `execute` returns a reference to the result, so the graph can execute asynchronously. Call `ray.get` on this reference to get the final result.
 
-As an example, we can rewrite the [arithmetic call graph example](deployment-graph-intro-arithmetic-graph) from above to use `execute`:
+As an example, we can rewrite the [arithmetic call graph example](deployment-graph-arithmetic-graph) from above to use `execute`:
 
 ```python
 with InputNode() as request_number:
@@ -241,14 +242,14 @@ $ python arithmetic.py
 The `execute` method deploys your deployment code inside Ray tasks and actors instead of Ray Serve deployments. It's useful for testing because you don't need to launch entire deployments and ping them with HTTP requests, but it's not suitable for production.
 :::
 
-(deployment-graph-drivers-http-adapters-intro)=
+(deployment-graph-drivers-http-adapters)=
 ### Drivers and HTTP Adapters
 
-Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-intro-call-graph), the `DAGDriver` takes in a `DeploymentNode` and it produces a `ClassNode` that you can run.
+Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-call-graph), the `DAGDriver` takes in a `DeploymentNode` and it produces a `ClassNode` that you can run.
 
 The `DAGDriver` also has an optional keyword argument: `http_adapter`. [HTTP adapters](serve-http-adapters) are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
 
-For instance, we can use the Ray Serve-provided `json_request` adapter to simplify our [arithmetic call graph](deployment-graph-intro-arithmetic-graph) by eliminating the `unpack_request` function. Here's the revised call graph and driver:
+For instance, we can use the Ray Serve-provided `json_request` adapter to simplify our [arithmetic call graph](deployment-graph-arithmetic-graph) by eliminating the `unpack_request` function. Here's the revised call graph and driver:
 
 ```python
 from ray.serve.http_adapters import json_request

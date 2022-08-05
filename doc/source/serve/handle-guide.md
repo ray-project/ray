@@ -3,7 +3,7 @@
 # ServeHandle: Calling Deployments from Python
 
 Ray Serve enables you to query models both from HTTP and Python. This feature
-enables seamless [model composition](serve-model-composition). You can
+enables seamless [model composition](serve-model-composition-guide). You can
 get a `ServeHandle` corresponding to deployment, similar how you can
 reach a deployment through HTTP via a specific route. When you issue a request
 to a deployment through `ServeHandle`, the request is load balanced across
