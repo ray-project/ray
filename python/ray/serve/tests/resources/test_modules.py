@@ -46,9 +46,11 @@ class Combine:
         self.m1 = m1
         self.m2 = m2.get(NESTED_HANDLE_KEY) if m2_nested else m2
 
-    def __call__(self, req):
+    async def __call__(self, req):
         r1_ref = self.m1.forward.remote(req)
-        r2_ref = self.m2.forward.remote(req)
+        assert isinstance(r1_ref, ray.ObjectRef), type(self.m1)
+        r2_ref = await self.m2.forward.remote(req)
+        assert isinstance(r2_ref, ray.ObjectRef), type(self.m2)
         return sum(ray.get([r1_ref, r2_ref]))
 
 
