@@ -283,7 +283,7 @@ class MultiHotEncoder(Preprocessor):
         0                 Shaolin Soccer  [1, 1, 1]
         1                          Moana  [1, 1, 0]
         2  The Smartest Guys in the Room  [0, 0, 0]
-        >>> encoder.stats_
+        >>> encoder.stats_  # doctest: +SKIP
         OrderedDict([('unique_values(genre)', {'comedy': 0, 'action': 1, 'sports': 2})])
 
     Args:

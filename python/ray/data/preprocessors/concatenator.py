@@ -16,6 +16,7 @@ class Concatenator(Preprocessor):
     The :math:`m` concatenated columns are dropped after concatenation.
 
     Examples:
+        >>> import numpy as np
         >>> import pandas as pd
         >>> import ray
         >>> from ray.data.preprocessors import Concatenator
@@ -46,7 +47,7 @@ class Concatenator(Preprocessor):
         dataset. In this case, you can exclude columns with the ``exclude`` parameter.
 
         >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9], "Y": ["blue", "orange", "blue"]})
-        >>> ds = ray.data.from_pandas(df)
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
         >>> concatenator = Concatenator(exclude=["Y"])
         >>> concatenator.fit_transform(ds).to_pandas()  # doctest: +SKIP
                 Y  concat_out
