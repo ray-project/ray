@@ -39,7 +39,7 @@ In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio 
 :::{note} 
 `GradioServer` is simply `GradioIngress` but wrapped in a Serve deployment.
 :::
-```{literalinclude} ../../../../python/ray/serve/gradio.py
+```{literalinclude} ../../../../python/ray/serve/gradio_integrations.py
 :start-after: __doc_gradio_ingress_begin__
 :end-before: __doc_gradio_ingress_end__
 ```
