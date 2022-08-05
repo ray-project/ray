@@ -131,7 +131,7 @@ class OneHotEncoder(Preprocessor):
     1 if the category matches and 0 otherwise.
 
     To learn more about one-hot encoding, read the
-    `Wikapedia section on the topic <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_.
+    `Wikipedia section on the topic <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_.
 
     If you encode an infrequent category (see ``max_categories``) or a category
     that isn't in the fitted dataset, then the category is encoded as all 0s.
