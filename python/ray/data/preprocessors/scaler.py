@@ -114,7 +114,8 @@ class MaxAbsScaler(Preprocessor):
     Transformed values are always in the range :math:`[-1, 1]`.
 
     .. note::
-        This is the recommended way to scale sparse data.
+        This is the recommended way to scale sparse data. If you data isn't sparse,
+        you can use :class:`MinMaxScaler` or :class:`StandardScaler` instead.
 
     Args:
         columns: The columns to separately scale.
