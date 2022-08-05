@@ -111,8 +111,6 @@ class MaxAbsScaler(Preprocessor):
     :math:`\max{\vert x \vert} = 0` (i.e., the column contains all zeros), then the
     column is unmodified.
 
-    Transformed values are always in the range :math:`[-1, 1]`.
-
     .. note::
         This is the recommended way to scale sparse data. If you data isn't sparse,
         you can use :class:`MinMaxScaler` or :class:`StandardScaler` instead.
