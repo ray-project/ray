@@ -38,6 +38,12 @@ This call has a few parts:
 
 This call returns a reference to the result– not the result itself. This pattern allows the call to execute asynchronously. To get the actual result, call `ray.get` on the result. `ray.get` blocks until the asynchronous call executes, and then it returns the result. In this example, line 23 calls `ray.get(ref)` and returns the resulting string.
 
+:::{note}
+Composition lets you break apart your application and independently scale each part. For instance, suppose this `LanguageClassifier` application's requests were 75% Spanish and 25% French. You could scale your `SpanishResponder` to have 3 replicas and your `FrenchResponder` to have 1 replica, so you could meet your workload's demand. This flexibility also applies to resources like CPUs and GPUs, as well as any other configurations you can set for each deployment.
+
+With composition, you can avoid application-level bottlenecks when serving models and business logic steps that use different types and amounts of resources.
+:::
+
 You can copy the `hello.py` script above and run it with `serve run`. Make sure to run the command from a directory containing `hello.py`, so it can locate the script:
 
 ```console
