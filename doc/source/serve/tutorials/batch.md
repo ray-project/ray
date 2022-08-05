@@ -94,15 +94,16 @@ following in an interactive Python shell or a separate Python script:
 ```python
 import ray
 import requests
+import numpy as np
 
 @ray.remote
 def send_query(number):
     resp = requests.get("http://localhost:8000/?number={}".format(number))
-    return int(resp.text)
+    return resp.text
 
 
 # Let's use Ray to send all queries in parallel
-results = ray.get([send_query.remote(i) for i in range(9)])
+results = ray.get([send_query.remote(np.random.rand(5)) for _ in range(9)])
 print("Result returned:", results)
 ```
 
@@ -137,7 +138,7 @@ retrieve the result. Add the following to the same Python script.
 input_batch = list(range(9))
 print("Input batch is", input_batch)
 
-result_batch = ray.get([handle.handle_batch.remote(i) for i in input_batch])
+result_batch = ray.get([handle.handle_batch.remote(np.random.rand(5)) for _ in range(9)])
 print("Result batch is", result_batch)
 ```
 
