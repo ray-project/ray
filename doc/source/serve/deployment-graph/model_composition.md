@@ -34,11 +34,11 @@ Note that all three of these nodes were created from the same `EchoClass` deploy
 
 There are two options to run a node:
 
-1. `serve.run(node)`: This Python call can be added to your Python script to run a particular node. This call will start a Ray cluster (if one isn't already running), deploy the node to it, and then return. You can call this function multiple times in the same script on different nodes. Each time, it will tear down any deployments it previously deployed and deploy the passed-in node's deployment. After the script exits, the cluster and any nodes deployed by `serve.run` will be torn down.
+1. `serve.run(node)`: This Python call can be added to your Python script to run a particular node. This call starts a Ray cluster (if one isn't already running), deploys the node to it, and then returns. You can call this function multiple times in the same script on different `DeploymentNodes`. Each time, it tears down any deployments it previously deployed and deploy the passed-in node's deployment. After the script exits, the cluster and any nodes deployed by `serve.run` are torn down.
 
-2. `serve run module:node`: This CLI command will start a Ray cluster and run the node contained at the import path `module:node`. It will then block, allowing you to open a separate terminal window and issue requests to the running deployment. You can stop the `serve run` command with `ctrl-c`.
+2. `serve run module:node`: This CLI command starts a Ray cluster and runs the node at the import path `module:node`. It then blocks, allowing you to open a separate terminal window and issue requests to the running deployment. You can stop the `serve run` command with `ctrl-c`.
 
-When you run a node, you are deploying the node's deployment and its bound arguments. Ray Serve will create a deployment in Ray and instantiate your deployment's class using the arguments. By default, you can send requests to your deployment at `http://localhost:8000`. These requests will be converted to Starlette `request` objects and passed to your class's `__call__` method.
+When you run a node, you are deploying the node's deployment and its bound arguments. Ray Serve creates a deployment in Ray and instantiate your deployment's class using the arguments. By default, you can send requests to your deployment at `http://localhost:8000`. These requests are converted to Starlette `request` objects and passed to your class's `__call__` method.
 
 :::{note}
 Additionally, when you run a node, the deployment's configurations (which you can set in the `@serve.deployment` decorator, through an `options` call, or a [Serve config file](serve-in-production-config-file)) still apply to the deployment. You can use this to independently scale and configure your graph's deployments by, for instance, setting different `num_replicas`, `num_cpus`, or `num_gpus` values for different deployments.
@@ -155,10 +155,10 @@ with InputNode() as http_request:
     add_3_output = add_3.add.bind(subtract_1_output)
 ```
 
-The `with` statement (known as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it represents the input of our graph. In this case, that input will be an HTTP request. In [a future section](deployment-graph-drivers-http-adapters-intro), we'll show how you can change this input type using another Ray Serve-provided object called the driver.
+The `with` statement (known as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it represents the input of our graph. In this case, that input represents an HTTP request. In [a future section](deployment-graph-drivers-http-adapters-intro), we'll show how you can change this input type using another Ray Serve-provided object called the driver.
 
 :::{note}
-`InputNode` is merely a representation of the future graph input. In this example, for instance, `http_request`'s type is `InputNode`, not an actual HTTP request. When the graph is deployed, incoming HTTP requests will be passed into the same functions and methods that `http_request` is passed into.
+`InputNode` is merely a representation of the future graph input. In this example, for instance, `http_request`'s type is `InputNode`, not an actual HTTP request. When the graph is deployed, incoming HTTP requests are passed into the same functions and methods that `http_request` is passed into.
 :::
 
 We use the `InputNode` to indicate which node(s) the graph input should be passed to by passing the `InputNode` into `bind` calls within the context manager. In this case, the `http_request` is passed to only one node, `unpack_request`. The output of that bind call, `request_number` is a `FunctionNode`. `FunctionNodes` are produced when deployments containing functions are bound to arguments for that function using `bind`. In this case `request_number` represents the output of `unpack_request` when called on incoming HTTP requests. `unpack_request`, which is defined on line 26, processes the HTTP request's JSON body and returns a number that can be passed into arithmetic operations.
@@ -177,7 +177,7 @@ To run the call graph, you need to use a driver. Drivers are deployments that pr
 deployment_graph = DAGDriver.bind(add_3_output)
 ```
 
-Generally, the `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of our graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` will also deploy the rest of the graph's deployments.
+Generally, the `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of our graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` also deploys the rest of the graph's deployments.
 
 :::{note}
 The `DAGDriver` can also be bound to `ClassNodes`. This is useful if you construct a deployment graph where `ClassNodes` invoke other `ClassNodes`' methods. In this case, you should pass in the "root" `ClassNode` to `DAGDriver` (i.e. the one that you would otherwise pass into `serve.run`). Check out [Invoking ClassNodes from within other ClassNodes](deployment-graph-intro-invoking-classnodes-from-other-classnodes) for more info.
@@ -213,7 +213,7 @@ All `MethodNodes` and `FunctionNodes` have an `execute` method. You can use this
 To test your graph,
 
 1. Call `execute` on the `MethodNode` or `FunctionNode` that you would pass into the `DAGDriver`.
-2. Pass in the input to the graph as the argument. **This argument becomes the input represented by `InputNode`**. Make sure to refactor your call graph accordingly, since it will take in this input directly, instead of an HTTP request.
+2. Pass in the input to the graph as the argument. **This argument becomes the input represented by `InputNode`**. Make sure to refactor your call graph accordingly, since it takes in this input directly, instead of an HTTP request.
 3. `execute` returns a reference to the result, so the graph can execute asynchronously. Call `ray.get` on this reference to get the final result.
 
 As an example, we can rewrite the [arithmetic call graph example](deployment-graph-intro-arithmetic-graph) from above to use `execute`:
