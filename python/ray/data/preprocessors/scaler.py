@@ -181,7 +181,7 @@ class RobustScaler(Preprocessor):
         3   4   2   2
         4   5   8   3
 
-        Columns are scaled separately.
+        :class:`RobustScaler` separately scales each column.
 
         >>> preprocessor = RobustScaler(columns=["X1", "X2"])  # doctest: +SKIP
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
