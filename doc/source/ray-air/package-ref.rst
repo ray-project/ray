@@ -108,7 +108,7 @@ Text Preprocessors
     :members:
     :show-inheritance:
 
-.. _air-trainer-ref:
+.. _air-abstract-trainer-ref:
 
 Trainer
 ~~~~~~~
@@ -200,6 +200,8 @@ Serving
 .. autoclass:: ray.serve.air_integrations.PredictorDeployment
 
 .. autoclass:: ray.serve.air_integrations.PredictorWrapper
+
+.. _air-trainer-ref:
 
 Trainer and Predictor Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
