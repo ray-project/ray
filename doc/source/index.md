@@ -108,11 +108,11 @@ Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a
 
 ## Why Ray?
 
-Today's ML workloads are increasingly compute intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to it: there is a need for a unified way to scale from a laptop to a cluster.
+Today's ML workloads are increasingly compute-intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to meet these demands.
 
-Ray is this unified way to scale Python and AI applications.
+Ray is a unified way to scale Python and AI applications from a laptop to a cluster.
 
-With Ray, you can seamlessly scale the same code from laptops to clusters. Ray's underlying generality also means it can handle any workload with the best performance possible-- so you can run one system instead of many.
+With Ray, you can seamlessly scale the same Python code from a laptop to a cluster. Ray is also designed to be general-purpose, meaning that it can performantly run any kind of workload. If your application is written in Python, you can scale it with Ray, no other infrastructure required.
 
 ## How to get involved?
 
