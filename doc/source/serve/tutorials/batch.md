@@ -3,7 +3,7 @@
 # Batching Tutorial
 
 In this guide, we will deploy a simple vectorized matrix multipler that takes
-a batch of queries and adds them at once. In particular, we show:
+a batch of queries and processes them at once. In particular, we show:
 
 - How to implement and deploy a Ray Serve deployment that accepts batches.
 - How to configure the batch size.
