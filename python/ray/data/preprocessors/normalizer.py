@@ -19,7 +19,7 @@ class Normalizer(Preprocessor):
     where :math:`s` is the sample, :math:`s'` is the transformed sample, and :math:`p`
     is the norm type.
 
-    The following norms are supporting:
+    The following norms are supported:
 
         * :math:`L^1`: Sum of the absolute values.
         * :math:`L^2`: Square root of the sum of the squared values.
