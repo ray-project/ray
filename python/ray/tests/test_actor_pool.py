@@ -2,6 +2,7 @@ import asyncio
 import sys
 import time
 import pytest
+import warnings
 
 import ray
 from ray.util import ActorPool
@@ -27,7 +28,11 @@ def test_get_next(init):
             return 2 * x
 
     actors = [MyActor.remote() for _ in range(4)]
-    pool = ActorPool(actors)
+    with warnings.catch_warnings(record=True) as w:
+        pool = ActorPool(actors)
+        assert any(
+            "use ray.util.multiprocessing" in str(warning.message) for warning in w
+        )
     for i in range(5):
         pool.submit(lambda a, v: a.f.remote(v), i)
         assert pool.get_next() == i + 1

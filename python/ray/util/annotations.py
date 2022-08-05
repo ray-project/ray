@@ -1,3 +1,8 @@
+import inspect
+import warnings
+from functools import wraps
+
+
 def PublicAPI(*args, **kwargs):
     """Annotation for documenting public APIs.
 
@@ -107,12 +112,19 @@ def Deprecated(*args, **kwargs):
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return Deprecated()(args[0])
 
-    message = (
+    doc_message = (
         "\n    DEPRECATED: This API is deprecated and may be removed "
         "in future Ray releases."
     )
+    warning_message = (
+        "This API is deprecated and may be removed in future Ray releases."
+    )
+
+    warning = kwargs.pop("warning", False)
+
     if "message" in kwargs:
-        message = message + " " + kwargs["message"]
+        doc_message = doc_message + " " + kwargs["message"]
+        warning_message = warning_message + " " + kwargs["message"]
         del kwargs["message"]
 
     if kwargs:
@@ -121,9 +133,29 @@ def Deprecated(*args, **kwargs):
     def inner(obj):
         if not obj.__doc__:
             obj.__doc__ = ""
-        obj.__doc__ += f"{message}"
+        obj.__doc__ += f"{doc_message}"
         _mark_annotated(obj)
-        return obj
+
+        if not warning:
+            return obj
+
+        if inspect.isclass(obj):
+            obj_init = obj.__init__
+
+            def patched_init(*args, **kwargs):
+                warnings.warn(warning_message, DeprecationWarning, stacklevel=2)
+                return obj_init(*args, **kwargs)
+
+            obj.__init__ = patched_init
+            return obj
+        else:
+            # class method or function.
+            @wraps(obj)
+            def wrapper(*args, **kwargs):
+                warnings.warn(warning_message, DeprecationWarning, stacklevel=2)
+                return obj(*args, **kwargs)
+
+            return wrapper
 
     return inner
 
