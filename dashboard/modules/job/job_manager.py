@@ -76,18 +76,16 @@ class JobLogStorageClient:
     ) -> str:
         log_tail_iter = self.tail_logs(job_id)
         log_tail_deque = deque(maxlen=num_log_lines)
-        line_length = 0
-        for line in log_tail_iter:
-            if line is None or line_length >= self.MAX_LOG_SIZE:
+        for lines in log_tail_iter:
+            if lines is None:
                 break
             else:
-                new_line_length = len(line) + line_length
-                if new_line_length > self.MAX_LOG_SIZE:
-                    line = line[0 : self.MAX_LOG_SIZE - line_length]
-                    new_line_length = len(line) + line_length
-                log_tail_deque.append(line)
-                line_length = new_line_length
-        return "".join(log_tail_deque)
+                # log_tail_iter can return batches of lines at a time.
+                # Need to split into lines
+                for line in lines.splitlines():
+                    log_tail_deque.append(line)
+                
+        return "\n".join(log_tail_deque)[0:self.MAX_LOG_SIZE]
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
