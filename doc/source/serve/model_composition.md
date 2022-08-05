@@ -342,6 +342,4 @@ If you run the code above inside a Jupyter notebook, it automatically displays w
 
 ## Next Steps
 
-To learn more about deployment graphs, check out these resources:
-
-* [Deployment graph patterns](serve-deployment-graph-patterns): a cookbook of common graph examples you can incorporate into your own graph
+To learn more about deployment graphs, check out some [deployment graph patterns](serve-deployment-graph-patterns-overview) you can incorporate into your own graph!
