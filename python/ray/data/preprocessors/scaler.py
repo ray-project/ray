@@ -9,23 +9,64 @@ from ray.data.preprocessor import Preprocessor
 
 
 class StandardScaler(Preprocessor):
-    """Scale values within columns based on mean and standard deviation.
+    r"""Translate and scale each column by its mean and standard deviation, respectively.
 
-    For each column, each value will be transformed to ``(value-mean)/std``,
-    where ``mean`` and ``std`` are calculated from the fitted dataset.
+    The general formula is given by
+
+    .. math::
+
+        x' = \frac{x - \bar{x}}{s}
+
+    where :math:`x` is the column, :math:`x'` is the transformed column,
+    :math:`\bar{x}` is the column average, and :math:`s` is the column's sample
+    standard deviation. If :math:`s = 0` (i.e., the column is constant-valued),
+    then the transformed column will contain zeros.
+
+    .. warning::
+        :class:`StandardScaler` works best when your data is normal. If your data isn't
+        approximately normal, the transformed features won't be meaningful.
 
     Args:
-        columns: The columns that will individually be scaled.
-        ddof: The delta degrees of freedom used to calculate standard deviation.
+        columns: The columns to separately scale.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import StandardScaler
+        >>>
+        >>> df = pd.DataFrame({"X1": [-2, 0, 2], "X2": [-3, -3, 3], "X3": [1, 1, 1]})  # doctest: +SKIP # noqa: E501
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
+           X1  X2  X3
+        0  -2  -3   1
+        1   0  -3   1
+        2   2   3   1
+
+        Columns are scaled separately.
+
+        >>> preprocessor = StandardScaler(columns=["X1", "X2"])  # doctest: +SKIP
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+                 X1        X2  X3
+        0 -1.224745 -0.707107   1
+        1  0.000000 -0.707107   1
+        2  1.224745  1.414214   1
+
+        Constant-valued columns get filled with zeros.
+
+        >>> preprocessor = StandardScaler(columns=["X3"])  # doctest: +SKIP
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2   X3
+        0  -2  -3  0.0
+        1   0  -3  0.0
+        2   2   3  0.0
     """
 
-    def __init__(self, columns: List[str], ddof=0):
+    def __init__(self, columns: List[str]):
         self.columns = columns
-        self.ddof = ddof
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         mean_aggregates = [Mean(col) for col in self.columns]
-        std_aggregates = [Std(col, ddof=self.ddof) for col in self.columns]
+        std_aggregates = [Std(col, ddof=0) for col in self.columns]
         self.stats_ = dataset.aggregate(*mean_aggregates, *std_aggregates)
         return self
 
@@ -48,7 +89,7 @@ class StandardScaler(Preprocessor):
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, ddof={self.ddof!r})"
+            f"{self.__class__.__name__}(columns={self.columns!r})"
         )
 
 
