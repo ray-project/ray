@@ -4,6 +4,7 @@ cartpole-appo:
     stop:
         episode_reward_mean: 150
         timesteps_total: 200000
+    checkpoint_freq: 2
     config:
         # Works for both torch and tf.
         framework: tf

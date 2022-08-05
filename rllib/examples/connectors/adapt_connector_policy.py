@@ -94,6 +94,14 @@ def run():
 
     # Adapt policy trained for standard CartPole to the new env.
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
+
+    # When this policy was trained, it relied on FlattenDataAgentConnector
+    # to add a batch dimension to single observations.
+    # This is not necessary anymore, so we first remove the previously used
+    # FlattenDataAgentConnector.
+    policy.agent_connectors.remove("FlattenDataAgentConnector")
+
+    # We then add the two adapter connectors.
     policy.agent_connectors.prepend(V2ToV1ObsAgentConnector(ctx))
     policy.action_connectors.append(V1ToV2ActionConnector(ctx))
 
