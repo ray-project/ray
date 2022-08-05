@@ -31,7 +31,7 @@ to your Ray cluster configuration. The :ref:`head node<cluster-head-node-under-c
 runs the logic which implements autoscaling.
 
 .. note::
-    Here, a *node* means an individual machine. However, :ref:`on Kubernetes<kuberay-index>`, nodes are implemented as pods.
+    Nodes are implemented as pods when :ref:`running on Kubernetes<kuberay-index>`.
 
 .. _cluster-head-node-under-construction:
 
@@ -63,7 +63,7 @@ a node is idle for long enough, the autoscaler will remove it from the cluster.
 To learn more about the autoscaler and how to configure it, refer to the following user guides:
 
 * :ref:`Configuring Autoscaling on VMs<deployment-guide-autoscaler-under-construction>`.
-* :ref:`Configuring Autoscaling on Kubernetes<kuberay-index>` (TODO cade@ update this link.)
+* :ref:`Autoscaling on Kubernetes<kuberay-autoscaler-discussion>`.
 
 .. _cluster-clients-and-jobs-under-construction:
 
@@ -80,4 +80,4 @@ Ray provides two methods for running workloads on a Ray Cluster: the Ray Client,
 To learn how to run workloads on a Ray Cluster, refer to the following user guides:
 
 * :ref:`Running Ray workloads on VMs<ref-cluster-quick-start-vms-under-construction>` (TODO cade@ update this link).
-* :ref:`Running Ray workloads on Kubernetes<kuberay-index>` (TODO cade@ update this link).
+* The :ref:`Ray Job Submission<kuberay-job>` and :ref:`Ray Client<kuberay-client>` sections in :ref:`Getting Started with Ray on Kubernetes<kuberay-quickstart>`.
