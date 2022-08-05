@@ -1,6 +1,8 @@
 (serve-rest-api)=
 
-## Serve REST API
+# Serve REST API
+
+## REST API
 
 ```
 GET /api/serve/deployments/ HTTP 1.1
@@ -27,7 +29,7 @@ Content-Type: application/json
 }
 ```
 
-#### `PUT "/api/serve/deployments/"`
+### `PUT "/api/serve/deployments/"`
 
 Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See the [config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
@@ -59,7 +61,7 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 ```
 
-#### `GET "/api/serve/deployments/status"`
+### `GET "/api/serve/deployments/status"`
 
 Gets the Serve application's current status, including all the deployment statuses. This config represents the current goal state for the Serve application. Starts a Serve application on the Ray cluster if it's not already running. See the [status schema](serve-rest-api-status-schema) for the response's JSON schema.
 
@@ -113,7 +115,7 @@ Content-Type: application/json
 }
 ```
 
-#### `DELETE "/api/serve/deployments/"`
+### `DELETE "/api/serve/deployments/"`
 
 Shuts down the Serve application running on the Ray cluster. Has no
 effect if Serve is not running on the Ray cluster.
@@ -135,7 +137,7 @@ Content-Type: application/json
 
 (serve-rest-api-config-schema)=
 
-### Config Schema
+## Config Schema
 
 ```{eval-rst}
 .. autopydantic_model:: ray.serve.schema.ServeApplicationSchema
@@ -144,7 +146,7 @@ Content-Type: application/json
 
 (serve-rest-api-status-schema)=
 
-### Status Schema
+## Status Schema
 
 ```{eval-rst}
 .. autopydantic_model:: ray.serve.schema.ServeStatusSchema
