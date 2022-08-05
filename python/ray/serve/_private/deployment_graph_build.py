@@ -227,8 +227,10 @@ def transform_ray_dag_to_serve_dag(
 
         parent_class = parent_deployment_node._deployment._func_or_class
         method = getattr(parent_class, dag_node._method_name)
-        if 'return' in method.__annotations__:
-            other_args_to_resolve['func_annotations'] = method.__annotations__['return'].__name__
+        if "return" in method.__annotations__:
+            other_args_to_resolve["func_annotations"] = method.__annotations__[
+                "return"
+            ].__name__
 
         return DeploymentMethodNode(
             parent_deployment_node._deployment,
@@ -247,8 +249,10 @@ def transform_ray_dag_to_serve_dag(
         deployment_name = node_name_generator.get_node_name(dag_node)
 
         other_args_to_resolve = dag_node.get_other_args_to_resolve()
-        if 'return' in dag_node._body.__annotations__:
-            other_args_to_resolve['func_annotations'] = dag_node._body.__annotations__['return'].__name__
+        if "return" in dag_node._body.__annotations__:
+            other_args_to_resolve["func_annotations"] = dag_node._body.__annotations__[
+                "return"
+            ].__name__
 
         return DeploymentFunctionNode(
             dag_node._body,

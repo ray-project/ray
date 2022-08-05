@@ -53,9 +53,9 @@ class _DAGNodeNameGenerator(object):
             node_name = "INPUT_NODE"
         elif isinstance(node, InputAttributeNode):
             node_name = "INPUT_ATTRIBUTE_NODE"
-        elif type(node).__name__ == 'DeploymentMethodExecutorNode':
+        elif type(node).__name__ == "DeploymentMethodExecutorNode":
             node_name = node._deployment_method_name
-        elif type(node).__name__ == 'DeploymentFunctionExecutorNode':
+        elif type(node).__name__ == "DeploymentFunctionExecutorNode":
             node_name = node._deployment_function_handle.deployment_name
         else:
             raise ValueError(

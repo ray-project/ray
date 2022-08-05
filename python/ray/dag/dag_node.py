@@ -91,7 +91,10 @@ class DAGNode(DAGNodeBase):
 
     def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
-        fn = lambda node: node._execute_impl(*args, **kwargs)
+
+        def fn(node):
+            return node._execute_impl(*args, **kwargs)
+
         result = self.apply_recursive(fn)
         self.cache_from_last_execute = fn.cache
         return result
