@@ -39,7 +39,7 @@ Head node
 ---------
 Every Ray cluster has one :ref:`worker node<cluster-worker-nodes-under-construction>`
 which is designated as the **head node** of the cluster. The head node runs
-important processes such as the :ref:`autoscaler<cluster-autoscaler-under-construction>`
+singleton processes responsible for cluster management such as the :ref:`autoscaler<cluster-autoscaler-under-construction>`
 and the Ray driver processes, :ref:`which run the top-level Ray application
 <cluster-clients-and-jobs-under-construction>`. Ray may schedule tasks and actors
 on the head node just like any other worker node.
