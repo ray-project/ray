@@ -156,6 +156,20 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     }
 
     reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
+
+    for (const auto &task_dep : *task_deps) {
+      bool was_freed = reference_counter_->TryMarkFreedObjectInUseAgain(task_dep);
+      if (was_freed) {
+        RAY_LOG(DEBUG) << "Dependency " << task_dep << " of task " << task_id
+                       << " was freed";
+        // We do not keep around copies for objects that were freed, but now that
+        // they're needed for recovery, we need to generate and pin a new copy.
+        // Delete the old in-memory marker that indicated that the object was
+        // freed. Now workers that attempt to get the object will be able to get
+        // the reconstructed value.
+        in_memory_store_->Delete({task_dep});
+      }
+    }
     if (spec.IsActorTask()) {
       const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
       reference_counter_->UpdateResubmittedTaskReferences(return_ids,
