@@ -16,22 +16,14 @@ class Normalizer(Preprocessor):
 
         s' = \frac{s}{\lVert s \rVert_p}
 
-    where :math:`s` is the sample, :math:`s'` is the transformed sample, and :math:`p`
-    is the norm type.
+    where :math:`s` is the sample, :math:`s'` is the transformed sample,
+    :math:\lVert s \rVert`, and :math:`p` is the norm type.
 
     The following norms are supported:
 
         * :math:`L^1`: Sum of the absolute values.
         * :math:`L^2`: Square root of the sum of the squared values.
         * :math:`L^\infty`: Maximum value.
-
-    Args:
-        columns: The columns to include in samples.
-        norm: The norm to use. The supported values are ``"l1"``, ``"l2"``, or
-            ``"max"``. Defaults to ``"l2"``.
-
-    Raises:
-        ValueError: if ``norm`` is not ``"l1"``, ``"l2"``, or ``"max"``.
 
     Examples:
         >>> import pandas as pd
@@ -70,6 +62,14 @@ class Normalizer(Preprocessor):
             X1   X2  X3
         0  1.0  1.0   0
         1  1.0  0.0   1
+
+    Args:
+        columns: The columns to include in samples.
+        norm: The norm to use. The supported values are ``"l1"``, ``"l2"``, or
+            ``"max"``. Defaults to ``"l2"``.
+
+    Raises:
+        ValueError: if ``norm`` is not ``"l1"``, ``"l2"``, or ``"max"``.
     """
 
     _norm_fns = {
