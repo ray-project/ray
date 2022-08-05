@@ -182,7 +182,6 @@ parts:
               - file: serve/deployment-graph
                 sections:
                   - file: serve/deployment-graph/model_composition
-                  - file: serve/deployment-graph/deployment_graph_e2e_tutorial
                   - file: serve/deployment-graph/chain_nodes_same_class_different_args
                   - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
                   - file: serve/deployment-graph/control_flow_based_on_user_inputs

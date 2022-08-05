@@ -8,10 +8,6 @@ Ray Serve’s Deployment Graph offers a simple API to compose your Ray Serve dep
 
 To understand deployment graph key concepts, follow [this guide](serve-model-composition).
 
-## Deployment Graph Walkthrough
-
-A typical production serve deployment does not exist in isolation. Normally, it's a collection of deployments. To study these composite and end-to-end deployments, follow [this end-to-end tutorial](./deployment-graph/deployment_graph_e2e_tutorial.md).
-
 (serve-deployment-graph-patterns)=
 ## Common Deployment Graph Patterns
 

@@ -345,4 +345,3 @@ If you run the code above inside a Jupyter notebook, it automatically displays w
 To learn more about deployment graphs, check out these resources:
 
 * [Deployment graph patterns](serve-deployment-graph-patterns): a cookbook of common graph examples you can incorporate into your own graph
-* [End-to-end tutorial](deployment-graph-e2e-tutorial): an in-depth example that walks you through building a large deployment graph
