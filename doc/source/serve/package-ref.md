@@ -51,7 +51,7 @@
 
 ## Operational APIs
 
-Check out the [CLI](serve-cli-api) and [REST API](serve-rest-api) for running, debugging, inspecting, and deploying Serve applications in production:
+Check out the [CLI](serve-cli) and [REST API](serve-rest-api) for running, debugging, inspecting, and deploying Serve applications in production:
 
 ```{toctree}
 :maxdepth: 1

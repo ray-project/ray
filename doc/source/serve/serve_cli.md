@@ -1,4 +1,4 @@
-(serve-cli-api)=
+(serve-cli)=
 
 ## Serve CLI
 
