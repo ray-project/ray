@@ -773,11 +773,13 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RemoveActorNameFromRegistry(actor);
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
-    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << "has been dead,"
-                   << "skip sending killing request.";
-    RAY_CHECK(creation_callbacks.empty())
-        << "Actor " << actor->GetActorID() << " is already dead yet "
-        << creation_callbacks.size() << " uncalled creation callbacks exist.";
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << "is already dead,"
+                   << "skipping kill request.";
+    // Inform all creation callbacks that the actor is dead and that actor creation is
+    // therefore cancelled.
+    for (auto &callback : creation_callbacks) {
+      callback(actor, rpc::PushTaskReply(), true);
+    }
     return;
   }
   if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
