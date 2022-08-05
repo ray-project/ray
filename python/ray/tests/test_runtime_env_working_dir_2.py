@@ -260,9 +260,9 @@ def test_default_large_cache(start_cluster, option: str, source: str):
     ray.get(f.remote())
     ray.shutdown()
 
-    # If we immediately check that the files weren't GCed, it may spuriously
-    # pass, so sleep first to give time for any deletions to happen.
-    time.sleep(5)
+    # TODO(architkulkarni): We should start several tasks with other files and
+    # check that all of the files are there, since GC is only triggered
+    # when we attempt to create a URI that exceeds the threshold.
     assert not check_local_files_gced(cluster)
 
     ray.init(address)
@@ -281,7 +281,6 @@ def test_default_large_cache(start_cluster, option: str, source: str):
 
     _ = A.remote()
     ray.shutdown()
-    time.sleep(5)
     assert not check_local_files_gced(cluster)
 
 
