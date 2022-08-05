@@ -2843,9 +2843,9 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
-        retry_exceptions: Only for *remote functions*. This specifies
-            whether application-level errors should be retried
-            up to max_retries times.
+        retry_exceptions: Only for *remote functions*. This specifies whether
+            application-level errors should be retried up to max_retries times.
+            This can be a boolean or a list of exceptions that should be retried.
         scheduling_strategy: Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it
