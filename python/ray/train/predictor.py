@@ -163,10 +163,14 @@ class Predictor(abc.ABC):
                 cast_tensor_columns=self._cast_tensor_columns,
             )
         except TensorArrayCastingError:
+            for col_name, col in predictions_df.items():
+                predictions_df.loc[:, col_name] = [
+                    record.tolist() for record in col
+                ]
             return convert_pandas_to_batch_type(
                 predictions_df,
                 type=TYPE_TO_ENUM[type(data)],
-                cast_tensor_columns=False,
+                cast_tensor_columns=self._cast_tensor_columns,
             )
 
     @DeveloperAPI

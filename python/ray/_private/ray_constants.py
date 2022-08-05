@@ -107,7 +107,7 @@ DEFAULT_CLIENT_RECONNECT_GRACE_PERIOD = 30
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
 FUNCTION_SIZE_WARN_THRESHOLD = 10 ** 7
-FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD", (10 ** 8))
+FUNCTION_SIZE_ERROR_THRESHOLD = env_integer("FUNCTION_SIZE_ERROR_THRESHOLD", (100 ** 8))
 
 # If remote functions with the same source are imported this many times, then
 # print a warning.
