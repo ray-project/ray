@@ -12,14 +12,14 @@ At the core of many RLlib algorithms are user environments and a decision making
 They interact with each other to produce training samples that can be used to improve the policy.
 
 Data observed from the environments usually go through multiple steps of preprocessing before they reach
-the policy, while the output of the policy also gets transformed multiple times before they are used to advance
+the policy, while the output of the policy also gets transformed multiple times before they are used to advanced
 specific agents in the environments.
 
-By making sure these transformed are consolidated under the framework of connectors, users of RLlib will be able to:
+With connectors, users of RLlib will be able to:
 
-- Restore and deploy individual RLlib policies without having to restore training related logics of our Algorithms.
-- Make sure policies are more durable than the algorithms they get trained with.
-- Allow policies to be easily adapted to work with different versions of a user environment.
+- Restore and deploy individual RLlib policies without having to restore training related logics of RLlib's Algorithms.
+- Ensure policies are more durable than the algorithms they get trained with.
+- Allow policies to be adapted to work with different versions of an environment.
 - Run inference with RLlib polcies without worrying about the exact trajectory view requriements, or in the case of a recurrent policy, the state inputs.
 
 Connectors can be enabled by setting ``enable_connectors`` parameter to ``True``.
@@ -30,11 +30,10 @@ Agent, Action, Lambda, and Pipeline Connectors
 .. image:: images/connector-diagram.svg
     :align: center
 
-Connectors transform data at two places. We name the ones transforming observation and action data
-``agent connectors`` and ``action connectors`` respectively.
+We have two types of connectors. The first is the ``agent connector``, which is used to transofrm observed data from environments to the policy. The second is the ``action connector``, which is used to transform the action data from the policy to actions.
 
 ``Agent connectors`` handle the job of transforming environment observation data into a format that is understood by
-the policy (e.g., flattening arbitrary observation space into a flat tensor). The high level APIs are:
+the policy (e.g., flattening complex nested observations into a flat tensor). The high level APIs are:
 
 .. code-block:: python
 
@@ -55,13 +54,10 @@ The list is constructed by grouping together observations from agents that are m
 
 This setup is useful for certain multi-agent use cases where individual observations may need to be
 modified based on data from other agents.
-This can also be useful if users need to construct meta-observation, e.g., build a graph as input
+This can also be useful if users who need to construct meta-observations, e.g., build a graph as input
 to the policy from individual agent observations.
 
-Another thing to note is the dotted line in the above diagram. Although they are not transformed by
-agent connectors, outputs from a policy is feeded back into agent connectors through the ``on_policy_output``
-API. This is necessary because action and state outputs from this round of policy run may need to be
-buffered and build into input data for subsequent policy calls (e.g., recurrent or attention networks).
+Agent connectors also provide a way for recording the output of the policy at the current time step (prior to transformation via action connectors) to be later used for inference in the next time step. This is shown as the dashed arrow in the above diagram and is done through the ``on_policy_output`` API call. This is useful for recurrent policies, where the state output of the policy at the current time step needs to be fed in as the input for the next time step. Other use-cases include using attention networks and auto-regressive models as policies.
 
 ``Action connector`` has a simpler API, which operates on individual actions:
 
@@ -102,8 +98,7 @@ connectors without having users worry about the high level list or non-list APIs
         )
 
 And lastly, mutiple connectors can be composed into a ``ConnectorPipeline``, which handles
-proper running of all children connectors and provides basicaly operations to modify
-and update the composition of connectors.
+proper running of all children connectors in sequence and provides basic operations to modify and update the composition of connectors.
 
 ``ConnectorPipeline`` also has agent and action versions:
 
