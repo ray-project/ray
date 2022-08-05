@@ -2,8 +2,78 @@
 
 This docs describes how to set up an on-premises Ray cluster, i.e., to run Ray on bare metal machines, or in a private cloud. We provide two ways to start an on-premises cluster.
 
-* If you know all the nodes in advance and have ssh access to them, you should start the ray cluster using **cluster-launcher**.
-* Alternatively, you can **manually set up** the Ray cluster by installing the Ray package and starting the Ray processes on each node. 
+* You can **manually set up** the Ray cluster by installing the Ray package and starting the Ray processes on each node. 
+* Alternatively, if you know all the nodes in advance and have ssh access to them, you should start the ray cluster using **cluster-launcher**.
+
+
+## Manually Set up a Ray Cluster 
+This section assumes that you have a list of machines and that the nodes in the cluster can communicate with each other. It also assumes that Ray is installed on each machine.  You can use pip to install it, or follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
+
+```
+# install ray cluster launcher, which is part of ray command line tool.
+pip install ray
+```
+
+
+### Start Head Node
+On the head node (just choose one node to be the head node), run the following. If the --port argument is omitted, Ray will choose port 6379, falling back to a random port.
+
+```
+ray start --head --port=6379
+
+# To connect to this Ray runtime from another node, run
+ray start --address='<ip address>:6379'
+```
+
+The command will print out the address of the Ray GCS server that was started (the local node IP address plus the port number you specified). If connection fails, check your firewall settings and network configuration.
+
+### Start Worker Nodes
+Then on each of the other nodes, run the following command to connect to the head node you just created.
+
+```
+ray start --address=<head-node-address:port>
+
+```
+Make sure to replace `head-node-address:port` with the value printed by the command on the head node (it should look something like 123.45.67.89:6379).
+
+Note that if your compute nodes are on their own subnetwork with Network Address Translation, to connect from a regular machine outside that subnetwork, the command printed by the head node will not work. You need to find the address that will reach the head node from the second machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on the DNS.
+
+### Configure Nodes
+
+The ray start command also allows you configure the node's resources. For example, if you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this with the flags --num-cpus=10 and --num-gpus=1. 
+See the [Configuration page](../../ray-core/configure.html#configuring-ray) for more information.
+
+### Trouble Shooting
+
+If you see `Unable to connect to GCS at ...`, this means the head node is inaccessible at the given `--address` (because, for example, the head node is not actually running, a different version of Ray is running at the specified address, the specified address is wrong, or there are firewall settings preventing access).
+
+If the connection fails, to check whether each port can be reached from a node, you can use a tool such as nmap or nc.
+
+```
+$ nmap -sV --reason -p $PORT $HEAD_ADDRESS
+Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+Host is up, received echo-reply ttl 60 (0.00087s latency).
+rDNS record for 123.456.78.910: compute04.berkeley.edu
+PORT     STATE SERVICE REASON         VERSION
+6379/tcp open  redis?  syn-ack
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+$ nc -vv -z $HEAD_ADDRESS $PORT
+Connection to compute04.berkeley.edu 6379 port [tcp/*] succeeded!
+```
+
+If the node cannot access that port at that IP address, you might see
+
+$ nmap -sV --reason -p $PORT $HEAD_ADDRESS
+```
+Nmap scan report for compute04.berkeley.edu (123.456.78.910)
+Host is up (0.0011s latency).
+rDNS record for 123.456.78.910: compute04.berkeley.edu
+PORT     STATE  SERVICE REASON       VERSION
+6379/tcp closed redis   reset ttl 60
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+$ nc -vv -z $HEAD_ADDRESS $PORT
+nc: connect to compute04.berkeley.edu port 6379 (tcp) failed: Connection refused
+```
 
 ## Using Ray Cluster Launcher 
 ### Install Ray Cluster Launcher
@@ -16,10 +86,9 @@ pip install ray
 
 ### Start Ray with Ray Cluster Launcher
 
+The provided [example-full.yaml](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml) cluster config file will create a Ray cluster given a list of nodes.
 
-The provided [example-full.yaml](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) cluster config file will create a small cluster with a Standard DS2v3 node (on-demand) configured to autoscale up to two Standard DS2v3 worker nodes ([spot-instances](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms)).
-
-Note that you'll need to fill in your [resource group](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [location](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set subscription to use from the command line `az account set -s <subscription_id>` or by filling the [subscription_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config.
+Note that you'll need to fill in your [head_ip](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml#L20), a list of [worker_ips](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml#L26), and the [ssh_user](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml#L34) field in those templates
 
 
 
@@ -27,9 +96,9 @@ Test that it works by running the following commands from your local machine:
 
 ```
 # Download the example-full.yaml
-wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/azure/example-full.yaml
+wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/local/example-full.yaml
 
-# Update the example-full.yaml to update resource group, location, and subscription_id.
+# Update the example-full.yaml to update head_ip, worker_ips, and ssh_user.
 # vi example-full.yaml
 
 # Create or update the cluster. When the command finishes, it will print
@@ -44,30 +113,4 @@ ray attach example-full.yaml
 ray down example-full.yaml
 ```
 
-Congrats, you have started a Ray cluster on Azure!
-
-## Manually Set up a Ray Cluster 
-
-The most preferable way to run a Ray cluster is via the Ray Cluster Launcher. However, it is also possible to start a Ray cluster by hand.
-
-This section assumes that you have a list of machines and that the nodes in the cluster can communicate with each other. It also assumes that Ray is installed on each machine.  You can use pip to install it, or follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
-
-```
-# install ray cluster launcher, which is part of ray command line tool.
-pip install ray
-```
-
-
-### Starting Ray on each machine
-On the head node (just choose one node to be the head node), run the following. If the --port argument is omitted, Ray will choose port 6379, falling back to a random port.
-
-```
-$ ray start --head --port=6379
-...
-Next steps
-  To connect to this Ray runtime from another node, run
-    ray start --address='<ip address>:6379'
-```
-
-If connection fails, check your firewall settings and network configuration.
-The command will print out the address of the Ray GCS server that was started (the local node IP address plus the port number you specified).
+Congrats, you have started a local Ray cluster!
