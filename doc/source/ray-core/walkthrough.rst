@@ -49,7 +49,7 @@ and ``get_progress()`` method to get the overall progress.
 
 Defining the Sampling Task
 --------------------------
-After our actor is defined, we now define a Ray task that does the sampling up to the given times and returns the number of samples that are inside the circle.
+After our actor is defined, we now define a Ray task that does the sampling up to ``num_samples`` and returns the number of samples that are inside the circle.
 Ray tasks are stateless functions. They execute asynchronously, and run in parallel.
 
 .. literalinclude:: doc_code/getting_started.py
@@ -110,7 +110,7 @@ Finally, we get number of samples inside the circle from the remote sampling tas
     :start-after: __calculating_pi_start__
     :end-before: __calculating_pi_end__
 
-As we can see, besides a single ``ObjectRef``, :ref:`ray.get() <ray-get-ref>` can also take a list of ``ObjectRef`` and return a list of results.
+As we can see from the above code, besides a single ``ObjectRef``, :ref:`ray.get() <ray-get-ref>` can also take a list of ``ObjectRef`` and return a list of results.
 
 If you run this tutorial, you will see output like:
 
