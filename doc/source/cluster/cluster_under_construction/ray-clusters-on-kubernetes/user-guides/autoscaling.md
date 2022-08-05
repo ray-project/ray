@@ -5,14 +5,14 @@ For details on autoscaler configuration see the {ref}`configuration guide<kubera
 
 (autoscaler-pro-con)=
 ## Should I enable autoscaling?
-Ray autoscaler support is optional.
+Ray Autoscaler support is optional.
 Here are some considerations to keep in mind when choosing whether to use autoscaling.
 
 ### Autoscaling: Pros
-**Cope with unknown resource requirements** If you don't know how much compute your Ray
+**Cope with unknown resource requirements.** If you don't know how much compute your Ray
 workload will require, autoscaling can adjust your Ray cluster to the right size.
 
-**Save on costs** Idle compute is automatically scaled down, potentially leading to cost savings,
+**Save on costs.** Idle compute is automatically scaled down, potentially leading to cost savings,
 especially when you are using expensive resources like GPUs.
 
 ### Autoscaling: Cons
@@ -25,11 +25,6 @@ while the Ray application is running. On the other hand, if you pre-provision a 
 number of Ray workers, all of the Ray workers can be started in parallel, potentially reducing your application's
 runtime.
 
-**Resource usage.** The autoscaler itself consumes CPU and memory resources.
-These resources must be accounted for when considering the Ray head pod's scheduling.
-The default autoscaler container resources are .5 CPU requests and limits, 512 megabytes memory request and limits.
-See the {ref}`configuration guide<kuberay-autoscaling-config>` for details.
-
 ## Ray Autoscaler vs. other autoscalers
 We describe the relationship between the Ray autoscaler and other autoscalers in the Kubernetes
 ecosystem.
@@ -41,7 +36,7 @@ the Ray autoscaler scales Ray **pod quantities**. In this sense, the Ray autosca
 plays a role similar to that of the Kubernetes
 [Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) (HPA).
 However, the following features distinguish the Ray Autoscaler from the HPA.
-## Load metrics are based on application semantics
+#### Load metrics are based on application semantics
 The Horizontal Pod Autoscaler determines scale based on physical usage metrics like CPU
 and memory. By contrast, the Ray autoscaler uses the logical resources expressed in
 task and actor annotations. For instance, if each Ray container spec in your RayCluster CR indicates
@@ -51,7 +46,7 @@ In this respect, the Ray autoscaler is similar to the
 [Kuberentes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler),
 which makes scaling decisions based on the logical resources expressed in container
 resource requests.
-## Fine-grained control of scale-down
+#### Fine-grained control of scale-down
 To accommodate the statefulness of Ray applications, the Ray autoscaler has more
 fine-grained control over scale-down than the Horizontal Pod Autoscaler. In addition to
 determining desired scale, the Ray Autoscaler is able to select precisely which pods
@@ -59,24 +54,32 @@ to scale down. The KubeRay operator then deletes that pod.
 By contrast, the Horizontal Pod Autoscaler can only decrease a replica count, without much
 control over which pods are deleted. For a Ray application, downscaling a random
 pod could be dangerous.
-## Architecture: One Ray Autoscaler per Ray Cluster.
+#### Architecture: One Ray Autoscaler per Ray Cluster.
 Horizontal Pod Autoscaling is centrally controlled by a manager in the Kubernetes control plane;
 the manager controls the scale of many Kubernetes objects.
 By contrast, each Ray cluster is managed by its own Ray autoscaler process,
 running as a sidecar container in the Ray head pod. This design choice is motivated
-by considerations of scalability.
+by the following considerations:
+- **Scalability.** Autoscaling each Ray cluster requires processing a significant volume of resource
+  data from that Ray cluster.
+- **Simplified versioning and compatibility.** The autoscaler and Ray are both developed
+  as part of the Ray repository. The interface between the autoscaler and the Ray core is complex.
+  To support multiple Ray clusters running at different Ray versions, it is thus best to match
+  Ray and Autoscaler code versions. Running one autoscaler per Ray cluster and matching the code versions
+  ensures compatibility.
 
 ### Ray Autoscaler with Kubernetes Cluster Autoscaler
 The Ray Autoscaler and the
-[Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) complement each other.
+[Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler)
+complement each other.
 After the Ray autoscaler decides to create a Ray pod, the Kubernetes Cluster Autoscaler
-can scale up a Kubernetes Node so that the pod can be placed.
+can provision a Kubernetes node so that the pod can be placed.
 Similarly, after the Ray autoscaler decides to delete an idle pod, the Kubernetes
-Cluster Autoscaler can clean up the idle Kubernetes Node that remains.
-It is recommended to configure your RayCluster so that only one Ray pod fits per Kubernetes Node.
-If you follow this pattern, Ray autoscaler Pod scaling events will correspond roughly one-to-one with cluster autoscaler
-Node scaling events. (We say "roughly" because it is possible for a Ray pod be deleted and replaced
-with a new Ray pod before the underlying Kubernetes Node is scaled down.)
+Cluster Autoscaler can clean up the idle Kubernetes node that remains.
+It is recommended to configure your RayCluster so that only one Ray pod fits per Kubernetes node.
+If you follow this pattern, Ray Autoscaler pod scaling events will correspond roughly one-to-one with cluster autoscaler
+node scaling events. (We say "roughly" because it is possible for a Ray pod be deleted and replaced
+with a new Ray pod before the underlying Kubernetes node is scaled down.)
 
 
 ### Vertical Pod Autoscaler

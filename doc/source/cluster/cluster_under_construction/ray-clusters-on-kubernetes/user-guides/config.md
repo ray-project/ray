@@ -164,7 +164,9 @@ The pattern of fewer large Ray pods has the following advantages:
 The CPU, GPU, and memory **limits** specified in the Ray container config
 will be automatically advertised to Ray. These values will be used as
 the logical resource capacities of Ray pods in the head or worker group.
-(The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.)
+Note that CPU quantities will be rounded up to the nearest integer
+before being relayed to Ray.
+The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.
 
 On the other hand CPU, GPU, and memory **requests** will be ignored by Ray.
 For this reason, it is best when possible to set resource requests equal to resource limits.
@@ -177,7 +179,7 @@ See the [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-evictio
 for more about Pod-to-Node assignment.
 
 #### image
-The Ray container images specified in the RayCluster CR should carry
+The Ray container images specified in the `RayCluster` CR should carry
 the same Ray version as the CR's `spec.rayVersion`.
 If you are using a nightly or development Ray image, it is fine to specify Ray's
 latest release version under `spec.rayVersion`.
@@ -249,7 +251,7 @@ The Ray scheduler and autoscaler will take appropriate action to schedule such t
 
 Note the format used to express the resources string. In particular, note
 that the backslashes are present as actual characters in the string.
-If you are specifying a RayCluster programmatically, you may have to
+If you are specifying a `RayCluster` programmatically, you may have to
 [escape the backslashes](https://github.com/ray-project/ray/blob/cd9cabcadf1607bcda1512d647d382728055e688/python/ray/tests/kuberay/test_autoscaling_e2e.py#L92) to make sure they are processed as part of the string.
 
 The field `rayStartParams.resources` should only be used for custom resources. The keys
@@ -265,18 +267,18 @@ check out this {ref}`discussion<autoscaler-pro-con>`.
 ```
 To enable the optional Ray Autoscaler support, set `enableInTreeAutoscaling:true`.
 The KubeRay operator will then automatically configure an autoscaling sidecar container
-for the Ray head pod. The autoscaler container collects resource metrics from the Ray head container
+for the Ray head pod. The autoscaler container collects resource metrics from the Ray cluster
 and automatically adjusts the `replicas` field of each `workerGroupSpec` as needed to fulfill
 the requirements of your Ray application.
 
-Use the fields `minReplicas` and `maxReplicas` to constrain the `replicas` of an autoscaling
+Use the fields `minReplicas` and `maxReplicas` to constrain the number of `replicas` of an autoscaling
 `workerGroup`. When deploying an autoscaling cluster, one typically sets `replicas` and `minReplicas`
 to the same value.
 The Ray autoscaler will then take over and modify the `replicas` field as needed by
 the Ray application.
 
 ### Autoscaler operation
-We describe how the autoscaler interacts with the RayCluster CR.
+We describe how the autoscaler interacts with the `RayCluster` CR.
 
 #### Scale up
 The autoscaler scales worker pods up to accomodate the load of logical resources
@@ -297,20 +299,20 @@ for a {ref}`set period of time<kuberay-idle-timeout>`. In this context, "resourc
 (such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
 Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
 
-The autoscaler scales Ray worker pods down by adding the Ray pods' names to the RayCluster CR's
+The autoscaler scales Ray worker pods down by adding the Ray pods' names to the `RayCluster` CR's
 `scaleStrategy.workersToDelete` list and decrementing the `replicas` field of the relevant
 `workerGroupSpec`.
 
 #### Manually scaling
-You may manually adjust a RayCluster's scale by editing the `replicas` or `workersToDelete` fields.
+You may manually adjust a `RayCluster`'s scale by editing the `replicas` or `workersToDelete` fields.
 (It is also possible to implement custom scaling logic that adjusts scale on your behalf.)
-It is however, not recommended to manually edit `replicas` or `workersToDelete` for a RayCluster with
+It is however, not recommended to manually edit `replicas` or `workersToDelete` for a `RayCluster` with
 autoscaling enabled.
 
 ### autoscalerOptions
 To enable Ray autoscaler support, it is enough to set `enableInTreeAutoscaling:true`.
 Should you need to adjust autoscaling behavior or change the autoscaler container's configuration,
-you can use the RayCluster CR's `autoscalerOptions` field. The `autoscalerOptions` field
+you can use the `RayCluster` CR's `autoscalerOptions` field. The `autoscalerOptions` field
 carries the following subfields:
 
 #### upscalingMode
@@ -364,7 +366,7 @@ However, we do recommend monitoring autoscaler container resource usage and adju
 
 #### image and imagePullPolicy
 The `image` subfield of `autoscalerOptions` optionally overrides the autoscaler container image.
-If your RayCluster's `spec.RayVersion` is at least `2.0.0`, the autoscaler will default to using
+If your `RayCluster`'s `spec.RayVersion` is at least `2.0.0`, the autoscaler will default to using
 **the same image** as the Ray container. (Ray autoscaler code is bundled with the rest of Ray.)
 For older Ray versions, the autoscaler will default to the image `rayproject/ray:2.0.0`.
 

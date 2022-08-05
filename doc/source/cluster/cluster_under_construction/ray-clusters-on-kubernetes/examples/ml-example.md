@@ -17,8 +17,8 @@ To learn more about XGBoost-Ray, check out that library's {ref}`documentation<xg
 ```{admonition} Optional: Autoscaling
 This guide includes notes on how to deploy the XGBoost benchmark with optional Ray Autoscaler support.
 In this guide's example, we know that we need 1 Ray head and 9 Ray workers,
-so autoscaling is not strictly required. Read {ref}`autoscaler-pro-con` for guidance
-on whether or not to use autoscaling.
+so autoscaling is not strictly required. Read {ref}`this discussion<autoscaler-pro-con>` for guidance
+on whether to use autoscaling.
 ```
 
 ## Kubernetes infrastructure setup
