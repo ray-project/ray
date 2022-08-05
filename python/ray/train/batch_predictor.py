@@ -14,7 +14,7 @@ from ray.util.annotations import PublicAPI
 from ray.air.util.tensor_extensions.exception import TensorArrayCastingError
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class BatchPredictor:
     """Batch predictor class.
 
@@ -221,7 +221,8 @@ class BatchPredictor:
                 # Set the in-predictor preprocessing to a no-op when using a separate
                 # GPU stage. Otherwise, the preprocessing will be applied twice.
                 override_prep = BatchMapper(lambda x: x)
-                data = preprocessor.transform(data)
+                batch_fn = preprocessor._transform_batch
+                data = data.map_batches(batch_fn, batch_format="pandas")
 
         prediction_results = data.map_batches(
             ScoringWrapper,
