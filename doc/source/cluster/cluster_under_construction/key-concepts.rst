@@ -11,6 +11,13 @@ This page introduces the following key concepts concerning Ray clusters:
 .. contents::
     :local:
 
+..
+    notes
+    * Replace old diagram with new diagram
+    * Add Ray Cluster key concept
+    * Change the notion of head node = worker node + things, to
+    cluster is comprised of one head node and 0+ worker nodes
+
 .. _cluster-worker-nodes-under-construction:
 
 Worker nodes
@@ -66,6 +73,11 @@ To learn more about the autoscaler and how to configure it, refer to the followi
 * :ref:`Autoscaling on Kubernetes<kuberay-autoscaler-discussion>`.
 
 .. _cluster-clients-and-jobs-under-construction:
+
+..
+    Notes: 
+    * Rewrite the section and refer to everything as a Job. All runnable things should now be called jobs, per Alan's work.
+    * Rewrite the section with emphasis on how users use jobs. e.g. ssh to head node, then ray.init. Afterwards, ray submit.
 
 Clients and Jobs
 ----------------
