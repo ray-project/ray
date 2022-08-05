@@ -1,6 +1,6 @@
 (serve-model-composition)=
 
-# Model Composition: Deployment Graphs
+# Model Composition
 
 This section helps you:
 
