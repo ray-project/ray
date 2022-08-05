@@ -146,6 +146,8 @@ TensorFlow
     :members:
     :show-inheritance:
 
+.. _air-pytorch-ref:
+
 PyTorch
 #######
 

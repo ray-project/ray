@@ -43,8 +43,7 @@ class TorchTrainer(DataParallelTrainer):
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>` and
-    :ref:`Ray Train function utils <train-api-func-utils>`.
+    :ref:`Ray AIR session methods <air-session-ref>`.
 
     .. code-block:: python
 
@@ -68,8 +67,8 @@ class TorchTrainer(DataParallelTrainer):
             # Returns the rank of the worker on the current node.
             session.get_local_rank()
 
-    You can also use any of the :ref:`Torch specific function utils
-    <train-api-torch-utils>`.
+    You can also use any of the Torch specific function utils,
+    such as :func:`ray.train.torch.get_device` and :func:`ray.train.torch.prepare_model`
 
     .. code-block:: python
 

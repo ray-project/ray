@@ -404,10 +404,12 @@ Here's a simple code overview of the Datasets integration:
 
 .. code-block:: python
 
+    from ray.air import session
+
     # Datasets can be accessed in your train_func via ``get_dataset_shard``.
     def train_func(config):
-        train_data_shard = train.get_dataset_shard("train")
-        validation_data_shard = train.get_dataset_shard("validation")
+        train_data_shard = session.get_dataset_shard("train")
+        validation_data_shard = session.get_dataset_shard("validation")
         ...
 
     # Random split the dataset into 80% training data and 20% validation data.
