@@ -2,7 +2,7 @@ import time
 import pytest
 
 from ray import serve
-from ray.serve.deployment_state import (
+from ray.serve._private.deployment_state import (
     SLOW_STARTUP_WARNING_S,
     SLOW_STARTUP_WARNING_PERIOD_S,
 )

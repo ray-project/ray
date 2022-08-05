@@ -757,6 +757,13 @@ py_test(
     srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
+py_test(
+    name = "test_registry",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_registry.py"],
+)
+
 # Specific Algorithms
 
 # A2C
@@ -1553,6 +1560,12 @@ py_test(
 #
 # Tag: evaluation
 # --------------------------------------------------------------------
+py_test(
+    name = "evaluation/tests/test_agent_collector",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_agent_collector.py"]
+)
 
 py_test(
     name = "evaluation/tests/test_envs_that_crash",
@@ -1709,10 +1722,10 @@ py_test(
 
 py_test(
     name = "test_ope",
-    tags = ["team:rllib", "offline", "torch_only", "gpu"],
-    size = "large",
+    tags = ["team:rllib", "offline"],
+    size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
-    data = ["tests/data/cartpole/large.json"],
+    data = ["tests/data/cartpole/small.json"],
 )
 
 # --------------------------------------------------------------------
@@ -3424,6 +3437,7 @@ py_test_module_list(
     "tests/test_vector_env.py",
     "env/tests/test_multi_agent_env.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
+    "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",

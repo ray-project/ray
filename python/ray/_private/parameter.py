@@ -103,10 +103,10 @@ class RayParams:
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
-        metrics_agent_port(int): The port to bind metrics agent.
-        metrics_export_port(int): The port at which metrics are exposed
+        metrics_agent_port: The port to bind metrics agent.
+        metrics_export_port: The port at which metrics are exposed
             through a Prometheus endpoint.
-        no_monitor(bool): If True, the ray autoscaler monitor for this cluster
+        no_monitor: If True, the ray autoscaler monitor for this cluster
             will not be started.
         _system_config: Configuration for overriding RayConfig
             defaults. Used to set system configuration and for experimental Ray

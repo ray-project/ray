@@ -5,10 +5,8 @@ requires a shared Serve instance.
 import logging
 import os
 import socket
-import subprocess
 import sys
 import time
-from tempfile import mkstemp
 
 import pydantic
 import pytest
@@ -25,7 +23,7 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve.config import HTTPOptions
-from ray.serve.constants import (
+from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
@@ -33,8 +31,12 @@ from ray.serve.constants import (
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
-from ray.serve.http_util import set_socket_reuse_port
-from ray.serve.utils import block_until_http_ready, format_actor_name, get_all_node_ids
+from ray.serve._private.http_util import set_socket_reuse_port
+from ray.serve._private.utils import (
+    block_until_http_ready,
+    format_actor_name,
+    get_all_node_ids,
+)
 from ray.serve.schema import ServeApplicationSchema
 
 # Explicitly importing it here because it is a ray core tests utility (
@@ -568,69 +570,11 @@ serve.run(A.bind())"""
     )
 
 
-def test_local_store_recovery(ray_shutdown):
-    _, tmp_path = mkstemp()
-
-    @serve.deployment
-    def hello(_):
-        return "hello"
-
-    # https://github.com/ray-project/ray/issues/19987
-    @serve.deployment
-    def world(_):
-        return "world"
-
-    def check(name, raise_error=False):
-        try:
-            resp = requests.get(f"http://localhost:8000/{name}")
-            assert resp.text == name
-            return True
-        except Exception as e:
-            if raise_error:
-                raise e
-            return False
-
-    # https://github.com/ray-project/ray/issues/20159
-    # https://github.com/ray-project/ray/issues/20158
-    def clean_up_leaked_processes():
-        import psutil
-
-        for proc in psutil.process_iter():
-            try:
-                cmdline = " ".join(proc.cmdline())
-                if "ray::" in cmdline:
-                    print(f"Kill {proc} {cmdline}")
-                    proc.kill()
-            except Exception:
-                pass
-
-    def crash():
-        subprocess.call(["ray", "stop", "--force"])
-        clean_up_leaked_processes()
-        ray.shutdown()
-        serve.shutdown()
-
-    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
-    hello.deploy()
-    world.deploy()
-    assert check("hello", raise_error=True)
-    assert check("world", raise_error=True)
-    crash()
-
-    # Simulate a crash
-
-    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
-    wait_for_condition(lambda: check("hello"))
-    # wait_for_condition(lambda: check("world"))
-    crash()
-
-
 @pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
 def test_snapshot_always_written_to_internal_kv(
     ray_start_with_dashboard, ray_shutdown  # noqa: F811
 ):
     # https://github.com/ray-project/ray/issues/19752
-    _, tmp_path = mkstemp()
 
     @serve.deployment()
     def hello(_):
@@ -644,7 +588,7 @@ def test_snapshot_always_written_to_internal_kv(
         except Exception:
             return False
 
-    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    serve.start(detached=True)
     serve.run(hello.bind())
     check()
 
@@ -687,12 +631,10 @@ def test_serve_start_different_http_checkpoint_options_warning(caplog):
 
     # create a different config
     test_http = dict(host="127.1.1.8", port=new_port())
-    _, tmp_path = mkstemp()
-    test_ckpt = f"file://{tmp_path}"
 
-    serve.start(detached=True, http_options=test_http, _checkpoint_path=test_ckpt)
+    serve.start(detached=True, http_options=test_http)
 
-    for test_config, msg in zip([[test_ckpt], ["host", "port"]], warning_msg):
+    for test_config, msg in zip([["host", "port"]], warning_msg):
         for test_msg in test_config:
             if "Autoscaling metrics pusher thread" in msg:
                 continue

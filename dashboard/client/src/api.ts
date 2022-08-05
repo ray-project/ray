@@ -1,4 +1,4 @@
-import { formatUrl } from "./service/requestHandlers";
+import { formatUrl, get as getV2 } from "./service/requestHandlers";
 
 type APIResponse<T> = {
   result: boolean;
@@ -294,19 +294,18 @@ export const getErrors = (nodeIp: string, pid: number | null) =>
     pid: pid ?? "",
   });
 
-export type LogsResponse = {
-  logs: LogsByPid;
-};
-
-export type LogsByPid = {
-  [pid: string]: string[];
-};
-
-export const getLogs = (nodeIp: string, pid: number | null) =>
-  get<LogsResponse>("/node_logs", {
-    ip: nodeIp,
-    pid: pid ?? "",
+export const getLogs = async (nodeIp: string, pid: number) => {
+  const result = await getV2<string>("/api/v0/logs/file", {
+    params: {
+      node_ip: nodeIp,
+      pid: pid,
+      lines: 15000,
+    },
   });
+  // Substring to get rid of initial "1" or "0" that represents successful stream.
+  // TODO(aguo): should we get rid of that?
+  return result.data.substring(1).split("\n");
+};
 
 export type LaunchProfilingResponse = string;
 

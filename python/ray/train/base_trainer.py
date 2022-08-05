@@ -1,7 +1,7 @@
 import abc
 import inspect
 import logging
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
@@ -11,7 +11,7 @@ from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.dict import merge_dicts
+from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -27,7 +27,7 @@ GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
 
@@ -43,20 +43,20 @@ class BaseTrainer(abc.ABC):
 
     How does a trainer work?
 
-        - First, initialize the Trainer. The initialization runs locally,
-          so heavyweight setup should not be done in __init__.
-        - Then, when you call ``trainer.fit()``, the Trainer is serialized
-          and copied to a remote Ray actor. The following methods are then
-          called in sequence on the remote actor.
-        - ``trainer.setup()``: Any heavyweight Trainer setup should be
-          specified here.
-        - ``trainer.preprocess_datasets()``: The provided
-          ray.data.Dataset are preprocessed with the provided
-          ray.data.Preprocessor.
-        - ``trainer.train_loop()``: Executes the main training logic.
-        - Calling ``trainer.fit()`` will return a ``ray.result.Result``
-          object where you can access metrics from your training run, as well
-          as any checkpoints that may have been saved.
+    - First, initialize the Trainer. The initialization runs locally,
+      so heavyweight setup should not be done in __init__.
+    - Then, when you call ``trainer.fit()``, the Trainer is serialized
+      and copied to a remote Ray actor. The following methods are then
+      called in sequence on the remote actor.
+    - ``trainer.setup()``: Any heavyweight Trainer setup should be
+      specified here.
+    - ``trainer.preprocess_datasets()``: The provided
+      ray.data.Dataset are preprocessed with the provided
+      ray.data.Preprocessor.
+    - ``trainer.train_loop()``: Executes the main training logic.
+    - Calling ``trainer.fit()`` will return a ``ray.result.Result``
+      object where you can access metrics from your training run, as well
+      as any checkpoints that may have been saved.
 
     **How do I create a new Trainer?**
 
@@ -160,15 +160,26 @@ class BaseTrainer(abc.ABC):
 
         self._validate_attributes()
 
-        if datasets and not self.scaling_config._max_cpu_fraction_per_node:
-            logger.warning(
-                "When passing `datasets` to a Trainer, it is recommended to "
-                "reserve at least 20% of node CPUs for Dataset execution by setting "
-                "`_max_cpu_fraction_per_node = 0.8` in the Trainer `scaling_config`. "
-                "Not doing so can lead to resource contention or hangs. "
-                "See https://docs.ray.io/en/master/data/key-concepts.html"
-                "#example-datasets-in-tune for more info."
-            )
+    def __repr__(self):
+        # A dictionary that maps parameters to their default values.
+        default_values: Dict[str, Any] = {
+            "scaling_config": ScalingConfig(),
+            "run_config": RunConfig(),
+            "datasets": {},
+            "preprocessor": None,
+            "resume_from_checkpoint": None,
+        }
+
+        non_default_arguments = []
+        for parameter, default_value in default_values.items():
+            value = getattr(self, parameter)
+            if value != default_value:
+                non_default_arguments.append(f"{parameter}={value!r}")
+
+        if non_default_arguments:
+            return f"<{self.__class__.__name__} {' '.join(non_default_arguments)}>"
+
+        return f"<{self.__class__.__name__}>"
 
     def __new__(cls, *args, **kwargs):
         """Store the init args as attributes so this can be merged with Tune hparams."""
@@ -311,7 +322,7 @@ class BaseTrainer(abc.ABC):
         """
         raise NotImplementedError
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="beta")
     def fit(self) -> Result:
         """Runs training.
 
@@ -367,6 +378,7 @@ class BaseTrainer(abc.ABC):
         train_func.__name__ = trainer_cls.__name__
 
         trainable_cls = wrap_function(train_func, warn=False)
+        has_base_dataset = bool(self.datasets)
 
         class TrainTrainable(trainable_cls):
             """Add default resources to the Trainable."""
@@ -378,6 +390,16 @@ class BaseTrainer(abc.ABC):
             # if __repr__ is not directly defined in a class.
             def __repr__(self):
                 return super().__repr__()
+
+            @classmethod
+            def has_base_dataset(cls) -> bool:
+                """Whether a dataset is provided through the Trainer."""
+                return has_base_dataset
+
+            @classmethod
+            def base_scaling_config(cls) -> ScalingConfig:
+                """Returns the unchanged scaling config provided through the Trainer."""
+                return scaling_config
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
