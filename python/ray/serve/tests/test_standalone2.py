@@ -563,16 +563,22 @@ class TestDeployApp:
         assert client.get_serve_status().app_status.deployment_timestamp == 0
 
     @pytest.mark.parametrize(
-        "option_to_update,config_update",
+        "field_to_update,option_to_update,config_update",
         [
-            ("num_replicas", True),
-            ("autoscaling_config", True),
-            ("user_config", True),
-            ("ray_actor_options", False),
+            ("import_path", "", False),
+            ("runtime_env", "", False),
+            ("deployments", "num_replicas", True),
+            ("deployments", "autoscaling_config", True),
+            ("deployments", "user_config", True),
+            ("deployments", "ray_actor_options", False),
         ],
     )
     def test_deploy_config_update(
-        self, client: ServeControllerClient, option_to_update: str, config_update: bool
+        self,
+        client: ServeControllerClient,
+        field_to_update: str,
+        option_to_update: str,
+        config_update: bool,
     ):
         """
         Check that replicas stay alive when lightweight config updates are made and
@@ -604,15 +610,22 @@ class TestDeployApp:
         wait_for_condition(deployment_running, timeout=15)
         pid1 = requests.get("http://localhost:8000/f").text
 
-        updated_options = {
-            "num_replicas": 2,
-            "autoscaling_config": {"max_replicas": 2},
-            "user_config": {"name": "bob"},
-            "ray_actor_options": {"num_cpus": 0.2},
-        }
-        config_template["deployments"][0][option_to_update] = updated_options[
-            option_to_update
-        ]
+        if field_to_update == "import_path":
+            config_template[
+                "import_path"
+            ] = "ray.serve.tests.test_config_files.pid.bnode"
+        elif field_to_update == "runtime_env":
+            config_template["runtime_env"] = {"env_vars": {"test_var": "test_val"}}
+        elif field_to_update == "deployments":
+            updated_options = {
+                "num_replicas": 2,
+                "autoscaling_config": {"max_replicas": 2},
+                "user_config": {"name": "bob"},
+                "ray_actor_options": {"num_cpus": 0.2},
+            }
+            config_template["deployments"][0][option_to_update] = updated_options[
+                option_to_update
+            ]
 
         client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
         wait_for_condition(deployment_running, timeout=15)
