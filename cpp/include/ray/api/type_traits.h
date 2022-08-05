@@ -52,6 +52,16 @@ template <typename T>
 auto constexpr is_object_ref_v = is_object_ref_t<T>::value;
 
 template <class, class = void>
+struct is_actor_handle_t : std::false_type {};
+
+template <class T>
+struct is_actor_handle_t<T, std::void_t<decltype(std::declval<T>().IsActorHandle())>>
+    : std::true_type {};
+
+template <typename T>
+auto constexpr is_actor_handle_v = is_actor_handle_t<T>::value;
+
+template <class, class = void>
 struct is_python_t : std::false_type {};
 
 template <class T>

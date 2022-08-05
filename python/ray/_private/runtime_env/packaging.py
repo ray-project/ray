@@ -30,7 +30,7 @@ FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # The size is bounded by the max gRPC message size.
 # Keep in sync with max_grpc_message_size in ray_config_def.h.
 GCS_STORAGE_MAX_SIZE = int(
-    os.environ.get("RAY_max_grpc_message_size", 250 * 1024 * 1024)
+    os.environ.get("RAY_max_grpc_message_size", 500 * 1024 * 1024)
 )
 RAY_PKG_PREFIX = "_ray_pkg_"
 

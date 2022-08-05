@@ -238,6 +238,15 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_FALSE(Counter::IsProcessAlive(pid));
 }
 
+TEST(RayClusterModeTest, ActorHandleTest) {
+  auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto obj1 = actor1.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(1, *obj1.Get());
+  auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto obj2 = actor2.Task(&Counter::Plus1ForActor).Remote(actor1);
+  EXPECT_EQ(2, *obj2.Get());
+}
+
 TEST(RayClusterModeTest, PythonInvocationTest) {
   auto py_actor_handle =
       ray::Actor(ray::PyActorClass{"test_cross_language_invocation", "Counter"})

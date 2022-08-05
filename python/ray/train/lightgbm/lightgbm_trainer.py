@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LightGBMTrainer(GBDTTrainer):
     """A Trainer for data parallel LightGBM training.
 
