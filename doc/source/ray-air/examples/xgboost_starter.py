@@ -39,6 +39,7 @@ trainer = XGBoostTrainer(
     params={
         # XGBoost specific params
         "objective": "binary:logistic",
+        # "tree_method": "gpu_hist",  # uncomment this to use GPUs.
         "eval_metric": ["logloss", "error"],
     },
     datasets={"train": train_dataset, "valid": valid_dataset},

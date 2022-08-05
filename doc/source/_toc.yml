@@ -66,11 +66,16 @@ parts:
       - file: train/train
         title: Ray Train
         sections:
-          - file: train/user_guide
-          - file: train/gbdt
-          - file: train/examples
+          - file: train/getting-started
+          - file: train/key-concepts
+          - file: train/user-guides
+            sections:
+              - file: train/config_guide
+              - file: train/dl_guide
+              - file: train/gbdt
+              - file: train/architecture
           - file: train/faq
-          - file: train/architecture
+          - file: train/examples
           - file: train/api
 
       - file: tune/index

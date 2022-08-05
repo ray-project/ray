@@ -434,8 +434,10 @@ class FailureConfig:
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
-        fail_fast: Whether to fail upon the first error.
-            If fail_fast='raise' provided, Tune will automatically
+        fail_fast: Whether to fail upon the first error. Only used for
+            Ray Tune - this does not apply
+            to single training runs (e.g. with ``Trainer.fit()``).
+            If fail_fast='raise' provided, Ray Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution (it
             is best used with `ray.init(local_mode=True)`).
