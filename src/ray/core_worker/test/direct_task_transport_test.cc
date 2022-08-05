@@ -64,7 +64,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   bool ReplyPushTask(Status status = Status::OK(),
                      bool exit = false,
-                     bool is_application_level_error = false) {
+                     bool is_retryable_error = false) {
     if (callbacks.size() == 0) {
       return false;
     }
@@ -73,8 +73,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (exit) {
       reply.set_worker_exiting(true);
     }
-    if (is_application_level_error) {
-      reply.set_is_application_level_error(true);
+    if (is_retryable_error) {
+      reply.set_is_retryable_error(true);
     }
     callback(status, reply);
     callbacks.pop_front();

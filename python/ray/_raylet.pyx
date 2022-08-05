@@ -132,6 +132,7 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
 )
 import ray._private.ray_constants as ray_constants
+import ray.cloudpickle as ray_pickle
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
@@ -484,6 +485,51 @@ cdef raise_if_dependency_failed(arg):
         raise arg
 
 
+cdef c_bool determine_if_retryable(
+    Exception e,
+    const c_string serialized_retry_exception_allowlist,
+    FunctionDescriptor function_descriptor,
+):
+    """Determine if the provided exception is retryable, according to the
+    (possibly null) serialized exception allowlist.
+
+    If the serialized exception allowlist is an empty string or is None once
+    deserialized, the exception is considered retryable and we return True.
+
+    This method can raise an exception if:
+        - Deserialization of exception allowlist fails (TypeError)
+        - Exception allowlist is not None and not a tuple (AssertionError)
+    """
+    if len(serialized_retry_exception_allowlist) == 0:
+        # No exception allowlist specified, default to all retryable.
+        return True
+
+    # Deserialize exception allowlist and check that the exception is in the allowlist.
+    try:
+        exception_allowlist = ray_pickle.loads(
+            serialized_retry_exception_allowlist,
+        )
+    except TypeError as inner_e:
+        # Exception allowlist deserialization failed.
+        msg = (
+            "Could not deserialize the retry exception allowlist "
+            f"for task {function_descriptor.repr}. "
+            "Check "
+            "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+            "for more information.")
+        raise TypeError(msg) from inner_e
+
+    if exception_allowlist is None:
+        # No exception allowlist specified, default to all retryable.
+        return True
+
+    # Python API should have converted the list of exceptions to a tuple.
+    assert isinstance(exception_allowlist, tuple)
+
+    # Check that e is in allowlist.
+    return isinstance(e, exception_allowlist)
+
+
 cdef execute_task(
         CTaskType task_type,
         const c_string name,
@@ -493,14 +539,15 @@ cdef execute_task(
         const c_vector[CObjectReference] &c_arg_refs,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
+        const c_string serialized_retry_exception_allowlist,
         c_vector[shared_ptr[CRayObject]] *returns,
-        c_bool *is_application_level_error,
+        c_bool *is_retryable_error,
         # This parameter is only used for actor creation task to define
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute):
 
-    is_application_level_error[0] = False
+    is_retryable_error[0] = False
 
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
@@ -687,9 +734,21 @@ cdef execute_task(
                     raise TaskCancelledError(
                             core_worker.get_current_task_id())
                 except Exception as e:
-                    is_application_level_error[0] = True
-                    if core_worker.get_current_task_retry_exceptions():
+                    is_retryable_error[0] = determine_if_retryable(
+                        e,
+                        serialized_retry_exception_allowlist,
+                        function_descriptor,
+                    )
+                    if (
+                        is_retryable_error[0]
+                        and core_worker.get_current_task_retry_exceptions()
+                    ):
                         logger.info("Task failed with retryable exception:"
+                                    " {}.".format(
+                                        core_worker.get_current_task_id()),
+                                    exc_info=True)
+                    else:
+                        logger.info("Task failed with unretryable exception:"
                                     " {}.".format(
                                         core_worker.get_current_task_id()),
                                     exc_info=True)
@@ -791,9 +850,10 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectReference] &c_arg_refs,
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
+        const c_string serialized_retry_exception_allowlist,
         c_vector[shared_ptr[CRayObject]] *returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
-        c_bool *is_application_level_error,
+        c_bool *is_retryable_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute) nogil:
     with gil, disable_client_hook():
@@ -803,8 +863,10 @@ cdef CRayStatus task_execution_handler(
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_refs, c_return_ids,
-                             debugger_breakpoint, returns,
-                             is_application_level_error,
+                             debugger_breakpoint,
+                             serialized_retry_exception_allowlist,
+                             returns,
+                             is_retryable_error,
                              defined_concurrency_groups,
                              name_of_concurrency_group_to_execute)
             except Exception as e:
@@ -1517,6 +1579,7 @@ cdef class CoreWorker:
                     resources,
                     int max_retries,
                     c_bool retry_exceptions,
+                    retry_exception_allowlist,
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
@@ -1529,9 +1592,23 @@ cdef class CoreWorker:
             c_vector[CObjectReference] return_refs
             CSchedulingStrategy c_scheduling_strategy
             c_vector[CObjectID] incremented_put_arg_ids
+            c_string serialized_retry_exception_allowlist
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
+
+        try:
+            serialized_retry_exception_allowlist = ray_pickle.dumps(
+                retry_exception_allowlist,
+            )
+        except TypeError as e:
+            msg = (
+                "Could not serialize the retry exception allowlist"
+                f"{retry_exception_allowlist} for task {function_descriptor.repr}. "
+                "Check "
+                "https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting " # noqa
+                "for more information.")
+            raise TypeError(msg) from e
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1551,6 +1628,7 @@ cdef class CoreWorker:
                     max_retries, retry_exceptions,
                     c_scheduling_strategy,
                     debugger_breakpoint,
+                    serialized_retry_exception_allowlist,
                 )
 
             # These arguments were serialized and put into the local object
