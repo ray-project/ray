@@ -448,7 +448,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       [this](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
         RAY_LOG(DEBUG) << "Failed to recover object " << object_id << " due to "
                        << rpc::ErrorType_Name(reason);
-        RAY_CHECK_OK(Put(RayObject(reason),
+        // NOTE(swang): Failure here means the local raylet is probably dead.
+        // We do not assert failure though, because we should throw the object
+        // error to the application.
+        RAY_UNUSED(Put(RayObject(reason),
                          /*contained_object_ids=*/{},
                          object_id,
                          /*pin_object=*/pin_object));
