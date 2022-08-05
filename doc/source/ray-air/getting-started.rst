@@ -9,9 +9,51 @@ Ray AI Runtime (AIR)
 
 Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks, all in just Python.
 
+..
+  https://docs.google.com/drawings/d/1atB1dLjZIi8ibJ2-CoHdd3Zzyl_hDRWyK2CJAVBBLdU/edit
+
 .. image:: images/ray-air.svg
 
 AIR comes with ready-to-use libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>`, as well as an ecosystem of integrations.
+
+Why AIR?
+--------
+
+Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by leveraging Ray to provide a seamless, unified, and open experience for scalable ML:
+
+.. image:: images/why-air-2.svg
+
+..
+  https://docs.google.com/drawings/d/1oi_JwNHXVgtR_9iTdbecquesUd4hOk0dWgHaTaFj6gk/edit
+
+**1. Seamless Dev to Prod**: AIR reduces friction going from development to production. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
+
+**2. Unified ML API**: AIR's unified ML API enables swapping between popular frameworks, such as XGBoost, PyTorch, and HuggingFace, with just a single class change in your code.
+
+**3. Open and Extensible**: AIR and Ray are fully open-source and can run on any cluster, cloud, or Kubernetes. Build custom components and integrations on top of scalable developer APIs.
+
+When to use AIR?
+----------------
+
+AIR is for both data scientists and ML engineers alike.
+
+.. image:: images/when-air.svg
+
+..
+  https://docs.google.com/drawings/d/1Qw_h457v921jWQkx63tmKAsOsJ-qemhwhCZvhkxWrWo/edit
+
+For data scientists, AIR can be used to scale individual workloads, and also end-to-end ML applications. For ML Engineers, AIR provides scalable platform abstractions that can be used to easily onboard and integrate tooling from the broader ML ecosystem.
+
+Quick Start
+-----------
+
+Below, we walk through how AIR's unified ML API enables scaling of end-to-end ML workflows, focusing on
+a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow). The ML workflow we're going to build is summarized by the following diagram:
+
+.. figure:: images/why-air.svg
+
+  AIR provides a unified API for the ML ecosystem.
+  This diagram shows how AIR enables an ecosystem of libraries to be run at scale in just a few lines of code.
 
 Get started by installing Ray AIR:
 
@@ -27,30 +69,24 @@ Get started by installing Ray AIR:
     pip install -U tensorflow>=2.6.2
     pip install -U pyarrow>=6.0.1
 
-Quick Start
------------
-
-Below, we demonstrate how AIR enables simple scaling of end-to-end ML workflows, focusing on
-a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow):
-
 Preprocessing
 ~~~~~~~~~~~~~
 
-Below, let's start by preprocessing your data with Ray AIR's ``Preprocessors``:
+First, let's start by loading the data from storage:
 
 .. literalinclude:: examples/xgboost_starter.py
     :language: python
     :start-after: __air_generic_preprocess_start__
     :end-before: __air_generic_preprocess_end__
 
-If using Tensorflow or Pytorch, format your data for use with your training framework:
+Then, we define a ``Preprocessor`` pipeline for our task:
 
 .. tabbed:: XGBoost
 
-    .. code-block:: python
-        
-        # No extra preprocessing is required for XGBoost.
-        # The data is already in the correct format.
+    .. literalinclude:: examples/xgboost_starter.py
+        :language: python
+        :start-after: __air_xgb_preprocess_start__
+        :end-before: __air_xgb_preprocess_end__
 
 .. tabbed:: Pytorch
 
@@ -151,34 +187,6 @@ Use the trained model for scalable batch prediction with a ``BatchPredictor``.
         :start-after: __air_tf_batchpred_start__
         :end-before: __air_tf_batchpred_end__
 
-Why Ray AIR?
-------------
-
-Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by leveraging Ray to provide a seamless, unified, and open experience for scalable ML:
-
-**1. Seamless Dev to Prod**: AIR reduces friction going from development to production. Traditional orchestration approaches introduce separate systems and operational overheads. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
-
-**2. Unified ML API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new library like HuggingFace? Thanks to the flexibility of AIR, you can do this by just swapping out a single class, without needing to set up new systems or change other aspects of your workflow.
-
-**3. Open and Evolvable**: Ray core and libraries are fully open-source and can run on any cluster, cloud, or Kubernetes, reducing the costs of platform lock-in. Want to go out of the box? Run any framework you want using AIR's integration APIs, or build advanced use cases directly on Ray core.
-
-.. figure:: images/why-air.svg
-
-  By providing a unified API for the broader ML ecosystem,
-  AIR enables a single-system / single-script approach to scaling ML. This diagram shows how AIR's unified ML API enables an ecosystem of libraries to be leveraged in just a few lines of code.
-
-When to use AIR?
-----------------
-
-AIR is for both data scientists and ML engineers alike.
-
-**For data scientists**:
- * Scale a single workload.
- * Scale end-to-end ML applications.
-
-**For ML engineers**:
- * Build a custom ML platform for your organization.
- * Leverage
 
 Project Status
 --------------
