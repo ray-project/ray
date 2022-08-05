@@ -12,7 +12,7 @@ class BatchMapper(Preprocessor):
     :class:`BatchMapper` applies a user-defined function to batches of a dataset.
     A batch is a Pandas ``DataFrame`` that represents a small amount of data. By
     modifying batches instead of individual records, this class can efficiently
-    transform your dataset.
+    transform the dataset using vectorized operations.
 
     Use this preprocessor to apply stateless operations that aren't already built-in.
 
