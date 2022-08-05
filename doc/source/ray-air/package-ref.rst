@@ -146,6 +146,8 @@ TensorFlow
     :members:
     :show-inheritance:
 
+.. _air-pytorch-ref:
+
 PyTorch
 #######
 
@@ -171,6 +173,14 @@ Scikit-Learn
 ############
 
 .. automodule:: ray.train.sklearn
+    :members:
+    :show-inheritance:
+
+
+Reinforcement Learning (RLlib)
+##############################
+
+.. automodule:: ray.train.rl
     :members:
     :show-inheritance:
 
