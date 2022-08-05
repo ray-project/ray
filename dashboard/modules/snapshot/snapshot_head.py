@@ -121,6 +121,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
+        actor_limit = int(req.query.get("actor_limit", "1000"))
         (
             job_info,
             job_submission_data,
@@ -130,7 +131,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         ) = await asyncio.gather(
             self.get_job_info(),
             self.get_job_submission_info(),
-            self.get_actor_info(),
+            self.get_actor_info(actor_limit),
             self.get_serve_info(),
             self.get_session_name(),
         )
@@ -324,10 +325,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 jobs[job_submission_id] = entry
         return jobs
 
-    async def get_actor_info(self):
+    async def get_actor_info(self, limit: int = 1000):
         # TODO (Alex): GCS still needs to return actors from dead jobs.
         request = gcs_service_pb2.GetAllActorInfoRequest()
         request.show_dead_jobs = True
+        request.limit = limit
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(request, timeout=5)
         actors = {}
         for actor_table_entry in reply.actor_table_data:
