@@ -58,7 +58,7 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
         self._buf = io.BytesIO()
         # List of top-level SourceType found during the serialization pass.
         self._found = None
-        # List of other objects found during the serializatoin pass.
+        # List of other objects found during the serialization pass.
         # This is used to store references to objects so they won't be
         # serialized by cloudpickle.
         self._objects = []

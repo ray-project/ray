@@ -46,7 +46,7 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
-    async def resolve_coroutines(self):
+    async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
         scanner = _PyObjScanner(source_type=asyncio.Task)
         tasks = scanner.find_nodes((self.args, self.kwargs))
@@ -227,7 +227,7 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
-        await query.resolve_coroutines()
+        await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(
