@@ -3,6 +3,7 @@ import os
 import sys
 import unittest.mock
 import subprocess
+import time
 
 import grpc
 import pytest
@@ -17,6 +18,84 @@ from ray.experimental.state.common import ray_address_to_api_server_url
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
+
+
+@pytest.fixture
+def set_override_dashboard_url(request):
+    orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
+    override_url = getattr(request, "param", "https://external_dashboard_url")
+    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = override_url
+
+    yield
+
+    if orig_external_dashboard_url:
+        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25553 --port 0"],
+    indirect=True,
+)
+def test_hosted_external_dashboard_url_with_ray_client(
+    set_override_dashboard_url, call_ray_start
+):
+    """
+    Test setting external dashboard URL through environment variable
+    with Ray client.
+    """
+    info = ray.init("ray://localhost:25553")
+    assert info.dashboard_url == "external_dashboard_url"
+
+
+def test_hosted_external_dashboard_url(set_override_dashboard_url, shutdown_only):
+    """
+    Test setting external dashboard URL through environment variable.
+    """
+    # Test external dashboard url with https protocol
+    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "https://external_dashboard_url"
+    info = ray.init()
+    assert info.dashboard_url == "external_dashboard_url"
+    assert info.address_info["webui_url"] == "external_dashboard_url"
+    assert (
+        ray._private.worker._global_node.webui_url_with_protocol
+        == "https://external_dashboard_url"
+    )
+    assert (
+        ray_address_to_api_server_url("auto")
+        == ray._private.worker._global_node.webui_url_with_protocol
+    )
+    ray.shutdown()
+    time.sleep(1)
+
+    # Test external dashboard url with no protocol -- should default to http
+    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "external_dashboard_url"
+    info = ray.init()
+    assert info.dashboard_url == "external_dashboard_url"
+    assert info.address_info["webui_url"] == "external_dashboard_url"
+    assert (
+        ray._private.worker._global_node.webui_url_with_protocol
+        == "http://external_dashboard_url"
+    )
+    assert (
+        ray_address_to_api_server_url("auto")
+        == ray._private.worker._global_node.webui_url_with_protocol
+    )
+    ray.shutdown()
+    time.sleep(1)
+
+    # Test no external dashboard url
+    os.environ.pop(RAY_OVERRIDE_DASHBOARD_URL)
+    info = ray.init()
+    assert info.dashboard_url.startswith("127.0.0.1")
+    assert info.address_info["webui_url"].startswith("127.0.0.1")
+    ray._private.worker._global_node.webui_url_with_protocol.startswith(
+        "http://127.0.0.1"
+    )
+    assert (
+        ray_address_to_api_server_url("auto")
+        == ray._private.worker._global_node.webui_url_with_protocol
+    )
 
 
 def test_shutdown_and_reset_global_worker(shutdown_only):
@@ -366,82 +445,6 @@ def test_ray_init_using_hostname(ray_start_cluster):
     node_table = cluster.global_state.node_table()
     assert len(node_table) == 1
     assert node_table[0].get("NodeManagerHostname", "") == hostname
-
-
-@pytest.fixture
-def set_override_dashboard_url(request):
-    orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
-    override_url = getattr(request, "param", "https://external_dashboard_url")
-    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = override_url
-
-    yield
-
-    if orig_external_dashboard_url:
-        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
-
-
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head --ray-client-server-port 25553"],
-    indirect=True,
-)
-def test_hosted_external_dashboard_url_with_ray_client(
-    set_override_dashboard_url, call_ray_start
-):
-    """
-    Test setting external dashboard URL through environment variable
-    with Ray client.
-    """
-    info = ray.init("ray://localhost:25553")
-    assert info.dashboard_url == "external_dashboard_url"
-
-
-def test_hosted_external_dashboard_url(set_override_dashboard_url, shutdown_only):
-    """
-    Test setting external dashboard URL through environment variable.
-    """
-    # Test external dashboard url with https protocol
-    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "https://external_dashboard_url"
-    info = ray.init()
-    assert info.dashboard_url == "external_dashboard_url"
-    assert info.address_info["webui_url"] == "external_dashboard_url"
-    assert (
-        ray._private.worker._global_node.webui_url_with_protocol
-        == "https://external_dashboard_url"
-    )
-    assert (
-        ray_address_to_api_server_url("auto")
-        == ray._private.worker._global_node.webui_url_with_protocol
-    )
-    ray.shutdown()
-
-    # Test external dashboard url with no protocol -- should default to http
-    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = "external_dashboard_url"
-    info = ray.init()
-    assert info.dashboard_url == "external_dashboard_url"
-    assert info.address_info["webui_url"] == "external_dashboard_url"
-    assert (
-        ray._private.worker._global_node.webui_url_with_protocol
-        == "http://external_dashboard_url"
-    )
-    assert (
-        ray_address_to_api_server_url("auto")
-        == ray._private.worker._global_node.webui_url_with_protocol
-    )
-    ray.shutdown()
-
-    # Test no external dashboard url
-    os.environ.pop(RAY_OVERRIDE_DASHBOARD_URL)
-    info = ray.init()
-    assert info.dashboard_url.startswith("127.0.0.1")
-    assert info.address_info["webui_url"].startswith("127.0.0.1")
-    ray._private.worker._global_node.webui_url_with_protocol.startswith(
-        "http://127.0.0.1"
-    )
-    assert (
-        ray_address_to_api_server_url("auto")
-        == ray._private.worker._global_node.webui_url_with_protocol
-    )
 
 
 if __name__ == "__main__":
