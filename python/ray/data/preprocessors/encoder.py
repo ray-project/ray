@@ -123,14 +123,12 @@ class OrdinalEncoder(Preprocessor):
 
 
 class OneHotEncoder(Preprocessor):
-    """One-hot encode categorical data.
+    """`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
+    categorical data.
 
     This preprocessor creates a column named ``{column}_{category}``
     for each unique ``{category}`` in ``{column}``. The value of a column is
     1 if the category matches and 0 otherwise.
-
-    To learn more about one-hot encoding, read the
-    `Wikipedia section on the topic <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_.
 
     If you encode an infrequent category (see ``max_categories``) or a category
     that isn't in the fitted dataset, then the category is encoded as all 0s.
@@ -145,7 +143,7 @@ class OneHotEncoder(Preprocessor):
         >>> import pandas as pd
         >>> import ray
         >>> from ray.data.preprocessors import OneHotEncoder
-
+        >>>
         >>> df = pd.DataFrame({"color": ["red", "green", "red", "red", "blue", "green"]})
         >>> ds = ray.data.from_pandas(df)
         >>> encoder = OneHotEncoder(columns=["color"])
@@ -249,7 +247,7 @@ class MultiHotEncoder(Preprocessor):
     Columns must contain hashable objects or lists of hashable objects.
     Also, you can't have both types in the same column.
 
-    .. tip::
+    .. note::
         The logic is similar to scikit-learn's `MultiLabelBinarizer \
     <https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing\
     .MultiLabelBinarizer.html>`_.
@@ -387,7 +385,7 @@ class LabelEncoder(Preprocessor):
     .. seealso::
 
         :class:`OrdinalEncoder`
-            If you're encoding features, use :class:`OrdinalEncoder` instead of
+            If you're encoding ordered features, use :class:`OrdinalEncoder` instead of
             :class:`LabelEncoder`.
     """
 

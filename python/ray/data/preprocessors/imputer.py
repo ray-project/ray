@@ -12,20 +12,6 @@ from ray.data.preprocessor import Preprocessor
 class SimpleImputer(Preprocessor):
     """Replace missing values with imputed values.
 
-    Args:
-        columns: The columns to apply imputation to.
-        strategy: How imputed values are chosen.
-
-            * ``"mean"``: The mean of non-missing values. This strategy only works with numeric columns.
-            * ``"most_frequent"``: The most common value.
-            *``"constant"``: The value passed to ``fill_value``.
-
-        fill_value: The value to use when ``strategy`` is ``"constant"``.
-
-    Raises:
-        ValueError: if ``strategy`` is not ``"mean"``, ``"most_frequent"``, or
-            ``"constant"``.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -61,8 +47,8 @@ class SimpleImputer(Preprocessor):
         2  3.0  c
         3  3.0  c
 
-        The `"constant"` strategy imputes missing values with the value specified by 
-        `fill_value`. 
+        The `"constant"` strategy imputes missing values with the value specified by
+        `fill_value`.
 
         >>> preprocessor = SimpleImputer(
         ...     columns=["Y"],
@@ -75,6 +61,20 @@ class SimpleImputer(Preprocessor):
         1  NaN  b
         2  3.0  c
         3  3.0  c
+
+    Args:
+        columns: The columns to apply imputation to.
+        strategy: How imputed values are chosen.
+
+            * ``"mean"``: The mean of non-missing values. This strategy only works with numeric columns.
+            * ``"most_frequent"``: The most common value.
+            * ``"constant"``: The value passed to ``fill_value``.
+
+        fill_value: The value to use when ``strategy`` is ``"constant"``.
+
+    Raises:
+        ValueError: if ``strategy`` is not ``"mean"``, ``"most_frequent"``, or
+            ``"constant"``.
     """  # noqa: E501
 
     _valid_strategies = ["mean", "most_frequent", "constant"]

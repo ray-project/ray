@@ -92,8 +92,8 @@ class HashingVectorizer(Preprocessor):
 
         :class:`FeatureHasher`
             This preprocessor is similar to :class:`HashingVectorizer`, except it expects
-            a table describing token frequencies as input. In contrast,
-            :class:`FeatureHasher` expects a column containing documents as input.
+            a table describing token frequencies. In contrast,
+            :class:`FeatureHasher` expects a column containing documents.
     """
 
     _is_fittable = False
@@ -180,7 +180,7 @@ class CountVectorizer(Preprocessor):
 
         You can limit the number of tokens in the vocabulary with ``max_features``.
 
-        >>> vectorizer = CountVectorizer(["count"])
+        >>> vectorizer = CountVectorizer(["count"], max_features={"count": 3})
         >>> vectorizer.fit_transform(ds).to_pandas()
                 corpus_likes  corpus_volleyball  corpus_Bob  corpus_Jimmy
         0             1                  1           0             1

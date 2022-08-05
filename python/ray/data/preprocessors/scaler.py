@@ -24,7 +24,7 @@ class StandardScaler(Preprocessor):
 
     .. warning::
         :class:`StandardScaler` works best when your data is normal. If your data isn't
-        approximately normal, the transformed features won't be meaningful.
+        approximately normal, then the transformed features won't be meaningful.
 
     Args:
         columns: The columns to separately scale.
@@ -108,7 +108,7 @@ class MinMaxScaler(Preprocessor):
 
     Transformed values are always in the range :math:`[0, 1]`.
 
-    .. note::
+    .. tip::
         This can be used as an alternative to :py:class:`StandardScaler`.
 
     Args:
@@ -189,7 +189,7 @@ class MaxAbsScaler(Preprocessor):
     :math:`\max{\vert x \vert} = 0` (i.e., the column contains all zeros), then the
     column is unmodified.
 
-    .. note::
+    .. tip::
         This is the recommended way to scale sparse data. If you data isn't sparse,
         you can use :class:`MinMaxScaler` or :class:`StandardScaler` instead.
 
@@ -266,14 +266,8 @@ class RobustScaler(Preprocessor):
     high and low quantiles, respectively. By default, :math:`\mu_{h}` is the third
     quartile and :math:`\mu_{l}` is the first quartile.
 
-    .. note::
+    .. tip::
         This scaler works well when your data contains many outliers.
-
-    Args:
-        columns: The columns to separately scale.
-        quantile_range: A tuple that defines the lower and upper quantiles. Values
-            must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
-            ``(0.25, 0.75)``.
 
     Examples:
         >>> import pandas as pd
@@ -304,6 +298,12 @@ class RobustScaler(Preprocessor):
         2  0.0  0.750   2
         3  0.5 -0.750   2
         4  1.0  0.000   3
+
+    Args:
+        columns: The columns to separately scale.
+        quantile_range: A tuple that defines the lower and upper quantiles. Values
+            must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
+            ``(0.25, 0.75)``.
     """
 
     def __init__(

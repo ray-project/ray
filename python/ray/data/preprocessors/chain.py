@@ -9,10 +9,8 @@ if TYPE_CHECKING:
 class Chain(Preprocessor):
     """Combine multiple preprocessors into a single :py:class:`Preprocessor`.
 
-    .. note::
-
-        When you call ``fit``, each preprocessor is fit on the dataset produced by the
-        preceeding preprocessor's ``fit_transform``.
+    When you call ``fit``, each preprocessor is fit on the dataset produced by the
+    preceeding preprocessor's ``fit_transform``.
 
     Example:
         >>> import pandas as pd
