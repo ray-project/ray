@@ -64,9 +64,7 @@ tutorial. You can follow along using arbitrary models from any
 Python framework. Check out our tutorials on scikit-learn,
 PyTorch, and Tensorflow for more info and examples:
 
-- {ref}`serve-sklearn-tutorial`
-- {ref}`serve-pytorch-tutorial`
-- {ref}`serve-tensorflow-tutorial`
+- {ref}`serve-ml-models-tutorial`
 
 (converting-to-ray-serve-deployment)=
 ## Converting to a Ray Serve Deployment
