@@ -15,7 +15,7 @@ sklearn
 batch
 web-server-integration
 rllib
-gradio
+gradio-integration
 ```
 
 Other Topics:
