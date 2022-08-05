@@ -23,7 +23,7 @@ class OrdinalEncoder(Preprocessor):
 
     Args:
         columns: The columns to separately encode.
-        encode_lists: If ``True``, encode list elements . If ``False``, encode
+        encode_lists: If ``True``, encode list elements.  If ``False``, encode
             whole lists (i.e., replace each list with an integer). ``True``
             by default.
 
