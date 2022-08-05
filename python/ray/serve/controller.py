@@ -412,13 +412,14 @@ class ServeController:
 
         # Compare new config options with old ones and set versions of new deployments
         config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
+
         if config_checkpoint is not None:
             _, last_config_dict, last_version_dict = pickle.loads(config_checkpoint)
-            updated_version_dict = _generate_new_version_config(
+            updated_version_dict = _generate_deployment_config_versions(
                 config_dict, last_config_dict, last_version_dict
             )
         else:
-            updated_version_dict = _generate_new_version_config(config_dict, {}, {})
+            updated_version_dict = _generate_deployment_config_versions(config_dict)
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
@@ -572,21 +573,25 @@ class ServeController:
             return config
 
 
-def _generate_new_version_config(
-    new_config: Dict, last_deployed_config: Dict, last_deployed_versions: Dict
+def _generate_deployment_config_versions(
+    new_config: Dict,
+    last_deployed_config: Dict = None,
+    last_deployed_versions: Dict = None,
 ) -> Dict[str, str]:
     """
-    This function determines whether each deployment's version
-    should be changed based on the updated options.
+    This function determines whether each deployment's version should be changed based
+    on the newly deployed config.
 
-    When a deployment's options change, its version should generally change,
-    so old replicas are torn down. The only options which can be changed
-    without tearing down replicas (i.e. changing the version) are:
+    When ``import_path`` or ``runtime_env`` is changed, the versions for all deployments
+    should be changed, so old replicas are torn down. When the options for a deployment
+    in ``deployments`` change, its version should generally change. The only deployment
+    options that can be changed without tearing down replicas (i.e. changing the
+    version) are:
     * num_replicas
     * user_config
     * autoscaling_config
 
-    An option is considered changed when:
+    A deployment option is considered changed when:
     * it was not specified in last_deployed_config and is specified in new_config
     * it was specified in last_deployed_config and is not specified in new_config
     * it is specified in both last_deployed_config and new_config but the specified
@@ -604,6 +609,16 @@ def _generate_new_version_config(
         Dictionary of {deployment_name: str -> version: str} containing updated
         versions for deployments listed in the new config
     """
+    # If import_path or runtime_env is changed, it is considered a code change
+    if last_deployed_config is None:
+        last_deployed_config = {}
+    if last_deployed_versions is None:
+        last_deployed_versions = {}
+
+    if last_deployed_config.get("import_path") != new_config.get(
+        "import_path"
+    ) or last_deployed_config.get("runtime_env") != new_config.get("runtime_env"):
+        last_deployed_config, last_deployed_versions = {}, {}
 
     new_deployments = {d["name"]: d for d in new_config.get("deployments", [])}
     old_deployments = {
