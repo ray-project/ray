@@ -201,19 +201,19 @@ The ``rayStartParams`` field of each group spec is a string-string map of argume
 container’s `ray start` entrypoint. For the full list of arguments, refer to
 the documentation for {ref}`ray start<ray-start-doc>`. We make special note of the following arguments:
 
-#### block
+### block
 For most use-cases, this field should be set to "true" for all Ray pod. The container's Ray
 entrypoint will then block forever until a Ray process exits, at which point the container
 will exit. If this field is omitted, `ray start` will start Ray processes in the background and the container
 will subsequently sleep forever until terminated. (Future versions of KubeRay may set
 block to true by default. See [KubeRay issue #368](https://github.com/ray-project/kuberay/issues/368).)
 
-#### dashboard-host
+### dashboard-host
 For most use-cases, this field should be set to "0.0.0.0" for the Ray head pod.
 This is required to expose the Ray dashboard outside the Ray cluster. (Future versions might set
 this parameter by default.)
 
-#### num-cpus
+### num-cpus
 This optional field tells the Ray scheduler and autoscaler how many CPUs are
 available to the Ray pod. The CPU count can be autodetected from the
 Kubernetes resource limits specified in the group spec’s pod
@@ -223,21 +223,21 @@ workloads with non-zero CPU requirements from being scheduled on the head.
 Note that the values of all Ray start parameters, including `num-cpus`,
 must be supplied as **strings**.
 
-#### num-gpus
+### num-gpus
 This optional field specifies the number of GPUs available to the Ray container.
 In KubeRay versions since 0.3.0, the number of GPUs can be auto-detected from Ray container resource limits.
 For certain advanced use-cases, you may wish to use `num-gpus` to set an {ref}`override<kuberay-gpu-override>`.
 Note that the values of all Ray start parameters, including `num-gpus`,
 must be supplied as **strings**.
 
-#### memory
+### memory
 The memory available to the Ray is detected automatically from the Kubernetes resource
 limits. If you wish, you may override this autodetected value by setting the desired memory value,
 in bytes, under `rayStartParams.memory`.
 Note that the values of all Ray start parameters, including `memory`,
 must be supplied as **strings**.
 
-#### resources
+### resources
 This field can be used to specify custom resource capacities for the Ray pod.
 These resource capacities will be advertised to the Ray scheduler and Ray autoscaler.
 For example, the following annotation will mark a Ray pod as having 1 unit of `Custom1` capacity
