@@ -74,6 +74,10 @@ class DeploymentMethodExecutorNode(DAGNode):
             "uuid": self.get_stable_uuid(),
         }
 
+    def get_return_type(self) -> str:
+        if 'func_annotations' in self._bound_other_args_to_resolve:
+            return self._bound_other_args_to_resolve['func_annotations']
+
     @classmethod
     def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentMethodExecutorNode.__name__

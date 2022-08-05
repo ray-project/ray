@@ -26,12 +26,13 @@ class DeploymentFunctionExecutorNode(DAGNode):
         deployment_function_handle: Union[RayServeSyncHandle, RayServeHandle],
         func_args,
         func_kwargs,
+        other_args_to_resolve=None,
     ):
         super().__init__(
             func_args,
             func_kwargs,
             {},
-            {},
+            other_args_to_resolve=other_args_to_resolve,
         )
         self._deployment_function_handle = deployment_function_handle
 
@@ -66,8 +67,13 @@ class DeploymentFunctionExecutorNode(DAGNode):
             "deployment_function_handle": self._deployment_function_handle,
             "args": self.get_args(),
             "kwargs": self.get_kwargs(),
+            "other_args_to_resolve": self.get_other_args_to_resolve(),
             "uuid": self.get_stable_uuid(),
         }
+
+    def get_return_type(self) -> str:
+        if 'func_annotations' in self._bound_other_args_to_resolve:
+            return self._bound_other_args_to_resolve['func_annotations']
 
     @classmethod
     def from_json(cls, input_json):
@@ -76,6 +82,7 @@ class DeploymentFunctionExecutorNode(DAGNode):
             input_json["deployment_function_handle"],
             input_json["args"],
             input_json["kwargs"],
+            other_args_to_resolve=input_json["other_args_to_resolve"],
         )
         node._stable_uuid = input_json["uuid"]
         return node
