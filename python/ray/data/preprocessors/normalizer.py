@@ -21,9 +21,9 @@ class Normalizer(Preprocessor):
 
     The following norms are supported:
 
-        * :math:`L^1`: Sum of the absolute values.
-        * :math:`L^2`: Square root of the sum of the squared values.
-        * :math:`L^\infty`: Maximum value.
+        * `"l1"` (:math:`L^1`): Sum of the absolute values.
+        * `"l2"` (:math:`L^2`): Square root of the sum of the squared values.
+        * `"max"` (:math:`L^\infty`): Maximum value.
 
     Examples:
         >>> import pandas as pd
@@ -47,7 +47,7 @@ class Normalizer(Preprocessor):
         1  1.000000  0.000000   0
 
         The :math:`L^1`-norm of the first sample is :math:`2`, and the
-        :math:`L^2`-norm of the second sample is :math:`1`.
+        :math:`L^1`-norm of the second sample is :math:`1`.
 
         >>> preprocessor = Normalizer(columns=["X1", "X2"], norm="l1")  # doctest: +SKIP
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
@@ -55,7 +55,7 @@ class Normalizer(Preprocessor):
         0  0.5  0.5   0
         1  1.0  0.0   1
 
-        The :math:`L^\infty`-norm of the both samples is :math:`1`,
+        The :math:`L^\infty`-norm of the both samples is :math:`1`.
 
         >>> preprocessor = Normalizer(columns=["X1", "X2"], norm="max")  # doctest: +SKIP # noqa: E501
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
