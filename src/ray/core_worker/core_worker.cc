@@ -452,9 +452,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         // We do not assert failure though, because we should throw the object
         // error to the application.
         RAY_UNUSED(Put(RayObject(reason),
-                         /*contained_object_ids=*/{},
-                         object_id,
-                         /*pin_object=*/pin_object));
+                       /*contained_object_ids=*/{},
+                       object_id,
+                       /*pin_object=*/pin_object));
       });
 
   // Tell the raylet the port that we are listening on.
@@ -1293,7 +1293,8 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // no longer reachable.
   memory_store_->Delete(object_ids);
   for (const auto &object_id : object_ids) {
-    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_DELETED), object_id));
+    RAY_LOG(DEBUG) << "Freeing object " << object_id;
+    RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_FREED), object_id));
   }
 
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
