@@ -2871,6 +2871,13 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   }
 }
 
+// Picks the worker with the latest submitted task and kill the process
+// if the memory usage is above the threshold. Allows one in-flight
+// process kill at a time as killing a process could sometimes take
+// seconds.
+// TODO(clarng): potential kill more aggressively by measuring the
+// memory usage of each process and kill enough processes to put it
+// below the memory threshold.
 MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
   return [this](bool is_usage_above_threshold) {
     if (high_memory_eviction_target_ != nullptr) {
