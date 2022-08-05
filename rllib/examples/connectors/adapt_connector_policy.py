@@ -36,6 +36,7 @@ args = parser.parse_args()
 
 assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 
+
 # __sphinx_doc_begin__
 class MyCartPole(gym.Env):
     """A mock CartPole environment.
@@ -112,6 +113,8 @@ def run():
         print(f"step {step}", obs, actions)
 
         obs, _, done, _ = env.step(actions)
+
+
 # __sphinx_doc_end__
 
 
