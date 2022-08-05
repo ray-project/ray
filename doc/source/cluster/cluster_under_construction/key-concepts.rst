@@ -6,7 +6,7 @@ Key Concepts
 .. _cluster-key-concepts-under-construction:
 
 
-This page introduces the following key concepts, an understanding of which is helpful when creating and managing Ray clusters:
+This page introduces the following key concepts concerning Ray clusters:
 
 .. contents::
     :local:
