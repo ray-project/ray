@@ -8,11 +8,11 @@ Note: This feature is in Alpha, so APIs are subject to change.
 
 This section should help you:
 
-* compose your Ray Serve deployments together with the **Deployment Graph** API
+* connect your Ray Serve deployments together with the **deployment graph** API
 * serve your applications that use multi-model inference, ensemble models, ML model composition, or mixed business logic/model inference workloads
-* independently scale each of your ML models and business logic steps
+* independently scale and configure each of your ML models and business logic steps
 
-Ray Serve's **Deployment Graph** API lets you compose your deployments together by describing how to route a request through your deployments. This is particularly useful if you're using ML model composition or mixing business logic and model inference in your application. You can encapsulate each of your models and each of your business logic steps in independent deployments. Then, you can chain these deployments together in a deployment graph.
+Ray Serve's **deployment graph** API lets you compose your deployments together by describing how to route a request through your deployments. This is particularly useful if you're using ML model composition or mixing business logic and model inference in your application. You can encapsulate each of your models and each of your business logic steps in independent deployments. Then, you can connect these deployments together in a deployment graph.
 
 ## DeploymentNodes
 
@@ -25,9 +25,13 @@ three types of `DeploymentNodes`:
 
 The next two sections will discuss how to construct and connect these nodes to form deployment graphs.
 
-## ClassNodes
+## Implicit Composition: Cross-Deployment Calls
 
-You can create class nodes by binding class deployments to their constructor's arguments. For example:
+You can connect your models together in an implicit deployment graph by calling deployment methods from within other deployments. This lets you divide your application's steps (such as preprocessing, model inference, and post-processing) into independent deployments that can be independently scaled and configured. You can route requests to a single "driver" deployment that can partially process and/or forward the requests to other deployments by calling those deployments' methods.
+
+### ClassNodes
+
+The basic building block for implicit graphs is the `ClassNode`. You can create `ClassNodes` by binding class deployments to their constructor's arguments. For example:
 
 ```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
 :start-after: __echo_class_start__
@@ -73,10 +77,70 @@ $ python echo_client.py
 foo
 ```
 
-(deployment-graph-intro-call-graph)=
-## The Call Graph: MethodNodes and FunctionNodes
+(deployment-graph-intro-invoking-classnodes-from-other-classnodes)=
+### Invoking ClassNodes from within other ClassNodes
 
-After defining your `ClassNodes`, you can specify how HTTP requests should be routed through them using the call graph. As an example, let's look at a deployment graph that implements this chain of arithmetic operations:
+You can invoke `ClassNode` methods from other `ClassNodes` to create an implicit deployment graph.
+
+Here's an example:
+
+```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+:start-after: __hello_start__
+:end-before: __hello_end__
+:language: python
+:linenos: true
+```
+
+In line 40, the `LanguageClassifier` deployment takes in the `spanish_responder` and `french_responder` `ClassNodes` as constructor arguments. Its `__call__` method uses the request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `SpanishResponder` or the `FrenchResponder` on lines 17 and 19. The calls are formatted as:
+
+```python
+self.spanish_responder.say_hello.remote(name)
+```
+
+This call has a few parts:
+* `self.spanish_responder` is the `SpanishResponder` node taken in through the constructor.
+* `say_hello` is the `SpanishResponder` method to invoke on this node.
+* `remote` indicates that this is a remote call to another deployment. This is required when invoking a deployment's method through another deployment. It needs to be added to the method name.
+* `name` is the argument for `say_hello`. You can pass any number of arguments or keyword arguments here.
+
+This call returns a reference to the result– not the result itself. This pattern allows the call to execute asynchronously. To get the actual result, call `ray.get` on the result. This function blocks until the asynchronous call executes, and then it returns the result. In this example, line 23 calls `ray.get(ref)` and returns the resulting string.
+
+You can try this example out using the `serve run` CLI:
+
+```console
+$ serve run hello:language_classifier
+```
+
+You can use this client script to interact with the example:
+
+```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+:start-after: __hello_client_start__
+:end-before: __hello_client_end__
+:language: python
+```
+
+While the `serve run` is running, open a separate terminal window and run this script:
+
+```console
+$ python hello_client.py
+
+Hola Dora
+```
+
+(deployment-graph-intro-call-graph)=
+## Explicit Composition: The Call Graph
+
+```{note}
+Note: The call graph is in Alpha, so APIs are subject to change.
+```
+
+Composing the graph implicitly is useful because you can directly call other deployments' methods wherever you need to execute them. For more advanced graphs, however, it can be useful to surface these relationships, so you can visualize exactly how the requests are routed across your deployments.
+
+Part of Ray Serve's deployment graph API is the call graph. The call graph lets you specify how to route requests through your deployments, so you can explicitly formulate graph. It also has additional features like HTTP adapters and explicit input routing that can simplify the graph.
+
+### Building the Call Graph: MethodNodes and FunctionNodes
+
+Let's build a deployment graph that implements this chain of arithmetic operations:
 
 ```
 output = request + 2 - 1 + 3
@@ -152,58 +216,8 @@ $ python arithmetic_client.py
 9
 ```
 
-(deployment-graph-intro-invoking-classnodes-from-other-classnodes)=
-### Invoking ClassNodes from within other ClassNodes
-
-You can also invoke `ClassNode` methods from other `ClassNodes`. This is especially useful when implementing conditional logic in your graph. You can encode the conditional logic in one of your deployments and invoke another deployment from there.
-
-Here's an example:
-
-```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
-:start-after: __hello_start__
-:end-before: __hello_end__
-:language: python
-:linenos: true
-```
-
-In line 40, the `LanguageClassifier` deployment takes in the `spanish_responder` and `french_responder` `ClassNodes` as constructor arguments. Its `__call__` method uses the request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `SpanishResponder` or the `FrenchResponder` on lines 17 and 19. The calls are formatted as:
-
-```python
-self.spanish_responder.say_hello.remote(name)
-```
-
-This call has a few parts:
-* `self.spanish_responder` is the `SpanishResponder` node taken in through the constructor.
-* `say_hello` is the `SpanishResponder` method to invoke on this node.
-* `remote` indicates that this is a remote call to another deployment. This is required when invoking a deployment's method through another deployment. It needs to be added to the method name.
-* `name` is the argument for `say_hello`. You can pass any number of arguments or keyword arguments here.
-
-This call returns a reference to the result– not the result itself. This pattern allows the call to execute asynchronously. To get the actual result, call `ray.get` on the result. This function blocks until the asynchronous call executes and then returns the result. In this example, line 23 calls `ray.get(ref)` and returns the resulting string.
-
-You can try this example out using the `serve run` CLI:
-
-```console
-$ serve run hello:language_classifier
-```
-
-You can use this client script to interact with the example:
-
-```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
-:start-after: __hello_client_start__
-:end-before: __hello_client_end__
-:language: python
-```
-
-While the `serve run` is running, open a separate terminal window and run this script:
-
-```console
-$ python hello_client.py
-
-Hola Dora
-```
-
 (deployment-graph-intro-testing)=
-### Testing the Call Graph with Python API
+### Testing the Call Graph with the Python API
 
 All `MethodNodes` and `FunctionNodes` have an `execute` method. You can use this method to test your graph in Python, without using HTTP requests. 
 
@@ -239,7 +253,7 @@ The `execute` method deploys your deployment code inside Ray tasks and actors in
 :::
 
 (deployment-graph-drivers-http-adapters-intro)=
-## Drivers and HTTP Adapters
+### Drivers and HTTP Adapters
 
 Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-intro-call-graph), the `DAGDriver` takes in a `DeploymentNode` and it produces a `ClassNode` that you can run.
 
