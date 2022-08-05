@@ -9,7 +9,7 @@ import pandas as pd
 
 
 @dataclass
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Result:
     """The final result of a ML training run or a Tune trial.
 

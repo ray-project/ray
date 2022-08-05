@@ -25,28 +25,28 @@ class AsyncRequestsManager:
             AsyncRequestsManager.get_ready_results().
 
     Example:
-        >>> import time
-        >>> import ray
-        >>> from ray.rllib.execution.parallel_requests import AsyncRequestsManager
+        >>> import time # doctest: +SKIP
+        >>> import ray # doctest: +SKIP
+        >>> from ray.rllib.execution.parallel_requests import AsyncRequestsManager # doctest: +SKIP # noqa
         >>>
-        >>> @ray.remote
-        ... class MyActor:
-        ...    def apply(self, fn, *args: List[Any], **kwargs: Dict[str, Any]) -> Any:
-        ...        return fn(*args, **kwargs)
+        >>> @ray.remote # doctest: +SKIP
+        ... class MyActor: # doctest: +SKIP
+        ...    def apply(self, fn, *args: List[Any], **kwargs: Dict[str, Any]) -> Any: # doctest: +SKIP # noqa
+        ...        return fn(*args, **kwargs) # doctest: +SKIP
         ...
-        ...    def task(self, a: int, b: int) -> Any:
-        ...        time.sleep(0.5)
-        ...        return a + b
+        ...    def task(self, a: int, b: int) -> Any: # doctest: +SKIP
+        ...        time.sleep(0.5) # doctest: +SKIP
+        ...        return a + b # doctest: +SKIP
         >>>
-        >>> workers = [MyActor.remote() for _ in range(3)]
-        >>> manager = AsyncRequestsManager(workers,
-        ...                                max_remote_requests_in_flight_per_worker=2)
-        >>> manager.call(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2])
-        >>> print(manager.get_ready())
-        >>> manager.call(lambda worker, a, b: worker.task(a, b),
-        ...                fn_kwargs={"a": 1, "b": 2})
-        >>> time.sleep(2) # Wait for the tasks to finish.
-        >>> print(manager.get_ready())
+        >>> workers = [MyActor.remote() for _ in range(3)] # doctest: +SKIP
+        >>> manager = AsyncRequestsManager(workers, # doctest: +SKIP
+        ...                                max_remote_requests_in_flight_per_worker=2) # doctest: +SKIP # noqa
+        >>> manager.call(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2]) # doctest: +SKIP # noqa
+        >>> print(manager.get_ready()) # doctest: +SKIP
+        >>> manager.call(lambda worker, a, b: worker.task(a, b), # doctest: +SKIP
+        ...                fn_kwargs={"a": 1, "b": 2}) # doctest: +SKIP
+        >>> time.sleep(2) # Wait for the tasks to finish. # doctest: +SKIP
+        >>> print(manager.get_ready()) # doctest: +SKIP
     """
 
     def __init__(

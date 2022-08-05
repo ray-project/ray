@@ -15,6 +15,7 @@ from pathlib import Path
 from tempfile import gettempdir
 from typing import List, Tuple
 from unittest import mock
+import signal
 
 import pytest
 
@@ -204,10 +205,19 @@ def _ray_start(**kwargs):
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init("local", **init_kwargs)
+    agent_pids = []
+    for node in ray.nodes():
+        agent_pids.append(int(node["AgentInfo"]["Pid"]))
 
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+    # Make sure the agent process is dead.
+    for pid in agent_pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except Exception:
+            pass
     # Delete the cluster address just in case.
     ray._private.utils.reset_ray_address()
 

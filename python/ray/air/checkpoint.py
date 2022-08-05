@@ -38,26 +38,69 @@ _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class Checkpoint:
     """Ray AIR Checkpoint.
 
-    This implementation provides methods to translate between
-    different checkpoint storage locations: Local storage, external storage
-    (e.g. cloud storage), and data dict representations.
+    An AIR Checkpoint are a common interface for accessing models across
+    different AIR components and libraries. A Checkpoint can have its data
+    represented in one of three ways:
+
+    - as a directory on local (on-disk) storage
+    - as a directory on an external storage (e.g., cloud storage)
+    - as an in-memory dictionary
+
+    The Checkpoint object also has methods to translate between different checkpoint
+    storage locations. These storage representations provide flexibility in
+    distributed environments, where you may want to recreate an instance of
+    the same model on multiple nodes or across different Ray clusters.
+
+    Example:
+
+    .. code-block:: python
+
+        from ray.air.checkpoint import Checkpoint
+
+        # Create checkpoint data dict
+        checkpoint_data = {"data": 123}
+
+        # Create checkpoint object from data
+        checkpoint = Checkpoint.from_dict(checkpoint_data)
+
+        # Save checkpoint to a directory on the file system.
+        path = checkpoint.to_directory()
+
+        # This path can then be passed around,
+        # # e.g. to a different function or a different script.
+        # You can also use `checkpoint.to_uri/from_uri` to
+        # read from/write to cloud storage
+
+        # In another function or script, recover Checkpoint object from path
+        checkpoint = Checkpoint.from_directory(path)
+
+        # Convert into dictionary again
+        recovered_data = checkpoint.to_dict()
+
+        # It is guaranteed that the original data has been recovered
+        assert recovered_data == checkpoint_data
+
+    Checkpoints can be used to instantiate a :class:`Predictor`,
+    :class:`BatchPredictor`, or :class:`PredictorDeployment` class.
 
     The constructor is a private API, instead the ``from_`` methods should
     be used to create checkpoint objects
     (e.g. ``Checkpoint.from_directory()``).
 
+    *Other implementation notes:*
     When converting between different checkpoint formats, it is guaranteed
     that a full round trip of conversions (e.g. directory --> dict -->
     obj ref --> directory) will recover the original checkpoint data.
     There are no guarantees made about compatibility of intermediate
     representations.
 
-    New data can be added to a Checkpoint during conversion. Consider the
-    following conversion: directory --> dict (adding dict["foo"] = "bar")
+    New data can be added to a Checkpoint
+    during conversion. Consider the following conversion:
+    directory --> dict (adding dict["foo"] = "bar")
     --> directory --> dict (expect to see dict["foo"] = "bar"). Note that
     the second directory will contain pickle files with the serialized additional
     field data in them.
@@ -67,83 +110,21 @@ class Checkpoint:
     dict representation will contain an extra field with the serialized additional
     files in it.
 
-    Examples:
+    Checkpoints can be pickled and sent to remote processes.
+    Please note that checkpoints pointing to local directories will be
+    pickled as data representations, so the full checkpoint data will be
+    contained in the checkpoint object. If you want to avoid this,
+    consider passing only the checkpoint directory to the remote task
+    and re-construct your checkpoint object in that function. Note that
+    this will only work if the "remote" task is scheduled on the
+    same node or a node that also has access to the local data path (e.g.
+    on a shared file system like NFS).
 
-        Example for an arbitrary data checkpoint:
-
-        .. code-block:: python
-
-            from ray.air.checkpoint import Checkpoint
-
-            # Create checkpoint data dict
-            checkpoint_data = {"data": 123}
-
-            # Create checkpoint object from data
-            checkpoint = Checkpoint.from_dict(checkpoint_data)
-
-            # Save checkpoint to temporary location
-            path = checkpoint.to_directory()
-
-            # This path can then be passed around, e.g. to a different function
-
-            # At some other location, recover Checkpoint object from path
-            checkpoint = Checkpoint.from_directory(path)
-
-            # Convert into dictionary again
-            recovered_data = checkpoint.to_dict()
-
-            # It is guaranteed that the original data has been recovered
-            assert recovered_data == checkpoint_data
-
-        Example using MLflow for saving and loading a classifier:
-
-        .. code-block:: python
-
-            from ray.air.checkpoint import Checkpoint
-            from sklearn.ensemble import RandomForestClassifier
-            import mlflow.sklearn
-
-            # Create an sklearn classifier
-            clf = RandomForestClassifier(max_depth=7, random_state=0)
-            # ... e.g. train model with clf.fit()
-            # Save model using MLflow
-            mlflow.sklearn.save_model(clf, "model_directory")
-
-            # Create checkpoint object from path
-            checkpoint = Checkpoint.from_directory("model_directory")
-
-            # Convert into dictionary
-            checkpoint_dict = checkpoint.to_dict()
-
-            # This dict can then be passed around, e.g. to a different function
-
-            # At some other location, recover checkpoint object from dict
-            checkpoint = Checkpoint.from_dict(checkpoint_dict)
-
-            # Convert into a directory again
-            checkpoint.to_directory("other_directory")
-
-            # We can now use MLflow to re-load the model
-            clf = mlflow.sklearn.load_model("other_directory")
-
-            # It is guaranteed that the original data was recovered
-            assert isinstance(clf, RandomForestClassifier)
-
-        Checkpoints can be pickled and sent to remote processes.
-        Please note that checkpoints pointing to local directories will be
-        pickled as data representations, so the full checkpoint data will be
-        contained in the checkpoint object. If you want to avoid this,
-        consider passing only the checkpoint directory to the remote task
-        and re-construct your checkpoint object in that function. Note that
-        this will only work if the "remote" task is scheduled on the
-        same node or a node that also has access to the local data path (e.g.
-        on a shared file system like NFS).
-
-        Checkpoints pointing to object store references will keep the
-        object reference in tact - this means that these checkpoints cannot
-        be properly deserialized on other Ray clusters or outside a Ray
-        cluster. If you need persistence across clusters, use the ``to_uri()``
-        or ``to_directory()`` methods to persist your checkpoints to disk.
+    Checkpoints pointing to object store references will keep the
+    object reference in tact - this means that these checkpoints cannot
+    be properly deserialized on other Ray clusters or outside a Ray
+    cluster. If you need persistence across clusters, use the ``to_uri()``
+    or ``to_directory()`` methods to persist your checkpoints to disk.
 
     """
 
