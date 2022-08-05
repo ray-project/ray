@@ -234,7 +234,7 @@ if setup_spec.type == SetupType.RAY:
             "smart_open",
         ],
         "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
-        "tune": [pandas_dep, "tabulate", "tensorboardX>=1.9", "requests"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
             "opentelemetry-api==1.1.0",
