@@ -9,7 +9,7 @@ from ray.data.preprocessor import Preprocessor
 
 
 class StandardScaler(Preprocessor):
-    r"""Scale and translate each column by its mean and standard deviation, respectively.
+    r"""Translate and scale each column by its mean and standard deviation, respectively.
 
     The general formula is given by
 
@@ -22,9 +22,9 @@ class StandardScaler(Preprocessor):
     standard deviation. If :math:`s = 0` (i.e., the column is constant-valued),
     then the transformed column will contain zeros.
 
-    .. note::
-        Many models assume that data is distributed like a standard normal distribution.
-        To make your data look like a standard normal distribution, use :py:class:`StandardScaler`.
+    .. warning::
+        :class:`StandardScaler` works best when your data is normal. If your data isn't
+        approximately normal, the transformed features won't be meaningful.
 
     Args:
         columns: The columns to separately scale.
