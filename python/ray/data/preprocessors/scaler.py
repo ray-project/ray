@@ -138,17 +138,56 @@ class MaxAbsScaler(Preprocessor):
 
 
 class RobustScaler(Preprocessor):
-    """Scale values within columns based on their quantile range.
+    r"""Scale and translate each column using quantiles.
 
-    For each column, each value will be transformed to
-    ``(value - median) / (high_quantile - low_quantile)``,
-    where ``median`` , ``high_quantile``, and ``low_quantile``
-    are calculated from the fitted dataset.
+    The general formula is given by
+
+    .. math::
+        x' = \frac{x - \mu_{1/2}}{\mu_h - \mu_l}
+
+    where :math:`x` is the column, :math:`x'` is the transformed column,
+    :math:`\mu_{1/2}` is the column median. :math:`\mu_{h}` and :math:`\mu_{l}` are the
+    high and low quantiles, respectively. By default, :math:`\mu_{h}` is the third
+    quartile and :math:`\mu_{l}` is the first quartile.
+
+    .. note::
+        This scaler works well when your data contains many outliers.
 
     Args:
-        columns: The columns that will be scaled individually.
-        quantile_range: A tuple that defines the lower and upper quantile to scale to.
-                        Defaults to the 1st and 3rd quartiles: (0.25, 0.75).
+        columns: The columns to separately scale.
+        quantile_range: A tuple that defines the lower and upper quantiles. Values
+            must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
+            ``(0.25, 0.75)``.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import RobustScaler
+        >>>
+        >>> df = pd.DataFrame({
+        ...     "X1": [1, 2, 3, 4, 5],
+        ...     "X2": [13, 5, 14, 2, 8],
+        ...     "X3": [1, 2, 2, 2, 3],
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
+           X1  X2  X3
+        0   1  13   1
+        1   2   5   2
+        2   3  14   2
+        3   4   2   2
+        4   5   8   3
+
+        :class:`RobustScaler` separately scales each column.
+
+        >>> preprocessor = RobustScaler(columns=["X1", "X2"])  # doctest: +SKIP
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+            X1     X2  X3
+        0 -1.0  0.625   1
+        1 -0.5 -0.375   2
+        2  0.0  0.750   2
+        3  0.5 -0.750   2
+        4  1.0  0.000   3
     """
 
     def __init__(
