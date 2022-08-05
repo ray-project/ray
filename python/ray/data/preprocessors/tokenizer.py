@@ -9,17 +9,6 @@ from ray.data.preprocessors.utils import simple_split_tokenizer
 class Tokenizer(Preprocessor):
     """Replace each string with a list of tokens.
 
-    .. note::
-        This preprocessor isn't fittable. If you call
-        :py:meth:`~ray.data.preprocessor.Preprocessor.fit`, nothing will happen.
-
-    Args:
-        columns: The columns to tokenize.
-        tokenization_fn: The function used to generate tokens. This function
-            should accept a string as input and return a list of tokens as
-            output. If unspecified, the tokenizer uses a function equivalent to
-            ``lambda s: s.split(" ")``.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -48,6 +37,13 @@ class Tokenizer(Preprocessor):
                       text
         0   [Hello, world]
         1  [foo, bar, baz]
+
+    Args:
+        columns: The columns to tokenize.
+        tokenization_fn: The function used to generate tokens. This function
+            should accept a string as input and return a list of tokens as
+            output. If unspecified, the tokenizer uses a function equivalent to
+            ``lambda s: s.split(" ")``.
     """
 
     _is_fittable = False
