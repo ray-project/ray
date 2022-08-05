@@ -1,7 +1,10 @@
-Failure of Ray components
-=========================
+.. _fault-tolerance-architecture:
 
-Ray components failure could lead to tasks/objects/actors failure. 
+Advanced topic: Ray system failure model
+========================================
+
+Here, we describe the system-level components of Ray and how failures in those
+components can affect tasks, objects, and actors.
 
 GCS failure
 -----------
