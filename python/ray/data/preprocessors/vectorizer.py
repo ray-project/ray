@@ -88,7 +88,8 @@ class HashingVectorizer(Preprocessor):
 
         :class:`CountVectorizer`
             Another method for counting token frequencies. Unlike :class:`HashingVectorizer`,
-            :class:`CountVectorizer` creates a feature for each unique token.
+            :class:`CountVectorizer` creates a feature for each unique token. This
+            enables you to compute the inverse transformation.
 
         :class:`FeatureHasher`
             This preprocessor is similar to :class:`HashingVectorizer`, except it expects
