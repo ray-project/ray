@@ -56,8 +56,8 @@ class FeatureHasher(Preprocessor):
 
         >>> hasher = FeatureHasher(columns=["I", "like", "dislike", "Python"], num_features=8)
         >>> hasher.fit_transform(ds).to_pandas().to_numpy()
-        [[0 0 0 2 0 1 0 0]
-         [0 0 0 1 0 1 1 0]]
+        array([[0, 0, 0, 2, 0, 1, 0, 0],
+               [0, 0, 0, 1, 0, 1, 1, 0]])
 
         Notice the hash collision: both ``"like"`` and ``"Python"`` correspond to index
         :math:`3`. You can avoid hash collisions like these by increasing
