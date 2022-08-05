@@ -1,19 +1,17 @@
-import ray
 from ray import serve
 
 import time
-
-ray.init(address="auto")
-serve.start()
+import requests
 
 
 @serve.deployment
-def f():
+def sleeper():
     time.sleep(1)
 
 
-f.deploy()
+s = sleeper.bind()
 
-handle = f.get_handle()
+serve.run(s)
+
 while True:
-    ray.get(handle.remote())
+    requests.get("http://localhost:8000/")
