@@ -102,8 +102,20 @@ class LightningTrainer(TorchTrainer):
                 "'lightning_module' must be a subclass of "
                 "'pytorch_lightning.LightningModule'"
             )
-        # TODO (s10a): assert that `lightning_module`
-        # does not specify dataloader functions
+        if any(
+            dataloader_func in lightning_module.__dict__
+            for dataloader_func in {
+                "train_dataloader",
+                "val_dataloader",
+                "test_dataloader",
+                "predict_dataloader",
+            }
+        ):
+            raise ValueError(
+                "Do not implement the 'train_dataloader', 'val_dataloader', "
+                "'test_dataloader', or 'predict_dataloader' functions in your "
+                "LightningModule"
+            )
 
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
         self._validate_trainer_init_config(trainer_init_config)
