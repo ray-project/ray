@@ -13,10 +13,11 @@ You can install the latest official version of Ray as follows.
 
 .. code-block:: bash
 
-  pip install -U ray  # minimal install
+  # Install Ray with support for the dashboard + cluster launcher
+  pip install -U "ray[default]"
 
-  # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U "ray[default]"`
+  # Install Ray with minimal dependencies
+  # pip install -U ray
 
 To install Ray libraries:
 
@@ -36,11 +37,13 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
-  pip uninstall -y ray # clean removal of previous install, otherwise version number may cause pip not to upgrade
-  pip install -U LINK_TO_WHEEL.whl  # minimal install
+  # Clean removal of previous install
+  pip uninstall -y ray
+  # Install Ray with support for the dashboard + cluster launcher
+  pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
 
-  # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U 'ray[default] @ LINK_TO_WHEEL.whl'`
+  # Install Ray with minimal dependencies
+  # pip install -U LINK_TO_WHEEL.whl
 
 
 ====================  ====================  =======================
@@ -163,6 +166,24 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
   When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local mode.
 
   If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
+
+.. _ray-install-cpp:
+
+Install Ray C++
+---------------
+
+You can install and use Ray C++ API as follows.
+
+.. code-block:: bash
+
+  pip install -U ray[cpp]
+
+  # Create a Ray C++ project template to start with.
+  mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
+
+.. note::
+
+  If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
 
 .. _apple-silcon-supprt:
 
