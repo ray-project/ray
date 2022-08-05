@@ -43,6 +43,7 @@ uvicorn==0.16.0
 dataclasses; python_version < '3.7'
 starlette==0.18.0
 aiorwlock
+gradio
 
 # Requirements for running tests
 pyarrow >= 6.0.1, < 7.0.0

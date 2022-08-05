@@ -15,9 +15,8 @@ parts:
     - file: ray-air/user-guides
       sections:
         - file: ray-air/preprocessors
-        - file: ray-air/checkpoints
         - file: ray-air/check-ingest
-        - file: ray-air/config-scaling
+        - file: ray-air/trainer
         - file: ray-air/tuner
         - file: ray-air/predictors
         - file: ray-air/examples/serving_guide
@@ -67,11 +66,16 @@ parts:
       - file: train/train
         title: Ray Train
         sections:
-          - file: train/user_guide
-          - file: train/gbdt
-          - file: train/examples
+          - file: train/getting-started
+          - file: train/key-concepts
+          - file: train/user-guides
+            sections:
+              - file: train/config_guide
+              - file: train/dl_guide
+              - file: train/gbdt
+              - file: train/architecture
           - file: train/faq
-          - file: train/architecture
+          - file: train/examples
           - file: train/api
 
       - file: tune/index
