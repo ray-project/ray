@@ -40,7 +40,7 @@ class OrdinalEncoder(Preprocessor):
         >>> ds = ray.data.from_pandas(df)
         >>> encoder = OrdinalEncoder(columns=["sex", "level"])
         >>> encoder.fit_transform(ds).to_pandas()
-        sex  level
+           sex  level
         0    1      1
         1    0      2
         2    1      0
@@ -52,7 +52,7 @@ class OrdinalEncoder(Preprocessor):
         >>> df = pd.DataFrame({"sex": ["female"], "level": ["L6"]})
         >>> ds = ray.data.from_pandas(df)
         >>> encoder.transform(ds).to_pandas()
-        sex  level
+           sex  level
         0    0    NaN
 
         :py:class:`OrdinalEncoder` can also encode categories in a list.
