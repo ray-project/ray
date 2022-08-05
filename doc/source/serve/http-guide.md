@@ -212,7 +212,7 @@ with InputNode() as input_node:
 
 You can also bring the adapter to your own FastAPI app using
 [Depends](https://fastapi.tiangolo.com/tutorial/dependencies/#import-depends).
-The input schema will automatically be part of the generated OpenAPI schema with FastAPI.
+The input schema automatically become part of the generated OpenAPI schema with FastAPI.
 
 ```python
 from fastapi import FastAPI, Depends
