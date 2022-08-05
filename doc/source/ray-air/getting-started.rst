@@ -13,10 +13,6 @@ Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR 
 
 AIR comes with ready-to-use libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>`, as well as an ecosystem of integrations.
 
-Ray AIR focuses on the compute aspects of ML:
- * It provides scalability by leveraging Ray’s distributed compute layer for ML workloads.
- * It is designed to interoperate with other systems for storage and metadata needs.
-
 Get started by installing Ray AIR:
 
 .. code:: bash
@@ -150,35 +146,38 @@ Use the trained model for scalable batch prediction with a ``BatchPredictor``.
 Why Ray AIR?
 ------------
 
-Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by taking a scalable, single-system approach to ML infrastructure (i.e., leveraging Ray as a unified compute framework):
+Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by leveraging Ray to provide a seamless, unified, and open experience for scalable ML:
 
 **1. Seamless Dev to Prod**: AIR reduces friction going from development to production. Traditional orchestration approaches introduce separate systems and operational overheads. With Ray and AIR, the same Python code scales seamlessly from a laptop to a large cluster.
 
-**2. Unified API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new library like HuggingFace? Thanks to the flexibility of AIR, you can do this by just swapping out a single class, without needing to set up new systems or change other aspects of your workflow.
+**2. Unified ML API**: Want to switch between frameworks like XGBoost and PyTorch, or try out a new library like HuggingFace? Thanks to the flexibility of AIR, you can do this by just swapping out a single class, without needing to set up new systems or change other aspects of your workflow.
 
 **3. Open and Evolvable**: Ray core and libraries are fully open-source and can run on any cluster, cloud, or Kubernetes, reducing the costs of platform lock-in. Want to go out of the box? Run any framework you want using AIR's integration APIs, or build advanced use cases directly on Ray core.
 
-.. figure:: images/why-air.png
+.. figure:: images/why-air.svg
 
-  AIR enables a single-system / single-script approach to scaling ML. Ray's
-  distributed Python APIs enable scaling of ML workloads without the burden of
-  setting up or orchestrating separate distributed systems.
+  By providing a unified API for the broader ML ecosystem,
+  AIR enables a single-system / single-script approach to scaling ML. This diagram shows how AIR's unified ML API enables an ecosystem of libraries to be leveraged in just a few lines of code.
 
-AIR is for both data scientists and ML engineers. Consider using AIR when you want to:
+When to use AIR?
+----------------
+
+AIR is for both data scientists and ML engineers alike.
+
+**For data scientists**:
  * Scale a single workload.
  * Scale end-to-end ML applications.
+
+**For ML engineers**:
  * Build a custom ML platform for your organization.
+ * Leverage
 
-AIR Ecosystem
--------------
+Project Status
+--------------
 
-AIR comes with built-in integrations with the most popular ecosystem libraries. The following diagram provides an overview of the AIR libraries, ecosystem integrations, and their readiness.
-AIR's developer APIs also enable *custom integrations* to be easily created.
+AIR is currently in **beta**. If you have questions for the team or are interested in getting involved in the development process, fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__.
 
-..
-  https://docs.google.com/drawings/d/1pZkRrkAbRD8jM-xlGlAaVo3T66oBQ_HpsCzomMT7OIc/edit
-
-.. image:: images/air-ecosystem.svg
+For an overview of the AIR libraries, ecosystem integrations, and their readiness, check out the latest `AIR ecosystem map <https://docs.ray.io/en/master/_images/air-ecosystem.svg>`_.
 
 Next Steps
 ----------
