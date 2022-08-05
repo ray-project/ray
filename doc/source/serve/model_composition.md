@@ -266,6 +266,80 @@ Note that the `http_adapter`'s output type becomes what the `InputNode` represen
 
 See [the guide](serve-http-adapters) on `http_adapters` to learn more.
 
+### Visualizing the Graph
+
+You can visualize your deployment graph as you develop it to better understand how the different nodes connect.
+
+Make sure you have `pydot` and `graphviz` to follow this section:
+
+::::{tabbed} MacOS
+```
+pip install -U pydot && brew install graphviz
+```
+::::
+
+::::{tabbed} Windows
+```
+pip install -U pydot && winget install graphviz
+```
+::::
+
+::::{tabbed} Linux
+```
+pip install -U pydot && sudo apt-get install -y graphviz
+```
+::::
+
+Here's an example graph:
+
+```{eval-rst}
+.. literalinclude:: ../doc_code/visualize_dag_during_deployment.py
+   :language: python
+```
+
+The `ray.dag.vis_utils._dag_to_dot` method takes in a `DeploymentNode` and produces a graph visualization. You can see the string form of the visualization by running the script:
+
+```
+$ python deployment_graph_viz.py
+
+digraph G {
+rankdir=LR;
+INPUT_ATTRIBUTE_NODE -> forward;
+INPUT_NODE -> INPUT_ATTRIBUTE_NODE;
+Model -> forward;
+}
+
+digraph G {
+rankdir=LR;
+forward -> combine;
+INPUT_ATTRIBUTE_NODE -> forward;
+INPUT_NODE -> INPUT_ATTRIBUTE_NODE;
+Model -> forward;
+forward_1 -> combine;
+INPUT_ATTRIBUTE_NODE_1 -> forward_1;
+INPUT_NODE -> INPUT_ATTRIBUTE_NODE_1;
+Model_1 -> forward_1;
+INPUT_ATTRIBUTE_NODE_2 -> combine;
+INPUT_NODE -> INPUT_ATTRIBUTE_NODE_2;
+}
+```
+
+You can render these strings in `graphviz` tools such as [https://dreampuf.github.io/GraphvizOnline](https://dreampuf.github.io/GraphvizOnline).
+
+When the script visualizes `m1_output`, it shows a partial execution path of the entire graph:
+
+![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_partial.svg)
+
+This path includes only the dependencies needed to generate `m1_output`.
+
+On the other hand, when the script visualizes choose the final graph output, `combine_output`, it captures all nodes used in execution since they're all required to create the final output.
+
+![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_full.svg)
+
+:::{tip}
+If you run the code above inside a Jupyter notebook, it automatically displays within the cell. You can print the dot file as a string and render it with `graphviz` tools such as [https://dreampuf.github.io/GraphvizOnline](https://dreampuf.github.io/GraphvizOnline), or you can save it as a .dot file.
+:::
+
 ## Next Steps
 
 To learn more about deployment graphs, check out these resources:
