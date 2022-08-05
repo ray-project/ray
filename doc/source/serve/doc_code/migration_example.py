@@ -193,6 +193,7 @@ resp = requests.get("http://localhost:8000/my_model2", data="321")
 
 serve.shutdown()
 
+
 # __graph_with_new_api_start__
 @serve.deployment
 class Model:
