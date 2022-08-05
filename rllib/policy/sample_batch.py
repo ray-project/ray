@@ -638,8 +638,8 @@ class SampleBatch(dict):
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                if isinstance(v, np.ndarray) and v.dtype != object:
-                    self[k] = convert_to_torch_tensor(v, device)
+                # if isinstance(v, np.ndarray) and v.dtype != object:
+                self[k] = convert_to_torch_tensor(v, device)
         else:
             raise NotImplementedError
         return self
