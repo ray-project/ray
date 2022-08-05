@@ -2,7 +2,7 @@
 
 # Batching Tutorial
 
-In this guide, we will deploy a simple vectorized adder that takes
+In this guide, we will deploy a simple vectorized matrix multipler that takes
 a batch of queries and adds them at once. In particular, we show:
 
 - How to implement and deploy a Ray Serve deployment that accepts batches.
@@ -84,7 +84,7 @@ the maximum possible batch size that will be executed at once.
 ## Deploy the Deployment
 Deploy the deployment by running the following through the terminal.
 ```console
-$ serve run tutorial_batch:adder
+$ serve run tutorial_batch:matrix_multiplier
 ```
 
 Let's define a [Ray remote task](ray-remote-functions) to send queries in
@@ -126,7 +126,7 @@ of the Python API, instead of running `serve run` from the console. Add the foll
 to the Python script `tutorial_batch.py`:
 
 ```python
-handle = serve.run(adder)
+handle = serve.run(matrix_multiplier)
 ```
 
 Generally, to enqueue a query, you can call `handle.method.remote(data)`. This call 

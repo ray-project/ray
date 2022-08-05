@@ -12,7 +12,7 @@ from ray import serve
 
 # __doc_define_servable_begin__
 @serve.deployment
-class BatchAdder:
+class BatchMatrixMultiplier:
     def __init__(self, matrix: np.ndarray):
         self.matrix = matrix
 
@@ -31,5 +31,5 @@ class BatchAdder:
 
 # __doc_deploy_begin__
 matrix = np.random.rand(50, 50)
-adder = BatchAdder.bind(matrix)
+matrix_multiplier = BatchMatrixMultiplier.bind(matrix)
 # __doc_deploy_end__
