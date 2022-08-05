@@ -16,4 +16,3 @@ There are various common deployments patterns for models in production. These pa
 - [Chain nodes with same class and different args](deployment-graph/chain_nodes_same_class_different_args.md)
 - [Combine two nodes with passing same input in parallel](deployment-graph/combine_two_nodes_with_passing_input_parallel.md)
 - [Control flow based on user inputs](deployment-graph/control_flow_based_on_user_inputs.md)
-- [Http endpoint for dag graph](deployment-graph/http_endpoint_for_dag_graph.md)
