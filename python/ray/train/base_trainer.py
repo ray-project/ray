@@ -91,7 +91,7 @@ class BaseTrainer(abc.ABC):
                     loss = 0
                     num_batches = 0
                     for batch in torch_ds:
-                        X, y = torch.unsqueeze(batches["x"], 1), batches["y"]
+                        X, y = torch.unsqueeze(batch["x"], 1), batch["y"]
                         # Compute prediction error
                         pred = self.model(X)
                         batch_loss = loss_fn(pred, y)

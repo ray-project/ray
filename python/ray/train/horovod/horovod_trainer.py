@@ -125,7 +125,7 @@ class HorovodTrainer(DataParallelTrainer):
                 for batch in dataset_shard.iter_torch_batches(
                     batch_size=32, dtypes=torch.float
                 ):
-                    inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
+                    inputs, labels = torch.unsqueeze(batch["x"], 1), batch["y"]
                     inputs.to(device)
                     labels.to(device)
                     outputs = model(inputs)
