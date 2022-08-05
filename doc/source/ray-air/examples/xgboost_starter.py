@@ -3,7 +3,6 @@
 
 # __air_generic_preprocess_start__
 import ray
-from ray.air.config import ScalingConfig
 
 # Load data.
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
@@ -25,8 +24,8 @@ preprocessor = StandardScaler(columns=["mean radius", "mean texture"])
 # __air_xgb_preprocess_end__
 
 # __air_xgb_train_start__
-from ray.train.xgboost import XGBoostTrainer
 from ray.air.config import ScalingConfig
+from ray.train.xgboost import XGBoostTrainer
 
 trainer = XGBoostTrainer(
     scaling_config=ScalingConfig(

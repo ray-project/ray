@@ -3,9 +3,8 @@
 
 # __air_generic_preprocess_start__
 import ray
-from ray.air.config import ScalingConfig
 
-
+# Load data.
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
