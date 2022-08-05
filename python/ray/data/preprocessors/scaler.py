@@ -159,7 +159,7 @@ class RobustScaler(Preprocessor):
     Args:
         columns: The columns to separately scale.
         quantile_range: A tuple that defines the lower and upper quantiles. Values
-            must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
+            must be between 0 and 1. Defaults to the first and third quartiles:
             ``(0.25, 0.75)``.
 
     Examples:
