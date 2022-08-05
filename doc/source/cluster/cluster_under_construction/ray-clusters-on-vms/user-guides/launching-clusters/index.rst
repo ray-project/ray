@@ -7,6 +7,7 @@
     :maxdepth: 2
 
     aws.md
+    aws-cloud-watch.rst
     gcp.md
     azure.md
     on-premises.md
