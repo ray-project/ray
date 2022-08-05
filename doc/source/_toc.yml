@@ -67,6 +67,7 @@ parts:
         title: Ray Train
         sections:
           - file: train/user_guide
+          - file: train/gbdt
           - file: train/examples
           - file: train/faq
           - file: train/architecture
