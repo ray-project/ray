@@ -12,7 +12,7 @@ from ray.data.preprocessor import Preprocessor
 class OrdinalEncoder(Preprocessor):
     """Encode values within columns as ordered integer values.
 
-    :py:class:`OrdinalEncoder` encodes categorical features as integer that range from
+    :py:class:`OrdinalEncoder` encodes categorical features as integers that range from
     :math:`0` to :math:`n - 1`, where :math:`n` is the number of categories.
 
     If you transform a value that isn't in the fitted datset, then the value is encoded
