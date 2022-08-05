@@ -450,11 +450,11 @@ class Categorizer(Preprocessor):
         If you know the categories in advance, you can specify the categories with the
         ``dtypes`` parameter.
 
-        >>> concatenator = Categorizer(
+        >>> categorizer = Categorizer(
         ...     columns=["sex", "level"],
         ...     dtypes={"level": pd.CategoricalDtype(["L3", "L4", "L5", "L6"], ordered=True)},
         ... )
-        >>> concatenator.fit_transform(ds).schema().types
+        >>> categorizer.fit_transform(ds).schema().types
         [CategoricalDtype(categories=['female', 'male'], ordered=False), CategoricalDtype(categories=['L3', 'L4', 'L5', 'L6'], ordered=True)]
     """
 
