@@ -32,8 +32,8 @@ class OrdinalEncoder(Preprocessor):
 
         >>> import pandas as pd
         >>> import ray
-        >>> df = pd.DataFrame(
-        ... {
+        >>> from ray.data.preprocessors import OrdinalEncoder
+        >>> df = pd.DataFrame({
         ...     "sex": ["male", "female", "male", "female"],
         ...     "level": ["L4", "L5", "L3", "L4"],
         ... })
@@ -57,8 +57,7 @@ class OrdinalEncoder(Preprocessor):
 
         :py:class:`OrdinalEncoder` can also encode categories in a list.
 
-        >>> df = pd.DataFrame(
-        >>> {
+        >>> df = pd.DataFrame({
         ...     "name": ["Shaolin Soccer", "Moana", "The Smartest Guys in the Room"],
         ...     "genre": [
         ...         ["comedy", "action", "sports"],
@@ -71,7 +70,7 @@ class OrdinalEncoder(Preprocessor):
         >>> encoder.fit_transform(ds).to_pandas()
                                     name      genre
         0                 Shaolin Soccer  [2, 0, 4]
-        1                          Moana  [1, 0, 2]
+        1                          Moana  [1, 2, 0]
         2  The Smartest Guys in the Room        [3]
 
     .. seealso::
