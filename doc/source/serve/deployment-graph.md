@@ -15,7 +15,7 @@ A typical production serve deployment does not exist in isolation. Normally, it'
 (serve-deployment-graph-patterns)=
 ## Common Deployment Graph Patterns
 
-There are various common deployments patterns used models in production. These patterns allow you to compose a single deployment graph. Below are a few examples how to construct them:
+There are various common deployments patterns for models in production. These patterns allow you to compose a single deployment graph. Below are a few examples how to construct them:
 
 - [Chain nodes with same class and different args](deployment-graph/chain_nodes_same_class_different_args.md)
 - [Combine two nodes with passing same input in parallel](deployment-graph/combine_two_nodes_with_passing_input_parallel.md)
