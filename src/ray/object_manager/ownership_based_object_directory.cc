@@ -384,24 +384,24 @@ bool OwnershipBasedObjectDirectory::ReSubscribeObjectLocations(
                                      global_owner_id,
                                      callback);
         };
-    resubscribe_callbacks_.push_back(resubscribe_callback);
-    TryResubscribe();
+    pending_resubsecibe_operations_.push_back(resubscribe_callback);
+    SchuduleResubscribe();
     return false;
   }
 }
 
-void OwnershipBasedObjectDirectory::TryResubscribe() {
+void OwnershipBasedObjectDirectory::SchuduleResubscribe() {
   if(resubscribe_timer_) return;
   resubscribe_timer_ = execute_after(
     io_service_,
     [this]() {
       resubscribe_timer_ = nullptr;
       std::vector<std::function<bool()> > failed_subscribe_callback;
-      for (auto const &func : resubscribe_callbacks_) {
+      for (auto const &func : pending_resubsecibe_operations_) {
         if(!func()) failed_subscribe_callback.push_back(func);
       }
-      resubscribe_callbacks_.assign(failed_subscribe_callback.begin(), failed_subscribe_callback.end());
-      TryResubscribe();
+      pending_resubsecibe_operations_.assign(failed_subscribe_callback.begin(), failed_subscribe_callback.end());
+      SchuduleResubscribe();
     },
     1000 /*1 second*/
   );
@@ -471,8 +471,8 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
                                       global_owner_id,
                                       callback);
         };
-        resubscribe_callbacks_.push_back(resubscribe_callback);
-        TryResubscribe();
+        pending_resubsecibe_operations_.push_back(resubscribe_callback);
+        SchuduleResubscribe();
       }
 
       rpc::WorkerObjectLocationsPubMessage location_info;

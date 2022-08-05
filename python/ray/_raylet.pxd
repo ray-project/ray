@@ -122,7 +122,7 @@ cdef class CoreWorker:
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
-                            CActorID c_owner_actor_id,
+                            CActorID c_global_owner_id,
                             owner_address=*,
                             c_bool inline_small_object=*)
     cdef unique_ptr[CAddress] _convert_python_address(self, address=*)

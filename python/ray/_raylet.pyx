@@ -1251,7 +1251,7 @@ cdef class CoreWorker:
                             c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data,
                             c_bool created_by_worker,
-                            CActorID c_owner_actor_id,
+                            CActorID c_global_owner_id,
                             owner_address=None,
                             c_bool inline_small_object=True):
         cdef:
@@ -1267,7 +1267,7 @@ cdef class CoreWorker:
                              c_object_id, data, created_by_worker,
                              move(c_owner_address),
                              inline_small_object,
-                             c_owner_actor_id))
+                             c_global_owner_id))
         else:
             c_object_id[0] = object_ref.native()
             if owner_address is None:
@@ -1371,7 +1371,7 @@ cdef class CoreWorker:
                                                       c_bool pin_object=True,
                                                       owner_address=None,
                                                       c_bool inline_small_object=True,
-                                                      owner_actor_id=None):
+                                                      global_owner_id=None):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -1380,7 +1380,7 @@ cdef class CoreWorker:
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
-            CActorID c_owner_actor_id
+            CActorID c_global_owner_id
             c_string spilled_url
             c_string* spilled_url_ptr
 
@@ -1389,9 +1389,9 @@ cdef class CoreWorker:
         total_bytes = serialized_object.total_bytes
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
-        c_owner_actor_id = self._convert_binary_actor_id(owner_actor_id)
+        c_global_owner_id = self._convert_binary_actor_id(global_owner_id)
 
-        if owner_actor_id is None:
+        if global_owner_id is None:
             spilled_url_ptr = NULL
         else:
             spilled_url_ptr = &spilled_url
@@ -1399,7 +1399,7 @@ cdef class CoreWorker:
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_ref,
             contained_object_ids,
-            &c_object_id, &data, True, c_owner_actor_id,
+            &c_object_id, &data, True, c_global_owner_id,
             owner_address, inline_small_object)
 
         if not object_already_exists:
@@ -1427,7 +1427,7 @@ cdef class CoreWorker:
                                         c_object_id,
                                         pin_object,
                                         move(c_owner_address),
-                                        c_owner_actor_id,
+                                        c_global_owner_id,
                                         spilled_url_ptr))
                     else:
                         # Using custom object refs is not supported because we
@@ -1437,7 +1437,7 @@ cdef class CoreWorker:
                             CCoreWorkerProcess.GetCoreWorker().SealExisting(
                                         c_object_id, pin_object=False,
                                         owner_address=move(c_owner_address),
-                                        global_owner_id=c_owner_actor_id,
+                                        global_owner_id=c_global_owner_id,
                                         spilled_url=spilled_url_ptr))
 
         return c_object_id.Binary(), spilled_url

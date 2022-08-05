@@ -573,7 +573,7 @@ class Worker:
         value,
         object_ref=None,
         owner_address=None,
-        owner_actor_id=None,
+        global_owner_id=None,
         *,
         _ha=False,
     ):
@@ -616,8 +616,8 @@ class Worker:
             ), "Local Mode does not support inserting with an ObjectRef"
 
         if _ha:
-            assert owner_actor_id is not None
-            global_owner_id = owner_actor_id
+            assert global_owner_id is not None
+            global_owner_id = global_owner_id
         else:
             global_owner_id = None
 
@@ -635,7 +635,7 @@ class Worker:
             serialized_value,
             object_ref=object_ref,
             owner_address=owner_address,
-            owner_actor_id=global_owner_id,
+            global_owner_id=global_owner_id,
         )
 
         return ray.ObjectRef(
@@ -2307,10 +2307,10 @@ def _get_global_owner():
 
     class GlobalOwner:
         def warmup(self):
-            return 0
+            return True
 
         def exit(self):
-            sys.exit(0)
+            sys.exit(1)
 
         def getpid(self):
             return os.getpid()
@@ -2325,17 +2325,12 @@ def _get_global_owner():
                 name=actor_name,
                 runtime_env={"env_vars": {"RAY_is_global_owner": "true"}},
                 max_restarts=-1,
+                lifetime="detached",
             )
             .remote()
         )
-        ray.get(actor.warmup.remote())
+        assert ray.get(actor.warmup.remote())
     return actor
-
-
-@PublicAPI
-@client_mode_hook(auto_init=True)
-def get_global_owner():
-    return _get_global_owner()
 
 
 @PublicAPI
@@ -2370,7 +2365,7 @@ def put(
 
     if _owner is None:
         serialize_owner_address = None
-        owner_actor_id = None
+        global_owner_id = None
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray._private.state.state.global_state_accessor` is not None
         ray._private.state.state._check_connected()
@@ -2382,7 +2377,7 @@ def put(
         if len(owner_address.worker_id) == 0:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
         serialize_owner_address = owner_address.SerializeToString()
-        owner_actor_id = _owner._actor_id.binary()
+        global_owner_id = _owner._actor_id.binary()
     else:
         raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
 
@@ -2391,7 +2386,7 @@ def put(
             object_ref = worker.put_object(
                 value,
                 owner_address=serialize_owner_address,
-                owner_actor_id=owner_actor_id,
+                global_owner_id=global_owner_id,
                 _ha=_ha,
             )
         except ObjectStoreFullError:

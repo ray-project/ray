@@ -213,7 +213,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     c_bool created_by_worker,
                     const unique_ptr[CAddress] &owner_address,
                     c_bool inline_small_object,
-                    const CActorID &owner_actor_id)
+                    const CActorID &global_owner_id)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,

@@ -156,7 +156,6 @@ from ray._private.worker import (  # noqa: E402,F401
     remote,
     shutdown,
     wait,
-    get_global_owner,
 )
 
 # We import ray.actor because some code is run in actor.py which initializes

@@ -220,7 +220,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
     RAY_CHECK(it == object_id_refs_.end())
         << "Tried to create an owned object that already exists: " << object_id;
   }
-  // // TO_BE_SOLVED(qingwu): check it
+  // // TO_BE_SOLVED(kfstorm): check it
   if (it == object_id_refs_.end()) {
     // If the entry doesn't exist, we initialize the direct reference count to zero
     // because this corresponds to a submitted task whose return ObjectID will be created
@@ -532,8 +532,6 @@ std::vector<rpc::Address> ReferenceCounter::GetOwnerAddresses(
   std::vector<rpc::Address> owner_addresses;
   for (const auto &object_id : object_ids) {
     rpc::Address owner_addr;
-    // TOBE_SOLVED: @qingwu: the pointer of spilled_node_id and spilled_node_id will be
-    // nullptr
     std::string spilled_url;
     NodeID spilled_node_id;
     bool has_owner =

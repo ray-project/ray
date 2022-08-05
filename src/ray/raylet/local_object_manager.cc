@@ -24,10 +24,10 @@ namespace raylet {
 
 void LocalObjectManager::PinObjectsAndWaitForFree(
     const std::vector<ObjectID> &object_ids,
-    const std::vector<bool> &owner_is_global_owner,
+    const std::vector<ActorID> &global_owner_ids,
     std::vector<std::unique_ptr<RayObject>> &&objects,
     const rpc::Address &owner_address) {
-  RAY_CHECK(object_ids.size() == owner_is_global_owner.size());
+  RAY_CHECK(object_ids.size() == global_owner_ids.size());
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];
@@ -38,7 +38,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     }
 
     const auto inserted =
-        local_objects_.emplace(object_id, std::make_pair<>(owner_address, false));
+        local_objects_.emplace(object_id, LocalPinObjectInfo(owner_address, false, global_owner_ids[i]));
     if (inserted.second) {
       // This is the first time we're pinning this object.
       RAY_LOG(DEBUG) << "Pinning object " << object_id;
@@ -46,7 +46,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       pinned_objects_.emplace(object_id, std::move(object));
     } else {
       auto original_worker_id =
-          WorkerID::FromBinary(inserted.first->second.first.worker_id());
+          WorkerID::FromBinary(inserted.first->second.owner_address.worker_id());
       auto new_worker_id = WorkerID::FromBinary(owner_address.worker_id());
       if (original_worker_id != new_worker_id) {
         // TODO(swang): Handle this case. We should use the new owner address
@@ -60,7 +60,7 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     }
 
     // if owner is global_owner, the current object not need to wait free.
-    if (owner_is_global_owner[i]) continue;
+    if (!global_owner_ids[i].IsNil()) continue;
 
     // Create a object eviction subscription message.
     auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
@@ -106,14 +106,14 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   // Only free the object if it is not already freed.
   auto it = local_objects_.find(object_id);
-  if (it == local_objects_.end() || it->second.second) {
+  if (it == local_objects_.end() || it->second.is_freed) {
     return;
   }
   // Mark the object as freed. NOTE(swang): We have to mark this instead of
   // deleting the entry immediately in case the object is currently being
   // spilled. In that case, we should process the free event once the object
   // spill is complete.
-  it->second.second = true;
+  it->second.is_freed = true;
 
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
   // The object should be in one of these states: pinned, spilling, or spilled.
@@ -209,13 +209,8 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   RAY_LOG(DEBUG) << "Spilling objects of total size " << bytes_to_spill << " num objects "
                  << objects_to_spill.size();
   auto start_time = absl::GetCurrentTimeNanos();
-  std::vector<ActorID> global_owner_ids;
-  for (size_t index = 0; index < objects_to_spill.size(); index++) {
-    global_owner_ids.push_back(ActorID::Nil());
-  }
   SpillObjectsInternal(
       objects_to_spill,
-      global_owner_ids,
       [this, bytes_to_spill, objects_to_spill, start_time](
           const Status &status, const std::unordered_map<ObjectID, std::string> &) {
         if (!status.ok()) {
@@ -262,24 +257,23 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
 
 void LocalObjectManager::SpillObjects(
     const std::vector<ObjectID> &object_ids,
-    const std::vector<ActorID> &global_owner_ids,
     std::function<void(const ray::Status &,
                        const std::unordered_map<ObjectID, std::string> &)> callback) {
-  SpillObjectsInternal(object_ids, global_owner_ids, callback);
+  SpillObjectsInternal(object_ids, callback);
 }
 
 void LocalObjectManager::SpillObjectsInternal(
     const std::vector<ObjectID> &object_ids,
-    const std::vector<ActorID> &global_owner_ids,
     std::function<void(const ray::Status &,
                        const std::unordered_map<ObjectID, std::string> &)> callback) {
   std::vector<ObjectID> objects_to_spill;
   std::vector<ActorID> spill_object_global_owner_ids;
   // Filter for the objects that can be spilled.
-  RAY_CHECK(object_ids.size() == global_owner_ids.size());
   for (size_t index = 0; index < object_ids.size(); index++) {
     const ObjectID &id = object_ids[index];
-    const ActorID &global_owner_id = global_owner_ids[index];
+    auto object_it = local_objects_.find(id);
+    RAY_CHECK(object_it != local_objects_.end());
+    const ActorID &global_owner_id = object_it->second.global_owner_id;
     // We should not spill an object that we are not the primary copy for, or
     // objects that are already being spilled.
     if (pinned_objects_.count(id) == 0 && objects_pending_spill_.count(id) == 0) {
@@ -332,14 +326,14 @@ void LocalObjectManager::SpillObjectsInternal(
           RAY_CHECK(it != objects_pending_spill_.end());
           auto freed_it = local_objects_.find(object_id);
           // If the object hasn't already been freed, spill it.
-          if (freed_it == local_objects_.end() || freed_it->second.second) {
+          if (freed_it == local_objects_.end() || freed_it->second.is_freed) {
             num_bytes_pending_spill_ -= it->second->GetSize();
             objects_pending_spill_.erase(it);
           } else {
             auto ref = request.add_object_refs_to_spill();
             ref->set_object_id(object_id.Binary());
             ref->set_global_owner_id(global_owner_id.Binary());
-            ref->mutable_owner_address()->CopyFrom(freed_it->second.first);
+            ref->mutable_owner_address()->CopyFrom(freed_it->second.owner_address);
             RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
             requested_objects_to_spill.push_back(object_id);
           }
@@ -351,7 +345,7 @@ void LocalObjectManager::SpillObjectsInternal(
             num_active_workers_ -= 1;
           }
           io_worker_pool_.PushSpillWorker(io_worker);
-          callback(Status::OK());
+          callback(Status::OK(), {});
           return;
         }
 
@@ -440,13 +434,13 @@ void LocalObjectManager::OnObjectSpilled(const std::vector<ObjectID> &object_ids
 
     // Asynchronously Update the spilled URL.
     auto freed_it = local_objects_.find(object_id);
-    if (freed_it == local_objects_.end() || freed_it->second.second) {
+    if (freed_it == local_objects_.end() || freed_it->second.is_freed) {
       RAY_LOG(DEBUG) << "Spilled object already freed, skipping send of spilled URL to "
                         "object directory for object "
                      << object_id;
       continue;
     }
-    const auto &worker_addr = freed_it->second.first;
+    const auto &worker_addr = freed_it->second.owner_address;
     object_directory_->ReportObjectSpilled(
         object_id, self_node_id_, worker_addr, object_url, is_external_storage_type_fs_);
   }

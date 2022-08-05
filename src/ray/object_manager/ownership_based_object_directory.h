@@ -181,7 +181,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
                                              const NodeID &node_id,
                                              const rpc::Address &owner_address);
 
-  void TryResubscribe();
+  void SchuduleResubscribe();
 
   /// Metrics
 
@@ -205,7 +205,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
 
   friend class OwnershipBasedObjectDirectoryTest;
 
-  std::vector<std::function<bool()>> resubscribe_callbacks_;
+  std::vector<std::function<bool()>> pending_resubsecibe_operations_;
 
   std::shared_ptr<boost::asio::deadline_timer> resubscribe_timer_;
 };

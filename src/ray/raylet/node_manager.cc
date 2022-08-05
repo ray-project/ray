@@ -717,11 +717,9 @@ void NodeManager::HandleRequestObjectSpillage(
     rpc::RequestObjectSpillageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const auto &object_id = ObjectID::FromBinary(request.object_id());
-  const auto &global_owner_id = ActorID::FromBinary(request.global_owner_id());
   RAY_LOG(DEBUG) << "Received RequestObjectSpillage for object " << object_id;
   local_object_manager_.SpillObjects(
       {object_id},
-      {global_owner_id},
       [object_id, reply, send_reply_callback](
           const ray::Status &status,
           const std::unordered_map<ObjectID, std::string> &object_to_spilled_url) {
@@ -2536,11 +2534,11 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   for (const auto &object_id_binary : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id_binary));
   }
-  std::vector<bool> owner_is_global_owner;
-  for (const auto &flag : request.owner_is_global_owner()) {
-    owner_is_global_owner.push_back(flag);
+  std::vector<ActorID> global_owner_ids;
+  for (const auto &global_owner_id_bytes : request.global_owner_ids()) {
+    global_owner_ids.push_back(ActorID::FromBinary(global_owner_id_bytes));
   }
-  RAY_CHECK(owner_is_global_owner.size() == object_ids.size());
+  RAY_CHECK(global_owner_ids.size() == object_ids.size());
   std::vector<std::unique_ptr<RayObject>> results;
   if (!GetObjectsFromPlasma(object_ids, &results)) {
     for (size_t i = 0; i < object_ids.size(); ++i) {
@@ -2566,7 +2564,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     }
     // Wait for the object to be freed by the owner, which keeps the ref count.
     local_object_manager_.PinObjectsAndWaitForFree(
-      object_ids, owner_is_global_owner, std::move(results), owner_address);
+      object_ids, global_owner_ids, std::move(results), owner_address);
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -2972,8 +2970,7 @@ void NodeManager::SubscribeGlobalOwnerAddress(const ActorID &actor_id,
       [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
         RAY_LOG(DEBUG) << "Actor(" << actor_id << ") state: " << actor_data.state()
                        << ", address: " << actor_data.address().ip_address() << ":"
-                       << actor_data.address().port()
-                       << ", actor_name: " << actor_data.address().actor_name();
+                       << actor_data.address().port();
         if (actor_data.state() == rpc::ActorTableData::ALIVE) {
           global_owner_address_[actor_id] =
               absl::optional<rpc::Address>(actor_data.address());

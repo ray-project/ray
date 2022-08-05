@@ -45,16 +45,12 @@ def test_owner_failed(ray_start_cluster):
             ray.get(self.refs)
             return True
 
-    owner = ray.get_global_owner()
     creator = Creator.remote()
     borrower = Borrower.remote()
 
-    # Make sure the owner actor is alive.
-    ray.get(owner.warmup.remote())
-
     refs = ray.get(creator.gen_object_refs.remote())
     ray.get(borrower.set_object_refs.remote(refs))
-
+    owner = ray.get_actor("_ray_global_owner_")
     ray.kill(owner, no_restart=True)
 
     assert ray.get(borrower.get_objects.remote(), timeout=120)
@@ -117,7 +113,6 @@ def test_object_location(ray_start_cluster, actor_resources):
         def exit(self):
             sys.exit(0)
 
-    owner = ray.get_global_owner()
     worker_1 = (
         ray.remote(Worker)
         .options(resources=actor_resources["creator"], num_cpus=0)
@@ -132,6 +127,7 @@ def test_object_location(ray_start_cluster, actor_resources):
     ray.get(worker_2.warmup.remote())
 
     refs = ray.get(worker_1.create_obj.remote())
+    owner = ray.get_actor("_ray_global_owner_")
     print(
         "test object ref: ",
         refs[0],

@@ -83,7 +83,7 @@ class LocalObjectManager {
   /// be kept in scope until the object can be released.
   /// \param owner_address The owner of the objects to be pinned.
   void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
-                                const std::vector<bool> &owner_is_global_owner,
+                                const std::vector<ActorID> &global_owner_ids,
                                 std::vector<std::unique_ptr<RayObject>> &&objects,
                                 const rpc::Address &owner_address);
 
@@ -99,7 +99,6 @@ class LocalObjectManager {
   /// there is an error.
   void SpillObjects(
       const std::vector<ObjectID> &objects_ids,
-      const std::vector<ActorID> &global_owner_ids,
       std::function<void(const ray::Status &,
                          const std::unordered_map<ObjectID, std::string> &)> callback);
 
@@ -165,6 +164,18 @@ class LocalObjectManager {
   std::string DebugString() const;
 
  private:
+
+  struct LocalPinObjectInfo {
+    rpc::Address owner_address;
+    bool is_freed;
+    ActorID global_owner_id;
+    LocalPinObjectInfo(const rpc::Address &address, bool flag, const ActorID &owner_id) {
+      owner_address.CopyFrom(address);
+      is_freed = flag;
+      global_owner_id = ActorID::FromBinary(owner_id.Binary());
+    }
+  };
+
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSizeZero);
   FRIEND_TEST(LocalObjectManagerTest, TestSpillUptoMaxFuseCount);
   FRIEND_TEST(LocalObjectManagerTest,
@@ -186,7 +197,6 @@ class LocalObjectManager {
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(
       const std::vector<ObjectID> &objects_ids,
-      const std::vector<ActorID> &global_owner_ids,
       std::function<void(const ray::Status &,
                          const std::unordered_map<ObjectID, std::string> &)> callback);
 
@@ -233,7 +243,7 @@ class LocalObjectManager {
   /// - pinned_objects_: objects pinned in shared memory
   /// - objects_pending_spill_: objects pinned and waiting for spill to complete
   /// - spilled_objects_url_: objects already spilled
-  absl::flat_hash_map<ObjectID, std::pair<rpc::Address, bool>> local_objects_;
+  absl::flat_hash_map<ObjectID, LocalPinObjectInfo> local_objects_;
 
   // Objects that are pinned on this node.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
