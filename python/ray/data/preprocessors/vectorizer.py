@@ -88,8 +88,12 @@ class HashingVectorizer(Preprocessor):
 
         :class:`CountVectorizer`
             Another method for counting token frequencies. Unlike :class:`HashingVectorizer`,
-            the number of features produced by :class:`CountVectorizer` varies based on
-            input data.
+            :class:`CountVectorizer` creates a feature for each unique token.
+
+        :class:`FeatureHasher`
+            This preprocessor is similar to :class:`HashingVectorizer`, except it expects
+            a table describing token frequencies as input. In contrast,
+            :class:`FeatureHasher` expects a column containing documents as input.
     """
 
     _is_fittable = False

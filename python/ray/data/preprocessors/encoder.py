@@ -12,7 +12,7 @@ from ray.data.preprocessor import Preprocessor
 class OrdinalEncoder(Preprocessor):
     """Encode values within columns as ordered integer values.
 
-    :py:class:`OrdinalEncoder` encodes categorical features as integers that range from
+    :class:`OrdinalEncoder` encodes categorical features as integers that range from
     :math:`0` to :math:`n - 1`, where :math:`n` is the number of categories.
 
     If you transform a value that isn't in the fitted datset, then the value is encoded
@@ -22,7 +22,7 @@ class OrdinalEncoder(Preprocessor):
     can't have both scalars and lists in the same column.
 
     Examples:
-        Use :py:class:`OrdinalEncoder` to encode categorical features as integers.
+        Use :class:`OrdinalEncoder` to encode categorical features as integers.
 
         >>> import pandas as pd
         >>> import ray
@@ -49,7 +49,7 @@ class OrdinalEncoder(Preprocessor):
            sex  level
         0    0    NaN
 
-        :py:class:`OrdinalEncoder` can also encode categories in a list.
+        :class:`OrdinalEncoder` can also encode categories in a list.
 
         >>> df = pd.DataFrame({
         ...     "name": ["Shaolin Soccer", "Moana", "The Smartest Guys in the Room"],
@@ -75,7 +75,7 @@ class OrdinalEncoder(Preprocessor):
 
     .. seealso::
 
-        :py:class:`OneHotEncoder`
+        :class:`OneHotEncoder`
             Another preprocessor that encodes categorical data.
     """
 
@@ -188,13 +188,13 @@ class OneHotEncoder(Preprocessor):
 
     .. seealso::
 
-        :py:class:`MultiHotEncoder`
+        :class:`MultiHotEncoder`
             If you want to encode individual list elements, use
             :class:`MultiHotEncoder`.
 
-        :py:class:`OrdinalEncoder`
+        :class:`OrdinalEncoder`
             If your categories are ordered, you may want to use
-            :py:class:`OrdinalEncoder`.
+            :class:`OrdinalEncoder`.
     """
 
     def __init__(
@@ -296,13 +296,13 @@ class MultiHotEncoder(Preprocessor):
 
     .. seealso::
 
-        :py:class:`OneHotEncoder`
+        :class:`OneHotEncoder`
             If you're encoding individual categories instead of lists of
             categories, use :class:`OneHotEncoder`.
 
-        :py:class:`OrdinalEncoder`
+        :class:`OrdinalEncoder`
             If your categories are ordered, you may want to use
-            :py:class:`OrdinalEncoder`.
+            :class:`OrdinalEncoder`.
     """
 
     def __init__(
@@ -343,7 +343,7 @@ class MultiHotEncoder(Preprocessor):
 class LabelEncoder(Preprocessor):
     """Encode labels as integer targets.
 
-    :py:class:`LabelEncoder` encodes labels as integer targets that range from
+    :class:`LabelEncoder` encodes labels as integer targets that range from
     :math:`0` to :math:`n - 1`, where :math:`n` is the number of unique labels.
 
     If you transform a label that isn't in the fitted datset, then the label is encoded
@@ -361,7 +361,7 @@ class LabelEncoder(Preprocessor):
         ...     "species": ["setosa", "versicolor", "setosa", "virginica"]
         ... })
         >>> ds = ray.data.from_pandas(df)
-
+        >>>
         >>> from ray.data.preprocessors import LabelEncoder
         >>> encoder = LabelEncoder(label_column="species")
         >>> encoder.fit_transform(ds)
@@ -386,9 +386,9 @@ class LabelEncoder(Preprocessor):
 
     .. seealso::
 
-        :py:class:`OrdinalEncoder`
-            If you're encoding features, use :py:class:`OrdinalEncoder` instead of
-            :py:class:`LabelEncoder`.
+        :class:`OrdinalEncoder`
+            If you're encoding features, use :class:`OrdinalEncoder` instead of
+            :class:`LabelEncoder`.
     """
 
     def __init__(self, label_column: str):
@@ -428,7 +428,7 @@ class Categorizer(Preprocessor):
         >>> import pandas as pd
         >>> import ray
         >>> from ray.data.preprocessors import Categorizer
-
+        >>>
         >>> df = pd.DataFrame(
         ... {
         ...     "sex": ["male", "female", "male", "female"],

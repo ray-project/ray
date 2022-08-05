@@ -7,12 +7,12 @@ if TYPE_CHECKING:
 
 
 class BatchMapper(Preprocessor):
-    """Apply an arbitrary operation on a dataset.
+    """Apply an arbitrary operation to a dataset.
 
     :class:`BatchMapper` applies a user-defined function to batches of a dataset. A
     batch is a Pandas ``DataFrame`` that represents a small amount of data. By modifying
-    batches instead of individual records, this class can efficiently transform the
-    dataset using vectorized operations.
+    batches instead of individual records, this class can efficiently transform a
+    dataset with vectorized operations.
 
     Use this preprocessor to apply stateless operations that aren't already built-in.
 
@@ -21,8 +21,7 @@ class BatchMapper(Preprocessor):
         ``transform`` without calling ``fit``.
 
     Examples:
-        You can use :class:`BatchMapper` to apply arbitrary operations like dropping
-        a column.
+        Use :class:`BatchMapper` to apply arbitrary operations like dropping a column.
 
         >>> import pandas as pd
         >>> import ray
