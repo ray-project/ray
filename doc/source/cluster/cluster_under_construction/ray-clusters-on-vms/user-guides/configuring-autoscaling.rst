@@ -45,3 +45,7 @@ greater than or equal to available_node_types.<node_type_name>.min_workers. It m
   If this value is modified at runtime, the autoscaler will immediately remove nodes until this constraint
   is satisfied. This may disrupt running workloads.
 
+Autoscaler SDK
+==============
+
+For more information on programmatic access to the autoscaler, see :ref:`Autoscaler SDK<ref-autoscaler-sdk-under-construction>`.
