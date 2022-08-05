@@ -2,10 +2,6 @@
 
 # Model Composition: Deployment Graphs
 
-```{note}
-Note: This feature is in Alpha, so APIs are subject to change.
-```
-
 This section helps you:
 
 * connect your Ray Serve deployments together with the **deployment graph** API
