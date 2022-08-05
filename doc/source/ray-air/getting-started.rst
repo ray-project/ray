@@ -50,6 +50,9 @@ Quick Start
 Below, we walk through how AIR's unified ML API enables scaling of end-to-end ML workflows, focusing on
 a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow). The ML workflow we're going to build is summarized by the following diagram:
 
+..
+  https://docs.google.com/drawings/d/1z0r_Yc7-0NAPVsP2jWUkLV2jHVHdcJHdt9uN1GDANSY/edit
+
 .. figure:: images/why-air.svg
 
   AIR provides a unified API for the ML ecosystem.
