@@ -1744,7 +1744,11 @@ class Dataset(Generic[T]):
         return Dataset(plan, self._epoch, self._lazy)
 
     def limit(self, limit: int) -> "Dataset[T]":
-        """Limit the dataset to the first number of records specified.
+        """Truncate the dataset to the first ``limit`` records.
+
+        Contrary to :meth`.take`, this will not move any data to the caller's
+        machine. Instead, it will return a new ``Dataset`` pointing to the truncated
+        distributed data.
 
         Examples:
             >>> import ray
@@ -1764,7 +1768,11 @@ class Dataset(Generic[T]):
         return left
 
     def take(self, limit: int = 20) -> List[T]:
-        """Take up to the given number of records from the dataset.
+        """Return up to ``limit`` records from the dataset.
+
+        This will move up to ``limit`` records to the caller's machine; if
+        ``limit`` is very large, this can result in an OutOfMemory crash on
+        the caller.
 
         Time complexity: O(limit specified)
 
@@ -1782,7 +1790,11 @@ class Dataset(Generic[T]):
         return output
 
     def take_all(self, limit: int = 100000) -> List[T]:
-        """Take all the records in the dataset.
+        """Return all of the records in the dataset.
+
+        This will move the entire dataset to the caller's machine; if the
+        dataset is very large, this can result in an OutOfMemory crash on
+        the caller.
 
         Time complexity: O(dataset size)
 
