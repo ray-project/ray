@@ -7,6 +7,7 @@ import json
 import numpy as np
 import os
 import tempfile
+from starlette.requests import Request
 
 from sklearn.datasets import load_iris
 from sklearn.ensemble import GradientBoostingClassifier
@@ -51,13 +52,13 @@ with open(LABEL_PATH, "w") as f:
 # __doc_define_servable_begin__
 @serve.deployment
 class BoostingModel:
-    def __init__(self, model_path, label_path):
+    def __init__(self, model_path: str, label_path: str):
         with open(model_path, "rb") as f:
             self.model = pickle.load(f)
         with open(label_path) as f:
             self.label_list = json.load(f)
 
-    async def __call__(self, starlette_request):
+    async def __call__(self, starlette_request: Request):
         payload = await starlette_request.json()
         print("Worker: received starlette request with data", payload)
 

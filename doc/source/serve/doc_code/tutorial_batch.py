@@ -17,7 +17,7 @@ class BatchMatrixMultiplier:
         self.matrix = matrix
 
     @serve.batch(max_batch_size=4)
-    async def handle_batch(self, arrays: List):
+    async def handle_batch(self, arrays: List[np.array]):
         input_matrix = np.column_stack(arrays)
         print("Our input array has shape:", input_matrix.shape)
 

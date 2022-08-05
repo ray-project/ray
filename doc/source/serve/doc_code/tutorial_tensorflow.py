@@ -5,6 +5,7 @@ from ray import serve
 import os
 import tempfile
 import numpy as np
+from starlette.requests import Request
 
 import tensorflow as tf
 # __doc_import_end__
@@ -48,13 +49,13 @@ if not os.path.exists(TRAINED_MODEL_PATH):
 # __doc_define_servable_begin__
 @serve.deployment
 class TFMnistModel:
-    def __init__(self, model_path):
+    def __init__(self, model_path: str):
         import tensorflow as tf
 
         self.model_path = model_path
         self.model = tf.keras.models.load_model(model_path)
 
-    async def __call__(self, starlette_request):
+    async def __call__(self, starlette_request: Request):
         # Step 1: transform HTTP request -> tensorflow input
         # Here we define the request schema to be a json array.
         input_array = np.array((await starlette_request.json())["array"])
