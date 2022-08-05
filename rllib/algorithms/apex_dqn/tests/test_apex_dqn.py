@@ -26,7 +26,7 @@ class TestApexDQN(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             .resources(num_gpus=0)
             .training(
-                num_steps_sampled_before_learning_starts=1000,
+                num_steps_sampled_before_learning_starts=0,
                 optimizer={
                     "num_replay_buffer_shards": 1,
                 },
@@ -51,7 +51,7 @@ class TestApexDQN(unittest.TestCase):
             .rollouts(num_rollout_workers=3)
             .resources(num_gpus=0)
             .training(
-                num_steps_sampled_before_learning_starts=1000,
+                num_steps_sampled_before_learning_starts=0,
                 optimizer={
                     "num_replay_buffer_shards": 1,
                 },

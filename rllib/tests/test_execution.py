@@ -240,8 +240,6 @@ class TestExecution(unittest.TestCase):
         b = a.for_each(StoreToReplayBuffer(actors=[actor]))
 
         next(b)
-        assert len(ray.get(actor.sample.remote(100))) == 0  # learning hasn't started
-        next(b)
         assert ray.get(actor.sample.remote(100)).count == 100
 
         replay_op = Replay(actors=[actor], num_items_to_replay=100)
