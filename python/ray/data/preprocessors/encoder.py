@@ -21,12 +21,6 @@ class OrdinalEncoder(Preprocessor):
     Columns must contain either hashable values or lists of hashable values. Also, you
     can't have both scalars and lists in the same column.
 
-    Args:
-        columns: The columns to separately encode.
-        encode_lists: If ``True``, encode list elements.  If ``False``, encode
-            whole lists (i.e., replace each list with an integer). ``True``
-            by default.
-
     Examples:
         Use :py:class:`OrdinalEncoder` to encode categorical features as integers.
 
@@ -72,6 +66,12 @@ class OrdinalEncoder(Preprocessor):
         0                 Shaolin Soccer  [2, 0, 4]
         1                          Moana  [1, 2, 0]
         2  The Smartest Guys in the Room        [3]
+
+    Args:
+        columns: The columns to separately encode.
+        encode_lists: If ``True``, encode list elements.  If ``False``, encode
+            whole lists (i.e., replace each list with an integer). ``True``
+            by default.
 
     .. seealso::
 
@@ -141,12 +141,6 @@ class OneHotEncoder(Preprocessor):
         Lists are treated as categories. If you want to encode individual list
         elements, use :class:`MultiHotEncoder`.
 
-    Args:
-        columns: The columns to separately encode.
-        max_categories: The maximum number of features to create for each column.
-            If a value isn't specified for a column, then a feature is created
-            for every category in that column.
-
     Example:
         >>> import pandas as pd
         >>> import ray
@@ -185,6 +179,12 @@ class OneHotEncoder(Preprocessor):
         3          1            0
         4          0            0
         5          0            1
+
+    Args:
+        columns: The columns to separately encode.
+        max_categories: The maximum number of features to create for each column.
+            If a value isn't specified for a column, then a feature is created
+            for every category in that column.
 
     .. seealso::
 

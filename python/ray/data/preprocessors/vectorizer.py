@@ -153,15 +153,6 @@ class CountVectorizer(Preprocessor):
             0         1              1               1            0
             1         1              1               0            1
 
-    Args:
-        columns: The columns to separately tokenize and count.
-        tokenization_fn: The function used to generate tokens. This function
-            should accept a string as input and return a list of tokens as
-            output. If unspecified, the tokenizer uses a function equivalent to
-            ``lambda s: s.split(" ")``.
-        max_features: The maximum number of tokens to encode in the transformed
-            dataset. If specified, only the most frequent tokens are encoded.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -191,6 +182,16 @@ class CountVectorizer(Preprocessor):
         0             1                  1           0             1
         1             1                  1           1             0
         2             1                  0           1             0
+
+    Args:
+        columns: The columns to separately tokenize and count.
+        tokenization_fn: The function used to generate tokens. This function
+            should accept a string as input and return a list of tokens as
+            output. If unspecified, the tokenizer uses a function equivalent to
+            ``lambda s: s.split(" ")``.
+        max_features: The maximum number of tokens to encode in the transformed
+            dataset. If specified, only the most frequent tokens are encoded.
+
     """
 
     def __init__(
