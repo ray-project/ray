@@ -238,6 +238,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       int64_t limit,
       const std::function<void()> &on_all_replied);
 
+  /// Try to Get the information about the agent process.
+  ///
+  /// \param[out] agent_info The information of the agent process.
+  /// \return Status, if successful will return `ray::Status::OK`,
+  /// otherwise will return `ray::Status::Invalid`.
+  const ray::Status TryToGetAgentInfo(rpc::AgentInfo *agent_info) const;
+
  private:
   /// Methods for handling nodes.
 

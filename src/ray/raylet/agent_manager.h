@@ -23,6 +23,7 @@
 #include "ray/rpc/agent_manager/agent_manager_server.h"
 #include "ray/rpc/runtime_env/runtime_env_client.h"
 #include "ray/util/process.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace raylet {
@@ -88,17 +89,28 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   virtual void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                           DeleteRuntimeEnvIfPossibleCallback callback);
 
+  /// Try to Get the information about the agent process.
+  ///
+  /// \param[out] agent_info The information of the agent process.
+  /// \return Status, if successful will return `ray::Status::OK`,
+  /// otherwise will return `ray::Status::Invalid`.
+  const ray::Status TryToGetAgentInfo(rpc::AgentInfo *agent_info) const;
+
  private:
   void StartAgent();
 
+  const bool IsAgentRegistered() const { return reported_agent_info_.id() == agent_id_; }
+
  private:
   Options options_;
-  pid_t reported_agent_id_ = 0;
-  int reported_agent_port_ = 0;
+  /// we need to make sure `agent_id_` and `reported_agent_info_.id()` are not equal
+  /// until the agent process is finished registering, the initial value of
+  /// `reported_agent_info_.id()` is 0, so I set the initial value of `agent_id_` is -1
+  int agent_id_ = -1;
+  rpc::AgentInfo reported_agent_info_;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;
-  std::string reported_agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
   std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
