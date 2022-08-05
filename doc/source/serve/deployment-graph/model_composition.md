@@ -20,7 +20,7 @@ You can connect your models together in an implicit deployment graph by calling 
 
 ### ClassNodes
 
-The basic building block for implicit graphs is the `ClassNode`. You can create `ClassNodes` by binding class deployments to their constructor's arguments. For example:
+The basic building block for all deployment graphs is the `DeploymentNode`. Implicit graphs use a specific type of `DeploymentNode` called the `ClassNode`. You can create `ClassNodes` by binding class deployments to their constructor's arguments. For example:
 
 ```{literalinclude} ../doc_code/model_composition/class_nodes.py
 :start-after: __echo_class_start__
