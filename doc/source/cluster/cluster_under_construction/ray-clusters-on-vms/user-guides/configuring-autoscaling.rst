@@ -9,11 +9,8 @@ This page provides an overview of the parameters for the Ray autoscaler. A Ray c
 the number of nodes based on the resources requested by the task, actor, or placement group. If there is insufficient resource to serve
 the request they will be put into pending and will not execute. The autoscaler runs a bin-packing algorithm to determine the list of nodes
 the cluster should use to satisfy the resource requests, and adds / removes nodes from the cluster to maximize the cluster utilization
-while providing sufficient resource to execute the requests.
-
-.. note::
-  The autoscaler currently only looks at the amount of cpu and gpu requested and adds / removes nodes accordingly. It does not take into
-  the account the memory request nor the disk usage.
+while providing sufficient resource to execute the requests. The autoscaler currently only looks at the amount of cpu and gpu requested
+and adds / removes nodes accordingly. It does not take into the account the memory request nor the disk usage.
 
 Parameters
 ==========
