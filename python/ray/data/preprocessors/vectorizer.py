@@ -49,12 +49,15 @@ class HashingVectorizer(Preprocessor):
         :class:`HashingVectorizer` circumvents this problem by computing
         indices with a hash function: :math:`\\texttt{index} = hash(\\texttt{token})`.
 
+    .. warning::
+        Sparse matrices aren't supported. If you use a large ``num_features``, this
+        preprocessor might behave poorly.
+
     Args:
         columns: The columns to separately tokenize and count.
         num_features: The number of features used to represent the vocabulary. You
             should choose a value large enough to prevent hash collisions between
-            distinct tokens. :math:`2^{18}` is typically large enough for text-classification
-            problems.
+            distinct tokens.
         tokenization_fn: The function used to generate tokens. This function
             should accept a string as input and return a list of tokens as
             output. If unspecified, the tokenizer uses a function equivalent to
