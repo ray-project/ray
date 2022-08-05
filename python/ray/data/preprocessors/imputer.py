@@ -62,7 +62,7 @@ class SimpleImputer(Preprocessor):
         3  3.0  c
 
         The `"constant"` strategy imputes missing values with the value specified by 
-        `fill_value`. 
+        `fill_value`.
 
         >>> preprocessor = SimpleImputer(
         ...     columns=["Y"],
