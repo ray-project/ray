@@ -141,21 +141,21 @@ class CountVectorizer(Preprocessor):
 
     :class:`CountVectorizer` operates on columns that contain strings. For example:
 
-        .. code-block::
+    .. code-block::
 
-                           corpus
-            0    I dislike Python
-            1       I like Python
+                        corpus
+        0    I dislike Python
+        1       I like Python
 
     This preprocessors creates a column named like ``{column}_{token}`` for each
     unique token. These columns represent the frequency of token ``{token}`` in
     column ``{column}``. For example:
 
-        .. code-block::
+    .. code-block::
 
-               corpus_I  corpus_Python  corpus_dislike  corpus_like
-            0         1              1               1            0
-            1         1              1               0            1
+            corpus_I  corpus_Python  corpus_dislike  corpus_like
+        0         1              1               1            0
+        1         1              1               0            1
 
     Examples:
         >>> import pandas as pd

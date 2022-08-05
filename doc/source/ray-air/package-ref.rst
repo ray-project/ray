@@ -21,15 +21,12 @@ Generic Preprocessors
 #####################
 
 .. autoclass:: ray.data.preprocessors.BatchMapper
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.Chain
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.SimpleImputer
-    :members:
     :show-inheritance:
 
 .. automethod:: ray.data.Dataset.train_test_split
@@ -39,73 +36,57 @@ Category Preprocessors
 ######################
 
 .. autoclass:: ray.data.preprocessors.Categorizer
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.LabelEncoder
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.MultiHotEncoder
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.OneHotEncoder
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.OrdinalEncoder
-    :members:
     :show-inheritance:
 
 Number Preprocessors
 ####################
 
 .. autoclass:: ray.data.preprocessors.MaxAbsScaler
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.MinMaxScaler
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.Normalizer
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.PowerTransformer
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.RobustScaler
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.StandardScaler
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.Concatenator
-    :members:
     :show-inheritance:
 
 Text Preprocessors
 ##################
 
 .. autoclass:: ray.data.preprocessors.CountVectorizer
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.FeatureHasher
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.HashingVectorizer
-    :members:
     :show-inheritance:
 
 .. autoclass:: ray.data.preprocessors.Tokenizer
-    :members:
     :show-inheritance:
 
 .. _air-abstract-trainer-ref:
