@@ -293,7 +293,7 @@ pip install -U pydot && sudo apt-get install -y graphviz
 Here's an example graph:
 
 ```{eval-rst}
-.. literalinclude:: ../doc_code/visualize_dag_during_deployment.py
+.. literalinclude:: ../doc_code/model_composition/deployment_graph_viz.py
    :language: python
 ```
 
