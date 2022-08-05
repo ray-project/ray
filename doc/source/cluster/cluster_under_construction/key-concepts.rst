@@ -113,21 +113,15 @@ To learn more about the autoscaler and how to configure it, refer to the followi
 
 Clients and Jobs
 ----------------
+Ray provides two methods for running workloads on a Ray Cluster: the Ray Client, and Ray Job Submission.
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras aliquet congue diam in ultricies. Duis feugiat non est sit amet tincidunt. Sed eget leo tempor, tempus mi quis, sollicitudin orci. Vivamus cursus et enim ac interdum. Ut magna ligula, suscipit id justo finibus, pharetra elementum lacus. Etiam tristique vulputate lacus, vel suscipit augue hendrerit nec. Praesent hendrerit scelerisque mi.
+* **The Ray Client** enables interactive development by connecting a local Python script or shell to the cluster.
+  Developers can scale-out their local programs on the cloud as if it were on their laptop. The Ray Client is used
+  by specifying the :ref:`head node<cluster-head-node-under-construction>` address as an argument to `ray.init`.
+* **Ray Job Submission** enables users to submit locally developed-and-tested applications to a remote Ray
+  Cluster. Ray Job Submission simplifies the experience of packaging, deploying, and managing a Ray application.
 
-Vivamus id neque risus. Curabitur sed enim fringilla, lacinia erat nec, finibus purus. In ornare diam feugiat sapien elementum porttitor. Praesent sodales tristique nibh quis efficitur. Mauris maximus porta nisi ac pretium. Donec quis nulla nibh. Maecenas ac auctor arcu. Pellentesque id nulla at massa tempus condimentum id nec ligula. Suspendisse aliquet scelerisque libero quis rhoncus. Quisque tempus aliquam tortor ac vehicula. Aliquam erat volutpat. Donec lectus est, consectetur ut dolor non, volutpat posuere nisi.
+To learn how to run workloads on a Ray Cluster, refer to the following user guides:
 
-..
-    Ray Client
-    ----------
-    The Ray Client is an API that connects a Python script to a remote Ray cluster.
-    To learn more about the Ray Client, you can refer to the :ref:`documentation<ray-client>`.
-    
-    Job submission
-    --------------
-    
-    Ray Job submission is a mechanism to submit locally developed and tested applications
-    to a remote Ray cluster. It simplifies the experience of packaging, deploying,
-    and managing a Ray application. To learn more about Ray jobs, refer to the
-    :ref:`documentation<ray-job-submission-api-ref>`.
+* :ref:`Running Ray workloads on VMs<ref-cluster-quick-start-vms-under-construction>` (TODO cade@ update this link).
+* :ref:`Running Ray workloads on Kubernetes<kuberay-index>` (TODO cade@ update this link).
