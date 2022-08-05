@@ -16,12 +16,12 @@ class FeatureHasher(Preprocessor):
     where ``index`` ranges from :math:`0` to ``num_features``:math:`- 1`. The column
     ``hash_{index}`` describes the frequency of tokens that hash to ``index``.
 
-    Distinct tokens can correspond to the same index. However, if ``num_features`` is large enough,
-    then columns probably correspond to a unique token.
+    Distinct tokens can correspond to the same index. However, if ``num_features`` is
+    large enough, then columns probably correspond to a unique token.
 
-    This preprocessor is memory efficient and quick to pickle. However, given a transformed
-    column, you can't know which tokens correspond to it. This might make it hard
-    to determine which tokens are important to your model.
+    This preprocessor is memory efficient and quick to pickle. However, given a
+    transformed column, you can't know which tokens correspond to it. This might make it
+    hard to determine which tokens are important to your model.
 
     .. warning::
         Sparse matrices aren't supported. If you use a large ``num_features``, this
@@ -40,7 +40,8 @@ class FeatureHasher(Preprocessor):
         >>> import ray
         >>> from ray.data.preprocessors import FeatureHasher
 
-        The data below describes the frequencies of tokens in ``"I like Python"`` and ``"I dislike Python"``.
+        The data below describes the frequencies of tokens in ``"I like Python"`` and
+        ``"I dislike Python"``.
 
         >>> df = pd.DataFrame({
         ...     "I": [1, 1],
@@ -58,8 +59,9 @@ class FeatureHasher(Preprocessor):
         [[0 0 0 2 0 1 0 0]
          [0 0 0 1 0 1 1 0]]
 
-        Notice the hash collision: both ``"like"`` and ``"Python"`` correspond to index :math:`3`. You can
-        avoid hash collisions like these by increasing ``num_features``.
+        Notice the hash collision: both ``"like"`` and ``"Python"`` correspond to index
+        :math:`3`. You can avoid hash collisions like these by increasing
+        ``num_features``.
 
     .. seealso::
         :class:`~ray.data.preprocessors.CountVectorizer`
@@ -68,7 +70,7 @@ class FeatureHasher(Preprocessor):
         :class:`ray.data.preprocessors.HashingVectorizer`
             If your input data describes documents rather than token frequencies,
             use :class:`~ray.data.preprocessors.HashingVectorizer`.
-    """
+    """  # noqa: E501
 
     _is_fittable = False
 
