@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import os
+import subprocess
 import shutil
 from enum import Enum
 from pathlib import Path
@@ -58,12 +59,13 @@ class Protocol(Enum):
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
     FILE = "file", "File storage path, assumes everything packed in one zip file."
+    HDFS = "hdfs", "Remote HDFS path, assumes everything packed in one zip file."
 
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
-        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
+        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE, cls.HDFS]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -197,6 +199,16 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 path='/path/to/test_module.zip'
             )
             -> ("file", "file__path_to_test_module.zip")
+    For HDFS URIs, the path will have '/' replaced with '_'. The package name
+    will be the adjusted path with 'gs_' prepended.
+        urlparse("hdfs://namenode/path/to/file/test_module.zip")
+            -> ParseResult(
+                scheme='hdfs',
+                netloc='namenode',
+                path='/path/to/file/test_module.zip'
+            )
+            -> ("hdfs",
+            "hdfs_namenode_path_to_file_test_module.zip")
     """
     uri = urlparse(pkg_uri)
     try:
@@ -206,7 +218,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             f"Invalid protocol for runtime_env URI {pkg_uri}. "
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
-    if protocol == Protocol.S3 or protocol == Protocol.GS:
+    if protocol == Protocol.S3 or protocol == Protocol.GS or protocol == Protocol.HDFS:
         return (protocol, f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
     elif protocol == Protocol.HTTPS:
         return (
@@ -217,6 +229,11 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         return (
             protocol,
             f"file_{uri.path.replace('/', '_')}",
+        )
+    elif protocol == Protocol.HDFS:
+        return (
+            protocol,
+            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}",
         )
     else:
         return (protocol, uri.netloc)
@@ -637,6 +654,13 @@ async def download_and_unpack_package(
                     def open_file(uri, mode, *, transport_params=None):
                         return open(uri, mode)
 
+                elif protocol == Protocol.HDFS:
+                    try:
+                        subprocess.check_call(["which", "hdfs"])
+                    except ImportError:
+                        raise ImportError(
+                            "You must have HDFS command to fetch files from HDFS."
+                        )
                 else:
                     try:
                         from smart_open import open as open_file
@@ -645,10 +669,12 @@ async def download_and_unpack_package(
                             "You must `pip install smart_open` "
                             f"to fetch {protocol.value.upper()} URIs."
                         )
-
-                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open_file(pkg_file, "wb") as fin:
-                        fin.write(package_zip.read())
+                if protocol == Protocol.HDFS:
+                    subprocess.check_call(["hdfs", "dfs", "-get", pkg_uri, pkg_file])
+                else:
+                    with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
+                        with open_file(pkg_file, "wb") as fin:
+                            fin.write(package_zip.read())
 
                 unzip_package(
                     package_path=pkg_file,

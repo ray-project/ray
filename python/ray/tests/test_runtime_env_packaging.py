@@ -440,6 +440,7 @@ def test_travel(tmp_path):
         ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
         ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
         ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip"),
+        ("hdfs://namenode/file.zip", Protocol.HDFS, "hdfs_namenode_file.zip"),
     ],
 )
 def test_parsing(parsing_tuple):
