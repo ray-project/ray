@@ -65,11 +65,11 @@ class HashingVectorizer(Preprocessor):
         ...         "Bob also likes fruit jerky"
         ...     ]
         ... })
-        >>> ds = ray.data.from_pandas()
+        >>> ds = ray.data.from_pandas(df)
         >>>
         >>> vectorizer = HashingVectorizer(["corpus"], num_features=8)
         >>> vectorizer.fit_transform(ds).to_pandas()
-                hash_corpus_0  hash_corpus_1  hash_corpus_2  hash_corpus_3  hash_corpus_4  hash_corpus_5  hash_corpus_6  hash_corpus_7
+           hash_corpus_0  hash_corpus_1  hash_corpus_2  hash_corpus_3  hash_corpus_4  hash_corpus_5  hash_corpus_6  hash_corpus_7
         0              1              0              1              0              0              0              0              1
         1              1              0              1              0              0              0              1              1
         2              0              0              1              1              0              2              1              0
@@ -169,23 +169,23 @@ class CountVectorizer(Preprocessor):
         ...         "Bob also likes fruit jerky"
         ...     ]
         ... })
-        >>> ds = ray.data.from_pandas()
+        >>> ds = ray.data.from_pandas(df)
         >>>
         >>> vectorizer = CountVectorizer(["corpus"])
         >>> vectorizer.fit_transform(ds).to_pandas()
-            corpus_likes  corpus_volleyball  corpus_Bob  corpus_Jimmy  corpus_too  corpus_also  corpus_fruit  corpus_jerky
+           corpus_likes  corpus_volleyball  corpus_Bob  corpus_Jimmy  corpus_too  corpus_also  corpus_fruit  corpus_jerky
         0             1                  1           0             1           0            0             0             0
         1             1                  1           1             0           1            0             0             0
         2             1                  0           1             0           0            1             1             1
 
         You can limit the number of tokens in the vocabulary with ``max_features``.
 
-        >>> vectorizer = CountVectorizer(["count"], max_features={"count": 3})
+        >>> vectorizer = CountVectorizer(["corpus"], max_features=3)
         >>> vectorizer.fit_transform(ds).to_pandas()
-                corpus_likes  corpus_volleyball  corpus_Bob  corpus_Jimmy
-        0             1                  1           0             1
-        1             1                  1           1             0
-        2             1                  0           1             0
+           corpus_likes  corpus_volleyball  corpus_Bob
+        0             1                  1           0
+        1             1                  1           1
+        2             1                  0           1
 
     Args:
         columns: The columns to separately tokenize and count.

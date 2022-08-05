@@ -362,7 +362,7 @@ class LabelEncoder(Preprocessor):
         >>>
         >>> from ray.data.preprocessors import LabelEncoder
         >>> encoder = LabelEncoder(label_column="species")
-        >>> encoder.fit_transform(ds)
+        >>> encoder.fit_transform(ds).to_pandas()
            sepal_width  sepal_height  species
         0          5.1           3.5        0
         1          7.0           3.2        1
@@ -373,10 +373,10 @@ class LabelEncoder(Preprocessor):
         label is encoded as ``float("nan")``.
 
         >>> df = pd.DataFrame({
-            "sepal_width": [4.2],
-            "sepal_height": [2.7],
-            "species": ["bracteata"]
-        })
+        ...     "sepal_width": [4.2],
+        ...     "sepal_height": [2.7],
+        ...     "species": ["bracteata"]
+        ... })
         >>> ds = ray.data.from_pandas(df)
         >>> encoder.transform(ds).to_pandas()
            sepal_width  sepal_height  species

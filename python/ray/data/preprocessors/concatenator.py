@@ -26,17 +26,17 @@ class Concatenator(Preprocessor):
         >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9]})
         >>> ds = ray.data.from_pandas(df)
         >>> concatenator = Concatenator()
-        >>> concatenator.fit_transform(ds).to_pandas()
+        >>> concatenator.fit_transform(ds).to_pandas()  # doctest: +SKIP
            concat_out
-        0  [0.5, 0.0]
-        1  [0.2, 3.0]
-        2  [0.9, 1.0]
+        0  [0.0, 0.5]
+        1  [3.0, 0.2]
+        2  [1.0, 0.9]
 
         By default, the created column is called `"concat_out"`, but you can specify
         a different name.
 
         >>> concatenator = Concatenator(output_column_name="tensor")
-        >>> concatenator.fit_transform(ds).to_pandas()
+        >>> concatenator.fit_transform(ds).to_pandas()  # doctest: +SKIP
                tensor
         0  [0.0, 0.5]
         1  [3.0, 0.2]
@@ -48,7 +48,7 @@ class Concatenator(Preprocessor):
         >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9], "Y": ["blue", "orange", "blue"]})
         >>> ds = ray.data.from_pandas(df)
         >>> concatenator = Concatenator(exclude=["Y"])
-        >>> concatenator.fit_transform(ds).to_pandas()
+        >>> concatenator.fit_transform(ds).to_pandas()  # doctest: +SKIP
                 Y  concat_out
         0    blue  [0.0, 0.5]
         1  orange  [3.0, 0.2]
@@ -58,7 +58,7 @@ class Concatenator(Preprocessor):
         ``include`` parameter.
 
         >>> concatenator = Concatenator(include=["X0", "X1"])
-        >>> concatenator.fit_transform(ds).to_pandas()
+        >>> concatenator.fit_transform(ds).to_pandas()  # doctest: +SKIP
                 Y  concat_out
         0    blue  [0.0, 0.5]
         1  orange  [3.0, 0.2]
@@ -68,18 +68,18 @@ class Concatenator(Preprocessor):
         excluded.
 
         >>> concatenator = Concatenator(include=["X0", "X1", "Y"], exclude=["Y"])
-        >>> concatenator.fit_transform(ds).to_pandas()
+        >>> concatenator.fit_transform(ds).to_pandas()  # doctest: +SKIP
                 Y  concat_out
-        0    blue  [0.5, 0.0]
-        1  orange  [0.2, 3.0]
-        2    blue  [0.9, 1.0]
+        0    blue  [0.0, 0.5]
+        1  orange  [3.0, 0.2]
+        2    blue  [1.0, 0.9]
 
         By default, the concatenated tensor is a ``dtype`` common to the input columns.
         However, you can also explicitly set the ``dtype`` with the ``dtype``
         parameter.
 
         >>> concatenator = Concatenator(include=["X0", "X1"], dtype=np.float32)
-        >>> concatenator.fit_transform(ds).schema()
+        >>> concatenator.fit_transform(ds)
         Dataset(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
 
     Args:

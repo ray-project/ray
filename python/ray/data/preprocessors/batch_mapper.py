@@ -31,7 +31,7 @@ class BatchMapper(Preprocessor):
         >>> ds = ray.data.from_pandas(df)
         >>>
         >>> def fn(batch: pd.DataFrame) -> pd.DataFrame:
-        >>>     return batch.drop("Y", axis="columns")
+        ...     return batch.drop("Y", axis="columns")
         >>>
         >>> preprocessor = BatchMapper(fn)
         >>> preprocessor.transform(ds)
