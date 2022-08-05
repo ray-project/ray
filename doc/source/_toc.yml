@@ -187,6 +187,7 @@ parts:
                   - file: serve/deployment-graph/visualize_dag_during_development
                   - file: serve/deployment-graph/http_endpoint_for_dag_graph
               - file: serve/production
+              - file: serve/migration
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq
