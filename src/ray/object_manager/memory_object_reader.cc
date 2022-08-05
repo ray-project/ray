@@ -33,7 +33,9 @@ uint64_t MemoryObjectReader::GetMetadataSize() const {
 
 const rpc::Address &MemoryObjectReader::GetOwnerAddress() const { return owner_address_; }
 
-const ray::ActorID &MemoryObjectReader::GetGlobalOwnerID() const { return global_owner_id_; };
+const ray::ActorID &MemoryObjectReader::GetGlobalOwnerID() const {
+  return global_owner_id_;
+};
 
 bool MemoryObjectReader::ReadFromDataSection(uint64_t offset,
                                              uint64_t size,

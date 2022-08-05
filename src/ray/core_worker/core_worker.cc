@@ -1121,28 +1121,30 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
 
-    auto dump_object_callabeck = [this, spilled_url, global_owner_id, object_id, &sync_promise](){
-      if (spilled_url == nullptr) return;
-      RAY_CHECK(!global_owner_id.IsNil());
-      local_raylet_client_->RequestObjectSpillage(
-          object_id,
-          [object_id, &sync_promise](const Status &status,
-                                    const rpc::RequestObjectSpillageReply &reply) {
-            if (!status.ok() || !reply.success()) {
-              RAY_LOG(FATAL)
-                  << "Failed to spill object " << object_id
-                  << ", raylet unreachable or object could not be spilled. Status: "
-                  << status;
-            }
-            sync_promise.set_value(reply.object_url());
-          });
-    };
+    auto dump_object_callabeck =
+        [this, spilled_url, global_owner_id, object_id, &sync_promise]() {
+          if (spilled_url == nullptr) return;
+          RAY_CHECK(!global_owner_id.IsNil());
+          local_raylet_client_->RequestObjectSpillage(
+              object_id,
+              [object_id, &sync_promise](const Status &status,
+                                         const rpc::RequestObjectSpillageReply &reply) {
+                if (!status.ok() || !reply.success()) {
+                  RAY_LOG(FATAL)
+                      << "Failed to spill object " << object_id
+                      << ", raylet unreachable or object could not be spilled. Status: "
+                      << status;
+                }
+                sync_promise.set_value(reply.object_url());
+              });
+        };
 
     local_raylet_client_->PinObjectIDs(
         real_owner_address,
         {object_id},
         {global_owner_id},
-        [this, object_id, dump_object_callabeck=std::move(dump_object_callabeck)](const Status &status, const rpc::PinObjectIDsReply &reply) {
+        [this, object_id, dump_object_callabeck = std::move(dump_object_callabeck)](
+            const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
           if (!plasma_store_provider_->Release(object_id).ok()) {
@@ -1157,12 +1159,11 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
   }
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
 
-  // TODO:
   if (spilled_url) {
     *spilled_url = future.get();
-      RAY_CHECK(
-          reference_counter_->HandleObjectSpilled(object_id, *spilled_url, NodeID::Nil()));
-      RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
+    RAY_CHECK(
+        reference_counter_->HandleObjectSpilled(object_id, *spilled_url, NodeID::Nil()));
+    RAY_LOG(DEBUG) << "Finished to dump checkpoint, object id: " << object_id;
   }
 
   return Status::OK();

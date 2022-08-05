@@ -89,7 +89,8 @@ class ObjectBufferPool {
   /// this method. An IOError status is returned if the Get call on the plasma store
   /// fails, and the MemoryObjectReader will be empty.
   std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> CreateObjectReader(
-      const ObjectID &object_id, rpc::Address owner_address, ActorID global_owner_id) LOCKS_EXCLUDED(pool_mutex_);
+      const ObjectID &object_id, rpc::Address owner_address, ActorID global_owner_id)
+      LOCKS_EXCLUDED(pool_mutex_);
 
   /// Returns a chunk of an empty object at the given chunk_index. The object chunk
   /// serves as the buffer that is to be written to by a connection receiving an

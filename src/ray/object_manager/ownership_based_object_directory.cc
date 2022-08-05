@@ -369,21 +369,21 @@ bool OwnershipBasedObjectDirectory::ReSubscribeObjectLocations(
     return true;
   } else {
     auto resubscribe_callback = [this,
-         callback_id,
-         object_id,
-         owner_address,
-         spilled_url,
-         spilled_node_id,
-         global_owner_id,
-         callback]() -> bool {
-          return ReSubscribeObjectLocations(callback_id,
-                                     object_id,
-                                     owner_address,
-                                     spilled_url,
-                                     spilled_node_id,
-                                     global_owner_id,
-                                     callback);
-        };
+                                 callback_id,
+                                 object_id,
+                                 owner_address,
+                                 spilled_url,
+                                 spilled_node_id,
+                                 global_owner_id,
+                                 callback]() -> bool {
+      return ReSubscribeObjectLocations(callback_id,
+                                        object_id,
+                                        owner_address,
+                                        spilled_url,
+                                        spilled_node_id,
+                                        global_owner_id,
+                                        callback);
+    };
     pending_resubsecibe_operations_.push_back(resubscribe_callback);
     SchuduleResubscribe();
     return false;
@@ -391,19 +391,20 @@ bool OwnershipBasedObjectDirectory::ReSubscribeObjectLocations(
 }
 
 void OwnershipBasedObjectDirectory::SchuduleResubscribe() {
-  if(resubscribe_timer_) return;
+  if (resubscribe_timer_) return;
   resubscribe_timer_ = execute_after(
-    io_service_,
-    [this]() {
-      resubscribe_timer_ = nullptr;
-      std::vector<std::function<bool()> > failed_subscribe_callback;
-      for (auto const &func : pending_resubsecibe_operations_) {
-        if(!func()) failed_subscribe_callback.push_back(func);
-      }
-      pending_resubsecibe_operations_.assign(failed_subscribe_callback.begin(), failed_subscribe_callback.end());
-      SchuduleResubscribe();
-    },
-    1000 /*1 second*/
+      io_service_,
+      [this]() {
+        resubscribe_timer_ = nullptr;
+        std::vector<std::function<bool()> > failed_subscribe_callback;
+        for (auto const &func : pending_resubsecibe_operations_) {
+          if (!func()) failed_subscribe_callback.push_back(func);
+        }
+        pending_resubsecibe_operations_.assign(failed_subscribe_callback.begin(),
+                                               failed_subscribe_callback.end());
+        SchuduleResubscribe();
+      },
+      1000 /*1 second*/
   );
 }
 
@@ -456,20 +457,20 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
 
       if (!global_owner_id.IsNil()) {
         auto resubscribe_callback = [this,
-          callback_id,
-          object_id,
-          owner_address,
-          spilled_url,
-          spilled_node_id,
-          global_owner_id,
-          callback]() -> bool {
+                                     callback_id,
+                                     object_id,
+                                     owner_address,
+                                     spilled_url,
+                                     spilled_node_id,
+                                     global_owner_id,
+                                     callback]() -> bool {
           return ReSubscribeObjectLocations(callback_id,
-                                      object_id,
-                                      owner_address,
-                                      spilled_url,
-                                      spilled_node_id,
-                                      global_owner_id,
-                                      callback);
+                                            object_id,
+                                            owner_address,
+                                            spilled_url,
+                                            spilled_node_id,
+                                            global_owner_id,
+                                            callback);
         };
         pending_resubsecibe_operations_.push_back(resubscribe_callback);
         SchuduleResubscribe();

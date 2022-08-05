@@ -37,8 +37,8 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
       continue;
     }
 
-    const auto inserted =
-        local_objects_.emplace(object_id, LocalPinObjectInfo(owner_address, false, global_owner_ids[i]));
+    const auto inserted = local_objects_.emplace(
+        object_id, LocalPinObjectInfo(owner_address, false, global_owner_ids[i]));
     if (inserted.second) {
       // This is the first time we're pinning this object.
       RAY_LOG(DEBUG) << "Pinning object " << object_id;

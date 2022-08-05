@@ -252,7 +252,7 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
       plasma::flatbuf::ObjectSource::ReceivedFromRemoteRaylet,
       0,
       global_owner_id);
-	  
+
   pool_mutex_.Lock();
 
   // No other thread could have created the buffer.

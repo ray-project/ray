@@ -164,7 +164,6 @@ class LocalObjectManager {
   std::string DebugString() const;
 
  private:
-
   struct LocalPinObjectInfo {
     rpc::Address owner_address;
     bool is_freed;

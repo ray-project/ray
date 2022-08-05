@@ -396,7 +396,8 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
 
   std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> reader_status =
-      buffer_pool_.CreateObjectReader(object_id, owner_address, object_info.global_owner_id);
+      buffer_pool_.CreateObjectReader(
+          object_id, owner_address, object_info.global_owner_id);
   Status status = reader_status.second;
   if (!status.ok()) {
     RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)

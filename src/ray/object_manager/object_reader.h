@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "src/ray/protobuf/common.pb.h"
 #include "ray/common/id.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 

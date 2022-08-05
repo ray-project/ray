@@ -14,9 +14,9 @@
 
 #pragma once
 
+#include "ray/common/id.h"
 #include "ray/object_manager/object_reader.h"
 #include "ray/object_manager/plasma/client.h"
-#include "ray/common/id.h"
 
 namespace ray {
 
@@ -24,7 +24,9 @@ namespace ray {
 /// for interface guanrantees. This class is thread safe.
 class MemoryObjectReader : public IObjectReader {
  public:
-  MemoryObjectReader(plasma::ObjectBuffer object_buffer, rpc::Address owner_address, ray::ActorID global_owner_id);
+  MemoryObjectReader(plasma::ObjectBuffer object_buffer,
+                     rpc::Address owner_address,
+                     ray::ActorID global_owner_id);
 
   uint64_t GetDataSize() const override;
 
