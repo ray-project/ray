@@ -8,7 +8,7 @@ you will learn
 - [Create/Update/Delete Serve Deployments](managing-deployments)
 - [Handling Dependencies](handling-dependencies)
 - [Configuring HTTP and Bring Your own FastAPI app](http-guide)
-- [Using HTTP Adapters](http-adapters)
+- [Using HTTP Adapters](http-guide)
 - [Composing Deployments](handle-guide)
 - [Serving ML Models](ml-models)
 - [Using Deployment Graph](deployment-graph)
