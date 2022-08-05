@@ -3,7 +3,6 @@
 
 # __air_generic_preprocess_start__
 import ray
-from ray.data.preprocessors import StandardScaler
 from ray.air.config import ScalingConfig
 
 
@@ -21,7 +20,7 @@ test_dataset = valid_dataset.map_batches(
 # __air_tf_preprocess_start__
 import numpy as np
 
-from ray.data.preprocessors import Concatenator, Chain
+from ray.data.preprocessors import Concatenator, Chain, StandardScaler
 
 # Create a preprocessor to scale some columns and concatenate the result.
 preprocessor = Chain(

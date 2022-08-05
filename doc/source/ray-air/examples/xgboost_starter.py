@@ -3,7 +3,6 @@
 
 # __air_generic_preprocess_start__
 import ray
-from ray.data.preprocessors import StandardScaler
 from ray.air.config import ScalingConfig
 
 # Load data.
@@ -20,8 +19,9 @@ test_dataset = valid_dataset.map_batches(
 
 # __air_xgb_preprocess_start__
 # Create a preprocessor to scale some columns.
-columns_to_scale = ["mean radius", "mean texture"]
-preprocessor = StandardScaler(columns=columns_to_scale)
+from ray.data.preprocessors import StandardScaler
+
+preprocessor = StandardScaler(columns=["mean radius", "mean texture"])
 # __air_xgb_preprocess_end__
 
 # __air_xgb_train_start__
