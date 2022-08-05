@@ -1,59 +1,10 @@
+.. include:: /_includes/clusters/we_are_hiring.rst
+
 Key Concepts
 ============
-..
-    TODO(cade) Can we simplify this? From https://github.com/ray-project/ray/pull/26754#issuecomment-1192927645:
-    * Worker Nodes
-    * Head Node
-    * Autoscaler
-    * Clients and Jobs
-    
-    Need to add the following sections + break out existing content into them.
-    See ray-core/user-guide.rst for a TOC example
-    
-    overview
-    high-level-architecture
-    jobs
-    nodes-vs-workers
-    scheduling-and-autoscaling
-    configuration
-    Things-to-know
-    .
-    Yeah I think this is implementation detail (making key-concepts work for both). The few places I can think of:
-    .
-    nodes vs pods. Can tackle this in bullet points under node concept.
-    autoscaler location: head node vs kuberay pod. Can have a couple bullet points here too.
-    Btw, the key concepts section needs to be trimmed way down. It's supposed to be a single, concise page of key concepts. Right now, it's introducing a lot of other stuff that isn't really key (there's like 10 things). I think you can keep it to:
-    .
-    Worker Nodes
-    Head Node
-    Autoscaler
-    Clients and Jobs
-    The other sub-sections can be moved under user guides in the K8s/VM specific sections.
-
-.. include:: /_includes/clusters/we_are_hiring.rst
 
 .. _cluster-key-concepts-under-construction:
 
-..
-  .. _cluster-key-concepts-under-construction:
-  
-  Cluster
-  -------
-  
-  A Ray cluster is a set of one or more nodes that are running Ray and share the
-  same :ref:`head node<cluster-node-types>`.
-  
-  .. _cluster-node-types-under-construction:
-  
-  Node types
-  ----------
-  
-  A Ray cluster consists of a :ref:`head node<cluster-head-node>` and a set of
-  :ref:`worker nodes<cluster-worker-node>`.
-  
-  .. image:: ray-cluster.jpg
-      :align: center
-      :width: 600px
 
 This page introduces the following key concepts, an understanding of which is helpful when creating and managing Ray clusters:
 
