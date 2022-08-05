@@ -1,13 +1,15 @@
 import numpy as np
 import os
 import unittest
+import tree
+
 
 import ray
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.compression import is_compressed
 from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.framework import try_import_torch
-import tree
 
 
 class TestSampleBatch(unittest.TestCase):
@@ -355,6 +357,7 @@ class TestSampleBatch(unittest.TestCase):
         #   a nested structure that ends up with tensors and ints(c)
         #   a tensor with float64 values (d)
         #   a float64 tensor with possibly wrong device (depends on if cuda available)
+        #   repeated value object with np.array leaves (f)
 
         cuda_available = int(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
         cuda_if_possible = torch.device("cuda" if cuda_available else "cpu")
@@ -365,6 +368,7 @@ class TestSampleBatch(unittest.TestCase):
                 "c": {"d": torch.Tensor([1, 2]), "g": (torch.Tensor([3, 4]), 1)},
                 "d": torch.Tensor([1.0, 2.0]).double(),
                 "e": torch.Tensor([1.0, 2.0]).double().to(cuda_if_possible),
+                "f": RepeatedValues(np.array([[1, 2, 0, 0]]), lengths=[2], max_len=4),
                 SampleBatch.SEQ_LENS: np.array([2, 3, 1]),
                 "state_in_0": np.array([1.0, 3.0, 4.0]),
                 SampleBatch.INFOS: np.array([{"a": 1}, {"b": 2}, {"c": 3}]),
@@ -393,6 +397,11 @@ class TestSampleBatch(unittest.TestCase):
 
         # check if all tensors have the correct device and dtype
         _check_recursive_device_and_type(s, cuda_if_possible)
+
+        # check repeated value
+        check(s["f"].lengths, [2])
+        check(s["f"].max_len, 4)
+        check(s["f"].values, torch.from_numpy(np.asarray([[1, 2, 0, 0]])))
 
         # check infos
         check(s[SampleBatch.INFOS], np.array([{"a": 1}, {"b": 2}, {"c": 3}]))
