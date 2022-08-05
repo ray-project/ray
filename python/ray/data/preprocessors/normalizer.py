@@ -63,7 +63,7 @@ class Normalizer(Preprocessor):
         0  0.5  0.5   0
         1  1.0  0.0   1
 
-        The :math:`L^\infty`-norm of the both samples is :math:`1`,
+        The :math:`L^\infty`-norm of the both samples is :math:`1`.
 
         >>> preprocessor = Normalizer(columns=["X1", "X2"], norm="max")  # doctest: +SKIP # noqa: E501
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
