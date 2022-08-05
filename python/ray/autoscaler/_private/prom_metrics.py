@@ -4,13 +4,13 @@ from typing import Optional
 class NullMetric:
     """Mock metric class to be used in case of prometheus_client import error."""
 
-    def set(self, value):
+    def set(self, *args, **kwargs):
         pass
 
-    def observe(self, value):
+    def observe(self, *args, **kwargs):
         pass
 
-    def inc(self, amount=1):
+    def inc(self, *args, **kwargs):
         pass
 
 
