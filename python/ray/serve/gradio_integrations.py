@@ -2,9 +2,17 @@ from ray import serve
 from ray.serve._private.http_util import ASGIHTTPSender
 from ray.util.annotations import PublicAPI
 
-import gradio as gr
-
 import starlette
+
+errored = False
+try:
+    import gradio as gr
+except ModuleNotFoundError:
+    errored = True
+if errored:
+    raise ModuleNotFoundError(
+        "Gradio isn't installed. Run `pip install gradio` to install Gradio."
+    )
 
 
 @PublicAPI(stability="alpha")

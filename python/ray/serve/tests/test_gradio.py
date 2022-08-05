@@ -1,6 +1,6 @@
 import ray
 from ray import serve
-from ray.serve.gradio import GradioServer
+from ray.serve.gradio_integrations import GradioServer
 
 import gradio as gr
 

@@ -1,5 +1,5 @@
 # __doc_import_begin__
-from ray.serve.gradio import GradioServer
+from ray.serve.gradio_integrations import GradioServer
 
 import gradio as gr
 

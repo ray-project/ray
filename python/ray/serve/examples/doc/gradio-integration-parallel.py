@@ -1,7 +1,7 @@
 # __doc_import_begin__
 import ray
 from ray import serve
-from ray.serve.gradio import GradioIngress
+from ray.serve.gradio_integrations import GradioIngress
 
 import gradio as gr
 
