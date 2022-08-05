@@ -81,8 +81,7 @@ class DataParallelTrainer(BaseTrainer):
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>` and
-    :ref:`Ray Train function utils <train-api-func-utils>`.
+    :ref:`Ray AIR session methods <air-session-ref>`.
 
     .. code-block:: python
 
