@@ -94,7 +94,7 @@ class HashingVectorizer(Preprocessor):
             This preprocessor is similar to :class:`HashingVectorizer`, except it expects
             a table describing token frequencies. In contrast,
             :class:`FeatureHasher` expects a column containing documents.
-    """
+    """  # noqa: E501
 
     _is_fittable = False
 
@@ -196,7 +196,7 @@ class CountVectorizer(Preprocessor):
         max_features: The maximum number of tokens to encode in the transformed
             dataset. If specified, only the most frequent tokens are encoded.
 
-    """
+    """  # noqa: E501
 
     def __init__(
         self,

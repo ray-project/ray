@@ -193,7 +193,7 @@ class OneHotEncoder(Preprocessor):
         :class:`OrdinalEncoder`
             If your categories are ordered, you may want to use
             :class:`OrdinalEncoder`.
-    """
+    """  # noqa: E501
 
     def __init__(
         self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
@@ -241,8 +241,8 @@ class MultiHotEncoder(Preprocessor):
 
     This preprocessor replaces each list of categories with an :math:`m`-length binary
     list, where :math:`m` is the number of unique categories in the column or the value
-    specified in ``max_categories``. The :math:`i\\text{-th}` element of the binary list is
-    :math:`1` if category :math:`i` is in the input list and :math:`0` otherwise.
+    specified in ``max_categories``. The :math:`i\\text{-th}` element of the binary list
+    is :math:`1` if category :math:`i` is in the input list and :math:`0` otherwise.
 
     Columns must contain hashable objects or lists of hashable objects.
     Also, you can't have both types in the same column.
@@ -452,7 +452,7 @@ class Categorizer(Preprocessor):
         dtypes: An optional dictionary that maps columns to ``pd.CategoricalDtype``
             objects. If you don't include a column in ``dtypes``, the categories
             are inferred.
-    """
+    """  # noqa: E501
 
     def __init__(
         self,

@@ -32,7 +32,7 @@ class PowerTransformer(Preprocessor):
         method: A string representing which transformation to apply. Supports
             ``"yeo-johnson"`` and ``"box-cox"``. If you choose ``"box-cox"``, your data
             needs to be positive. Defaults to ``"yeo-johnson"``.
-    """
+    """  # noqa: E501
 
     _valid_methods = ["yeo-johnson", "box-cox"]
     _is_fittable = False

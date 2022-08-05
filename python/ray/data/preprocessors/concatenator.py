@@ -99,7 +99,7 @@ class Concatenator(Preprocessor):
     Raises:
         ValueError: if `raise_if_missing` is `True` and a column in `include` or
             `exclude` doesn't exist in the dataset.
-    """
+    """  # noqa: E501
 
     _is_fittable = False
 
