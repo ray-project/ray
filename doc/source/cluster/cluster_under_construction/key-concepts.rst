@@ -91,5 +91,5 @@ Ray provides two methods for running workloads on a Ray Cluster: the Ray Client,
 
 To learn how to run workloads on a Ray Cluster, refer to the following user guides:
 
-* :ref:`Running Ray workloads on VMs<ref-cluster-quick-start-vms-under-construction>` (TODO cade@ update this link).
+* :ref:`Running Ray workloads on VMs<ref-deployment-guide-under-construction>`.
 * The :ref:`Ray Job Submission<kuberay-job>` and :ref:`Ray Client<kuberay-client>` sections in :ref:`Getting Started with Ray on Kubernetes<kuberay-quickstart>`.
