@@ -55,7 +55,7 @@ class Normalizer(Preprocessor):
         1  1.000000  0.000000   0
 
         The :math:`L^1`-norm of the first sample is :math:`2`, and the
-        :math:`L^2`-norm of the second sample is :math:`1`.
+        :math:`L^1`-norm of the second sample is :math:`1`.
 
         >>> preprocessor = Normalizer(columns=["X1", "X2"], norm="l1")  # doctest: +SKIP
         >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
