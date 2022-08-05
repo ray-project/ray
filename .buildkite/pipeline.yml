@@ -332,7 +332,7 @@
     - ./ci/env/install-serve.sh
     - ./ci/env/env_info.sh
     - bazel test --test_output=streamed --config=ci --test_env=RAY_DEFAULT=1 $(./ci/run/bazel_export_options)
-      python/ray/dashboard/test_dashboard
+      python/ray/serve/test_deployment_graph
     - bazel test --test_output=streamed --config=ci --test_env=RAY_DEFAULT=1 $(./ci/run/bazel_export_options)
       python/ray/serve/test_api
 
