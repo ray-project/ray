@@ -45,6 +45,7 @@ from pandas.core.indexers import check_array_indexer, validate_indices
 from pandas.io.formats.format import ExtensionArrayFormatter
 
 from ray.util.annotations import PublicAPI
+from ray.air.util.tensor_extensions.exception import RaggedTensorNotSupportedError
 
 try:
     from pandas.core.dtypes.generic import ABCIndex
@@ -717,7 +718,7 @@ class TensorArray(
                         subndarray_types = [
                             v.dtype for v in itertools.islice(self._tensor, 5)
                         ]
-                        raise TypeError(
+                        raise RaggedTensorNotSupportedError(
                             "Tried to convert an ndarray of ndarray pointers (object "
                             "dtype) to a well-typed ndarray but this failed; convert "
                             "the ndarray to a well-typed ndarray before casting it as "
@@ -726,7 +727,7 @@ class TensorArray(
                             f"{subndarray_types}"
                         )
                 else:
-                    raise TypeError(
+                    raise RaggedTensorNotSupportedError(
                         "Expected a well-typed ndarray or an object-typed ndarray of "
                         "ndarray pointers, but got an object-typed ndarray whose "
                         f"subndarrays are of type {type(values[0])}."

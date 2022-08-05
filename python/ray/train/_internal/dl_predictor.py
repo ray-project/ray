@@ -73,29 +73,20 @@ class DLPredictor(Predictor):
         model_input = self._arrays_to_tensors(tensors, dtype)
 
         output = self.call_model(model_input)
-        try:
-            # For predictor outputs we provide a default fall through behavior if
-            # user provides a pd.DataFrame as return type.
-            if isinstance(output, pd.DataFrame):
-                return output
-            # Handle model multi-output. For example if model outputs 2 images.
-            elif isinstance(output, dict):
-                return pd.DataFrame(
-                    {
-                        k: TensorArray(self._tensor_to_array(v))
-                        for k, v in output.items()
-                    }
-                )
-            else:
-                return pd.DataFrame(
-                    {"predictions": TensorArray(self._tensor_to_array(output))},
-                    columns=["predictions"],
-                )
-        except ValueError as e:
-            raise ValueError(
-                "Tried to cast output columns to the TensorArray tensor "
-                "extension type but the conversion failed. For your custom "
-                "Pytorch or TensorFlow predictor, consider structuring the output "
-                "of your call_model() to be Tensor, Dict[str, Tensor] or plain "
-                "pandas.DataFrame as fall through."
-            ) from e
+        # For predictor outputs we provide a default fall through behavior if
+        # user provides a pd.DataFrame as return type.
+        if isinstance(output, pd.DataFrame):
+            return output
+        # Handle model multi-output. For example if model outputs 2 images.
+        elif isinstance(output, dict):
+            return pd.DataFrame(
+                {
+                    k: TensorArray(self._tensor_to_array(v))
+                    for k, v in output.items()
+                }
+            )
+        else:
+            return pd.DataFrame(
+                {"predictions": TensorArray(self._tensor_to_array(output))},
+                columns=["predictions"],
+            )

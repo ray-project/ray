@@ -11,6 +11,8 @@ from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
 
+from ray.air.util.tensor_extensions.exception import TensorArrayCastingError
+
 
 @PublicAPI(stability="alpha")
 class BatchPredictor:
@@ -195,9 +197,15 @@ class BatchPredictor:
                 )
                 if keep_columns:
                     prediction_output[keep_columns] = batch[keep_columns]
-                return convert_batch_type_to_pandas(
-                    prediction_output, cast_tensor_columns
-                )
+
+                try:
+                    return convert_batch_type_to_pandas(
+                        prediction_output, cast_tensor_columns
+                    )
+                except TensorArrayCastingError:
+                    return convert_batch_type_to_pandas(
+                        prediction_output, cast_tensor_columns=False
+                    )
 
         compute = ray.data.ActorPoolStrategy(
             min_size=min_scoring_workers, max_size=max_scoring_workers
