@@ -372,7 +372,7 @@ class MultiGPUTrainOneStep:
         if self.workers.remote_workers():
             with metrics.timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 weights = ray.put(
-                    self.local_worker.get_weights(
+                    self.workers.local_worker().get_weights(
                         self.local_worker.get_policies_to_train()
                     )
                 )
@@ -380,7 +380,7 @@ class MultiGPUTrainOneStep:
                     e.set_weights.remote(weights, _get_global_vars())
 
         # Also update global vars of the local worker.
-        self.local_worker.set_global_vars(_get_global_vars())
+        self.workers.local_worker().set_global_vars(_get_global_vars())
         return samples, learner_info
 
 
@@ -410,7 +410,9 @@ class ComputeGradients:
         _check_sample_batch_type(samples)
         metrics = _get_shared_metrics()
         with metrics.timers[COMPUTE_GRADS_TIMER]:
-            grad, info = self.local_worker.compute_gradients(samples, single_agent=True)
+            grad, info = self.workers.local_worker().compute_gradients(
+                samples, single_agent=True
+            )
         # RolloutWorker.compute_gradients returned single-agent stats.
         metrics.info[LEARNER_INFO] = {DEFAULT_POLICY_ID: info}
         return grad, samples.count
@@ -566,7 +568,7 @@ class UpdateTargetNetwork:
         last_update = metrics.counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.target_update_freq:
             to_update = self.policies or self.local_worker.get_policies_to_train()
-            self.local_worker.foreach_policy_to_train(
+            self.workers.local_worker().foreach_policy_to_train(
                 lambda p, pid: pid in to_update and p.update_target()
             )
             metrics.counters[NUM_TARGET_UPDATES] += 1
