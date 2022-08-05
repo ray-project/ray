@@ -140,6 +140,8 @@ The following program will remove the resource request.
 
 The GPU workers can then scale down.
 
+.. _kuberay-gpu-override:
+
 Overriding Ray GPU capacity (advanced)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 For specialized use-cases, it is possible to override the Ray pod GPU capacities advertised to Ray.
