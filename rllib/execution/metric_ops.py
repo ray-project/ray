@@ -110,7 +110,7 @@ class CollectMetrics:
     def __call__(self, _: Any) -> Dict:
         # Collect worker metrics.
         episodes, self.to_be_collected = collect_episodes(
-            self.local_worker,
+            self.workers.local_worker(),
             self.selected_workers or self.workers.remote_workers(),
             self.to_be_collected,
             timeout_seconds=self.timeout_seconds,
