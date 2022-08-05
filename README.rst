@@ -49,6 +49,16 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`RLlib`: https://docs.ray.io/en/latest/rllib/index.html
 .. _`ecosystem of community integrations`: https://docs.ray.io/en/latest/ray-overview/ray-libraries.html
 
+
+Why Ray?
+--------
+
+Today's ML workloads are increasingly compute intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to it: there is a need for a unified way to scale from a laptop to a cluster.
+
+Ray is this unified way to scale Python and AI applications.
+
+With Ray, you can seamlessly scale from laptop to cluster. Ray's underlying generality also means it can handle any workload with the best performance possible-- so you can run one system instead of many.
+
 More Information
 ----------------
 

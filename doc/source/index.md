@@ -106,6 +106,14 @@ Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 [ecosystem of community integrations](ray-overview/ray-libraries).
 
+## Why Ray?
+
+Today's ML workloads are increasingly compute intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to it: there is a need for a unified way to scale from a laptop to a cluster.
+
+Ray is this unified way to scale Python and AI applications.
+
+With Ray, you can seamlessly scale from laptop to cluster. Ray's underlying generality also means it can handle any workload with the best performance possible-- so you can run one system instead of many.
+
 ## How to get involved?
 
 Ray is more than a framework for distributed applications but also an active community of developers, researchers, and folks that love machine learning.
