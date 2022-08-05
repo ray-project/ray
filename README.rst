@@ -57,7 +57,7 @@ Today's ML workloads are increasingly compute intensive. As convenient as they a
 
 Ray is this unified way to scale Python and AI applications.
 
-With Ray, you can seamlessly scale from laptop to cluster. Ray's underlying generality also means it can handle any workload with the best performance possible-- so you can run one system instead of many.
+With Ray, you can seamlessly scale the same code from laptops to clusters. Ray's underlying generality also means it can handle any workload with the best performance possible-- so you can run one system instead of many.
 
 More Information
 ----------------
