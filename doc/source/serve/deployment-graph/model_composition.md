@@ -1,6 +1,6 @@
-(serve-intro-to-deployment-graphs)=
+(serve-model-composition)=
 
-# Intro to Deployment Graphs
+# Model Composition: Deployment Graphs
 
 ```{note}
 Note: This feature is in Alpha, so APIs are subject to change.
@@ -33,7 +33,7 @@ You can connect your models together in an implicit deployment graph by calling 
 
 The basic building block for implicit graphs is the `ClassNode`. You can create `ClassNodes` by binding class deployments to their constructor's arguments. For example:
 
-```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/class_nodes.py
 :start-after: __echo_class_start__
 :end-before: __echo_class_end__
 :language: python
@@ -63,7 +63,7 @@ $ serve run echo:foo_node
 
 Here's a client script that can send requests to your node:
 
-```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/class_nodes.py
 :start-after: __echo_client_start__
 :end-before: __echo_client_end__
 :language: python
@@ -84,7 +84,7 @@ You can invoke `ClassNode` methods from other `ClassNodes` to create an implicit
 
 Here's an example:
 
-```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/class_nodes.py
 :start-after: __hello_start__
 :end-before: __hello_end__
 :language: python
@@ -113,7 +113,7 @@ $ serve run hello:language_classifier
 
 You can use this client script to interact with the example:
 
-```{literalinclude} ../doc_code/deployment_graph_intro/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/class_nodes.py
 :start-after: __hello_client_start__
 :end-before: __hello_client_end__
 :language: python
@@ -149,7 +149,7 @@ output = request + 2 - 1 + 3
 Here's the graph:
 
 (deployment-graph-intro-arithmetic-graph)=
-```{literalinclude} ../doc_code/deployment_graph_intro/arithmetic.py
+```{literalinclude} ../doc_code/model_composition/arithmetic.py
 :start-after: __graph_start__
 :end-before: __graph_end__
 :language: python
@@ -196,7 +196,7 @@ The `DAGDriver` can also be bound to `ClassNodes`. This is useful if you constru
 
 You can test this example using this client script:
 
-```{literalinclude} ../doc_code/deployment_graph_intro/arithmetic.py
+```{literalinclude} ../doc_code/model_composition/arithmetic.py
 :start-after: __graph_client_start__
 :end-before: __graph_client_end__
 :language: python

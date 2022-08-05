@@ -6,7 +6,7 @@
 
 Get an introduction to designing deployment graphs:
 
-- [Intro to Deployment Graphs](serve-intro-to-deployment-graphs)
+- [Intro to Deployment Graphs](serve-model-composition)
 
 ## Deployment Graph Walkthrough
 
