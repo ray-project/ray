@@ -53,7 +53,7 @@ if __name__ == "__main__":
         param_space=config,
         run_config=air.RunConfig(
             stop={"training_iteration": training_iterations},
-            checkpoint_confnig=air.CheckpointConfig(
+            checkpoint_config=air.CheckpointConfig(
                 checkpoint_at_end=False,
             ),
         ),
