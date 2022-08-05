@@ -360,7 +360,7 @@ class TestSampleBatch(unittest.TestCase):
         #   repeated value object with np.array leaves (f)
 
         cuda_available = int(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
-        cuda_if_possible = torch.device("cuda" if cuda_available else "cpu")
+        cuda_if_possible = torch.device("cuda:0" if cuda_available else "cpu")
         s = SampleBatch(
             {
                 "a": np.array([1, 2]),
@@ -381,7 +381,7 @@ class TestSampleBatch(unittest.TestCase):
         def _check_recursive_device_and_type(input_struct, target_device):
             def get_mismatched_types(v):
                 if isinstance(v, torch.Tensor):
-                    if v.device != target_device:
+                    if v.device.type != target_device.type:
                         return (v.device, v.dtype)
                     if v.is_floating_point() and v.dtype != torch.float32:
                         return (v.device, v.dtype)

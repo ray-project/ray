@@ -169,9 +169,9 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         tensor = None
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
-            tensor = item if device is None else item.to(device)
+            tensor = item
         # Numpy arrays.
-        if isinstance(item, np.ndarray):
+        elif isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
             if item.dtype == object:
                 return item
@@ -186,9 +186,11 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         # Everything else: Convert to numpy, then wrap as torch tensor.
         else:
             tensor = torch.from_numpy(np.asarray(item))
+
         # Floatify all float64 tensors.
         if tensor.is_floating_point():
             tensor = tensor.float()
+
         return tensor if device is None else tensor.to(device)
 
     return tree.map_structure(mapping, x)
