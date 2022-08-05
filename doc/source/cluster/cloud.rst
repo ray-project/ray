@@ -9,7 +9,7 @@ This section provides instructions for configuring the Ray Cluster Launcher to u
 
 See this blog post for a `step by step guide`_ to using the Ray Cluster Launcher.
 
-To learn about deploying Ray on an existing Kubernetes cluster, refer to the guide :ref:`here<ray-k8s-deploy>`.
+To learn about deploying Ray on an existing Kubernetes cluster, refer to the guide :ref:`here<kuberay-index>`.
 
 .. _`step by step guide`: https://medium.com/distributed-computing-with-ray/a-step-by-step-guide-to-scaling-your-first-python-application-in-the-cloud-8761fe331ef1
 

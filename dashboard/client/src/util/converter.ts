@@ -1,6 +1,6 @@
 export const memoryConverter = (bytes: number) => {
   if (bytes < 1024) {
-    return `${bytes}KB`;
+    return `${bytes.toFixed(4)}KB`;
   }
 
   if (bytes < 1024 ** 2) {

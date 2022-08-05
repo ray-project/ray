@@ -447,7 +447,7 @@ Using Ray Datasets is the recommended way for ingesting data into ``Trainer``\s 
 
     import ray
     from ray import train
-    from ray.air import train_test_split, ScalingConfig
+    from ray.air import ScalingConfig
     from ray.train.torch import TorchTrainer
 
     def train_func(config):
@@ -478,8 +478,8 @@ Using Ray Datasets is the recommended way for ingesting data into ``Trainer``\s 
         return model
 
     # Random split dataset into 80% training data and 20% validation data.
-    train_dataset, validation_dataset = train_test_split(
-        dataset, test_size=0.2, shuffle=True
+    train_dataset, validation_dataset = dataset.train_test_split(
+        test_size=0.2, shuffle=True
     )
 
     trainer = TorchTrainer(
@@ -525,7 +525,7 @@ useful for:
 Reporting intermediate results and handling checkpoints
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray AIR provides a :ref:`Session <air-session-key-concepts>` API for reporting intermediate
+Ray AIR provides a *Session* API for reporting intermediate
 results and checkpoints from the training function (run on distributed workers) up to the
 ``Trainer`` (where your python script is executed) by calling ``session.report(metrics)``.
 The results will be collected from the distributed workers and passed to the driver to
@@ -535,7 +535,6 @@ be logged and displayed.
 
     Only the results from rank 0 worker will be used. However, in order to ensure
     consistency, ``session.report()`` has to be called on each worker.
-
 
 The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
 the end of each training epoch.
@@ -549,6 +548,17 @@ the end of each training epoch.
         for i in range(num_epochs):
             result = model.train(...)
             session.report({"result": result})
+
+The session concept exists on several levels: The execution layer (called `Tune Session`) and the Data Parallel training layer
+(called `Train Session`).
+The following figure shows how these two sessions look like in a Data Parallel training scenario.
+
+.. image:: ../ray-air/images/session.svg
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/drawings/d/1g0pv8gqgG29aPEPTcd4BC0LaRNbW1sAkv3H6W1TCp0c/edit
 
 Saving checkpoints
 ++++++++++++++++++

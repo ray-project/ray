@@ -94,6 +94,16 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a2c"]
 )
 
+py_test(
+    name = "learning_tests_cartpole_a2c_fake_gpus",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/a2c"]
+)
+
 # A3C
 
 # py_test(
@@ -745,6 +755,13 @@ py_test(
     tags = ["team:rllib", "tests_dir", "algorithms_dir_generic"],
     size = "large",
     srcs = ["algorithms/tests/test_worker_failures.py"]
+)
+
+py_test(
+    name = "test_registry",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_registry.py"],
 )
 
 # Specific Algorithms
@@ -1705,10 +1722,10 @@ py_test(
 
 py_test(
     name = "test_ope",
-    tags = ["team:rllib", "offline", "torch_only", "gpu"],
-    size = "large",
+    tags = ["team:rllib", "offline"],
+    size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
-    data = ["tests/data/cartpole/large.json"],
+    data = ["tests/data/cartpole/small.json"],
 )
 
 # --------------------------------------------------------------------
@@ -3420,6 +3437,7 @@ py_test_module_list(
     "tests/test_vector_env.py",
     "env/tests/test_multi_agent_env.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
+    "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",

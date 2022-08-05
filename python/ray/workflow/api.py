@@ -1,5 +1,7 @@
+import functools
 import logging
 from typing import Dict, Set, List, Tuple, Union, Optional, Any
+import os
 import time
 import uuid
 
@@ -16,7 +18,6 @@ from ray.workflow.common import (
     asyncio_run,
     validate_user_metadata,
 )
-from ray.workflow.exceptions import WorkflowAlreadyRunningError, WorkflowNotFoundError
 from ray.workflow import serialization, workflow_access, workflow_context
 from ray.workflow.event_listener import EventListener, EventListenerType, TimerListener
 from ray.workflow.workflow_storage import WorkflowStorage
@@ -87,6 +88,32 @@ def _ensure_workflow_initialized() -> None:
             workflow_access.get_management_actor()
         except ValueError:
             init()
+
+
+def client_mode_wrap(func):
+    """Wraps a function called during client mode for execution as a remote task.
+
+    Adopted from "ray._private.client_mode_hook.client_mode_wrap". Some changes are made
+    (e.g., init the workflow instead of init Ray; the latter does not specify a storage
+    during Ray init and will result in workflow failures).
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        from ray._private.client_mode_hook import client_mode_should_convert
+
+        if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
+            _ensure_workflow_initialized()
+
+        # `is_client_mode_enabled_by_default` is used for testing with
+        # `RAY_CLIENT_MODE=1`. This flag means all tests run with client mode.
+        if client_mode_should_convert(auto_init=False):
+            f = ray.remote(num_cpus=0)(func)
+            ref = f.remote(*args, **kwargs)
+            return ray.get(ref)
+        return func(*args, **kwargs)
+
+    return wrapper
 
 
 @PublicAPI(stability="alpha")
@@ -168,37 +195,36 @@ def run_async(
         # Workflow ID format: {Entry workflow UUID}.{Unix time to nanoseconds}
         workflow_id = f"{str(uuid.uuid4())}.{time.time():.9f}"
 
+    workflow_manager = workflow_access.get_management_actor()
+    if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
+        raise RuntimeError(f"Workflow '{workflow_id}' is already running or pending.")
+
     state = workflow_state_from_dag(dag, input_data, workflow_id)
     logger.info(f'Workflow job created. [id="{workflow_id}"].')
-
-    context = workflow_context.WorkflowStepContext(workflow_id=workflow_id)
-    with workflow_context.workflow_step_context(context):
+    context = workflow_context.WorkflowTaskContext(workflow_id=workflow_id)
+    with workflow_context.workflow_task_context(context):
         # checkpoint the workflow
-        ws = WorkflowStorage(workflow_id)
-        ws.save_workflow_user_metadata(metadata)
+        @client_mode_wrap
+        def _try_checkpoint_workflow(workflow_state) -> bool:
+            ws = WorkflowStorage(workflow_id)
+            ws.save_workflow_user_metadata(metadata)
+            try:
+                ws.get_entrypoint_task_id()
+                return True
+            except Exception:
+                # The workflow does not exist. We must checkpoint entry workflow.
+                ws.save_workflow_execution_state("", workflow_state)
+                return False
 
-        job_id = ray.get_runtime_context().job_id.hex()
-
-        try:
-            ws.get_entrypoint_step_id()
-            wf_exists = True
-        except Exception:
-            # The workflow does not exist. We must checkpoint entry workflow.
-            ws.save_workflow_execution_state("", state)
-            wf_exists = False
-        workflow_manager = workflow_access.get_management_actor()
-        if ray.get(workflow_manager.is_workflow_non_terminating.remote(workflow_id)):
-            raise RuntimeError(
-                f"Workflow '{workflow_id}' is already running or pending."
-            )
+        wf_exists = _try_checkpoint_workflow(state)
         if wf_exists:
             return resume_async(workflow_id)
-        ignore_existing = ws.load_workflow_status() == WorkflowStatus.NONE
         ray.get(
             workflow_manager.submit_workflow.remote(
-                workflow_id, state, ignore_existing=ignore_existing
+                workflow_id, state, ignore_existing=False
             )
         )
+        job_id = ray.get_runtime_context().job_id.hex()
         return workflow_manager.execute_workflow.remote(job_id, context)
 
 
@@ -238,9 +264,9 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
     Examples:
         >>> from ray import workflow
         >>> start_trip = ... # doctest: +SKIP
-        >>> trip = start_trip.step() # doctest: +SKIP
-        >>> res1 = trip.run_async(workflow_id="trip1") # doctest: +SKIP
-        >>> res2 = workflow.resume("trip1") # doctest: +SKIP
+        >>> trip = start_trip.bind() # doctest: +SKIP
+        >>> res1 = workflow.run_async(trip, workflow_id="trip1") # doctest: +SKIP
+        >>> res2 = workflow.resume_async("trip1") # doctest: +SKIP
         >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
 
     Args:
@@ -260,7 +286,7 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
     # workflow output, the caller may fail to resolve the result.
     job_id = ray.get_runtime_context().job_id.hex()
 
-    context = workflow_context.WorkflowStepContext(workflow_id=workflow_id)
+    context = workflow_context.WorkflowTaskContext(workflow_id=workflow_id)
     ray.get(workflow_manager.reconstruct_workflow.remote(job_id, context))
     result = workflow_manager.execute_workflow.remote(job_id, context)
     logger.info(f"Workflow job {workflow_id} resumed.")
@@ -273,19 +299,19 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
 
     Args:
         workflow_id: The workflow to get the output of.
-        name: If set, fetch the specific step instead of the output of the
+        name: If set, fetch the specific task instead of the output of the
             workflow.
 
     Examples:
         >>> from ray import workflow
         >>> start_trip = ... # doctest: +SKIP
-        >>> trip = start_trip.options(name="trip").step() # doctest: +SKIP
-        >>> res1 = trip.run_async(workflow_id="trip1") # doctest: +SKIP
+        >>> trip = start_trip.options(name="trip").bind() # doctest: +SKIP
+        >>> res1 = workflow.run_async(trip, workflow_id="trip1") # doctest: +SKIP
         >>> # you could "get_output()" in another machine
         >>> res2 = workflow.get_output_async("trip1") # doctest: +SKIP
         >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
-        >>> step_output = workflow.get_output_async("trip1", "trip") # doctest: +SKIP
-        >>> assert ray.get(step_output) == ray.get(res1) # doctest: +SKIP
+        >>> task_output = workflow.get_output_async("trip1", "trip") # doctest: +SKIP
+        >>> assert ray.get(task_output) == ray.get(res1) # doctest: +SKIP
 
     Returns:
         The output of the workflow task.
@@ -294,6 +320,7 @@ def get_output(workflow_id: str, *, name: Optional[str] = None) -> Any:
 
 
 @PublicAPI(stability="alpha")
+@client_mode_wrap
 def get_output_async(
     workflow_id: str, *, task_id: Optional[str] = None
 ) -> ray.ObjectRef:
@@ -314,24 +341,14 @@ def get_output_async(
         raise ValueError(
             "Failed to connect to the workflow management "
             "actor. The workflow could have already failed. You can use "
-            "workflow.resume() to resume the workflow."
+            "workflow.resume() or workflow.resume_async() to resume the "
+            "workflow."
         ) from e
-
-    try:
-        # check storage first
-        wf_store = WorkflowStorage(workflow_id)
-        tid = wf_store.inspect_output(task_id)
-        if tid is not None:
-            return workflow_access.load_step_output_from_storage.remote(
-                workflow_id, task_id
-            )
-    except ValueError:
-        pass
-
     return workflow_manager.get_output.remote(workflow_id, task_id)
 
 
 @PublicAPI(stability="alpha")
+@client_mode_wrap
 def list_all(
     status_filter: Optional[
         Union[Union[WorkflowStatus, str], Set[Union[WorkflowStatus, str]]]
@@ -349,8 +366,8 @@ def list_all(
     Examples:
         >>> from ray import workflow
         >>> long_running_job = ... # doctest: +SKIP
-        >>> workflow_step = long_running_job.step() # doctest: +SKIP
-        >>> wf = workflow_step.run_async( # doctest: +SKIP
+        >>> workflow_task = long_running_job.bind() # doctest: +SKIP
+        >>> wf = workflow.run_async(workflow_task, # doctest: +SKIP
         ...     workflow_id="long_running_job")
         >>> jobs = workflow.list_all() # doctest: +SKIP
         >>> assert jobs == [ ("long_running_job", workflow.RUNNING) ] # doctest: +SKIP
@@ -447,6 +464,7 @@ def list_all(
 
 
 @PublicAPI(stability="alpha")
+@client_mode_wrap
 def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     """Resume all resumable workflow jobs.
 
@@ -458,8 +476,9 @@ def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     Examples:
         >>> from ray import workflow
         >>> failed_job = ... # doctest: +SKIP
-        >>> workflow_step = failed_job.step() # doctest: +SKIP
-        >>> output = workflow_step.run_async(workflow_id="failed_job") # doctest: +SKIP
+        >>> workflow_task = failed_job.bind() # doctest: +SKIP
+        >>> output = workflow.run_async( # doctest: +SKIP
+        ...     workflow_task, workflow_id="failed_job")
         >>> try: # doctest: +SKIP
         >>>     ray.get(output) # doctest: +SKIP
         >>> except Exception: # doctest: +SKIP
@@ -486,7 +505,7 @@ def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     job_id = ray.get_runtime_context().job_id.hex()
     reconstructed_workflows = []
     for wid, _ in all_failed:
-        context = workflow_context.WorkflowStepContext(workflow_id=wid)
+        context = workflow_context.WorkflowTaskContext(workflow_id=wid)
         # TODO(suquark): This is not very efficient, but it makes sure
         #  running workflows has higher priority when getting reconstructed.
         try:
@@ -520,8 +539,8 @@ def get_status(workflow_id: str) -> WorkflowStatus:
     Examples:
         >>> from ray import workflow
         >>> trip = ... # doctest: +SKIP
-        >>> workflow_step = trip.step() # doctest: +SKIP
-        >>> output = workflow_step.run(workflow_id="trip") # doctest: +SKIP
+        >>> workflow_task = trip.bind() # doctest: +SKIP
+        >>> output = workflow.run(workflow_task, workflow_id="trip") # doctest: +SKIP
         >>> assert workflow.SUCCESSFUL == workflow.get_status("trip") # doctest: +SKIP
 
     Returns:
@@ -576,60 +595,61 @@ def sleep(duration: float) -> "DAGNode[Event]":
 
 
 @PublicAPI(stability="alpha")
+@client_mode_wrap
 def get_metadata(workflow_id: str, name: Optional[str] = None) -> Dict[str, Any]:
     """Get the metadata of the workflow.
 
     This will return a dict of metadata of either the workflow (
-    if only workflow_id is given) or a specific workflow step (if
-    both workflow_id and step name are given). Exception will be
-    raised if the given workflow id or step name does not exist.
+    if only workflow_id is given) or a specific workflow task (if
+    both workflow_id and task name are given). Exception will be
+    raised if the given workflow id or task name does not exist.
 
     If only workflow id is given, this will return metadata on
     workflow level, which includes running status, workflow-level
     user metadata and workflow-level running stats (e.g. the
     start time and end time of the workflow).
 
-    If both workflow id and step name are given, this will return
-    metadata on workflow step level, which includes step inputs,
-    step-level user metadata and step-level running stats (e.g.
-    the start time and end time of the step).
+    If both workflow id and task name are given, this will return
+    metadata on workflow task level, which includes task inputs,
+    task-level user metadata and task-level running stats (e.g.
+    the start time and end time of the task).
 
 
     Args:
         workflow_id: The workflow to get the metadata of.
-        name: If set, fetch the metadata of the specific step instead of
+        name: If set, fetch the metadata of the specific task instead of
             the metadata of the workflow.
 
     Examples:
         >>> from ray import workflow
         >>> trip = ... # doctest: +SKIP
-        >>> workflow_step = trip.options( # doctest: +SKIP
-        ...     name="trip", metadata={"k1": "v1"}).step()
-        >>> workflow_step.run( # doctest: +SKIP
+        >>> workflow_task = trip.options( # doctest: +SKIP
+        ...     **workflow.options(name="trip", metadata={"k1": "v1"})).bind()
+        >>> workflow.run(workflow_task, # doctest: +SKIP
         ...     workflow_id="trip1", metadata={"k2": "v2"})
         >>> workflow_metadata = workflow.get_metadata("trip1") # doctest: +SKIP
         >>> assert workflow_metadata["status"] == "SUCCESSFUL" # doctest: +SKIP
         >>> assert workflow_metadata["user_metadata"] == {"k2": "v2"} # doctest: +SKIP
         >>> assert "start_time" in workflow_metadata["stats"] # doctest: +SKIP
         >>> assert "end_time" in workflow_metadata["stats"] # doctest: +SKIP
-        >>> step_metadata = workflow.get_metadata("trip1", "trip") # doctest: +SKIP
-        >>> assert step_metadata["step_type"] == "FUNCTION" # doctest: +SKIP
-        >>> assert step_metadata["user_metadata"] == {"k1": "v1"} # doctest: +SKIP
-        >>> assert "start_time" in step_metadata["stats"] # doctest: +SKIP
-        >>> assert "end_time" in step_metadata["stats"] # doctest: +SKIP
+        >>> task_metadata = workflow.get_metadata("trip1", "trip") # doctest: +SKIP
+        >>> assert task_metadata["task_type"] == "FUNCTION" # doctest: +SKIP
+        >>> assert task_metadata["user_metadata"] == {"k1": "v1"} # doctest: +SKIP
+        >>> assert "start_time" in task_metadata["stats"] # doctest: +SKIP
+        >>> assert "end_time" in task_metadata["stats"] # doctest: +SKIP
 
     Returns:
         A dictionary containing the metadata of the workflow.
 
     Raises:
-        ValueError: if given workflow or workflow step does not exist.
+        ValueError: if given workflow or workflow task does not exist.
     """
     _ensure_workflow_initialized()
     store = WorkflowStorage(workflow_id)
     if name is None:
         return store.load_workflow_metadata()
     else:
-        return store.load_step_metadata(name)
+        return store.load_task_metadata(name)
 
 
 @PublicAPI(stability="alpha")
@@ -643,8 +663,9 @@ def cancel(workflow_id: str) -> None:
     Examples:
         >>> from ray import workflow
         >>> some_job = ... # doctest: +SKIP
-        >>> workflow_step = some_job.step() # doctest: +SKIP
-        >>> output = workflow_step.run_async(workflow_id="some_job") # doctest: +SKIP
+        >>> workflow_task = some_job.bind() # doctest: +SKIP
+        >>> output = workflow.run_async(workflow_task,  # doctest: +SKIP
+        ...     workflow_id="some_job")
         >>> workflow.cancel(workflow_id="some_job") # doctest: +SKIP
         >>> assert [ # doctest: +SKIP
         ...     ("some_job", workflow.CANCELED)] == workflow.list_all()
@@ -666,35 +687,25 @@ def delete(workflow_id: str) -> None:
        persisted to storage. To stop a running workflow, see
        `workflow.cancel()`.
 
-        NOTE: The caller should ensure that the workflow is not currently
-        running before deleting it.
-
     Args:
         workflow_id: The workflow to delete.
+
+    Raises:
+        WorkflowStillActiveError: The workflow is still active.
+        WorkflowNotFoundError: The workflow does not exist.
 
     Examples:
         >>> from ray import workflow
         >>> some_job = ... # doctest: +SKIP
-        >>> workflow_step = some_job.step() # doctest: +SKIP
-        >>> output = workflow_step.run_async(workflow_id="some_job") # doctest: +SKIP
+        >>> workflow_task = some_job.bind() # doctest: +SKIP
+        >>> output = workflow.run_async(workflow_task, # doctest: +SKIP
+        ...     workflow_id="some_job")
         >>> workflow.delete(workflow_id="some_job") # doctest: +SKIP
         >>> assert [] == workflow.list_all() # doctest: +SKIP
-
-    Returns:
-        None
-
     """
-
     _ensure_workflow_initialized()
-    try:
-        status = get_status(workflow_id)
-        if status == WorkflowStatus.RUNNING:
-            raise WorkflowAlreadyRunningError("DELETE", workflow_id)
-    except ValueError:
-        raise WorkflowNotFoundError(workflow_id)
-
-    wf_storage = WorkflowStorage(workflow_id)
-    wf_storage.delete_workflow()
+    workflow_manager = workflow_access.get_management_actor()
+    ray.get(workflow_manager.delete_workflow.remote(workflow_id))
 
 
 @PublicAPI(stability="alpha")
@@ -748,7 +759,7 @@ class options:
         invalid_keywords = set(workflow_options.keys()) - valid_options
         if invalid_keywords:
             raise ValueError(
-                f"Invalid option keywords {invalid_keywords} for workflow steps. "
+                f"Invalid option keywords {invalid_keywords} for workflow tasks. "
                 f"Valid ones are {valid_options}."
             )
         from ray.workflow.common import WORKFLOW_OPTIONS

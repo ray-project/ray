@@ -11,11 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class WorkflowStepContext:
+class WorkflowTaskContext:
     """
-    The structure for saving workflow step context. The context provides
-    critical info (e.g. where to checkpoint, which is its parent step)
-    for the step to execute correctly.
+    The structure for saving workflow task context. The context provides
+    critical info (e.g. where to checkpoint, which is its parent task)
+    for the task to execute correctly.
     """
 
     # ID of the workflow.
@@ -30,12 +30,12 @@ class WorkflowStepContext:
     catch_exceptions: bool = False
 
 
-_context: Optional[WorkflowStepContext] = None
+_context: Optional[WorkflowTaskContext] = None
 
 
 @contextmanager
-def workflow_step_context(context) -> None:
-    """Initialize the workflow step context.
+def workflow_task_context(context) -> None:
+    """Initialize the workflow task context.
 
     Args:
         context: The new context.
@@ -49,14 +49,14 @@ def workflow_step_context(context) -> None:
         _context = original_context
 
 
-def get_workflow_step_context() -> Optional[WorkflowStepContext]:
+def get_workflow_task_context() -> Optional[WorkflowTaskContext]:
     return _context
 
 
-def get_current_step_id() -> str:
-    """Get the current workflow step ID. Empty means we are in
+def get_current_task_id() -> str:
+    """Get the current workflow task ID. Empty means we are in
     the workflow job driver."""
-    return get_workflow_step_context().task_id
+    return get_workflow_task_context().task_id
 
 
 def get_current_workflow_id() -> str:
@@ -65,12 +65,12 @@ def get_current_workflow_id() -> str:
 
 
 def get_name() -> str:
-    return f"{get_current_workflow_id()}@{get_current_step_id()}"
+    return f"{get_current_workflow_id()}@{get_current_task_id()}"
 
 
-def get_step_status_info(status: WorkflowStatus) -> str:
+def get_task_status_info(status: WorkflowStatus) -> str:
     assert _context is not None
-    return f"Step status [{status}]\t[{get_name()}]"
+    return f"Task status [{status}]\t[{get_name()}]"
 
 
 _in_workflow_execution = False
@@ -78,7 +78,7 @@ _in_workflow_execution = False
 
 @contextmanager
 def workflow_execution() -> None:
-    """Scope for workflow step execution."""
+    """Scope for workflow task execution."""
     global _in_workflow_execution
     try:
         _in_workflow_execution = True
@@ -88,7 +88,7 @@ def workflow_execution() -> None:
 
 
 def in_workflow_execution() -> bool:
-    """Whether we are in workflow step execution."""
+    """Whether we are in workflow task execution."""
     global _in_workflow_execution
     return _in_workflow_execution
 
