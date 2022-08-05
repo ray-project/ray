@@ -72,7 +72,7 @@ Get started by installing Ray AIR:
 Preprocessing
 ~~~~~~~~~~~~~
 
-First, let's start by loading the data from storage:
+First, let's start by loading a dataset from storage:
 
 .. literalinclude:: examples/xgboost_starter.py
     :language: python
