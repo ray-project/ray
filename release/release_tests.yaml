@@ -4136,7 +4136,7 @@
     type: sdk_command
     file_manager: sdk
 
-- name: data_ingest_benchmark
+- name: pipelined_data_ingest_benchmark
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
 
