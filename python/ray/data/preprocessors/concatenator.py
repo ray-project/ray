@@ -7,11 +7,11 @@ from ray.data.preprocessor import Preprocessor
 
 class Concatenator(Preprocessor):
     """Combine numeric columns into a column of type
-    :py:class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`.
+    :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`.
 
     This preprocessor concatenates numeric columns and stores the result in a new
     column. The new column contains
-    :py:class:`~ray.air.util.tensor_extensions.pandas.TensorArrayElement` objects of
+    :class:`~ray.air.util.tensor_extensions.pandas.TensorArrayElement` objects of
     shape :math:`(m,)`, where :math:`m` is the number of columns concatenated.
     The :math:`m` concatenated columns are dropped after concatenation.
 
@@ -28,6 +28,10 @@ class Concatenator(Preprocessor):
         raise_if_missing: If ``True``, an error is raised if any
             of the columns in ``include`` or ``exclude`` don't exist.
             Defaults to ``False``.
+
+    Raises:
+        ValueError: if `raise_if_missing` is `True` and a column in `include` or
+            `exclude` doesn't exist in the dataset.
 
     Examples:
         >>> import pandas as pd
@@ -95,10 +99,6 @@ class Concatenator(Preprocessor):
         >>> concatenator = Concatenator(include=["X0", "X1"], dtype=np.float32)
         >>> concatenator.fit_transform(ds).schema()
         Dataset(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
-
-    Raises:
-        ValueError if `raise_if_missing=True` and any column name in
-            `include` or `exclude` does not exist in the dataset columns.
     """
 
     _is_fittable = False
