@@ -198,7 +198,7 @@ except ImportError:
         def observe(self, value):
             pass
 
-        def inc(self):
+        def inc(self, amount=1):
             pass
 
     class AutoscalerPrometheusMetrics(object):
