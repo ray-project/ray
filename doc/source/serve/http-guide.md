@@ -2,12 +2,12 @@
 
 
 
-This section should help you:
+This section should help you understand how to:
 
-- Understand how to configure HTTP server location
-- Understand how to send HTTP request to serve deployment
-- Understand how Ray Serve integrate with FastAPI
-- Understand how to use customized HTTP Adapter
+- configure HTTP server location
+- send HTTP request to serve deployment
+- use Ray Serve integrate with FastAPI
+- use customized HTTP Adapter
 
 
 ## Configuring HTTP Server Locations
@@ -16,23 +16,21 @@ By default, Ray Serve starts a single HTTP server on the head node of the Ray cl
 You can configure this behavior using the `http_options={"location": ...}` flag
 in {mod}`serve.start <ray.serve.start>`:
 
-- "HeadOnly": start one HTTP server on the head node. Serve
-  assumes the head node is the node you executed serve.start
+- **HeadOnly**: start one HTTP server on the head node. Serve
+  assumes the head node is the node you executed serve.run
   on. This is the default.
-- "EveryNode": start one HTTP server per node.
-- "NoServer" or `None`: disable HTTP server.
+- **EveryNode**: start one HTTP server per node.
+- **NoServer** or `None`: disable HTTP server.
 
 :::{note}
-Using the "EveryNode" option, you can point a cloud load balancer to the
-instance group of Ray cluster to achieve high availability of Serve's HTTP
-proxies.
+To achieve high availability of Serve's HTTP proxies, use **EveryNode** option to point to the instance group of Ray cluster
 :::
 
 (serve-http)=
 
 ## Calling Deployments via HTTP
 
-When you create a deployment, it is exposed over HTTP by default at `/{deployment_name}`. You can change the route by specifying the `route_prefix` argument to the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator.
+When you create a deployment, Serve exposes your deployment over HTTP by default at `/{deployment_name}`. You can change the route by specifying the `route_prefix` argument to the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator.
 
 ```python
 @serve.deployment(route_prefix="/counter")
@@ -41,7 +39,7 @@ class Counter:
         pass
 ```
 
-When you make a request to the Serve HTTP server at `/counter`, it will forward the request to the deployment's `__call__` method and provide a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code).
+Any request to the Serve HTTP server at `/counter` is routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code).
 
 Below, we discuss some advanced features for customizing Ray Serve's HTTP functionality.
 
@@ -161,7 +159,7 @@ and
 
 For more details, you can take a look at the [FastAPI documentation](https://fastapi.tiangolo.com/).
 
-You can use adapters in different scenarios within Serve, which we will go over one by one:
+In addition to above adapters, you also use other adapters. Below we examine at least three:
 
 - Ray AIR `Predictor`
 - Serve Deployment Graph `DAGDriver`
@@ -188,6 +186,10 @@ serve.run(PredictorDeployment.options(name="my_model").bind(
     http_adapter=json_to_ndarray
 ))
 ```
+
+:::{note}
+`my_ray_air_predictor` and `my_ray_air_checkpoint` are two arguments int `PredictorDeployment` constructor. For detailed usage, please checkout [Ray AI Runtime (AIR) model wrapper](air-serving-guide)
+:::
 
 ### Serve Deployment Graph `DAGDriver`
 
@@ -235,7 +237,7 @@ It has the following schema for input:
 ### Pydantic models as adapters
 
 Serve also supports [pydantic models](https://pydantic-docs.helpmanual.io/usage/models/) as a shorthand for HTTP adapters in model wrappers. Instead of using a function to define your HTTP adapter as in the examples above,
-you can directly pass in a pydantic model class to effectively tell Ray Serve "validate the HTTP body with this schema."
+you can directly pass in a pydantic model class to effectively tell Ray Serve to validate the HTTP body with this schema.
 Once validated, the model instance will passed to the predictor.
 
 ```python
