@@ -388,7 +388,7 @@ class TestRuntimeEnv:
         run_cmd = f"python {_driver_script_path('override_env_var.py')}"
         job_id = job_manager.submit_job(
             entrypoint=run_cmd,
-            runtime_env={"working_dir": "s3://localhost/does_not_exist.zip"},
+            runtime_env={"working_dir": "s3://bucket/does_not_exist.zip"},
         )
 
         await async_wait_for_condition(
