@@ -44,6 +44,11 @@ and the Ray driver processes, :ref:`which run the top-level Ray application
 <cluster-clients-and-jobs-under-construction>`. Ray may schedule tasks and actors
 on the head node just like any other worker node.
 
+.. note::
+    :ref:`On Kubernetes<kuberay-index>`, the autoscaler process runs inside a sidecar container in the head pod,
+    instead of in the same container (which would be most analogous to how the autoscaler runs inside the head node
+    on non-Kubernetes clusters).
+
 .. _cluster-autoscaler-under-construction:
 
 Autoscaler
