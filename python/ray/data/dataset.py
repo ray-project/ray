@@ -3605,8 +3605,12 @@ class Dataset(Generic[T]):
         try:
             from tabulate import tabulate
         except ImportError:
-            logger.info("For rich Dataset reprs in notebooks, `pip install tabulate`.")
+            logger.info(
+                "For rich Dataset reprs in notebooks, " "run `pip install tabulate`."
+            )
             return ""
+
+        from ipywidgets import Tab
 
         metadata = {
             "num_blocks": self._plan.initial_num_blocks(),
@@ -3630,15 +3634,43 @@ class Dataset(Generic[T]):
                 headers=["Name", "Type"],
             )
 
-        return Template("dataset.html.j2").render(
-            schema=schema_repr,
-            metadata=tabulate(
-                tabular_data=metadata.items(),
-                tablefmt="html",
-                showindex=False,
-                headers=["Setting", "Value"],
-            ),
+        tab = Tab()
+        children = []
+
+        tab.set_title(0, "Metadata")
+        children.append(
+            Template("dataset.html.j2").render(
+                schema=None,
+                metadata=tabulate(
+                    tabular_data=metadata.items(),
+                    tablefmt="html",
+                    showindex=False,
+                    headers=["Field", "Value"],
+                ),
+            )
         )
+
+        tab.set_title(1, "Schema")
+        children.append(
+            Template("dataset.html.j2").render(
+                schema=schema_repr,
+                metadata=None,
+            )
+        )
+
+        tab.children = children
+
+        return "foo"
+
+        # return Template("dataset.html.j2").render(
+        #     schema=schema_repr,
+        #     metadata=tabulate(
+        #         tabular_data=metadata.items(),
+        #         tablefmt="html",
+        #         showindex=False,
+        #         headers=["Field", "Value"],
+        #     ),
+        # )
 
     def __repr__(self) -> str:
         schema = self.schema()

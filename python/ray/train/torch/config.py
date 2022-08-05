@@ -10,7 +10,6 @@ from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train._internal.utils import get_address_and_port
 from ray.util import PublicAPI
-from ray.widgets import make_table_html_repr
 
 import torch
 import torch.distributed as dist
@@ -50,9 +49,6 @@ class TorchConfig(BackendConfig):
     @property
     def backend_cls(self):
         return _TorchBackend
-
-    def _repr_html_(self) -> str:
-        return make_table_html_repr(obj=self, title=type(self).__name__)
 
 
 def _setup_torch_process_group(

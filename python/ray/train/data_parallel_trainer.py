@@ -3,8 +3,6 @@ import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
-import pprint
-import collections
 from tabulate import tabulate
 
 import ray
@@ -378,65 +376,94 @@ class DataParallelTrainer(BaseTrainer):
 
     def _ipython_display_(self):
         try:
-            from ipywidgets import HTML, VBox, Tab, Layout, Widget
+            from ipywidgets import HTML, VBox, Tab, Layout
         except ImportError:
             logger.warn(
-                "ipywidgets is not installed. `pip install ipywidgets` to "
+                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
                 "enable notebook widgets."
             )
             return None
 
         from IPython.display import display
-        from IPython.core.display import HTML as HTMLType
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
-        content = collections.OrderedDict(
-            [
-                ("Train Loop Config", self._train_loop_config),
-                ("Backend Config", self._backend_config),
-                ("Dataset Config", self._dataset_config),
-                ("Scaling Config", self.scaling_config),
-                ("Run Config", self.run_config),
-                ("Datasets", self.datasets),
-            ]
-        )
 
         tab = Tab()
         children = []
-        for i, (name, data) in enumerate(content.items()):
-            tab.set_title(i, name)
 
-            if hasattr(data, "_repr_html_"):
-                repr = data._repr_html_()
+        tab.set_title(0, "Train Loop Config")
+        children.append(
+            self._train_loop_config_repr_html_() if self._train_loop_config else None
+        )
 
-            elif isinstance(data, dict):
-                table_data = {}
-                for k, v in data.items():
-                    if isinstance(v, str) or str(v).isnumeric():
-                        table_data[k] = v
-                    elif hasattr(v, "_repr_html_"):
-                        table_data[k] = v._repr_html_()
-                    else:
-                        table_data[k] = str(v)
+        tab.set_title(1, "Backend Config")
+        children.append(
+            self._backend_config._repr_html_() if self._backend_config else None
+        )
 
-                repr = Template("rendered_html_common.html.j2").render(
-                    content=tabulate(
-                        table_data.items(),
-                        headers=["Setting", "Value"],
-                        showindex=False,
-                        tablefmt="unsafehtml",
+        tab.set_title(2, "Dataset Config")
+        children.append(
+            self._dataset_config_repr_html_() if self._dataset_config else None
+        )
+
+        tab.set_title(3, "Scaling Config")
+        children.append(
+            self.scaling_config._repr_html_() if self.scaling_config else None
+        )
+
+        tab.set_title(4, "Run Config")
+        children.append(self.run_config._repr_html_() if self.run_config else None)
+
+        tab.set_title(5, "Datasets")
+        children.append(self._datasets_repr_html_() if self.datasets else None)
+
+        tab.children = [HTML(child) for child in children]
+        display(VBox([title, tab], layout=Layout(width="100%")))
+
+    def _train_loop_config_repr_html_(self) -> str:
+        content = []
+        if self._train_loop_config:
+            table_data = {}
+            for k, v in self._train_loop_config.items():
+                if isinstance(v, str) or str(v).isnumeric():
+                    table_data[k] = v
+                elif hasattr(v, "_repr_html_"):
+                    table_data[k] = v._repr_html_()
+                else:
+                    table_data[k] = str(v)
+
+            content = Template("title_data.html.j2").render(
+                title="Train Loop Config",
+                data=tabulate(
+                    table_data.items(),
+                    headers=["Setting", "Value"],
+                    showindex=False,
+                    tablefmt="unsafehtml",
+                ),
+            )
+        return Template("rendered_html_common.html.j2").render(content=content)
+
+    def _dataset_config_repr_html_(self) -> str:
+        content = []
+        if self._dataset_config:
+            for name, config in self._dataset_config.items():
+                content.append(
+                    config._repr_html_(title=f"DatasetConfig - <code>{name}</code>")
+                )
+
+        return Template("rendered_html_common.html.j2").render(content=content)
+
+    def _datasets_repr_html_(self) -> str:
+        content = []
+        if self.datasets:
+            for name, config in self.datasets.items():
+                content.append(
+                    Template("title_data.html.j2").render(
+                        title=f"DatasetConfig - <code>{name}</code>",
+                        data=config._repr_html_(),
                     )
                 )
-            else:
-                repr = pprint.pformat(data).replace(r"\n", "<br>")
-
-            if not (isinstance(repr, HTMLType) or isinstance(repr, Widget)):
-                repr = HTML(repr)
-
-            children.append(repr)
-
-        tab.children = children
-        display(VBox([title, tab], layout=Layout(width="100%")))
+        return Template("rendered_html_common.html.j2").render(content=content)
 
 
 def _load_checkpoint(

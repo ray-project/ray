@@ -93,6 +93,38 @@ class SyncConfig:
     sync_on_checkpoint: bool = True
     sync_period: int = DEFAULT_SYNC_PERIOD
 
+    def _repr_html_(self) -> str:
+        """Generate an HTML representation of the SyncConfig.
+
+        Note that self.syncer is omitted here; seems to have some overlap
+        with existing configuration settings here in the SyncConfig class.
+        """
+        try:
+            from tabulate import tabulate
+        except ImportError:
+            return (
+                "Tabulate isn't installed. Run "
+                "`pip install tabulate` for rich notebook output."
+            )
+
+        return tabulate(
+            {
+                "Setting": [
+                    "Upload directory",
+                    "Sync on checkpoint",
+                    "Sync period",
+                ],
+                "Value": [
+                    self.upload_dir,
+                    self.sync_on_checkpoint,
+                    self.sync_period,
+                ],
+            },
+            tablefmt="html",
+            showindex=False,
+            headers="keys",
+        )
+
 
 class _BackgroundProcess:
     def __init__(self, fn: Callable):
@@ -307,6 +339,9 @@ class Syncer(abc.ABC):
 
     def close(self):
         pass
+
+    def _repr_html_(self) -> str:
+        return
 
 
 class _BackgroundSyncer(Syncer):

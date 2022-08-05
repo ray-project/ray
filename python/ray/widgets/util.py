@@ -1,8 +1,10 @@
 from typing import Any, Optional
 
+from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
 
 
+@DeveloperAPI
 def make_table_html_repr(obj: Any, title: Optional[str] = None) -> str:
     """Generate a generic html repr using a table.
 
@@ -17,7 +19,7 @@ def make_table_html_repr(obj: Any, title: Optional[str] = None) -> str:
         from tabulate import tabulate
     except ImportError:
         return (
-            "Tabulate is not installed. Please run "
+            "Tabulate isn't installed. Run "
             "`pip install tabulate` for rich notebook output."
         )
 
