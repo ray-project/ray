@@ -834,8 +834,9 @@ def test_ray_status(shutdown_only, monkeypatch):
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported on Windows")
 def test_ray_status_multinode(ray_start_cluster):
+    NODE_NUMBER = 4
     cluster = ray_start_cluster
-    for _ in range(4):
+    for _ in range(NODE_NUMBER):
         cluster.add_node(num_cpus=2)
     runner = CliRunner()
 
@@ -850,8 +851,12 @@ def test_ray_status_multinode(ray_start_cluster):
 
     wait_for_condition(output_ready)
 
-    result = runner.invoke(scripts.status, [])
-    _check_output_via_pattern("test_ray_status_multinode.txt", result)
+    def check_result():
+        result = runner.invoke(scripts.status, [])
+        _check_output_via_pattern("test_ray_status_multinode.txt", result)
+        return True
+
+    wait_for_condition(check_result)
 
 
 @pytest.mark.skipif(

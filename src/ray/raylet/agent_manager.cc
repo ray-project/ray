@@ -29,19 +29,20 @@ namespace raylet {
 void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
                                        rpc::RegisterAgentReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  reported_agent_ip_address_ = request.agent_ip_address();
-  reported_agent_port_ = request.agent_port();
-  reported_agent_id_ = request.agent_id();
+  reported_agent_info_.CopyFrom(request.agent_info());
   // TODO(SongGuyang): We should remove this after we find better port resolution.
-  // Note: `agent_port_` should be 0 if the grpc port of agent is in conflict.
-  if (reported_agent_port_ != 0) {
+  // Note: `reported_agent_info_.grpc_port()` should be 0 if the grpc port of agent is in
+  // conflict.
+  if (reported_agent_info_.grpc_port() != 0) {
     runtime_env_agent_client_ = runtime_env_agent_client_factory_(
-        reported_agent_ip_address_, reported_agent_port_);
-    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << reported_agent_ip_address_
-                  << ", port: " << reported_agent_port_ << ", id: " << reported_agent_id_;
+        reported_agent_info_.ip_address(), reported_agent_info_.grpc_port());
+    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << reported_agent_info_.ip_address()
+                  << ", port: " << reported_agent_info_.grpc_port()
+                  << ", id: " << reported_agent_info_.id();
   } else {
     RAY_LOG(WARNING) << "The GRPC port of the Ray agent is invalid (0), ip: "
-                     << reported_agent_ip_address_ << ", id: " << reported_agent_id_
+                     << reported_agent_info_.ip_address()
+                     << ", id: " << reported_agent_info_.id()
                      << ". The agent client in the raylet has been disabled.";
     disable_agent_client_ = true;
   }
@@ -56,16 +57,19 @@ void AgentManager::StartAgent() {
     return;
   }
 
-  // Create a non-zero random agent_id to pass to the child process
+  // Create a non-zero random agent_id_ to pass to the child process
   // We cannot use pid an id because os.getpid() from the python process is not
   // reliable when using a launcher.
   // See https://github.com/ray-project/ray/issues/24361 and Python issue
   // https://github.com/python/cpython/issues/83086
-  int agent_id = 0;
-  while (agent_id == 0) {
-    agent_id = rand();
+  agent_id_ = 0;
+  while (agent_id_ == 0) {
+    agent_id_ = rand();
   }
-  const std::string agent_id_str = std::to_string(agent_id);
+  // Make sure reported_agent_info_.id() not equal
+  // `agent_id_` before the agent finished register.
+  reported_agent_info_.set_id(0);
+  const std::string agent_id_str = std::to_string(agent_id_);
   std::vector<const char *> argv;
   for (const std::string &arg : options_.agent_commands) {
     argv.push_back(arg.c_str());
@@ -104,21 +108,22 @@ void AgentManager::StartAgent() {
                    << ec.message();
   }
 
-  std::thread monitor_thread([this, child, agent_id]() mutable {
+  std::thread monitor_thread([this, child]() mutable {
     SetThreadName("agent.monitor");
-    RAY_LOG(INFO) << "Monitor agent process with id " << agent_id << ", register timeout "
+    RAY_LOG(INFO) << "Monitor agent process with id " << child.GetId()
+                  << ", register timeout "
                   << RayConfig::instance().agent_register_timeout_ms() << "ms.";
     auto timer = delay_executor_(
-        [this, child, agent_id]() mutable {
-          if (reported_agent_id_ != agent_id) {
-            if (reported_agent_id_ == 0) {
-              RAY_LOG(WARNING) << "Agent process expected id " << agent_id
+        [this, child]() mutable {
+          if (!IsAgentRegistered()) {
+            if (reported_agent_info_.id() == 0) {
+              RAY_LOG(WARNING) << "Agent process expected id " << agent_id_
                                << " timed out before registering. ip "
-                               << reported_agent_ip_address_ << ", id "
-                               << reported_agent_id_;
+                               << reported_agent_info_.ip_address() << ", id "
+                               << reported_agent_info_.id();
             } else {
-              RAY_LOG(WARNING) << "Agent process expected id " << agent_id
-                               << " but got id " << reported_agent_id_
+              RAY_LOG(WARNING) << "Agent process expected id " << agent_id_
+                               << " but got id " << reported_agent_info_.id()
                                << ", this is a fatal error";
             }
             child.Kill();
@@ -128,9 +133,9 @@ void AgentManager::StartAgent() {
 
     int exit_code = child.Wait();
     timer->cancel();
-    RAY_LOG(WARNING) << "Agent process with id " << agent_id << " exited, return value "
-                     << exit_code << ". ip " << reported_agent_ip_address_ << ". id "
-                     << reported_agent_id_;
+    RAY_LOG(WARNING) << "Agent process with id " << agent_id_ << " exited, return value "
+                     << exit_code << ". ip " << reported_agent_info_.ip_address()
+                     << ". id " << reported_agent_info_.id();
     RAY_LOG(ERROR)
         << "The raylet exited immediately because the Ray agent failed. "
            "The raylet fate shares with the agent. This can happen because the "
@@ -301,6 +306,16 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
           callback(false);
         }
       });
+}
+
+const ray::Status AgentManager::TryToGetAgentInfo(rpc::AgentInfo *agent_info) const {
+  if (IsAgentRegistered()) {
+    *agent_info = reported_agent_info_;
+    return ray::Status::OK();
+  } else {
+    std::string err_msg = "The agent has not finished register yet.";
+    return ray::Status::Invalid(err_msg);
+  }
 }
 
 }  // namespace raylet
