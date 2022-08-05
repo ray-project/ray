@@ -6,7 +6,8 @@
 .. toctree::
     :maxdepth: 2
 
-    aws.rst
-    gcp.rst
-    azure.rst
+    aws.md
+    gcp.md
+    azure.md
+    on-premises.md
     add-your-own-cloud-provider.rst
