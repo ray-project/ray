@@ -290,7 +290,7 @@ def _from_pinnable(obj):
     return obj[0]
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def diagnose_serialization(trainable: Callable):
     """Utility for detecting why your trainable function isn't serializing.
 
@@ -431,7 +431,7 @@ def _load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> Optional[Dict]:
     return checkpoint_state
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def wait_for_gpu(
     gpu_id: Optional[Union[int, str]] = None,
     target_util: float = 0.01,
@@ -532,7 +532,7 @@ def wait_for_gpu(
     raise RuntimeError("GPU memory was not freed.")
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def validate_save_restore(
     trainable_cls: Type,
     config: Optional[Dict] = None,
