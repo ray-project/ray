@@ -378,6 +378,54 @@ def test_backlog_report(shutdown_only):
     global_state_accessor.disconnect()
 
 
+def test_default_load_reports(shutdown_only):
+    """Despite the fact that default actors release their cpu after being
+    placed, they should still require 1 CPU for laod reporting purposes.
+    https://github.com/ray-project/ray/issues/26806
+    """
+    cluster = ray.init(
+        num_cpus=0,
+    )
+
+    global_state_accessor = make_global_state_accessor(cluster)
+
+    @ray.remote
+    def foo():
+        return None
+
+    @ray.remote
+    class Foo:
+        pass
+
+    def actor_and_task_queued_together():
+        message = global_state_accessor.get_all_resource_usage()
+        if message is None:
+            return False
+
+        resource_usage = gcs_utils.ResourceUsageBatchData.FromString(message)
+        aggregate_resource_load = resource_usage.resource_load_by_shape.resource_demands
+        print(f"Num shapes {len(aggregate_resource_load)}")
+        if len(aggregate_resource_load) == 1:
+            num_infeasible = aggregate_resource_load[0].num_infeasible_requests_queued
+            print(f"num in shape {num_infeasible}")
+            # Ideally we'd want to assert backlog_size == 8, but guaranteeing
+            # the order the order that submissions will occur is too
+            # hard/flaky.
+            return num_infeasible == 2
+        return False
+
+    # Assign to variables to keep the ref counter happy.
+    handle = Foo.remote()
+    ref = foo.remote()
+
+    wait_for_condition(actor_and_task_queued_together, timeout=2)
+    global_state_accessor.disconnect()
+
+    # Do something with the variables so lint is happy.
+    del handle
+    del ref
+
+
 def test_heartbeat_ip(shutdown_only):
     cluster = ray.init(num_cpus=1)
     global_state_accessor = make_global_state_accessor(cluster)
