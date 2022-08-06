@@ -157,28 +157,35 @@ SpaceStruct = Union[gym.spaces.Space, dict, tuple]
 StateBatches = List[List[Any]]
 
 # Format of data output from policy forward pass.
+# __sphinx_doc_begin_policy_output_type__
 PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
+# __sphinx_doc_end_policy_output_type__
 
 
 # Data type that is fed into and yielded from agent connectors.
+# __sphinx_doc_begin_agent_connector_data_type__
 @ExperimentalAPI
 class AgentConnectorDataType:
     def __init__(self, env_id: str, agent_id: str, data: Any):
         self.env_id = env_id
         self.agent_id = agent_id
         self.data = data
+# __sphinx_doc_end_agent_connector_data_type__
 
 
 # Data type that is fed into and yielded from agent connectors.
+# __sphinx_doc_begin_action_connector_output__
 @ExperimentalAPI
 class ActionConnectorDataType:
     def __init__(self, env_id: str, agent_id: str, output: PolicyOutputType):
         self.env_id = env_id
         self.agent_id = agent_id
         self.output = output
+# __sphinx_doc_end_action_connector_output__
 
 
 # Final output data type of agent connectors.
+# __sphinx_doc_begin_agent_connector_output__
 @ExperimentalAPI
 class AgentConnectorsOutput:
     def __init__(
@@ -186,6 +193,7 @@ class AgentConnectorsOutput:
     ):
         self.for_training = for_training
         self.for_action = for_action
+# __sphinx_doc_end_agent_connector_output__
 
 
 # Generic type var.
