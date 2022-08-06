@@ -744,7 +744,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     )
 
 
-def test_legacy_sync_handle_env_var(call_ray_stop_only):
+def test_legacy_sync_handle_env_var(call_ray_stop_only):  # noqa: F811
     script = """
 from ray import serve
 from ray.serve.dag import InputNode

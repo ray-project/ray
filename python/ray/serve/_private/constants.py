@@ -99,6 +99,7 @@ RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or
 # Env var to control legacy sync deployment handle behavior in DAG.
 SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
 
+
 class ServeHandleType(str, Enum):
     SYNC = "SYNC"
     ASYNC = "ASYNC"
