@@ -3343,7 +3343,7 @@ py_test(
 py_test(
     name = "examples/connectors/run_connector_policy",
     main = "examples/connectors/run_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
     data = glob([
@@ -3355,7 +3355,7 @@ py_test(
 py_test(
     name = "examples/connectors/adapt_connector_policy",
     main = "examples/connectors/adapt_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
     data = glob([
@@ -3367,7 +3367,7 @@ py_test(
 py_test(
     name = "examples/connectors/self_play_with_policy_checkpoint",
     main = "examples/connectors/self_play_with_policy_checkpoint.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
     data = glob([
