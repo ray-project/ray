@@ -5,6 +5,7 @@ and adapt/use it with a different version of the environment.
 import argparse
 import gym
 import numpy as np
+from pathlib import Path
 from typing import Dict
 
 from ray.rllib.utils.policy import (
@@ -25,7 +26,7 @@ from ray.rllib.utils.typing import (
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--checkpoint_file",
-    help="Path to an RLlib checkpoint file.",
+    help="Path to an RLlib checkpoint file, relative to //ray/rllib/ folder.",
 )
 parser.add_argument(
     "--policy_id",
@@ -87,9 +88,9 @@ V1ToV2ActionConnector = register_lambda_action_connector(
 )
 
 
-def run():
+def run(checkpoint_path):
     # Restore policy.
-    policies = load_policies_from_checkpoint(args.checkpoint_file, [args.policy_id])
+    policies = load_policies_from_checkpoint(checkpoint_path, [args.policy_id])
     policy = policies[args.policy_id]
 
     # Adapt policy trained for standard CartPole to the new env.
@@ -123,4 +124,7 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    checkpoint_path = str(
+        Path(__file__).parent.parent.parent.absolute().joinpath(args.checkpoint_file)
+    )
+    run(checkpoint_path)

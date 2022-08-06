@@ -4,7 +4,7 @@ and use it in a serving/inference setting.
 
 import argparse
 import gym
-
+import os
 from pathlib import Path
 
 from ray.rllib.utils.policy import (
@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser()
 # This should a checkpoint created with connectors enabled.
 parser.add_argument(
     "--checkpoint_file",
-    help="Path to an RLlib checkpoint file.",
+    help="Path to an RLlib checkpoint file, relative to //ray/rllib/ folder.",
 )
 parser.add_argument(
     "--policy_id",
@@ -29,12 +29,9 @@ args = parser.parse_args()
 assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 
 
-assert False, Path(__file__)
-
-
-def run():
+def run(checkpoint_path):
     # Restore policy.
-    policies = load_policies_from_checkpoint(args.checkpoint_file, [args.policy_id])
+    policies = load_policies_from_checkpoint(checkpoint_path, [args.policy_id])
     policy = policies[args.policy_id]
 
     # Run CartPole.
@@ -57,4 +54,7 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    checkpoint_path = str(
+        Path(__file__).parent.parent.parent.absolute().joinpath(args.checkpoint_file)
+    )
+    run(checkpoint_path)

@@ -3349,7 +3349,7 @@ py_test(
     data = glob([
         "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.new",
     ]),
-    args = ["--checkpoint_file=../../rllib/tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.new"]
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.new"]
 )
 
 py_test(
@@ -3361,7 +3361,7 @@ py_test(
     data = glob([
         "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.old",
     ]),
-    args = ["--checkpoint_file=../../rllib/tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.old"]
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.old"]
 )
 
 py_test(
@@ -3374,7 +3374,7 @@ py_test(
         "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
     ]),
     args = [
-        "--checkpoint_file=../../rllib/tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
+        "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
         "--train_iteration=1"  # Smoke test.
     ]
 )
