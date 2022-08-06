@@ -103,3 +103,9 @@ SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
 class ServeHandleType(str, Enum):
     SYNC = "SYNC"
     ASYNC = "ASYNC"
+
+
+# Deprecation message for V1 migrations.
+MIGRATION_MESSAGE = (
+    "See https://docs.ray.io/en/latest/serve/index.html for more information."
+)

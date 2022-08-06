@@ -17,7 +17,7 @@ from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.common import ApplicationStatus, DeploymentStatus
 from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
@@ -564,6 +564,82 @@ class TestDeployApp:
 
         # Ensure config checkpoint has been deleted
         assert client.get_serve_status().app_status.deployment_timestamp == 0
+
+    @pytest.mark.parametrize(
+        "field_to_update,option_to_update,config_update",
+        [
+            ("import_path", "", False),
+            ("runtime_env", "", False),
+            ("deployments", "num_replicas", True),
+            ("deployments", "autoscaling_config", True),
+            ("deployments", "user_config", True),
+            ("deployments", "ray_actor_options", False),
+        ],
+    )
+    def test_deploy_config_update(
+        self,
+        client: ServeControllerClient,
+        field_to_update: str,
+        option_to_update: str,
+        config_update: bool,
+    ):
+        """
+        Check that replicas stay alive when lightweight config updates are made and
+        replicas are torn down when code updates are made.
+        """
+
+        def deployment_running():
+            serve_status = client.get_serve_status()
+            return (
+                serve_status.get_deployment_status("f") is not None
+                and serve_status.app_status.status == ApplicationStatus.RUNNING
+                and serve_status.get_deployment_status("f").status
+                == DeploymentStatus.HEALTHY
+            )
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.pid.node",
+            "deployments": [
+                {
+                    "name": "f",
+                    "autoscaling_config": None,
+                    "user_config": None,
+                    "ray_actor_options": {"num_cpus": 0.1},
+                },
+            ],
+        }
+
+        client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(deployment_running, timeout=15)
+        pid1 = requests.get("http://localhost:8000/f").text
+
+        if field_to_update == "import_path":
+            config_template[
+                "import_path"
+            ] = "ray.serve.tests.test_config_files.pid.bnode"
+        elif field_to_update == "runtime_env":
+            config_template["runtime_env"] = {"env_vars": {"test_var": "test_val"}}
+        elif field_to_update == "deployments":
+            updated_options = {
+                "num_replicas": 2,
+                "autoscaling_config": {"max_replicas": 2},
+                "user_config": {"name": "bob"},
+                "ray_actor_options": {"num_cpus": 0.2},
+            }
+            config_template["deployments"][0][option_to_update] = updated_options[
+                option_to_update
+            ]
+
+        client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(deployment_running, timeout=15)
+
+        # This assumes that Serve implements round-robin routing for its replicas. As
+        # long as that doesn't change, this test shouldn't be flaky; however if that
+        # routing ever changes, this test could become mysteriously flaky
+        pids = []
+        for _ in range(4):
+            pids.append(requests.get("http://localhost:8000/f").text)
+        assert (pid1 in pids) == config_update
 
 
 def test_controller_recover_and_delete(shutdown_ray):
