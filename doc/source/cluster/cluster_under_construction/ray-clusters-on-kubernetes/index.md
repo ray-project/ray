@@ -2,12 +2,30 @@
 (kuberay-index)=
 ## Overview
 
-You can execute your distributed Ray programs on a Kubernetes cluster.
+In this section we cover how to execute your distributed Ray programs on a Kubernetes cluster.
 
-The [KubeRay Operator](https://ray-project.github.io/kuberay/components/operator/) provides a Kubernetes-native
-interface for managing Ray clusters. Each Ray cluster consist of a head pod and collection of worker pods.
-Optional autoscaling support allows the KubeRay Operator to size your Ray clusters according to the requirements
-of your Ray workload, adding and removing Ray pods as needed.
+Using the [KubeRay Operator](https://ray-project.github.io/kuberay/components/operator/) is the
+recommended way to do so. The operator provides a Kubernetes-native way to manage Ray clusters.
+Each Ray cluster consists of a head node pod and a collection of worker node pods. Optional
+autoscaling support allows the KubeRay Operator to size your Ray clusters according to the
+requirements of your Ray workload, adding and removing Ray pods as needed. KubeRay supports
+heterogenous compute nodes (including GPUs) as well as running multiple Ray clusters with
+different Ray versions in the same Kubernetes cluster.
+
+```{eval-rst}
+.. image:: /cluster/cluster_under_construction/ray-clusters-on-kubernetes/images/ray_on_kubernetes.png
+    :align: center
+
+..
+  https://docs.google.com/drawings/d/1E3FQgWWLuj8y2zPdKXjoWKrfwgYXw6RV_FWRwK8dVlg/edit
+```
+
+
+Concretely you will learn how to:
+
+- Set up and configure Ray on a Kubernetes cluster
+- Deploy and monitor Ray applications
+- Integrate Ray applications with Kubernetes networking
 
 ## Learn More
 
@@ -19,7 +37,7 @@ The Ray docs present all the information you need to start running Ray workloads
     :column: col-lg-12 p-2
     :card:
 
-    **Getting started**
+    **Getting Started**
     ^^^
 
     Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
@@ -29,10 +47,32 @@ The Ray docs present all the information you need to start running Ray workloads
         :type: ref
         :text: Get Started with Ray on Kubernetes
         :classes: btn-outline-info btn-block
+    ---
+    **Examples**
+    ^^^
+
+    Try example Ray workloads on Kubernetes.
+
+    +++
+    .. link-button:: kuberay-examples
+        :type: ref
+        :text: Example workloads
+        :classes: btn-outline-info btn-block
+    ---
+    **User Guides**
+    ^^^
+
+    Learn best practices for configuring Ray clusters on Kubernetes.
+
+    +++
+    .. link-button:: kuberay-guides
+        :type: ref
+        :text: User Guides
+        :classes: btn-outline-info btn-block
 ```
 ## The KubeRay project
 
-Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/).
+Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). KubeRay is used by several companies to run production Ray deployments.
 
 - Visit the [KubeRay GitHub repo](https://github.com/ray-project/kuberay) to track progress, report bugs, propose new features, or contribute to
 the project.

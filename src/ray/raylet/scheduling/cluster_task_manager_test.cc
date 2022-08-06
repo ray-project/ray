@@ -179,7 +179,7 @@ RayTask CreateTask(
     }
   }
 
-  spec_builder.SetNormalTaskSpec(0, false, scheduling_strategy);
+  spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy);
 
   return RayTask(spec_builder.Build());
 }

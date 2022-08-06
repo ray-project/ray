@@ -1744,7 +1744,11 @@ class Dataset(Generic[T]):
         return Dataset(plan, self._epoch, self._lazy)
 
     def limit(self, limit: int) -> "Dataset[T]":
-        """Limit the dataset to the first number of records specified.
+        """Truncate the dataset to the first ``limit`` records.
+
+        Contrary to :meth`.take`, this will not move any data to the caller's
+        machine. Instead, it will return a new ``Dataset`` pointing to the truncated
+        distributed data.
 
         Examples:
             >>> import ray
@@ -1759,12 +1763,47 @@ class Dataset(Generic[T]):
         Returns:
             The truncated dataset.
         """
-
-        left, _ = self._split(limit, return_right_half=False)
-        return left
+        start_time = time.perf_counter()
+        # Truncate the block list to the minimum number of blocks that contains at least
+        # `limit` rows.
+        block_list = self._plan.execute().truncate_by_rows(limit)
+        blocks, metadata, _, _ = _split_at_index(block_list, limit)
+        split_duration = time.perf_counter() - start_time
+        meta_for_stats = [
+            BlockMetadata(
+                num_rows=m.num_rows,
+                size_bytes=m.size_bytes,
+                schema=m.schema,
+                input_files=m.input_files,
+                exec_stats=None,
+            )
+            for m in metadata
+        ]
+        dataset_stats = DatasetStats(
+            stages={"limit": meta_for_stats},
+            parent=self._plan.stats(),
+        )
+        dataset_stats.time_total_s = split_duration
+        return Dataset(
+            ExecutionPlan(
+                BlockList(
+                    blocks,
+                    metadata,
+                    owned_by_consumer=block_list._owned_by_consumer,
+                ),
+                dataset_stats,
+                run_by_consumer=block_list._owned_by_consumer,
+            ),
+            self._epoch,
+            self._lazy,
+        )
 
     def take(self, limit: int = 20) -> List[T]:
-        """Take up to the given number of records from the dataset.
+        """Return up to ``limit`` records from the dataset.
+
+        This will move up to ``limit`` records to the caller's machine; if
+        ``limit`` is very large, this can result in an OutOfMemory crash on
+        the caller.
 
         Time complexity: O(limit specified)
 
@@ -1782,7 +1821,11 @@ class Dataset(Generic[T]):
         return output
 
     def take_all(self, limit: int = 100000) -> List[T]:
-        """Take all the records in the dataset.
+        """Return all of the records in the dataset.
+
+        This will move the entire dataset to the caller's machine; if the
+        dataset is very large, this can result in an OutOfMemory crash on
+        the caller.
 
         Time complexity: O(dataset size)
 
@@ -3280,7 +3323,7 @@ class Dataset(Generic[T]):
                         )
                     else:
                         logger.info(
-                            f"{OK_PREFIX} This pipeline's windows can each fit in "
+                            f"{OK_PREFIX} This pipeline's windows likely fit in "
                             "object store memory without spilling."
                         )
                 except Exception as e:
@@ -3449,78 +3492,6 @@ class Dataset(Generic[T]):
             A deserialized ``Dataset`` instance.
         """
         return pickle.loads(serialized_ds)
-
-    def _split(
-        self, index: int, return_right_half: bool
-    ) -> ("Dataset[T]", "Dataset[T]"):
-        start_time = time.perf_counter()
-        block_list = self._plan.execute()
-        left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
-            block_list,
-            index,
-            return_right_half,
-        )
-        split_duration = time.perf_counter() - start_time
-        left_meta_for_stats = [
-            BlockMetadata(
-                num_rows=m.num_rows,
-                size_bytes=m.size_bytes,
-                schema=m.schema,
-                input_files=m.input_files,
-                exec_stats=None,
-            )
-            for m in left_metadata
-        ]
-        left_dataset_stats = DatasetStats(
-            stages={"split": left_meta_for_stats},
-            parent=self._plan.stats(),
-        )
-        left_dataset_stats.time_total_s = split_duration
-        left = Dataset(
-            ExecutionPlan(
-                BlockList(
-                    left_blocks,
-                    left_metadata,
-                    owned_by_consumer=block_list._owned_by_consumer,
-                ),
-                left_dataset_stats,
-                run_by_consumer=block_list._owned_by_consumer,
-            ),
-            self._epoch,
-            self._lazy,
-        )
-        if return_right_half:
-            right_meta_for_stats = [
-                BlockMetadata(
-                    num_rows=m.num_rows,
-                    size_bytes=m.size_bytes,
-                    schema=m.schema,
-                    input_files=m.input_files,
-                    exec_stats=None,
-                )
-                for m in right_metadata
-            ]
-            right_dataset_stats = DatasetStats(
-                stages={"split": right_meta_for_stats},
-                parent=self._plan.stats(),
-            )
-            right_dataset_stats.time_total_s = split_duration
-            right = Dataset(
-                ExecutionPlan(
-                    BlockList(
-                        right_blocks,
-                        right_metadata,
-                        owned_by_consumer=block_list._owned_by_consumer,
-                    ),
-                    right_dataset_stats,
-                    run_by_consumer=block_list._owned_by_consumer,
-                ),
-                self._epoch,
-                self._lazy,
-            )
-        else:
-            right = None
-        return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
         block_list = self._plan.execute()

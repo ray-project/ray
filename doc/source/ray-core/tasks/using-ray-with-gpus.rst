@@ -1,3 +1,5 @@
+.. _gpu-support:
+
 GPU Support
 ===========
 
