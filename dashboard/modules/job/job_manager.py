@@ -75,7 +75,7 @@ class JobLogStorageClient:
         self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
     ) -> str:
         """
-        Returns the first MAX_LOG_SIZE (20000) characters for the last
+        Returns the last MAX_LOG_SIZE (20000) characters in the last
         `num_log_lines` lines.
 
         Args:
@@ -93,7 +93,7 @@ class JobLogStorageClient:
                 for line in lines.splitlines():
                     log_tail_deque.append(line)
 
-        return "\n".join(log_tail_deque)[0 : self.MAX_LOG_SIZE]
+        return "\n".join(log_tail_deque)[-self.MAX_LOG_SIZE:]
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
