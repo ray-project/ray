@@ -89,7 +89,9 @@ class Concatenator(Preprocessor):
         columns_to_concat = list(included_columns - set(self.exclude))
         concatenated = df[columns_to_concat].to_numpy(dtype=self.dtype)
         df = df.drop(columns=columns_to_concat)
-        df.loc[:, self.output_column_name] = list(concatenated)
+        # Use a Pandas Series for column assignment to get more consistent
+        # behavior across Pandas versions.
+        df.loc[:, self.output_column_name] = pd.Series(list(concatenated))
         return df
 
     def __repr__(self):
