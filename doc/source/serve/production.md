@@ -304,7 +304,7 @@ If you start Ray and deploy your deployment graph from a directory that doesn't 
 
 To make your config file location-independent, you can push your deployment graph code to [a remote repository and add that repository to your config file's `runtime_env` field](remote-uris). When Serve runs your deployment graph, it will pull the code from the remote repository rather than use a local copy. **This is a best practice** because it lets you deploy your config file from any machine in any directory and share the file with other developers, making it a more standalone artifact.
 
-As an example, we have [pushed a copy of the FruitStand deployment graph to GitHub](https://github.com/ray-project/test_dag/blob/6fec7a9a48b164c2c1d104e3d562ae2bf27a1d23/fruit.py). You can use this config file to deploy the `FruitStand` deployment graph to your own Ray cluster even if you don't have the code locally:
+As an example, we have [pushed a copy of the FruitStand deployment graph to GitHub](https://github.com/ray-project/test_dag/blob/40d61c141b9c37853a7014b8659fc7f23c1d04f6/fruit.py). You can use this config file to deploy the `FruitStand` deployment graph to your own Ray cluster even if you don't have the code locally:
 
 ```yaml
 import_path: fruit.deployment_graph

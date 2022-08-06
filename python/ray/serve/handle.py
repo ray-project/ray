@@ -308,9 +308,10 @@ class RayServeSyncHandle(RayServeHandle):
 
 
 @DeveloperAPI
-class RayServeLazyAsyncHandle:
-    """Lazily initialized handle that only gets fulfilled upon first execution."""
+class RayServeDeploymentHandle:
+    """Send requests to a deployment. This class should not be manually created."""
 
+    # """Lazily initialized handle that only gets fulfilled upon first execution."""
     def __init__(
         self,
         deployment_name: str,
@@ -345,7 +346,7 @@ class RayServeLazyAsyncHandle:
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
         }
-        return RayServeLazyAsyncHandle._deserialize, (serialized_data,)
+        return RayServeDeploymentHandle._deserialize, (serialized_data,)
 
     def __getattr__(self, name):
         return self.options(method_name=name)

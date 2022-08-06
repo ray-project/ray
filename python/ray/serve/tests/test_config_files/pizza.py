@@ -2,7 +2,7 @@ from enum import Enum
 from typing import List, Dict, TypeVar
 
 from ray import serve
-from ray.serve.handle import RayServeLazyAsyncHandle
+from ray.serve.handle import RayServeDeploymentHandle
 import starlette.requests
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
@@ -18,7 +18,7 @@ class Operation(str, Enum):
 @serve.deployment(ray_actor_options={"num_cpus": 0.15})
 class Router:
     def __init__(
-        self, multiplier: RayServeLazyAsyncHandle, adder: RayServeLazyAsyncHandle
+        self, multiplier: RayServeDeploymentHandle, adder: RayServeDeploymentHandle
     ):
         self.adder = adder
         self.multiplier = multiplier

@@ -12,7 +12,7 @@ from fastapi import Body, Depends, FastAPI
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.http_util import ASGIHTTPSender
-from ray.serve.handle import RayServeLazyAsyncHandle
+from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.exceptions import RayServeException
 from ray import serve
 
@@ -116,7 +116,7 @@ class DAGDriver:
                 endpoint_create_func()
 
         else:
-            assert isinstance(dags, (RayServeDAGHandle, RayServeLazyAsyncHandle))
+            assert isinstance(dags, (RayServeDAGHandle, RayServeDeploymentHandle))
             self.dags = {self.MATCH_ALL_ROUTE_PREFIX: dags}
 
             # Single dag case, we will receive all prefix route

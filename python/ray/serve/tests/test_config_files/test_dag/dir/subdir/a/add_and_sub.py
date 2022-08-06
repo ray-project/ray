@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import List, TypeVar
-from ray.serve.handle import RayServeLazyAsyncHandle
+from ray.serve.handle import RayServeDeploymentHandle
 
 import starlette.requests
 
@@ -53,7 +53,7 @@ class Subtract:
 )
 class Router:
     def __init__(
-        self, adder: RayServeLazyAsyncHandle, subtractor: RayServeLazyAsyncHandle
+        self, adder: RayServeDeploymentHandle, subtractor: RayServeDeploymentHandle
     ):
         self.adder = adder
         self.subtractor = subtractor
