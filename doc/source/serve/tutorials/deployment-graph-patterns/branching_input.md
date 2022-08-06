@@ -1,4 +1,4 @@
-(deployment-graph-pattern-branching-input)
+(deployment-graph-pattern-branching-input)=
 
 # Pattern: Branching Input
 
