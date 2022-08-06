@@ -271,7 +271,7 @@ then fetch its logs:
   Code dependencies for a given Ray task or actor must be installed on each Ray node that might run the task or actor.
   Typically, this means that all Ray nodes need to have the same dependencies installed.
   To achieve this, you can build a custom container image, using one of the `official Ray images <https://hub.docker.com/r/rayproject/ray>`_ as the base.
-  Alternatively, try out the experimental :ref:`Runtime Environments<runtime-environments>` API (latest Ray release version recommended.)
+  Alternatively, try out :ref:`Runtime Environments<runtime-environments>`.
 
 .. _k8s-cleanup-basic:
 

@@ -330,11 +330,11 @@ class StateAPIManager:
             num_filtered=num_filtered,
         )
 
-    def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
+    async def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
         # TODO(sang): Support limit & timeout & async calls.
         try:
             result = []
-            job_info = self._client.get_job_info()
+            job_info = await self._client.get_job_info()
             for job_id, data in job_info.items():
                 data = asdict(data)
                 data["job_id"] = job_id

@@ -61,7 +61,6 @@ py_test_module_list(
     "test_gcs_pubsub.py",
     "test_global_gc.py",
     "test_grpc_client_credentials.py",
-    "test_iter.py",
     "test_job.py",
     "test_get_locations.py",
     "test_global_state.py",
@@ -116,6 +115,7 @@ py_test_module_list(
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_logging.py",
     "test_memory_scheduling.py",
+    "test_memory_pressure.py",
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",
@@ -285,6 +285,7 @@ py_test_module_list(
     "test_output.py",
     "test_out_of_disk_space.py",
     "test_failure_4.py",
+    "test_iter.py",
     "test_object_spilling.py",
     "test_object_spilling_no_asan.py",
     "test_object_spilling_2.py",

@@ -293,6 +293,10 @@ class RayActorError(RayError):
             if cause.node_ip_address != "":
                 error_msg_lines.append(f"\tip: {cause.node_ip_address}")
             error_msg_lines.append(cause.error_message)
+            if cause.never_started:
+                error_msg_lines.append(
+                    "The actor never ran - it was cancelled before it started running."
+                )
             self.error_msg = "\n".join(error_msg_lines)
 
     @property

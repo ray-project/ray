@@ -44,6 +44,7 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
+    return_num: int = 2
 
 
 class ReplicaSet:
