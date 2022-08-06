@@ -4,7 +4,6 @@ and use it in a serving/inference setting.
 
 import argparse
 import gym
-import os
 from pathlib import Path
 
 from ray.rllib.utils.policy import (
