@@ -10,6 +10,7 @@ Ray Serve functionality and how to integrate different modeling frameworks.
 :name: serve-tutorials
 
 serve-ml-models
+deployment-graph-patterns
 batch
 web-server-integration
 rllib
