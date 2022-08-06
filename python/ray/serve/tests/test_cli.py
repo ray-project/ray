@@ -461,7 +461,7 @@ def test_run_runtime_env(ray_start_stop):
             "--working-dir",
             (
                 "https://github.com/ray-project/test_dag/archive/"
-                "76a741f6de31df78411b1f302071cde46f098418.zip"
+                "6fec7a9a48b164c2c1d104e3d562ae2bf27a1d23.zip"
             ),
         ]
     )

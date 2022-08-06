@@ -25,6 +25,8 @@ from ray.serve.tests.resources.test_dags import (
 )
 from ray.dag.utils import _DAGNodeNameGenerator
 
+pytestmark = pytest.mark.asyncio
+
 
 def _validate_consistent_python_output(
     deployment, dag, handle_by_name, input=None, output=None
@@ -84,7 +86,7 @@ def test_single_class_with_invalid_deployment_options(serve_instance):
             _ = model.forward.bind(dag_input)
 
 
-def test_func_class_with_class_method_dag(serve_instance):
+async def test_func_class_with_class_method_dag(serve_instance):
     ray_dag, _ = get_func_class_with_class_method_dag()
 
     with _DAGNodeNameGenerator() as node_name_generator:
@@ -100,7 +102,7 @@ def test_func_class_with_class_method_dag(serve_instance):
         deployment.deploy()
 
     assert ray.get(ray_dag.execute(1, 2, 3)) == 8
-    assert ray.get(serve_executor_root_dag.execute(1, 2, 3)) == 8
+    assert ray.get(await serve_executor_root_dag.execute(1, 2, 3)) == 8
 
 
 def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
