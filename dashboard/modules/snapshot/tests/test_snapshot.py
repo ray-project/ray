@@ -235,6 +235,13 @@ ray.get(a.ping.remote())
     assert data["data"]["snapshot"]["rayCommit"] == ray.__commit__
     assert data["data"]["snapshot"]["rayVersion"] == ray.__version__
 
+    # test actor limit
+    response = requests.get(f"{webui_url}/api/snapshot?actor_limit=2")
+    response.raise_for_status()
+    data = response.json()
+    pprint.pprint(data)
+    assert len(data["data"]["snapshot"]["actors"]) == 2
+
 
 @pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
 def test_serve_snapshot(ray_start_with_dashboard):
