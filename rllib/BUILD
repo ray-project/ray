@@ -1030,6 +1030,14 @@ py_test(
     srcs = ["algorithms/simple_q/tests/test_simple_q.py"]
 )
 
+# SimpleQ Reproducibility
+py_test(
+    name = "test_simple_q",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/simple_q/tests/test_repro_simple_q.py"]
+)
+
 # SlateQ
 py_test(
     name = "test_slateq",

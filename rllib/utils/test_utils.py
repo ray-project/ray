@@ -971,11 +971,11 @@ def check_reproducibilty(
     stop_dict = {
         "training_iteration": training_iteration,
     }
-    for num_workers in (0, 4):
+    for num_workers in [0]: #[0, 4]:
         algo_config = (
             algo_config.debugging(seed=42)
             .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-            .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
+            .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=1)#2)
         )
 
         for fw in framework_iterator(algo_config, **fw_kwargs):
@@ -1001,6 +1001,7 @@ def check_reproducibilty(
             results2 = results2.get_best_result().metrics
 
             # Test rollout behavior.
+            breakpoint()
             check(results1["hist_stats"], results2["hist_stats"])
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
