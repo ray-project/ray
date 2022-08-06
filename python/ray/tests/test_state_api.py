@@ -6,6 +6,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
+from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
@@ -97,7 +98,7 @@ from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClien
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
-if sys.version_info > (3, 7, 0):
+if sys.version_info >= (3, 8, 0):
     from unittest.mock import AsyncMock
 else:
     from asyncmock import AsyncMock
@@ -1096,7 +1097,8 @@ async def test_state_data_source_client(ray_start_cluster):
     gcs_channel = ray._private.utils.init_grpc_channel(
         cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    client = StateDataSourceClient(gcs_channel)
+    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
 
     """
     Test actor
@@ -1132,7 +1134,7 @@ async def test_state_data_source_client(ray_start_cluster):
         # Entrypoint shell command to execute
         entrypoint="ls",
     )
-    result = client.get_job_info()
+    result = await client.get_job_info()
     assert list(result.keys())[0] == job_id
     assert isinstance(result, dict)
 
@@ -1248,7 +1250,8 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     gcs_channel = ray._private.utils.init_grpc_channel(
         cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    client = StateDataSourceClient(gcs_channel)
+    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
 
     """
     Test actor
@@ -1299,7 +1302,8 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     gcs_channel = ray._private.utils.init_grpc_channel(
         cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
-    client = StateDataSourceClient(gcs_channel)
+    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
+    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
     for node in ray.nodes():
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
