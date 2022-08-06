@@ -92,6 +92,13 @@ RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
 /// handler is drifting.
 RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
+/// Whether to report placement or regular resource usage for an actor.
+/// Reporting placement may cause the autoscaler to overestimate the resources
+/// required of the cluster, but reporting regular resource may lead to no
+/// autoscaling when an actor can't be placed.
+/// https://github.com/ray-project/ray/issues/26806
+RAY_CONFIG(bool, report_actor_placement_resources, true)
+
 /// Whether to record the creation sites of object references. This adds more
 /// information to `ray memory`, but introduces a little extra overhead when
 /// creating object references (e.g. 5~10 microsec per call in Python).
