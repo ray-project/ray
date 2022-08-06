@@ -48,9 +48,8 @@ class Combine:
 
     async def __call__(self, req):
         r1_ref = self.m1.forward.remote(req)
-        assert isinstance(r1_ref, ray.ObjectRef), type(self.m1)
-        r2_ref = await self.m2.forward.remote(req)
-        assert isinstance(r2_ref, ray.ObjectRef), type(self.m2)
+        r2_ref = self.m2.forward.remote(req)
+
         return sum(ray.get([r1_ref, r2_ref]))
 
 
