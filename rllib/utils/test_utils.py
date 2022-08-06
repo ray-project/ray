@@ -20,6 +20,7 @@ from typing import (
 import numpy as np
 import tree  # pip install dm_tree
 import yaml
+import pprint
 from gym.spaces import Box
 
 import ray
@@ -982,6 +983,8 @@ def check_reproducibilty(
                 f"Testing reproducibility of {algo_class.__name__}"
                 f" with {num_workers} workers on fw = {fw}"
             )
+            print("/// config")
+            pprint.pprint(algo_config.to_dict())
             # test tune.run() reproducibility
             results1 = tune.Tuner(
                 algo_class,

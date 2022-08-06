@@ -1,4 +1,5 @@
 import unittest
+import pytest
 
 import ray
 from ray.tune import register_env
@@ -26,9 +27,15 @@ class TestReproPPO(unittest.TestCase):
         register_env(
             "DeterministicCartPole-v0", lambda _: DeterministicCartPole(seed=42)
         )
+        configs = (
+            ppo.PPOConfig()
+            .environment(env="DeterministicCartPole-v0")
+            .rollouts(rollout_fragment_length=8)
+            .training(train_batch_size=64, sgd_minibatch_size=32, num_sgd_iter=2)
+        )
         check_reproducibilty(
             algo_class=ppo.PPO,
-            algo_config=ppo.PPOConfig().environment(env="DeterministicCartPole-v0"),
+            algo_config=configs,
             fw_kwargs={"frameworks": ("tf", "torch")},
             training_iteration=3,
         )
@@ -39,17 +46,21 @@ class TestReproPPO(unittest.TestCase):
         register_env(
             "DeterministicPendulum-v1", lambda _: DeterministicPendulum(seed=42)
         )
-
+        configs = (
+            ppo.PPOConfig()
+            .environment(env="DeterministicPendulum-v1")
+            .rollouts(rollout_fragment_length=8)
+            .training(train_batch_size=64, sgd_minibatch_size=32, num_sgd_iter=2)
+        )
         check_reproducibilty(
             algo_class=ppo.PPO,
-            algo_config=ppo.PPOConfig().environment(env="DeterministicPendulum-v1"),
+            algo_config=configs,
             fw_kwargs={"frameworks": ("tf", "torch")},
             training_iteration=3,
         )
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
