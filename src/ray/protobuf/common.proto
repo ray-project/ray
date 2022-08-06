@@ -255,6 +255,9 @@ message ActorDiedErrorContext {
   string class_name = 8;
   // The id of the actor
   bytes actor_id = 9;
+  // Whether the actor had never started running before it died, i.e. it was cancelled
+  // before scheduling had completed.
+  bool never_started = 10;
 }
 // ---Actor death contexts end----
 

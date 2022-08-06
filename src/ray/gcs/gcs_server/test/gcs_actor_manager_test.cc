@@ -280,7 +280,8 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   Status status = gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](const std::shared_ptr<gcs::GcsActor> &actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
@@ -311,7 +312,8 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -338,7 +340,8 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -385,7 +388,8 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
   Status status = gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
@@ -436,7 +440,8 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   Status status = gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       });
   RAY_CHECK_OK(status);
@@ -504,7 +509,8 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -555,7 +561,8 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -674,9 +681,10 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   request1.mutable_task_spec()->CopyFrom(
       registered_actor_1->GetCreationTaskSpecification().GetMessage());
 
-  Status status = gcs_actor_manager_->CreateActor(
-      request1,
-      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
+  Status status = gcs_actor_manager_->CreateActor(request1,
+                                                  [](std::shared_ptr<gcs::GcsActor> actor,
+                                                     const rpc::PushTaskReply &reply,
+                                                     bool creation_cancelled) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "test").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
@@ -711,9 +719,10 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   request2.mutable_task_spec()->CopyFrom(
       registered_actor_2->GetCreationTaskSpecification().GetMessage());
 
-  status = gcs_actor_manager_->CreateActor(
-      request2,
-      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
+  status = gcs_actor_manager_->CreateActor(request2,
+                                           [](std::shared_ptr<gcs::GcsActor> actor,
+                                              const rpc::PushTaskReply &reply,
+                                              bool creation_cancelled) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "test").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -730,9 +739,10 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
   request1.mutable_task_spec()->CopyFrom(
       registered_actor_1->GetCreationTaskSpecification().GetMessage());
 
-  Status status = gcs_actor_manager_->CreateActor(
-      request1,
-      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
+  Status status = gcs_actor_manager_->CreateActor(request1,
+                                                  [](std::shared_ptr<gcs::GcsActor> actor,
+                                                     const rpc::PushTaskReply &reply,
+                                                     bool creation_cancelled) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
@@ -766,9 +776,10 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
   request2.mutable_task_spec()->CopyFrom(
       registered_actor_2->GetCreationTaskSpecification().GetMessage());
 
-  status = gcs_actor_manager_->CreateActor(
-      request2,
-      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
+  status = gcs_actor_manager_->CreateActor(request2,
+                                           [](std::shared_ptr<gcs::GcsActor> actor,
+                                              const rpc::PushTaskReply &reply,
+                                              bool creation_cancelled) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -786,9 +797,10 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
   request1.mutable_task_spec()->CopyFrom(
       registered_actor_1->GetCreationTaskSpecification().GetMessage());
 
-  Status status = gcs_actor_manager_->CreateActor(
-      request1,
-      [](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {});
+  Status status = gcs_actor_manager_->CreateActor(request1,
+                                                  [](std::shared_ptr<gcs::GcsActor> actor,
+                                                     const rpc::PushTaskReply &reply,
+                                                     bool creation_cancelled) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
@@ -835,7 +847,8 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -871,7 +884,8 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       }));
 
@@ -915,7 +929,8 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
       request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(std::move(actor));
       }));
   // Make sure the actor is scheduling.
@@ -1035,7 +1050,8 @@ TEST_F(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition) {
   RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
       create_actor_request,
       [&finished_actors](std::shared_ptr<gcs::GcsActor> actor,
-                         const rpc::PushTaskReply &reply) {
+                         const rpc::PushTaskReply &reply,
+                         bool creation_cancelled) {
         finished_actors.emplace_back(actor);
       }));
   auto actor = mock_actor_scheduler_->actors.back();
