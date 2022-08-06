@@ -1,24 +1,13 @@
-.. _train-user-guide:
+.. _train-dl-guide:
 
-Ray Train Deep Learning User Guide
-==================================
+Deep Learning User Guide
+========================
 
-.. tip:: Get in touch with us if you're using or considering using `Ray Train <https://forms.gle/PXFcJmHwszCwQhqX7>`_!
-
-Ray Train provides solutions for training machine learning models in a distributed manner on Ray.
-This guide focuses on deep learning with PyTorch, TensorFlow and Horovod.
-For other model types, distributed training support is available through other Trainers & libraries:
-
-* **Reinforcement Learning:** :ref:`RLlib <rllib-index>`
-* **XGBoost:** :doc:`/ray-air/examples/xgboost_example`
-* **LightGBM:** :doc:`/ray-air/examples/lightgbm_example`
-* **Scikit-Learn** :doc:`/ray-air/examples/sklearn_example`
-* **Hugging Face** :doc:`/ray-air/examples/huggingface_text_classification`
-* **PyTorch Lightning:** :ref:`ray-lightning`
+This guide explains how to use Train to scale PyTorch, TensorFlow and Horovod.
 
 In this guide, we cover examples for the following use cases:
 
-* How do I :ref:`port my code <train-porting-code>` to using Ray Train?
+* How do I :ref:`port my code <train-porting-code>` to use Ray Train?
 * How do I use Ray Train to :ref:`train with a large dataset <train-datasets>`?
 * How do I :ref:`monitor <train-monitoring>` my training?
 * How do I run my training on pre-emptible instances
@@ -408,95 +397,35 @@ of the :class:`Result` object returned by ``Trainer.fit``.
 Distributed Data Ingest with Ray Datasets
 -----------------------------------------
 
-Ray Train provides native support for :ref:`Ray Datasets <datasets>` to support the following use cases:
+:ref:`Ray Datasets <datasets>` are the recommended way to work with large datasets in Ray Train. Datasets provides automatic loading, sharding, and pipelined ingest (optional) of Data across multiple Train workers.
+To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
 
-1. **Large Datasets**: With Ray Datasets, you can easily work with datasets that are too big to fit on a single node.
-   Ray Datasets will distribute the dataset across the Ray Cluster and allow you to perform dataset operations (map, filter, etc.)
-   on the distributed dataset.
-2. **Automatic locality-aware sharding**: If provided a Ray Dataset, Ray Train will automatically shard the dataset and assign each shard
-   to a training worker while minimizing cross-node data transfer. Unlike with standard Torch or TensorFlow datasets, each training
-   worker will only load its assigned shard into memory rather than the entire ``Dataset``.
-3. **Pipelined Execution**: Ray Datasets also supports pipelining, meaning that data processing operations
-   can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
-   and this minimizes the amount of time your GPUs are idle. See :ref:`dataset-pipeline-api` for more information.
-
-To get started, pass in a Ray Dataset (or multiple) into ``Trainer``. Underneath the hood, Ray Train will automatically shard the given dataset.
-
-Using Ray Datasets is the recommended way for ingesting data into ``Trainer``\s and can be used with any ``Trainer`` in Ray AIR.
-
-.. warning::
-
-    If you are doing distributed training with TensorFlow, you will need to
-    disable TensorFlow's built-in autosharding as the data on each worker is
-    already sharded.
-
-    .. code-block:: python
-        :emphasize-lines: 1, 6
-
-        from ray.train.tensorflow import prepare_dataset_shard
-
-        def train_func():
-            ...
-            tf_dataset = ray.train.get_dataset_shard().to_tf(...)
-            tf_dataset = prepare_dataset_shard(tf_dataset)
-
-
-**Simple Dataset Example**
+Here's a simple code overview of the Datasets integration:
 
 .. code-block:: python
 
-    import ray
-    from ray import train
-    from ray.air import ScalingConfig
-    from ray.train.torch import TorchTrainer
+    from ray.air import session
 
+    # Datasets can be accessed in your train_func via ``get_dataset_shard``.
     def train_func(config):
-        # Create your model here.
-        model = NeuralNetwork()
+        train_data_shard = session.get_dataset_shard("train")
+        validation_data_shard = session.get_dataset_shard("validation")
+        ...
 
-        batch_size = config["worker_batch_size"]
-
-        train_data_shard = train.get_dataset_shard("train")
-        train_torch_dataset = train_data_shard.to_torch(
-            label_column="label", batch_size=batch_size
-        )
-
-        validation_data_shard = train.get_dataset_shard("validation")
-        validation_torch_dataset = validation_data_shard.to_torch(
-            label_column="label", batch_size=batch_size
-        )
-
-        for epoch in config["num_epochs"]:
-            for X, y in train_torch_dataset:
-                model.train()
-                output = model(X)
-                # Train on one batch.
-            for X, y in validation_torch_dataset:
-                model.eval()
-                output = model(X)
-                # Validate one batch.
-        return model
-
-    # Random split dataset into 80% training data and 20% validation data.
+    # Random split the dataset into 80% training data and 20% validation data.
+    dataset = ray.data.read_csv("...")
     train_dataset, validation_dataset = dataset.train_test_split(
-        test_size=0.2, shuffle=True
+        test_size=0.2, shuffle=True,
     )
 
     trainer = TorchTrainer(
         train_func,
-        train_loop_config={"worker_batch_size": 64, "num_epochs": 2},
         datasets={"train": train_dataset, "validation": validation_dataset},
         scaling_config=ScalingConfig(num_workers=8),
     )
-    dataset = ray.data.read_csv("...")
+    trainer.fit()
 
-    result = trainer.fit()
-
-.. _train-dataset-pipeline:
-
-Pipelined Execution
-~~~~~~~~~~~~~~~~~~~
-For details on how to enable pipelined execution, please refer to :ref:`air-ingest`.
+For more details on how to configure data ingest for Train, please refer to :ref:`air-ingest`.
 
 .. TODO link to Training Run Iterator API as a 3rd option for logging.
 
