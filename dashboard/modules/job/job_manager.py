@@ -93,7 +93,7 @@ class JobLogStorageClient:
                 for line in lines.splitlines():
                     log_tail_deque.append(line)
 
-        return "\n".join(log_tail_deque)[-self.MAX_LOG_SIZE:]
+        return "\n".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
