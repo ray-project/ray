@@ -1,6 +1,4 @@
-.. _data_api:
-
-Ray Datasets API
+Ray Datasets API 
 ================
 
 Creating Datasets
@@ -30,118 +28,6 @@ Creating Datasets
 .. autofunction:: ray.data.from_numpy
 .. autofunction:: ray.data.from_numpy_refs
 
-.. _dataset-api:
-
-Dataset API
------------
-
-.. autoclass:: ray.data.Dataset
-    :members:
-
-.. _dataset-pipeline-api:
-
-Block API
----------
-
-.. autoclass:: ray.data.block.BlockExecStats
-    :members:
-
-.. autoclass:: ray.data.block.BlockMetadata
-    :members:
-
-.. autoclass:: ray.data.block.BlockAccessor
-    :members:
-
-DatasetContext API
-------------------
-
-.. autoclass:: ray.data.context.DatasetContext
-    :members:
-
-DatasetPipeline API
--------------------
-
-.. autoclass:: ray.data.dataset_pipeline.DatasetPipeline
-    :members:
-
-GroupedDataset API
-------------------
-
-.. autoclass:: ray.data.grouped_dataset.GroupedDataset
-    :members:
-
-Aggregate API
--------------
-
-.. autoclass:: ray.data.aggregate.AggregateFn
-    :members:
-
-.. autoclass:: ray.data.aggregate.Count
-    :members:
-
-.. autoclass:: ray.data.aggregate.Sum
-    :members:
-
-.. autoclass:: ray.data.aggregate.Max
-    :members:
-
-.. autoclass:: ray.data.aggregate.Mean
-    :members:
-
-.. autoclass:: ray.data.aggregate.Std
-    :members:
-
-.. autoclass:: ray.data.aggregate.AbsMax
-    :members:
-
-RandomAccessDataset API
------------------------
-
-.. autoclass:: ray.data.random_access_dataset.RandomAccessDataset
-    :members:
-
-.. _dataset-tensor-extension-api:
-
-Tensor Column Extension API
----------------------------
-
-.. autoclass:: ray.data.extensions.tensor_extension.TensorDtype
-    :members:
-
-.. autoclass:: ray.data.extensions.tensor_extension.TensorArray
-    :members:
-
-.. autoclass:: ray.data.extensions.tensor_extension.ArrowTensorType
-    :members:
-
-.. autoclass:: ray.data.extensions.tensor_extension.ArrowTensorArray
-    :members:
-
-Custom Datasource API
----------------------
-
-.. autoclass:: ray.data.Datasource
-    :members:
-
-.. autoclass:: ray.data.ReadTask
-    :members:
-
-Datasource Partitioning API
----------------------------
-
-.. autoclass:: ray.data.datasource.PartitionStyle
-    :members:
-
-.. autoclass:: ray.data.datasource.PathPartitionScheme
-    :members:
-
-.. autoclass:: ray.data.datasource.PathPartitionEncoder
-    :members:
-
-.. autoclass:: ray.data.datasource.PathPartitionParser
-    :members:
-
-.. autoclass:: ray.data.datasource.PathPartitionFilter
 
 Built-in Datasources
 --------------------
@@ -175,13 +61,3 @@ Built-in Datasources
 
 .. autoclass:: ray.data.datasource.SimpleTorchDatasource
     :members:
-
-Table Row API
----------------------
-
-.. autoclass:: ray.data.row.TableRow
-    :members:
-
-Utility
--------
-.. autofunction:: ray.data.set_progress_bars
