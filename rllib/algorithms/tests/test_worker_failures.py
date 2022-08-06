@@ -336,7 +336,7 @@ class TestWorkerFailure(unittest.TestCase):
         # Test the case where all eval workers fail, but we chose to recover.
         config = PGConfig()\
             .evaluation(
-                evaluation_with_async_requests=True,
+                enable_async_evaluation=True,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
             )\
