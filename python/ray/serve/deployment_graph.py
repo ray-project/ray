@@ -1,11 +1,19 @@
 import json
+import os
 import ray
 
 from ray.dag.class_node import ClassNode  # noqa: F401
 from ray.dag.function_node import FunctionNode  # noqa: F401
 from ray.dag.input_node import InputNode  # noqa: F401
 from ray.dag import DAGNode  # noqa: F401
+from ray.serve._private.constants import (
+    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
+)
 from ray.util.annotations import PublicAPI
+
+FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
+    os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
+)
 
 
 @PublicAPI(stability="alpha")
@@ -40,4 +48,8 @@ class RayServeDAGHandle:
             self.dag_node = json.loads(
                 self.dag_node_json, object_hook=dagnode_from_json
             )
-        return await self.dag_node.execute(*args, **kwargs)
+
+        if FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC:
+            return self.dag_node.execute(*args, **kwargs)
+        else:
+            return await self.dag_node.execute(*args, **kwargs)
