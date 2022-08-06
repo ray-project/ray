@@ -668,29 +668,6 @@ class TestTailLogs:
                 check_job_succeeded, job_manager=job_manager, job_id=job_id
             )
 
-    async def test_failed_job_max_char(self, job_manager):
-        """Test failed jobs does not print out too many logs"""
-
-        # Prints 21000 characters
-        print_large_logs_cmd = (
-            "python -c \"print('1234567890'* 2100); raise RuntimeError()\""
-        )
-
-        job_id = await job_manager.submit_job(
-            entrypoint=print_large_logs_cmd,
-        )
-
-        await async_wait_for_condition(
-            check_job_failed, job_manager=job_manager, job_id=job_id
-        )
-
-        # Verify the status message length
-        job_info = await job_manager.get_job_info(job_id)
-        assert job_info
-        assert len(job_info.message) == 20000 + len(
-            "Job failed due to an application error, " "last available logs:\n"
-        )
-
     async def test_failed_job(self, job_manager):
         """Test tailing logs for a job that unexpectedly exits."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -814,6 +791,30 @@ async def test_job_runs_with_no_resources_available(job_manager):
     finally:
         # Just in case the test fails.
         ray.cancel(hanging_ref)
+
+
+async def test_failed_job_logs_max_char(job_manager):
+    """Test failed jobs does not print out too many logs"""
+
+    # Prints 21000 characters
+    print_large_logs_cmd = (
+        "python -c \"print('1234567890'* 2100); raise RuntimeError()\""
+    )
+
+    job_id = await job_manager.submit_job(
+        entrypoint=print_large_logs_cmd,
+    )
+
+    await async_wait_for_condition(
+        check_job_failed, job_manager=job_manager, job_id=job_id
+    )
+
+    # Verify the status message length
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info
+    assert len(job_info.message) == 20000 + len(
+        "Job failed due to an application error, " "last available logs:\n"
+    )
 
 
 if __name__ == "__main__":
