@@ -555,10 +555,11 @@ class Algorithm(Trainable):
                 logdir=self.logdir,
             )
 
-            if self.config["evaluation_with_async_requests"]:
+            if self.config["enable_async_evaluation"]:
                 self._evaluation_async_req_manager = AsyncRequestsManager(
                     workers=self.evaluation_workers.remote_workers(),
                     max_remote_requests_in_flight_per_worker=1,
+                    return_object_refs=True,
                 )
                 self._evaluation_weights_seq_number = 0
 
@@ -852,13 +853,13 @@ class Algorithm(Trainable):
             else:
                 # How many episodes have we run (across all eval workers)?
                 num_units_done = 0
-                round_ = 0
+                _round = 0
                 while True:
                     units_left_to_do = duration_fn(num_units_done)
                     if units_left_to_do <= 0:
                         break
 
-                    round_ += 1
+                    _round += 1
                     try:
                         batches = ray.get(
                             [
@@ -910,7 +911,7 @@ class Algorithm(Trainable):
                     env_steps_this_iter += _env_steps
 
                     logger.info(
-                        f"Ran round {round_} of parallel evaluation "
+                        f"Ran round {_round} of parallel evaluation "
                         f"({num_units_done}/{duration if not auto else '?'} "
                         f"{unit} done)"
                     )
@@ -944,7 +945,7 @@ class Algorithm(Trainable):
         return self.evaluation_metrics
 
     @ExperimentalAPI
-    def _evaluate_v2(
+    def _evaluate_async(
         self,
         duration_fn: Optional[Callable[[int], int]] = None,
     ) -> dict:
@@ -964,14 +965,14 @@ class Algorithm(Trainable):
         # as training lasts.
         unit = self.config["evaluation_duration_unit"]
         eval_cfg = self.config["evaluation_config"]
-        rollout_len = eval_cfg["rollout_fragment_length"]
+        rollout = eval_cfg["rollout_fragment_length"]
         num_envs = eval_cfg["num_envs_per_worker"]
         auto = self.config["evaluation_duration"] == "auto"
         duration = (
             self.config["evaluation_duration"]
             if not auto
             else (self.config["evaluation_num_workers"] or 1)
-            * (1 if unit == "episodes" else rollout_len)
+            * (1 if unit == "episodes" else rollout)
         )
 
         # Call the `_before_evaluate` hook.
@@ -981,6 +982,8 @@ class Algorithm(Trainable):
         # ref to synch to all workers.
         self._evaluation_weights_seq_number += 1
         weights_ref = ray.put(self.workers.local_worker().get_weights())
+        # TODO(Jun): Make sure this cannot block for e.g. 1h. Implement solution via
+        #  connectors.
         self._sync_filters_if_needed(
             from_worker=self.workers.local_worker(),
             workers=self.evaluation_workers,
@@ -992,7 +995,7 @@ class Algorithm(Trainable):
         if self.config["custom_eval_function"]:
             raise ValueError(
                 "`custom_eval_function` not supported in combination "
-                "with `evaluation_with_async_requests=True` config setting!"
+                "with `enable_async_evaluation=True` config setting!"
             )
         if (
             self.evaluation_workers is None
@@ -1004,7 +1007,7 @@ class Algorithm(Trainable):
             raise ValueError(
                 "Local evaluation OR evaluation without input reader OR evaluation "
                 "with only a local eval worker not supported in combination "
-                "with `evaluation_with_async_requests=True` config setting!"
+                "with `enable_async_evaluation=True` config setting!"
             )
 
         agent_steps_this_iter = 0
@@ -1021,7 +1024,9 @@ class Algorithm(Trainable):
                 return duration - num_units_done
 
         def remote_fn(worker, w_ref, w_seq_no):
-            worker.set_weights(weights=w_ref)
+            # Pass in seq-no so that eval workers may ignore this call if no update has
+            # happened since the last call to `remote_fn` (sample).
+            worker.set_weights(weights=w_ref, weights_seq_no=w_seq_no)
             batch = worker.sample()
             metrics = worker.get_metrics()
             return batch, metrics, w_seq_no
@@ -1030,17 +1035,15 @@ class Algorithm(Trainable):
 
         # How many episodes have we run (across all eval workers)?
         num_units_done = 0
-        round_ = 0
-        time_started = time.time()
-        timed_out = True
+        _round = 0
+        errors = []
 
-        while time.time() - time_started < self.config["evaluation_sample_timeout_s"]:
+        while len(self._evaluation_async_req_manager.workers) > 0:
             units_left_to_do = duration_fn(num_units_done)
             if units_left_to_do <= 0:
-                timed_out = False
                 break
 
-            round_ += 1
+            _round += 1
             # Use the AsyncRequestsManager to get ready evaluation results and
             # metrics.
             self._evaluation_async_req_manager.call_on_all_available(
@@ -1050,21 +1053,29 @@ class Algorithm(Trainable):
             ready_requests = self._evaluation_async_req_manager.get_ready()
 
             batches = []
-            for i, requests in enumerate(ready_requests.values()):
+            i = 0
+            for actor, requests in ready_requests.items():
                 for req in requests:
-                    batch, metrics, seq_no = req
-                    # Ignore results, if the weights seq-number does not match (is from
-                    # a previous evaluation step) OR if we have already reached the
-                    # configured duration (e.g. number of episodes to evaluate for).
-                    if (
-                        seq_no == self._evaluation_weights_seq_number
-                        and (
-                            i * (1 if unit == "episodes" else rollout_len * num_envs)
-                            < units_left_to_do
-                        )
-                    ):
-                        batches.append(batch)
-                        rollout_metrics.extend(metrics)
+                    try:
+                        batch, metrics, seq_no = ray.get(req)
+                        # Ignore results, if the weights seq-number does not match (is
+                        # from a previous evaluation step) OR if we have already reached
+                        # the configured duration (e.g. number of episodes to evaluate
+                        # for).
+                        if (
+                            seq_no == self._evaluation_weights_seq_number
+                            and (
+                                i * (1 if unit == "episodes" else rollout * num_envs)
+                                < units_left_to_do
+                            )
+                        ):
+                            batches.append(batch)
+                            rollout_metrics.extend(metrics)
+                    except RayError as e:
+                        errors.append(e)
+                        self._evaluation_async_req_manager.remove_workers(actor)
+
+                    i += 1
 
             _agent_steps = sum(b.agent_steps() for b in batches)
             _env_steps = sum(b.env_steps() for b in batches)
@@ -1089,31 +1100,26 @@ class Algorithm(Trainable):
             env_steps_this_iter += _env_steps
 
             logger.info(
-                f"Ran round {round_} of parallel evaluation "
+                f"Ran round {_round} of parallel evaluation "
                 f"({num_units_done}/{duration if not auto else '?'} "
                 f"{unit} done)"
             )
 
-        if timed_out and log_once("evaluation_timeout"):
-            logger.warning(
-                "Calling `sample()` on your remote evaluation worker(s) "
-                "resulted in a timeout (after the configured "
-                f"{self.config['evaluation_sample_timeout_s']} seconds)! "
-                "Try to set `evaluation_sample_timeout_s` in your config"
-                " to a larger value."
-                + (
-                    " If your episodes don't terminate easily, you may "
-                    "also want to set `evaluation_duration_unit` to "
-                    "'timesteps' (instead of 'episodes')."
-                    if unit == "episodes"
-                    else ""
-                )
+        num_recreated_workers = 0
+        if errors:
+            num_recreated_workers = self.try_recover_from_step_attempt(
+                error=errors[0],
+                worker_set=self.evaluation_workers,
+                ignore=eval_cfg.get("ignore_worker_failures"),
+                recreate=eval_cfg.get("recreate_failed_workers"),
             )
 
         metrics = summarize_episodes(
             rollout_metrics,
             keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
         )
+
+        metrics["num_recreated_workers"] = num_recreated_workers
 
         metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
         metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
@@ -2609,11 +2615,15 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
-        eval_results = {"evaluation": {}}
-        num_recreated = 0
+        eval_results = {"evaluation": {
+            "episode_reward_max": np.nan,
+            "episode_reward_min": np.nan,
+            "episode_reward_mean": np.nan,
+        }}
+        eval_results["evaluation"]["num_recreated_workers"] = 0
 
         eval_func_to_use = (
-            self._evaluate_v2 if self.config["evaluation_with_async_requests"]
+            self._evaluate_async if self.config["enable_async_evaluation"]
             else self.evaluate
         )
 
@@ -2647,6 +2657,7 @@ class Algorithm(Trainable):
                     "recreate_failed_workers"
                 ),
             )
+            eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         # Add number of healthy evaluation workers after this iteration.
         eval_results["evaluation"]["num_healthy_workers"] = (
@@ -2654,7 +2665,6 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
-        eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
@@ -2847,10 +2857,6 @@ class Algorithm(Trainable):
             local_worker=local_worker,
             logdir=self.logdir,
         )
-
-    @Deprecated(new="Trainer.try_recover_from_step_attempt()", error=False)
-    def _try_recover(self):
-        return self.try_recover_from_step_attempt()
 
     @staticmethod
     @Deprecated(new="Trainer.validate_config()", error=False)

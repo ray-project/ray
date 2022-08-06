@@ -183,7 +183,7 @@ class AlgorithmConfig:
         self.evaluation_num_workers = 0
         self.custom_evaluation_function = None
         self.always_attach_evaluation_results = False
-        self.evaluation_with_async_requests = False
+        self.enable_async_evaluation = False
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -830,7 +830,7 @@ class AlgorithmConfig:
         evaluation_num_workers: Optional[int] = None,
         custom_evaluation_function: Optional[Callable] = None,
         always_attach_evaluation_results: Optional[bool] = None,
-        evaluation_with_async_requests: Optional[bool] = None,
+        enable_async_evaluation: Optional[bool] = None,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
 
@@ -895,7 +895,7 @@ class AlgorithmConfig:
                 results are always attached to a step result dict. This may be useful
                 if Tune or some other meta controller needs access to evaluation metrics
                 all the time.
-            evaluation_with_async_requests: If True, use an AsyncRequestsManager for
+            enable_async_evaluation: If True, use an AsyncRequestsManager for
                 the evaluation workers and use this manager to send `sample()` requests
                 to the evaluation workers. This way, the Algorithm becomes more robust
                 against long running episodes and/or failing (and restarting) workers.
@@ -927,8 +927,8 @@ class AlgorithmConfig:
             self.custom_evaluation_function = custom_evaluation_function
         if always_attach_evaluation_results:
             self.always_attach_evaluation_results = always_attach_evaluation_results
-        if evaluation_with_async_requests:
-            self.evaluation_with_async_requests = evaluation_with_async_requests
+        if enable_async_evaluation:
+            self.enable_async_evaluation = enable_async_evaluation
 
         return self
 
