@@ -170,7 +170,7 @@ class Predictor(abc.ABC):
             return convert_pandas_to_batch_type(
                 predictions_df,
                 type=TYPE_TO_ENUM[type(data)],
-                cast_tensor_columns=self._cast_tensor_columns,
+                cast_tensor_columns=False,
             )
 
     @DeveloperAPI
