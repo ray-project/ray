@@ -55,6 +55,37 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
     # __example_end__
 
 
+def test_zero_cpu_default_actor():
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 1,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+    )
+
+    try:
+        cluster.start()
+        ray.init("auto")
+
+        @ray.remote
+        class Actor:
+            def ping(self):
+                pass
+
+        actor = Actor.remote()
+        ray.get(actor.ping.remote())
+        ray.shutdown()
+    finally:
+        cluster.shutdown()
+
+
 if __name__ == "__main__":
     import os
     import sys

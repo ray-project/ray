@@ -31,7 +31,7 @@ def test_warning_for_too_many_actors(shutdown_only):
 
     p = init_error_pubsub()
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     class Foo:
         def __init__(self):
             time.sleep(1000)
