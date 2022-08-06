@@ -1,3 +1,5 @@
+(deployment-graph-pattern-branching-input)
+
 # Pattern: Branching Input
 
 This example shows how to pass the same input to multiple deployments in parallel. You can then aggregate these deployments' intermediate outputs in another deployment.

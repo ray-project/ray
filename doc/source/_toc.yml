@@ -188,7 +188,7 @@ parts:
                 sections:
                   - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
                   - file: serve/tutorials/deployment-graph-patterns/branching_inputs
-                  - file: serve/tutorials/deployment-graph-patterns/control_flow_based_on_user_inputs
+                  - file: serve/tutorials/deployment-graph-patterns/conditional
           - file: serve/faq
           - file: serve/package-ref
 
