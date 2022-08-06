@@ -8,6 +8,8 @@ This example shows how to control your graph's flow using conditionals. You can 
 
 ```{literalinclude} ../../doc_code/conditional.py
 :language: python
+:start-after: __graph_start__
+:end-before: __graph_end__
 ```
 
 :::{note}
@@ -34,7 +36,7 @@ The graph creates two `Model` nodes, with `weights` of 0 and 1. It then takes th
 
 ```python
 with InputNode() as user_input:
-   input_number, input_operation = user_input
+   input_number, input_operation = user_input[0], user_input[1]
 ```
 :::
 

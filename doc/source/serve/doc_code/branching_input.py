@@ -1,3 +1,4 @@
+# __graph_start__
 # File name: branching_input.py
 
 import ray
@@ -29,3 +30,6 @@ with InputNode() as user_input:
 
 sum = ray.get(combine_output.execute(1))
 print(sum)
+# __graph_end__
+
+assert sum == 3

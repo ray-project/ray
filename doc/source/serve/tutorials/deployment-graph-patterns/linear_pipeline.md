@@ -8,6 +8,8 @@ This example shows how to form a linear pipeline of deployments. The request flo
 
 ```{literalinclude} ../../doc_code/linear_pipeline.py
 :language: python
+:start-after: __graph_start__
+:end-before: __graph_end__
 ```
 
 ## Execution

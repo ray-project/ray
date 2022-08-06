@@ -10,6 +10,8 @@ This example shows how to pass the same input to multiple deployments in paralle
 
 ```{literalinclude} ../../doc_code/branching_input.py
 :language: python
+:start-after: __graph_start__
+:end-before: __graph_end__
 ```
 
 ## Execution

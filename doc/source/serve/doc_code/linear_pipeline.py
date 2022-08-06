@@ -1,3 +1,4 @@
+# __graph_start__
 # File name: linear_pipeline.py
 
 import ray
@@ -27,3 +28,6 @@ last_output_node = outputs[-1]
 
 sum = ray.get(last_output_node.execute(0))
 print(sum)
+# __graph_end__
+
+assert sum == 3
