@@ -5,6 +5,8 @@ and use it in a serving/inference setting.
 import argparse
 import gym
 
+from pathlib import Path
+
 from ray.rllib.utils.policy import (
     load_policies_from_checkpoint,
     local_policy_inference,
@@ -25,6 +27,9 @@ parser.add_argument(
 args = parser.parse_args()
 
 assert args.checkpoint_file, "Must specify flag --checkpoint_file."
+
+
+assert False, Path(__file__)
 
 
 def run():
