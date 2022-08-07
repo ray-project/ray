@@ -41,13 +41,6 @@ spec:
             requests:
               cpu: "14"
               memory: "54Gi"
-          ports:
-          - containerPort: 6379
-            name: gcs
-          - containerPort: 8265
-            name: dashboard
-          - containerPort: 10001
-            name: client
           lifecycle:
             preStop:
               exec:
