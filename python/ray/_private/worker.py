@@ -1,7 +1,6 @@
 import atexit
 import faulthandler
 import functools
-import grpc
 import hashlib
 import inspect
 import io
@@ -757,6 +756,7 @@ class Worker:
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
+        import grpc
 
         subscriber = self.gcs_log_subscriber
         subscriber.subscribe()
@@ -1902,11 +1902,6 @@ def connect(
         if mode == SCRIPT_MODE:
             raise e
         elif mode == WORKER_MODE:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
-            ):
-                raise e
             traceback_str = traceback.format_exc()
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
