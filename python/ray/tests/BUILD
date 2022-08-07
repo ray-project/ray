@@ -115,7 +115,6 @@ py_test_module_list(
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
     "test_logging.py",
     "test_memory_scheduling.py",
-    "test_memory_pressure.py",
     "test_metrics.py",
     "test_multi_node.py",
     "test_multi_node_2.py",

@@ -386,13 +386,12 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
     std::ostringstream stream;
     auto num_retries_left_str =
         num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(INFO) << num_retries_left_str << " retries left for task " << spec.TaskId()
-                  << ", attempting to resubmit.";
+    stream << num_retries_left_str << " retries left for task " << spec.TaskId()
+           << ", attempting to resubmit.";
+    RAY_LOG(INFO) << stream.str();
     retry_task_callback_(spec, /*delay=*/true);
     return true;
   } else {
-    RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
-                  << ", not going to resubmit.";
     return false;
   }
 }
