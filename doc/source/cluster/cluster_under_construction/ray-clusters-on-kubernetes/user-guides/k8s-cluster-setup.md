@@ -16,7 +16,7 @@ you will need to configure pools of Kubernetes nodes;
 find guidance [here](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools).
 
 (eks-setup)=
-# Setting up an EKS cluster (Amazon Web Services)
+# Setting up an EKS cluster (AWS)
 You can find the landing page for EKS [here](https://aws.amazon.com/eks/).
 If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
 Alternatively, check out the [documentation](https://docs.aws.amazon.com/eks/latest/userguide/) and
