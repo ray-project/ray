@@ -170,6 +170,8 @@ class AgentConnectorDataType:
         self.env_id = env_id
         self.agent_id = agent_id
         self.data = data
+
+
 # __sphinx_doc_end_agent_connector_data_type__
 
 
@@ -181,6 +183,8 @@ class ActionConnectorDataType:
         self.env_id = env_id
         self.agent_id = agent_id
         self.output = output
+
+
 # __sphinx_doc_end_action_connector_output__
 
 
@@ -193,6 +197,8 @@ class AgentConnectorsOutput:
     ):
         self.for_training = for_training
         self.for_action = for_action
+
+
 # __sphinx_doc_end_agent_connector_output__
 
 
