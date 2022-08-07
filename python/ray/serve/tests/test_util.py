@@ -288,7 +288,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
             runtime_env={
                 "py_modules": [
                     "https://github.com/ray-project/test_dag/archive/"
-                    "76a741f6de31df78411b1f302071cde46f098418.zip"
+                    "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
                 ],
                 "env_vars": {"var1": "hello"},
             }
