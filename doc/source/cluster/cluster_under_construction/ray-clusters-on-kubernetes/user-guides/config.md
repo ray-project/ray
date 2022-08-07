@@ -31,8 +31,8 @@ spec:
   autoscalerOptions:
      ...
   headGroupSpec:
-    serviceType: ClusterIP
-    enableIngress: false
+    serviceType: ClusterIP # Options are ClusterIP, NodePort, and LoadBalancer
+    enableIngress: false # Optional
     rayStartParams:
       block: true
       dashboard-host: "0.0.0.0"
@@ -50,7 +50,7 @@ spec:
                 requests:
                   cpu: 14
                   memory: 54Gi
-              ports:
+              ports: # Optional service port overrides
               - containerPort: 6379
                 name: gcs
               - containerPort: 8265
