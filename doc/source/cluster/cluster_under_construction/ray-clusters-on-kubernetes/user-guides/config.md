@@ -266,7 +266,7 @@ The simplest way to access the Ray head's services is to use port-forwarding.
 
 Other means of exposing the head's services outside the cluster may require using
 a service of type LoadBalancer or NodePort. Set `headGroupSpec.serviceType`
-to the appropriate for your application.
+to the appropriate type for your application.
 
 You may wish to set up an ingress to expose the Ray head's services outside the cluster.
 If you set the optional boolean field `headGroupSpec.enableIngress` to `true`,
