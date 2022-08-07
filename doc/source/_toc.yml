@@ -276,8 +276,8 @@ parts:
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/getting-started
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides
               sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/config.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/k8s-cluster-setup.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/config.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/autoscaling.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/logging.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/gpu.md
