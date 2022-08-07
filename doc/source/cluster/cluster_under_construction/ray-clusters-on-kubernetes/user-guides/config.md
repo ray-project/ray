@@ -258,10 +258,10 @@ ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
 (This assumes the Ray cluster was deployed into the default Kuberentes namespace.
 If the Ray cluster is deployed in a non-default namespace, use that namespace in
 place of `default`.)
-Ray Client and other services can be exposed outside the Kubernetes cluster
-using port-forwarding or an ingress.
 
 ### ServiceType, Ingresses
+Ray Client and other services can be exposed outside the Kubernetes cluster
+using port-forwarding or an ingress.
 The simplest way to access the Ray head's services is to use port-forwarding.
 
 Other means of exposing the head's services outside the cluster may require using
