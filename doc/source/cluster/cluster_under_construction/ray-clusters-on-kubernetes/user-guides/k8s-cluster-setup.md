@@ -6,8 +6,8 @@ The KubeRay operator and Ray can run on any cloud or on-prem Kubernetes cluster.
 The simplest way to provision a remote Kubernetes cluster is to use a cloud-based managed service.
 We collect a few helpful links for users who are getting started with a managed Kubernetes service.
 * {ref}`GKE (Google Cloud)<gke-setup>`
-* {ref}`EKS (Amazon Web Services)<aws-setup>`
-* {ref}`AKS (Microsoft Azure)<azure-setup>`
+* {ref}`EKS (Amazon Web Services)<eks-setup>`
+* {ref}`AKS (Microsoft Azure)<aks-setup>`
 
 (gke-setup)=
 # Setting up a GKE cluster (Google Cloud)
@@ -18,7 +18,7 @@ Alternatively, check out the [documentation](https://cloud.google.com/kubernetes
 you will need to configure pools of Kubernetes nodes;
 find guidance [here](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools).
 
-(aws-setup)=
+(eks-setup)=
 # Setting up an EKS cluster (Amazon Web Services)
 You can find the landing page for EKS [here](https://aws.amazon.com/eks/).
 If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
