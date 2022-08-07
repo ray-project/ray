@@ -62,9 +62,9 @@ class Combine:
         self.m1 = m1
         self.m2 = m2.get(NESTED_HANDLE_KEY) if m2_nested else m2
 
-    def __call__(self, req):
-        r1_ref = self.m1.forward.remote(req)
-        r2_ref = self.m2.forward.remote(req)
+    async def __call__(self, req):
+        r1_ref = await self.m1.forward.remote(req)
+        r2_ref = await self.m2.forward.remote(req)
         return sum(ray.get([r1_ref, r2_ref]))
 
 
@@ -119,7 +119,7 @@ class NoargDriver:
         self.dag = dag
 
     async def __call__(self):
-        return await self.dag.remote()
+        return await (await self.dag.remote())
 
 
 # TODO(Shreyas): Enable use_build once serve.build() PR is out.
@@ -304,8 +304,8 @@ class TakeHandle:
     def __init__(self, handle) -> None:
         self.handle = handle
 
-    def __call__(self, inp):
-        return ray.get(self.handle.remote(inp))
+    async def __call__(self, inp):
+        return ray.get(await self.handle.remote(inp))
 
 
 @pytest.mark.parametrize("use_build", [False, True])
@@ -324,7 +324,7 @@ class DictParent:
         self._d = d
 
     async def __call__(self, key):
-        return await self._d[key].remote()
+        return await (await self._d[key].remote())
 
 
 # TODO(Shreyas): Enable use_build once serve.build() PR is out.
@@ -352,8 +352,8 @@ class Parent:
     def __init__(self, child):
         self._child = child
 
-    def __call__(self, *args):
-        return ray.get(self._child.remote())
+    async def __call__(self, *args):
+        return ray.get(await self._child.remote())
 
 
 @serve.deployment
@@ -362,9 +362,11 @@ class GrandParent:
         self._child = child
         self._parent = parent
 
-    def __call__(self, *args):
+    async def __call__(self, *args):
         # Check that the grandparent and parent are talking to the same child.
-        assert ray.get(self._child.remote()) == ray.get(self._parent.remote())
+        assert ray.get(await self._child.remote()) == ray.get(
+            await self._parent.remote()
+        )
         return "ok"
 
 
