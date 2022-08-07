@@ -299,9 +299,9 @@ for a {ref}`set period of time<kuberay-idle-timeout>`. In this context, "resourc
 (such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
 Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
 
-The autoscaler scales Ray worker pods down by adding the Ray pods' names to the `RayCluster` CR's
-`scaleStrategy.workersToDelete` list and decrementing the `replicas` field of the relevant
-`workerGroupSpec`.
+To scale down Ray pods of a given `workerGroup`, the autoscaler
+adds the Ray pods' names to the relevant `workerGroupSpec`'s
+`scaleStrategy.workersToDelete` list and decrements the `replicas` field.
 
 #### Manually scaling
 You may manually adjust a `RayCluster`'s scale by editing the `replicas` or `workersToDelete` fields.
