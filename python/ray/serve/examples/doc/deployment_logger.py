@@ -1,9 +1,6 @@
 import logging
-import ray
 from ray import serve
 import requests
-
-ray.init(address="auto")
 
 logger = logging.getLogger("ray.serve")
 
@@ -19,7 +16,8 @@ class Counter:
         return {"count": self.count}
 
 
-Counter.deploy()
+counter = Counter.bind()
+serve.run(counter)
 
 for i in range(10):
-    requests.get("http://127.0.0.1:8000/Counter")
+    requests.get("http://127.0.0.1:8000/")

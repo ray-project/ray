@@ -18,15 +18,14 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve._private.utils import DEFAULT
-from ray.util.annotations import PublicAPI
+from ray.serve._private.utils import DEFAULT, guarded_deprecation_warning
+from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
 )
-from ray._private.utils import deprecated
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -166,7 +165,7 @@ class Deployment:
             "Use `deployment.deploy() instead.`"
         )
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="beta")
     def bind(self, *args, **kwargs) -> Union[ClassNode, FunctionNode]:
         """Bind the provided arguments and return a class or function node.
 
@@ -201,10 +200,8 @@ class Deployment:
                 },
             )
 
-    @deprecated(
-        instructions="Please see https://docs.ray.io/en/latest/serve/index.html"
-    )
-    @PublicAPI
+    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+    @Deprecated(message=MIGRATION_MESSAGE)
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
 
@@ -245,10 +242,8 @@ class Deployment:
             _blocking=_blocking,
         )
 
-    @deprecated(
-        instructions="Please see https://docs.ray.io/en/latest/serve/index.html"
-    )
-    @PublicAPI
+    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+    @Deprecated(message=MIGRATION_MESSAGE)
     def delete(self):
         """Delete this deployment."""
 
@@ -260,10 +255,8 @@ class Deployment:
 
         return get_global_client().delete_deployments([self._name])
 
-    @deprecated(
-        instructions="Please see https://docs.ray.io/en/latest/serve/index.html"
-    )
-    @PublicAPI
+    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+    @Deprecated(message=MIGRATION_MESSAGE)
     def get_handle(
         self, sync: Optional[bool] = True
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
@@ -316,6 +309,7 @@ class Deployment:
         graceful_shutdown_timeout_s: Optional[float] = None,
         health_check_period_s: Optional[float] = None,
         health_check_timeout_s: Optional[float] = None,
+        _internal: bool = False,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -332,6 +326,13 @@ class Deployment:
 
         if num_replicas == 0:
             raise ValueError("num_replicas is expected to larger than 0")
+
+        if not _internal and version is not None:
+            logger.warning(
+                "DeprecationWarning: `version` in `Deployment.options()` has been "
+                "deprecated. Explicitly specifying version will raise an error in the "
+                "future!"
+            )
 
         if num_replicas is not None:
             new_config.num_replicas = num_replicas
@@ -407,6 +408,7 @@ class Deployment:
         graceful_shutdown_timeout_s: Optional[float] = None,
         health_check_period_s: Optional[float] = None,
         health_check_timeout_s: Optional[float] = None,
+        _internal: bool = False,
     ) -> None:
         """Overwrite this deployment's options. Mutates the deployment.
 
@@ -430,6 +432,7 @@ class Deployment:
             graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
             health_check_period_s=health_check_period_s,
             health_check_timeout_s=health_check_timeout_s,
+            _internal=_internal,
         )
 
         self._func_or_class = validated._func_or_class

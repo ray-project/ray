@@ -554,6 +554,48 @@ def test_remove_actor_immediately_after_creation(ray_start_regular):
     wait_for_condition(_all_actors_dead, timeout=10)
 
 
+# Test that a reference borrowed by an actor constructor is freed if the actor is
+# cancelled before being scheduled.
+def test_actor_constructor_borrow_cancellation(ray_start_regular):
+    # Schedule the actor with a non-existent resource so it's guaranteed to never be
+    # scheduled.
+    @ray.remote(resources={"nonexistent_resource": 1})
+    class Actor:
+        def __init__(self, obj_containing_ref):
+            raise ValueError(
+                "The actor constructor should not be reached; the actor creation task "
+                "should be cancelled before the actor is scheduled."
+            )
+
+        def should_not_be_run(self):
+            raise ValueError("This method should never be reached.")
+
+    # Test with implicit cancellation by letting the actor handle go out-of-scope.
+    def test_implicit_cancel():
+        ref = ray.put(1)
+        Actor.remote({"foo": ref})
+
+    test_implicit_cancel()
+    # Confirm that the ref object is not leaked.
+    check_refcounts({})
+
+    # Test with explicit cancellation via ray.kill().
+    ref = ray.put(1)
+    a = Actor.remote({"foo": ref})
+    ray.kill(a)
+    del ref
+
+    # Confirm that the ref object is not leaked.
+    check_refcounts({})
+
+    # Check that actor death cause is propagated.
+    with pytest.raises(
+        ray.exceptions.RayActorError, match="it was killed by `ray.kill"
+    ) as exc_info:
+        ray.get(a.should_not_be_run.remote())
+    print(exc_info._excinfo[1])
+
+
 if __name__ == "__main__":
     import sys
 

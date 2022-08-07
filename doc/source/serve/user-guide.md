@@ -13,6 +13,6 @@ you will learn
 - [Serving ML Models](ml-models)
 - [Using Deployment Graph](deployment-graph)
 - [Deploying Ray Serve](deploying-serve)
-- [Debugging/Monitoring](monitoring)
+- [Monitoring Ray Serve](monitoring)
 - [Performance Tuning](performance)
 - [Autoscaling](autoscaling)

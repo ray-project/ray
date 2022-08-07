@@ -86,7 +86,7 @@ class AutoscalingConfig(BaseModel):
 
 
 def _needs_pickle(deployment_language: DeploymentLanguage, is_cross_language: bool):
-    """From Serve client API's perspective, decide whehter pickling is needed."""
+    """From Serve client API's perspective, decide whether pickling is needed."""
     if deployment_language == DeploymentLanguage.PYTHON and not is_cross_language:
         # Python client deploying Python replicas.
         return True
@@ -110,7 +110,7 @@ class DeploymentConfig(BaseModel):
             a response. Defaults to 100.
         user_config (Optional[Any]): Arguments to pass to the reconfigure
             method of the deployment. The reconfigure method is called if
-            user_config is not None.
+            user_config is not None. Must be json-serializable.
         graceful_shutdown_wait_loop_s (Optional[float]): Duration
             that deployment replicas will wait until there is no more work to
             be done before shutting down.
@@ -163,6 +163,18 @@ class DeploymentConfig(BaseModel):
         else:
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
+        return v
+
+    @validator("user_config", always=True)
+    def user_config_json_serializable(cls, v):
+        if isinstance(v, bytes):
+            return v
+        if v is not None:
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError(f"user_config is not JSON-serializable: {str(e)}.")
+
         return v
 
     def needs_pickle(self):
@@ -458,8 +470,8 @@ class ReplicaConfig:
         return ReplicaConfig(
             proto.deployment_def_name,
             proto.deployment_def,
-            proto.init_args,
-            proto.init_kwargs,
+            proto.init_args if proto.init_args != b"" else None,
+            proto.init_kwargs if proto.init_kwargs != b"" else None,
             json.loads(proto.ray_actor_options),
             needs_pickle,
         )

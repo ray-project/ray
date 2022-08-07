@@ -100,3 +100,9 @@ RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or
 class ServeHandleType(str, Enum):
     SYNC = "SYNC"
     ASYNC = "ASYNC"
+
+
+# Deprecation message for V1 migrations.
+MIGRATION_MESSAGE = (
+    "See https://docs.ray.io/en/latest/serve/index.html for more information."
+)

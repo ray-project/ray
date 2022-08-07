@@ -23,7 +23,11 @@ Function API
 
 With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the provided function.
 
+
 .. code-block:: python
+
+    from ray import tune
+    from ray.air import session
 
     def trainable(config):
         # config (dict): A dict of hyperparameters.
@@ -99,7 +103,7 @@ You can save and load checkpoint in Ray Tune in the following manner:
         tuner = tune.Tuner(train_func)
         results = tuner.fit()
 
-.. note:: ``checkpoint_freq`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
+.. note:: ``checkpoint_frequency`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
 
 In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
 
@@ -177,7 +181,7 @@ You can also implement checkpoint/restore using the Trainable Class API:
             checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
             self.model.load_state_dict(torch.load(checkpoint_path))
 
-    tuner = tune.Tuner(MyTrainableClass, run_config=air.RunConfig(checkpoint_config=air.CheckpointConfig(checkpoint_freq=2)))
+    tuner = tune.Tuner(MyTrainableClass, run_config=air.RunConfig(checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2)))
     results = tuner.fit()
 
 You can checkpoint with three different mechanisms: manually, periodically, and at termination.
@@ -197,7 +201,7 @@ This can be especially helpful in spot instances:
 
 
 **Periodic Checkpointing**: periodic checkpointing can be used to provide fault-tolerance for experiments.
-This can be enabled by setting ``checkpoint_freq=<int>`` and ``max_failures=<int>`` to checkpoint trials
+This can be enabled by setting ``checkpoint_frequency=<int>`` and ``max_failures=<int>`` to checkpoint trials
 every *N* iterations and recover from up to *M* crashes per trial, e.g.:
 
 .. code-block:: python
@@ -205,12 +209,12 @@ every *N* iterations and recover from up to *M* crashes per trial, e.g.:
     tuner = tune.Tuner(
         my_trainable,
         run_config=air.RunConfig(
-            checkpoint_config=air.CheckpointConfig(checkpoint_freq=10),
+            checkpoint_config=air.CheckpointConfig(checkpoint_frequency=10),
             failure_config=air.FailureConfig(max_failures=5))
     )
     results = tuner.fit()
 
-**Checkpointing at Termination**: The checkpoint_freq may not coincide with the exact end of an experiment.
+**Checkpointing at Termination**: The checkpoint_frequency may not coincide with the exact end of an experiment.
 If you want a checkpoint to be created at the end of a trial, you can additionally set the ``checkpoint_at_end=True``:
 
 .. code-block:: python
@@ -219,7 +223,7 @@ If you want a checkpoint to be created at the end of a trial, you can additional
     tuner = tune.Tuner(
         my_trainable,
         run_config=air.RunConfig(
-            checkpoint_config=air.CheckpointConfig(checkpoint_freq=10, checkpoint_at_end=True),
+            checkpoint_config=air.CheckpointConfig(checkpoint_frequency=10, checkpoint_at_end=True),
             failure_config=air.FailureConfig(max_failures=5))
     )
     results = tuner.fit()

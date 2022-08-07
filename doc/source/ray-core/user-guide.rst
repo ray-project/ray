@@ -14,4 +14,4 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     placement-group
     handling-dependencies
     fault-tolerance
-    more-topics
+    advanced-topics
