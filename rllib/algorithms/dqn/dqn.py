@@ -427,9 +427,6 @@ class DQN(SimpleQ):
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights(global_vars=global_vars)
 
-            print(train_batch.policy_batches['default_policy']['obs'])
-            print(self.iteration)
-            breakpoint()
         # Return all collected metrics for the iteration.
         return train_results
 

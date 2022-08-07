@@ -23,10 +23,7 @@ class TestReproPPO(unittest.TestCase):
         register_env(
             "DeterministicCartPole-v0", lambda _: DeterministicCartPole(seed=42)
         )
-        config = (
-            simple_q.SimpleQConfig()
-            .environment(env="DeterministicCartPole-v0")
-        )
+        config = simple_q.SimpleQConfig().environment(env="DeterministicCartPole-v0")
         check_reproducibilty(
             algo_class=simple_q.SimpleQ,
             algo_config=config,

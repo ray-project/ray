@@ -26,11 +26,11 @@ class TestReproPPO(unittest.TestCase):
         )
         config = (
             dqn.DQNConfig()
-            .reporting(
-                min_sample_timesteps_per_iteration=0,
-                min_train_timesteps_per_iteration=0,
-                min_time_s_per_iteration=0
-            )
+            # .reporting(
+            #     min_sample_timesteps_per_iteration=0,
+            #     min_train_timesteps_per_iteration=0,
+            #     min_time_s_per_iteration=0,
+            # )
             .environment(env="DeterministicCartPole-v0")
         )
         # tf-gpu is excluded for determnism
