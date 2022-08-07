@@ -491,7 +491,7 @@ class TestDeployApp:
             "runtime_env": {
                 "working_dir": (
                     "https://github.com/ray-project/test_dag/archive/"
-                    "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
+                    "41d09119cbdf8450599f993f51318e9e27c59098.zip"
                 )
             },
         }
