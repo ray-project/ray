@@ -113,7 +113,13 @@ void TaskSpecification::ComputeResources() {
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
-    const auto &resource_set = GetRequiredResources();
+    const bool is_actor_creation_task = IsActorCreationTask();
+    const bool should_report_placement_resources =
+        RayConfig::instance().report_actor_placement_resources();
+    const auto &resource_set =
+        (is_actor_creation_task && should_report_placement_resources)
+            ? GetRequiredPlacementResources()
+            : GetRequiredResources();
     const auto &function_descriptor = FunctionDescriptor();
     auto depth = GetDepth();
     auto sched_cls_desc = SchedulingClassDescriptor(
