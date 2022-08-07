@@ -1251,6 +1251,11 @@ class MultiAgentBatch:
         """
         return self
 
+
+    def __getitem__(self, key: str) -> SampleBatch:
+        """Returns the SampleBatch for the given policy id."""
+        return self.policy_batches[key]
+
     def __str__(self):
         return "MultiAgentBatch({}, env_steps={})".format(
             str(self.policy_batches), self.count
