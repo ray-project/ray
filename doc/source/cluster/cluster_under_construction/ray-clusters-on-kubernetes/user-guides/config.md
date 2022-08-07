@@ -31,6 +31,8 @@ spec:
   autoscalerOptions:
      ...
   headGroupSpec:
+    serviceType: ClusterIP
+    enableIngress: False
     rayStartParams:
       block: True
       dashboard-host: "0.0.0.0"
@@ -55,6 +57,8 @@ spec:
                 name: dashboard
               - containerPort: 10001
                 name: client
+              - containerPort: 8000
+                name: serve
                 ...
   workerGroupSpecs:
   - groupName: small-group
@@ -112,38 +116,6 @@ The bulk of the configuration for a `headGroupSpec` or
 template which determines the configuration for the pods in the group.
 Here are some of the subfields of the pod `template` to pay attention to:
 
-#### ports
-Under `headGroupSpec`, the Ray head container should list the ports for the services it exposes.
-```yaml
-ports:
-- containerPort: 6379
-name: gcs
-- containerPort: 8265
-name: dashboard
-- containerPort: 10001
-name: client
-```
-The KubeRay operator will configure a Kubernetes Service exposing these ports.
-The name of the configured Kubernetes Service is the name, `metadata.name`, of the RayCluster
-followed by the suffix\
-`-head-svc`. For the example CR given on this page, the name of
-the head service will be\
-`raycluster-example-head-svc`. Kubernetes networking (`kube-dns`) then allows us to address
-the Ray head's services using the name `raycluster-example-head-svc`.
-For example, the Ray Client server can be accessed from a pod
-in the same Kubernetes namespace using
-```python
-ray.init("ray://raycluster-example-head-svc:10001")
-```
-The Ray Client server can be accessed from a pod in another namespace using
-```python
-ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
-```
-(This assumes the Ray cluster was deployed into the default Kuberentes namespace.
-If the Ray cluster is deployed in a non-default namespace, use that namespace in
-place of `default`.)
-Ray Client and other services can be exposed outside the Kubernetes cluster
-using port-forwarding or an ingress. See {ref}`this guide <kuberay-networking>` for more details.
 
 #### resources
 It’s important to specify container CPU and memory requests and limits for
@@ -257,6 +229,79 @@ If you are specifying a `RayCluster` programmatically, you may have to
 The field `rayStartParams.resources` should only be used for custom resources. The keys
 `CPU`, `GPU`, and `memory` are forbidden. If you need to specify overrides for those resource
 fields, use the Ray start parameters `num-cpus`, `num-gpus`, or `memory`.
+
+(kuberay-networking)=
+## Services and networking
+### The Ray head service.
+The KubeRay operator automatically configures a Kubernetes Service exposing the default ports
+for several services of the Ray head pod, including
+- Ray Client (default port 10001)
+- Ray Dashboard (default port 8265)
+- Ray GCS server (default port 6379)
+- Ray Serve (default port 8000)
+
+The name of the configured Kubernetes Service is the name, `metadata.name`, of the RayCluster
+followed by the suffix\
+`-head-svc`. For the example CR given on this page, the name of
+the head service will be\
+`raycluster-example-head-svc`. Kubernetes networking (`kube-dns`) then allows us to address
+the Ray head's services using the name `raycluster-example-head-svc`.
+For example, the Ray Client server can be accessed from a pod
+in the same Kubernetes namespace using
+```python
+ray.init("ray://raycluster-example-head-svc:10001")
+```
+The Ray Client server can be accessed from a pod in another namespace using
+```python
+ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
+```
+(This assumes the Ray cluster was deployed into the default Kuberentes namespace.
+If the Ray cluster is deployed in a non-default namespace, use that namespace in
+place of `default`.)
+Ray Client and other services can be exposed outside the Kubernetes cluster
+using port-forwarding or an ingress.
+
+### ServiceType, Ingresses
+The simplest way to access the Ray head's services is to use port-forwarding.
+
+Other means of exposing the head's services outside the cluster may require using
+a service of type LoadBalancer or NodePort. Set `headGroupSpec.serviceType`
+to the appropriate for your application.
+
+You may wish to set up an ingress to expose the Ray head's services outside the cluster.
+If you set the optional boolean field `headGroupSpec.enableIngress` to `true`,
+the KubeRay operator will create an ingress for your Ray cluster. See the [KubeRay documentation][IngressDoc]
+for details. However, it is up to you to set up an ingress controller.
+Moreover, the ingress created by the KubeRay operator [might not be compatible][IngressIssue] with your network setup.
+It is valid to omit the `headGroupSpec.enableIngress` field and configure an ingress object yourself.
+
+
+### Specifying non-default ports.
+If you wish to override the ports exposed by the Ray head service, you may do so by specifying
+the Ray head container's `ports` list, under `headGroupSpec`.
+Here is an example of a list of non-default ports for the Ray head service.
+```yaml
+ports:
+- containerPort: 6380
+  name: gcs
+- containerPort: 8266
+  name: dashboard
+- containerPort: 10002
+  name: client
+```
+If the head container's `ports` list is specified, the Ray head service will expose precisely
+the ports in the list. In the above example, the head service will expose just three ports;
+in particular there will be no port exposed for Ray Serve.
+
+For the Ray head to actually use the non-default ports specified in the ports list,
+you must also specify the relevant `rayStartParams`. For the above example,
+```yaml
+rayStartParams:
+  port: "6380"
+  dashboard-port: "8266"
+  ray-client-server-port: "10002"
+  ...
+```
 
 
 (kuberay-autoscaling-config)=
@@ -383,3 +428,6 @@ environment variables, for debugging and development purposes.
 These fields should be formatted following the
 [Kuberentes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
 for container environment variables.
+
+[IngressDoc]: https://ray-project.github.io/kuberay/guidance/ingress/
+[IngressIssue]: https://ray-project.github.io/kuberay/guidance/ingress/
