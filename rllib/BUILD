@@ -3349,7 +3349,7 @@ py_test(
     data = glob([
         "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.new",
     ]),
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.new"]
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
 
 py_test(
@@ -3361,7 +3361,7 @@ py_test(
     data = glob([
         "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.old",
     ]),
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.old"]
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )
 
 py_test(

@@ -24,6 +24,8 @@ from ray.rllib.utils.typing import (
 
 
 parser = argparse.ArgumentParser()
+# A policy checkpoint that works with this example script can be found at:
+# rllib/tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022
 parser.add_argument(
     "--checkpoint_file",
     help="Path to an RLlib checkpoint file, relative to //ray/rllib/ folder.",
