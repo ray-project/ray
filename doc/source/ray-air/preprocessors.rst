@@ -116,47 +116,57 @@ In the following example, we show the Batch Predictor flow. The same logic appli
 Types of Preprocessors
 ----------------------
 
-Basic Preprocessors
+Built-in Preprocessors
 ~~~~~~~~~~~~~~~~~~~
 
 Ray AIR provides a handful of ``Preprocessor``\s out of the box, and more will be added over time. We welcome
 `Contributions <https://docs.ray.io/en/master/getting-involved.html>`__!
 
-.. tabbed:: Common APIs
+.. tabbed:: Generic
 
-    #. :class:`Preprocessor <ray.data.preprocessor.Preprocessor>`
-    #. :class:`BatchMapper <ray.data.preprocessors.BatchMapper>`
-    #. :class:`Chain <ray.data.preprocessors.Chain>`
+    .. autosummary::
 
-.. tabbed:: Tabular
+        ray.data.preprocessor.Preprocessor
+        ray.data.preprocessors.BatchMapper
+        ray.data.preprocessors.Chain
+        ray.data.preprocessors.SimpleImputer
 
-    #. :class:`Categorizer <ray.data.preprocessors.Categorizer>`
-    #. :class:`Concatenator <ray.data.preprocessors.Concatenator>`
-    #. :class:`FeatureHasher <ray.data.preprocessors.FeatureHasher>`
-    #. :class:`LabelEncoder <ray.data.preprocessors.LabelEncoder>`
-    #. :class:`MaxAbsScaler <ray.data.preprocessors.MaxAbsScaler>`
-    #. :class:`MinMaxScaler <ray.data.preprocessors.MinMaxScaler>`
-    #. :class:`Normalizer <ray.data.preprocessors.Normalizer>`
-    #. :class:`OneHotEncoder <ray.data.preprocessors.OneHotEncoder>`
-    #. :class:`OrdinalEncoder <ray.data.preprocessors.OrdinalEncoder>`
-    #. :class:`PowerTransformer <ray.data.preprocessors.PowerTransformer>`
-    #. :class:`RobustScaler <ray.data.preprocessors.RobustScaler>`
-    #. :class:`SimpleImputer <ray.data.preprocessors.SimpleImputer>`
-    #. :class:`StandardScaler <ray.data.preprocessors.StandardScaler>`
+.. tabbed:: Categorical
+
+    .. autosummary::
+
+        ray.data.preprocessors.Categorizer
+        ray.data.preprocessors.OneHotEncoder
+        ray.data.preprocessors.MultiHotEncoder
+        ray.data.preprocessors.OrdinalEncoder
+        ray.data.preprocessors.LabelEncoder
+
+.. tabbed:: Numeric
+
+    .. autosummary::
+
+        ray.data.preprocessors.Concatenator
+        ray.data.preprocessors.MaxAbsScaler
+        ray.data.preprocessors.MinMaxScaler
+        ray.data.preprocessors.Normalizer
+        ray.data.preprocessors.PowerTransformer
+        ray.data.preprocessors.RobustScaler
+        ray.data.preprocessors.StandardScaler
 
 .. tabbed:: Text
 
-    #. :class:`CountVectorizer <ray.data.preprocessors.CountVectorizer>`
-    #. :class:`HashingVectorizer <ray.data.preprocessors.HashingVectorizer>`
-    #. :class:`Tokenizer <ray.data.preprocessors.Tokenizer>`
+    .. autosummary::
 
-.. tabbed:: Image
-
-    Coming soon!
+        ray.data.preprocessors.CountVectorizer
+        ray.data.preprocessors.HashingVectorizer
+        ray.data.preprocessors.Tokenizer
+        ray.data.preprocessors.FeatureHasher
 
 .. tabbed:: Utilities
 
-    #. :meth:`Dataset.train_test_split <ray.data.Dataset.train_test_split>`
+    .. autosummary::
+
+        ray.data.Dataset.train_test_split
 
 Chaining Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -175,6 +185,8 @@ A simple ``Chain`` ``Preprocessor`` can be used to apply individual ``Preprocess
     ``Chain([preprocessorA, preprocessorB])``, then ``preprocessorB.transform()`` is applied
     to the result of ``preprocessorA.transform()``.
 
+.. _air-custom-preprocessors:
+
 Custom Preprocessors
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -192,3 +204,108 @@ Custom Preprocessors
     :language: python
     :start-after: __custom_stateful_start__
     :end-before: __custom_stateful_end__
+
+
+Which Preprocessors Should I Use?
+---------------------------------
+
+* If you have categorical data, `encode categories <air-encoding-categorical-data>`_.
+* If you have numerical data, `normalize features <air-scaling-numerical-data>`_.
+* If your model expects a tensor or ``ndarray``, create a tensor using
+  :class:`~ray.data.preprocessors.Concatenator`.
+* If your preprocess isn't supported, `implement a custom preprocessor <air-custom-preprocessors>`_.
+* If want to count the frequency of terms in a document,
+  `create a document-term matrix <air-encoding-documents>`_.
+* If you need to apply more than one preprocessor, compose them together with
+  :class:`~ray.data.preprocessors.Chain`.
+* If your data contains missing values, impute them with
+  :class:`~ray.data.preprocessors.SimpleImputer`.
+
+.. _air-encoding-categorical-data:
+
+Encoding categorical data
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Most models expect numerical inputs. To represent your categorical data in a way your
+model can understand, encode categories using one of the preprocessors described below.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Categorical Data Type
+     - Example
+     - Preprocessor
+   * - Labels
+     - ``"cat"``, ``"dog"``, ``"airplane"``
+     - :class:`~ray.data.preprocessors.LabelEncoder`
+   * - Ordered categories
+     - ``"bs"``, ``"md"``, ``"phd"``
+     - :class:`~ray.data.preprocessors.OrdinalEncoder`
+   * - Unordered categories
+     - ``"red"``, ``"green"``, ``"blue"``
+     - :class:`~ray.data.preprocessors.OneHotEncoder`
+   * - Lists of categories
+     - ``("sci-fi", "action")``, ``("action", "comedy", "animated")``
+     - :class:`~ray.data.preprocessors.MultiHotEncoder`
+
+.. note::
+    If you're using LightGBM, you don't need to encode your categorical data. Instead,
+    use :class:`~ray.data.preprocessors.Categorizer` to convert your data to
+    `pandas.CategoricalDtype`.
+
+.. _air-scaling-numerical-data:
+
+Scaling numerical data
+~~~~~~~~~~~~~~~~~~~~~~
+
+To ensure your models behaves properly,
+normalize your numerical data. Reference the table below to determine which preprocessor
+to use.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Data Property
+     - Preprocessor
+   * - Your data is approximately normal
+     - :class:`~ray.data.preprocessors.StandardScaler`
+   * - Your data is sparse
+     - :class:`~ray.data.preprocessors.MaxAbsScaler`
+   * - Your data contains many outliers
+     - :class:`~ray.data.preprocessors.RobustScaler`
+   * - Your data isn't normal, but you need it to be
+     - :class:`~ray.data.preprocessors.PowerTransformer`
+   * - You need unit-norm rows
+     - :class:`~ray.data.preprocessors.Normalizer`
+   * - You aren't sure what your data looks like
+     - :class:`~ray.data.preprocessors.MinMaxScaler`
+
+.. warning::
+    These preprocessors operate on numeric columns. If your dataset contains columns of
+    type :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`, you may need to
+    :ref:`implement a custom preprocessor <air-custom-preprocessors>`.
+
+.. _air-encoding-text:
+
+Encoding documents
+~~~~~~~~~~~~~~~~~~
+
+A `document-term matrix <https://en.wikipedia.org/wiki/Document-term_matrix>`_ is a
+table that describes text data. It's useful for natural language processing.
+
+To generate a document-term matrix
+from a collection of documents, use :class:`~ray.data.preprocessors.HashingVectorizer`
+or :class:`~ray.data.preprocessors.CountVectorizer`. If already know the frequency of
+tokens and want to store the data in a document-term matrix, use
+:class:`~ray.data.preprocessors.FeatureHasher`.
+
+
+.. list-table::
+   :header-rows: 1
+
+   * - Requirement
+     - Preprocessor
+   * - You care about memory efficiency
+     - :class:`~ray.data.preprocessors.HashingVectorizer`
+   * - You want to know which features are important to your model
+     - :class:`~ray.data.preprocessors.CountVectorizer`
