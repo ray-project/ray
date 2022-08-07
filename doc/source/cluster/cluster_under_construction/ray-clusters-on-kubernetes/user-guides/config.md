@@ -27,14 +27,14 @@ metadata:
   name: raycluster-complete
 spec:
   rayVersion: "2.0.0"
-  enableInTreeAutoscaling: True
+  enableInTreeAutoscaling: true
   autoscalerOptions:
      ...
   headGroupSpec:
     serviceType: ClusterIP
-    enableIngress: False
+    enableIngress: false
     rayStartParams:
-      block: True
+      block: true
       dashboard-host: "0.0.0.0"
       ...
     template: # Pod template
