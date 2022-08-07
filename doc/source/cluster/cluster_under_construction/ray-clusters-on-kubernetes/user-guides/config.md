@@ -430,4 +430,4 @@ These fields should be formatted following the
 for container environment variables.
 
 [IngressDoc]: https://ray-project.github.io/kuberay/guidance/ingress/
-[IngressIssue]: https://ray-project.github.io/kuberay/guidance/ingress/
+[IngressIssue]: https://github.com/ray-project/kuberay/issues/441
