@@ -435,7 +435,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         return is_bool_dtype(self._dtype)
 
 
-class _TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
+class TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
     """
     Mixin for TensorArray operator support, applying operations on the
     underlying ndarrays.
@@ -489,7 +489,7 @@ class _TensorOpsMixin(pd.api.extensions.ExtensionScalarOpsMixin):
         return cls._create_method(op)
 
 
-class _TensorScalarCastMixin:
+class TensorScalarCastMixin:
     """
     Mixin for casting scalar tensors to a particular numeric type.
     """
@@ -513,8 +513,7 @@ class _TensorScalarCastMixin:
         return self._scalarfunc(oct)
 
 
-@PublicAPI(stability="beta")
-class TensorArrayElement(_TensorOpsMixin, _TensorScalarCastMixin):
+class TensorArrayElement(TensorOpsMixin, TensorScalarCastMixin):
     """
     Single element of a TensorArray, wrapping an underlying ndarray.
     """
@@ -579,8 +578,8 @@ class TensorArrayElement(_TensorOpsMixin, _TensorScalarCastMixin):
 @PublicAPI(stability="beta")
 class TensorArray(
     pd.api.extensions.ExtensionArray,
-    _TensorOpsMixin,
-    _TensorScalarCastMixin,
+    TensorOpsMixin,
+    TensorScalarCastMixin,
 ):
     """
     Pandas `ExtensionArray` representing a tensor column, i.e. a column

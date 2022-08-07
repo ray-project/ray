@@ -2826,13 +2826,12 @@ def test_torch_datasource_value_error(ray_start_regular_shared, local_path):
 def test_image_folder_datasource(
     ray_start_regular_shared, enable_automatic_tensor_extension_cast
 ):
-    """Test basic `ImageFolderDatasource` functionality.
-
+    """
     The folder "simple" contains two cat images and one dog images, all of which are
     are 32x32 RGB images.
     """
-    root = "example://image-folders/simple"
-    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root)
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    ds = ray.data.read_datasource(ImageFolderDatasource(), root=root, size=(64, 64))
 
     _, types = ds.schema()
     image_type, label_type = types
@@ -2933,7 +2932,7 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
     from torchvision import transforms
     from torchvision.models import resnet18
 
-    root = "example://image-folders/simple"
+    root = os.path.join(os.path.dirname(__file__), "image-folder")
     dataset = ray.data.read_datasource(
         ImageFolderDatasource(), root=root, size=(32, 32)
     )
