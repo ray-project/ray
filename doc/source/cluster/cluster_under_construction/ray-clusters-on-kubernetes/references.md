@@ -1,3 +1,4 @@
+(kuberay-api-reference)=
 # API Reference
 
 To learn about RayCluster configuration, we recommend taking a look at
