@@ -124,6 +124,8 @@ class TestApexDQN(unittest.TestCase):
             )
             .reporting(
                 min_sample_timesteps_per_iteration=10,
+                # Make sure that results contain info on default policy
+                min_train_timesteps_per_iteration=10,
                 # 0 metrics reporting delay, this makes sure timestep,
                 # which lr depends on, is updated after each worker rollout.
                 min_time_s_per_iteration=0,
