@@ -13,7 +13,7 @@ This [deployment graph pattern](serve-deployment-graph-patterns-overview) allows
 ```
 
 :::{note}
-`combine` takes in intermediate values from the call graph as the individual arguments, `value1` and `value2`. You can also aggregate and pass these intermediate values as a list argument. However, this list will contain references the values, rather than the values themselves. You must explicitly use `await` to get the actual values before using them. Use `await` instead of `ray.get` to avoid [blocking the deployment](serve-model-composition-await-warning).
+`combine` takes in intermediate values from the call graph as the individual arguments, `value1` and `value2`. You can also aggregate and pass these intermediate values as a list argument. However, this list contains references to the values, rather than the values themselves. You must explicitly use `await` to get the actual values before using them. Use `await` instead of `ray.get` to avoid [blocking the deployment](serve-model-composition-await-warning).
 
 For example:
 ```python

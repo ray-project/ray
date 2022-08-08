@@ -16,7 +16,7 @@ This [deployment graph pattern](serve-deployment-graph-patterns-overview) lets y
 
 ## Execution
 
-This graph includes two `Model` nodes, with `weights` of 0 and 1. It passes the input into the two `Models`, and they adds their own weights to it. Then, it uses the `combine` deployment to add the two `Model` deployments' output together.
+This graph includes two `Model` nodes, with `weights` of 0 and 1. It passes the input into the two `Models`, and they add their own weights to it. Then, it uses the `combine` deployment to add the two `Model` deployments' output together.
 
 The resulting calculation is:
 
