@@ -142,9 +142,8 @@ import tensorflow as tf
 
 ds = ray.data.range(10000)
 
-tf_ds: tf.data.Dataset = ds.to_tf(
+tf_ds = ds.iter_tf_batches(
     batch_size=2,
-    output_signature=tf.TensorSpec(shape=(None, 1), dtype=tf.int64),
 )
 
 num_batches = 0
@@ -173,24 +172,21 @@ ds = ray.data.from_pandas(df)
 
 # Specify the label column; all other columns will be treated as feature columns and
 # will be concatenated into the same TensorFlow tensor.
-tf_ds: tf.data.Dataset = ds.to_tf(
-    label_column="label",
+tf_ds = ds.iter_tf_batches(
     batch_size=2,
-    output_signature=(
-        tf.TensorSpec(shape=(None, 2), dtype=tf.int64),
-        tf.TensorSpec(shape=(None,), dtype=tf.int64),
-    ),
 )
 
 num_batches = 0
-for feature, label in tf_ds:
-    assert isinstance(feature, tf.Tensor)
+for batch in tf_ds:
+    feature1 = batch["feature1"]
+    feature2 = batch["feature2"]
+    label = batch["label"]
+    assert isinstance(feature1, tf.Tensor)
+    assert isinstance(feature2, tf.Tensor)
     assert isinstance(label, tf.Tensor)
     # Batch dimension.
-    assert feature.shape[0] == 2
-    # Column dimension.
-    assert feature.shape[1] == 2
-    # Batch dimension.
+    assert feature1.shape[0] == 2
+    assert feature2.shape[0] == 2
     assert label.shape[0] == 2
     num_batches += 1
 

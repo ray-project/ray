@@ -75,7 +75,7 @@ class TensorflowTrainer(DataParallelTrainer):
         def train_loop_per_worker():
             # Turns off autosharding for a dataset.
             # You should use this if you are doing
-            # `session.get_dataset_shard(...).to_tf(...)`
+            # `session.get_dataset_shard(...).iter_tf_batches(...)`
             # as the data will be already sharded.
             train.tensorflow.prepare_dataset_shard(...)
 
@@ -113,17 +113,24 @@ class TensorflowTrainer(DataParallelTrainer):
                 model.compile(
                     optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-            for epoch in range(config["num_epochs"]):
-                tf_dataset = prepare_dataset_shard(
-                    dataset_shard.to_tf(
-                        label_column="y",
-                        output_signature=(
-                            tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
-                            tf.TensorSpec(shape=(None), dtype=tf.float32),
-                        ),
-                        batch_size=1,
-                    )
+            def to_tf_dataset(dataset, batch_size):
+                def to_tensor_iterator():
+                    for batch in dataset.iter_tf_batches(
+                        batch_size=batch_size, dtypes=tf.float32
+                    ):
+                        yield batch["x"], batch["y"]
+
+                output_signature = (
+                    tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
+                    tf.TensorSpec(shape=(None), dtype=tf.float32),
                 )
+                tf_dataset = tf.data.Dataset.from_generator(
+                    to_tensor_iterator, output_signature=output_signature
+                )
+                return prepare_dataset_shard(tf_dataset)
+
+            for epoch in range(config["num_epochs"]):
+                tf_dataset = to_tf_dataset(dataset=dataset_shard, batch_size=1)
                 model.fit(tf_dataset)
                 # You can also use ray.air.callbacks.keras.Callback
                 # for reporting and checkpointing instead of reporting manually.
