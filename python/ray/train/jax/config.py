@@ -100,7 +100,7 @@ class _JaxBackend(Backend):
         if additional_resources_per_worker and additional_resources_per_worker.pop("TPU", False): 
             # Get setup tasks in order to throw errors on failure.
             try_remove_tpulib_lock = bool(os.environ.get(RAY_TPU_DEV_ENV, False))
-
+            print(try_remove_tpulib_lock)
             setup_futures = []
             for i in range(len(worker_group)):
                 setup_futures.append(
