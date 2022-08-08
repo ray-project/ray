@@ -128,10 +128,6 @@ class DTTorchModel(TorchModelV2, nn.Module):
         return nn.Linear(self.embed_dim, 1)
 
     @override(ModelV2)
-    def get_initial_state(self) -> List[np.ndarray]:
-        return []
-
-    @override(ModelV2)
     def forward(
         self,
         input_dict: Dict[str, TensorType],

@@ -1,8 +1,10 @@
 import logging
+from collections import defaultdict
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
+from ray.rllib.policy.sample_batch import SampleBatch, concat_samples, MultiAgentBatch
+from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ class SegmentationBuffer:
         # is concatenated together twice.
         if episode.env_steps() > self.max_ep_len:
             logger.warning(
-                f"The maximum rollout length is {self.max_seq_len} but we tried to add a"
+                f"The maximum rollout length is {self.max_ep_len} but we tried to add a"
                 f"rollout of {episode.env_steps()} steps to the SegmentationBuffer. "
                 f"This could be due to incorrect data in the dataset, or random "
                 f"shuffling that caused a duplicate rollout."
@@ -46,8 +48,7 @@ class SegmentationBuffer:
             self._buffer[replace_ind] = episode
 
     def sample(self, batch_size: int) -> SampleBatch:
-        num_samples = int(np.ceil(batch_size / self.max_seq_len))
-        samples = [self._sample_single() for _ in range(num_samples)]
+        samples = [self._sample_single() for _ in range(batch_size)]
         return concat_samples(samples)
 
     def _sample_single(self) -> SampleBatch:
@@ -116,3 +117,32 @@ class SegmentationBuffer:
                 SampleBatch.ATTENTION_MASKS: masks[None],
             }
         )
+
+
+class MultiAgentSegmentationBuffer:
+    def __init__(
+        self,
+        capacity: int = 20,
+        max_seq_len: int = 20,
+        max_ep_len: int = 1000,
+    ):
+        def new_buffer():
+            return SegmentationBuffer(capacity, max_seq_len, max_ep_len)
+
+        self.buffers = defaultdict(new_buffer)
+
+    def add(self, batch: SampleBatchType):
+        # Make a copy so the replay buffer doesn't pin plasma memory.
+        batch = batch.copy()
+        # Handle everything as if multi-agent.
+        batch = batch.as_multi_agent()
+
+        for policy_id, sample_batch in batch.policy_batches:
+            self.buffers[policy_id].add(sample_batch)
+
+    def sample(self, batch_size: int) -> MultiAgentBatch:
+        samples = {}
+        for policy_id, buffer in self.buffers.items():
+            samples[policy_id] = buffer.sample(batch_size)
+        return MultiAgentBatch(samples, sum(len(s) for s in samples.values()))
+

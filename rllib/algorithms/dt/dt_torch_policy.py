@@ -25,10 +25,12 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchDeterministic,
 )
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.policy.torch_mixins import LearningRateSchedule
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import (
     TrainerConfigDict,
     TensorType,
@@ -38,7 +40,7 @@ torch, nn = try_import_torch()
 F = nn.functional
 
 
-class DTTorchPolicy(TorchPolicyV2):
+class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
     def __init__(
         self,
         observation_space: gym.spaces.Space,
@@ -49,6 +51,12 @@ class DTTorchPolicy(TorchPolicyV2):
         import pprint
 
         pprint.pprint(config)
+
+        LearningRateSchedule.__init__(
+            self,
+            config["lr"],
+            config["lr_schedule"],
+        )
 
         TorchPolicyV2.__init__(
             self,
@@ -125,6 +133,8 @@ class DTTorchPolicy(TorchPolicyV2):
         # TODO(charlesjsun): check this is only ran with one episode?
         # TODO(charlesjsun): custom discount factor
         assert len(sample_batch.split_by_episode()) == 1
+
+        sample_batch[SampleBatch.REWARDS] = sample_batch[SampleBatch.REWARDS]
 
         rewards = sample_batch[SampleBatch.REWARDS].reshape(-1)
         sample_batch[SampleBatch.RETURNS_TO_GO] = discount_cumsum(rewards, 1.0)
@@ -250,12 +260,14 @@ class DTTorchPolicy(TorchPolicyV2):
         # return to go losses
         if preds.get(SampleBatch.RETURNS_TO_GO) is not None:
             rtg_loss = self._masked_mse_loss(
-                preds[SampleBatch.RETURNS_TO_GO],
-                targets[SampleBatch.RETURNS_TO_GO],
+                preds[SampleBatch.RETURNS_TO_GO] * 0.001,
+                targets[SampleBatch.RETURNS_TO_GO] * 0.001,
                 masks,
             )
             losses.append(rtg_loss)
             self.log("rtg_loss", rtg_loss)
+
+        self.log("cur_lr", torch.tensor(self.cur_lr))
 
         loss = sum(losses)
         return loss
@@ -283,6 +295,10 @@ class DTTorchPolicy(TorchPolicyV2):
             *preds.shape[0:2], *[1] * (len(preds.shape) - 2)
         )
         return losses.mean()
+
+    @override(TorchPolicyV2)
+    def extra_grad_process(self, local_optimizer, loss):
+        return apply_grad_clipping(self, local_optimizer, loss)
 
     def log(self, key, value):
         # internal log function

@@ -1,14 +1,17 @@
-pendulum_dt:
+pendulum_medium_expert_dt:
     env: 'Pendulum-v1'
     run: DT
     stop:
-        # TODO: We could make this -200, but given that we have 4 cpus for our tests, we will have to settle for -300.
+        # We could make this -200, but given that we have 4 cpus for our tests, we will have to settle for -300.
         evaluation/episode_reward_mean: -300
         timesteps_total: 20000000
     config:
         input: 'dataset'
         input_config:         
-            paths: '/Users/charlesjsun/code/tmp/pendulum_expert/pendulum_expert_sac_50.json'
+            paths: [
+                '/Users/charlesjsun/code/tmp/pendulum_expert/pendulum_expert_sac_50.json',
+                '/Users/charlesjsun/code/tmp/pendulum_medium/pendulum_medium_sac_50.json',
+            ]
             format: 'json'
         num_workers: 3
         actions_in_input_normalized: True
@@ -23,15 +26,18 @@ pendulum_dt:
         grad_clip: 0.25
         optimizer:
             weight_decay: 0.1
+#            betas: [0.9, 0.95]
             betas: [0.9, 0.999]
         replay_buffer_config:
             capacity: 20
         # model
         model:
             max_seq_len: 3
-        num_layers: 1
         num_heads: 1
         embed_dim: 64
+        num_layers: 1
+#        num_heads: 1
+#        embed_dim: 64
         # rollout
         horizon: 200
         # evaluation

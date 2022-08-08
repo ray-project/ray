@@ -1,5 +1,6 @@
 import logging
-from typing import List, Optional, Type, Tuple, Dict, Any
+import math
+from typing import List, Optional, Type, Tuple, Dict, Any, Union
 
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
@@ -11,7 +12,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    SAMPLE_TIMER,
+    SAMPLE_TIMER, NUM_AGENT_STEPS_TRAINED,
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
@@ -30,10 +31,12 @@ class DTConfig(AlgorithmConfig):
         # DT-specific settings.
         # TODO(charlesjsun): what is sphinx_doc
         self.lr = 1e-4
+        self.lr_schedule = None
         self.optimizer = {
             "weight_decay": 1e-4,
             "betas": (0.9, 0.95),
         }
+        self.grad_clip = None
 
         self.model = {
             "max_seq_len": 20,
@@ -80,6 +83,8 @@ class DTConfig(AlgorithmConfig):
         use_obs_output: Optional[bool] = None,
         use_return_output: Optional[bool] = None,
         target_return: Optional[float] = None,
+        grad_clip: Optional[float] = None,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = None,
         **kwargs,
     ) -> "DTConfig":
         """
@@ -114,6 +119,10 @@ class DTConfig(AlgorithmConfig):
             self.use_return_output = use_return_output
         if target_return is not None:
             self.target_return = target_return
+        if grad_clip is not None:
+            self.grad_clip = grad_clip
+        if lr_schedule is not None:
+            self.lr_schedule = lr_schedule
 
         return self
 
@@ -197,10 +206,8 @@ class DT(Algorithm):
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
-        # TODO(charlesjsun): better control over batch sizes
-        batch_size = train_batch[SampleBatch.OBS].shape[0]
-
-        # TODO(charlesjsun): Action normalization?
+        num_steps = train_batch[SampleBatch.OBS].shape[0]
+        batch_size = int(math.ceil(num_steps / self.config["model"]["max_seq_len"]))
 
         self.local_replay_buffer.add(train_batch)
         train_batch = self.local_replay_buffer.sample(batch_size)
@@ -216,5 +223,12 @@ class DT(Algorithm):
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
+
+        global_vars = {
+            # Note: this counts the number of segments trained, not timesteps.
+            # i.e. NUM_AGENT_STEPS_TRAINED: B, NUM_AGENT_STEPS_SAMPLED: B*T
+            "timestep": self._counters[NUM_AGENT_STEPS_TRAINED],
+        }
+        self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
