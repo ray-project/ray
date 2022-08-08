@@ -1498,5 +1498,5 @@ class Node:
         parsed_url = urllib.parse.urlparse(url)
         if parsed_url.scheme:
             # Construct URL without protocol
-            return parsed_url.netloc + parsed_url.path
+            return url[url.index("://") + 3 :]
         return url
