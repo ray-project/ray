@@ -4,10 +4,10 @@
 
 This section should help you understand how to:
 
-- configure HTTP server location
-- send HTTP request to serve deployment
-- use Ray Serve integrate with FastAPI
-- use customized HTTP Adapter
+- configure your HTTP server location
+- send HTTP requests to Serve deployments
+- use Ray Serve to integrate with FastAPI
+- use customized HTTP Adapters
 
 
 ## Configuring HTTP Server Locations
@@ -17,7 +17,7 @@ You can configure this behavior using the `http_options={"location": ...}` flag
 in {mod}`serve.run <ray.serve.run>`:
 
 - **HeadOnly**: start one HTTP server on the head node. Serve
-  assumes the head node is the node you executed serve.run
+  assumes the head node is the node you executed `serve.run`
   on. This is the default.
 - **EveryNode**: start one HTTP server per node.
 - **NoServer** or `None`: disable HTTP server.
@@ -30,7 +30,7 @@ To achieve high availability of Serve's HTTP proxies, use **EveryNode** option t
 
 ## Calling Deployments via HTTP
 
-When you create a deployment, Serve exposes your deployment over HTTP by default at `/{deployment_name}`. You can change the route by specifying the `route_prefix` argument to the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator.
+When you create a deployment, Serve exposes your deployment over HTTP by default at `/`. You can change the route by specifying the `route_prefix` argument to the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator.
 
 ```python
 @serve.deployment(route_prefix="/counter")
@@ -121,7 +121,7 @@ serve.run(FastAPIWrapper.bind())
 This is useful for scaling out an existing FastAPI app with no modifications necessary.
 Existing middlewares, automatic OpenAPI documentation generation, and other advanced FastAPI features should work as-is.
 
-To try it out, save a code snippet in a local python file (i.e. main.py) and in the same directory, run the following commands to start a local Ray cluster on your machine.
+To try it out, save a code snippet in a local python file (e.g. `main.py`) and in the same directory, run the following commands to start a local Ray cluster on your machine.
 
 ```bash
 ray start --head
