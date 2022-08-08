@@ -71,7 +71,7 @@ Some details of Ray cluster configuration are different with KubeRay; see the ne
 for migration notes. Refer to the {ref}`configuration guide<kuberay-config>` for comprehensive
 information.
 
-## Migration notes
+## Migration Notes
 
 Take note of the following configuration differences when switching to KubeRay
 deployment.
@@ -114,3 +114,6 @@ To advertise custom resource capacities to Ray, one uses the field `rayStartPara
 See the {ref}`configuration guide<rayStartParams>` for details.
 
 [KuberaySingleNamespace]: https://github.com/ray-project/kuberay#single-namespace-version
+
+### Init Containers and Pre-Stop hooks
+Pass...

@@ -50,6 +50,11 @@ spec:
                 requests:
                   cpu: 14
                   memory: 54Gi
+              # Keep this preStop hook in each Ray container config.
+              lifecycle:
+                preStop:
+                  exec:
+                    command: ["/bin/sh","-c","ray stop"]
               ports: # Optional service port overrides
               - containerPort: 6379
                 name: gcs
@@ -68,6 +73,12 @@ spec:
     rayStartParams:
         ...
     template: # Pod template
+      spec:
+        # Keep this initContainer in each workerGroup template.
+        initContainers:
+        - name: init-myservice
+          image: busybox:1.28
+          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
         ...
   # Another workerGroup
   - groupName: medium-group
@@ -428,6 +439,36 @@ environment variables, for debugging and development purposes.
 These fields should be formatted following the
 [Kuberentes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
 for container environment variables.
+
+(kuberay-config-miscellaneous)
+## Pod and container lifecyle: preStop hooks and initContainers
+There are two pieces of pod configuration that should always be included
+in the RayCluster CR. Future versions of KubeRay may configure these elements automatically.
+
+## initContainer
+It is required for the configuration of each `workerGroupSpec`'s pod template to include
+the following block:
+```yaml
+initContainers:
+- name: init-myservice
+  image: busybox:1.28
+  command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+```
+This instructs the worker pod to wait for creation of the Ray head service. The worker's `ray start`
+command will use this service to connect to the Ray head.
+
+(It is not required to include this init container in the Ray head pod's configuration.)
+
+## preStopHook
+It is recommended for every Ray container's configuration
+to include the following blocking block:
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command: ["/bin/sh","-c","ray stop"]
+```
+To ensure graceful termination, `ray stop` is executed prior to the Ray pod's termination.
 
 [IngressDoc]: https://ray-project.github.io/kuberay/guidance/ingress/
 [IngressIssue]: https://github.com/ray-project/kuberay/issues/441
