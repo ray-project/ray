@@ -23,21 +23,21 @@ There are also some differences in configuration details.
 
 ### Implementation and architecture
 **Legacy Ray Operator** The legacy Ray Operator is implemented in Python.
-Kubernetes event handling is implemented using the [Kopf][https://kopf.readthedocs.io/en/stable/] framework.
+Kubernetes event handling is implemented using the [Kopf](https://kopf.readthedocs.io/en/stable/) framework.
 The operator invokes Ray cluster launcher and autoscaler code to manage Ray clusters.
 The operator forks an autoscaler subprocess for each Ray cluster it manages.
-The Ray autoscalers create and delete Ray pods directly.
+The Ray autoscaler subprocesses create and delete Ray pods directly.
 
 **KubeRay Operator** The KubeRay operator is implemented in Golang using standard tools
 for building Kubernetes operators, including the [KubeBuilder](https://github.com/kubernetes-sigs/kubebuilder)
 operator framework
 and the [client-go](https://github.com/kubernetes/client-go) client library.
-The KubeRay operator is structurally simpler than the Legacy Ray Operator;
-ran than running many Ray autoscalers in subprocesses, the KubeRay operator implements a simple
-reconciling loop. The reconciling loop creates and deletes Ray pods to match the desired
+The KubeRay operator is structurally simpler than the legacy Ray Operator;
+rather than running many Ray autoscalers in subprocesses, the KubeRay operator implements a simple
+reconciliation loop. The reconciliation loop creates and deletes Ray pods to match the desired
 state expressed in each RayCluster CR.
 Each Ray cluster runs its own autoscaler as a sidecar to the Ray head pod.
-The Ray autoscaler communicates desired scale to the KubeRay operator via the RayCluster
+The Ray autoscaler communicates desired scale to the KubeRay operator by writing to the RayCluster
 custom resource.
 
 ### Scalability
@@ -48,7 +48,8 @@ KubeRay operator can simultaneously manage more Ray clusters.
 Since the legacy Ray Operator runs many autoscalers in one pod, it cannot manage many Ray clusters.
 
 **KubeRay Operator** The KubeRay operator does not run Ray autoscaler processes.
-Each Ray autoscaler runs as a sidecar to the Ray head.
+Each Ray autoscaler runs as a sidecar to the Ray head. Since managing each Ray cluster is cheap,
+the KubeRay operator can manage many Ray clusters.
 
 ### Ray version compatibility
 
