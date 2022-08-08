@@ -76,10 +76,6 @@ To learn more about the autoscaler and how to configure it, refer to the followi
 
 .. _cluster-clients-and-jobs-under-construction:
 
-..
-    Notes: 
-    * Rewrite the section and refer to everything as a Job. All runnable things should now be called jobs, per Alan's work.
-    * Rewrite the section with emphasis on how users use jobs. e.g. ssh to head node, then ray.init. Afterwards, ray submit.
 
 Clients and Jobs
 ----------------
