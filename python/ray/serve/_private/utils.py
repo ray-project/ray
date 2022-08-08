@@ -24,7 +24,6 @@ from ray.exceptions import RayTaskError
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT
 from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
-from ray._raylet import MessagePackSerializer
 
 import __main__
 
@@ -34,7 +33,6 @@ except ImportError:
     pd = None
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
-MESSAGE_PACK_OFFSET = 9
 
 
 # Use a global singleton enum to emulate default options. We cannot use None
@@ -239,28 +237,6 @@ def msgpack_serialize(obj):
     buffer = ctx.serialize(obj)
     serialized = buffer.to_bytes()
     return serialized
-
-
-def msgpack_deserialize(data):
-    # todo: Ray does not provide a msgpack deserialization api.
-    try:
-        obj = MessagePackSerializer.loads(data[MESSAGE_PACK_OFFSET:], None)
-    except Exception:
-        raise
-    return obj
-
-
-def merge_dict(dict1, dict2):
-    if dict1 is None and dict2 is None:
-        return None
-    if dict1 is None:
-        dict1 = dict()
-    if dict2 is None:
-        dict2 = dict()
-    result = dict()
-    for key in dict1.keys() | dict2.keys():
-        result[key] = sum([e.get(key, 0) for e in (dict1, dict2)])
-    return result
 
 
 def get_deployment_import_path(
