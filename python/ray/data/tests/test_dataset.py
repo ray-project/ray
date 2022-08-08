@@ -25,6 +25,8 @@ from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowTensorType,
+    ArrowRaggedTensorArray,
+    ArrowRaggedTensorType,
     TensorArray,
     TensorDtype,
 )
@@ -482,6 +484,113 @@ def test_tensor_array_validation():
         TensorArray([object(), object()])
 
 
+def test_arrow_ragged_tensor_array_roundtrip():
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    ata = ArrowRaggedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowRaggedTensorType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    for o, a in zip(out, arr):
+        np.testing.assert_array_equal(o, a)
+
+
+def test_arrow_ragged_tensor_array_roundtrip_boolean():
+    arr = np.array(
+        [[True, False], [False, False, True], [False], [True, True, False, True]],
+        dtype=object,
+    )
+    ata = ArrowRaggedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowRaggedTensorType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    for o, a in zip(out, arr):
+        np.testing.assert_array_equal(o, a)
+
+
+def test_arrow_ragged_tensor_array_slice():
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    ata = ArrowRaggedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowRaggedTensorType)
+    assert len(ata) == len(arr)
+    indices = [0, 1, 2]
+    for i in indices:
+        np.testing.assert_array_equal(ata[i], arr[i])
+    slices = [
+        slice(0, 1),
+        slice(1, 2),
+        slice(2, 3),
+        slice(0, 2),
+        slice(1, 3),
+        slice(0, 3),
+    ]
+    for slice_ in slices:
+        for o, e in zip(ata[slice_], arr[slice_]):
+            np.testing.assert_array_equal(o, e)
+
+
+def test_ragged_tensor_array_roundtrip():
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    ta = TensorArray(arr)
+    assert isinstance(ta.dtype, TensorDtype)
+    assert len(ta) == len(arr)
+    out = ta.to_numpy()
+    for o, a in zip(out, arr):
+        np.testing.assert_array_equal(o, a)
+
+    # Check Arrow conversion.
+    ata = ta.__arrow_array__()
+    assert isinstance(ata.type, ArrowRaggedTensorType)
+    assert len(ata) == len(arr)
+    out = ata.to_numpy()
+    for o, a in zip(out, arr):
+        np.testing.assert_array_equal(o, a)
+
+
+def test_ragged_tensor_array_slice():
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    arr = np.array(arrs, dtype=object)
+    ta = TensorArray(arr)
+    assert isinstance(ta.dtype, TensorDtype)
+    assert len(ta) == len(arr)
+    indices = [0, 1, 2]
+    for i in indices:
+        np.testing.assert_array_equal(ta[i], arr[i])
+    slices = [
+        slice(0, 1),
+        slice(1, 2),
+        slice(2, 3),
+        slice(0, 2),
+        slice(1, 3),
+        slice(0, 3),
+    ]
+    for slice_ in slices:
+        for o, e in zip(ta[slice_], arr[slice_]):
+            np.testing.assert_array_equal(o, e)
+
+
 def test_tensor_array_block_slice():
     # Test that ArrowBlock slicing works with tensor column extension type.
     def check_for_copy(table1, table2, a, b, is_copy):
@@ -579,44 +688,52 @@ def test_tensor_array_block_slice():
             9,
             12,
         ),
+        # Ragged tensors.
+        (
+            [[False, True], [True, False, True], [False], [False, False, True, True]],
+            1,
+            3,
+        ),
     ],
 )
 @pytest.mark.parametrize("init_with_pandas", [True, False])
 def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data, a, b):
+    is_ragged = len({len(elem) for elem in test_data}) > 1
     n = len(test_data)
     test_arr = np.array(test_data)
     df = pd.DataFrame({"one": TensorArray(test_arr), "two": ["a"] * n})
     if init_with_pandas:
         table = pa.Table.from_pandas(df)
     else:
-        pa_dtype = pa.bool_()
-        flat = [w for v in test_data for w in v]
-        data_array = pa.array(flat, pa_dtype)
-        inner_len = len(test_data[0])
-        offsets = list(range(0, len(flat) + 1, inner_len))
-        offset_buffer = pa.py_buffer(np.int32(offsets))
-        storage = pa.Array.from_buffers(
-            pa.list_(pa_dtype),
-            len(test_data),
-            [None, offset_buffer],
-            children=[data_array],
-        )
-        t_arr = pa.ExtensionArray.from_storage(
-            ArrowTensorType((inner_len,), pa.bool_()), storage
-        )
-        table = pa.table({"one": t_arr, "two": ["a"] * n})
+        if is_ragged:
+            col = ArrowRaggedTensorArray.from_numpy(test_arr)
+        else:
+            col = ArrowTensorArray.from_numpy(test_arr)
+        table = pa.table({"one": col, "two": ["a"] * n})
     block_accessor = BlockAccessor.for_block(table)
 
     # Test without copy.
     table2 = block_accessor.slice(a, b, False)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), test_arr[a:b, :])
+    out = table2["one"].chunk(0).to_numpy()
+    expected = test_arr[a:b]
+    if is_ragged:
+        for o, e in zip(out, expected):
+            np.testing.assert_array_equal(o, e)
+    else:
+        np.testing.assert_array_equal(out, expected)
     pd.testing.assert_frame_equal(
         table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
     )
 
     # Test with copy.
     table2 = block_accessor.slice(a, b, True)
-    np.testing.assert_array_equal(table2["one"].chunk(0).to_numpy(), test_arr[a:b, :])
+    out = table2["one"].chunk(0).to_numpy()
+    expected = test_arr[a:b]
+    if is_ragged:
+        for o, e in zip(out, expected):
+            np.testing.assert_array_equal(o, e)
+    else:
+        np.testing.assert_array_equal(out, expected)
     pd.testing.assert_frame_equal(
         table2.to_pandas().reset_index(drop=True), df[a:b].reset_index(drop=True)
     )
@@ -849,26 +966,14 @@ def test_tensors_inferred_from_map(ray_start_regular_shared):
         "schema={a: TensorDtype(shape=(4, 4), dtype=float64)})"
     )
 
-    # Test map_batches ragged ndarray column fails by default.
-    with pytest.raises(ValueError):
-        ds = ray.data.range(16, parallelism=4).map_batches(
-            lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
-            batch_size=2,
-        )
-
-    # Test map_batches ragged ndarray column uses opaque object-typed column if
-    # automatic tensor extension type casting is disabled.
-    ctx = DatasetContext.get_current()
-    old_config = ctx.enable_tensor_extension_casting
-    ctx.enable_tensor_extension_casting = False
-    try:
-        ds = ray.data.range(16, parallelism=4).map_batches(
-            lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
-            batch_size=2,
-        )
-        assert str(ds) == ("Dataset(num_blocks=4, num_rows=16, schema={a: object})")
-    finally:
-        ctx.enable_tensor_extension_casting = old_config
+    ds = ray.data.range(16, parallelism=4).map_batches(
+        lambda _: pd.DataFrame({"a": [np.ones((2, 2)), np.ones((3, 3))]}),
+        batch_size=2,
+    )
+    assert str(ds) == (
+        "Dataset(num_blocks=4, num_rows=16, "
+        "schema={a: TensorDtype(shape=None, dtype=float64)})"
+    )
 
 
 def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
@@ -883,6 +988,24 @@ def test_tensors_in_tables_from_pandas(ray_start_regular_shared):
     ds = ray.data.from_pandas([df])
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_from_pandas_ragged(ray_start_regular_shared):
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    outer_dim = len(arrs)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": arrs})
+    # Cast column to tensor extension dtype.
+    df["two"] = df["two"].astype(TensorDtype(np.int64))
+    ds = ray.data.from_pandas(df)
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(range(outer_dim), arrs))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
@@ -905,6 +1028,26 @@ def test_tensors_in_tables_pandas_roundtrip(
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
+def test_tensors_in_tables_pandas_roundtrip_ragged(
+    ray_start_regular_shared,
+    enable_automatic_tensor_extension_cast,
+):
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    outer_dim = len(arrs)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arrs)})
+    ds = ray.data.from_pandas(df)
+    ds_df = ds.to_pandas()
+    expected_df = df
+    if enable_automatic_tensor_extension_cast:
+        expected_df.loc[:, "two"] = list(expected_df["two"].to_numpy())
+    pd.testing.assert_frame_equal(ds_df, expected_df)
+
+
 def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path):
     outer_dim = 3
     inner_shape = (2, 2, 2)
@@ -917,6 +1060,24 @@ def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path)
     ds = ray.data.read_parquet(str(tmp_path))
     values = [[s["one"], s["two"]] for s in ds.take()]
     expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
+        np.testing.assert_equal(v, e)
+
+
+def test_tensors_in_tables_parquet_roundtrip_ragged(ray_start_regular_shared, tmp_path):
+    shapes = [(2, 2), (3, 3), (4, 4)]
+    cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
+    arrs = [
+        np.arange(offset, offset + np.prod(shape)).reshape(shape)
+        for offset, shape in zip(cumsum_sizes, shapes)
+    ]
+    outer_dim = len(arrs)
+    df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arrs)})
+    ds = ray.data.from_pandas([df])
+    ds.write_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(str(tmp_path))
+    values = [[s["one"], s["two"]] for s in ds.take()]
+    expected = list(zip(range(outer_dim), arrs))
     for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 

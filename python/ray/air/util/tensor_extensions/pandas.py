@@ -29,7 +29,6 @@
 # - Added support for logical operators to TensorArray(Element).
 # - Miscellaneous small bug fixes and optimizations.
 
-import itertools
 import numbers
 import os
 from distutils.version import LooseVersion
@@ -181,8 +180,11 @@ if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
 @pd.api.extensions.register_extension_dtype
 class TensorDtype(pd.api.extensions.ExtensionDtype):
     """
-    Pandas extension type for a column of fixed-shape, homogeneous-typed
-    tensors.
+    Pandas extension type for a column of homogeneous-typed tensors.
+
+    This extension supports ragged tensors, i.e. where the tensor elements have
+    different shapes. However, each tensor element must be non-ragged, i.e. each tensor
+    element must have a well-defined shape.
 
     See:
     https://github.com/pandas-dev/pandas/blob/master/pandas/core/dtypes/base.py
@@ -205,7 +207,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         dtype: object
         >>> # Cast column to our TensorDtype extension type.
         >>> from ray.data.extensions import TensorDtype
-        >>> df["two"] = df["two"].astype(TensorDtype((3, 2, 2, 2), np.int64))
+        >>> df["two"] = df["two"].astype(TensorDtype(np.int64, (3, 2, 2, 2)))
         >>> # Note that the column dtype is now TensorDtype instead of
         >>> # np.object.
         >>> df.dtypes # doctest: +SKIP
@@ -279,9 +281,9 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
     # https://github.com/CODAIT/text-extensions-for-pandas/issues/166
     base = None
 
-    def __init__(self, shape: Tuple[int, ...], dtype: np.dtype):
-        self._shape = shape
+    def __init__(self, dtype: np.dtype, shape: Optional[Tuple[int, ...]] = None):
         self._dtype = dtype
+        self._shape = shape
 
     @property
     def type(self):
@@ -356,7 +358,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
             )
         # Upstream code uses exceptions as part of its normal control flow and
         # will pass this method bogus class names.
-        regex = r"^TensorDtype\(shape=(\((?:\d+,?\s?)*\)), dtype=(\w+)\)$"
+        regex = r"^TensorDtype\(shape=((?:\((?:\d+,?\s?)*\))|(?:None)), dtype=(\w+)\)$"
         m = re.search(regex, string)
         err_msg = (
             f"Cannot construct a '{cls.__name__}' from '{string}'; expected a string "
@@ -370,7 +372,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         shape, dtype = groups
         shape = ast.literal_eval(shape)
         dtype = np.dtype(dtype)
-        return cls(shape, dtype)
+        return cls(dtype, shape)
 
     @classmethod
     def construct_array_type(cls):
@@ -584,8 +586,11 @@ class TensorArray(
 ):
     """
     Pandas `ExtensionArray` representing a tensor column, i.e. a column
-    consisting of ndarrays as elements. All tensors in a column must have the
-    same shape.
+    consisting of ndarrays as elements.
+
+    This extension supports ragged tensors, i.e. where the tensor elements have
+    different shapes. However, each tensor element must be non-ragged, i.e. each tensor
+    element must have a well-defined shape.
 
     Examples:
         >>> # Create a DataFrame with a list of ndarrays as a column.
@@ -703,28 +708,21 @@ class TensorArray(
 
         if isinstance(values, np.ndarray):
             if values.dtype.type is np.object_:
-                if len(values) == 0 or (
-                    not isinstance(values[0], str)
-                    and isinstance(
-                        values[0], (np.ndarray, TensorArrayElement, Sequence)
+                if len(values) == 0:
+                    # Tensor is empty, pass through to create empty TensorArray.
+                    pass
+                elif isinstance(values[0], str):
+                    # Tensor of strings, these don't need a TensorArray representation.
+                    raise TypeError(
+                        "Got a tensor of strings when constructing a TensorArray, but "
+                        "a tensor of strings doesn't need to be represented using a "
+                        "TensorArray."
                     )
-                ):
-                    # Convert ndarrays of ndarrays/TensorArrayElements
-                    # with an opaque object type to a properly typed ndarray of
-                    # ndarrays.
+                elif isinstance(values[0], (np.ndarray, TensorArrayElement, Sequence)):
+                    # Try to convert ndarrays of ndarrays/TensorArrayElements with an
+                    # opaque object type to a properly typed ndarray of ndarrays.
+                    # TODO (Clark): Maybe don't even try this conversion?
                     self._tensor = np.array([np.asarray(v) for v in values])
-                    if self._tensor.dtype.type is np.object_:
-                        subndarray_types = [
-                            v.dtype for v in itertools.islice(self._tensor, 5)
-                        ]
-                        raise TypeError(
-                            "Tried to convert an ndarray of ndarray pointers (object "
-                            "dtype) to a well-typed ndarray but this failed; convert "
-                            "the ndarray to a well-typed ndarray before casting it as "
-                            "a TensorArray, and note that ragged tensors are NOT "
-                            "supported by TensorArray. First 5 subndarray types: "
-                            f"{subndarray_types}"
-                        )
                 else:
                     raise TypeError(
                         "Expected a well-typed ndarray or an object-typed ndarray of "
@@ -740,12 +738,11 @@ class TensorArray(
             # `values` is a single element:
             self._tensor = np.array([values])
         elif isinstance(values, TensorArray):
-            raise TypeError("Use the copy() method to create a copy of a TensorArray")
+            raise TypeError("Use the copy() method to create a copy of a TensorArray.")
         else:
             raise TypeError(
                 "Expected a numpy.ndarray or sequence of numpy.ndarray, "
-                f"but received {values} "
-                f"of type '{type(values)}' instead."
+                f"but received {values} of type {type(values).__name__} instead."
             )
 
     @classmethod
@@ -865,7 +862,13 @@ class TensorArray(
         """
         An instance of 'ExtensionDtype'.
         """
-        return TensorDtype(self.numpy_shape[1:], self.numpy_dtype)
+        if self._is_ragged_tensor():
+            dtype = self._tensor[0].dtype if len(self._tensor) > 0 else self.numpy_dtype
+            shape = None
+        else:
+            dtype = self.numpy_dtype
+            shape = self.numpy_shape[1:]
+        return TensorDtype(dtype, shape)
 
     @property
     def nbytes(self) -> int:
@@ -1319,6 +1322,10 @@ class TensorArray(
         result = self._tensor.all(axis=axis, out=out, keepdims=keepdims)
         return result if axis is None else TensorArray(result)
 
+    def _is_ragged_tensor(self) -> bool:
+        """Return whether this TensorArray is representing a ragged tensor."""
+        return _is_ndarray_ragged_tensor(self._tensor)
+
     def __arrow_array__(self, type=None):
         """
         Convert this TensorArray to an ArrowTensorArray extension array.
@@ -1329,9 +1336,15 @@ class TensorArray(
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
-        from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+        from ray.air.util.tensor_extensions.arrow import (
+            ArrowTensorArray,
+            ArrowRaggedTensorArray,
+        )
 
-        return ArrowTensorArray.from_numpy(self._tensor)
+        if self._is_ragged_tensor():
+            return ArrowRaggedTensorArray.from_numpy(self._tensor)
+        else:
+            return ArrowTensorArray.from_numpy(self._tensor)
 
     @property
     def _is_boolean(self):
@@ -1361,3 +1374,10 @@ TensorArrayElement._add_logical_ops()
 TensorArray._add_arithmetic_ops()
 TensorArray._add_comparison_ops()
 TensorArray._add_logical_ops()
+
+
+def _is_ndarray_ragged_tensor(arr: np.ndarray) -> bool:
+    """Return whether the provided NumPy ndarray is representing a ragged tensor."""
+    return (
+        arr.dtype.type is np.object_ and len(arr) > 0 and isinstance(arr[0], np.ndarray)
+    )
