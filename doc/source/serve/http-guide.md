@@ -4,42 +4,25 @@
 
 This section should help you understand how to:
 
-- configure your HTTP server location
 - send HTTP requests to Serve deployments
 - use Ray Serve to integrate with FastAPI
 - use customized HTTP Adapters
 
 
-## Configuring HTTP Server Locations
-
-By default, Ray Serve starts a single HTTP server on the head node of the Ray cluster.
-You can configure this behavior using the `http_options={"location": ...}` flag
-in {mod}`serve.run <ray.serve.run>`:
-
-- **HeadOnly**: start one HTTP server on the head node. Serve
-  assumes the head node is the node you executed `serve.run`
-  on. This is the default.
-- **EveryNode**: start one HTTP server per node.
-- **NoServer** or `None`: disable HTTP server.
-
-:::{note}
-To achieve high availability of Serve's HTTP proxies, use **EveryNode** option to point to the instance group of Ray cluster
-:::
-
 (serve-http)=
 
 ## Calling Deployments via HTTP
 
-When you create a deployment, Serve exposes your deployment over HTTP by default at `/`. You can change the route by specifying the `route_prefix` argument to the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator.
+When you deploy a Serve application, the ingress deployment (the one passed to `serve.run`) will be exposed over HTTP. If you want to route to another deployment, you can do so using the [ServeHandle API](serve-model-composition).
 
 ```python
-@serve.deployment(route_prefix="/counter")
+@serve.deployment
 class Counter:
     def __call__(self, request):
         pass
 ```
 
-Any request to the Serve HTTP server at `/counter` is routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code).
+Any request to the Serve HTTP server at `/` is routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code).
 
 Below, we discuss some advanced features for customizing Ray Serve's HTTP functionality.
 
