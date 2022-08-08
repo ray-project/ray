@@ -117,12 +117,10 @@ The `fluentbit-config` volume gives the sidecar access to logging configuration.
 Now, we will see how to deploy the configuration described above.
 
 Deploy the KubeRay Operator if you haven't yet.
-```shell
-git clone https://github.com/ray-project/kuberay -b release-0.3
-kubectl create -k kuberay/ray-operator/config/default
-```
+Refer to the {ref}`Getting Started guide<kuberay-operator-deploy>`
+for instructions on this step.
 
-Deploy the Fluent Bit ConfigMap and a single-pod RayCluster with
+Now, run the following commands to deploy the Fluent Bit ConfigMap and a single-pod RayCluster with
 a Fluent Bit sidecar.
 ```shell
 # Starting from the parent of cloned Ray master.
