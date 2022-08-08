@@ -134,8 +134,10 @@ class SummaryApiOptions:
 
 def state_column(*, filterable: bool, detail: bool = False, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
+
     The metadata is used to define detail / filterable option of
     each column.
+
     Args:
         detail: If True, the column is used when detail == True
         filterable: If True, the column can be used for filtering.
@@ -151,18 +153,21 @@ def state_column(*, filterable: bool, detail: bool = False, **kwargs):
 
 class StateSchema(ABC):
     """Schema class for Ray resource abstraction.
+
     The child class must be dataclass. All child classes
     - perform runtime type checking upon initialization.
     - are supposed to use `state_column` instead of `field`.
         It will allow the class to return filterable/detail columns.
         If `state_column` is not specified, that column is not filterable
         and for non-detail output.
+
     For example,
     ```
     @dataclass
     class State(StateSchema):
         column_a: str
         column_b: int = state_column(detail=True, filterable=True)
+
     s = State(column_a="abc", b=1)
     # Returns {"column_b"}
     s.filterable_columns()
@@ -198,6 +203,7 @@ class StateSchema(ABC):
     @classmethod
     def base_columns(cls) -> Set[str]:
         """Return a list of base columns.
+
         Base columns mean columns to return when detail == False.
         """
         base = set()
@@ -209,6 +215,7 @@ class StateSchema(ABC):
     @classmethod
     def detail_columns(cls) -> Set[str]:
         """Return a list of detail columns.
+
         Detail columns mean columns to return when detail == True.
         """
         detail = set()
@@ -228,6 +235,7 @@ class StateSchema(ABC):
 
 def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dict:
     """Filter the given data's columns based on the given schema.
+
     Args:
         data: A single data entry to filter columns.
         state_dataclass: The schema to filter data.
@@ -898,12 +906,16 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
 
 def ray_address_to_api_server_url(address: Optional[str]) -> str:
     """Parse a ray cluster bootstrap address into API server URL.
+
     When an address is provided, it will be used to query GCS for
     API server address from GCS.
+
     When an address is not provided, it will first try to auto-detect
     a running ray instance, or look for local GCS process.
+
     Args:
         address: Ray cluster bootstrap address. Could also be `auto`.
+
     Return:
         API server HTTP URL.
     """

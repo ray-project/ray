@@ -401,9 +401,11 @@ def _unhandled_error_handler(e: Exception):
 
 class Worker:
     """A class used to define the control flow of a worker process.
+
     Note:
         The methods in this class are considered unexposed to the user. The
         functions outside of this class are considered exposed.
+
     Attributes:
         node (ray._private.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
@@ -512,6 +514,7 @@ class Worker:
 
     def get_serialization_context(self):
         """Get the SerializationContext of the job that this worker is processing.
+
         Returns:
             The serialization context of the given job.
         """
@@ -533,6 +536,7 @@ class Worker:
 
     def check_connected(self):
         """Check if the worker is connected.
+
         Raises:
           Exception: An exception is raised if the worker is not connected.
         """
@@ -543,15 +547,19 @@ class Worker:
 
     def set_mode(self, mode):
         """Set the mode of the worker.
+
         The mode SCRIPT_MODE should be used if this Worker is a driver that is
         being run as a Python script or interactively in a shell. It will print
         information about task failures.
+
         The mode WORKER_MODE should be used if this Worker is not a driver. It
         will not print information about tasks.
+
         The mode LOCAL_MODE should be used if this Worker is a driver and if
         you want to run the driver in a manner equivalent to serial Python for
         debugging purposes. It will not send remote function calls to the
         scheduler and will instead execute them in a blocking fashion.
+
         Args:
             mode: One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         """
@@ -562,19 +570,23 @@ class Worker:
 
     def put_object(self, value, object_ref=None, owner_address=None):
         """Put value in the local object store with object reference `object_ref`.
+
         This assumes that the value for `object_ref` has not yet been placed in
         the local object store. If the plasma store is full, the worker will
         automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
         retry will delay for an exponentially doubling amount of time,
         starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
         will be raised.
+
         Args:
             value: The value to put in the object store.
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
+
         Returns:
             ObjectRef: The object ref the object was put under.
+
         Raises:
             ray.exceptions.ObjectStoreFullError: This is raised if the attempt
                 to store the object fails because the object store is full even
@@ -628,9 +640,11 @@ class Worker:
 
     def get_objects(self, object_refs: list, timeout: Optional[float] = None):
         """Get the values in the object store associated with the IDs.
+
         Return the values from the local object store for object_refs. This
         will block until all the values for object_refs have been written to
         the local object store.
+
         Args:
             object_refs: A list of the object refs
                 whose values should be retrieved.
@@ -670,10 +684,12 @@ class Worker:
 
     def run_function_on_all_workers(self, function: callable):
         """Run arbitrary code on all of the workers.
+
         This function will first be run on the driver, and then it will be
         exported to all of the workers to be run. It will also be run on any
         new workers that register later. If ray.init has not been called yet,
         then cache the function and export it later.
+
         Args:
             function: The function to run on all of the workers. It
                 takes only one argument, a worker info dict. If it returns
@@ -795,10 +811,12 @@ class Worker:
 @client_mode_hook(auto_init=True)
 def get_gpu_ids():
     """Get the IDs of the GPUs that are available to the worker.
+
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
     started up, then the IDs returned by this method will be a subset of the
     IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range
     [0, NUM_GPUS - 1], where NUM_GPUS is the number of GPUs that the node has.
+
     Returns:
         A list of GPU IDs.
     """
@@ -845,6 +863,7 @@ def get_gpu_ids():
 @Deprecated(message="Use ray.get_runtime_context().get_assigned_resources() instead.")
 def get_resource_ids():
     """Get the IDs of the resources that are available to the worker.
+
     Returns:
         A dictionary mapping the name of a resource to a list of pairs, where
         each pair consists of the ID of a resource and the fraction of that
@@ -864,7 +883,9 @@ def get_resource_ids():
 @Deprecated(message="Use ray.init()['webui_url'] instead.")
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
+
     Note that the URL does not specify which node the dashboard is on.
+
     Returns:
         The URL of the dashboard as a string.
     """
@@ -968,6 +989,7 @@ class RayContext(BaseContext, Mapping):
 
 global_worker = Worker()
 """Worker: The global Worker object for this worker process.
+
 We use a global Worker object to ensure that there is a single worker object
 per worker process.
 """
@@ -1002,28 +1024,41 @@ def init(
 ) -> BaseContext:
     """
     Connect to an existing Ray cluster or start one and connect to it.
+
     This method handles two cases; either a Ray cluster already exists and we
     just attach this driver to it or we start all of the processes associated
     with a Ray cluster and attach to the newly started cluster.
+
     In most cases, it is enough to just call this method with no arguments.
     This will autodetect an existing Ray cluster or start a new Ray instance if
     no existing cluster is found:
+
     .. code-block:: python
+
         ray.init()
+
     To explicitly connect to an existing local cluster, use this as follows. A
     ConnectionError will be thrown if no existing local cluster is found.
+
     .. code-block:: python
+
         ray.init(address="auto")
+
     To connect to an existing remote cluster, use this as follows (substituting
     in the appropriate address). Note the addition of "ray://" at the beginning
     of the address.
+
     .. code-block:: python
+
         ray.init(address="ray://123.45.67.89:10001")
+
     More details for starting and connecting to a remote cluster can be found
     here: https://docs.ray.io/en/master/cluster/ray-client.html
+
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
     cluster with ray.init() or ray.init(address="auto").
+
     Args:
         address: The address of the Ray cluster to connect to. The provided
             address is resolved as follows:
@@ -1103,7 +1138,7 @@ def init(
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _metrics_export_port: Port number Ray exposes system metrics
+        _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
         _system_config: Configuration for overriding
@@ -1116,6 +1151,7 @@ def init(
             and the API is subject to change.
         _node_name: User-provided node name or identifier. Defaults to
             the node IP address.
+
     Returns:
         If the provided address includes a protocol, for example by prepending
         "ray://" to the address to get "ray://1.2.3.4:10001", then a
@@ -1123,6 +1159,7 @@ def init(
         versions for ray and python, and the dashboard_url. Otherwise,
         a RayContext is returned with ray and python versions, and address
         information about the started processes.
+
     Raises:
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
@@ -1491,14 +1528,17 @@ _post_init_hooks = []
 @client_mode_hook(auto_init=False)
 def shutdown(_exiting_interpreter: bool = False):
     """Disconnect the worker, and terminate processes started by ray.init().
+
     This will automatically run at the end when a Python process that uses Ray
     exits. It is ok to run this twice in a row. The primary use case for this
     function is to cleanup state between tests.
+
     Note that this will clear any remote function definitions, actor
     definitions, and existing actors, so if you wish to use any previously
     defined remote functions or actors after calling ray.shutdown(), then you
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
+
     Args:
         _exiting_interpreter: True if this is called by the atexit hook
             and false otherwise. If we are exiting the interpreter, we will
@@ -1590,6 +1630,7 @@ autoscaler_log_fyi_printed = False
 
 def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     """Given raw log lines from the monitor, return only autoscaler events.
+
     Autoscaler events are denoted by the ":event_summary:" magic token.
     """
     global autoscaler_log_fyi_printed
@@ -1614,6 +1655,7 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
 
 def time_string() -> str:
     """Return the relative time from the start of this job.
+
     For example, 15m30s.
     """
     delta = time.time() - t0
@@ -1713,8 +1755,10 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
 def listen_error_messages(worker, threads_stopped):
     """Listen to error messages in the background on the driver.
+
     This runs in a separate thread on the driver and pushes (error, time)
     tuples to be published.
+
     Args:
         worker: The worker class that this thread belongs to.
         threads_stopped (threading.Event): A threading event used to signal to
@@ -1761,6 +1805,7 @@ def listen_error_messages(worker, threads_stopped):
 @client_mode_hook(auto_init=False)
 def is_initialized() -> bool:
     """Check if ray.init has been called yet.
+
     Returns:
         True if ray.init has already been called and false otherwise.
     """
@@ -1781,6 +1826,7 @@ def connect(
     ray_debugger_external: bool = False,
 ):
     """Connect this worker to the raylet, to Plasma, and to GCS.
+
     Args:
         node (ray._private.node.Node): The node to connect.
         mode: The mode of the worker. One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
@@ -2078,9 +2124,11 @@ def _changeproctitle(title, next_title):
 @DeveloperAPI
 def show_in_dashboard(message: str, key: str = "", dtype: str = "text"):
     """Display message in dashboard.
+
     Display message for the current task or actor in the dashboard.
     For example, this can be used to display the status of a long-running
     computation.
+
     Args:
         message: Message to be displayed.
         key: The key name for the message. Multiple message under
@@ -2132,24 +2180,30 @@ def get(
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
     """Get a remote object or a list of remote objects from the object store.
+
     This method blocks until the object corresponding to the object ref is
     available in the local object store. If this object is not in the local
     object store, it will be shipped from an object store that has it (once the
     object has been created). If object_refs is a list, then the objects
     corresponding to each object in the list will be returned.
+
     Ordering for an input list of object refs is preserved for each object
     returned. That is, if an object ref to A precedes an object ref to B in the
     input list, then A will precede B in the returned list.
+
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
+
     Args:
         object_refs: Object ref of the object to get or a list of object refs
             to get.
         timeout (Optional[float]): The maximum amount of time in seconds to
             wait before returning.
+
     Returns:
         A Python object or a list of Python objects.
+
     Raises:
         GetTimeoutError: A GetTimeoutError is raised if a timeout is set and
             the get takes longer than timeout to return.
@@ -2218,7 +2272,9 @@ def put(
     value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
+
     The object may not be evicted while a reference to the returned ID exists.
+
     Args:
         value: The Python object to be stored.
         _owner: The actor that should own this object. This allows creating
@@ -2226,6 +2282,7 @@ def put(
             Note that the owner actor must be passed a reference to the object
             prior to the object creator exiting, otherwise the reference will
             still be lost.
+
     Returns:
         The object ref assigned to this value.
     """
@@ -2274,21 +2331,26 @@ def wait(
     fetch_local: bool = True,
 ) -> Tuple[List["ray.ObjectRef"], List["ray.ObjectRef"]]:
     """Return a list of IDs that are ready and a list of IDs that are not.
+
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
     is not set, the function simply waits until that number of objects is ready
     and returns that exact number of object refs.
+
     This method returns two lists. The first list consists of object refs that
     correspond to objects that are available in the object store. The second
     list corresponds to the rest of the object refs (which may or may not be
     ready).
+
     Ordering of the input list of object refs is preserved. That is, if A
     precedes B in the input list, and both are in the ready list, then A will
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
+
     This method will issue a warning if it's running inside an async context.
     Instead of ``ray.wait(object_refs)``, you can use
     ``await asyncio.wait(object_refs)``.
+
     Args:
         object_refs: List of object refs for objects that may
             or may not be ready. Note that these IDs must be unique.
@@ -2300,6 +2362,7 @@ def wait(
             will not trigger fetching of objects to the local node and will
             return immediately once the object is available anywhere in the
             cluster.
+
     Returns:
         A list of object refs that are ready and a list of the remaining object
         IDs.
@@ -2379,15 +2442,19 @@ def wait(
 @client_mode_hook(auto_init=True)
 def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHandle":
     """Get a handle to a named actor.
+
     Gets a handle to an actor with the given name. The actor must
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
+
     Args:
         name: The name of the actor.
         namespace: The namespace of the actor, or None to specify the current
             namespace.
+
     Returns:
         ActorHandle to the actor.
+
     Raises:
         ValueError if the named actor does not exist.
     """
@@ -2406,14 +2473,18 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
 @client_mode_hook(auto_init=True)
 def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     """Kill an actor forcefully.
+
     This will interrupt any running tasks on the actor, causing them to fail
     immediately. ``atexit`` handlers installed in the actor will not be run.
+
     If you want to kill the actor but let pending tasks finish,
     you can call ``actor.__ray_terminate__.remote()`` instead to queue a
     termination task. Any ``atexit`` handlers installed in the actor *will*
     be run in this case.
+
     If the actor is a detached actor, subsequent calls to get its handle via
     ray.get_actor will fail.
+
     Args:
         actor: Handle to the actor to kill.
         no_restart: Whether or not this actor should be restarted if
@@ -2432,15 +2503,19 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 @client_mode_hook(auto_init=True)
 def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True):
     """Cancels a task according to the following conditions.
+
     If the specified task is pending execution, it will not be executed. If
     the task is currently executing, the behavior depends on the ``force``
     flag. When ``force=False``, a KeyboardInterrupt will be raised in Python
     and when ``force=True``, the executing task will immediately exit.
     If the task is already finished, nothing will happen.
+
     Only non-actor tasks can be canceled. Canceled tasks will not be
     retried (max_retries will not be respected).
+
     Calling ray.get on a canceled task will raise a TaskCancelledError or a
     WorkerCrashedError if ``force=True``.
+
     Args:
         object_ref: ObjectRef returned by the task
             that should be canceled.
@@ -2464,6 +2539,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
 
 def _mode(worker=global_worker):
     """This is a wrapper around worker.mode.
+
     We use this wrapper so that in the remote decorator, we can call _mode()
     instead of worker.mode. The difference is that when we attempt to
     serialize remote functions, we don't attempt to serialize the worker
@@ -2665,42 +2741,56 @@ def remote(
 @PublicAPI
 def remote(*args, **kwargs):
     """Defines a remote function or an actor class.
+
     This can be used with no arguments to define a remote function or actor as
     follows:
+
     .. code-block:: python
+
         @ray.remote
         def f():
             return 1
+
         @ray.remote
         class Foo:
             def method(self):
                 return 1
+
     It can also be used with specific keyword arguments as follows:
+
     .. code-block:: python
+
         @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
+
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
         class Foo:
             def method(self):
                 return 1
+
     Remote task and actor objects returned by @ray.remote can also be
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
+
     .. code-block:: python
+
         @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
         g = f.options(num_gpus=2)
+
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
         class Foo:
             def method(self):
                 return 1
         Bar = Foo.options(num_cpus=1, resources=None)
+
     Running remote actors will be terminated when the actor handle to them
     in Python is deleted, which will cause them to complete any outstanding
     work and then shut down. If you want to kill them immediately, you can
     also call ``ray.kill(actor)``.
+
     Args:
         num_returns: This is only for *remote functions*. It specifies
             the number of object refs returned by
