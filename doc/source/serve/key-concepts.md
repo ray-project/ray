@@ -108,7 +108,7 @@ Here's a simple example combining a preprocess function and model.
 ```
 
 ## What's Next?
-Now you have learned about the key concepts. You can dive into our [User Guides](user-guide) for more details about:
+Dive into the [User Guides](user-guide) for more details about:
 - [Configuring Serve Deployments](serve-configuring-serve-deployments)
 - [Configuring HTTP ingress and integrating with FastAPI](http-guide)
 - [Composing deployments using ServeHandle](handle-guide)
