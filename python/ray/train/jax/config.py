@@ -61,6 +61,7 @@ def release_tpu_lock(try_remove_tpulib_lock: bool = False):
         # you will be left with processes that are using the TPUs on the other workers. 
         # This will stop you from restarting your job until those processes a terminated and release the TPU.
         # The following command should end all these processes. 
+        # see more details: https://github.com/google/jax/issues/10192
         subprocess.run("sudo lsof -w /dev/accel0", shell=True) # kill all processes using the TPUs
         subprocess.run("sudo rm -f /tmp/libtpu_lockfile", shell=True) # remove the lock file
     else:
