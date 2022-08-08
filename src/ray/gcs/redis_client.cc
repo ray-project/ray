@@ -53,11 +53,12 @@ static int DoGetNextJobID(redisContext *context) {
   // This is bad since duplicate logic lives in redis_client
   // and redis_store_client.
   // A refactoring is needed to make things clean.
+  // src/ray/gcs/store_client/redis_store_client.cc#L42
   // TODO (iycheng): Unify the way redis key is formated.
   static const std::string kTableSeparator = ":";
   static const std::string kClusterSeparator = "@";
   static std::string key = RayConfig::instance().external_storage_namespace() +
-                           kClusterSeparator + kClusterSeparator + "JobCounter";
+                           kClusterSeparator + kTableSeparator + "JobCounter";
   static std::string cmd = "INCR " + key;
 
   redisReply *reply = nullptr;
