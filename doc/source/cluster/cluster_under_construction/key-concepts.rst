@@ -65,7 +65,7 @@ tasks and actors on the head node just like any other worker node, unless config
 Autoscaler
 ----------
 
-The **autoscaler** is a process that runs on the :ref:`head node<cluster-head-node-under-construction>`.
+The **autoscaler** is a process that runs on the :ref:`head node<cluster-head-node-under-construction>` (or as a sidecar container in the head pod if :ref:`using Kubernetes<kuberay-index>`).
 It is responsible for provisioning or deprovisioning :ref:`worker nodes<cluster-worker-nodes-under-construction>`
 to meet the needs of the Ray workload. In particular, if the resource demands of the Ray workload exceed the
 current capacity of the cluster, the autoscaler will attempt to add more nodes. Conversely, if
