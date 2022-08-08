@@ -72,6 +72,8 @@ BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 # ray home path in the container image
 RAY_HOME = "/home/ray"
 
+GCS_PROCESS_NAME = "gcs_server"
+
 RAY_PROCESSES = [
     # The first element is the substring to filter.
     # The second element, if True, is to filter ps results by command name
@@ -84,7 +86,7 @@ RAY_PROCESSES = [
     # Keyword to filter, filter by command (True)/filter by args (False)
     ["raylet", True],
     ["plasma_store", True],
-    ["gcs_server", True],
+    [GCS_PROCESS_NAME, True],
     ["monitor.py", False],
     ["ray.util.client.server", False],
     ["default_worker.py", False],  # Python worker.

@@ -29,6 +29,7 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray.autoscaler._private.constants import GCS_PROCESS_NAME
 from ray._private.tls_utils import load_certs_from_env
 from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -1514,3 +1515,13 @@ def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):
         # if runtime_env is None to know whether or not to fall back to the
         # runtime_env specified in the @ray.remote decorator.
         return None
+
+
+def is_gcs_running():
+    for proc in psutil.process_iter(["name"]):
+        try:
+            if GCS_PROCESS_NAME in proc.name():
+                return True
+        except psutil.Error:
+            pass
+    return False
