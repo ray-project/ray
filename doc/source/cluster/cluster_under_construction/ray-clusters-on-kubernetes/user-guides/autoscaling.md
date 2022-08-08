@@ -104,6 +104,9 @@ with the KubeRay operator.
 ```{eval-rst}
 .. image:: /cluster/cluster_under_construction/ray-clusters-on-kubernetes/images/AutoscalerOperator.png
     :align: center
+..
+    Find the source document here (https://drive.google.com/file/d/1WdVbQYKNJEhnOuZy4iL4zuYcBoJeCyKJ/view)
+    TODO: Replace with a Google drawing consistent with other diagrams in the Ray docs.
 ```
 
 Worker pod upscaling occurs through the following sequence of events:
