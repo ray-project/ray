@@ -347,9 +347,6 @@ class LabelEncoder(Preprocessor):
     If you transform a label that isn't in the fitted datset, then the label is encoded
     as ``float("nan")``.
 
-    Args:
-        label_column: A column containing labels that you want to encode.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -381,6 +378,9 @@ class LabelEncoder(Preprocessor):
         >>> encoder.transform(ds).to_pandas()  # doctest: +SKIP
            sepal_width  sepal_height  species
         0          4.2           2.7      NaN
+
+    Args:
+        label_column: A column containing labels that you want to encode.
 
     .. seealso::
 
