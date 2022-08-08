@@ -1,5 +1,5 @@
 import gym
-import pickle
+import ray.cloudpickle as pickle
 from typing import Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from ray.rllib.policy.policy import PolicySpec
