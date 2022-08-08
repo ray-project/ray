@@ -79,9 +79,7 @@ class _JaxBackend(Backend):
         master_addr_with_port = f"{master_addr}:{master_port}"
         num_workers = len(worker_group)
 
-        print(worker_group.num_gpus_per_worker)
-        
-        if False: 
+        if worker_group.num_gpus_per_worker: 
             # Get setup tasks in order to throw errors on failure.
             setup_futures = []
             for i in range(len(worker_group)):
