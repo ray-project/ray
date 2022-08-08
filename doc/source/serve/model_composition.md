@@ -15,7 +15,7 @@ You can call deployment methods from within other deployments using the {mod}`Se
 
 Here's an example:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} doc_code/model_composition/class_nodes.py
 :start-after: __hello_start__
 :end-before: __hello_end__
 :language: python
@@ -52,7 +52,7 @@ $ serve run hello:language_classifier
 
 You can use this client script to interact with the example:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} doc_code/model_composition/class_nodes.py
 :start-after: __hello_client_start__
 :end-before: __hello_client_end__
 :language: python
@@ -83,7 +83,7 @@ The basic building block for all deployment graphs is the `DeploymentNode`. One 
 
 As another example:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} doc_code/model_composition/class_nodes.py
 :start-after: __echo_class_start__
 :end-before: __echo_class_end__
 :language: python
@@ -113,7 +113,7 @@ $ serve run echo:foo_node
 
 Here's a client script that can send requests to your node:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} doc_code/model_composition/class_nodes.py
 :start-after: __echo_client_start__
 :end-before: __echo_client_end__
 :language: python
@@ -127,7 +127,7 @@ $ python echo_client.py
 foo
 ```
 
-(deployment-graph-call-graph)
+(deployment-graph-call-graph)=
 ### Building the Call Graph: MethodNodes and FunctionNodes
 
 After defining your `ClassNodes`, you can specify how HTTP requests should be processed using the call graph. As an example, let's look at a deployment graph that implements this chain of arithmetic operations:
@@ -139,7 +139,7 @@ output = request + 2 - 1 + 3
 Here's the graph:
 
 (deployment-graph-arithmetic-graph)=
-```{literalinclude} ../doc_code/model_composition/arithmetic.py
+```{literalinclude} doc_code/model_composition/arithmetic.py
 :start-after: __graph_start__
 :end-before: __graph_end__
 :language: python
@@ -186,7 +186,7 @@ The `DAGDriver` can also be bound to `ClassNodes`. This is useful if you constru
 
 You can test this example using this client script:
 
-```{literalinclude} ../doc_code/model_composition/arithmetic.py
+```{literalinclude} doc_code/model_composition/arithmetic.py
 :start-after: __graph_client_start__
 :end-before: __graph_client_end__
 :language: python
@@ -292,7 +292,7 @@ pip install -U pydot && sudo apt-get install -y graphviz
 
 Here's an example graph:
 
-```{literalinclude} ../doc_code/model_composition/deployment_graph_viz.py
+```{literalinclude} doc_code/model_composition/deployment_graph_viz.py
 :language: python
 ```
 
