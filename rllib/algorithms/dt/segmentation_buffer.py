@@ -145,4 +145,3 @@ class MultiAgentSegmentationBuffer:
         for policy_id, buffer in self.buffers.items():
             samples[policy_id] = buffer.sample(batch_size)
         return MultiAgentBatch(samples, sum(len(s) for s in samples.values()))
-

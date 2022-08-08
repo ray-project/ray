@@ -12,7 +12,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    SAMPLE_TIMER, NUM_AGENT_STEPS_TRAINED,
+    SAMPLE_TIMER,
+    NUM_AGENT_STEPS_TRAINED,
 )
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
