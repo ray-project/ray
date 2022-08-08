@@ -50,8 +50,8 @@ class HashingVectorizer(Preprocessor):
         indices with a hash function: :math:`\\texttt{index} = hash(\\texttt{token})`.
 
     .. warning::
-        Sparse matrices aren't supported. If you use a large ``num_features``, this
-        preprocessor might behave poorly.
+        Sparse matrices aren't currently supported. If you use a large ``num_features``,
+        this preprocessor might behave poorly.
 
     Examples:
         >>> import pandas as pd
