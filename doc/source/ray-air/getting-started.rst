@@ -22,6 +22,7 @@ Get started by installing Ray AIR:
 .. code:: bash
 
     pip install -U "ray[air]"
+
     # The below Ray AIR tutorial was written with the following libraries.
     # Consider running the following to ensure that the code below runs properly:
     pip install -U pandas>=1.3.5
@@ -29,7 +30,6 @@ Get started by installing Ray AIR:
     pip install -U numpy>=1.19.5
     pip install -U tensorflow>=2.6.2
     pip install -U pyarrow>=6.0.1
-
 
 Quick Start
 -----------
