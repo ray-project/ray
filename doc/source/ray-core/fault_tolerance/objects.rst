@@ -11,6 +11,12 @@ calling ``f.remote()`` or ``ray.put()``. Note that this worker is usually a
 distinct process from the worker that creates the **value** of the object,
 except in cases of ``ray.put``.
 
+.. literalinclude:: ../doc_code/owners.py
+  :language: python
+  :start-after: __owners_begin__
+  :end-before: __owners_end__
+
+
 Currently, Ray can automatically recover from data loss but not owner failure.
 
 .. _fault-tolerance-objects-reconstruction:
@@ -32,9 +38,10 @@ Lineage reconstruction currently has the following limitations:
   by a task (actor or non-actor). This means that **objects created by
   ray.put are not recoverable**.
 * Tasks are assumed to be deterministic and idempotent. Thus, by default,
-  **objects created by actor tasks are not reconstructable**, unless the
-  ``max_task_retries`` parameter is set (see :ref:`actor fault tolerance
-  <fault-tolerance-actors>` for more details).
+  **objects created by actor tasks are not reconstructable**. To allow
+  reconstruction of actor task results, set the ``max_task_retries`` parameter
+  to a non-zero value (see :ref:`actor
+  fault tolerance <fault-tolerance-actors>` for more details).
 * Tasks will only be re-executed up to their maximum number of retries. By
   default, a non-actor task can be retried up to 3 times and an actor task
   cannot be retried.  This can be overridden with the ``max_retries`` parameter
@@ -93,6 +100,4 @@ different error types:
   reachable.  This is a generic error thrown when lineage reconstruction is
   disabled and all copies of the object are lost from the cluster.
 
-.. _`lineage reconstruction`: https://docs.ray.io/en/master/ray-core/actors/fault-tolerance.html
 .. _`known edge case`: https://github.com/ray-project/ray/issues/18456
-

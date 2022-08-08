@@ -23,7 +23,7 @@ After the specified number of restarts, subsequent actor methods will
 raise a ``RayActorError``.
 
 By default, actor tasks execute with at-most-once semantics
-(``max_task_retries=0`` in the ``@ray.remote`` decorator). This means that if an
+(``max_task_retries=0`` in the ``@ray.remote`` :ref:`decorator <ray-remote-ref>`). This means that if an
 actor task is submitted to an actor that is unreachable, Ray will report the
 error with ``RayActorError``, a Python-level exception that is thrown when
 ``ray.get`` is called on the future returned by the task. Note that this
@@ -56,33 +56,31 @@ task has been successfully retried. The system will not attempt to re-execute
 any tasks that executed successfully before the failure
 (unless ``max_task_retries`` is nonzero and the task is needed for :ref:`object
 reconstruction <object-reconstruction>`). 
+.. note::
+    For :ref:`async or threaded actors <async-actors>`, :ref:`tasks might be
+    executed out of order <actor-task-order>`. Upon actor restart, the system
+    will only retry *incomplete* tasks. Previously completed tasks will not be
+    re-executed.
+
 
 At-least-once execution is best suited for read-only actors or actors with
 ephemeral state that does not need to be rebuilt after a failure. For actors
-that have critical state, it is best to take periodic checkpoints and either
-manually restart the actor or automatically restart the actor with at-most-once
-semantics. If the actor’s exact state at the time of failure is needed, the
-application is responsible for resubmitting all tasks since the last
-checkpoint.
-
-.. note::
-    For :ref:`async or threaded actors <async-actors>`, the tasks might
-    be executed out of order. Upon actor restart, the system will only retry
-    *incomplete* tasks. Previously completed tasks will not be
-    re-executed.
+that have critical state, the application is responsible for recovering the
+state, e.g., by taking periodic checkpoints and recovering from the checkpoint
+upon actor restart.
 
 
 Actor creator failure
 ---------------------
 
 For :ref:`non-detached actors <actor-lifetimes>`, the owner of an actor is the
-worker that created it, e.g., by calling ``ActorClass.remote()``. Similar to
+worker that created it, i.e. the worker that called ``ActorClass.remote()``. Similar to
 :ref:`objects <fault-tolerance-objects>`, if the owner of an actor dies, then
 the actor will also fate-share with the owner.  Ray will not automatically
 recover an actor whose owner is dead, even if it has a nonzero
 ``max_restarts``.
 
-Since detached actors do not have an owner, they will still be restarted by Ray
+Since :ref:`detached actors <actor-lifetimes>` do not have an owner, they will still be restarted by Ray
 even if their original creator dies. Detached actors will continue to be
 automatically restarted until the maximum restarts is exceeded, the actor is
 destroyed, or until the Ray cluster is destroyed.
