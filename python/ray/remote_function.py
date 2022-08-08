@@ -59,6 +59,7 @@ class RemoteFunction:
         _max_retries: The number of times this task may be retried
             on worker failure.
         _retry_exceptions: Whether application-level errors should be retried.
+            This can be a boolean or a list/tuple of exceptions that should be retried.
         _runtime_env: The runtime environment for this task.
         _decorator: An optional decorator that should be applied to the remote
             function invocation (as opposed to the function execution) before
@@ -300,6 +301,11 @@ class RemoteFunction:
         num_returns = task_options["num_returns"]
         max_retries = task_options["max_retries"]
         retry_exceptions = task_options["retry_exceptions"]
+        if isinstance(retry_exceptions, (list, tuple)):
+            retry_exception_allowlist = tuple(retry_exceptions)
+            retry_exceptions = True
+        else:
+            retry_exception_allowlist = None
 
         if scheduling_strategy is None or not isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
@@ -375,6 +381,7 @@ class RemoteFunction:
                 resources,
                 max_retries,
                 retry_exceptions,
+                retry_exception_allowlist,
                 scheduling_strategy,
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
