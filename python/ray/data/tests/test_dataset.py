@@ -28,6 +28,7 @@ from ray.data.extensions.tensor_extension import (
     TensorArray,
     TensorDtype,
 )
+from ray.air.util.tensor_extensions.exception import RaggedTensorNotSupportedError
 from ray.data.row import TableRow
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -465,13 +466,13 @@ def test_tensor_array_validation():
         TensorArray(object())
 
     # Test ragged tensor raises TypeError.
-    with pytest.raises(TypeError):
+    with pytest.raises(RaggedTensorNotSupportedError):
         TensorArray(np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object))
 
-    with pytest.raises(TypeError):
+    with pytest.raises(RaggedTensorNotSupportedError):
         TensorArray([np.ones((2, 2)), np.ones((3, 3))])
 
-    with pytest.raises(TypeError):
+    with pytest.raises(RaggedTensorNotSupportedError):
         TensorArray(pd.Series([np.ones((2, 2)), np.ones((3, 3))]))
 
     # Test non-primitive element raises TypeError.
