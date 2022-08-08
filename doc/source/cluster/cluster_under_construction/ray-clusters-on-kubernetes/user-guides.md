@@ -15,4 +15,5 @@ deployments of Ray on Kubernetes.
 * {ref}`kuberay-autoscaler-discussion`
 * {ref}`kuberay-logging`
 * {ref}`kuberay-gpu`
+* {ref}`kuberay-vs-legacy`
 

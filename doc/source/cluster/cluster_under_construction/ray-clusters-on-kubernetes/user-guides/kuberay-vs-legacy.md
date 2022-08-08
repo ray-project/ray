@@ -7,23 +7,21 @@ is the preferred way to deploy Ray on Kubernetes.
 This page compares the KubeRay operator to the {ref}`legacy Ray Operator<ray-k8s-deploy>` hosted in the Ray repo.
 This page also provides migration notes for users switching to the KubeRay operator.
 
-## Discussion
+## KubeRay vs. Legacy Ray Operator: Similarities
 
-### What is the same
+### Purpose
+The two operators have the same purpose: managing clusters of Ray pods deployed on Kubernetes.
 
-#### Purpose
-The two operators fulfill have the same purpose: managing clusters of Ray pods deployed on Kubernetes.
-
-#### High-level interface structure
+### High-level interface structure
 Both operators rely on a user-specified custom resource specifying Ray pod configuration and
 Ray worker pod quantities.
 
-### What is different
+## KubeRay vs. Legacy Ray Operator: Differences
 
 The two operators differ primarily in internal design and implementation.
 There are also some differences in configuration details.
 
-#### Implementation and architecture
+### Implementation and architecture
 **Legacy Ray Operator** The legacy Ray Operator is implemented in Python.
 Kubernetes event handling is implemented using the [Kopf][https://kopf.readthedocs.io/en/stable/] framework.
 The operator invokes Ray cluster launcher and autoscaler code to manage Ray clusters.
@@ -42,8 +40,8 @@ Each Ray cluster runs its own autoscaler as a sidecar to the Ray head pod.
 The Ray autoscaler communicates desired scale to the KubeRay operator via the RayCluster
 custom resource.
 
-#### Scalability
-The KubeRay operator is more scalable than the legacy Ray Operator -- specifically the
+### Scalability
+The KubeRay operator is more scalable than the legacy Ray Operator. Specifically, the
 KubeRay operator can simultaneously manage more Ray clusters.
 
 **Legacy Ray Operator.** Each Ray autoscaler consumes nontrivial memory and CPU resources.
@@ -52,7 +50,7 @@ Since the legacy Ray Operator runs many autoscalers in one pod, it cannot manage
 **KubeRay Operator.** The KubeRay operator does not run Ray autoscaler processes.
 Each Ray autoscaler runs as a sidecar to the Ray head.
 
-#### Ray version compatibility
+### Ray version compatibility
 
 **Legacy Ray Operator.**
 It is recommended to use the same Ray version in the legacy Ray operator
@@ -68,7 +66,7 @@ Older Ray versions should work as well.
 Note however that autoscaling with KubeRay is supported only with Ray versions
 at least as new as 1.11.0.
 
-#### Configuration details
+### Configuration details
 Some details of Ray cluster configuration are different with KubeRay; see the next section
 for migration notes. Refer to the {ref}`configuration guide<kuberay-config>` for comprehensive
 information.
