@@ -1,3 +1,4 @@
+import itertools
 from typing import Iterable, Optional, Tuple, List, Union
 
 import numpy as np
@@ -419,6 +420,11 @@ class ArrowRaggedTensorArray(pa.ExtensionArray):
                 "ArrowRaggedTensorArray can only be constructed from an ndarray or a "
                 f"list/tuple of ndarrays, but got: {type(arr)}"
             )
+        if len(arr) == 0:
+            # Empty ragged tensor arrays are not supported.
+            raise ValueError("Creating empty ragged tensor arrays is not supported.")
+
+        # Whether all subndarrays are contiguous views of the same ndarray.
         dtypes, shapes, sizes, raveled = [], [], [], []
         for a in arr:
             a = np.asarray(a)
@@ -428,7 +434,8 @@ class ArrowRaggedTensorArray(pa.ExtensionArray):
             # Convert to 1D array view; this should be zero-copy in the common case.
             # NOTE: If array is not in C-contiguous order, this will convert it to
             # C-contiguous order, incurring a copy.
-            raveled.append(np.ravel(a, order="C"))
+            a = np.ravel(a, order="C")
+            raveled.append(a)
         dtype = np.find_common_type([], dtypes)
         if dtype is None:
             raise ValueError(f"Unable to find a common dtype for dtypes: {dtypes}")
@@ -438,7 +445,16 @@ class ArrowRaggedTensorArray(pa.ExtensionArray):
         size_offsets = np.cumsum(sizes)
         total_size = size_offsets[-1]
         # Concatenate 1D views into a contiguous 1D array.
-        np_data_buffer = np.concatenate(raveled)
+        if (
+            all(_is_contiguous_view(curr, prev) for prev, curr in _pairwise(raveled))
+            and dtype is raveled[-1].base.dtype
+        ):
+            # An optimized zero-copy path if raveled tensor elements are already
+            # contiguous in memory, e.g. if this tensor array has already done a
+            # roundtrip through our Arrow representation.
+            np_data_buffer = raveled[-1].base
+        else:
+            np_data_buffer = np.concatenate(raveled, dtype=dtype)
         if dtype.type is np.bool_:
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually
             # bit-pack the booleans before handing the buffer off to Arrow.
@@ -549,3 +565,52 @@ class ArrowRaggedTensorArray(pa.ExtensionArray):
             A single ndarray representing the entire array of tensors.
         """
         return self._to_numpy(zero_copy_only=zero_copy_only)
+
+
+def _is_contiguous_view(curr: np.ndarray, prev: Optional[np.ndarray]) -> bool:
+    """Check if the provided tensor element is contiguous with the previous tensor
+    element.
+
+    Args:
+        curr: The tensor element whose contiguity that we wish to check.
+        prev: The previous tensor element in the tensor array.
+
+    Returns:
+        Whether the provided tensor element is contiguous with the previous tensor
+        element.
+    """
+    if (
+        curr.base is None
+        or not curr.data.c_contiguous
+        or (prev is not None and curr.base is not prev.base)
+    ):
+        # curr is either:
+        # - not a view,
+        # - not in C-contiguous order,
+        # - a view that does not share its base with the other subndarrays.
+        return False
+    else:
+        # a is a C-contiguous view that shares the same base with the seen
+        # subndarrays, but we need to confirm that it is contiguous with the
+        # previous subndarray.
+        if prev is not None and (
+            _get_buffer_address(curr) - _get_buffer_address(prev)
+            != prev.base.dtype.itemsize * prev.size
+        ):
+            # This view is not contiguous with the previous view.
+            return False
+        else:
+            return True
+
+
+def _get_buffer_address(arr: np.ndarray) -> int:
+    """Get the address of the buffer underlying the provided NumPy ndarray."""
+    return arr.__array_interface__["data"][0]
+
+
+def _pairwise(iterable):
+    # pairwise('ABCDEFG') --> AB BC CD DE EF FG
+    # Backport of itertools.pairwise for Python < 3.10.
+    a, b = itertools.tee(iterable)
+    next(b, None)
+    return zip(a, b)

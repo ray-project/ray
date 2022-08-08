@@ -513,6 +513,22 @@ def test_arrow_ragged_tensor_array_roundtrip_boolean():
         np.testing.assert_array_equal(o, a)
 
 
+def test_arrow_ragged_tensor_array_roundtrip_contiguous_optimization():
+    # Test that a roundtrip on slices of an already-contiguous 1D base array does not
+    # create any unnecessary copies.
+    base = np.arange(6)
+    base_address = base.__array_interface__["data"][0]
+    arr = np.array([base[:2], base[2:]], dtype=object)
+    ata = ArrowRaggedTensorArray.from_numpy(arr)
+    assert isinstance(ata.type, ArrowRaggedTensorType)
+    assert len(ata) == len(arr)
+    assert ata.storage.field("data").buffers()[3].address == base_address
+    out = ata.to_numpy()
+    for o, a in zip(out, arr):
+        assert o.base.address == base_address
+        np.testing.assert_array_equal(o, a)
+
+
 def test_arrow_ragged_tensor_array_slice():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
