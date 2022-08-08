@@ -40,7 +40,7 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
     import jax
     print(master_addr_with_port, num_workers, index)
     # not import jax at the top to avoid tpulib_lockfile error
-    # jax.distributed.initialize(master_addr_with_port, num_workers, index)
+    jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
 def release_tpu_lock(try_remove_tpulib_lock: bool = False):
     """release the tpulib lock file when using tpu for training.
