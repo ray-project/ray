@@ -90,7 +90,6 @@ class JobLogStorageClient:
                 break
             else:
                 # log_tail_iter can return batches of lines at a time.
-                # Need to split into lines
                 for line in lines:
                     log_tail_deque.append(line)
 
