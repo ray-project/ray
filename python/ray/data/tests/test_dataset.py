@@ -17,9 +17,10 @@ from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.pandas_block import PandasRow
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, _sliding_window
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
@@ -1420,10 +1421,92 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 20
 
 
-def test_limit(ray_start_regular_shared):
+@pytest.mark.parametrize("lazy", [False, True])
+def test_limit(ray_start_regular_shared, lazy):
     ds = ray.data.range(100, parallelism=20)
+    if not lazy:
+        ds = ds.fully_executed()
     for i in range(100):
         assert ds.limit(i).take(200) == list(range(i))
+
+
+# NOTE: We test outside the power-of-2 range in order to ensure that we're not reading
+# redundant files due to exponential ramp-up.
+@pytest.mark.parametrize("limit,expected", [(10, 1), (20, 2), (30, 3), (60, 6)])
+def test_limit_no_redundant_read(ray_start_regular_shared, limit, expected):
+    # Test that dataset truncation eliminates redundant reads.
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def increment(self):
+            self.count += 1
+
+        def get(self):
+            return self.count
+
+        def reset(self):
+            self.count = 0
+
+    class CountingRangeDatasource(Datasource):
+        def __init__(self):
+            self.counter = Counter.remote()
+
+        def prepare_read(self, parallelism, n):
+            def range_(i):
+                ray.get(self.counter.increment.remote())
+                return [list(range(parallelism * i, parallelism * i + n))]
+
+            return [
+                ReadTask(
+                    lambda i=i: range_(i),
+                    BlockMetadata(
+                        num_rows=n,
+                        size_bytes=None,
+                        schema=None,
+                        input_files=None,
+                        exec_stats=None,
+                    ),
+                )
+                for i in range(parallelism)
+            ]
+
+    source = CountingRangeDatasource()
+
+    ds = ray.data.read_datasource(
+        source,
+        parallelism=10,
+        n=10,
+    )
+    ds2 = ds.limit(limit)
+    # Check content.
+    assert ds2.take(limit) == list(range(limit))
+    # Check number of read tasks launched.
+    assert ray.get(source.counter.get.remote()) == expected
+
+
+def test_limit_no_num_row_info(ray_start_regular_shared):
+    # Test that datasources with no number-of-rows metadata available are still able to
+    # be truncated, falling back to kicking off all read tasks.
+    class DumbOnesDatasource(Datasource):
+        def prepare_read(self, parallelism, n):
+            return parallelism * [
+                ReadTask(
+                    lambda: [[1] * n],
+                    BlockMetadata(
+                        num_rows=None,
+                        size_bytes=None,
+                        schema=None,
+                        input_files=None,
+                        exec_stats=None,
+                    ),
+                )
+            ]
+
+    ds = ray.data.read_datasource(DumbOnesDatasource(), parallelism=10, n=10)
+    for i in range(1, 100):
+        assert ds.limit(i).take(100) == [1] * i
 
 
 def test_convert_types(ray_start_regular_shared):

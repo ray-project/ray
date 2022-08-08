@@ -286,8 +286,8 @@ Supported Output Formats
    * - Pandas Dataframe Iterator
      - :meth:`ds.iter_batches(batch_format="pandas") <ray.data.Dataset.iter_batches>`
      - ✅
-   * - PyTorch Iterable Dataset
-     - :meth:`ds.to_torch() <ray.data.Dataset.to_torch>`
+   * - PyTorch Tensor Iterator
+     - :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
      - ✅
    * - TensorFlow Iterable Dataset
      - :meth:`ds.to_tf() <ray.data.Dataset.to_tf>`
