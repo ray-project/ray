@@ -1,6 +1,8 @@
 Observability
 ===============
 
+.. _observability-index:
+
 .. toctree::
     :maxdepth: 2
     :caption: Observability, Debugging, and Profiling
