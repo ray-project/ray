@@ -12,18 +12,14 @@ import aiohttp.web
 from pydantic import BaseModel, Extra, Field, validator
 
 import ray
-from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
+from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK, GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
 from ray._private.storage import _load_class
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JobInfoStorageClient
-from ray.experimental.internal_kv import (
-    _internal_kv_get,
-    _internal_kv_initialized,
-    _internal_kv_list,
-)
+
 from ray.job_submission import JobInfo
 from ray.runtime_env import RuntimeEnv
 
@@ -87,7 +83,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_job_info_stub = None
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
-        assert _internal_kv_initialized()
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._job_info_client = None
         # For offloading CPU intensive work.
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
@@ -382,47 +378,47 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # Serve wraps Ray's internal KV store and specially formats the keys.
         # These are the keys we are interested in:
         # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
-        # TODO: Convert to async GRPC, if CPU usage is not a concern.
-        def get_deployments():
-            serve_keys = _internal_kv_list(
-                SERVE_CONTROLLER_NAME, namespace=ray_constants.KV_NAMESPACE_SERVE
-            )
-            serve_snapshot_keys = filter(
-                lambda k: SERVE_SNAPSHOT_KEY in str(k), serve_keys
-            )
-
-            deployments_per_controller: List[Dict[str, Any]] = []
-            for key in serve_snapshot_keys:
-                val_bytes = _internal_kv_get(
-                    key, namespace=ray_constants.KV_NAMESPACE_SERVE
-                ) or "{}".encode("utf-8")
-                deployments_per_controller.append(json.loads(val_bytes.decode("utf-8")))
-            # Merge the deployments dicts of all controllers.
-            deployments: Dict[str, Any] = {
-                k: v for d in deployments_per_controller for k, v in d.items()
-            }
-            # Replace the keys (deployment names) with their hashes to prevent
-            # collisions caused by the automatic conversion to camelcase by the
-            # dashboard agent.
-            return {
-                hashlib.sha1(name.encode()).hexdigest(): info
-                for name, info in deployments.items()
-            }
-
-        return await asyncio.get_event_loop().run_in_executor(
-            executor=self._thread_pool, func=get_deployments
+        serve_keys = await self._gcs_aio_client.internal_kv_keys(
+            SERVE_CONTROLLER_NAME.encode(),
+            namespace=ray_constants.KV_NAMESPACE_SERVE,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
         )
+
+        tasks = [
+            self._gcs_aio_client.internal_kv_get(
+                key,
+                namespace=ray_constants.KV_NAMESPACE_SERVE,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
+            for key in serve_keys
+            if SERVE_SNAPSHOT_KEY in key.decode()
+        ]
+
+        serve_snapshot_vals = await asyncio.gather(*tasks)
+
+        deployments_per_controller: List[Dict[str, Any]] = [
+            json.loads(val.decode()) for val in serve_snapshot_vals
+        ]
+
+        # Merge the deployments dicts of all controllers.
+        deployments: Dict[str, Any] = {
+            k: v for d in deployments_per_controller for k, v in d.items()
+        }
+        # Replace the keys (deployment names) with their hashes to prevent
+        # collisions caused by the automatic conversion to camelcase by the
+        # dashboard agent.
+        return {
+            hashlib.sha1(name.encode()).hexdigest(): info
+            for name, info in deployments.items()
+        }
 
     async def get_session_name(self):
-        # TODO(yic): Convert to async GRPC.
-        def get_session():
-            return ray.experimental.internal_kv._internal_kv_get(
-                "session_name", namespace=ray_constants.KV_NAMESPACE_SESSION
-            ).decode()
-
-        return await asyncio.get_event_loop().run_in_executor(
-            executor=self._thread_pool, func=get_session
+        session_name = await self._gcs_aio_client.internal_kv_get(
+            b"session_name",
+            namespace=ray_constants.KV_NAMESPACE_SESSION,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
         )
+        return session_name.decode()
 
     async def run(self, server):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(

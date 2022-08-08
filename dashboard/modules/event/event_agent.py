@@ -7,7 +7,6 @@ import ray._private.ray_constants as ray_constants
 import ray._private.utils as utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
 from ray.core.generated import event_pb2, event_pb2_grpc
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
@@ -24,6 +23,8 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._monitor: Union[asyncio.Task, None] = None
         self._stub: Union[event_pb2_grpc.ReportEventServiceStub, None] = None
         self._cached_events = asyncio.Queue(event_consts.EVENT_AGENT_CACHE_SIZE)
+        self._gcs_aio_client = dashboard_agent.gcs_aio_client
+
         logger.info("Event agent cache buffer size: %s", self._cached_events.maxsize)
 
     async def _connect_to_dashboard(self):
@@ -35,11 +36,12 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         """
         while True:
             try:
-                # TODO: Use async version if performance is an issue
-                dashboard_rpc_address = internal_kv._internal_kv_get(
-                    dashboard_consts.DASHBOARD_RPC_ADDRESS,
+                dashboard_rpc_address = await self._gcs_aio_client.internal_kv_get(
+                    dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    timeout=1,
                 )
+                dashboard_rpc_address = dashboard_rpc_address.decode()
                 if dashboard_rpc_address:
                     logger.info("Report events to %s", dashboard_rpc_address)
                     options = ray_constants.GLOBAL_GRPC_OPTIONS
