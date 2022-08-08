@@ -79,7 +79,7 @@ spec:
 
 The rest of this guide will discuss the `RayCluster` CR's config fields.
 
-## The Ray version
+## The Ray Version
 The field `rayVersion` specifies the version of Ray used in the Ray cluster.
 The `rayVersion` is used to fill default values for certain config fields.
 The Ray container images specified in the RayCluster CR should carry
@@ -231,7 +231,7 @@ The field `rayStartParams.resources` should only be used for custom resources. T
 fields, use the Ray start parameters `num-cpus`, `num-gpus`, or `memory`.
 
 (kuberay-networking)=
-## Services and networking
+## Services and Networking
 ### The Ray head service.
 The KubeRay operator automatically configures a Kubernetes Service exposing the default ports
 for several services of the Ray head pod, including
@@ -304,7 +304,7 @@ rayStartParams:
 
 
 (kuberay-autoscaling-config)=
-## Autoscaler configuration
+## Autoscaler Configuration
 ```{note}
 If you are deciding whether to use autoscaling for a particular Ray application,
 check out this {ref}`discussion<autoscaler-pro-con>`. Note that autoscaling is
