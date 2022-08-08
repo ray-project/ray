@@ -217,7 +217,6 @@ test_python() {
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_env=WINDIR \
       --test_output=streamed \
       -- \
       ${test_shard_selection};
