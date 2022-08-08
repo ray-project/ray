@@ -26,9 +26,6 @@ class StandardScaler(Preprocessor):
         :class:`StandardScaler` works best when your data is normal. If your data isn't
         approximately normal, then the transformed features won't be meaningful.
 
-    Args:
-        columns: The columns to separately scale.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -59,6 +56,9 @@ class StandardScaler(Preprocessor):
         0  -2  -3  0.0
         1   0  -3  0.0
         2   2   3  0.0
+
+    Args:
+        columns: The columns to separately scale.
     """
 
     def __init__(self, columns: List[str]):
