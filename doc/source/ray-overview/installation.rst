@@ -15,6 +15,7 @@ You can install the latest official version of Ray as follows.
 
   # Install Ray with support for the dashboard + cluster launcher
   pip install -U "ray[default]"
+
   # Install Ray with minimal dependencies
   # pip install -U ray
 
@@ -40,6 +41,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
   pip uninstall -y ray
   # Install Ray with support for the dashboard + cluster launcher
   pip install -U "ray[default] @ LINK_TO_WHEEL.whl"
+
   # Install Ray with minimal dependencies
   # pip install -U LINK_TO_WHEEL.whl
 
