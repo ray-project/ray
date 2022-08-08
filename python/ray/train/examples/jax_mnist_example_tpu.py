@@ -148,7 +148,7 @@ def train_func(config: Dict):
     rng, init_rng = jax.random.split(rng)
     init_rng = jax_utils.replicate(rng)
 
-    print(jax.device_count(), jax.local_device_count(), jax.process_count(), jax.local_process_count())
+    print(jax.device_count(), jax.local_device_count(), jax.process_count())
 
     # Create model & optimizer.
     state = create_train_state(init_rng, learning_rate, momentum)
