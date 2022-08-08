@@ -29,7 +29,8 @@ public class ReplicaSetTest extends BaseTest {
     ActorNameList.Builder builder = ActorNameList.newBuilder();
 
     replicaSet.updateWorkerReplicas(builder.build());
-    Map<String, Set<ObjectRef<Object>>> inFlightQueries = replicaSet.getInFlightQueries();
+    Map<ActorHandle<RayServeWrappedReplica>, Set<ObjectRef<Object>>> inFlightQueries =
+        replicaSet.getInFlightQueries();
     Assert.assertTrue(inFlightQueries.isEmpty());
   }
 

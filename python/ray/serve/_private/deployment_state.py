@@ -46,7 +46,6 @@ from ray.serve._private.utils import (
     format_actor_name,
     get_random_letters,
     msgpack_serialize,
-    msgpack_deserialize,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 
@@ -207,9 +206,7 @@ class ActorReplicaWrapper:
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
 
-        # todo: will be confused with deployment_config.is_cross_language
         self._is_cross_language = False
-        self._deployment_is_cross_language = False
 
     @property
     def replica_tag(self) -> str:
@@ -270,51 +267,25 @@ class ActorReplicaWrapper:
         )
 
         self._actor_resources = deployment_info.replica_config.resource_dict
-        # it is currently not possible to create a placement group
-        # with no resources (https://github.com/ray-project/ray/issues/20401)
-        self._deployment_is_cross_language = (
-            deployment_info.deployment_config.is_cross_language
-        )
-
         logger.debug(
             f"Starting replica {self.replica_tag} for deployment "
             f"{self.deployment_name}."
         )
 
         actor_def = deployment_info.actor_def
-        if (
-            deployment_info.deployment_config.deployment_language
-            == DeploymentLanguage.PYTHON
-        ):
-            if deployment_info.replica_config.serialized_init_args is None:
-                serialized_init_args = cloudpickle.dumps(())
-            else:
-                serialized_init_args = (
-                    cloudpickle.dumps(
-                        msgpack_deserialize(
-                            deployment_info.replica_config.serialized_init_args
-                        )
-                    )
-                    if self._deployment_is_cross_language
-                    else deployment_info.replica_config.serialized_init_args
-                )
-            init_args = (
-                self.deployment_name,
-                self.replica_tag,
-                cloudpickle.dumps(deployment_info.replica_config.deployment_def)
-                if self._deployment_is_cross_language
-                else deployment_info.replica_config.serialized_deployment_def,
-                serialized_init_args,
-                deployment_info.replica_config.serialized_init_kwargs
-                if deployment_info.replica_config.serialized_init_kwargs
-                else cloudpickle.dumps({}),
-                deployment_info.deployment_config.to_proto_bytes(),
-                version,
-                self._controller_name,
-                self._detached,
-            )
+        init_args = (
+            self.deployment_name,
+            self.replica_tag,
+            deployment_info.replica_config.serialized_deployment_def,
+            deployment_info.replica_config.serialized_init_args,
+            deployment_info.replica_config.serialized_init_kwargs,
+            deployment_info.deployment_config.to_proto_bytes(),
+            version,
+            self._controller_name,
+            self._detached,
+        )
         # TODO(simon): unify the constructor arguments across language
-        elif (
+        if (
             deployment_info.deployment_config.deployment_language
             == DeploymentLanguage.JAVA
         ):
@@ -335,7 +306,7 @@ class ActorReplicaWrapper:
                         deployment_info.replica_config.serialized_init_args
                     )
                 )
-                if self._deployment_is_cross_language
+                if deployment_info.deployment_config.is_cross_language
                 else deployment_info.replica_config.serialized_init_args,
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
@@ -358,17 +329,16 @@ class ActorReplicaWrapper:
 
         # Perform auto method name translation for java handles.
         # See https://github.com/ray-project/ray/issues/21474
-        user_config = self._format_user_config(
-            deployment_info.deployment_config.user_config
-        )
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
+            self._ready_obj_ref = self._actor_handle.reconfigure.remote(
+                deployment_info.deployment_config.user_config
+            )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-                user_config,
+                deployment_info.deployment_config.user_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
                 # asyncio loop. If that happens before `is_allocated` is executed,
@@ -376,23 +346,12 @@ class ActorReplicaWrapper:
                 self._allocated_obj_ref,
             )
 
-    def _format_user_config(self, user_config: Any):
-        temp = copy(user_config)
-        if user_config is not None and self._deployment_is_cross_language:
-            if self._is_cross_language:
-                temp = msgpack_serialize(temp)
-            else:
-                temp = msgpack_deserialize(temp)
-        return temp
-
     def update_user_config(self, user_config: Any):
         """
         Update user config of existing actor behind current
         DeploymentReplica instance.
         """
-        self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            self._format_user_config(user_config)
-        )
+        self._ready_obj_ref = self._actor_handle.reconfigure.remote(user_config)
 
     def recover(self):
         """
@@ -465,12 +424,8 @@ class ActorReplicaWrapper:
             except Exception:
                 logger.exception(f"Exception in deployment '{self._deployment_name}'")
                 return ReplicaStartupStatus.FAILED, None
-        if self._deployment_is_cross_language:
-            # todo: The replica's userconfig whitch java client created
-            #  is different from the controller's userconfig
-            return ReplicaStartupStatus.SUCCEEDED, None
-        else:
-            return ReplicaStartupStatus.SUCCEEDED, version
+
+        return ReplicaStartupStatus.SUCCEEDED, version
 
     @property
     def actor_resources(self) -> Optional[Dict[str, float]]:
