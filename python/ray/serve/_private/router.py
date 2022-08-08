@@ -45,6 +45,7 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
+    return_num: int = 2
 
     async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
