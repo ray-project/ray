@@ -33,13 +33,14 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
         num_workers: Total number of all the workers.
         index: Index (i.e. world rank) of the current worker.
     """
-    use_gpu = len(ray.get_gpu_ids())
-    print(use_gpu)
-    if use_gpu:
-        import jax
-
-        # not import jax at the top to avoid tpulib_lockfile error
-        jax.distributed.initialize(master_addr_with_port, num_workers, index)
+    # use_gpu = len(ray.get_gpu_ids())
+    # print(use_gpu)
+    # if use_gpu:
+    
+    import jax
+    print(master_addr_with_port, num_workers, index)
+    # not import jax at the top to avoid tpulib_lockfile error
+    jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
 def release_tpu_lock(try_remove_tpulib_lock: bool = False):
     """release the tpulib lock file when using tpu for training.
