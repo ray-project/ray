@@ -33,12 +33,7 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
         num_workers: Total number of all the workers.
         index: Index (i.e. world rank) of the current worker.
     """
-    # use_gpu = len(ray.get_gpu_ids())
-    # print(use_gpu)
-    # if use_gpu:
-    
     import jax
-    print(master_addr_with_port, num_workers, index)
     # not import jax at the top to avoid tpulib_lockfile error
     jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
@@ -84,23 +79,24 @@ class _JaxBackend(Backend):
         master_addr_with_port = f"{master_addr}:{master_port}"
         num_workers = len(worker_group)
 
-        # Get setup tasks in order to throw errors on failure.
-        setup_futures = []
-        for i in range(len(worker_group)):
-            setup_futures.append(
-                worker_group.execute_single_async(
-                    i,
-                    setup_jax_environment,
-                    master_addr_with_port=master_addr_with_port,
-                    num_workers=num_workers,
-                    index=i,
+        print(worker_group.num_gpus_per_worker)
+        
+        if False: 
+            # Get setup tasks in order to throw errors on failure.
+            setup_futures = []
+            for i in range(len(worker_group)):
+                setup_futures.append(
+                    worker_group.execute_single_async(
+                        i,
+                        setup_jax_environment,
+                        master_addr_with_port=master_addr_with_port,
+                        num_workers=num_workers,
+                        index=i,
+                    )
                 )
-            )
-        ray.get(setup_futures)
+            ray.get(setup_futures)
 
         additional_resources_per_worker = worker_group.additional_resources_per_worker
-        print('hello, i am here ========================')
-        print(additional_resources_per_worker and additional_resources_per_worker.pop("TPU", False))        
         
         # in case where `use_tpu == True``: 
         if additional_resources_per_worker and additional_resources_per_worker.pop("TPU", False): 
