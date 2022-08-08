@@ -92,10 +92,8 @@ import torch
 
 ds = ray.data.range(10000)
 
-torch_ds: torch.utils.data.IterableDataset = ds.to_torch(batch_size=2)
-
 num_batches = 0
-for batch, _ in torch_ds:
+for batch in ds.iter_torch_batches(batch_size=2):
     assert isinstance(batch, torch.Tensor)
     assert batch.size(dim=0) == 2
     num_batches += 1
@@ -118,25 +116,17 @@ df = pd.DataFrame({
 })
 ds = ray.data.from_pandas(df)
 
-# Specify the label column; all other columns will be treated as feature columns and
-# will be concatenated into the same Torch tensor.
-# We set unsqueeze_label_tensor=False in order to remove a redundant unit column
-# dimension.
-torch_ds: torch.utils.data.IterableDataset = ds.to_torch(
-    label_column="label",
-    batch_size=2,
-    unsqueeze_label_tensor=False,
-)
-
 num_batches = 0
-for feature, label in torch_ds:
-    assert isinstance(feature, torch.Tensor)
+for batch in ds.iter_torch_batches(batch_size=2):
+    feature1 = batch["feature1"]
+    feature2 = batch["feature2"]
+    label = batch["label"]
+    assert isinstance(feature1, torch.Tensor)
+    assert isinstance(feature2, torch.Tensor)
     assert isinstance(label, torch.Tensor)
     # Batch dimension.
-    assert feature.size(dim=0) == 2
-    # Column dimension.
-    assert feature.size(dim=1) == 2
-    # Batch dimension.
+    assert feature1.size(dim=0) == 2
+    assert feature2.size(dim=0) == 2
     assert label.size(dim=0) == 2
     num_batches += 1
 
@@ -218,7 +208,7 @@ class Worker:
         pass
 
     def train(self, shard: ray.data.Dataset[int]) -> int:
-        for batch in shard.to_torch(batch_size=256):
+        for batch in shard.iter_torch_batches(batch_size=256):
             pass
         return shard.count()
 

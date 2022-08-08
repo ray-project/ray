@@ -1144,7 +1144,7 @@ Reproducibility
     def training_func(config):
         dataloader = ray.train.get_dataset()\
             .get_shard(torch.rank())\
-            .to_torch(batch_size=config["batch_size"])
+            .iter_torch_batches(batch_size=config["batch_size"])
 
         for i in config["epochs"]:
             ray.train.report(...)  # use same intermediate reporting API
