@@ -3311,7 +3311,7 @@ py_test(
 py_test(
     name = "examples/bandit/lin_ts_train_wheel_env",
     main = "examples/bandit/lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
 )
@@ -3319,7 +3319,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ts_train_wheel_env",
     main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
 )
@@ -3327,7 +3327,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ucb_train_recommendation",
     main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
-    tags = ["team:rllib","exclusive",  "examples", ],
+    tags = ["team:rllib","exclusive",  "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
 )
@@ -3335,7 +3335,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ucb_train_recsim_env",
     main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
