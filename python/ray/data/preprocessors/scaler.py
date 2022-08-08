@@ -109,9 +109,6 @@ class MinMaxScaler(Preprocessor):
     .. tip::
         This can be used as an alternative to :py:class:`StandardScaler`.
 
-    Args:
-        columns: The columns to separately scale.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -142,6 +139,9 @@ class MinMaxScaler(Preprocessor):
         0  -2  -3  0.0
         1   0  -3  0.0
         2   2   3  0.0
+
+    Args:
+        columns: The columns to separately scale.
     """
 
     def __init__(self, columns: List[str]):
