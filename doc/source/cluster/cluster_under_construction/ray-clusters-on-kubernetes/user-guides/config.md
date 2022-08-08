@@ -241,11 +241,10 @@ for several services of the Ray head pod, including
 - Ray Serve (default port 8000)
 
 The name of the configured Kubernetes Service is the name, `metadata.name`, of the RayCluster
-followed by the suffix\
-`-head-svc`. For the example CR given on this page, the name of
-the head service will be\
-`raycluster-example-head-svc`. Kubernetes networking (`kube-dns`) then allows us to address
-the Ray head's services using the name `raycluster-example-head-svc`.
+followed by the suffix <nobr>`head-svc`</nobr>. For the example CR given on this page, the name of
+the head service will be
+<nobr>`raycluster-example-head-svc`</nobr>. Kubernetes networking (`kube-dns`) then allows us to address
+the Ray head's services using the name <nobr>`raycluster-example-head-svc`</nobr>.
 For example, the Ray Client server can be accessed from a pod
 in the same Kubernetes namespace using
 ```python
