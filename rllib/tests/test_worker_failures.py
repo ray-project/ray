@@ -51,7 +51,7 @@ class FaultInjectEnv(gym.Env):
         ...         {"bad_indices": [1, 2]},
         ...         worker_index=1,
         ...         num_workers=3,
-        ..      )
+        ...      )
         ... )
 
         >>> from ray.rllib.env.env_context import EnvContext

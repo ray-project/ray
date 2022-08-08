@@ -71,7 +71,7 @@ class NodeFailureTests(unittest.TestCase):
         self.assertEqual(len(ppo.workers._remote_workers), 6)
 
         # Fail with a node down, resource requirements not satisfied anymore
-        with self.assertRaise(RayActorError):
+        with self.assertRaises(RayActorError):
             ppo.step()
 
     def test_continue_training_on_failure(self):
