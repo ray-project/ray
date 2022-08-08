@@ -189,6 +189,8 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
             )
 
             try:
+                # get_actor is a sync call but it'll timeout after
+                # ray.dashboard.consts.GCS_RPC_TIMEOUT_SECONDS
                 self._controller = ray.get_actor(
                     SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
                 )
