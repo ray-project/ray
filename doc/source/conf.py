@@ -97,12 +97,12 @@ versionwarning_messages = {
     #     "This document is for the latest pip release. "
     #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
     # ),
-    "master": (
-        "<b>Got questions?</b> Join "
-        f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
-        "for Q&A on all things Ray, as well as to share and learn use cases "
-        "and best practices with the Ray community."
-    ),
+    # "master": (
+    #     "<b>Got questions?</b> Join "
+    #     f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
+    #     "for Q&A on all things Ray, as well as to share and learn use cases "
+    #     "and best practices with the Ray community."
+    # ),
 }
 
 versionwarning_body_selector = "#main-content"
