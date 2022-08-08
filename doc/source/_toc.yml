@@ -15,8 +15,8 @@ parts:
     - file: ray-air/user-guides
       sections:
         - file: ray-air/preprocessors
-        - file: ray-air/check-ingest
         - file: ray-air/trainer
+        - file: ray-air/check-ingest
         - file: ray-air/tuner
         - file: ray-air/predictors
         - file: ray-air/examples/serving_guide

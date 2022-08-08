@@ -1,7 +1,7 @@
 .. _air-trainers:
 
-Using Trainers for Distributed Training
-=======================================
+Using Trainers
+==============
 
 .. https://docs.google.com/drawings/d/1anmT0JVFH9abR5wX5_WcxNHJh6jWeDL49zWxGpkfORA/edit
 
