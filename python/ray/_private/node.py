@@ -1498,5 +1498,6 @@ class Node:
         parsed_url = urllib.parse.urlparse(url)
         if parsed_url.scheme:
             # Construct URL without protocol
-            return url[url.index("://") + 3 :]
+            scheme = "%s://" % parsed_url.scheme
+            return parsed_url.geturl().replace(scheme, "", 1)
         return url
