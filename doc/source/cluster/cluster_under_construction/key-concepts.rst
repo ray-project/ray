@@ -55,11 +55,6 @@ The head node is identical to other worker nodes, except that it also runs singl
 :ref:`which run Ray jobs<cluster-clients-and-jobs-under-construction>`. Ray may schedule
 tasks and actors on the head node just like any other worker node, unless configured otherwise.
 
-.. note::
-    :ref:`On Kubernetes<kuberay-index>`, the autoscaler process runs inside a sidecar container in the head pod,
-    instead of in the same container (which would be most analogous to how the autoscaler runs inside the head node
-    on non-Kubernetes clusters).
-
 .. _cluster-autoscaler-under-construction:
 
 Autoscaler
