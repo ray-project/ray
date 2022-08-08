@@ -62,7 +62,7 @@ def release_tpu_lock(try_remove_tpulib_lock: bool = False):
         # This will stop you from restarting your job until those processes a terminated and release the TPU.
         # The following command should end all these processes. 
         # see more details: https://github.com/google/jax/issues/10192
-        # subprocess.run("sudo lsof -w /dev/accel0", shell=True) # kill all processes using the TPUs
+        subprocess.run("sudo lsof -w /dev/accel0", shell=True) # kill all processes using the TPUs
         subprocess.run("sudo rm -f /tmp/libtpu_lockfile", shell=True) # remove the lock file
     else:
         if os.path.exists("/tmp/libtpu_lockfile"):
@@ -96,9 +96,10 @@ class _JaxBackend(Backend):
             )
         ray.get(setup_futures)
 
-        # case-insensitivize dict
         additional_resources_per_worker = worker_group.additional_resources_per_worker
-        # in case use_tpu == True: 
+        print(additional_resources_per_worker and additional_resources_per_worker.pop("TPU", False))        
+        
+        # in case where `use_tpu == True``: 
         if additional_resources_per_worker and additional_resources_per_worker.pop("TPU", False): 
             # Get setup tasks in order to throw errors on failure.
             try_remove_tpulib_lock = bool(os.environ.get(RAY_TPU_DEV_ENV, False))
