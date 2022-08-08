@@ -462,7 +462,11 @@ deployment_statuses:
 
 You can also update your Serve applications once they're in production. You can update the settings in your config file and redeploy it using the `serve deploy` command.
 
-Let's use the `FruitStand` deployment graph [from an earlier section](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. [This method allows us to issue lightweight updates](managing-deployments-user-configuration) to our deployments by updating the `user_config`. These updates don't need to tear down the running deployments, meaning there's less downtime as the deployments update.
+### Lightweight Config Updates
+
+Lightweight config updates don't need to tear down the running deployments, meaning there's less downtime as the deployments update. 
+
+Let's use the `FruitStand` deployment graph [from an earlier section](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. [This method allows us to issue lightweight updates](managing-deployments-user-configuration) to our deployments by updating the `user_config`.
 
 First let's deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
 
@@ -546,6 +550,8 @@ $ python
 ```
 
 The price has updated! The same request now returns `10` instead of `6`, reflecting the new price.
+
+### Code Updates
 
 You can update any setting in any deployment in the config file similarly. You can also add new deployment settings or remove old deployment settings from the config. This is because `serve deploy` is **idempotent**. Your Serve application's will match the one specified in the latest config you deployed– regardless of what config files you deployed before that.
 
