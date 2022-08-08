@@ -308,7 +308,8 @@ rayStartParams:
 ## Autoscaler configuration
 ```{note}
 If you are deciding whether to use autoscaling for a particular Ray application,
-check out this {ref}`discussion<autoscaler-pro-con>`.
+check out this {ref}`discussion<autoscaler-pro-con>`. Note that autoscaling is
+supported only with Ray versions at least as new as Ray 1.11.0.
 ```
 To enable the optional Ray Autoscaler support, set `enableInTreeAutoscaling:true`.
 The KubeRay operator will then automatically configure an autoscaling sidecar container
