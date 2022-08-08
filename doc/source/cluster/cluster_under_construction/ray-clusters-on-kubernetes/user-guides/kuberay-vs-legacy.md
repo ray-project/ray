@@ -95,13 +95,13 @@ See the [KubeRay documentation][KubeRaySingleNamespace] for details.
 Note that the KubeRay operator can manage many Ray clusters running at different Ray versions.
 Thus, from a scalability and compatibility perspective, there is no need to run
 one KubeRay operator per Kubernetes namespace. Run a namespace-scoped KubeRay operator
-only if necessary, e.g. for Kubernetes permissions-related reasons.
+only if necessary, e.g. to accommodate permissions constraints in your Kubernetes cluster.
 
 ### Specifying resource quantities.
 Ray pod CPU, GPU, and memory capacities are detected from container resource limits and advertised
 to Ray.
 
-The interface for specifying Ray resource overrides with KubeRay is different:
+The interface for overriding the resource capacities advertised to Ray is different:
 Resource overrides must be specified in `rayStartParams`.
 For example, you may wish to prevent the Ray head pod
 from running Ray workloads by labelling the head as having 0 CPU capacity.
