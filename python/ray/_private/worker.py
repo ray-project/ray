@@ -1,6 +1,7 @@
 import atexit
 import faulthandler
 import functools
+import grpc
 import hashlib
 import inspect
 import io
@@ -756,7 +757,6 @@ class Worker:
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
-        import grpc
 
         subscriber = self.gcs_log_subscriber
         subscriber.subscribe()
@@ -1471,7 +1471,7 @@ def init(
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
-    dashboard_url = _global_node.address_info["webui_url"]
+    dashboard_url = _global_node.webui_url_with_protocol
     # We logged the address before attempting the connection, so we don't need
     # to log it again.
     info_str = "Connected to Ray cluster."
@@ -1479,7 +1479,7 @@ def init(
         info_str = "Started a local Ray instance."
     if dashboard_url:
         logger.info(
-            info_str + " View the dashboard at %s%shttp://%s%s%s.",
+            info_str + " View the dashboard at %s%s%s%s%s.",
             colorama.Style.BRIGHT,
             colorama.Fore.GREEN,
             dashboard_url,
@@ -1902,6 +1902,11 @@ def connect(
         if mode == SCRIPT_MODE:
             raise e
         elif mode == WORKER_MODE:
+            if isinstance(e, grpc.RpcError) and e.code() in (
+                grpc.StatusCode.UNAVAILABLE,
+                grpc.StatusCode.UNKNOWN,
+            ):
+                raise e
             traceback_str = traceback.format_exc()
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
@@ -2838,9 +2843,9 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
-        retry_exceptions: Only for *remote functions*. This specifies
-            whether application-level errors should be retried
-            up to max_retries times.
+        retry_exceptions: Only for *remote functions*. This specifies whether
+            application-level errors should be retried up to max_retries times.
+            This can be a boolean or a list of exceptions that should be retried.
         scheduling_strategy: Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it

@@ -23,7 +23,11 @@ Function API
 
 With the Function API, you can report intermediate metrics by simply calling ``session.report`` within the provided function.
 
+
 .. code-block:: python
+
+    from ray import tune
+    from ray.air import session
 
     def trainable(config):
         # config (dict): A dict of hyperparameters.

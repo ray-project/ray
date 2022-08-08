@@ -115,7 +115,8 @@ code and set this number based on end to end latency objective.
 :::{note}
 The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the [Ray Autoscaler](cluster-index).
 Concretely, this means that the Ray Serve autoscaler asks Ray to start a number of replica actors based on the request demand.
-If the Ray Autoscaler determines there aren't enough available CPUs to place these actors, it responds by adding more nodes.
+If the Ray Autoscaler determines there aren't enough available CPUs to place these actors, it responds by requesting more nodes.
+The underlying cloud provider will then respond by adding more nodes.
 Similarly, when Ray Serve scales down and terminates some replica actors, it may result in some nodes being empty, at which point the Ray autoscaler will remove those nodes.
 :::
 

@@ -2715,7 +2715,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
@@ -2739,7 +2739,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
@@ -2859,7 +2859,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
@@ -3562,7 +3562,7 @@
 
   run:
     timeout: 3600
-    script: python stress_tests/test_state_api_scale.py --num-actors 1000
+    script: python stress_tests/test_state_api_scale.py 
     type: sdk_command
     file_manager: sdk
 
@@ -3577,11 +3577,11 @@
       script: python stress_tests/test_state_api_scale.py --smoke-test
 
 
-- name: shuffle_100gb_5000_partitions_with_state_api
+- name: shuffle_20gb_with_state_api
   group: core-daily-test
   working_dir: nightly_tests
   legacy:
-    test_name: shuffle_100gb_5000_partitions_with_state_api
+    test_name: shuffle_20gb_with_state_api
     test_suite: nightly_tests
   stable: false
 
@@ -3589,26 +3589,15 @@
   team: core
   cluster:
     cluster_env: shuffle/shuffle_app_config.yaml
-    cluster_compute: shuffle/shuffle_compute_large_scale.yaml
+    cluster_compute: shuffle/shuffle_compute_single.yaml
 
   run:
-    timeout: 3600
-    script: python stress_tests/test_shuffle_with_state_api.py --num-partitions=5000 --partition-size=20e6
-    wait_for_nodes:
-      num_nodes: 20
+    timeout: 1000
+    script: python stress_tests/test_state_api_with_other_tests.py 
+      nightly_tests/shuffle/shuffle_test.py --test-args="--num-partitions=100 --partition-size=200e6" 
 
     type: sdk_command
     file_manager: sdk
-
-  smoke_test:
-    frequency: multi
-    cluster:
-      app_config: stress_tests/stress_tests_app_config.yaml
-      cluster_compute: stress_tests/smoke_test_compute.yaml
-
-    run:
-      timeout: 3600
-      script: python stress_tests/test_shuffle_with_state_api.py --smoke-test
 
 - name: stress_test_many_tasks
   group: core-daily-test
@@ -4196,6 +4185,25 @@
     script: python dataset_random_access.py
     wait_for_nodes:
       num_nodes: 15
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: pipelined_data_ingest_benchmark
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
+    wait_for_nodes:
+      num_nodes: 20
 
     type: sdk_command
     file_manager: sdk
