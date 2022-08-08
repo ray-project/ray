@@ -1,10 +1,15 @@
 import numpy as np
+import os
 import unittest
+import tree
+
 
 import ray
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.compression import is_compressed
 from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.framework import try_import_torch
 
 
 class TestSampleBatch(unittest.TestCase):
@@ -340,6 +345,76 @@ class TestSampleBatch(unittest.TestCase):
         # Make sure, intercepted values are NOT the original ones (before the shuffle),
         # but have also been shuffled.
         check(s["a"], [2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7, 6, 7, 8], false=True)
+
+    def test_to_device(self):
+        """Tests whether to_device works properly under different circumestances"""
+        torch, _ = try_import_torch()
+
+        # sample batch includes
+        #   a numpy array (a)
+        #   a nested stucture of dict, tuple and lists (b) of numpys and None
+        #   info dict
+        #   a nested structure that ends up with tensors and ints(c)
+        #   a tensor with float64 values (d)
+        #   a float64 tensor with possibly wrong device (depends on if cuda available)
+        #   repeated value object with np.array leaves (f)
+
+        cuda_available = int(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
+        cuda_if_possible = torch.device("cuda:0" if cuda_available else "cpu")
+        s = SampleBatch(
+            {
+                "a": np.array([1, 2]),
+                "b": {"c": (np.array([4, 5]), np.array([5, 6])), "e": [{"f": None}]},
+                "c": {"d": torch.Tensor([1, 2]), "g": (torch.Tensor([3, 4]), 1)},
+                "d": torch.Tensor([1.0, 2.0]).double(),
+                "e": torch.Tensor([1.0, 2.0]).double().to(cuda_if_possible),
+                "f": RepeatedValues(np.array([[1, 2, 0, 0]]), lengths=[2], max_len=4),
+                SampleBatch.SEQ_LENS: np.array([2, 3, 1]),
+                "state_in_0": np.array([1.0, 3.0, 4.0]),
+                SampleBatch.INFOS: np.array([{"a": 1}, {"b": 2}, {"c": 3}]),
+            }
+        )
+
+        # inplace operation for sample_batch
+        s.to_device(cuda_if_possible, framework="torch")
+
+        def _check_recursive_device_and_type(input_struct, target_device):
+            def get_mismatched_types(v):
+                if isinstance(v, torch.Tensor):
+                    if v.device.type != target_device.type:
+                        return (v.device, v.dtype)
+                    if v.is_floating_point() and v.dtype != torch.float32:
+                        return (v.device, v.dtype)
+
+            tree_checks = {}
+            for k, v in input_struct.items():
+                tree_checks[k] = tree.map_structure(get_mismatched_types, v)
+
+            self.assertTrue(
+                all(v is None for v in tree.flatten((tree_checks))),
+                f"the device type check dict: {tree_checks}",
+            )
+
+        # check if all tensors have the correct device and dtype
+        _check_recursive_device_and_type(s, cuda_if_possible)
+
+        # check repeated value
+        check(s["f"].lengths, [2])
+        check(s["f"].max_len, 4)
+        check(s["f"].values, torch.from_numpy(np.asarray([[1, 2, 0, 0]])))
+
+        # check infos
+        check(s[SampleBatch.INFOS], np.array([{"a": 1}, {"b": 2}, {"c": 3}]))
+
+        # check c/g/1
+        self.assertEqual(s["c"]["g"][1], torch.from_numpy(np.asarray(1)))
+
+        # check b/e/0/f
+        self.assertEqual(s["b"]["e"][0]["f"], np.asarray(None))
+
+        with self.assertRaises(NotImplementedError):
+            # should raise an error if framework is not torch
+            s.to_device(cuda_if_possible, framework="tf")
 
 
 if __name__ == "__main__":

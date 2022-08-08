@@ -306,6 +306,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Whether this task is an actor task.
   bool IsActorTask() const;
 
+  // Returns the serialized exception allowlist for this task.
+  const std::string GetSerializedRetryExceptionAllowlist() const;
+
   // Methods specific to actor creation tasks.
 
   ActorID ActorCreationId() const;

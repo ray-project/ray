@@ -51,10 +51,23 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               task_finisher_->CompletePendingTask(
                   task_id, push_task_reply, reply.actor_address());
             } else {
-              RAY_LOG(INFO) << "Failed to create actor " << actor_id
-                            << " with status: " << status.ToString();
+              rpc::RayErrorInfo ray_error_info;
+              if (status.IsSchedulingCancelled()) {
+                RAY_LOG(DEBUG) << "Actor creation cancelled, actor id = " << actor_id;
+                task_finisher_->MarkTaskCanceled(task_id);
+                if (reply.has_death_cause()) {
+                  ray_error_info.mutable_actor_died_error()->CopyFrom(
+                      reply.death_cause());
+                }
+              } else {
+                RAY_LOG(INFO) << "Failed to create actor " << actor_id
+                              << " with status: " << status.ToString();
+              }
               RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-                  task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
+                  task_id,
+                  rpc::ErrorType::ACTOR_CREATION_FAILED,
+                  &status,
+                  ray_error_info.has_actor_died_error() ? &ray_error_info : nullptr));
             }
           }));
       return;
@@ -585,8 +598,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
         } else {
-          if (!task_spec.GetMessage().retry_exceptions() ||
-              !reply.is_application_level_error() ||
+          if (!task_spec.GetMessage().retry_exceptions() || !reply.is_retryable_error() ||
               !task_finisher_->RetryTaskIfPossible(task_id)) {
             task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
           }
