@@ -13,6 +13,7 @@ from ray._private.utils import import_attr
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
+from ray._private.gcs_utils import GcsClient
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve._private.common import (
     ApplicationStatus,
@@ -96,9 +97,10 @@ class ServeController:
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
+        gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = RayInternalKVStore(kv_store_namespace)
-        self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
+        self.kv_store = RayInternalKVStore(kv_store_namespace, gcs_client)
+        self.snapshot_store = RayInternalKVStore(kv_store_namespace, gcs_client)
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
@@ -114,6 +116,7 @@ class ServeController:
             detached,
             http_config,
             head_node_id,
+            gcs_client,
         )
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
 
