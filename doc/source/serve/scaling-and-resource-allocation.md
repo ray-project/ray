@@ -6,6 +6,8 @@ This page should help you:
 - Scale up and down automatically to react to changing traffic
 - Allocate hardware resources (CPUs, GPUs, etc) for each deployment
 
+(scaling-out-a-deployment)=
+
 ## Scaling horizontally with `num_replicas`
 
 Each deployment consists of one or more [replicas](serve-architecture#high-level-view).
@@ -19,9 +21,11 @@ def func(*args):
     pass
 ```
 
+(ray-serve-autoscaling)=
+
 ## Autoscaling
 
-Serve also has the support for a demand-based replica autoscaler.
+Serve also has support for a demand-based replica autoscaler.
 It reacts to traffic spikes via observing queue sizes and making scaling decisions to create or remove replicas.
 To configure it, you can set the `autoscaling` field in deployment options.
 
@@ -54,6 +58,8 @@ If the Ray Autoscaler determines there aren't enough available CPUs to place the
 The underlying cloud provider will then respond by adding more nodes.
 Similarly, when Ray Serve scales down and terminates some replica actors, it will try to do so in a way that results in the most nodes having no Ray actors or tasks running on them, at which point the Ray autoscaler will remove those nodes.
 :::
+
+(serve-cpus-gpus)=
 
 ## Resource Management (CPUs, GPUs)
 
