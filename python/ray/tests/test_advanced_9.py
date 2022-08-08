@@ -237,6 +237,7 @@ class A:
 
 a = A.options(lifetime="detached", name="A").remote()
 assert ray.get(a.ready.remote()) == {val}
+assert ray.get_runtime_context().job_id.hex() == '01000000'
     """
     run_string_as_driver(script.format(address=call_ray_start, val=1))
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
@@ -246,6 +247,7 @@ import ray
 ray.init("{address}", namespace="a")
 a = ray.get_actor(name="A")
 assert ray.get(a.ready.remote()) == {val}
+assert ray.get_runtime_context().job_id.hex() == '02000000'
 """
     run_string_as_driver(script.format(address=call_ray_start, val=1))
     run_string_as_driver(script.format(address=call_ray_start_2, val=2))
