@@ -1,5 +1,6 @@
 from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
 
+from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.train.jax.config import JaxConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -115,3 +116,26 @@ class JaxTrainer(DataParallelTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+
+    @classmethod
+    def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
+        """Return scaling config dataclass after validating updated keys."""
+        # TODO: test whether to add tpu into the scalingconfig
+        ensure_only_allowed_dataclass_keys_updated(
+            dataclass=scaling_config,
+            allowed_keys=cls._scaling_config_allowed_keys,
+        )
+        
+        # case-insensitivize dict
+        # since `tpu` is not the standard resources in ray
+        # these lines to prevent the cases where the users 
+        # give the lower-case `tpu` as the resources
+        # and change the key to upper case!
+        additional_resources_per_worker = scaling_config.additional_resources_per_worker
+        if additional_resources_per_worker:
+            additional_resources_per_worker_upper = {
+                k.upper(): v for k, v in additional_resources_per_worker.items() if k.upper() == 'TPU'
+            }
+            scaling_config.additional_resources_per_worker = additional_resources_per_worker_upper
+        return scaling_config

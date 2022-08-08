@@ -57,7 +57,7 @@ def release_tpu_lock(try_remove_tpulib_lock: bool = False):
             environment variable to release the lock file.
     """
     if try_remove_tpulib_lock:
-
+        # TODO: check with the tpus 
         subprocess.run("sudo lsof -w /dev/accel0", shell=True)
         subprocess.run("sudo rm -f /tmp/libtpu_lockfile", shell=True)
     else:
@@ -94,22 +94,17 @@ class _JaxBackend(Backend):
 
         # case-insensitivize dict
         additional_resources_per_worker = worker_group.additional_resources_per_worker
-        if additional_resources_per_worker:
-            additional_resources_per_worker_lower = {
-                k.lower(): v for k, v in additional_resources_per_worker.items()
-            }
-            use_tpu = additional_resources_per_worker_lower.pop("tpu", False)
+        # in case use_tpu == True: 
+        if additional_resources_per_worker and additional_resources_per_worker.pop("TPU", False): 
             # Get setup tasks in order to throw errors on failure.
+            try_remove_tpulib_lock = bool(os.environ.get(RAY_TPU_DEV_ENV, False))
 
-            if use_tpu:
-                try_remove_tpulib_lock = bool(os.environ.get(RAY_TPU_DEV_ENV, False))
-
-                setup_futures = []
-                for i in range(len(worker_group)):
-                    setup_futures.append(
-                        worker_group.execute_async(
-                            release_tpu_lock,
-                            try_remove_tpulib_lock=try_remove_tpulib_lock,
-                        )
+            setup_futures = []
+            for i in range(len(worker_group)):
+                setup_futures.append(
+                    worker_group.execute_async(
+                        release_tpu_lock,
+                        try_remove_tpulib_lock=try_remove_tpulib_lock,
                     )
-                ray.get(setup_futures)
+                )
+            ray.get(setup_futures)
