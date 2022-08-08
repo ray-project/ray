@@ -245,21 +245,3 @@ You can find Ray Prometheus metrics in the ``{cluster_name}-ray-prometheus`` met
 
 You can apply changes to the CloudWatch Logs, Metrics, Dashboard, and Alarms for your cluster by simply modifying the CloudWatch config files referenced by your Ray cluster config YAML and re-running ``ray up example-cloudwatch.yaml``.
 The Unified CloudWatch Agent will be automatically restarted on all cluster nodes, and your config changes will be applied.
-
-
-
-What's Next?
-============
-
-Now that you have a working understanding of the cluster launcher, check out:
-
-* :ref:`ref-cluster-quick-start`: A end-to-end demo to run an application that autoscales.
-* :ref:`cluster-config`: A complete reference of how to configure your Ray cluster.
-* :ref:`cluster-commands`: A short user guide to the various cluster launcher commands.
-
-
-
-Questions or Issues?
-====================
-
-.. include:: /_includes/_help.rst
