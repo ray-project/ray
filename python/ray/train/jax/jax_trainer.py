@@ -130,31 +130,21 @@ class JaxTrainer(DataParallelTrainer):
             allowed_keys=cls._scaling_config_allowed_keys,
         )
         
-        print(scaling_config.resources_per_worker)
-        print(scaling_config.additional_resources_per_worker)
-        
+        # case-insensitivize
+        # since `tpu` is not the standard resources in ray currently
+        # add these lines to prevent the cases where the users 
+        # give the lower-case `tpu` as the resources
+        # and change the key to upper case!
         resources_per_worker = scaling_config.resources_per_worker
         if resources_per_worker:
             resources_per_worker_upper = {
-                k.lower(): v for k, v in resources_per_worker.items() if k.upper() == 'TPU'
+                k.upper(): v for k, v in resources_per_worker.items() if k.upper() == 'TPU'
             }
             scaling_config.resources_per_worker = resources_per_worker_upper
         
-        print(scaling_config.additional_resources_per_worker)
         if 'PACK' in scaling_config.placement_strategy: 
             scaling_config.placement_strategy = 'SPREAD'
             logger.info("In JaxTrainer, the `placement_stategy` need to be `SPREAD`"
                         f"Placement strategy is now changed to `SPREAD`")
         
-        # case-insensitivize dict
-        # since `tpu` is not the standard resources in ray
-        # these lines to prevent the cases where the users 
-        # give the lower-case `tpu` as the resources
-        # and change the key to upper case!
-        additional_resources_per_worker = scaling_config.additional_resources_per_worker
-        if additional_resources_per_worker:
-            additional_resources_per_worker_upper = {
-                k.upper(): v for k, v in additional_resources_per_worker.items() if k.upper() == 'TPU'
-            }
-            scaling_config.additional_resources_per_worker = additional_resources_per_worker_upper
         return scaling_config
