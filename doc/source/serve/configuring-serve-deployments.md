@@ -212,7 +212,7 @@ precompiling such packages in a private repository or Docker image.
 
 The dependencies required in the deployment may be different from
 the dependencies installed in the driver program (the one running Serve API
-calls). In this case, you should use a delayed import within the class to avoid
+calls). In this case, you should use a delayed import within the deployed class to avoid
 importing unavailable packages in the driver.  This applies even when not
 using runtime environments.
 
