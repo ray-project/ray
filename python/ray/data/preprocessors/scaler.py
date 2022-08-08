@@ -191,9 +191,6 @@ class MaxAbsScaler(Preprocessor):
         This is the recommended way to scale sparse data. If you data isn't sparse,
         you can use :class:`MinMaxScaler` or :class:`StandardScaler` instead.
 
-    Args:
-        columns: The columns to separately scale.
-
     Examples:
         >>> import pandas as pd
         >>> import ray
@@ -221,6 +218,9 @@ class MaxAbsScaler(Preprocessor):
            X1  X2   X3
         0  -6   2  0.0
         1   3  -4  0.0
+
+    Args:
+        columns: The columns to separately scale.
     """
 
     def __init__(self, columns: List[str]):
