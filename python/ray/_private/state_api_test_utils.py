@@ -1,6 +1,5 @@
 import asyncio
 from copy import deepcopy
-import json
 from collections import defaultdict
 import concurrent.futures
 from dataclasses import dataclass, field
@@ -12,10 +11,9 @@ import traceback
 from typing import Callable, Dict, List, Optional
 import ray
 from ray.actor import ActorHandle
-import ray._private.test_utils as test_utils
 
 
-@dataclass  
+@dataclass
 class StateAPIMetric:
     latency_sec: float
     result_size: int
@@ -61,6 +59,9 @@ def invoke_state_api(
     if "timeout" not in kwargs:
         kwargs["timeout"] = STATE_LIST_TIMEOUT
 
+    # Suppress missing output warning
+    kwargs["raise_on_missing_output"] = False
+
     res = None
     try:
         state_stats.total_calls += 1
@@ -73,6 +74,8 @@ def invoke_state_api(
         metric = StateAPIMetric(t_end - t_start, len(res))
         if key_suffix:
             key = f"{state_api_fn.__name__}_{key_suffix}"
+        else:
+            key = state_api_fn.__name__
         state_stats.calls[key].append(metric)
         assert verify_cb(res), f"Calling State API failed. len(res)=({len(res)}): {res}"
     except Exception as e:
@@ -96,23 +99,29 @@ def aggregate_perf_results(state_stats: StateAPIStats = GLOBAL_STATE_STATS):
             - {api_key_name}_result_size_with_max_latency:
                 The size of the result (or the number of bytes for get_log API)
                 for the max latency invocation
-            - p99/p95/p50_{api_key_name}_latency_sec:
+            - avg/p99/p95/p50_{api_key_name}_latency_sec:
                 The percentile latency stats
             - avg_state_api_latency_sec:
                 The average latency of all the state apis tracked
     """
+    # Prevent iteration when modifying error
+    state_stats = deepcopy(state_stats)
     perf_result = {}
     for api_key_name, metrics in state_stats.calls.items():
         # Per api aggregation
         # Max latency
         latency_key = f"max_{api_key_name}_latency_sec"
-        size_key = f"{api_key_name}_result_size_max_latency"
+        size_key = f"{api_key_name}_result_size_with_max_latency"
         metric = max(metrics, key=lambda metric: metric.latency_sec)
 
         perf_result[latency_key] = metric.latency_sec
         perf_result[size_key] = metric.result_size
 
         latency_list = np.array([metric.latency_sec for metric in metrics])
+        # avg latency
+        key = f"avg_{api_key_name}_latency_sec"
+        perf_result[key] = np.average(latency_list)
+
         # p99 latency
         key = f"p99_{api_key_name}_latency_sec"
         perf_result[key] = np.percentile(latency_list, 99)
@@ -254,8 +263,7 @@ class StateAPIGeneratorActor:
 
     def get_stats(self):
         # deep copy to prevent race between reporting and modifying stats
-        stats = deepcopy(self._stats)
-        return aggregate_perf_results(stats)
+        return aggregate_perf_results(self._stats)
 
     def ready(self):
         pass
@@ -285,81 +293,3 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
     print("State api actor is ready now.")
     actor.start.remote()
     return actor
-
-
-# TODO(rickyx): This test util should probably live in /releases
-# rather than here. Will move it there once figure out a way to
-# have test util dependency in the release/.
-def run_workload(fn, **kwargs):
-
-    monitor_actor = test_utils.monitor_memory_usage()
-
-    start = time.perf_counter()
-    fn(**kwargs)
-    end = time.perf_counter()
-    # Collect mem usage
-    ray.get(monitor_actor.stop_run.remote())
-    used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
-
-    results = {
-        "duration": end - start,
-        "peak_memory": round(used_gb, 2),
-        "peak_process_memory": usage,
-    }
-    return results
-
-
-def run_workload_with_state_api(
-    workload_fn: Callable,
-    workload_kwargs: Dict,
-    apis: List[StateAPICallSpec],
-    call_interval_s: int = 3,
-    print_interval_s: int = 15,
-) -> Dict:
-
-    start_time = time.perf_counter()
-    ctx = ray.init("auto")
-
-    # Stage 1: Run with state APIs
-    api_caller = periodic_invoke_state_apis_with_actor(
-        apis=apis, call_interval_s=call_interval_s, print_interval_s=print_interval_s
-    )
-
-    stats_with_state_apis = run_workload(
-        workload_fn,
-        ctx=ctx,
-        **workload_kwargs,
-    )
-
-    ray.get(api_caller.stop.remote())
-
-    print(json.dumps(ray.get(api_caller.get_stats.remote()), indent=2))
-    ray.shutdown()
-
-    # Stage 2: Run without API generator
-    ctx = ray.init("auto")
-    stats = run_workload(workload_fn, ctx=ctx, **workload_kwargs)
-
-    end_time = time.perf_counter()
-
-    # Dumping results
-    results = {
-        "time": end_time - start_time,
-        "success": "1",
-        "perf_metrics": [
-            {
-                "perf_metric_name": "state_api_extra_latency_sec",
-                "perf_metric_value": stats_with_state_apis["duration"]
-                - stats["duration"],
-                "perf_metric_type": "LATENCY",
-            },
-            {
-                "perf_metric_name": "state_api_extra_mem",
-                "perf_metric_value": stats_with_state_apis["peak_memory"]
-                - stats["peak_memory"],
-                "perf_metric_type": "MEMORY",
-            },
-        ],
-    }
-
-    return results

@@ -86,7 +86,7 @@ def test_many_tasks(num_tasks: int):
 
     print("Waiting for tasks to finish...")
     ray.get(signal.send.remote())
-    outputs = ray.get(results)
+    ray.get(results)
 
     # Clean up
     # All compute tasks done other than the signal actor
@@ -254,7 +254,7 @@ def test_large_log_file(log_file_size_byte: int):
     ctx = hashlib.md5()
     # Assuming computing checksum doesn't dominate the time here.
     t_start = time.perf_counter()
-    for s in get_log(actor_id=actor._actor_id.hex(), tail=-1, node_id=node_id):
+    for s in get_log(actor_id=actor._actor_id.hex(), tail=-1):
         ctx.update(s.encode())
     t_end = time.perf_counter()
     assert expected_hash == ctx.hexdigest(), "Mismatch log file"
@@ -291,14 +291,14 @@ def no_resource_leaks():
 @click.option(
     "--num-actors",
     required=False,
-    default="1,100,1000",
+    default="1,100,1000,5000",
     type=str,
     help="Number of actors to launch.",
 )
 @click.option(
     "--num-objects",
     required=False,
-    default="100,1000,10000",
+    default="100,1000,10000,50000",
     type=str,
     help="Number of actors to launch.",
 )
