@@ -1625,7 +1625,7 @@ py_test(
 
 py_test(
     name = "test_async_requests_manager",
-    tags = ["team:rllib", "execution"],
+    tags = ["team:rllib", "execution", "exclusive"],
     size = "medium",
     srcs = ["execution/tests/test_async_requests_manager.py"]
 )
