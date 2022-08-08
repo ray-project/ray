@@ -40,11 +40,6 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
         # not import jax at the top to avoid tpulib_lockfile error
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
-    # TODO (jimmy)
-    # cpu parallel: https://github.com/google/jax/issues/1408
-    # os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=200"
-
-
 def release_tpu_lock(try_remove_tpulib_lock: bool = False):
     """release the tpulib lock file when using tpu for training.
 
