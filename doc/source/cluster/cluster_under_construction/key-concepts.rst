@@ -22,14 +22,14 @@ and any number of :ref:`worker nodes<cluster-worker-nodes-under-construction>`.
     
     *A Ray cluster with two worker nodes. Each node runs Ray helper processes to
     facilitate distributed scheduling and memory management. The head node runs
-    additional helper processes, which are highlighted.*
+    additional control processes, which are highlighted.*
 
 The number of worker nodes in a cluster may change with application demand, according
 to your Ray cluster configuration. This is known as *autoscaling*. The head node runs
 the :ref:`autoscaler<cluster-autoscaler-under-construction>`.
 
 .. note::
-    Nodes are implemented as pods when :ref:`running on Kubernetes<kuberay-index>`.
+    Ray nodes are implemented as pods when :ref:`running on Kubernetes<kuberay-index>`.
 
 Users can submit jobs for execution on the Ray cluster, or can interactively use the
 cluster by connecting to the head node and running `ray.init`. See
@@ -51,7 +51,7 @@ Every Ray cluster has one node which is designated as the **head node** of the c
 The head node runs singleton processes responsible for cluster management such as the
 :ref:`autoscaler<cluster-autoscaler-under-construction>` and the Ray driver processes
 :ref:`which run Ray jobs<cluster-clients-and-jobs-under-construction>`. Ray may schedule
-tasks and actors on the head node just like any other worker node unless configured otherwise.
+tasks and actors on the head node just like any other worker node, unless configured otherwise.
 
 .. note::
     :ref:`On Kubernetes<kuberay-index>`, the autoscaler process runs inside a sidecar container in the head pod,
