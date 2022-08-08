@@ -115,4 +115,4 @@ Worker pod upscaling occurs through the following sequence of events:
 5. The KubeRay operator creates a Ray worker pod to match the new `replicas` specification.
 6. The Ray scheduler places the user's workload on the new worker pod.
 
-See also the operator architecture diagram in the [KubeRay documentation](https://ray-project.github.io/kuberay/components/operator/)
+See also the operator architecture diagram in the [KubeRay documentation](https://ray-project.github.io/kuberay/components/operator/).
