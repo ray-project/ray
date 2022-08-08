@@ -3343,36 +3343,36 @@ py_test(
 py_test(
     name = "examples/connectors/run_connector_policy",
     main = "examples/connectors/run_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
-    data = [
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
-    ],
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.new",
+    ]),
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
 
 py_test(
     name = "examples/connectors/adapt_connector_policy",
     main = "examples/connectors/adapt_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
-    data = [
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
-    ],
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.old",
+    ]),
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )
 
 py_test(
     name = "examples/connectors/self_play_with_policy_checkpoint",
     main = "examples/connectors/self_play_with_policy_checkpoint.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
-    data = [
+    data = glob([
         "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
-    ],
+    ]),
     args = [
         "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
         "--train_iteration=1"  # Smoke test.
