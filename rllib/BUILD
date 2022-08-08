@@ -1765,7 +1765,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_sample_batch",
-    tags = ["team:rllib", "policy"],
+    tags = ["team:rllib", "policy", "gpu"],
     size = "small",
     srcs = ["policy/tests/test_sample_batch.py"]
 )
