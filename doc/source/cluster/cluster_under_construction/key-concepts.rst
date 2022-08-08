@@ -1,3 +1,6 @@
+.. warning::
+    This page is under construction!
+
 .. include:: /_includes/clusters/we_are_hiring.rst
 
 Key Concepts
@@ -76,9 +79,17 @@ To learn more about the autoscaler and how to configure it, refer to the followi
 
 .. _cluster-clients-and-jobs-under-construction:
 
+..
 
 Clients and Jobs
 ----------------
+TODO
+~~~~
+TODO: Update the following section so that we recommend the best tool for first-time users:
+See https://anyscaleteam.slack.com/archives/C01CLKUN38V/p1659990371608629?thread_ts=1659981502.811539&cid=C01CLKUN38V
+
+Clients and Jobs
+~~~~~~~~~~~~~~~~
 Ray provides two methods for running workloads on a Ray Cluster: the Ray Client, and Ray Job Submission.
 
 * **The Ray Client** enables interactive development by connecting a local Python script or shell to the cluster.
