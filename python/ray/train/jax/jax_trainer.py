@@ -144,7 +144,7 @@ class JaxTrainer(DataParallelTrainer):
         
         if 'PACK' in scaling_config.placement_strategy: 
             scaling_config.placement_strategy = 'SPREAD'
-            logger.info("In JaxTrainer, the `placement_stategy` need to be `SPREAD`"
-                        f"Placement strategy is now changed to `SPREAD`")
+            logger.info("In JaxTrainer, the `placement_stategy` need to be `SPREAD`."
+                        " Placement strategy is now changed to `SPREAD`")
         
         return scaling_config
