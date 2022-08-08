@@ -396,55 +396,45 @@ class TestRolloutWorker(unittest.TestCase):
 
             input_creators = [dataset_reader_creator, json_reader_creator]
 
-            # check that if actions_in_input_normalized is False
-            # it will normalize input
+            # actions_in_input_normalized, normalize_actions
+            parameters = [
+                (True, True),
+                (True, False),
+                (False, True),
+                (False, False),
+            ]
+
+            # check that samples from dataset will be normalized if and only if
+            # actions_in_input_normalized == False and
+            # normalize_actions == True
             for input_creator in input_creators:
-                ev = RolloutWorker(
-                    env_creator=lambda _: env,
-                    policy_spec=MockPolicy,
-                    policy_config=dict(
-                        actions_in_input_normalized=False,
-                        normalize_actions=True,
-                        clip_actions=False,
-                        offline_sampling=True,
-                        train_batch_size=1,
-                    ),
-                    rollout_fragment_length=1,
-                    input_creator=input_creator,
-                )
+                for actions_in_input_normalized, normalize_actions in parameters:
+                    ev = RolloutWorker(
+                        env_creator=lambda _: env,
+                        policy_spec=MockPolicy,
+                        policy_config=dict(
+                            actions_in_input_normalized=actions_in_input_normalized,
+                            normalize_actions=normalize_actions,
+                            clip_actions=False,
+                            offline_sampling=True,
+                            train_batch_size=1,
+                        ),
+                        rollout_fragment_length=1,
+                        input_creator=input_creator,
+                    )
 
-                sample = ev.sample()
+                    sample = ev.sample()
 
-                # check if the samples from dataset are normalized properly
-                self.assertLessEqual(np.max(sample["actions"]), 1.0)
-                self.assertGreaterEqual(np.min(sample["actions"]), -1.0)
+                    if normalize_actions and not actions_in_input_normalized:
+                        # check if the samples from dataset are normalized properly
+                        self.assertLessEqual(np.max(sample["actions"]), 1.0)
+                        self.assertGreaterEqual(np.min(sample["actions"]), -1.0)
+                    else:
+                        # check if the samples from dataset are not normalized
+                        self.assertGreater(np.max(sample["actions"]), 1.5)
+                        self.assertLess(np.min(sample["actions"]), -1.5)
 
-                ev.stop()
-
-            # check that if actions_in_input_normalized is True
-            # it will not normalize input
-            for input_creator in input_creators:
-                ev = RolloutWorker(
-                    env_creator=lambda _: env,
-                    policy_spec=MockPolicy,
-                    policy_config=dict(
-                        actions_in_input_normalized=True,
-                        normalize_actions=True,
-                        clip_actions=False,
-                        offline_sampling=True,
-                        train_batch_size=1,
-                    ),
-                    rollout_fragment_length=1,
-                    input_creator=input_creator,
-                )
-
-                sample = ev.sample()
-
-                # check if the samples from dataset are not normalized
-                self.assertGreater(np.max(sample["actions"]), 1.0)
-                self.assertLess(np.min(sample["actions"]), -1.0)
-
-                ev.stop()
+                    ev.stop()
 
     def test_action_immutability(self):
         from ray.rllib.examples.env.random_env import RandomEnv
