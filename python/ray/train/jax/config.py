@@ -34,6 +34,7 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
         index: Index (i.e. world rank) of the current worker.
     """
     use_gpu = len(ray.get_gpu_ids())
+    print(use_gpu)
     if use_gpu:
         import jax
 
@@ -97,6 +98,7 @@ class _JaxBackend(Backend):
         ray.get(setup_futures)
 
         additional_resources_per_worker = worker_group.additional_resources_per_worker
+        print('hello, i am here ========================')
         print(additional_resources_per_worker and additional_resources_per_worker.pop("TPU", False))        
         
         # in case where `use_tpu == True``: 
