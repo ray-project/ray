@@ -200,8 +200,7 @@ class BatchPredictor:
                 # TODO(jiaodong): This still fails at large batch where batches
                 # with mismatched size will fail at _concat_tables
                 return convert_batch_type_to_pandas(
-                    prediction_output,
-                    cast_tensor_columns=cast_tensor_columns
+                    prediction_output, cast_tensor_columns=cast_tensor_columns
                 )
 
         compute = ray.data.ActorPoolStrategy(

@@ -159,9 +159,8 @@ class Predictor(abc.ABC):
             predictions_df,
             type=TYPE_TO_ENUM[type(data)],
             cast_tensor_columns=self._cast_tensor_columns,
-            fallback_to_python_object=True
+            fallback_to_python_object=True,
         )
-
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

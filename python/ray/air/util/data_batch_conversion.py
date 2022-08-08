@@ -9,11 +9,8 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import DeveloperAPI
 from ray.air.util.tensor_extensions.exception import (
     RaggedTensorNotSupportedError,
-    TensorArrayCastingError
+    TensorArrayCastingError,
 )
-
-from ray.air.util.tensor_extensions.exception import TensorArrayCastingError
-
 
 try:
     import pyarrow
@@ -149,16 +146,14 @@ def _unwrap_ndarray_object_type_if_needed(arr: np.ndarray) -> np.ndarray:
 
 
 def _cast_ndarray_columns_to_tensor_extension(
-    df: pd.DataFrame,
-    fallback_to_python_object: bool = False
+    df: pd.DataFrame, fallback_to_python_object: bool = False
 ) -> pd.DataFrame:
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
     from ray.air.util.tensor_extensions.pandas import TensorArray
-    from ray.air.util.tensor_extensions.casting_util import (
-        column_subject_to_casting
-    )
+    from ray.air.util.tensor_extensions.casting_util import column_subject_to_casting
+
     # Try to convert any ndarray columns to TensorArray columns.
     # TODO(Clark): Once Pandas supports registering extension types for type
     # inference on construction, implement as much for NumPy ndarrays and remove
