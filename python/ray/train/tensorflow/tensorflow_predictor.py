@@ -239,11 +239,11 @@ class TensorflowPredictor(DLPredictor):
     def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
         if not isinstance(tensor, tf.Tensor):
             raise ValueError(
-                "Expected the model to return either a tf.Tensor or a "
-                f"dict of tf.Tensor, but got {type(tensor)} instead. "
-                f"To support models with different output types, subclass "
-                f"TensorflowPredictor and override the `call_model` method "
-                f"to process the output into either torch.Tensor or Dict["
-                f"str, torch.Tensor]."
+                "Expected the model to return a tf.Tensor, a dict of tf.Tensor, "
+                f"or pandas.DataFrame but got {type(tensor)} instead. "
+                "To support models with different output types, subclass "
+                "TensorflowPredictor and override the `call_model` method "
+                "to process the output into torch.Tensor, Dict["
+                "str, torch.Tensor] or a pandas.DataFrame as fallthrough."
             )
         return tensor.numpy()

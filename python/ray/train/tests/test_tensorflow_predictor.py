@@ -294,7 +294,7 @@ def test_freeform_call_model_output(use_gpu):
     num_gpus_per_worker = 1 if use_gpu else 0
 
     # Assert non Tensor / Dict[str, Tensor] fails to convert with actionable message
-    with pytest.raises(ValueError, match="plain pandas.DataFrame as fall through"):
+    with pytest.raises(ValueError, match="a pandas.DataFrame as fallthrough"):
         predictions = cannot_convert_predictor.predict(
             dataset, num_gpus_per_worker=num_gpus_per_worker, feature_columns=["image"]
         )
