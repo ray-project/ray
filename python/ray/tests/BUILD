@@ -128,6 +128,7 @@ py_test_module_list(
     "test_placement_group_5.py",
     "test_ray_init.py",
     "test_reference_counting.py",
+    "test_reference_counting_3.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_context.py",
     "test_runtime_env_env_vars.py",
