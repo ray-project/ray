@@ -16,21 +16,9 @@ To learn more about XGBoost-Ray, check out that library's {ref}`documentation<xg
 
 ```{admonition} Optional: Autoscaling
 This guide includes notes on how to deploy the XGBoost benchmark with optional Ray Autoscaler support.
-Here are some considerations to keep in mind when choosing whether to use autoscaling.\
-**Autoscaling: Pros**\
-_Cope with unknown resource requirements._ If you don't know how much compute your Ray
-workload will require, autoscaling can adjust your Ray cluster to the right size.\
-_Save on costs._ Idle compute is automatically scaled down, potentially leading to cost savings.\
-**Autoscaling: Cons**\
-_Less predictable when resource requirements are known._ If you already know exactly
-how much compute your workload requires, it makes sense to provision a statically-sized Ray cluster.
 In this guide's example, we know that we need 1 Ray head and 9 Ray workers,
-so autoscaling is not strictly required.\
-_Longer end-to-end runtime._ Autoscaling entails provisioning compute for Ray workers
-while the Ray application is running. On the other hand, if you pre-provision a fixed
-number of Ray nodes,
-all of the Ray nodes can be started in parallel, potentially reducing your application's
-runtime.
+so autoscaling is not strictly required. Read {ref}`this discussion<autoscaler-pro-con>` for guidance
+on whether to use autoscaling.
 ```
 
 ## Kubernetes infrastructure setup

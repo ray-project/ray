@@ -151,7 +151,7 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         to torch tensors.
 
     Returns:
-        Any: A new struct with the same structure as `stats`, but with all
+        Any: A new struct with the same structure as `x`, but with all
             values converted to torch Tensor types.
     """
 
@@ -159,16 +159,19 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         if item is None:
             # returns None with dtype=np.obj
             return np.asarray(item)
-        # Already torch tensor -> make sure it's on right device.
-        if torch.is_tensor(item):
-            return item if device is None else item.to(device)
+
         # Special handling of "Repeated" values.
-        elif isinstance(item, RepeatedValues):
+        if isinstance(item, RepeatedValues):
             return RepeatedValues(
                 tree.map_structure(mapping, item.values), item.lengths, item.max_len
             )
+
+        tensor = None
+        # Already torch tensor -> make sure it's on right device.
+        if torch.is_tensor(item):
+            tensor = item
         # Numpy arrays.
-        if isinstance(item, np.ndarray):
+        elif isinstance(item, np.ndarray):
             # Object type (e.g. info dicts in train batch): leave as-is.
             if item.dtype == object:
                 return item
@@ -183,9 +186,11 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         # Everything else: Convert to numpy, then wrap as torch tensor.
         else:
             tensor = torch.from_numpy(np.asarray(item))
+
         # Floatify all float64 tensors.
-        if tensor.dtype == torch.double:
+        if tensor.is_floating_point():
             tensor = tensor.float()
+
         return tensor if device is None else tensor.to(device)
 
     return tree.map_structure(mapping, x)

@@ -99,8 +99,8 @@ def test_handle_in_endpoint(serve_instance):
         def __init__(self, handle):
             self.handle = handle
 
-        def __call__(self, _):
-            return ray.get(self.handle.remote())
+        async def __call__(self, _):
+            return await (await self.handle.remote())
 
     end_p1 = Endpoint1.bind()
     end_p2 = Endpoint2.bind(end_p1)

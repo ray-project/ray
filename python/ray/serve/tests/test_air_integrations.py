@@ -209,7 +209,7 @@ class Ingress:
 
     @app.post("/")
     async def predict(self, data=Depends(json_to_ndarray)):
-        return await self.dag.remote(data)
+        return await (await self.dag.remote(data))
 
 
 def test_air_integrations_in_pipeline(serve_instance):

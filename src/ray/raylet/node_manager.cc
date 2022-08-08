@@ -27,6 +27,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/common/memory_monitor.h"
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
@@ -331,7 +332,11 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       record_metrics_period_ms_(config.record_metrics_period_ms),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
-      ray_syncer_service_(ray_syncer_) {
+      ray_syncer_service_(ray_syncer_),
+      memory_monitor_(std::make_unique<MemoryMonitor>(
+          RayConfig::instance().memory_usage_threshold_fraction(),
+          RayConfig::instance().memory_monitor_interval_ms(),
+          CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
@@ -563,7 +568,11 @@ ray::Status NodeManager::RegisterGcs() {
   return ray::Status::OK();
 }
 
-void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
+void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker, bool force) {
+  if (force) {
+    worker->GetProcess().Kill();
+    return;
+  }
 #ifdef _WIN32
 // TODO(mehrdadn): implement graceful process termination mechanism
 #else
@@ -586,13 +595,14 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type,
-                                const std::string &disconnect_detail) {
+                                const std::string &disconnect_detail,
+                                bool force) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
   DisconnectClient(worker->Connection(), disconnect_type, disconnect_detail);
   worker->MarkDead();
-  KillWorker(worker);
+  KillWorker(worker, force);
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
@@ -1494,8 +1504,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         error_message << "A worker died or was killed while executing a task by an "
                          "unexpected system "
                          "error. To troubleshoot the problem, check the logs for the "
-                         "dead worker. RayTask ID: "
-                      << task_id << " Worker ID: " << worker->WorkerId()
+                         "dead worker."
+                      << " RayTask ID: " << task_id
+                      << " Worker ID: " << worker->WorkerId()
                       << " Node ID: " << self_node_id_
                       << " Worker IP address: " << worker->IpAddress()
                       << " Worker port: " << worker->Port()
@@ -2860,8 +2871,55 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   }
 }
 
-const ray::Status NodeManager::TryToGetAgentInfo(rpc::AgentInfo *agent_info) const {
-  return agent_manager_->TryToGetAgentInfo(agent_info);
+// Picks the worker with the latest submitted task and kills the process
+// if the memory usage is above the threshold. Allows one in-flight
+// process kill at a time as killing a process could sometimes take
+// seconds.
+// TODO(clarng): potentially kill more aggressively by measuring the
+// memory usage of each process and kill enough processes to put it
+// below the memory threshold.
+MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
+  return [this](bool is_usage_above_threshold) {
+    if (high_memory_eviction_target_ != nullptr) {
+      if (!high_memory_eviction_target_->GetProcess().IsAlive()) {
+        high_memory_eviction_target_ = nullptr;
+        std::chrono::duration<double> duration =
+            std::chrono::high_resolution_clock::now() - high_memory_eviction_start_time_;
+        RAY_LOG(INFO) << "Worker evicted approximately after " << duration.count()
+                      << "s to reclaim memory.";
+      }
+    }
+    if (is_usage_above_threshold) {
+      if (high_memory_eviction_target_ != nullptr) {
+        RAY_LOG_EVERY_MS(INFO, 1000)
+            << "Memory usage above threshold. "
+            << "Still waiting for worker eviction to free up memory. "
+            << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId()
+            << "task: " << high_memory_eviction_target_->GetAssignedTaskId();
+      } else {
+        auto newest_task_start_time = std::chrono::high_resolution_clock::time_point();
+        std::shared_ptr<WorkerInterface> latest_worker = nullptr;
+        for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
+          if (worker->GetAssignedTaskTime() > newest_task_start_time) {
+            newest_task_start_time = worker->GetAssignedTaskTime();
+            latest_worker = worker;
+          }
+        }
+        if (latest_worker != nullptr) {
+          RAY_LOG(INFO) << "Killing worker with the newest started task "
+                        << "to free up memory. "
+                        << "worker pid: " << latest_worker->GetProcess().GetId()
+                        << "task: " << latest_worker->GetAssignedTaskId();
+          high_memory_eviction_target_ = latest_worker;
+          DestroyWorker(
+              latest_worker,
+              rpc::WorkerExitType::USER_ERROR,
+              absl::StrCat("Ray OOM killer terminating worker to prevent system OOM"),
+              true /* force */);
+        }
+      }
+    }
+  };
 }
 
 }  // namespace raylet

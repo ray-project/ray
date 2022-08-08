@@ -35,7 +35,7 @@ Or more about `Ray Core`_ and its key abstractions:
 - `Actors`_: Stateful worker processes created in the cluster.
 - `Objects`_: Immutable values accessible across the cluster.
 
-Ray runs on any machine, cluster, cloud provider, and Kubernetes, and also features a growing
+Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 `ecosystem of community integrations`_.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
@@ -48,6 +48,16 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Tune`: https://docs.ray.io/en/latest/tune/index.html
 .. _`RLlib`: https://docs.ray.io/en/latest/rllib/index.html
 .. _`ecosystem of community integrations`: https://docs.ray.io/en/latest/ray-overview/ray-libraries.html
+
+
+Why Ray?
+--------
+
+Today's ML workloads are increasingly compute-intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to meet these demands.
+
+Ray is a unified way to scale Python and AI applications from a laptop to a cluster.
+
+With Ray, you can seamlessly scale the same code from a laptop to a cluster. Ray is designed to be general-purpose, meaning that it can performantly run any kind of workload. If your application is written in Python, you can scale it with Ray, no other infrastructure required.
 
 More Information
 ----------------

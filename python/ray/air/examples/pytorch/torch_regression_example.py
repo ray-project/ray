@@ -88,21 +88,14 @@ def train_func(config):
 
     results = []
 
+    def create_torch_iterator(shard):
+        iterator = shard.iter_torch_batches(batch_size=batch_size)
+        for batch in iterator:
+            yield batch["x"].float(), batch["y"].float()
+
     for _ in range(epochs):
-        train_torch_dataset = train_dataset_shard.to_torch(
-            label_column="y",
-            feature_columns=["x"],
-            label_column_dtype=torch.float,
-            feature_column_dtypes=torch.float,
-            batch_size=batch_size,
-        )
-        validation_torch_dataset = validation_dataset.to_torch(
-            label_column="y",
-            feature_columns=["x"],
-            label_column_dtype=torch.float,
-            feature_column_dtypes=torch.float,
-            batch_size=batch_size,
-        )
+        train_torch_dataset = create_torch_iterator(train_dataset_shard)
+        validation_torch_dataset = create_torch_iterator(validation_dataset)
 
         device = train.torch.get_device()
 
