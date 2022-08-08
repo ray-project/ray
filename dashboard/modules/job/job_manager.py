@@ -10,7 +10,7 @@ import time
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from collections import deque
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -69,7 +69,7 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
-    def tail_logs(self, job_id: str) -> Iterator[str]:
+    def tail_logs(self, job_id: str) -> Iterator[List[str]]:
         return file_tail_iterator(self.get_log_file_path(job_id))
 
     def get_last_n_log_lines(
@@ -91,10 +91,10 @@ class JobLogStorageClient:
             else:
                 # log_tail_iter can return batches of lines at a time.
                 # Need to split into lines
-                for line in lines.splitlines():
+                for line in lines:
                     log_tail_deque.append(line)
 
-        return "\n".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
+        return "".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
@@ -296,7 +296,7 @@ class JobSupervisor:
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job failed due to an application error, "
-                            "last available logs:\n" + log_tail
+                            "last available logs (truncated to 20,000 chars):\n" + log_tail
                         )
                     else:
                         message = None
@@ -577,8 +577,8 @@ class JobManager:
         if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
-        for line in self._log_client.tail_logs(job_id):
-            if line is None:
+        for lines in self._log_client.tail_logs(job_id):
+            if lines is None:
                 # Return if the job has exited and there are no new log lines.
                 status = await self.get_job_status(job_id)
                 if status not in {JobStatus.PENDING, JobStatus.RUNNING}:
@@ -586,4 +586,4 @@ class JobManager:
 
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
             else:
-                yield line
+                yield "".join(lines)
