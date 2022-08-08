@@ -35,7 +35,6 @@ class StateAPIStats:
 
 GLOBAL_STATE_STATS = StateAPIStats()
 
-TEST_LOG_FILE_SIZE = 4 * 1024 * 1024  # 4GB
 STATE_LIST_LIMIT = int(1e6)  # 1m
 STATE_LIST_TIMEOUT = 600  # 10min
 

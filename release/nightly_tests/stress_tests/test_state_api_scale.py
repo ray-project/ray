@@ -3,7 +3,6 @@ import json
 import ray
 from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME
 from ray._private.state_api_test_utils import (
-    TEST_LOG_FILE_SIZE,
     STATE_LIST_LIMIT,
     StateAPIMetric,
     aggregate_perf_results,
@@ -24,6 +23,9 @@ from ray.experimental.state.api import (
     list_tasks,
 )
 
+GiB = 1024 * 1024 * 1024
+MiB = 1024 * 1024
+
 
 # We set num_cpus to zero because this actor will mostly just block on I/O.
 @ray.remote(num_cpus=0)
@@ -39,6 +41,12 @@ class SignalActor:
     async def wait(self, should_wait=True):
         if should_wait:
             await self.ready_event.wait()
+
+
+def invoke_state_api_n(*args, **kwargs):
+    NUM_API_CALL_SAMPLES = 10
+    for _ in range(NUM_API_CALL_SAMPLES):
+        invoke_state_api(*args, **kwargs)
 
 
 def test_many_tasks(num_tasks: int):
@@ -76,7 +84,7 @@ def test_many_tasks(num_tasks: int):
     for _ in tqdm.trange(num_tasks, desc="Launching tasks"):
         results.append(pi4_sample.remote(signal))
 
-    invoke_state_api(
+    invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
         filters=[("name", "=", "pi4_sample()")],
@@ -132,7 +140,7 @@ def test_many_actors(num_actors: int):
     print("Waiting for actors to finish...")
     ray.get(waiting_actors)
 
-    invoke_state_api(
+    invoke_state_api_n(
         lambda res: len(res) == num_actors,
         list_actors,
         filters=[("state", "=", "ALIVE"), ("class_name", "=", actor_class_name)],
@@ -201,7 +209,7 @@ def test_many_objects(num_objects, num_actors):
         total_objs_created == num_objects
     ), "Expect correct number of objects created."
 
-    invoke_state_api(
+    invoke_state_api_n(
         lambda res: len(res) == num_objects,
         list_objects,
         filters=[
@@ -234,7 +242,7 @@ def test_large_log_file(log_file_size_byte: int):
             prefix = f"{LOG_PREFIX_ACTOR_NAME}LogActor\n"
             ctx.update(prefix.encode())
             while log_file_size_byte > 0:
-                n = min(log_file_size_byte, 4096)
+                n = min(log_file_size_byte, 4 * MiB)
                 chunk = "".join(random.choices(string.ascii_letters, k=n))
                 sys.stdout.writelines([chunk])
                 ctx.update(chunk.encode())
@@ -252,19 +260,26 @@ def test_large_log_file(log_file_size_byte: int):
 
     # Retrieve the log and compare the checksum
     ctx = hashlib.md5()
-    # Assuming computing checksum doesn't dominate the time here.
+
+    time_taken = 0
     t_start = time.perf_counter()
     for s in get_log(actor_id=actor._actor_id.hex(), tail=-1):
+        t_end = time.perf_counter()
+        time_taken += t_end - t_start
+        # Not including this time
         ctx.update(s.encode())
-    t_end = time.perf_counter()
+        # Only time the iterator's performance
+        t_start = time.perf_counter()
+
     assert expected_hash == ctx.hexdigest(), "Mismatch log file"
 
-    time_taken = t_end - t_start
     metric = StateAPIMetric(time_taken, log_file_size_byte)
     GLOBAL_STATE_STATS.calls["get_log"].append(metric)
 
 
-def _parse_input(num_tasks_str: str, num_actors_str: str, num_objects_str: str):
+def _parse_input(
+    num_tasks_str: str, num_actors_str: str, num_objects_str: str, log_file_sizes: str
+):
     def _split_to_int(s):
         tokens = s.split(",")
         return [int(token) for token in tokens]
@@ -273,6 +288,7 @@ def _parse_input(num_tasks_str: str, num_actors_str: str, num_objects_str: str):
         _split_to_int(num_tasks_str),
         _split_to_int(num_actors_str),
         _split_to_int(num_objects_str),
+        _split_to_int(log_file_sizes),
     )
 
 
@@ -312,8 +328,8 @@ def no_resource_leaks():
 @click.option(
     "--log-file-size-byte",
     required=False,
-    default=TEST_LOG_FILE_SIZE,
-    type=int,
+    default=f"{256*MiB},{1*GiB},{4*GiB}",
+    type=str,
     help="Number of actors to launch.",
 )
 @click.option(
@@ -337,11 +353,11 @@ def test(
         num_tasks = "100"
         num_actors = "10"
         num_objects = "100"
-        log_file_size_byte = 1024
+        log_file_size_byte = f"{16*MiB}"
 
     # Parse the input
-    num_tasks_arr, num_actors_arr, num_objects_arr = _parse_input(
-        num_tasks, num_actors, num_objects
+    num_tasks_arr, num_actors_arr, num_objects_arr, log_file_size_arr = _parse_input(
+        num_tasks, num_actors, num_objects, log_file_size_byte
     )
 
     test_utils.wait_for_condition(no_resource_leaks)
@@ -366,9 +382,10 @@ def test(
         print(f"\ntest_many_objects({n}) PASS")
 
     # Create large logs
-    print(f"\nRunning with large file={log_file_size_byte} bytes")
-    test_large_log_file(log_file_size_byte=log_file_size_byte)
-    print("\ntest_large_log_file() PASS")
+    for n in log_file_size_arr:
+        print(f"\nRunning with large file={n} bytes")
+        test_large_log_file(log_file_size_byte=n)
+        print(f"\ntest_large_log_file({n} bytes) PASS")
 
     print("\n\nPASS")
     end_time = time.perf_counter()
