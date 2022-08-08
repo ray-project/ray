@@ -730,7 +730,12 @@ def start(
         if address is None:
             default_address = f"{ray_params.node_ip_address}:{port}"
             bootstrap_address = services.find_bootstrap_address(temp_dir)
-            if default_address == bootstrap_address:
+            if (
+                default_address == bootstrap_address
+                and bootstrap_address in services.find_gcs_addresses()
+            ):
+                # The default address is already in use by a local running GCS
+                # instance.
                 raise ConnectionError(
                     f"Ray is trying to start at {default_address}, "
                     f"but is already running at {bootstrap_address}. "
@@ -970,9 +975,15 @@ def start(
         "they are forcefully terminated after the grace period."
     ),
 )
+@click.option(
+    "--temp-dir",
+    hidden=True,
+    default=None,
+    help="manually specify the root temporary dir of the Ray process",
+)
 @add_click_logging_options
 @PublicAPI
-def stop(force, grace_period):
+def stop(force, grace_period, temp_dir):
     """Stop Ray processes manually on the local machine."""
 
     # Note that raylet needs to exit before object store, otherwise
@@ -1084,7 +1095,7 @@ def stop(force, grace_period):
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
-    ray._private.utils.reset_ray_address()
+    ray._private.utils.reset_ray_address(temp_dir)
 
 
 @cli.command()
