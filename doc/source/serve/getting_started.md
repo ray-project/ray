@@ -98,7 +98,21 @@ The decorator converts `Translator` from a Python class into a Ray Serve
 
 Each deployment stores a single Python function or class that you write and uses
 it to serve requests. You can scale and configure each of your deployments independently using
-parameters in the `@serve.deployment` decorator.
+parameters in the `@serve.deployment` decorator. The example configures a few common parameters:
+
+* `num_replicas`: an integer that determines how many copies of our deployment process run in Ray. Requests are load balanced across these replicas, allowing you to scale your deployments horizontally.
+* `ray_actor_options`: a dictionary containing configuration options for each replica.
+    * `num_cpus`: a float representing the logical number of CPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer CPUs than replicas.
+    * `num_gpus`: a float representing the logical number of GPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer GPUs than replicas.
+
+All these parameters are optional, so feel free to omit them:
+
+```python
+...
+@serve.deployment
+class Translator:
+  ...
+```
 
 Deployments receive Starlette HTTP `request` objects [^f1]. If your deployment stores a Python function, the function is called on this `request` object. If your deployment stores a class, the class's `__call__` method is called on this `request` object. The return value is sent back in the HTTP response body.
 
@@ -166,71 +180,6 @@ $ python model_client.py
 
 Bonjour monde!
 ```
-
-## Scaling Ray Serve Deployments
-
-We can scale Ray Serve deployments up and down to meet our workload's requirements. Ray Serve offers a parameter in the `@serve.deployment` decorator called `num_replicas`. `num_replicas` is an integer that determines how many copies of our deployment process run in Ray. By default, it's set to 1. If we set it to a higher number, we can create more copies (called `replicas`) of our deployment. When many clients make requests to our deployments at the same time, their requests are routed to different replicas, allowing us to split our workload across the replicas. This lets us horizontally scale our deployments to take full advantage of our computing resources. Check out our guide on [scaling out a deployment](scaling-out-a-deployment) for more info.
-
-As an example, we can rewrite our `Translator` class to use 3 replicas to handle more client requests smoothly. All we need to do is set `num_replicas` in the decorator:
-
-```python
-...
-
-@serve.deployment(
-  num_replicas=3
-)
-class Translator:
-    ...
-
-...
-```
-
-We can also manually tune the number of replicas for our deployments in production. See the guide on [putting Ray Serve in production](serve-in-production) to learn more.
-
-Ray Serve also offers autoscaling, allowing you to set `min_replicas` and `max_replicas` on your deployments. Ray Serve will automatically scale your deployments to fit their usage. This feature also lets you scale to zero, so your deployments can have 0 replicas during periods of zero usage, allowing you to automatically save resources. See the guide on [Ray Serve autoscaling](ray-serve-autoscaling) to learn more.
-
-## Reserving Fine-Grained Resources including Fractional GPUs and CPUs
-
-Ray Serve allows us to reserve fine-grained resources for each of our deployment's replicas. These resources include the number of CPUs and GPUs that we'd like to allocate per replica. The `@serve.deployment` decorator offers a parameter called `ray_actor_options`, which is a dictionary of settings for each of our replicas. Two of these settings are `num_cpus` and `num_gpus`, which control the number of CPUs and the number of GPUs reserved for each deployment replica.
-
-For example, we can rewrite `Translator`, so each replica has access to 2 CPUs and 1 GPU. All we need to do is set `num_cpus` and `num_gpus` in the decorator:
-
-```python
-...
-
-@serve.deployment(
-  ray_actor_options={
-    "num_cpus": 2,
-    "num_gpus": 1,
-  }
-)
-class Translator:
-    ...
-
-...
-```
-
-Note that these settings represent logical CPUs and GPUs, so we can also set them to fractions. Fractional GPUs and CPUs allow us to pack multiple deployment replicas together on the same machine, so they can share the available GPUs and CPUs.
-
-For example, if we have a machine with 2 CPUs and 1 GPU, we can rewrite `Translator` to reserve all the available resources with 2 replicas:
-
-```python
-...
-
-@serve.deployment(
-  num_replicas=2,
-  ray_actor_options={
-    "num_cpus": 1,
-    "num_gpus": 0.5,
-  }
-)
-class Translator:
-    ...
-
-...
-```
-
-See the guides on [Ray Serve resource management](serve-cpus-gpus) and [Ray Serve's fractional resources](serve-fractional-resources-guide) to learn more.
 
 ## Composing Machine Learning Models with Deployment Graphs
 
