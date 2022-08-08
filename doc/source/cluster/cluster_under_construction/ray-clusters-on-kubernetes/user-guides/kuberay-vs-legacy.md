@@ -77,9 +77,10 @@ Take note of the following configuration differences when switching to KubeRay
 deployment.
 
 ### Autoscaling is optional
-Ray Autoscaler support is optional with KubeRay. Set `spec.enableInTreeAutoscaling: true`
-to enable autoscaling. KubeRay will then automatically configure a Ray Autoscaler sidecar for
-the Ray head pod. The autoscaler container requests 500m CPU and 512Mi memory by default.
+Ray Autoscaler support is optional with KubeRay. Set `spec.enableInTreeAutoscaling:true`
+in the RayCluster CR to enable autoscaling. The KubeRay operator will then automatically
+configure a Ray Autoscaler sidecar for the Ray head pod.
+The autoscaler container requests 500m CPU and 512Mi memory by default.
 Autoscaler container configuration is accessible via `spec.autoscalerOptions`.
 Note that autoscaling with KubeRay is supported only with Ray versions at least as new 1.11.
 
