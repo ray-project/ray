@@ -305,37 +305,6 @@ c'était le meilleur des temps, c'était le pire des temps .
 
 Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources.
 
-## Porting FastAPI Applications to Ray Serve
-
-Ray Serve also lets you port your existing
-[FastAPI](https://fastapi.tiangolo.com/) Applications. You can also
-integrate your Ray Serve applications with FastAPI to access features like
-advanced HTTP parsing, automatic UI and documentation generation, and Pydantic
-type-checking. For more info about FastAPI with Serve, please see
-{ref}`serve-fastapi-http`.
-
-You can define a Serve deployment by adding the `@serve.ingress` decorator to
-your FastAPI app. As an example of FastAPI, here's a modified version of our
-`Translator` class:
-
-```{literalinclude} ../serve/doc_code/getting_started/fastapi_model.py
-:start-after: __fastapi_start__
-:end-before: __fastapi_end__
-:language: python
-```
-
-We can run this script and then send HTTP requests to the deployment:
-
-```{literalinclude} ../serve/doc_code/getting_started/fastapi_model.py
-:start-after: __fastapi_client_start__
-:end-before: __fastapi_client_end__
-:language: python
-```
-
-Congratulations! You just built and deployed machine learning models on Ray
-Serve! You should now have enough context to dive into the {doc}`key-concepts` to
-get a deeper understanding of Ray Serve.
-
 ## Next Steps
 
 - Dive into the {doc}`key-concepts` to get a deeper understanding of Ray Serve.
