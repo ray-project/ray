@@ -1,6 +1,6 @@
 # Pattern: Linear Pipeline
 
-This example shows how to form a linear pipeline of deployments. The request flows from each deployment to the next, getting transformed each time.
+This [deployment graph pattern](serve-deployment-graph-patterns-overview) is a linear pipeline of deployments. The request flows from each deployment to the next, getting transformed each time.
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/chain_nodes_same_class_different_args.svg)
 

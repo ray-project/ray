@@ -1,6 +1,6 @@
 # Pattern: Conditional
 
-This example shows how to control your graph's flow using conditionals. You can use this pattern to introduce a dynamic path for your requests to flow through.
+This [deployment graph pattern](serve-deployment-graph-patterns-overview) allows you to control your graph's flow using conditionals. You can use this pattern to introduce a dynamic path for your requests to flow through.
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/control_flow_based_on_user_inputs.svg)
 

@@ -2,7 +2,7 @@
 
 # Pattern: Branching Input
 
-This example shows how to pass the same input to multiple deployments in parallel. You can then aggregate these deployments' intermediate outputs in another deployment.
+This [deployment graph pattern](serve-deployment-graph-patterns-overview) lets you pass the same input to multiple deployments in parallel. You can then aggregate these deployments' intermediate outputs in another deployment.
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/deployment_graph_combine_two_nodes_with_passing_same_input_parallel.svg)
 
