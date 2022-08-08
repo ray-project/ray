@@ -206,7 +206,7 @@ Example:
 
 :::{tip}
 Certain `pip` packages build from source when installed via `pip install`; these can
-use up all resources while installing, leading to problems with the Ray cluster.  Consider
+use up too many resources while installing, leading to problems with the Ray cluster.  Consider
 precompiling such packages in a private repository or Docker image.
 :::
 
