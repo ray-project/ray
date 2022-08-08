@@ -211,7 +211,7 @@ if __name__ == "__main__":
 
     import ray
 
-    ray.init('auto')
+    ray.init('auto', runtime_env = {"env_vars": {"RAY_TPU_DEV": "1"}})
     train_mnist(
         num_workers=args.num_workers,
         use_gpu=args.use_tpu,
