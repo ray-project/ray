@@ -17,14 +17,17 @@ class HashingVectorizer(Preprocessor):
     the size of your vocabulary, then each column approximately corresponds to the
     frequency of a unique token.
 
-    This preprocessor is memory efficient and quick to pickle. However, given a
+    :class:`HashingVectorizer` is memory efficient and quick to pickle. However, given a
     transformed column, you can't know which tokens correspond to it. This might make it
     hard to determine which tokens are important to your model.
 
     .. note::
 
-        A document-term matrix is a table that describes the frequency of tokens
-        in a collection of strings. For example, the strings `"I like Python"` and `"I
+        This preprocessor transforms each input column to a
+        `document-term matrix <https://en.wikipedia.org/wiki/Document-term_matrix>`_.
+
+        A document-term matrix is a table that describes the frequency of tokens in a
+        collection of documents. For example, the strings `"I like Python"` and `"I
         dislike Python"` might have the document-term matrix below:
 
         .. code-block::
@@ -33,7 +36,8 @@ class HashingVectorizer(Preprocessor):
                 0         1              1               1            0
                 1         1              1               0            1
 
-        To generate the matrix, you need to map each token to a unique index. For example:
+        To generate the matrix, you typically map each token to a unique index. For
+        example:
 
         .. code-block::
 
@@ -43,11 +47,10 @@ class HashingVectorizer(Preprocessor):
                 2  dislike      2
                 3     like      3
 
-        The problem with this approach is that the mapping and consequently memory use
-        scale linearly with the size of your vocabulary.
-
-        :class:`HashingVectorizer` circumvents this problem by computing
-        indices with a hash function: :math:`\\texttt{index} = hash(\\texttt{token})`.
+        The problem with this approach is that memory use scales linearly with the size
+        of your vocabulary. :class:`HashingVectorizer` circumvents this problem by
+        computing indices with a hash function:
+        :math:`\\texttt{index} = hash(\\texttt{token})`.
 
     .. warning::
         Sparse matrices aren't currently supported. If you use a large ``num_features``,
