@@ -1,4 +1,5 @@
 from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
+import logging
 
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.train.jax.config import JaxConfig
@@ -10,6 +11,8 @@ from ray.util import PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
@@ -128,7 +131,20 @@ class JaxTrainer(DataParallelTrainer):
         )
         
         print(scaling_config.resources_per_worker)
-        print(scaling_config.placement_strategy)
+        print(scaling_config.additional_resources_per_worker)
+        
+        resources_per_worker = scaling_config.resources_per_worker
+        if resources_per_worker:
+            resources_per_worker_upper = {
+                k.lower(): v for k, v in resources_per_worker.items() if k.upper() == 'TPU'
+            }
+            scaling_config.resources_per_worker = resources_per_worker_upper
+        
+        print(scaling_config.additional_resources_per_worker)
+        if 'PACK' in scaling_config.placement_strategy: 
+            scaling_config.placement_strategy = 'SPREAD'
+            logger.info("In JaxTrainer, the `placement_stategy` need to be `SPREAD`"
+                        f"Placement strategy is now changed to `SPREAD`")
         
         # case-insensitivize dict
         # since `tpu` is not the standard resources in ray
