@@ -5,13 +5,17 @@ import json
 from ray import cloudpickle
 from enum import Enum, unique
 import hashlib
-from typing import Dict, Optional, Any, Tuple
+from typing import Dict, Optional, Any, Tuple, TYPE_CHECKING
 
 from dataclasses import dataclass
 
 import ray
 from ray import ObjectRef
 from ray.util.annotations import PublicAPI
+
+
+if TYPE_CHECKING:
+    from ray.actor import ActorHandle
 
 # Alias types
 Event = Any
@@ -194,11 +198,8 @@ class WorkflowTaskRuntimeOptions:
 class WorkflowExecutionMetadata:
     """Dataclass for the metadata of the workflow execution."""
 
-    # The ID of the node the workflow task executes on.
-    # This can be used for co-locating scheduling, for example, the checkpoint task
-    # could be scheduled to the same node as the task to be checkpointed, this enables
-    # efficient data transfer via shared memory.
-    node_id: str
+    # The object ref of the returned output
+    output_ref: Optional[ObjectRef] = None
     # True if the workflow task returns a workflow DAG.
     is_output_workflow: bool = False
     # True if the upstream checkpointing tasks failed.
@@ -210,3 +211,7 @@ class WorkflowExecutionMetadata:
 class WorkflowMetaData:
     # The current status of the workflow
     status: WorkflowStatus
+
+
+def get_management_actor() -> "ActorHandle":
+    return ray.get_actor(MANAGEMENT_ACTOR_NAME, namespace=MANAGEMENT_ACTOR_NAMESPACE)

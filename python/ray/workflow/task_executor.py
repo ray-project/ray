@@ -20,6 +20,7 @@ from ray.workflow.common import (
     TaskID,
     WorkflowRef,
     CheckpointMode,
+    get_management_actor,
 )
 from ray.workflow.workflow_state import WorkflowExecutionState
 from ray.workflow.workflow_state_from_dag import workflow_state_from_dag
@@ -54,7 +55,7 @@ def _workflow_task_executor(
     task_id: "TaskID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowTaskRuntimeOptions",
-) -> Tuple[Any, Any]:
+) -> bool:
     """Executor function for workflow task.
 
     Args:
@@ -65,13 +66,11 @@ def _workflow_task_executor(
         runtime_options: Parameters for workflow task execution.
 
     Returns:
-        Workflow task output.
+        True if the task is committed. False if the task exits early.
     """
     with workflow_context.workflow_task_context(context):
         store = workflow_storage.get_workflow_storage()
-        execution_metadata = WorkflowExecutionMetadata(
-            node_id=ray.get_runtime_context().get_node_id()
-        )
+        execution_metadata = WorkflowExecutionMetadata()
 
         # Part 1: resolve inputs
         args, kwargs = baked_inputs.resolve(store)
@@ -86,8 +85,7 @@ def _workflow_task_executor(
                 f"Upstream checkpoint sizes: {sizes_dict}"
             )
         except RayError:
-            execution_metadata.upstream_checkpointing_failed = True
-            return execution_metadata, None
+            return False
 
         # Part 3: execute the task
         try:
@@ -108,17 +106,23 @@ def _workflow_task_executor(
             if runtime_options.catch_exceptions:
                 output = (output, None)
 
-        # Part 4: save outputs
+        # Part 4: return the task output
+        actor = get_management_actor()
+        execution_metadata.output_ref = ray.put(output, _owner=actor)
+        ray.get(actor.handle_task_completion.remote(execution_metadata))
+
+        # Part 5: save outputs
         # TODO(suquark): Validate checkpoint options before commit the task.
         if CheckpointMode(runtime_options.checkpoint) == CheckpointMode.SYNC:
             if isinstance(output, WorkflowExecutionState):
                 store.save_workflow_execution_state(task_id, output)
-            # For normal workflow outputs, we checkpoint them with a checkpoint task
-            # created by workflow management actor.
-        return execution_metadata, output
+            else:
+                store.save_task_output(task_id, output, exception=None)
+
+        return True
 
 
-@ray.remote(num_returns=2)
+@ray.remote
 def _workflow_task_executor_remote(
     func: Callable,
     context: "WorkflowTaskContext",

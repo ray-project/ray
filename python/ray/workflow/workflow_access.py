@@ -1,12 +1,17 @@
 import asyncio
 import logging
 import queue
-from typing import Dict, List, Set, Optional, TYPE_CHECKING
+from typing import Dict, List, Set, Optional
 
 import ray
 
 from ray.workflow import common
-from ray.workflow.common import WorkflowStatus, TaskID
+from ray.workflow.common import (
+    WorkflowStatus,
+    TaskID,
+    get_management_actor,
+    WorkflowExecutionMetadata,
+)
 from ray.workflow import workflow_state_from_storage
 from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
@@ -19,9 +24,6 @@ from ray.workflow.exceptions import (
 from ray.workflow.workflow_executor import WorkflowExecutor
 from ray.workflow.workflow_state import WorkflowExecutionState
 from ray.workflow.workflow_context import WorkflowTaskContext
-
-if TYPE_CHECKING:
-    from ray.actor import ActorHandle
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +331,14 @@ class WorkflowManagementActor:
     def ready(self) -> None:
         """A no-op to make sure the actor is ready."""
 
+    async def handle_task_completion(
+        self, workflow_id: str, task_id: TaskID, output: WorkflowExecutionMetadata
+    ) -> None:
+        executor = self._workflow_executors.get(workflow_id)
+        if executor is None:
+            raise RuntimeError(f"Workflow [id={workflow_id}] is not running.")
+        await executor.handle_task_completion(task_id, output)
+
 
 def init_management_actor(
     max_running_workflows: Optional[int], max_pending_workflows: Optional[int]
@@ -366,9 +376,3 @@ def init_management_actor(
         ).remote(max_running_workflows, max_pending_workflows)
         # No-op to ensure the actor is created before the driver exits.
         ray.get(actor.ready.remote())
-
-
-def get_management_actor() -> "ActorHandle":
-    return ray.get_actor(
-        common.MANAGEMENT_ACTOR_NAME, namespace=common.MANAGEMENT_ACTOR_NAMESPACE
-    )

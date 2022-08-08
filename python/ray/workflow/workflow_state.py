@@ -100,8 +100,6 @@ class WorkflowExecutionState:
     # the continuation lineage, so all other tasks in the continuation points
     # to the output of the last task instead of the output of themselves.
     output_map: Dict[TaskID, WorkflowRef] = field(default_factory=dict)
-    # The map from a task to its checkpointing task.
-    checkpoint_task_map: Dict[TaskID, ray.ObjectRef] = field(default_factory=dict)
     # The map from a task to its in-storage checkpoints. Normally it is the checkpoint
     # created by the underlying Ray task. For continuations, the semantics is similar
     # to 'output_map'.
