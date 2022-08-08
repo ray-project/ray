@@ -170,6 +170,7 @@ parts:
             sections:
               - file: serve/managing-deployments
               - file: serve/handling-dependencies
+              - file: serve/scaling-and-resource-allocation
               - file: serve/http-guide
               - file: serve/http-adapters
               - file: serve/handle-guide
