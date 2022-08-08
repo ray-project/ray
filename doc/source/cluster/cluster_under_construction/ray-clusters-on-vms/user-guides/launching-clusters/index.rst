@@ -11,4 +11,3 @@
     gcp.md
     azure.md
     on-premises.md
-    add-your-own-cloud-provider.rst
