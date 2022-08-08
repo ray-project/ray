@@ -9,6 +9,10 @@ This section should help you understand how to:
 - use customized HTTP Adapters
 
 
+:::{note}
+HTTP Proxy HA is enabled by using [REST API](serve-in-production-deploying) or [Kubernetes operator](deploying-serve-on-kubernetes) to start the Ray Serve
+:::
+
 (serve-http)=
 
 ## Calling Deployments via HTTP
