@@ -6,7 +6,7 @@ ppo-breakoutnoframeskip-v4:
         episode_reward_mean: 50.0
         timesteps_total: 7000000
     stop:
-        time_total_s: 7200
+        time_total_s: 3600
     config:
         lambda: 0.95
         kl_coeff: 0.5
@@ -18,10 +18,13 @@ ppo-breakoutnoframeskip-v4:
         rollout_fragment_length: 100
         sgd_minibatch_size: 500
         num_sgd_iter: 10
-        num_workers: 10
-        num_envs_per_worker: 5
+        num_workers: 30
+        num_envs_per_worker: 1
         batch_mode: truncate_episodes
         observation_filter: NoFilter
         model:
             vf_share_layers: true
-        num_gpus: 1
+        num_gpus: 2
+        min_time_s_per_iteration: 30
+        lr: 0.0001
+        grad_clip: 100
