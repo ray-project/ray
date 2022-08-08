@@ -14,12 +14,12 @@ The Ray cluster launcher is part of the `ray` command line tool. It allows you t
 
 ```
 # install ray cluster launcher, which is part of ray command line tool.
-pip install ray
+pip install -U ray[default]
 ```
 
 ### Install and Configure Azure CLI
 
-Next, install the Azure CLI (`pip install azure-cli azure-identity`) then login using (`az login`).  
+Next, install the Azure CLI (`pip install -U azure-cli azure-identity`) then login using (`az login`).  
 
 ```
 # install azure cli.

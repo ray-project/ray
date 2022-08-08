@@ -11,7 +11,7 @@ This section assumes that you have a list of machines and that the nodes in the 
 
 ```
 # install ray cluster launcher, which is part of ray command line tool.
-pip install ray
+pip install -U ray[default]
 ```
 
 
@@ -63,8 +63,8 @@ Connection to compute04.berkeley.edu 6379 port [tcp/*] succeeded!
 
 If the node cannot access that port at that IP address, you might see
 
-$ nmap -sV --reason -p $PORT $HEAD_ADDRESS
 ```
+$ nmap -sV --reason -p $PORT $HEAD_ADDRESS
 Nmap scan report for compute04.berkeley.edu (123.456.78.910)
 Host is up (0.0011s latency).
 rDNS record for 123.456.78.910: compute04.berkeley.edu

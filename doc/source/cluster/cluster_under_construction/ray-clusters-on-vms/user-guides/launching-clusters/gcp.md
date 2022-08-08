@@ -11,13 +11,13 @@ The Ray cluster launcher is part of the `ray` command line tool. It allows you t
 
 ```
 # install ray cluster launcher, which is part of ray command line tool.
-pip install ray
+pip install -U ray[default]
 ```
 
 ## Install and Configure Google API Client
 
 If you have never created a Google APIs Console project, read the [Managing Projects page](https://cloud.google.com/resource-manager/docs/creating-managing-projects?visit_id=637952351450670909-433962807&rd=1) and create a project in the [Google API Console](https://console.developers.google.com/).
-Next, install Google API Client using `pip install google-api-python-client`.
+Next, install Google API Client using `pip install -U google-api-python-client`.
 
 
 ```
