@@ -10,7 +10,6 @@ from ray.data.context import DatasetContext
 from ray.data.preprocessors import BatchMapper
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
-from ray.air.util.tensor_extensions.exception import TensorArrayCastingError
 
 
 @PublicAPI(stability="beta")
@@ -194,13 +193,15 @@ class BatchPredictor:
                 prediction_output = self._predictor.predict(
                     prediction_batch, **predict_kwargs
                 )
+
                 if keep_columns:
                     prediction_output[keep_columns] = batch[keep_columns]
 
                 # TODO(jiaodong): This still fails at large batch where batches
                 # with mismatched size will fail at _concat_tables
                 return convert_batch_type_to_pandas(
-                    prediction_output, cast_tensor_columns
+                    prediction_output,
+                    cast_tensor_columns=cast_tensor_columns
                 )
 
         compute = ray.data.ActorPoolStrategy(

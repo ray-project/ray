@@ -95,19 +95,45 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         return pandas.DataFrame(columns)
 
     def _concat_tables(self, tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
+        from collections import defaultdict
         pandas = lazy_import_pandas()
         from ray.air.util.data_batch_conversion import (
-            _cast_ndarray_columns_to_tensor_extension,
+            _cast_ndarray_columns_to_tensor_extension
+        )
+        from ray.air.util.tensor_extensions.casting_util import (
+            column_subject_to_casting
         )
 
         if len(tables) > 1:
             df = pandas.concat(tables, ignore_index=True)
+            # For application level fallback to python object, we might be
+            # concating blocks where same column name have different dtype. In
+            # this case we respect user fallback by using python object and skip
+            # casting.
+            # TODO: Revisit this when we fully support Ragged Tensor
+            subject_to_casting_map = defaultdict(set)
+            for table in tables:
+                for col_name, col in table.items():
+                    subject_to_casting_map[col_name].add(
+                        column_subject_to_casting(col)
+                    )
+            for col_name, castable_set in subject_to_casting_map.items():
+                if len(castable_set) > 1:
+                    print(f">>>>> Resetting and skipping cast !!!")
+                    return df
         else:
             df = tables[0]
+
         df.reset_index(drop=True, inplace=True)
         ctx = DatasetContext.get_current()
         if ctx.enable_tensor_extension_casting:
-            df = _cast_ndarray_columns_to_tensor_extension(df)
+            try:
+                df = _cast_ndarray_columns_to_tensor_extension(df)
+            except Exception as e:
+                print(f">>>> len(tables): {len(tables)}")
+                print(f">>>> table: {df}")
+                raise e
+
         return df
 
     @staticmethod

@@ -223,3 +223,6 @@ workflow_data/
 /compile_commands.json
 # Directory where clangd puts its indexing work
 /.cache/
+
+# Images on disk
+summit_demo/movie_files/

@@ -13,7 +13,6 @@ from ray.air.util.data_batch_conversion import (
 )
 from ray.data import Preprocessor
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.air.util.tensor_extensions.exception import TensorArrayCastingError
 
 try:
     import pyarrow
@@ -156,22 +155,13 @@ class Predictor(abc.ABC):
             data_df = self._preprocessor.transform_batch(data_df)
 
         predictions_df = self._predict_pandas(data_df, **kwargs)
-        try:
-            return convert_pandas_to_batch_type(
-                predictions_df,
-                type=TYPE_TO_ENUM[type(data)],
-                cast_tensor_columns=self._cast_tensor_columns,
-            )
-        except TensorArrayCastingError:
-            for col_name, col in predictions_df.items():
-                predictions_df.loc[:, col_name] = [
-                    record.tolist() for record in col
-                ]
-            return convert_pandas_to_batch_type(
-                predictions_df,
-                type=TYPE_TO_ENUM[type(data)],
-                cast_tensor_columns=False,
-            )
+        return convert_pandas_to_batch_type(
+            predictions_df,
+            type=TYPE_TO_ENUM[type(data)],
+            cast_tensor_columns=self._cast_tensor_columns,
+            fallback_to_python_object=True
+        )
+
 
     @DeveloperAPI
     def _predict_pandas(self, data: "pd.DataFrame", **kwargs) -> "pd.DataFrame":

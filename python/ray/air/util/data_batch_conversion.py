@@ -73,6 +73,7 @@ def convert_pandas_to_batch_type(
     data: pd.DataFrame,
     type: DataType,
     cast_tensor_columns: bool = False,
+    fallback_to_python_object: bool = False,
 ) -> DataBatchType:
     """Convert the provided Pandas dataframe to the provided ``type``.
 
@@ -86,7 +87,9 @@ def convert_pandas_to_batch_type(
         The input data represented with the provided type.
     """
     if cast_tensor_columns:
-        data = _cast_ndarray_columns_to_tensor_extension(data)
+        data = _cast_ndarray_columns_to_tensor_extension(
+            data, fallback_to_python_object=fallback_to_python_object
+        )
     if type == DataType.PANDAS:
         return data
 
@@ -145,32 +148,41 @@ def _unwrap_ndarray_object_type_if_needed(arr: np.ndarray) -> np.ndarray:
     return arr
 
 
-def _cast_ndarray_columns_to_tensor_extension(df: pd.DataFrame) -> pd.DataFrame:
+def _cast_ndarray_columns_to_tensor_extension(
+    df: pd.DataFrame,
+    fallback_to_python_object: bool = False
+) -> pd.DataFrame:
     """
     Cast all NumPy ndarray columns in df to our tensor extension type, TensorArray.
     """
     from ray.air.util.tensor_extensions.pandas import TensorArray
-
+    from ray.air.util.tensor_extensions.casting_util import (
+        column_subject_to_casting
+    )
     # Try to convert any ndarray columns to TensorArray columns.
     # TODO(Clark): Once Pandas supports registering extension types for type
     # inference on construction, implement as much for NumPy ndarrays and remove
     # this. See https://github.com/pandas-dev/pandas/issues/41848
     for col_name, col in df.items():
-        if (
-            col.dtype.type is np.object_
-            and not col.empty
-            and isinstance(col.iloc[0], np.ndarray)
-        ):
+        if column_subject_to_casting(col):
             try:
                 df.loc[:, col_name] = TensorArray(col)
             except RaggedTensorNotSupportedError as e:
-                raise TensorArrayCastingError(
-                    f"Tried to cast column {col_name} to the TensorArray tensor "
-                    "extension type but the conversion failed. To disable "
-                    "automatic casting to this tensor extension, set "
-                    "ctx = DatasetContext.get_current(); "
-                    "ctx.enable_tensor_extension_casting = False."
-                ) from e
+                # For library / application level implementation, such as
+                # predictor, can optionally provide application flag to fall
+                # back to python objects when TensorArray restriction is not
+                # critical, thus cirvumvent table and block level auto-casting.
+                # TODO: Revisit this when we fully support Ragged Tensor
+                if fallback_to_python_object:
+                    df.loc[:, col_name] = [record.tolist() for record in col]
+                else:
+                    raise TensorArrayCastingError(
+                        f"Tried to cast column {col_name} to the TensorArray tensor "
+                        "extension type but the conversion failed. To disable "
+                        "automatic casting to this tensor extension, set "
+                        "ctx = DatasetContext.get_current(); "
+                        "ctx.enable_tensor_extension_casting = False."
+                    ) from e
 
     return df
 
