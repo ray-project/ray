@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, Optional, Tuple, List, Union
 
 import numpy as np
 import pyarrow as pa
@@ -45,7 +45,7 @@ class ArrowTensorType(pa.PyExtensionType):
         """
         from ray.air.util.tensor_extensions.pandas import TensorDtype
 
-        return TensorDtype(self._shape, self.storage_type.value_type.to_pandas_dtype())
+        return TensorDtype(self.storage_type.value_type.to_pandas_dtype(), self._shape)
 
     def __reduce__(self):
         return ArrowTensorType, (self._shape, self.storage_type.value_type)
@@ -265,6 +265,285 @@ class ArrowTensorArray(pa.ExtensionArray):
                 underlying data (e.g. in presence of nulls, or for
                 non-primitive types). This argument is currently ignored, so
                 zero-copy isn't enforced even if this argument is true.
+
+        Returns:
+            A single ndarray representing the entire array of tensors.
+        """
+        return self._to_numpy(zero_copy_only=zero_copy_only)
+
+
+@PublicAPI(stability="beta")
+class ArrowRaggedTensorType(pa.PyExtensionType):
+    """
+    Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
+    tensors.
+
+    This is the Arrow side of TensorDtype for tensor elements with different shapes.
+    Note that this extension only supports non-ragged tensor elements; i.e., when
+    considering each tensor element in isolation, they must have a well-defined shape.
+
+    See Arrow extension type docs:
+    https://arrow.apache.org/docs/python/extending_types.html#defining-extension-types-user-defined-types
+    """
+
+    def __init__(self, dtype: pa.DataType):
+        """
+        Construct the Arrow extension type for array of heterogeneous-shaped tensors.
+
+        Args:
+            dtype: pyarrow dtype of tensor elements.
+        """
+        super().__init__(
+            pa.struct([("data", pa.list_(dtype)), ("shape", pa.list_(pa.int64()))])
+        )
+
+    def to_pandas_dtype(self):
+        """
+        Convert Arrow extension type to corresponding Pandas dtype.
+
+        Returns:
+            An instance of pd.api.extensions.ExtensionDtype.
+        """
+        from ray.air.util.tensor_extensions.pandas import TensorDtype
+
+        return TensorDtype(
+            self.storage_type["data"].type.value_type.to_pandas_dtype(),
+        )
+
+    def __reduce__(self):
+        return ArrowRaggedTensorType, (self.storage_type["data"].type.value_type,)
+
+    def __arrow_ext_class__(self):
+        """
+        ExtensionArray subclass with custom logic for this array of tensors
+        type.
+
+        Returns:
+            A subclass of pd.api.extensions.ExtensionArray.
+        """
+        return ArrowRaggedTensorArray
+
+    def __str__(self) -> str:
+        dtype = self.storage_type["data"].type.value_type
+        return f"ArrowRaggedTensorType(dtype={dtype})"
+
+    def __repr__(self) -> str:
+        return str(self)
+
+
+@PublicAPI(stability="beta")
+class ArrowRaggedTensorArray(pa.ExtensionArray):
+    """
+    An array of heterogeneous-shaped, homogeneous-typed tensors.
+
+    This is the Arrow side of TensorArray for tensor elements that have differing
+    shapes. Note that this extension only supports non-ragged tensor elements; i.e.,
+    when considering each tensor element in isolation, they must have a well-defined
+    shape.
+
+    See Arrow docs for customizing extension arrays:
+    https://arrow.apache.org/docs/python/extending_types.html#custom-extension-array-class
+    """
+
+    OFFSET_DTYPE = np.int32
+
+    def __getitem__(self, key):
+        # This __getitem__ hook allows us to support proper indexing when accessing a
+        # single tensor (a "scalar" item of the array). Without this hook for integer
+        # keys, the indexing will fail on all currently released pyarrow versions due
+        # to a lack of proper ExtensionScalar support. Support was added in
+        # https://github.com/apache/arrow/pull/10904, but hasn't been released at the
+        # time of this comment, and even with this support, the returned ndarray is a
+        # flat representation of the n-dimensional tensor.
+
+        # NOTE(Clark): We'd like to override the pa.Array.getitem() helper instead,
+        # which would obviate the need for overriding __iter__() below, but
+        # unfortunately overriding Cython cdef methods with normal Python methods isn't
+        # allowed.
+        if isinstance(key, slice):
+            sliced = super().__getitem__(key).to_numpy()
+            if sliced.dtype.type is not np.object_:
+                # Force ths slice to match NumPy semantics for unit (single-element)
+                # slices.
+                sliced = sliced[0:1]
+            return sliced
+        return self._to_numpy(key)
+
+    def __iter__(self):
+        # Override pa.Array.__iter__() in order to return an iterator of properly
+        # shaped tensors instead of an iterator of flattened tensors.
+        # See comment in above __getitem__ method.
+        for i in range(len(self)):
+            # Use overridden __getitem__ method.
+            yield self.__getitem__(i)
+
+    def to_pylist(self):
+        # Override pa.Array.to_pylist() due to a lack of ExtensionScalar support (see
+        # comment in __getitem__).
+        return list(self)
+
+    @classmethod
+    def from_numpy(
+        cls, arr: Union[np.ndarray, List[np.ndarray], Tuple[np.ndarray]]
+    ) -> "ArrowRaggedTensorArray":
+        """
+        Convert an ndarray or an iterable of heterogeneous-shaped ndarrays to an array
+        of heterogeneous-shaped, homogeneous-typed tensors.
+
+        Args:
+            arr: An ndarray or an iterable of heterogeneous-shaped ndarrays.
+
+        Returns:
+            An ArrowRaggedTensorArray containing len(arr) tensors of heterogeneous
+            shape.
+        """
+        # Implementation note - Arrow representation of ragged tensors:
+        #
+        # We represent an array of ragged tensors using a struct array containing two
+        # fields:
+        #  - data: a variable-sized list array, where each element in the array is a
+        #    tensor element stored in a 1D (raveled) variable-sized list of the
+        #    underlying scalar data type.
+        #  - shape: a variable-sized list array containing the shapes of each tensor
+        #    element.
+        if isinstance(arr, Iterable):
+            if isinstance(arr, np.ndarray) and arr.dtype.type is not np.object_:
+                raise ValueError(
+                    "ArrowRaggedTensorArray should only be used for "
+                    "heterogeneous-shaped tensor elements, i.e. of object dtype, but "
+                    f"got dtype: {arr.dtype}"
+                )
+            arr = list(arr)
+        elif not isinstance(arr, (list, tuple)):
+            raise ValueError(
+                "ArrowRaggedTensorArray can only be constructed from an ndarray or a "
+                f"list/tuple of ndarrays, but got: {type(arr)}"
+            )
+        dtypes, shapes, sizes, raveled = [], [], [], []
+        for a in arr:
+            a = np.asarray(a)
+            dtypes.append(a.dtype)
+            shapes.append(a.shape)
+            sizes.append(a.size)
+            # Convert to 1D array view; this should be zero-copy in the common case.
+            # NOTE: If array is not in C-contiguous order, this will convert it to
+            # C-contiguous order, incurring a copy.
+            raveled.append(np.ravel(a, order="C"))
+        dtype = np.find_common_type([], dtypes)
+        if dtype is None:
+            raise ValueError(f"Unable to find a common dtype for dtypes: {dtypes}")
+        pa_dtype = pa.from_numpy_dtype(dtype)
+        # Get size offsets and total size.
+        sizes = np.array(sizes)
+        size_offsets = np.cumsum(sizes)
+        total_size = size_offsets[-1]
+        # Concatenate 1D views into a contiguous 1D array.
+        np_data_buffer = np.concatenate(raveled)
+        if dtype.type is np.bool_:
+            # NumPy doesn't represent boolean arrays as bit-packed, so we manually
+            # bit-pack the booleans before handing the buffer off to Arrow.
+            # NOTE: Arrow expects LSB bit-packed ordering.
+            # NOTE: This creates a copy.
+            np_data_buffer = np.packbits(np_data_buffer, bitorder="little")
+        data_buffer = pa.py_buffer(np_data_buffer)
+        # Construct underlying data array.
+        value_array = pa.Array.from_buffers(pa_dtype, total_size, [None, data_buffer])
+        # Construct array for offsets into the 1D data array, where each offset
+        # corresponds to a tensor element.
+        size_offsets = np.insert(size_offsets, 0, 0)
+        offset_array = pa.array(size_offsets)
+        data_array = pa.ListArray.from_arrays(offset_array, value_array)
+        # We store the tensor element shapes so we can reconstruct each tensor when
+        # converting back to NumPy ndarrays.
+        shape_array = pa.array(shapes)
+        # Build storage array containing tensor data and the tensor element shapes.
+        storage = pa.StructArray.from_arrays(
+            [data_array, shape_array],
+            ["data", "shape"],
+        )
+        type_ = ArrowRaggedTensorType(pa_dtype)
+        return pa.ExtensionArray.from_storage(type_, storage)
+
+    def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
+        """
+        Helper for getting either an element of the array of tensors as an ndarray, or
+        the entire array of tensors as a single ndarray.
+
+        Args:
+            index: The index of the tensor element that we wish to return as an
+                ndarray. If not given, the entire array of tensors is returned as an
+                ndarray.
+            zero_copy_only: If True, an exception will be raised if the conversion to a
+                NumPy array would require copying the underlying data (e.g. in presence
+                of nulls, or for non-primitive types). This argument is currently
+                ignored, so zero-copy isn't enforced even if this argument is true.
+
+        Returns:
+            The corresponding tensor element as an ndarray if an index was given, or
+            the entire array of tensors as an ndarray otherwise.
+        """
+        # TODO(Clark): Enforce zero_copy_only.
+        # TODO(Clark): Support strides?
+        if index is None:
+            # Get individual ndarrays for each tensor element.
+            arrs = [self._to_numpy(i, zero_copy_only) for i in range(len(self))]
+            # Return ragged NumPy ndarray in the ndarray of ndarray pointers
+            # representation.
+            return np.array(arrs, dtype=object)
+        data = self.storage.field("data")
+        shapes = self.storage.field("shape")
+        value_type = data.type.value_type
+        if pa.types.is_boolean(value_type):
+            # Arrow boolean array buffers are bit-packed, with 8 entries per byte,
+            # and are accessed via bit offsets.
+            buffer_item_width = value_type.bit_width
+        else:
+            # We assume all other array types are accessed via byte array
+            # offsets.
+            buffer_item_width = value_type.bit_width // 8
+        shape = shapes[index].as_py()
+        offset = data.offsets[index].as_py()
+        data_offset = buffer_item_width * offset
+        data_buffer = data.buffers()[3]
+        if not pa.types.is_boolean(value_type):
+            return np.ndarray(
+                shape,
+                dtype=value_type.to_pandas_dtype(),
+                buffer=data_buffer,
+                offset=data_offset,
+            )
+        # Special handling for boolean arrays, since Arrow bit-packs boolean arrays
+        # while NumPy does not.
+        # Cast as uint8 array and let NumPy unpack into a boolean view.
+        # Offset into uint8 array, where each element is a bucket for 8 booleans.
+        byte_bucket_offset = data_offset // 8
+        # Offset for a specific boolean, within a uint8 array element.
+        bool_offset = data_offset % 8
+        # The number of uint8 array elements (buckets) that our slice spans.
+        # Note that, due to the offset for a specific boolean, the slice can span byte
+        # boundaries even if it contains less than 8 booleans.
+        num_boolean_byte_buckets = 1 + ((bool_offset + np.prod(shape) - 1) // 8)
+        # Construct the uint8 array view on the buffer.
+        arr = np.ndarray(
+            (num_boolean_byte_buckets,),
+            dtype=np.uint8,
+            buffer=data_buffer,
+            offset=byte_bucket_offset,
+        )
+        # Unpack into a byte per boolean, using LSB bit-packed ordering.
+        arr = np.unpackbits(arr, bitorder="little")
+        # Interpret buffer as boolean array.
+        return np.ndarray(shape, dtype=np.bool_, buffer=arr, offset=bool_offset)
+
+    def to_numpy(self, zero_copy_only: bool = True):
+        """
+        Convert the entire array of tensors into a single ndarray.
+
+        Args:
+            zero_copy_only: If True, an exception will be raised if the conversion to a
+                NumPy array would require copying the underlying data (e.g. in presence
+                of nulls, or for non-primitive types). This argument is currently
+                ignored, so zero-copy isn't enforced even if this argument is true.
 
         Returns:
             A single ndarray representing the entire array of tensors.
