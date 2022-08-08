@@ -447,6 +447,26 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
         )
 
 
+@DeveloperAPI
+class ObjectFreedError(ObjectLostError):
+    """Indicates that an object was manually freed by the application.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object was manually freed using the internal `free` call. "
+                "Please ensure that `free` is only called once the object is no "
+                "longer needed."
+            )
+        )
+
+
 @PublicAPI
 class OwnerDiedError(ObjectLostError):
     """Indicates that the owner of the object has died while there is still a
