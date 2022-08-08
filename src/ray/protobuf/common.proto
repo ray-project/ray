@@ -195,6 +195,10 @@ enum ErrorType {
   ACTOR_UNSCHEDULABLE_ERROR = 19;
   // We use this error for object fetches that failed due to out of disk.
   OUT_OF_DISK_ERROR = 20;
+  // This object is unreachable because the application explicitly freed it,
+  // using the internal free() call. We will only recover this object if it is
+  // needed for reconstruction of another downstream object.
+  OBJECT_FREED = 21;
 }
 
 /// The information per ray error type.

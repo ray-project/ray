@@ -513,6 +513,14 @@ bool ReferenceCounter::IsPlasmaObjectFreed(const ObjectID &object_id) const {
   return freed_objects_.find(object_id) != freed_objects_.end();
 }
 
+bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  if (object_id_refs_.count(object_id) == 0) {
+    return false;
+  }
+  return freed_objects_.erase(object_id);
+}
+
 void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &object_id : object_ids) {
