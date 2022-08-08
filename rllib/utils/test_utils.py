@@ -971,7 +971,9 @@ def check_reproducibilty(
     stop_dict = {
         "training_iteration": training_iteration,
     }
-    for num_workers in [0, 4]:
+    # use 0 and 2 workers (for more that 4 workers we have to make sure the instance
+    # type in ci build has enough resources)
+    for num_workers in [0, 2]:
         algo_config = (
             algo_config.debugging(seed=42)
             .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
