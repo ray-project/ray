@@ -296,7 +296,8 @@ class JobSupervisor:
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job failed due to an application error, "
-                            "last available logs (truncated to 20,000 chars):\n" + log_tail
+                            "last available logs (truncated to 20,000 chars):\n"
+                            + log_tail
                         )
                     else:
                         message = None

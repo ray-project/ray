@@ -95,7 +95,8 @@ class TestIterLine:
 
         f = open(tmp, "w")
 
-        # Write a single line that is over 60000 characters, check we get it in batches of 20000
+        # Write a single line that is over 60000 characters,
+        # check we get it in batches of 20000
         f.write(f"{'1234567890' * 6000}\n")
         f.flush()
 
@@ -105,15 +106,18 @@ class TestIterLine:
         assert next(it) == ["\n"]
         assert next(it) is None
 
-        # Write a 10 lines where last line is over 20000 characters, check we get it in batches of 20000
+        # Write a 10 lines where last line is over 20000 characters,
+        # check we get it in batches of 20000
         for i in range(9):
             f.write(f"{i}\n")
         f.write(f"{'1234567890' * 2000}\n")
         f.flush()
 
-        first_nine_lines = [f"{i}\n" for i in range(9)] 
+        first_nine_lines = [f"{i}\n" for i in range(9)]
         first_nine_lines_length = sum(len(line) for line in first_nine_lines)
-        assert next(it) == first_nine_lines + [f"{'1234567890' * 2000}"[0:-first_nine_lines_length]]
+        assert next(it) == first_nine_lines + [
+            f"{'1234567890' * 2000}"[0:-first_nine_lines_length]
+        ]
         # Remainder of last line
         assert next(it) == [f"{'1234567890' * 2000}"[-first_nine_lines_length:] + "\n"]
         assert next(it) is None
