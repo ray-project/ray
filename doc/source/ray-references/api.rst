@@ -5,7 +5,7 @@ API References
     :maxdepth: 2
     :caption: Ray API References
 
-    ../data/package-ref.rst
+    ../data/api/api.rst
     ../train/api.rst
     ../tune/api_docs/overview.rst
     ../serve/package-ref.rst

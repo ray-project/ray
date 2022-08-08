@@ -5,6 +5,120 @@ Dataset API
 
 .. autoclass:: ray.data.Dataset
 
+.. tabbed:: Basic Transformations
+
+    .. autosummary::
+
+        ray.data.Dataset.map
+        ray.data.Dataset.map_batches
+        ray.data.Dataset.flat_map
+        ray.data.Dataset.filter
+        ray.data.Dataset.add_column
+        ray.data.Dataset.drop_columns
+        ray.data.Dataset.random_sample
+        ray.data.Dataset.limit
+
+.. tabbed:: Sorting, Shuffling, Repartitioning
+
+    .. autosummary::
+
+        ray.data.Dataset.sort
+        ray.data.Dataset.random_shuffle
+        ray.data.Dataset.randomize_block_order
+        ray.data.Dataset.repartition
+
+.. tabbed:: Splitting and Merging Datasets
+
+    .. autosummary::
+
+        ray.data.Dataset.split
+        ray.data.Dataset.split_at_indices
+        ray.data.Dataset.split_proportionately
+        ray.data.Dataset.train_test_split
+        ray.data.Dataset.union
+        ray.data.Dataset.zip
+
+
+.. tabbed:: Grouped and Global Aggregations
+
+    .. autosummary::
+
+        ray.data.Dataset.groupby
+        ray.data.Dataset.aggregate
+        ray.data.Dataset.sum
+        ray.data.Dataset.min
+        ray.data.Dataset.max
+        ray.data.Dataset.mean
+        ray.data.Dataset.std
+
+.. tabbed:: Converting to Pipeline
+
+    .. autosummary::
+
+        ray.data.Dataset.repeat
+        ray.data.Dataset.window
+
+.. tabbed:: Consuming Datasets
+
+    .. autosummary::
+
+        ray.data.Dataset.show
+        ray.data.Dataset.take
+        ray.data.Dataset.take_all
+        ray.data.Dataset.iter_rows
+        ray.data.Dataset.iter_batches
+        ray.data.Dataset.iter_torch_batches
+        ray.data.Dataset.iter_tf_batches
+
+.. tabbed:: I/O and Conversion
+
+    .. autosummary::
+
+        ray.data.Dataset.write_parquet
+        ray.data.Dataset.write_json
+        ray.data.Dataset.write_csv
+        ray.data.Dataset.write_numpy
+        ray.data.Dataset.write_datasource
+        ray.data.Dataset.to_torch
+        ray.data.Dataset.to_tf
+        ray.data.Dataset.to_dask
+        ray.data.Dataset.to_mars
+        ray.data.Dataset.to_modin
+        ray.data.Dataset.to_spark
+        ray.data.Dataset.to_pandas
+        ray.data.Dataset.to_pandas_refs
+        ray.data.Dataset.to_numpy_refs
+        ray.data.Dataset.to_arrow_refs
+        ray.data.Dataset.to_random_access_dataset
+
+.. tabbed:: Inspecting Metadata
+
+    .. autosummary::
+
+        ray.data.Dataset.count
+        ray.data.Dataset.schema
+        ray.data.Dataset.num_blocks
+        ray.data.Dataset.size_bytes
+        ray.data.Dataset.input_files
+        ray.data.Dataset.stats
+        ray.data.Dataset.get_internal_block_refs
+
+.. tabbed:: Execution
+
+    .. autosummary::
+
+        ray.data.Dataset.fully_executed
+        ray.data.Dataset.is_fully_executed
+        ray.data.Dataset.lazy
+
+.. tabbed:: Serialization
+
+    .. autosummary::
+
+        ray.data.Dataset.has_serializable_lineage
+        ray.data.Dataset.serialize_lineage
+        ray.data.Dataset.deserialize_lineage
+
 Basic Transformations
 ---------------------
 
@@ -74,8 +188,14 @@ Converting to Pipeline
 
 .. automethod:: ray.data.Dataset.window
 
-Accessing Datasets
+Consuming Datasets
 ------------------
+
+.. automethod:: ray.data.Dataset.show
+
+.. automethod:: ray.data.Dataset.take
+
+.. automethod:: ray.data.Dataset.take_all
 
 .. automethod:: ray.data.Dataset.iter_rows
 
@@ -120,17 +240,8 @@ I/O and Conversion
 
 .. automethod:: ray.data.Dataset.to_random_access_dataset
 
-
-Other
------
-
-.. TODO put these in the right section.
-
-.. automethod:: ray.data.Dataset.take
-
-.. automethod:: ray.data.Dataset.take_all
-
-.. automethod:: ray.data.Dataset.show
+Inspecting Metadata
+-------------------
 
 .. automethod:: ray.data.Dataset.count
 
@@ -141,16 +252,22 @@ Other
 .. automethod:: ray.data.Dataset.size_bytes
 
 .. automethod:: ray.data.Dataset.input_files
+
+.. automethod:: ray.data.Dataset.stats
+    
+.. automethod:: ray.data.Dataset.get_internal_block_refs
+
+Execution
+---------
     
 .. automethod:: ray.data.Dataset.fully_executed
     
 .. automethod:: ray.data.Dataset.is_fully_executed
     
-.. automethod:: ray.data.Dataset.stats
-    
-.. automethod:: ray.data.Dataset.get_internal_block_refs
-    
 .. automethod:: ray.data.Dataset.lazy
+
+Serialization
+-------------
     
 .. automethod:: ray.data.Dataset.has_serializable_lineage
     

@@ -46,6 +46,7 @@ extensions = [
     "myst_nb",
     "sphinx.ext.doctest",
     "sphinx.ext.coverage",
+    "sphinx.ext.autosummary",
     "sphinx_external_toc",
     "sphinx_thebe",
     "sphinxcontrib.autodoc_pydantic",

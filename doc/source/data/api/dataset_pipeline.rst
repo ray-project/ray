@@ -5,8 +5,77 @@ DatasetPipeline API
 
 .. autoclass:: ray.data.dataset_pipeline.DatasetPipeline
 
-Map transformations
--------------------
+.. tabbed:: Basic Transformations
+
+    .. autosummary::
+
+        ray.data.DatasetPipeline.map
+        ray.data.DatasetPipeline.map_batches
+        ray.data.DatasetPipeline.flat_map
+        ray.data.DatasetPipeline.foreach_window
+        ray.data.DatasetPipeline.filter
+        ray.data.DatasetPipeline.add_column
+        ray.data.DatasetPipeline.drop_columns
+
+.. tabbed:: Sorting, Shuffling, Repartitioning
+
+    .. autosummary::
+
+        ray.data.DatasetPipeline.sort_each_window
+        ray.data.DatasetPipeline.random_shuffle_each_window
+        ray.data.DatasetPipeline.randomize_block_order_each_window
+        ray.data.DatasetPipeline.repartition_each_window
+
+.. tabbed:: Splitting and Merging DatasetPipelines
+
+    .. autosummary::
+
+        ray.data.DatasetPipeline.split
+        ray.data.DatasetPipeline.split_at_indices
+
+.. tabbed:: Creating DatasetPipelines
+
+    .. autosummary::
+
+        ray.data.DatasetPipeline.repeat
+        ray.data.DatasetPipeline.rewindow
+        ray.data.DatasetPipeline.from_iterable
+
+.. tabbed:: Consuming DatasetPipelines
+
+    .. autosummary::
+
+        ray.data.DatasetPipeline.show
+        ray.data.DatasetPipeline.show_windows
+        ray.data.DatasetPipeline.take
+        ray.data.DatasetPipeline.take_all
+        ray.data.DatasetPipeline.iter_rows
+        ray.data.DatasetPipeline.iter_batches
+        ray.data.DatasetPipeline.iter_torch_batches
+        ray.data.DatasetPipeline.iter_tf_batches
+
+.. tabbed:: I/O and Conversion
+
+    .. autosummary::
+
+        ray.data.DatasetPipeline.write_json
+        ray.data.DatasetPipeline.write_csv
+        ray.data.DatasetPipeline.write_parquet
+        ray.data.DatasetPipeline.write_datasource
+        ray.data.DatasetPipeline.to_tf
+        ray.data.DatasetPipeline.to_torch
+
+.. tabbed:: Inspecting Metadata
+
+    .. autosummary::
+
+        ray.data.DatasetPipeline.schema
+        ray.data.DatasetPipeline.count
+        ray.data.DatasetPipeline.stats
+        ray.data.DatasetPipeline.sum
+
+Basic transformations
+---------------------
 
 .. automethod:: ray.data.DatasetPipeline.map
 
@@ -14,18 +83,24 @@ Map transformations
 
 .. automethod:: ray.data.DatasetPipeline.flat_map
 
+.. automethod:: ray.data.DatasetPipeline.foreach_window
+
 .. automethod:: ray.data.DatasetPipeline.filter
 
 .. automethod:: ray.data.DatasetPipeline.add_column
 
 .. automethod:: ray.data.DatasetPipeline.drop_columns
 
-Shuffling transformations
--------------------------
+Sorting, Shuffling, Repartitioning
+----------------------------------
+
+.. automethod:: ray.data.DatasetPipeline.sort_each_window
+
+.. automethod:: ray.data.DatasetPipeline.random_shuffle_each_window
 
 .. automethod:: ray.data.DatasetPipeline.randomize_block_order_each_window
 
-.. automethod:: ray.data.DatasetPipeline.random_shuffle_each_window
+.. automethod:: ray.data.DatasetPipeline.repartition_each_window
 
 Splitting and Merging DatasetPipelines
 --------------------------------------
@@ -34,8 +109,25 @@ Splitting and Merging DatasetPipelines
 
 .. automethod:: ray.data.DatasetPipeline.split_at_indices
 
-Accessing DatasetPipelines
+Creating DatasetPipelines
+-------------------------
+
+.. automethod:: ray.data.DatasetPipeline.repeat
+
+.. automethod:: ray.data.DatasetPipeline.rewindow
+
+.. automethod:: ray.data.DatasetPipeline.from_iterable
+
+Consuming DatasetPipelines
 --------------------------
+
+.. automethod:: ray.data.DatasetPipeline.show
+
+.. automethod:: ray.data.DatasetPipeline.show_windows
+
+.. automethod:: ray.data.DatasetPipeline.take
+
+.. automethod:: ray.data.DatasetPipeline.take_all
 
 .. automethod:: ray.data.DatasetPipeline.iter_rows
 
@@ -50,27 +142,8 @@ Accessing DatasetPipelines
 .. automethod:: ray.data.DatasetPipeline.iter_datasets
 
 
-
-Other
------
-
-.. TODO put these in the right section.
-
-.. automethod:: ray.data.DatasetPipeline.rewindow
-
-.. automethod:: ray.data.DatasetPipeline.repeat
-
-.. automethod:: ray.data.DatasetPipeline.schema
-
-.. automethod:: ray.data.DatasetPipeline.count
-
-.. automethod:: ray.data.DatasetPipeline.sum
-
-.. automethod:: ray.data.DatasetPipeline.show_windows
-
-.. automethod:: ray.data.DatasetPipeline.repartition_each_window
-
-.. automethod:: ray.data.DatasetPipeline.sort_each_window
+I/O and Conversion
+------------------
 
 .. automethod:: ray.data.DatasetPipeline.write_json
 
@@ -80,18 +153,18 @@ Other
 
 .. automethod:: ray.data.DatasetPipeline.write_datasource
 
-.. automethod:: ray.data.DatasetPipeline.take
-
-.. automethod:: ray.data.DatasetPipeline.take_all
-
-.. automethod:: ray.data.DatasetPipeline.show
-
 .. automethod:: ray.data.DatasetPipeline.to_tf
 
 .. automethod:: ray.data.DatasetPipeline.to_torch
 
-.. automethod:: ray.data.DatasetPipeline.foreach_window
+
+Inspecting Metadata
+-------------------
+
+.. automethod:: ray.data.DatasetPipeline.schema
+
+.. automethod:: ray.data.DatasetPipeline.count
 
 .. automethod:: ray.data.DatasetPipeline.stats
 
-.. automethod:: ray.data.DatasetPipeline.from_iterable
+.. automethod:: ray.data.DatasetPipeline.sum
