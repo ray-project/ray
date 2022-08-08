@@ -126,6 +126,7 @@ py_test_module_list(
     "test_placement_group_4.py",
     "test_placement_group_5.py",
     "test_ray_init.py",
+    "test_ray_init_2.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_context.py",
