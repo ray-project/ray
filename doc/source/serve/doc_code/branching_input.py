@@ -6,6 +6,12 @@ from ray import serve
 from ray.serve.deployment_graph import InputNode
 
 
+<<<<<<< HEAD:doc/source/serve/doc_code/branching_input.py
+=======
+ray.init()
+
+
+>>>>>>> e0eaf3c5b ([Serve][Doc] Update the doc code to use new api):doc/source/serve/doc_code/deployment_graph_combine_two_nodes_with_passing_input_parallel.py
 @serve.deployment
 class Model:
     def __init__(self, weight):

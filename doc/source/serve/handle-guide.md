@@ -25,9 +25,8 @@ class Deployment:
     def __call__(self, arg):
         return f"__call__: {arg}"
 
-Deployment.deploy()
+handle = serve.run(Deployment.bind())
 
-handle = Deployment.get_handle()
 ray.get(handle.remote("hi")) # Defaults to calling the __call__ method.
 ray.get(handle.method1.remote("hi")) # Call a different method.
 ```
@@ -43,7 +42,7 @@ class Deployment:
     def __call__(self, request):
         return self.say_hello(request.query_params["name"])
 
-Deployment.deploy()
+handle = serve.run(Deployment.bind())
 ```
 
 Now we can invoke the same logic from both HTTP or Python:
@@ -52,7 +51,6 @@ Now we can invoke the same logic from both HTTP or Python:
 print(requests.get("http://localhost:8000/api?name=Alice"))
 # Hello Alice!
 
-handle = Deployment.get_handle()
 print(ray.get(handle.say_hello.remote("Alice")))
 # Hello Alice!
 ```

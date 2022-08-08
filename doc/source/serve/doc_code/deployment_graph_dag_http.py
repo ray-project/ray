@@ -8,7 +8,6 @@ from ray.dag.input_node import InputNode
 
 
 ray.init()
-serve.start()
 
 
 class ModelInputData(BaseModel):
