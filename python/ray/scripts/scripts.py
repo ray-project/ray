@@ -975,15 +975,9 @@ def start(
         "they are forcefully terminated after the grace period."
     ),
 )
-@click.option(
-    "--temp-dir",
-    hidden=True,
-    default=None,
-    help="manually specify the root temporary dir of the Ray process",
-)
 @add_click_logging_options
 @PublicAPI
-def stop(force, grace_period, temp_dir):
+def stop(force, grace_period):
     """Stop Ray processes manually on the local machine."""
 
     # Note that raylet needs to exit before object store, otherwise
@@ -1095,7 +1089,7 @@ def stop(force, grace_period, temp_dir):
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
-    ray._private.utils.reset_ray_address(temp_dir)
+    ray._private.utils.reset_ray_address()
 
 
 @cli.command()
