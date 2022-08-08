@@ -88,7 +88,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
         assert _internal_kv_initialized()
-        self._job_info_client = JobInfoStorageClient()
+        self._job_info_client = None
         # For offloading CPU intensive work.
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="api_head"
@@ -121,6 +121,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
+        actor_limit = int(req.query.get("actor_limit", "1000"))
         (
             job_info,
             job_submission_data,
@@ -130,7 +131,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         ) = await asyncio.gather(
             self.get_job_info(),
             self.get_job_submission_info(),
-            self.get_actor_info(),
+            self.get_actor_info(actor_limit),
             self.get_serve_info(),
             self.get_session_name(),
         )
@@ -268,11 +269,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 timestamp=datetime.now().timestamp(),
             )
 
-    def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:
+    async def _get_job_info(self, metadata: Dict[str, str]) -> Optional[JobInfo]:
         # If a job submission ID has been added to a job, the status is
         # guaranteed to be returned.
         job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
-        return self._job_info_client.get_info(job_submission_id)
+        return await self._job_info_client.get_info(job_submission_id)
 
     async def get_job_info(self):
         """Return info for each job.  Here a job is a Ray driver."""
@@ -290,7 +291,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                     job_table_entry.config.runtime_env_info.serialized_runtime_env
                 ),
             }
-            info = self._get_job_info(metadata)
+            info = await self._get_job_info(metadata)
             entry = {
                 "status": None if info is None else info.status,
                 "status_message": None if info is None else info.message,
@@ -307,8 +308,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         """Info for Ray job submission.  Here a job can have 0 or many drivers."""
 
         jobs = {}
-
-        for job_submission_id, job_info in self._job_info_client.get_all_jobs().items():
+        fetched_jobs = await self._job_info_client.get_all_jobs()
+        for (
+            job_submission_id,
+            job_info,
+        ) in fetched_jobs.items():
             if job_info is not None:
                 entry = {
                     "job_submission_id": job_submission_id,
@@ -324,10 +328,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 jobs[job_submission_id] = entry
         return jobs
 
-    async def get_actor_info(self):
+    async def get_actor_info(self, limit: int = 1000):
         # TODO (Alex): GCS still needs to return actors from dead jobs.
         request = gcs_service_pb2.GetAllActorInfoRequest()
         request.show_dead_jobs = True
+        request.limit = limit
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(request, timeout=5)
         actors = {}
         for actor_table_entry in reply.actor_table_data:
@@ -426,6 +431,12 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             self._dashboard_head.aiogrpc_gcs_channel
         )
+        # Lazily constructed because dashboard_head's gcs_aio_client
+        # is lazily constructed
+        if not self._job_info_client:
+            self._job_info_client = JobInfoStorageClient(
+                self._dashboard_head.gcs_aio_client
+            )
 
     @staticmethod
     def is_minimal_module():

@@ -187,6 +187,7 @@ parts:
                   - file: serve/deployment-graph/visualize_dag_during_development
                   - file: serve/deployment-graph/http_endpoint_for_dag_graph
               - file: serve/production
+              - file: serve/migration
           - file: serve/architecture
           - file: serve/tutorials/index
           - file: serve/faq
@@ -277,6 +278,7 @@ parts:
               sections:
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/config.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/k8s-cluster-setup.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/autoscaling.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/logging.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/gpu.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/networking.md

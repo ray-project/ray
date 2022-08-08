@@ -377,7 +377,7 @@ From a high level, we can use rollout workers to collect experiences from the en
 their ``sample()`` method and we can train their policies by calling their ``learn_on_batch()`` method.
 By default, in RLlib, we create a set of workers that can be used for sampling and training.
 We create a ``WorkerSet`` object inside of ``setup`` which is called when an RLlib algorithm is created. The ``WorkerSet`` has a ``local_worker``
-and ``remote_workers`` if ``num_workers > 0`` in the experiment config. In RLlib we use typically use ``local_worker``
+and ``remote_workers`` if ``num_workers > 0`` in the experiment config. In RLlib we typically use ``local_worker``
 for training and ``remote_workers`` for sampling.
 
 

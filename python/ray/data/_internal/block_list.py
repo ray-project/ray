@@ -112,6 +112,30 @@ class BlockList:
             )
         return output
 
+    def truncate_by_rows(self, limit: int) -> "BlockList":
+        """Truncate the block list to the minimum number of blocks that contains at
+        least limit rows.
+
+        If the number of rows is not available, it will be treated as a 0-row block and
+        will be included in the truncated output.
+        """
+        self._check_if_cleared()
+        out_blocks = []
+        out_meta = []
+        out_num_rows = 0
+        for b, m in self.iter_blocks_with_metadata():
+            num_rows = m.num_rows
+            if num_rows is None:
+                num_rows = 0
+            out_blocks.append(b)
+            out_meta.append(m)
+            out_num_rows += num_rows
+            if out_num_rows >= limit:
+                break
+        return BlockList(
+            out_blocks, out_meta, owned_by_consumer=self._owned_by_consumer
+        )
+
     def size_bytes(self) -> int:
         """Returns the total size in bytes of the blocks, or -1 if not known."""
         size = 0
