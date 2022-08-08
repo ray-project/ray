@@ -64,8 +64,8 @@ class Normalizer(Preprocessor):
         1  1.0  0.0   1
 
     Args:
-        columns: The columns to scale. For each row, these colmumns are scaled to unit-
-            norm.
+        columns: The columns to scale. For each row, these colmumns are scaled to
+            unit-norm.
         norm: The norm to use. The supported values are ``"l1"``, ``"l2"``, or
             ``"max"``. Defaults to ``"l2"``.
 
