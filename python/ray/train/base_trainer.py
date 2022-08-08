@@ -183,7 +183,7 @@ class BaseTrainer(abc.ABC):
         return f"<{self.__class__.__name__}>"
 
     def __new__(cls, *args, **kwargs):
-        """Store the init args as attributes so this can be merged with Tune hparams."""
+        # Store the init args as attributes so this can be merged with Tune hparams.
         trainer = super(BaseTrainer, cls).__new__(cls)
         parameters = inspect.signature(cls.__init__).parameters
         parameters = list(parameters.keys())
@@ -252,7 +252,7 @@ class BaseTrainer(abc.ABC):
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
 
-        Note: this method is run on a remote process.
+        .. note:: This method is run on a remote process.
 
         This method will not be called on the driver, so any expensive setup
         operations should be placed here and not in ``__init__``.
@@ -265,7 +265,7 @@ class BaseTrainer(abc.ABC):
     def preprocess_datasets(self) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
 
-        Note: This method is run on a remote process.
+        .. note:: This method is run on a remote process.
 
         This method is called prior to entering the training_loop.
 
@@ -310,15 +310,16 @@ class BaseTrainer(abc.ABC):
         this training loop.
 
         Example:
-            .. code-block: python
 
-                from ray.train.trainer import BaseTrainer
+        .. code-block: python
 
-                class MyTrainer(BaseTrainer):
-                    def training_loop(self):
-                        for epoch_idx in range(5):
-                            ...
-                            session.report({"epoch": epoch_idx})
+            from ray.train.trainer import BaseTrainer
+
+            class MyTrainer(BaseTrainer):
+                def training_loop(self):
+                    for epoch_idx in range(5):
+                        ...
+                        session.report({"epoch": epoch_idx})
 
         """
         raise NotImplementedError
