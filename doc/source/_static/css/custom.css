@@ -88,11 +88,6 @@ th.tune-colab {
   padding: 0;
 }
 
-table {
-  /* Force full width for all table */
-  width: 136% !important;
-}
-
 img.inline-figure {
   /* Override the display: block for img */
   display: inherit !important;
