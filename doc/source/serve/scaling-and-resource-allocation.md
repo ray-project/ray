@@ -1,10 +1,10 @@
 # Scaling and Resource Allocation
 
-This page should help you:
+This guide helps you to:
 
-- Scale your deployments horizontally by specifying a number of replicas
-- Scale up and down automatically to react to changing traffic
-- Allocate hardware resources (CPUs, GPUs, etc) for each deployment
+- scale your deployments horizontally by specifying a number of replicas
+- scale up and down automatically to react to changing traffic
+- allocate hardware resources (CPUs, GPUs, etc) for each deployment.
 
 (scaling-out-a-deployment)=
 
@@ -25,8 +25,7 @@ def func(*args):
 
 ## Autoscaling
 
-Serve also has support for a demand-based replica autoscaler.
-It reacts to traffic spikes via observing queue sizes and making scaling decisions to create or remove replicas.
+Serve also supports a demand-based replica autoscaler. It adjusts to traffic spikes by observing queue sizes and making scaling decisions to add or remove replicas.
 To configure it, you can set the `autoscaling` field in deployment options.
 
 ```python
@@ -88,12 +87,12 @@ This allows you to flexibly share resources between replicas.
 For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
 
 ```python
-@serve.deployment(name="deployment1", ray_actor_options={"num_gpus": 0.5})
-def func(*args):
+@serve.deployment(ray_actor_options={"num_gpus": 0.5})
+def func_1(*args):
     return do_something_with_my_gpu()
 
-@serve.deployment(name="deployment2", ray_actor_options={"num_gpus": 0.5})
-def func(*args):
+@serve.deployment(ray_actor_options={"num_gpus": 0.5})
+def func_2(*args):
     return do_something_with_my_gpu()
 ```
 
