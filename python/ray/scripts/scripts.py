@@ -731,6 +731,8 @@ def start(
             default_address = f"{ray_params.node_ip_address}:{port}"
             bootstrap_address = services.find_bootstrap_address(temp_dir)
             if default_address == bootstrap_address:
+                # invariant: we start on head node and the bootstrap_address
+                # is the current node's address.
                 if not ray._private.utils.is_gcs_running():
                     cli_logger.info(
                         "`{}` is not empty but the gcs process is not "
