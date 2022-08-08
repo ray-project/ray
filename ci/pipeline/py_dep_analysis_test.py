@@ -7,9 +7,8 @@ import py_dep_analysis as pda
 
 class TestPyDepAnalysis(unittest.TestCase):
     def create_tmp_file(self, path: str, content: str):
-        f = open(path, "w")
-        f.write(content)
-        f.close()
+        with open(path, "w") as f:
+            f.write(content)
 
     def test_full_module_path(self):
         self.assertEqual(pda._full_module_path("aa.bb.cc", "__init__.py"), "aa.bb.cc")

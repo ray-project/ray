@@ -3,6 +3,8 @@
 
 .. include:: /_includes/clusters/we_are_hiring.rst
 
+.. _additional-cloud-providers-under-construction:
+
 Additional Cloud Providers
 --------------------------
 

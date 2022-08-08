@@ -42,7 +42,7 @@ It provides libraries for distributed
 [model serving](serve/index.rst), 
 and [more](ray-more-libs/index.rst). 
 +++
-```{link-button} ray-overview/index
+```{link-button} ray-air/getting-started
 :type: ref
 :text: Get Started
 :classes: btn-outline-info btn-block
@@ -103,8 +103,16 @@ Or more about [Ray Core](ray-core/walkthrough) and its key abstractions:
 - [Actors](ray-core/actors): Stateful worker processes created in the cluster.
 - [Objects](ray-core/objects): Immutable values accessible across the cluster.
 
-Ray runs on any machine, cluster, cloud provider, and Kubernetes, and also features a growing
+Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 [ecosystem of community integrations](ray-overview/ray-libraries).
+
+## Why Ray?
+
+Today's ML workloads are increasingly compute-intensive. As convenient as they are, single-node development environments such as your laptop cannot scale to meet these demands.
+
+Ray is a unified way to scale Python and AI applications from a laptop to a cluster.
+
+With Ray, you can seamlessly scale the same code from a laptop to a cluster. Ray is designed to be general-purpose, meaning that it can performantly run any kind of workload. If your application is written in Python, you can scale it with Ray, no other infrastructure required.
 
 ## How to get involved?
 
