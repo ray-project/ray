@@ -60,18 +60,6 @@ def train_loop_per_worker(config):
     # Get the Ray Dataset shard for this data parallel worker,
     # and convert it to a PyTorch Dataset.
     train_data = train.get_dataset_shard("train")
-
-    def to_tensor_iterator(dataset, batch_size):
-        data_iterator = dataset.iter_batches(
-            batch_format="numpy", batch_size=batch_size
-        )
-        for d in data_iterator:
-            # "concat_out" is the output column of the Concatenator.
-            yield (
-                torch.Tensor(d["concat_out"]).float(),
-                torch.Tensor(d["target"]).float(),
-            )
-
     # Create model.
     model = create_model(num_features)
     model = train.torch.prepare_model(model)
@@ -80,7 +68,7 @@ def train_loop_per_worker(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
     for cur_epoch in range(epochs):
-        for inputs, labels in to_tensor_iterator(train_data, batch_size):
+        for inputs, labels in train_data.iter_torch_batches(batch_size=batch_size):
             optimizer.zero_grad()
             predictions = model(inputs)
             train_loss = loss_fn(predictions, labels.unsqueeze(1))
