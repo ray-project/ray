@@ -44,24 +44,23 @@ custom resource.
 The KubeRay operator is more scalable than the legacy Ray Operator. Specifically, the
 KubeRay operator can simultaneously manage more Ray clusters.
 
-**Legacy Ray Operator.** Each Ray autoscaler consumes nontrivial memory and CPU resources.
+**Legacy Ray Operator** Each Ray autoscaler consumes nontrivial memory and CPU resources.
 Since the legacy Ray Operator runs many autoscalers in one pod, it cannot manage many Ray clusters.
 
-**KubeRay Operator.** The KubeRay operator does not run Ray autoscaler processes.
+**KubeRay Operator** The KubeRay operator does not run Ray autoscaler processes.
 Each Ray autoscaler runs as a sidecar to the Ray head.
 
 ### Ray version compatibility
 
-**Legacy Ray Operator.**
+**Legacy Ray Operator**
 It is recommended to use the same Ray version in the legacy Ray operator
 as in all of the Ray pods managed by the operator.
 Matching Ray versions is required to maintain compatibility between autoscaler code
 running in the operator pod and Ray code running in the Ray cluster.
 
-**KubeRay Operator.**
-The KubeRay operator is designed to be compatible with many Ray versions.
-Compatibility with Ray versions 1.11, 1.12, 1.13, and 2.0 is tested explicitly.
-Older Ray versions should work as well.
+**KubeRay Operator**
+The KubeRay operator is compatible with many Ray versions.
+Compatibility of KubeRay v0.3.0 with Ray versions 1.11, 1.12, 1.13, and 2.0 is tested explicitly.
 
 Note however that autoscaling with KubeRay is supported only with Ray versions
 at least as new as 1.11.0.
