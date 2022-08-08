@@ -683,17 +683,3 @@ message NamedActorInfo {
   string ray_namespace = 1;
   string name = 2;
 }
-
-// Info about a agent process.
-message AgentInfo {
-  // The agent id.
-  int32 id = 1;
-  // The agent process pid.
-  int64 pid = 2;
-  // IP address of the agent process.
-  string ip_address = 3;
-  // The GRPC port number of the agent process.
-  int32 grpc_port = 4;
-  // The http port number of the agent process.
-  int32 http_port = 5;
-}
