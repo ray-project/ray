@@ -63,6 +63,7 @@ def to_tf_dataset(dataset, batch_size):
             batch_size=batch_size, dtypes=tf.float32
         )
         for d in data_iterator:
+            # "concat_out" is the output column of the Concatenator.
             yield d["concat_out"], d["target"]
 
     output_signature = (
