@@ -150,7 +150,7 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
         runtime_env = {"py_modules": [S3_PACKAGE_URI]}
 
     # Note: We should set a bigger timeout if downloads the s3 package slowly.
-    get_timeout = 10
+    get_timeout = 2
 
     # Start a task with runtime env
     if worker_register_timeout:

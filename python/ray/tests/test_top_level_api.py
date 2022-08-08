@@ -36,9 +36,13 @@ def test_api_functions():
         "get_runtime_context",
     ]
 
+    IMPL_FUNCTIONS = ["__getattr__"]
+
     functions = getmembers(ray, isfunction)
     function_names = [f[0] for f in functions]
-    assert set(function_names) == set(PYTHON_API + OTHER_ALLOWED_FUNCTIONS)
+    assert set(function_names) == set(
+        PYTHON_API + OTHER_ALLOWED_FUNCTIONS + IMPL_FUNCTIONS
+    )
 
 
 def test_non_ray_modules():
