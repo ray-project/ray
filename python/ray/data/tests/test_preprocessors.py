@@ -1223,14 +1223,14 @@ def test_concatenator():
     df = pd.DataFrame(
         {
             "a": [1, 2, 3, 4],
-            "b": [1, 2, 3, 4],
+            "b": [5, 6, 7, 8],
         }
     )
     ds = ray.data.from_pandas(df)
     prep = Concatenator(output_column_name="c")
     new_ds = prep.transform(ds)
     for i, row in enumerate(new_ds.take()):
-        assert np.array_equal(row["c"], np.array([i + 1, i + 1]))
+        assert np.array_equal(row["c"], np.array([i + 1, i + 5]))
 
     df = pd.DataFrame({"a": [1, 2, 3, 4]})
     ds = ray.data.from_pandas(df)
