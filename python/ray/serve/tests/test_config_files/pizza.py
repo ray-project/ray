@@ -1,8 +1,8 @@
 from enum import Enum
 from typing import List, Dict, TypeVar
 
-import ray
 from ray import serve
+from ray.serve.handle import RayServeDeploymentHandle
 import starlette.requests
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
@@ -17,15 +17,17 @@ class Operation(str, Enum):
 
 @serve.deployment(ray_actor_options={"num_cpus": 0.15})
 class Router:
-    def __init__(self, multiplier: RayHandleLike, adder: RayHandleLike):
+    def __init__(
+        self, multiplier: RayServeDeploymentHandle, adder: RayServeDeploymentHandle
+    ):
         self.adder = adder
         self.multiplier = multiplier
 
-    def route(self, op: Operation, input: int) -> int:
+    async def route(self, op: Operation, input: int) -> int:
         if op == Operation.ADDITION:
-            return ray.get(self.adder.add.remote(input))
+            return await (await self.adder.add.remote(input))
         elif op == Operation.MULTIPLICATION:
-            return ray.get(self.multiplier.multiply.remote(input))
+            return await (await self.multiplier.multiply.remote(input))
 
 
 @serve.deployment(
