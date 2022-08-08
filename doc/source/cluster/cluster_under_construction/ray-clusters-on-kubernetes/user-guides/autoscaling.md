@@ -105,11 +105,12 @@ with the KubeRay operator.
 .. image:: /cluster/cluster_under_construction/ray-clusters-on-kubernetes/images/AutoscalerOperator.png
     :align: center
 ```
-Worker pod upscaling occurs through the following sequence of
+
+Worker pod upscaling occurs through the following sequence of events:
 1. The user submits a Ray workload.
-2. Resource information about the workload is aggregated by the Ray head container
+2. Workload resource requirements are aggregated by the Ray head container
    and communicated to the Ray autoscaler sidecar.
-3. The autoscaler determines that a Ray worker pod must be added to satisfy the workload's resource demand.
+3. The autoscaler determines that a Ray worker pod must be added to satisfy the workload's resource requirement.
 4. The autoscaler requests an addtional worker pod by incrementing the RayCluster CR's `replicas` field.
 5. The KubeRay operator creates a Ray worker pod to match the new `replicas` specification.
 6. The Ray scheduler places the user's workload on the new worker pod.
