@@ -13,7 +13,7 @@ This example shows how to control your graph's flow using conditionals. You can 
 ```
 
 :::{note}
-`combine` takes in intermediate values from the call graph as the individual arguments, `value1` and `value2`. You can also aggregate and pass these intermediate values as a list argument. However, this list will contain references the values, rather than the values themselves. You must explicitly use `ray.get` to get the actual values before using them.
+`combine` takes in intermediate values from the call graph as the individual arguments, `value1` and `value2`. You can also aggregate and pass these intermediate values as a list argument. However, this list will contain references the values, rather than the values themselves. You must explicitly use `await` to get the actual values before using them.
 
 For example:
 ```python
