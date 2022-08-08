@@ -29,7 +29,6 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.autoscaler._private.constants import GCS_PROCESS_NAME
 from ray._private.tls_utils import load_certs_from_env
 from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated.runtime_env_common_pb2 import (
