@@ -52,9 +52,9 @@ class LanguageClassifer:
         language, name = request["language"], request["name"]
 
         if language == "spanish":
-            ref = self.spanish_responder.say_hello.remote(name)
+            ref = await self.spanish_responder.say_hello.remote(name)
         elif language == "french":
-            ref = self.french_responder.say_hello.remote(name)
+            ref = await self.french_responder.say_hello.remote(name)
         else:
             return "Please try again."
 

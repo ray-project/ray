@@ -27,16 +27,17 @@ In line 40, the `LanguageClassifier` deployment takes in the `spanish_responder`
 For example, the `LanguageClassifier`'s `__call__` method uses the HTTP request's values to decide whether to respond in Spanish or French. It then forwards the request's name to the `spanish_responder` or the `french_responder` on lines 17 and 19 using the `ServeHandles`. The calls are formatted as:
 
 ```python
-self.spanish_responder.say_hello.remote(name)
+await self.spanish_responder.say_hello.remote(name)
 ```
 
 This call has a few parts:
+* `await` lets us issue an asynchronous request through the `ServeHandle`.
 * `self.spanish_responder` is the `SpanishResponder` handle taken in through the constructor.
 * `say_hello` is the `SpanishResponder` method to invoke.
 * `remote` indicates that this is a `ServeHandle` call to another deployment. This is required when invoking a deployment's method through another deployment. It needs to be added to the method name.
 * `name` is the argument for `say_hello`. You can pass any number of arguments or keyword arguments here.
 
-This call returns a reference to the result– not the result itself. This pattern allows the call to execute asynchronously. To get the actual result, `await` the result. `await` blocks until the asynchronous call executes, and then it returns the result. In this example, line 23 calls `await ref` and returns the resulting string. Note that using `await` requires the method to be `async`.
+This call returns a reference to the result– not the result itself. This pattern allows the call to execute asynchronously. To get the actual result, `await` the reference. `await` blocks until the asynchronous call executes, and then it returns the result. In this example, line 23 calls `await ref` and returns the resulting string. **Note that we need two `await` statements in total**. First, we `await` the `ServeHandle` call itself to retrieve a reference. Then we `await` the reference to get the final result.
 
 (serve-model-composition-await-warning)=
 :::{warning}
