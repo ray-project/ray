@@ -42,8 +42,7 @@ cluster by connecting to the head node and running `ray.init`. See
 
 Worker nodes
 ~~~~~~~~~~~~
-**Worker nodes** are nodes which run Ray and are connected to the head node. Ray may schedule
-tasks and actors onto worker nodes. Each worker node runs helper processes which
+**Worker nodes** execute a Ray application by executing tasks and actors and storing Ray objects. Each worker node runs helper processes which
 implement distributed scheduling and :ref:`memory management<memory>`.
 
 .. _cluster-head-node-under-construction:
