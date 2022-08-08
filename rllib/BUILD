@@ -1728,6 +1728,20 @@ py_test(
     data = ["tests/data/cartpole/small.json"],
 )
 
+py_test(
+    name = "test_dm_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dm_learning.py"],
+)
+
+py_test(
+    name = "test_dr_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dr_learning.py"],
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
