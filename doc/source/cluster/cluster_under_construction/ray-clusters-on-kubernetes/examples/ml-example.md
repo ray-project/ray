@@ -44,14 +44,13 @@ operator and Kubernetes system components. After the workload is submitted, 9 ad
 scale up to accommodate Ray worker pods. These nodes will scale back down after the workload is complete.
 ```
 
-## Deploying the KubeRay operator
+## Deploy the KubeRay operator
 
-Once you have set up your Kubernetes cluster, deploy the KubeRay operator:
-```shell
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0-rc.0"
-```
+Once you have set up your Kubernetes cluster, deploy the KubeRay operator.
+Refer to the {ref}`Getting Started guide<kuberay-operator-deploy>`
+for instructions on this step.
 
-## Deploying a Ray cluster
+## Deploy a Ray cluster
 
 Now we're ready to deploy the Ray cluster that will execute our workload.
 
@@ -79,7 +78,7 @@ One Ray head pod will be created. Once the workload starts, the Ray autoscaler w
 creation of Ray worker pods. Kubernetes autoscaling will then create nodes to place the Ray pods.
 ```
 
-## Running the workload
+## Run the workload
 
 To observe the startup progress of the Ray head pod, run the following command.
 
