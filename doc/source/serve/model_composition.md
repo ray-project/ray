@@ -74,9 +74,9 @@ With composition, you can avoid application-level bottlenecks when serving model
 (serve-model-composition-deployment-graph)=
 ## Deployment Graph API
 
-```{note}
-Note: The call graph is in Alpha, so APIs are subject to change.
-```
+:::{note}
+The call graph is in **alpha**, so its APIs are subject to change.
+:::
 
 For more advanced composition patterns, it can be useful to surface the relationships between deployments, instead of hiding them inside individual deployment definitions.
 
