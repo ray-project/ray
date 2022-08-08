@@ -58,7 +58,7 @@ class LanguageClassifer:
         else:
             return "Please try again."
 
-        return ray.get(ref)
+        return await ref
 
 
 @serve.deployment
