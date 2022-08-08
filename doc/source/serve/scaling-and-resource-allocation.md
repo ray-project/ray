@@ -26,7 +26,7 @@ def func(*args):
 ## Autoscaling
 
 Serve also supports a demand-based replica autoscaler. It adjusts to traffic spikes by observing queue sizes and making scaling decisions to add or remove replicas.
-To configure it, you can set the `autoscaling` field in deployment options.
+To configure it, you can set the `autoscaling_config` field in deployment options.
 
 ```python
 @serve.deployment(
