@@ -122,18 +122,6 @@ Mars
 .. automethod:: ray.data.Dataset.to_mars
     :noindex:
 
-Torch
------
-
-.. automethod:: ray.data.Dataset.to_torch
-    :noindex:
-
-TensorFlow
-----------
-
-.. automethod:: ray.data.Dataset.to_tf
-    :noindex:
-
 HuggingFace
 ------------
 
