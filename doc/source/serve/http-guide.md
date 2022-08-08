@@ -14,7 +14,7 @@ This section should help you understand how to:
 
 By default, Ray Serve starts a single HTTP server on the head node of the Ray cluster.
 You can configure this behavior using the `http_options={"location": ...}` flag
-in {mod}`serve.start <ray.serve.start>`:
+in {mod}`serve.run <ray.serve.run>`:
 
 - **HeadOnly**: start one HTTP server on the head node. Serve
   assumes the head node is the node you executed serve.run
