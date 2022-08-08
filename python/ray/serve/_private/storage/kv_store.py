@@ -28,12 +28,15 @@ class RayInternalKVStore(KVStoreBase):
 
     def __init__(
         self,
-        namespace: str = None,
+        namespace: Optional[str] = None,
+        gcs_client: Optional[GcsClient] = None,
     ):
         if namespace is not None and not isinstance(namespace, str):
             raise TypeError("namespace must a string, got: {}.".format(type(namespace)))
-
-        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        if gcs_client is not None:
+            self.gcs_client = gcs_client
+        else:
+            self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         self.timeout = RAY_SERVE_KV_TIMEOUT_S
         self.namespace = namespace or ""
 

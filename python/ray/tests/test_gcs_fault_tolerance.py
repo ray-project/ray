@@ -1,4 +1,5 @@
 import sys
+import os
 import threading
 from time import sleep
 
@@ -609,8 +610,37 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
         assert pid == ray.get(c.pid.remote())
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_server_request_timeout_seconds=10,
+        )
+    ],
+    indirect=True,
+)
+def test_get_actor_when_gcs_is_down(ray_start_regular_with_external_redis):
+    @ray.remote
+    def create_actor():
+        @ray.remote
+        class A:
+            def pid(self):
+                return os.getpid()
+
+        a = A.options(lifetime="detached", name="A").remote()
+        ray.get(a.pid.remote())
+
+    ray.get(create_actor.remote())
+
+    ray._private.worker._global_node.kill_gcs_server()
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get_actor("A")
+
+
 if __name__ == "__main__":
-    import os
 
     import pytest
 

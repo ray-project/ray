@@ -25,6 +25,7 @@ routes = optional_utils.ClassMethodRouteTable
 class ServeAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
+        self._controller = None
 
     # TODO: It's better to use `/api/version`.
     # It requires a refactor of ClassMethodRouteTable to differentiate the server.
@@ -48,12 +49,24 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def get_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
 
-        client = self.get_serve_client()
+        controller = self.get_serve_controller()
 
-        if client is None:
+        if controller is None:
             config = ServeApplicationSchema.get_empty_schema_dict()
         else:
-            config = client.get_app_config()
+            try:
+                config = await controller.get_app_config.remote()
+            except ray.exceptions.RayTaskError as e:
+                # Task failure sometimes are due to GCS
+                # failure. When GCS failed, we expect a longer time
+                # to recover.
+                return Response(
+                    status=503,
+                    text=(
+                        "Fail to get the response from the controller. "
+                        f"Potentially the GCS is down: {e}"
+                    ),
+                )
 
         return Response(
             text=json.dumps(config),
@@ -65,13 +78,20 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def get_all_deployment_statuses(self, req: Request) -> Response:
         from ray.serve.schema import serve_status_to_schema, ServeStatusSchema
 
-        client = self.get_serve_client()
+        controller = self.get_serve_controller()
 
-        if client is None:
+        if controller is None:
             status_json = ServeStatusSchema.get_empty_schema_dict()
             status_json_str = json.dumps(status_json)
         else:
-            status = client.get_serve_status()
+            from ray.serve._private.common import StatusOverview
+            from ray.serve.generated.serve_pb2 import (
+                StatusOverview as StatusOverviewProto,
+            )
+
+            serve_status = await controller.get_serve_status.remote()
+            proto = StatusOverviewProto.FromString(serve_status)
+            status = StatusOverview.from_proto(proto)
             status_json_str = serve_status_to_schema(status).json()
 
         return Response(
@@ -84,7 +104,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def delete_serve_application(self, req: Request) -> Response:
         from ray import serve
 
-        if self.get_serve_client() is not None:
+        if self.get_serve_controller() is not None:
             serve.shutdown()
 
         return Response()
@@ -144,21 +164,33 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         return Response()
 
-    def get_serve_client(self):
-        """Gets the ServeControllerClient to the this cluster's Serve app.
+    def get_serve_controller(self):
+        """Gets the ServeController to the this cluster's Serve app.
 
         return: If Serve is running on this Ray cluster, returns a client to
             the Serve controller. If Serve is not running, returns None.
         """
 
-        from ray.serve.context import get_global_client
-        from ray.serve.exceptions import RayServeException
+        # TODO: we need to make controller client able to work with asyncio
+        # so that it won't block agent.
+        if self._controller is not None:
+            return self._controller
+
+        from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 
         try:
-            return get_global_client(_health_check_controller=True)
-        except RayServeException:
-            logger.debug("There's no Serve app running on this Ray cluster.")
-            return None
+            self._controller = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
+        except Exception as e:
+            logger.debug(
+                "There is no "
+                "instance running on this Ray cluster. Please "
+                "call `serve.start(detached=True) to start "
+                f"one: {e}"
+            )
+
+        return self._controller
 
     async def run(self, server):
         pass
