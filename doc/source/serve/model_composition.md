@@ -336,7 +336,7 @@ When the script visualizes `m1_output`, it shows a partial execution path of the
 
 This path includes only the dependencies needed to generate `m1_output`.
 
-On the other hand, when the script visualizes choose the final graph output, `combine_output`, it captures all nodes used in execution since they're all required to create the final output.
+On the other hand, when the script visualizes the final graph output, `combine_output`, it captures all nodes used in execution since they're all required to create the final output.
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_full.svg)
 
