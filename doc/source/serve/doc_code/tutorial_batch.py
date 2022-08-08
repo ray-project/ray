@@ -4,6 +4,9 @@ from typing import List
 
 import numpy as np
 from starlette.requests import Request
+from transformers import pipeline, Pipeline
+from datasets import load_dataset
+import random
 
 from ray import serve
 # __doc_import_end__
@@ -12,24 +15,23 @@ from ray import serve
 
 # __doc_define_servable_begin__
 @serve.deployment
-class BatchMatrixMultiplier:
-    def __init__(self, matrix: np.ndarray):
-        self.matrix = matrix
+class BatchTextGenerator:
+    def __init__(self, model: Pipeline):
+        self.model = model
 
     @serve.batch(max_batch_size=4)
-    async def handle_batch(self, arrays: List[np.array]):
-        input_matrix = np.column_stack(arrays)
-        print("Our input array has shape:", input_matrix.shape)
+    async def handle_batch(self, inputs: List[str]):
+        print("Our input array has length:", len(inputs))
 
-        output_array = self.matrix.dot(input_matrix)
-        return output_array.transpose().tolist()
+        results = self.model(inputs)
+        return [result[0]['generated_text'] for result in results]
 
     async def __call__(self, request: Request):
-        return await self.handle_batch(await request.json())
+        return await self.handle_batch(request.query_params["text"])
         # __doc_define_servable_end__
 
 
 # __doc_deploy_begin__
-matrix = np.random.rand(50, 50)
-matrix_multiplier = BatchMatrixMultiplier.bind(matrix)
+model = pipeline("text-generation", "gpt2")
+generator = BatchTextGenerator.bind(model)
 # __doc_deploy_end__
