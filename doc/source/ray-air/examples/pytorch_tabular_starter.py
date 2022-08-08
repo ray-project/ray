@@ -68,7 +68,11 @@ def train_loop_per_worker(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
     for cur_epoch in range(epochs):
-        for inputs, labels in train_data.iter_torch_batches(batch_size=batch_size):
+        for batch in train_data.iter_torch_batches(
+            batch_size=batch_size, dtypes=torch.float32
+        ):
+            # "concat_out" is the output column of the Concatenator.
+            inputs, labels = batch["concat_out"], batch["target"]
             optimizer.zero_grad()
             predictions = model(inputs)
             train_loss = loss_fn(predictions, labels.unsqueeze(1))
