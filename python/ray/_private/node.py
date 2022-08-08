@@ -195,7 +195,6 @@ class Node:
             self._webui_url = None
             self._webui_url_with_protocol = None
         else:
-            self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
             self._webui_url_with_protocol = (
                 ray._private.services.get_webui_url_from_internal_kv()
             )
