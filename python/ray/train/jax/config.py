@@ -64,7 +64,7 @@ def release_tpu_lock(try_remove_tpulib_lock: bool = False):
         subprocess.run("sudo lsof -w /dev/accel0", shell=True) # kill all processes using the TPUs
         subprocess.run("sudo rm -f /tmp/libtpu_lockfile", shell=True) # remove the lock file
     else:
-        if os.path.isfile("/tmp/libtpu_lockfile"):
+        if os.path.exists("/tmp/libtpu_lockfile"):
 
             warnings.warn(
                 "The tpulib lock file exists, and you might"
