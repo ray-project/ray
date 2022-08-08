@@ -17,7 +17,7 @@ Preprocessor
 .. autoclass:: ray.data.preprocessor.Preprocessor
     :members:
 
-Generic Preprocessors
+General Preprocessors
 #####################
 
 .. autoclass:: ray.data.preprocessors.BatchMapper
@@ -26,14 +26,17 @@ Generic Preprocessors
 .. autoclass:: ray.data.preprocessors.Chain
     :show-inheritance:
 
+.. autoclass:: ray.data.preprocessors.Concatenator
+    :show-inheritance:
+
 .. autoclass:: ray.data.preprocessors.SimpleImputer
     :show-inheritance:
 
 .. automethod:: ray.data.Dataset.train_test_split
     :noindex:
 
-Category Preprocessors
-######################
+Categorical Encoders
+####################
 
 .. autoclass:: ray.data.preprocessors.Categorizer
     :show-inheritance:
@@ -50,8 +53,8 @@ Category Preprocessors
 .. autoclass:: ray.data.preprocessors.OrdinalEncoder
     :show-inheritance:
 
-Number Preprocessors
-####################
+Feature Scalers
+###############
 
 .. autoclass:: ray.data.preprocessors.MaxAbsScaler
     :show-inheritance:
@@ -71,11 +74,8 @@ Number Preprocessors
 .. autoclass:: ray.data.preprocessors.StandardScaler
     :show-inheritance:
 
-.. autoclass:: ray.data.preprocessors.Concatenator
-    :show-inheritance:
-
-Text Preprocessors
-##################
+Text Encoders
+#############
 
 .. autoclass:: ray.data.preprocessors.CountVectorizer
     :show-inheritance:
