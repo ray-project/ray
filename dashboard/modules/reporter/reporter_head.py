@@ -9,7 +9,7 @@ import ray
 import ray._private.services
 import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.consts import GCS_RPC_TIMEOUT
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
@@ -131,7 +131,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         (legacy_status, formatted_status_string, error) = await asyncio.gather(
             *[
                 self._gcs_aio_client.internal_kv_get(
-                    key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT
+                    key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
                 )
                 for key in [
                     DEBUG_AUTOSCALING_STATUS_LEGACY,

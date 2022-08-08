@@ -12,7 +12,7 @@ import aiohttp.web
 from pydantic import BaseModel, Extra, Field, validator
 
 import ray
-from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK, GCS_RPC_TIMEOUT
+from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK, GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
@@ -381,14 +381,14 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         serve_keys = await self._gcs_aio_client.internal_kv_keys(
             SERVE_CONTROLLER_NAME.encode(),
             namespace=ray_constants.KV_NAMESPACE_SERVE,
-            timeout=GCS_RPC_TIMEOUT,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
         )
 
         tasks = [
             self._gcs_aio_client.internal_kv_get(
                 key,
                 namespace=ray_constants.KV_NAMESPACE_SERVE,
-                timeout=GCS_RPC_TIMEOUT,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
             )
             for key in serve_keys
             if SERVE_SNAPSHOT_KEY in key.decode()
@@ -416,7 +416,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         session_name = await self._gcs_aio_client.internal_kv_get(
             b"session_name",
             namespace=ray_constants.KV_NAMESPACE_SESSION,
-            timeout=GCS_RPC_TIMEOUT,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
         )
         return session_name.decode()
 

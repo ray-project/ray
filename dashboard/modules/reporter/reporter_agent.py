@@ -14,7 +14,7 @@ import psutil
 import ray
 import ray._private.services
 import ray._private.utils
-from ray.dashboard.consts import GCS_RPC_TIMEOUT
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
@@ -788,7 +788,9 @@ class ReporterAgent(
         while True:
             try:
                 formatted_status_string = await self._gcs_aio_client.internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS.encode(), None, timeout=GCS_RPC_TIMEOUT
+                    DEBUG_AUTOSCALING_STATUS.encode(),
+                    None,
+                    timeout=GCS_RPC_TIMEOUT_SECONDS,
                 )
 
                 stats = self._get_all_stats()

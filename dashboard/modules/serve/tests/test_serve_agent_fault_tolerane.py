@@ -24,7 +24,8 @@ STATUS_URL = "http://localhost:52365/api/serve/deployments/status"
     ],
     indirect=True,
 )
-def test_deployments_get_ft(monkeypatch, ray_start_regular_with_external_redis):
+def test_deployments_get_tolerane(monkeypatch, ray_start_regular_with_external_redis):
+    # test serve agent's availability when gcs is down
     monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
     serve.start(detached=True)
 
@@ -50,7 +51,8 @@ def test_deployments_get_ft(monkeypatch, ray_start_regular_with_external_redis):
     ],
     indirect=True,
 )
-def test_status_url_get_ft(monkeypatch, ray_start_regular_with_external_redis):
+def test_status_url_get_tolerane(monkeypatch, ray_start_regular_with_external_redis):
+    # test serve agent's availability when gcs is down
     monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
     serve.start(detached=True)
     get_response = requests.get(STATUS_URL, timeout=15)
