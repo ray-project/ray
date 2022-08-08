@@ -444,7 +444,7 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
 
 
 @DeveloperAPI
-class ObjectFreedError(ObjectLostError, AssertionError):
+class ObjectFreedError(ObjectLostError):
     """Indicates that an object was manually freed by the application.
 
     Attributes:
