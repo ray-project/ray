@@ -126,12 +126,8 @@ class LightningTrainer(TorchTrainer):
         ] = lightning_module_init_config
 
         head_node_addr, head_node_port = get_address_and_port()
-        # TODO: can we call `session.get_world_size` this early?
-        num_nodes = session.get_world_size() // scaling_config.num_workers
         super().__init__(
-            train_loop_per_worker=_create_train_loop(
-                head_node_addr, head_node_port, num_nodes
-            ),
+            train_loop_per_worker=_create_train_loop(head_node_addr, head_node_port),
             train_loop_config=trainer_init_config,
             torch_config=torch_config,
             scaling_config=scaling_config,
@@ -165,7 +161,7 @@ class LightningTrainer(TorchTrainer):
             )
         if any(
             isinstance(logger, TrainReportLogger)
-            for logger in trainer_init_config.get("loggers", [])
+            for logger in trainer_init_config.get("logger", [])
         ):
             raise ValueError(
                 "Do not pass in a Ray Train reporting logger to "
@@ -173,20 +169,18 @@ class LightningTrainer(TorchTrainer):
             )
 
 
-def _create_train_loop(head_node_addr, head_node_port, num_nodes):
+def _create_train_loop(head_node_addr, head_node_port):
     def _lightning_train_loop_per_worker(config):
         os.environ["MASTER_ADDR"] = head_node_addr
-        os.environ["MASTER_PORT"] = head_node_port
+        os.environ["MASTER_PORT"] = str(head_node_port)
         os.environ["NODE_RANK"] = str(session.get_world_rank())
         os.environ["LOCAL_RANK"] = str(session.get_local_rank())
         os.environ["WORLD_SIZE"] = str(session.get_world_size())
 
         LightningModule = config.pop("_lightning_module")
         lightning_module_init_config = config.pop("_lightning_module_init_config")
-        # TODO: trim kwargs based on `LightningModule.__init__` signature?
         lightning_module_instance = LightningModule(**lightning_module_init_config)
 
-        # TODO: is KeyError raised if a key is not set in datasets?
         datamodule = process_datasets(
             session.get_dataset_shard(TRAIN_DATASET_KEY),
             session.get_dataset_shard("val"),
@@ -197,8 +191,7 @@ def _create_train_loop(head_node_addr, head_node_port, num_nodes):
 
         # TODO: do we need to do anything for Train checkpointing?
         config["strategy"] = "ddp"
-        config["num_nodes"] = num_nodes
-        config["loggers"] = [*config.get("loggers", []), TrainReportLogger()]
+        config["logger"] = [*config.get("logger", []), TrainReportLogger()]
         trainer = pytorch_lightning.Trainer(**config)
         # TODO: disable PTL checkpointing because we checkpoint in Train?
         trainer.fit(lightning_module_instance, datamodule=datamodule)
