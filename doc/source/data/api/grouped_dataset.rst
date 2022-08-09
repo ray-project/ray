@@ -1,3 +1,4 @@
+.. _grouped-dataset-api:
 
 GroupedDataset API
 ==================
@@ -28,7 +29,3 @@ Aggregations
 
 .. autoclass:: ray.data.aggregate.AbsMax
     :members:
-
-
-Map transformations
--------------------

@@ -1,4 +1,4 @@
-.. _data_api:
+.. _data-api:
 
 Ray Datasets API
 ================

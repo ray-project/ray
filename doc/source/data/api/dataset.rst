@@ -54,7 +54,7 @@ Dataset API
     ray.data.Dataset.mean
     ray.data.Dataset.std
 
-**Converting to Pipeline**
+**Converting to Pipelines**
 
 .. autosummary::
     :nosignatures:

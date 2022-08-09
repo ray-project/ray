@@ -1,3 +1,4 @@
+.. _dataset-context-api:
 
 DatasetContext API
 ==================

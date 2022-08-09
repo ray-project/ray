@@ -1,3 +1,4 @@
+.. _random-access-dataset-api:
 
 (Experimental) RandomAccessDataset API
 ======================================

@@ -1,3 +1,4 @@
+.. _input-output:
 
 Input/Output
 ============
@@ -16,6 +17,16 @@ Python Objects
 
 .. autofunction:: ray.data.from_items
 
+Parquet
+-------
+
+.. autofunction:: ray.data.read_parquet
+
+.. autofunction:: ray.data.read_parquet_bulk
+
+.. automethod:: ray.data.Dataset.write_parquet
+    :noindex:
+
 CSV
 ---
 
@@ -31,6 +42,16 @@ JSON
 
 .. automethod:: ray.data.Dataset.write_json
     :noindex:
+
+Text
+----
+
+.. autofunction:: ray.data.read_text
+
+Binary
+------
+
+.. autofunction:: ray.data.read_binary_files
 
 Pandas
 ------
@@ -60,16 +81,6 @@ NumPy
 .. automethod:: ray.data.Dataset.to_numpy_refs
     :noindex:
 
-Parquet
--------
-
-.. autofunction:: ray.data.read_parquet
-
-.. autofunction:: ray.data.read_parquet_bulk
-
-.. automethod:: ray.data.Dataset.write_parquet
-    :noindex:
-
 Arrow
 -----
 
@@ -77,18 +88,8 @@ Arrow
 
 .. autofunction:: ray.data.from_arrow_refs
 
-.. automethod:: ray.data.Dataset.to_numpy_refs
+.. automethod:: ray.data.Dataset.to_arrow_refs
     :noindex:
-
-Text
-----
-
-.. autofunction:: ray.data.read_text
-
-Binary
-------
-
-.. autofunction:: ray.data.read_binary_files
 
 Dask
 ----
