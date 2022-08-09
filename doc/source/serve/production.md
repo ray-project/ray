@@ -563,6 +563,8 @@ Similarly, you can update any other setting in any deployment in the config file
 * Adding an override setting that was previously not present in the config file.
 * Removing a setting from the config file.
 
+Note also that changing `import_path` or `runtime_env` is considered a code update for all deployments, and will tear down all running deployments and restart them.
+
 :::{warning}
 Although you can update your Serve application by deploying an entirely new deployment graph using a different `import_path` and a different `runtime_env`, this is NOT recommended in production.
 
