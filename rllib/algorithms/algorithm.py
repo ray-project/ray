@@ -2608,6 +2608,10 @@ class Algorithm(Trainable):
     def local_worker(self):
         return self.workers.local_worker()
 
+    @property
+    def set_global_vars(self):
+        return self.local_worker.set_global_vars
+
     @Deprecated(new="construct WorkerSet(...) instance directly", error=False)
     def _make_workers(
         self,
