@@ -339,10 +339,7 @@ parts:
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-cli
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-configuration
           - file: cluster/cluster_under_construction/references/index
-            title: Reference
-            sections:
-              - file: cluster/cluster_under_construction/references/autoscaler-sdk-api
-              - file: cluster/cluster_under_construction/references/job-submission-apis
+            title: References
 
   - caption: References
     chapters:
