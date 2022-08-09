@@ -431,7 +431,7 @@ class BroadcastUpdateLearnerWeights:
             self.steps_since_broadcast >= self.broadcast_interval
             and self.learner_thread.weights_updated
         ):
-            self.weights = ray.put(self.local_worker.get_weights())
+            self.weights = ray.put(self.workers.local_worker().get_weights())
             self.steps_since_broadcast = 0
             self.learner_thread.weights_updated = False
             # Update metrics.
@@ -439,7 +439,7 @@ class BroadcastUpdateLearnerWeights:
             metrics.counters["num_weight_broadcasts"] += 1
         actor.set_weights.remote(self.weights, _get_global_vars())
         # Also update global vars of the local worker.
-        self.set_global_vars(_get_global_vars())
+        self.workers.local_worker().set_global_vars(_get_global_vars())
 
 
 class Impala(Algorithm):
