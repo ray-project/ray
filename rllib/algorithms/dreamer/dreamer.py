@@ -290,8 +290,6 @@ class DreamerIteration:
             for n in range(self.dreamer_train_iters):
                 print(f"sub-iteration={n}/{self.dreamer_train_iters}")
                 batch = self.episode_buffer.sample(self.batch_size)
-                # if n == self.dreamer_train_iters - 1:
-                #     batch["log_gif"] = True
                 fetches = self.worker.learn_on_batch(batch)
         else:
             fetches = {}
