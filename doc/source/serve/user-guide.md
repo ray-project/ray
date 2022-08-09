@@ -11,6 +11,7 @@ you will learn
 - [Using HTTP Adapters](http-adapters)
 - [Composing Deployments](handle-guide)
 - [Serving ML Models](ml-models)
+- [Use Requests Batching](batching-guide)
 - [Using Deployment Graph](deployment-graph)
 - [Deploying Ray Serve](deploying-serve)
 - [Monitoring Ray Serve](monitoring)
