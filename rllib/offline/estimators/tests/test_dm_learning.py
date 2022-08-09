@@ -2,7 +2,7 @@ import unittest
 
 import ray
 from ray.rllib.offline.estimators import DirectMethod
-from ray.rllib.offline.estimators.tests.test_ope_utils import (
+from ray.rllib.offline.estimators.tests.utils import (
     get_cliff_walking_wall_policy_and_data,
     check_estimate,
 )
