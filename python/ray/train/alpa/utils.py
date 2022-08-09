@@ -5,7 +5,7 @@ from ray.util.annotations import PublicAPI
 from typing import TYPE_CHECKING, List, Optional
 import re
 from ray.air.config import ScalingConfig
-from ray.util.placement_group import get_current_placement_group
+from ray.util.placement_group import get_current_placement_group, remove_placement_group
 from ray._private.ray_constants import env_integer
 
 if TYPE_CHECKING:
@@ -16,8 +16,6 @@ import alpa
 
 from ray.train.constants import TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV
 
-from ray.util.placement_group import remove_placement_group, get_current_placement_group
-
 try:
     from alpa.device_mesh import VirtualPhysicalMesh, DeviceCluster
 except ModuleNotFoundError:
@@ -25,11 +23,29 @@ except ModuleNotFoundError:
         "alpa isn't installed. To install alpa, run 'pip install " "alpa'."
     )
 
+
+# os
+import os
+import time
+import numpy as np
+
+
+# jax
+from jax.lib import xla_client
+
+# alpa util supplement
+from alpa.global_env import global_config
+from alpa.device_mesh import MeshHostWorker, DaemonMoveWorker
+from alpa.device_mesh import used_port_set
+from alpa.device_mesh import device_id_to_str
+from typing import Sequence
+from alpa.util import try_import_ray_worker
+
+
 logger = logging.getLogger(__name__)
 
 PLACEMENT_GROUP_TIMEOUT_S_ENV = "ALPA_PLACEMENT_GROUP_TIMEOUT_S_ENV"
 
-# alpa util supplement
 
 def try_import_ray_state(error: bool = False):
     """Tries importing `ray.state` and returns the module (or None).
@@ -46,10 +62,12 @@ def try_import_ray_state(error: bool = False):
     try:
         if hasattr(ray.state, "_real_worker"):
             if error:
-                raise ImportError("Could not import `ray.state`!"
-                                  "You might use the ray-nightly "
-                                  "and `ray.state` is deprecated there"
-                                  "`pip install ray==1.13.0`.")
+                raise ImportError(
+                    "Could not import `ray.state`!"
+                    "You might use the ray-nightly "
+                    "and `ray.state` is deprecated there"
+                    "`pip install ray==1.13.0`."
+                )
             return ray.state._real_worker  # pylint: disable=protected-access
         else:
             return ray.state
@@ -58,7 +76,7 @@ def try_import_ray_state(error: bool = False):
 
 
 ########################################
-##### Ray Palcement Group API Utilities
+# Ray Palcement Group API Utilities
 ########################################
 
 
@@ -73,8 +91,7 @@ def get_bundle2ip(pg=None):
     dict_bg2ip = {}
 
     ray_state = try_import_ray_state()
-    resources_list = ray_state.state._available_resources_per_node(  # pylint: disable=protected-access
-    ).values()
+    resources_list = ray_state.state._available_resources_per_node().values()
 
     for resource in resources_list:
         resource_name_list = resource.keys()
@@ -86,14 +103,15 @@ def get_bundle2ip(pg=None):
             # when bundles are created, pg resources are
             # specified as [resource]_[bundle_index]_[pg_id]
             if pg:
-                try_bundle_index = re.findall(rf"bundle_group_(\d+)_{pg_id}",
-                                              resource_name)
+                try_bundle_index = re.findall(
+                    rf"bundle_group_(\d+)_{pg_id}", resource_name
+                )
             else:
-                try_bundle_index = re.findall(r"bundle_group_(\d+)_.*",
-                                              resource_name)
+                try_bundle_index = re.findall(r"bundle_group_(\d+)_.*", resource_name)
 
             try_node_ip = re.findall(
-                r"^node:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$)", resource_name)
+                r"^node:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$)", resource_name
+            )
 
             if try_node_ip:
                 node_ip = try_node_ip[0]
@@ -102,7 +120,8 @@ def get_bundle2ip(pg=None):
                 bundle_index_list.append(try_bundle_index[0])
 
         dict_bg2ip.update(
-            **dict(zip(bundle_index_list, [node_ip] * len(bundle_index_list))))
+            **dict(zip(bundle_index_list, [node_ip] * len(bundle_index_list)))
+        )
 
     ip_list = []
     for i in range(len(dict_bg2ip)):
@@ -111,22 +130,24 @@ def get_bundle2ip(pg=None):
     return ip_list
 
 
-def env_integer(key, default):
-    if key in os.environ:
-        value = os.environ[key]
-        if value.isdigit():
-            return int(os.environ[key])
+# def env_integer(key, default):
+#     if key in os.environ:
+#         value = os.environ[key]
+#         if value.isdigit():
+#             return int(os.environ[key])
 
-        logger.debug(f"Found {key} in environment, but value must "
-                     f"be an integer. Got: {value}. Returning "
-                     f"provided default {default}.")
-        return default
-    return default
+#         logger.debug(
+#             f"Found {key} in environment, but value must "
+#             f"be an integer. Got: {value}. Returning "
+#             f"provided default {default}."
+#         )
+#         return default
+#     return default
 
 
-def create_placement_group(num_hosts,
-                           num_devices_per_host,
-                           additional_resources_per_host=None):
+def create_placement_group(
+    num_hosts, num_devices_per_host, additional_resources_per_host=None
+):
     """Creates a placement group if it does not exist.
     If a placement group is already detected (Tune) this will be a no-op.
     By default the placement group will be created with `SPREAD` strategy.
@@ -144,13 +165,15 @@ def create_placement_group(num_hosts,
     ray_worker = try_import_ray_worker()
     worker = ray_worker.global_worker  # pylint: disable=protected-access
     should_capture_child_tasks_in_placement_group = (
-        worker.should_capture_child_tasks_in_placement_group)
+        worker.should_capture_child_tasks_in_placement_group
+    )
     should_create_placement_group = (
-        current_placement_group is None or
-        not should_capture_child_tasks_in_placement_group)
+        current_placement_group is None
+        or not should_capture_child_tasks_in_placement_group
+    )
 
     if should_create_placement_group:
-        additional_resources_per_host = (additional_resources_per_host or {})
+        additional_resources_per_host = additional_resources_per_host or {}
         bundle = {
             "CPU": 1,
             "GPU": num_devices_per_host,
@@ -179,7 +202,8 @@ def create_placement_group(num_hosts,
                 "setting the ALPA_PLACEMENT_GROUP_TIMEOUT_S environment "
                 "variable. Current resources available: "
                 f"{ray.available_resources()}, resources requested by "
-                f"the placement group: {placement_group.bundle_specs}")
+                f"the placement group: {placement_group.bundle_specs}"
+            )
         return placement_group
     else:
         return current_placement_group
@@ -194,7 +218,7 @@ def get_bundle_idx(placement_group, device_ips):
     Lastly, we sort bundle index according to the device IP list given.
     Args:
         placement_group (placement group): The placement group.
-        device_ips (list): The list of device IP addresses.
+        device_ips (list): The list of device IP addresses. # noqa
     Returns:
         list: The sorted bundle index list.
     """
@@ -204,13 +228,14 @@ def get_bundle_idx(placement_group, device_ips):
 
     # filter out the bundle index with device (GPUs)
     device_bundle_idx_list = [
-        i for i, bundle_spec in enumerate(bundle_specs)
-        if bundle_spec.get("GPU", 0) > 0
+        i for i, bundle_spec in enumerate(bundle_specs) if bundle_spec.get("GPU", 0) > 0
     ]
 
     if len(device_bundle_idx_list) != len(device_ips):
-        raise ValueError("The number of bundles with GPU resources "
-                         "is not equal to the number of device IPs.")
+        raise ValueError(
+            "The number of bundles with GPU resources "
+            "is not equal to the number of device IPs."
+        )
 
     # device IP -> bundle index
     bundle_ip2idx = {bundle_ips[i]: i for i in device_bundle_idx_list}
@@ -220,15 +245,18 @@ def get_bundle_idx(placement_group, device_ips):
 
     return sorted_bundle_idx
 
+
 # monkey patch
-def monkey__init__(self,
-                host_ids: Sequence[int],
-                host_info: Sequence[dict],
-                head_ip: str,
-                num_devices_per_host: int,
-                parent: "VirtualPhysicalMesh" = None,
-                devices: Sequence[Sequence[int]] = None,
-                mesh_id: int = None):
+def monkey__init__(
+    self,
+    host_ids: Sequence[int],
+    host_info: Sequence[dict],
+    head_ip: str,
+    num_devices_per_host: int,
+    parent: "VirtualPhysicalMesh" = None,
+    devices: Sequence[Sequence[int]] = None,
+    mesh_id: int = None,
+):
     # host_ids are the indices of hosts in the global DeviceCluster
     self.host_ids = host_ids
     self.host_info = host_info
@@ -245,12 +273,12 @@ def monkey__init__(self,
 
     if devices is not None:
         if len(devices) != len(host_ids):
-            raise RuntimeError(
-                "Please specify the gpu IDs used on each host.")
+            raise RuntimeError("Please specify the gpu IDs used on each host.")
         if not all(len(ids) == num_devices_per_host for ids in devices):
             raise RuntimeError(
                 "Devices specified for each host does not align "
-                "with `num_devices_per_host`.")
+                "with `num_devices_per_host`."
+            )
     else:
         devices = [list(range(num_devices_per_host)) for _ in host_ids]
 
@@ -259,13 +287,13 @@ def monkey__init__(self,
     self.device_ips = []
     for i in range(self.num_hosts):
         ip = self.host_info[i]["NodeManagerAddress"]
-        self.device_strs.extend(
-            [device_id_to_str(ip, j) for j in devices[i]])
+        self.device_strs.extend([device_id_to_str(ip, j) for j in devices[i]])
         self.device_ips.append(ip)
     self._launch_xla_servers()
 
     self.to_delete_remote_refs = []
     self.to_delete_remote_ref_ct = 0
+
 
 def monkey_launch_xla_servers(self):
     # Launch distributed xla runtime
@@ -277,7 +305,8 @@ def monkey_launch_xla_servers(self):
     self.server_address = f"{self.head_ip}:{port}"
     logger.debug(f"Trying to start XLA gRPC server on port: {port}...")
     self.service_server = xla_client._xla.get_distributed_runtime_service(
-        self.server_address, self.num_hosts)
+        self.server_address, self.num_hosts
+    )
     logger.debug(f"Success to start XLA gRPC server on port: {port}...")
     time.sleep(0.5)
 
@@ -286,27 +315,26 @@ def monkey_launch_xla_servers(self):
 
     # create placement group
     self._placement_group = create_placement_group(
-        self.num_hosts, self.num_devices_per_host)
+        self.num_hosts, self.num_devices_per_host
+    )
 
     # get the sorted bundle index list
-    device_bundle_idx_list = get_bundle_idx(self._placement_group,
-                                            self.device_ips)
+    device_bundle_idx_list = get_bundle_idx(self._placement_group, self.device_ips)
 
     for i in range(self.num_hosts):
         bundle_index = device_bundle_idx_list[i]
 
         # Set XLA environment variables
         env_vars = {
-            "ALPA_IS_WORKER":
-                "True",
-            "NCCL_USE_MULTISTREAM":
-                "False",
-            "XLA_PYTHON_CLIENT_MEM_FRACTION":
-                str(global_config.xla_client_mem_fraction),
-            "XLA_FLAGS": (os.environ.get("XLA_FLAGS", "") +
-                            f" --xla_gpu_autotune_level"
-                            f"={global_config.xla_gpu_autotune_level}"),
-
+            "ALPA_IS_WORKER": "True",
+            "NCCL_USE_MULTISTREAM": "False",
+            "XLA_PYTHON_CLIENT_MEM_FRACTION": str(
+                global_config.xla_client_mem_fraction
+            ),
+            "XLA_FLAGS": (
+                os.environ.get("XLA_FLAGS", "") + f" --xla_gpu_autotune_level"
+                f"={global_config.xla_gpu_autotune_level}"
+            ),
             # "NCCL_LAUNCH_MODE": "PARALLEL",
             # "XLA_FLAGS": "--xla_dump_to=hlo --xla_dump_hlo_pass_re=.*"
             # "NCCL_DEBUG": "INFO" if i == 0 else "VERSION",
@@ -320,35 +348,44 @@ def monkey_launch_xla_servers(self):
 
         if "XLA_PYTHON_CLIENT_ALLOCATOR" in os.environ:
             env_vars["XLA_PYTHON_CLIENT_ALLOCATOR"] = os.environ[
-                "XLA_PYTHON_CLIENT_ALLOCATOR"]
+                "XLA_PYTHON_CLIENT_ALLOCATOR"
+            ]
 
         if "NCCL_DEBUG" in os.environ:
-            env_vars["NCCL_DEBUG"] = os.environ[
-                "NCCL_DEBUG"] if i == 0 else "VERSION"
+            env_vars["NCCL_DEBUG"] = os.environ["NCCL_DEBUG"] if i == 0 else "VERSION"
 
         if global_config.use_aws_efa:
-            env_vars.update({
-                "FI_PROVIDER": "efa",
-                "FI_EFA_USE_DEVICE_RDMA": "1",
-                "LD_LIBRARY_PATH": os.environ.get("LD_LIBRARY_PATH",
-                                                    ""),  # For libnccl-net.so
-            })
+            env_vars.update(
+                {
+                    "FI_PROVIDER": "efa",
+                    "FI_EFA_USE_DEVICE_RDMA": "1",
+                    "LD_LIBRARY_PATH": os.environ.get(
+                        "LD_LIBRARY_PATH", ""
+                    ),  # For libnccl-net.so
+                }
+            )
 
         # Launch the DaemonMoveWorker
         cls = ray.remote(DaemonMoveWorker)
         move_worker = cls.options(
             placement_group=self._placement_group,
-            placement_group_bundle_index=bundle_index).remote()
+            placement_group_bundle_index=bundle_index,
+        ).remote()
 
         # Launch the MeshHostWorker
         cls = ray.remote(num_gpus=self.num_devices_per_host)(MeshHostWorker)
-        worker = cls.options(placement_group=self._placement_group,
-                                placement_group_bundle_index=bundle_index,
-                                runtime_env={
-                                    "env_vars": env_vars
-                                }).remote(self.server_address, self.num_hosts,
-                                        i, self.mesh_id, move_worker,
-                                        global_config.runtime_random_seed)
+        worker = cls.options(
+            placement_group=self._placement_group,
+            placement_group_bundle_index=bundle_index,
+            runtime_env={"env_vars": env_vars},
+        ).remote(
+            self.server_address,
+            self.num_hosts,
+            i,
+            self.mesh_id,
+            move_worker,
+            global_config.runtime_random_seed,
+        )
         self.workers.append(worker)
     self.launched = True
 
@@ -371,9 +408,12 @@ def monkey_shutdown(self, forced=False):
     self.launched = False
     self.operation_executables.clear()  # clear with forced shutdown
 
+
 # monkey patch here!
 alpa.device_mesh.DistributedPhysicalDeviceMesh.__init__ = monkey__init__
-alpa.device_mesh.DistributedPhysicalDeviceMesh._launch_xla_servers = monkey_launch_xla_servers
+alpa.device_mesh.DistributedPhysicalDeviceMesh._launch_xla_servers = (
+    monkey_launch_xla_servers
+)
 alpa.device_mesh.DistributedPhysicalDeviceMesh.shutdown = monkey_shutdown
 
 
@@ -454,54 +494,54 @@ def update_jax_platform(platform):
     xb.get_backend.cache_clear()
 
 
-def get_bundle2ip(pg=None):
-    """get the ip address list from placement group
+# def get_bundle2ip(pg=None):
+#     """get the ip address list from placement group
 
-    The ordering of the ip address are aligned with each bundle index.
-    """
+#     The ordering of the ip address are aligned with each bundle index.
+#     """
 
-    if pg:
-        pg_id = pg.id.hex()
-    # dictionary: bundle_group to node_ip
-    dict_bg2ip = dict()
+#     if pg:
+#         pg_id = pg.id.hex()
+#     # dictionary: bundle_group to node_ip
+#     dict_bg2ip = dict()
 
-    resources_list = ray._private.state.state._available_resources_per_node().values()
+#     resources_list = ray._private.state.state._available_resources_per_node().values()
 
-    for resource in resources_list:
-        resource_name_list = resource.keys()
+#     for resource in resources_list:
+#         resource_name_list = resource.keys()
 
-        # ic(resource_name_list, pg_id)
-        node_ip = None
-        bundle_index_list = []
-        for resource_name in resource_name_list:
-            # when bundles are created, pg resources are
-            # specified as [resource]_[bundle_index]_[pg_id]
-            if pg:
-                try_bundle_index = re.findall(
-                    rf"bundle_group_(\d+)_{pg_id}", resource_name
-                )
-            else:
-                try_bundle_index = re.findall(r"bundle_group_(\d+)_.*", resource_name)
+#         # ic(resource_name_list, pg_id)
+#         node_ip = None
+#         bundle_index_list = []
+#         for resource_name in resource_name_list:
+#             # when bundles are created, pg resources are
+#             # specified as [resource]_[bundle_index]_[pg_id]
+#             if pg:
+#                 try_bundle_index = re.findall(
+#                     rf"bundle_group_(\d+)_{pg_id}", resource_name
+#                 )
+#             else:
+#                 try_bundle_index = re.findall(r"bundle_group_(\d+)_.*", resource_name)
 
-            try_node_ip = re.findall(
-                r"^node:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$)", resource_name
-            )
+#             try_node_ip = re.findall(
+#                 r"^node:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$)", resource_name
+#             )
 
-            if try_node_ip:
-                node_ip = try_node_ip[0]
+#             if try_node_ip:
+#                 node_ip = try_node_ip[0]
 
-            if try_bundle_index:
-                bundle_index_list.append(try_bundle_index[0])
+#             if try_bundle_index:
+#                 bundle_index_list.append(try_bundle_index[0])
 
-        dict_bg2ip.update(
-            **dict(zip(bundle_index_list, [node_ip] * len(bundle_index_list)))
-        )
+#         dict_bg2ip.update(
+#             **dict(zip(bundle_index_list, [node_ip] * len(bundle_index_list)))
+#         )
 
-    ip_list = []
-    for i in range(len(dict_bg2ip)):
-        ip_list.append(dict_bg2ip[str(i)])
+#     ip_list = []
+#     for i in range(len(dict_bg2ip)):
+#         ip_list.append(dict_bg2ip[str(i)])
 
-    return ip_list
+#     return ip_list
 
 
 class AlpaManager:
@@ -670,7 +710,4 @@ class AlpaManager:
             self.placement_group = current_placement_group
 
 
-
-
 # Used ports for XLA distributed runtime servers.
-
