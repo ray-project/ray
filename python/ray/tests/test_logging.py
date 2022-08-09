@@ -15,6 +15,7 @@ from ray._private import ray_constants
 from ray._private.log_monitor import (
     LOG_NAME_UPDATE_INTERVAL_S,
     RAY_LOG_MONITOR_MANY_FILES_THRESHOLD,
+    LogFileInfo,
     LogMonitor,
 )
 from ray._private.test_utils import (
@@ -30,6 +31,49 @@ from ray.cross_language import java_actor_class
 def set_logging_config(monkeypatch, max_bytes, backup_count):
     monkeypatch.setenv("RAY_ROTATION_MAX_BYTES", str(max_bytes))
     monkeypatch.setenv("RAY_ROTATION_BACKUP_COUNT", str(backup_count))
+
+
+def test_reopen_changed_inode(tmp_path):
+    """Make sure that when we reopen a file because the inode has changed, we
+    open to the right location."""
+
+    path1 = tmp_path / "file"
+    path2 = tmp_path / "changed_file"
+
+    with open(path1, "w") as f:
+        for i in range(1000):
+            print(f"{i}", file=f)
+
+    with open(path2, "w") as f:
+        for i in range(2000):
+            print(f"{i}", file=f)
+
+    file_info = LogFileInfo(
+        filename=path1,
+        size_when_last_opened=0,
+        file_position=0,
+        file_handle=None,
+        is_err_file=False,
+        job_id=None,
+        worker_pid=None,
+    )
+
+    file_info.reopen_if_necessary()
+    for _ in range(1000):
+        file_info.file_handle.readline()
+
+    orig_file_pos = file_info.file_handle.tell()
+    file_info.file_position = orig_file_pos
+
+    # NOTE: On windows, an open file can't be deleted.
+    file_info.file_handle.close()
+    os.remove(path1)
+    os.rename(path2, path1)
+
+    file_info.reopen_if_necessary()
+
+    assert file_info.file_position == orig_file_pos
+    assert file_info.file_handle.tell() == orig_file_pos
 
 
 def test_log_rotation_config(ray_start_cluster, monkeypatch):
