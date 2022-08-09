@@ -143,6 +143,19 @@ class JaxTrainer(DataParallelTrainer):
             }
             scaling_config.resources_per_worker = resources_per_worker_upper
 
+        # cpu parallelism is not supported in jax
+        if (
+            scaling_config.use_gpu is False
+            and "TPU" in resources_per_worker
+            and resources_per_worker["TPU"] > 0
+        ):
+            logger.warning(
+                "cpu parallelism is not supported in jax. "
+                "Please use distributed GPU or TPU training instead. "
+                "Currently, the code is still running on cpu, "
+                "but there is no distributed training happening."
+            )
+
         if "PACK" in scaling_config.placement_strategy:
             scaling_config.placement_strategy = "SPREAD"
             logger.info(
