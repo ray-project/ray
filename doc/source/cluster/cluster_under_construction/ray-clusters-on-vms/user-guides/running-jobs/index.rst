@@ -20,4 +20,3 @@ To run an interactive Ray workload and see the output in real time in a client o
     :maxdepth: 2
 
     job-submission.rst
-    ray-client.rst
