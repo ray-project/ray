@@ -7,6 +7,7 @@ from ray.air import session
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
+    import argparse
 
 
 class TorchIterableDataset(IterableDataset):
@@ -46,11 +47,23 @@ def process_datasets(
     )
 
 
-class TrainReportLogger(pytorch_lightning.loggers.base.LightningLoggerBase):
-    @pytorch_lightning.utilities.distributed.rank_zero_only
+class TrainReportLogger(pytorch_lightning.loggers.Logger):
+    @property
+    def name(self):
+        return "TrainReportLogger"
+
+    @property
+    def version(self):
+        return session.get_trial_name()
+
+    @pytorch_lightning.utilities.rank_zero_only
+    def log_hyperparams(self, param: "argparse.Namespace"):
+        pass
+
+    @pytorch_lightning.utilities.rank_zero_only
     def log_metrics(self, metrics, step):
         # TODO: do we want `rank_zero_only` here?
 
         # `metrics` is a dictionary of metric names and values
         # TODO: also report global step and epoch in `metrics` dict?
-        session.report(**metrics)
+        session.report(metrics)
