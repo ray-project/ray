@@ -292,11 +292,6 @@ parts:
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/installing-ray
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/index
                 title: Launching Clusters
-                sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/aws
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/azure
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/gcp
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/add-your-own-cloud-provider
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-ray-cluster-on-prem
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/monitoring-and-observing-ray-cluster
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/large-cluster-best-practices
@@ -310,11 +305,6 @@ parts:
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/lsf
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/index
                 title: Running Jobs
-                sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-cli
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-sdk
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-rest
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/ray-client
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/index
               title: Examples
               sections:
@@ -332,11 +322,8 @@ parts:
                 sections:
                   - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/todo
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
-              sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/job-submission-apis
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-cli
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-configuration
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/autoscaler-sdk-api
+          - file: cluster/cluster_under_construction/references/index
+            title: References
 
   - caption: References
     chapters:
