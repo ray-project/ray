@@ -1625,7 +1625,7 @@ py_test(
 
 py_test(
     name = "test_async_requests_manager",
-    tags = ["team:rllib", "execution"],
+    tags = ["team:rllib", "execution", "exclusive"],
     size = "medium",
     srcs = ["execution/tests/test_async_requests_manager.py"]
 )
@@ -1765,7 +1765,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_sample_batch",
-    tags = ["team:rllib", "policy"],
+    tags = ["team:rllib", "policy", "gpu"],
     size = "small",
     srcs = ["policy/tests/test_sample_batch.py"]
 )
@@ -3311,7 +3311,7 @@ py_test(
 py_test(
     name = "examples/bandit/lin_ts_train_wheel_env",
     main = "examples/bandit/lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
 )
@@ -3319,7 +3319,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ts_train_wheel_env",
     main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
 )
@@ -3327,7 +3327,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ucb_train_recommendation",
     main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
-    tags = ["team:rllib","exclusive",  "examples", ],
+    tags = ["team:rllib","exclusive",  "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
 )
@@ -3335,7 +3335,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ucb_train_recsim_env",
     main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
@@ -3343,36 +3343,36 @@ py_test(
 py_test(
     name = "examples/connectors/run_connector_policy",
     main = "examples/connectors/run_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
-    data = [
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
-    ],
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022",
+    ]),
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
 
 py_test(
     name = "examples/connectors/adapt_connector_policy",
     main = "examples/connectors/adapt_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
-    data = [
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
-    ],
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022",
+    ]),
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )
 
 py_test(
     name = "examples/connectors/self_play_with_policy_checkpoint",
     main = "examples/connectors/self_play_with_policy_checkpoint.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
-    data = [
+    data = glob([
         "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
-    ],
+    ]),
     args = [
         "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
         "--train_iteration=1"  # Smoke test.

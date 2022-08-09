@@ -80,7 +80,7 @@ class TorchTrainer(DataParallelTrainer):
             # Configures the dataloader for distributed training by adding a
             # `DistributedSampler`.
             # You should NOT use this if you are doing
-            # `session.get_dataset_shard(...).to_torch(...)`
+            # `session.get_dataset_shard(...).iter_torch_batches(...)`
             train.torch.prepare_data_loader(...)
 
             # Returns the current torch device.

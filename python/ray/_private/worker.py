@@ -1,7 +1,6 @@
 import atexit
 import faulthandler
 import functools
-import grpc
 import hashlib
 import inspect
 import io
@@ -757,6 +756,7 @@ class Worker:
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
+        import grpc
 
         subscriber = self.gcs_log_subscriber
         subscriber.subscribe()
@@ -1471,7 +1471,7 @@ def init(
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
-    dashboard_url = _global_node.address_info["webui_url"]
+    dashboard_url = _global_node.webui_url_with_protocol
     # We logged the address before attempting the connection, so we don't need
     # to log it again.
     info_str = "Connected to Ray cluster."
@@ -1479,7 +1479,7 @@ def init(
         info_str = "Started a local Ray instance."
     if dashboard_url:
         logger.info(
-            info_str + " View the dashboard at %s%shttp://%s%s%s.",
+            info_str + " View the dashboard at %s%s%s%s%s.",
             colorama.Style.BRIGHT,
             colorama.Fore.GREEN,
             dashboard_url,
@@ -1902,11 +1902,6 @@ def connect(
         if mode == SCRIPT_MODE:
             raise e
         elif mode == WORKER_MODE:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
-            ):
-                raise e
             traceback_str = traceback.format_exc()
             ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
@@ -2451,6 +2446,10 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
     Gets a handle to an actor with the given name. The actor must
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
+
+    This method is a sync call and it'll timeout after 60s. This can be modified
+    by setting OS env RAY_gcs_server_request_timeout_seconds before starting
+    the cluster.
 
     Args:
         name: The name of the actor.
