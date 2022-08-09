@@ -3,7 +3,7 @@
 
 This guide details the steps needed to start a Ray cluster in GCP.
 
-To start a GCP Ray cluster, you need to use the Ray Cluster Launcher with Google API client.
+To start a GCP Ray cluster, you will use the Ray Cluster Launcher with the Google API client.
 
 
 ## Install Ray Cluster Launcher
@@ -16,18 +16,18 @@ pip install -U ray[default]
 
 ## Install and Configure Google API Client
 
-If you have never created a Google APIs Console project, read the [Managing Projects page](https://cloud.google.com/resource-manager/docs/creating-managing-projects?visit_id=637952351450670909-433962807&rd=1) and create a project in the [Google API Console](https://console.developers.google.com/).
-Next, install Google API Client using `pip install -U google-api-python-client`.
+If you have never created a Google APIs Console project, read google Cloud's [Managing Projects page](https://cloud.google.com/resource-manager/docs/creating-managing-projects?visit_id=637952351450670909-433962807&rd=1) and create a project in the [Google API Console](https://console.developers.google.com/).
+Next, install the Google API Client using `pip install -U google-api-python-client`.
 
 
 ```
-# install Google API Client
+# Install the Google API Client.
 pip install google-api-python-client
 ```
 
 ## Start Ray with the Ray Cluster Launcher
 
-Once the API client is configured to manage resources on your GCP account, you should be ready to launch your cluster. The provided [example-full.yaml](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml) cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 [preemptible workers](https://cloud.google.com/preemptible-vms/). Note that you'll need to fill in your [project_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/gcp/example-full.yaml#L42) in those templates.
+Once the Google API client is configured to manage resources on your GCP account, you should be ready to launch your cluster. The provided [cluster config file](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml) will create a small cluster with an on-demand n1-standard-2 head node and is configured to autoscale to up to two n1-standard-2 [preemptible workers](https://cloud.google.com/preemptible-vms/). Note that you'll need to fill in your GCP [project_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/gcp/example-full.yaml#L42) in those templates.
 
 
 Test that it works by running the following commands from your local machine:
