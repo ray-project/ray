@@ -336,10 +336,13 @@ parts:
                   - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/todo
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
               sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/job-submission-apis
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-cli
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-configuration
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/autoscaler-sdk-api
+          - file: cluster/cluster_under_construction/references/index
+            title: Reference
+            sections:
+              - file: cluster/cluster_under_construction/references/autoscaler-sdk-api
+              - file: cluster/cluster_under_construction/references/job-submission-apis
 
   - caption: References
     chapters:
