@@ -43,11 +43,12 @@ def set_progress_bars(enabled: bool) -> bool:
 class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports."""
 
-    def __init__(self, name: str, total: int, position: int = 0):
+    def __init__(self, name: str, total: int, position: int = 0, num_actors: int = 1):
         if not _enabled or threading.current_thread() is not threading.main_thread():
             self._bar = None
         elif tqdm:
             self._bar = tqdm.tqdm(total=total, position=position)
+            self._actor_bars = {}
             self._bar.set_description(name)
         else:
             global needs_warning
@@ -55,6 +56,8 @@ class ProgressBar:
                 print("[dataset]: Run `pip install tqdm` to enable progress reporting.")
                 needs_warning = False
             self._bar = None
+        self._total = total
+        self._num_actors = num_actors
 
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
         t = threading.current_thread()
@@ -86,9 +89,18 @@ class ProgressBar:
         if self._bar:
             self._bar.set_description(name)
 
-    def update(self, i: int) -> None:
+    def update(self, i: int, actor_index: int = -1) -> None:
         if self._bar and i != 0:
             self._bar.update(i)
+        if actor_index != -1:
+            if actor_index not in self._actor_bars:
+                # NOTE: total is faked here; you can also set to None
+                self._actor_bars[actor_index] = tqdm.tqdm(
+                    total=self._total / self._num_actors, position=actor_index + 1
+                )
+            bar = self._actor_bars[actor_index]
+            bar.set_description("Actor {}".format(actor_index))
+            bar.update(i)
 
     def close(self):
         if self._bar:

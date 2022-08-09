@@ -229,7 +229,11 @@ class ActorPoolStrategy(ComputeStrategy):
         if name is None:
             name = "map"
         name = name.title()
-        map_bar = ProgressBar(name, total=orig_num_blocks)
+        map_bar = ProgressBar(
+            name,
+            total=orig_num_blocks,
+            num_actors=self.max_size if self.max_size < 99999 else 1,
+        )
 
         class BlockWorker:
             def __init__(
@@ -294,6 +298,8 @@ class ActorPoolStrategy(ComputeStrategy):
         metadata_mapping = {}
         block_indices = {}
         ready_workers = set()
+        worker_index = {}
+        next_worker_index = 0
 
         try:
             while len(results) < orig_num_blocks:
@@ -325,9 +331,11 @@ class ActorPoolStrategy(ComputeStrategy):
                 if worker in ready_workers:
                     results.append(obj_id)
                     tasks_in_flight[worker] -= 1
-                    map_bar.update(1)
+                    map_bar.update(1, actor_index=worker_index[worker])
                 else:
                     ready_workers.add(worker)
+                    worker_index[worker] = next_worker_index
+                    next_worker_index += 1
                     map_bar.set_description(
                         "Map Progress ({} actors {} pending)".format(
                             len(ready_workers), len(workers) - len(ready_workers)
