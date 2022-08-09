@@ -117,7 +117,7 @@ See the {ref}`configuration guide<rayStartParams>` for details.
 
 ### Ray Version
 The Ray version (e.g. 2.0.0) should be supplied under the RayCluster CR's `spec.rayVersion`.
-See the {ref}`configuration guide<kuberay-config-miscellaneous>` for details.
+See the {ref}`configuration guide<kuberay-config-ray-version>` for details.
 
 ### Init Containers and Pre-Stop hooks
 There are two pieces of configuration that should be included in all KubeRay RayCluster CRs.
@@ -183,7 +183,7 @@ Currently, we recommend directly deploying KubeRay RayCluster CRs without Helm.
 Here is a [link][ConfigLink] to the configuration shown below.
 
 ```{literalinclude} ../configs/migration-example.yaml
-:languge: yaml
+:language: yaml
 ```
 
 [RayExamples]: https://github.com/ray-project/ray/tree/master/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs

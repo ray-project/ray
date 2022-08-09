@@ -90,6 +90,7 @@ spec:
 
 The rest of this guide will discuss the `RayCluster` CR's config fields.
 
+(kuberay-config-ray-version)=
 ## The Ray Version
 The field `rayVersion` specifies the version of Ray used in the Ray cluster.
 The `rayVersion` is used to fill default values for certain config fields.
@@ -440,7 +441,7 @@ These fields should be formatted following the
 [Kuberentes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
 for container environment variables.
 
-(kuberay-config-miscellaneous)
+(kuberay-config-miscellaneous)=
 ## Pod and container lifecyle: preStop hooks and initContainers
 There are two pieces of pod configuration that should always be included
 in the RayCluster CR. Future versions of KubeRay may configure these elements automatically.
