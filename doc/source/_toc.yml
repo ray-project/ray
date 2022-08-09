@@ -171,7 +171,6 @@ parts:
               - file: serve/managing-deployments
               - file: serve/handling-dependencies
               - file: serve/http-guide
-              - file: serve/http-adapters
               - file: serve/handle-guide
               - file: serve/ml-models
               - file: serve/deploying-serve
