@@ -2447,6 +2447,10 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
 
+    This method is a sync call and it'll timeout after 60s. This can be modified
+    by setting OS env RAY_gcs_server_request_timeout_seconds before starting
+    the cluster.
+
     Args:
         name: The name of the actor.
         namespace: The namespace of the actor, or None to specify the current
