@@ -4,7 +4,6 @@ import logging
 from aiohttp.web import Request, Response
 import dataclasses
 import ray
-import asyncio
 import aiohttp.web
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -26,7 +25,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._controller = None
-        self._controller_lock = asyncio.Lock()
 
     # TODO: It's better to use `/api/version`.
     # It requires a refactor of ClassMethodRouteTable to differentiate the server.
@@ -50,7 +48,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def get_all_deployments(self, req: Request) -> Response:
         from ray.serve.schema import ServeApplicationSchema
 
-        controller = await self.get_serve_controller()
+        controller = self.get_serve_controller()
 
         if controller is None:
             config = ServeApplicationSchema.get_empty_schema_dict()
@@ -68,6 +66,9 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                         f"Potentially the GCS is down: {e}"
                     ),
                 )
+            except ray.exceptions.RayActorError:
+                self._controller = None
+                config = ServeApplicationSchema.get_empty_schema_dict()
 
         return Response(
             text=json.dumps(config),
@@ -79,7 +80,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def get_all_deployment_statuses(self, req: Request) -> Response:
         from ray.serve.schema import serve_status_to_schema, ServeStatusSchema
 
-        controller = await self.get_serve_controller()
+        controller = self.get_serve_controller()
 
         if controller is None:
             status_json = ServeStatusSchema.get_empty_schema_dict()
@@ -90,10 +91,15 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 StatusOverview as StatusOverviewProto,
             )
 
-            serve_status = await controller.get_serve_status.remote()
-            proto = StatusOverviewProto.FromString(serve_status)
-            status = StatusOverview.from_proto(proto)
-            status_json_str = serve_status_to_schema(status).json()
+            try:
+                serve_status = await controller.get_serve_status.remote()
+                proto = StatusOverviewProto.FromString(serve_status)
+                status = StatusOverview.from_proto(proto)
+                status_json_str = serve_status_to_schema(status).json()
+            except ray.exceptions.RayActorError:
+                self._controller = None
+                status_json = ServeStatusSchema.get_empty_schema_dict()
+                status_json_str = json.dumps(status_json)
 
         return Response(
             text=status_json_str,
@@ -105,7 +111,7 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def delete_serve_application(self, req: Request) -> Response:
         from ray import serve
 
-        if await self.get_serve_controller() is not None:
+        if self.get_serve_controller() is not None:
             serve.shutdown()
 
         return Response()
@@ -165,44 +171,39 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
 
         return Response()
 
-    async def get_serve_controller(self):
+    def get_serve_controller(self):
         """Gets the ServeController to the this cluster's Serve app.
 
         return: If Serve is running on this Ray cluster, returns a client to
             the Serve controller. If Serve is not running, returns None.
         """
-        async with self._controller_lock:
-            if self._controller is not None:
-                try:
-                    await self._controller.check_alive.remote()
-                    return self._controller
-                except ray.exceptions.RayActorError:
-                    logger.info("Controller is dead")
-                self._controller = None
 
-            # Try to connect to serve even when we detect the actor is dead
-            # because the user might have started a new
-            # serve cluter.
-            from ray.serve._private.constants import (
-                SERVE_CONTROLLER_NAME,
-                SERVE_NAMESPACE,
+        if self._controller is not None:
+            return self._controller
+
+        # Try to connect to serve even when we detect the actor is dead
+        # because the user might have started a new
+        # serve cluter.
+        from ray.serve._private.constants import (
+            SERVE_CONTROLLER_NAME,
+            SERVE_NAMESPACE,
+        )
+
+        try:
+            # get_actor is a sync call but it'll timeout after
+            # ray.dashboard.consts.GCS_RPC_TIMEOUT_SECONDS
+            self._controller = ray.get_actor(
+                SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            )
+        except Exception as e:
+            logger.debug(
+                "There is no "
+                "instance running on this Ray cluster. Please "
+                "call `serve.start(detached=True) to start "
+                f"one: {e}"
             )
 
-            try:
-                # get_actor is a sync call but it'll timeout after
-                # ray.dashboard.consts.GCS_RPC_TIMEOUT_SECONDS
-                self._controller = ray.get_actor(
-                    SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-                )
-            except Exception as e:
-                logger.debug(
-                    "There is no "
-                    "instance running on this Ray cluster. Please "
-                    "call `serve.start(detached=True) to start "
-                    f"one: {e}"
-                )
-
-            return self._controller
+        return self._controller
 
     async def run(self, server):
         pass
