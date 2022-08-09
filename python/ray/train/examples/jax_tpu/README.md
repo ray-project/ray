@@ -33,3 +33,10 @@ A neural network is training using Jax on the Ray cluster
 ```python
 bash scripts/tpu_ray_mnist.sh
 ```
+
+- shut down the cluster 
+
+
+```python
+bash scripts/tpu_shutdown.sh
+```
