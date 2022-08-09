@@ -303,8 +303,6 @@ parts:
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/yarn
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/slurm
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/lsf
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/index
-                title: Running Jobs
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/index
               title: Examples
               sections:
