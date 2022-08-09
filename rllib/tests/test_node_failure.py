@@ -38,6 +38,7 @@ class NodeFailureTests(unittest.TestCase):
                 redis_max_memory=redis_max_memory,
                 dashboard_host="0.0.0.0",
             )
+        self.cluster.wait_for_nodes()
         ray.init(address=self.cluster.address)
 
     def tearDown(self):
