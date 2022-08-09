@@ -337,6 +337,9 @@ class _ParquetDatasourceReader(Reader):
 def _read_pieces(
     block_udf, reader_args, columns, schema, serialized_pieces: List[_SerializedPiece]
 ) -> Iterator["pyarrow.Table"]:
+    # This import is necessary to load the tensor extension type.
+    from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
+
     # Deserialize after loading the filesystem class.
     pieces: List[
         "pyarrow._dataset.ParquetFileFragment"

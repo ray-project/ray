@@ -108,9 +108,9 @@ ds.take(1)
 #                 ...,
 #                 [141, 161, 185],
 #                 [139, 158, 184]],
-#                
+#
 #                ...,
-#                
+#
 #                [[135, 135, 109],
 #                 [135, 135, 108],
 #                 ...,
@@ -197,7 +197,7 @@ ds.fully_executed()
 from ray.data.datasource import ImageFolderDatasource
 
 ds = ray.data.read_datasource(
-    ImageFolderDatasource(), root="example://image-folder", size=(128, 128))
+    ImageFolderDatasource(), root="example://image-folders/simple", size=(128, 128))
 # -> Dataset(num_blocks=3, num_rows=3,
 #            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8),
 #                    label: object})
