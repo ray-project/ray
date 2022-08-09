@@ -2,8 +2,8 @@
 
 This document describes how to set up an on-premises Ray cluster, i.e., to run Ray on bare metal machines, or in a private cloud. We provide two ways to start an on-premises cluster.
 
-* You can **manually set up** the Ray cluster by installing the Ray package and starting the Ray processes on each node. 
-* Alternatively, if you know all the nodes in advance and have ssh access to them, you should start the Ray cluster using the **cluster-launcher**.
+* You can [manually set up](./on-premises.html#manually-set-up-a-ray-cluster) the Ray cluster by installing the Ray package and starting the Ray processes on each node.
+* Alternatively, if you know all the nodes in advance and have ssh access to them, you should start the Ray cluster using the [cluster-launcher](./on-premises.html#using-ray-cluster-launcher).
 
 
 ## Manually Set up a Ray Cluster 
