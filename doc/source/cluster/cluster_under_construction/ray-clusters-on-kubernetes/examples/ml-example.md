@@ -12,7 +12,7 @@ In this guide, we show you how to run a sample Ray machine learning
 workload on Kubernetes infrastructure.
 
 We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
-To learn more about XGBoost-Ray, check out that library's {ref}`documentation<xgboost-ray>`.
+To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrainer documentation <train-gbdt-guide>`.
 
 ```{admonition} Optional: Autoscaling
 This guide includes notes on how to deploy the XGBoost benchmark with optional Ray Autoscaler support.
@@ -176,7 +176,7 @@ you might not match {ref}`the numbers quoted in the benchmark docs<xgboost-bench
 #### Model parameters
 The file `model.json` in the Ray head pod contains the parameters for the trained model.
 Other result data will be available in the directory `ray_results` in the head pod.
-Refer to the {ref}`XGBoost-Ray documentation<xgboost-ray>` for details.
+Refer to the {ref}`the XGBoostTrainer documentation <train-gbdt-guide>` for details.
 
 ```{admonition} Scale-down
 If autoscaling is enabled, Ray worker pods will scale down after 60 seconds.
