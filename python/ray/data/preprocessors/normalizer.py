@@ -21,9 +21,9 @@ class Normalizer(Preprocessor):
 
     The following norms are supported:
 
-        * `"l1"` (:math:`L^1`): Sum of the absolute values.
-        * `"l2"` (:math:`L^2`): Square root of the sum of the squared values.
-        * `"max"` (:math:`L^\infty`): Maximum value.
+    * `"l1"` (:math:`L^1`): Sum of the absolute values.
+    * `"l2"` (:math:`L^2`): Square root of the sum of the squared values.
+    * `"max"` (:math:`L^\infty`): Maximum value.
 
     Examples:
         >>> import pandas as pd

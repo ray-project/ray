@@ -14,8 +14,9 @@ class PowerTransformer(Preprocessor):
     Gaussian-like, you might be able to improve your model's performance.
 
     This preprocessor supports the following transformations:
-        * `Yeo-Johnson <https://en.wikipedia.org/wiki/Power_transform#Yeo%E2%80%93Johnson_transformation>`_
-        * `Box-Cox <https://en.wikipedia.org/wiki/Power_transform#Box%E2%80%93Cox_transformation>`_
+
+    * `Yeo-Johnson <https://en.wikipedia.org/wiki/Power_transform#Yeo%E2%80%93Johnson_transformation>`_
+    * `Box-Cox <https://en.wikipedia.org/wiki/Power_transform#Box%E2%80%93Cox_transformation>`_
 
     Box-Cox requires all data to be positive.
 
