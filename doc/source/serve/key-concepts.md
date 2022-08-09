@@ -122,4 +122,4 @@ Now that you have learned about the key concepts, you can dive into our [User Gu
 - [Creating, updating, and deleting deployments](managing-deployments)
 - [Configuring HTTP ingress and integrating with FastAPI](http-guide)
 - [Composing deployments using ServeHandle](handle-guide)
-- [Building Deployment Graphs](deployment-graph)
+- [Building deployment graphs](serve-model-composition-deployment-graph)
