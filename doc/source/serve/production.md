@@ -460,12 +460,17 @@ deployment_statuses:
 
 ## Updating Your Serve Application in Production
 
-You can also update your Serve applications once they're in production. You can update the settings in your config file and redeploy it using the `serve deploy` command.
+You can also update your Serve applications once they're in production. You can update the settings in your config file and redeploy it using the `serve deploy` command. You can also add new deployment settings or remove old deployment settings from the config. This is because `serve deploy` is **idempotent**. Your Serve application's will match the one specified in the latest config you deployed– regardless of what config files you deployed before that.
 
 ### Lightweight Config Updates
 
-Lightweight config updates don't need to tear down the running deployments, meaning there's less downtime as the deployments update. 
+Lightweight config updates don't need to tear down the running deployments, meaning there's less downtime as the deployments update. Changing `num_replicas`, `autoscaling_config`, and/or `user_config` in an entry of the `deployments` section of the config file is considered a lightweight config update, and won't tear down the replicas for that deployment.
 
+:::{note}
+Lightweight config updates are only possible for deployments that are included as entries under `deployments` in the config file. If a deployment is not included in the config file, replicas of that deployment will be torn down and brought up again each time you redeploy with `serve deploy`.
+:::
+
+#### Updating User Config
 Let's use the `FruitStand` deployment graph [from an earlier section](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. [This method allows us to issue lightweight updates](managing-deployments-user-configuration) to our deployments by updating the `user_config`.
 
 First let's deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
@@ -553,7 +558,10 @@ The price has updated! The same request now returns `10` instead of `6`, reflect
 
 ### Code Updates
 
-You can update any setting in any deployment in the config file similarly. You can also add new deployment settings or remove old deployment settings from the config. This is because `serve deploy` is **idempotent**. Your Serve application's will match the one specified in the latest config you deployed– regardless of what config files you deployed before that.
+Similarly, you can update any other setting in any deployment in the config file. If a deployment setting other than `num_replicas`, `autoscaling_config`, or `user_config` is changed, it is considered a code update and the deployment replicas will be restarted. Note that the following are all considered "changes", and (if considered a code update) will trigger tear down of replicas:
+* Changing an existing setting.
+* Adding an override setting that was previously not present in the config file.
+* Removing a setting from the config file.
 
 :::{warning}
 Although you can update your Serve application by deploying an entirely new deployment graph using a different `import_path` and a different `runtime_env`, this is NOT recommended in production.
