@@ -265,6 +265,8 @@ spec:
         - name: init-myservice
           image: busybox:1.28
           command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+# Operator configuration is not specified here -- the KubeRay operator should be deployed before
+# creating Ray clusters.
 ```
 
 [RayExamples]: https://github.com/ray-project/ray/tree/master/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs
