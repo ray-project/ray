@@ -6,6 +6,10 @@
 ## Core APIs
 
 ```{eval-rst}
+.. autofunction:: ray.serve.run
+```
+
+```{eval-rst}
 .. autofunction:: ray.serve.start
 ```
 
