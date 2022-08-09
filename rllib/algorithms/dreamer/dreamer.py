@@ -160,7 +160,8 @@ class DreamerConfig(AlgorithmConfig):
             dreamer_model: Custom model config.
             num_steps_sampled_before_learning_starts: Number of timesteps to collect
                 from rollout workers before we start sampling from replay buffers for
-                learning.
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config["multiagent"]["count_steps_by"].
 
         Returns:
 
