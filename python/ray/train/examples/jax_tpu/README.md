@@ -14,7 +14,7 @@ bash scripts/tpu_launcher.sh
 
 test whether the tpu pod is successfully launched
 ```python
-gcloud alpha compute tpus tpu-vm ssh jax-trainer-mnist-tpu-pod --zone=us-central1-a --command "sudo python3 -c \"import jax; print(jax.device_count(), jax.local_device_count())\"" --worker all
+bash scripts/tpu_test.sh
 ```
 
 - set up the ray cluster
@@ -36,6 +36,7 @@ bash scripts/tpu_ray_mnist.sh
 
 - shut down the cluster 
 
+terminate the tpu pod
 
 ```python
 bash scripts/tpu_shutdown.sh
