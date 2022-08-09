@@ -112,6 +112,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
     if (outer_it != object_id_refs_.end() && !outer_it->second.owned_by_us) {
       RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id
                      << " contained_in_borrowed: " << outer_id;
+      RAY_CHECK_NE(object_id, outer_id);
       it->second.mutable_nested()->contained_in_borrowed_ids.insert(outer_id);
       outer_it->second.mutable_nested()->contains.insert(object_id);
       // The inner object ref is in use. We must report our ref to the object's
