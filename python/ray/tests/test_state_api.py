@@ -11,7 +11,6 @@ import yaml
 from click.testing import CliRunner
 
 import ray
-import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
@@ -1182,16 +1181,8 @@ async def test_state_data_source_client(ray_start_cluster):
     wait_for_condition(lambda: len(ray.nodes()) == 2)
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-
-        def get_port():
-            return ray.experimental.internal_kv._internal_kv_get(
-                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-            )
-
-        wait_for_condition(lambda: get_port() is not None)
         # The second index is the gRPC port
-        port = json.loads(get_port())[1]
+        port = node["AgentInfo"]["GrpcPort"]
         ip = node["NodeManagerAddress"]
         client.register_agent_client(node_id, ip, port)
         result = await client.get_runtime_envs_info(node_id)
@@ -1395,16 +1386,8 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     """
     for node in ray.nodes():
         node_id = node["NodeID"]
-        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-
-        def get_port():
-            return ray.experimental.internal_kv._internal_kv_get(
-                key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD
-            )
-
-        wait_for_condition(lambda: get_port() is not None)
         # The second index is the gRPC port
-        port = json.loads(get_port())[1]
+        port = node["AgentInfo"]["GrpcPort"]
         ip = node["NodeManagerAddress"]
         client.register_agent_client(node_id, ip, port)
 
@@ -1517,8 +1500,13 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         )
     )
     # Test get workers by id
+
+    # Still need a `wait_for_condition`,
+    # because the worker obtained through the api server will not filter the driver,
+    # but `global_state.workers` will filter the driver.
+    wait_for_condition(lambda: len(global_state.workers()) > 0)
     workers = global_state.workers()
-    assert len(workers) > 0
+
     worker_id = list(workers.keys())[0]
     wait_for_condition(
         lambda: verify_output(ray_get, ["workers", worker_id], ["worker_id", worker_id])

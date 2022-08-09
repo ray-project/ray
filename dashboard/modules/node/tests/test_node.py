@@ -6,6 +6,7 @@ import time
 import traceback
 import random
 import pytest
+import psutil
 import ray
 import threading
 from datetime import datetime, timedelta
@@ -18,6 +19,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_succeeded_without_exception,
 )
+from ray._private.state import state
 
 
 logger = logging.getLogger(__name__)
@@ -346,6 +348,34 @@ def test_frequent_node_update(
         return head_node_registration_time < UPDATE_NODES_INTERVAL_SECONDS
 
     wait_for_condition(verify, timeout=15)
+
+
+# See detail: https://github.com/ray-project/ray/issues/24361
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+def test_node_register_with_agent(ray_start_cluster_head):
+    def test_agent_port(pid, port):
+        p = psutil.Process(pid)
+        assert p.cmdline()[2].endswith("dashboard/agent.py")
+
+        for c in p.connections():
+            if c.status == psutil.CONN_LISTEN and c.laddr.port == port:
+                return
+        assert False
+
+    def test_agent_process(pid):
+        p = psutil.Process(pid)
+        assert p.cmdline()[2].endswith("dashboard/agent.py")
+
+    for node_info in state.node_table():
+        agent_info = node_info["AgentInfo"]
+        assert agent_info["IpAddress"] == node_info["NodeManagerAddress"]
+        test_agent_port(agent_info["Pid"], agent_info["GrpcPort"])
+        if agent_info["HttpPort"] >= 0:
+            test_agent_port(agent_info["Pid"], agent_info["HttpPort"])
+        else:
+            # Port conflicts may be caused that the previous
+            # test did not kill the agent cleanly
+            assert agent_info["HttpPort"] == -1
 
 
 if __name__ == "__main__":
