@@ -112,8 +112,16 @@ in your RayCluster CR.
 Mounting the `ray-logs` volume gives the sidecar container access to Ray's logs.
 The `fluentbit-config` volume gives the sidecar access to logging configuration.
 
+### Putting everything together
+Putting all of the above elements together, we have the following yaml configuration
+for a single-pod RayCluster will a log-processing sidecar:
+```{literalinclude} ../config/ray-cluster.log.yaml
+:language: yaml
+```
+
+
+## Deploying a RayCluster with logging CR.
 (kuberay-logging-tldr)=
-## Putting everything together
 Now, we will see how to deploy the configuration described above.
 
 Deploy the KubeRay Operator if you haven't yet.
