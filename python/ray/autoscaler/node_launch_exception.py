@@ -1,6 +1,8 @@
 from typing import Optional
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class NodeLaunchException(Exception):
     def __init__(
         self,

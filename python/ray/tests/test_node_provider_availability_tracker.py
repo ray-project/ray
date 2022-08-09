@@ -203,7 +203,7 @@ def test_summary_string(tracker: NodeProviderAvailabilityTracker):
     summary_str = summary.summary_string(separator_len=60)
 
     expected = """
-Availability
+Launches
 ------------------------------------------------------------
 Node types:
  spot-gpu (attempted=12:13:17): InsufficientInstanceCapacity

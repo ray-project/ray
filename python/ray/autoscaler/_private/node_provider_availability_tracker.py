@@ -84,7 +84,7 @@ class NodeAvailabilitySummary:
                 formatted_lines.append(formatted_line)
 
             return (
-                "Availability\n"
+                "Launches\n"
                 + ("-" * separator_len)
                 + "\n"
                 + "Node types:\n"

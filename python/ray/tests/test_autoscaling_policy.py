@@ -203,11 +203,13 @@ class Simulator:
         # Manually create a node launcher. Note that we won't start it as a
         # separate thread.
         self.node_launcher = NodeLauncher(
-            event_summarizer=EventSummarizer(),
             provider=self.autoscaler.provider,
+            pending=self.autoscaler.pending_launches,
+            event_summarizer=EventSummarizer(),
+            node_provider_availability_tracker=\
+                self.autoscaler.node_provider_availability_tracker,
             queue=self.autoscaler.launch_queue,
             index=0,
-            pending=self.autoscaler.pending_launches,
             node_types=self.autoscaler.available_node_types,
         )
 
