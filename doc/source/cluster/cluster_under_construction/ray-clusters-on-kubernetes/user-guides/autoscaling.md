@@ -102,11 +102,10 @@ will halve the quantity of that task or actor that can fit in a given Ray pod.
 The following diagram illustrates the integration of the Ray Autoscaler
 with the KubeRay operator.
 ```{eval-rst}
-.. image:: /cluster/cluster_under_construction/ray-clusters-on-kubernetes/images/AutoscalerOperator.png
+.. image:: /cluster/cluster_under_construction/ray-clusters-on-kubernetes/images/AutoscalerOperator.svg
     :align: center
 ..
-    Find the source document here (https://drive.google.com/file/d/1WdVbQYKNJEhnOuZy4iL4zuYcBoJeCyKJ/view)
-    TODO: Replace with a Google drawing consistent with other diagrams in the Ray docs.
+    Find the source document here (https://docs.google.com/drawings/d/1LdOg9JQuN5AOII-vDpSaFBsTeg0JGWcsbyNNLP1yovg/edit)
 ```
 
 Worker pod upscaling occurs through the following sequence of events:
