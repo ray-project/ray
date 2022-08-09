@@ -104,7 +104,7 @@ class _JaxBackend(Backend):
 
         additional_resources_per_worker = worker_group.additional_resources_per_worker
 
-        # in case where `use_tpu == True``:
+        # in case where `use_tpu` is `True`:
         if additional_resources_per_worker and additional_resources_per_worker.pop(
             "TPU", False
         ):
