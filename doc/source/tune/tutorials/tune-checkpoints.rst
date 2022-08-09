@@ -194,11 +194,11 @@ Your ``my_trainable`` is either a:
 
 1. **Model with an existing Ray integration**
 
-  * XGBoost (:ref:`example <xgboost-ray-tuning>`)
+  * XGBoost (`example <https://github.com/ray-project/xgboost_ray#hyperparameter-tuning>`__)
   * Pytorch (:doc:`example </tune/examples/tune-pytorch-cifar>`)
   * Pytorch Lightning (:ref:`example <pytorch-lightning-tune>`)
   * Tensorflow/Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
-  * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
+  * LightGBM (`example <https://github.com/ray-project/lightgbm_ray/#hyperparameter-tuning>`__)
 
 2. **Custom training function**
 

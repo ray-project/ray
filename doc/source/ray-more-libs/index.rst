@@ -8,8 +8,6 @@ More Ray ML Libraries
 Ray has a variety of additional integrations with ecosystem libraries.
 
 - :ref:`ray-joblib`
-- :ref:`lightgbm-ray`
 - :ref:`ray-multiprocessing`
 - :ref:`ray-collective`
 - :ref:`ray-lightning`
-- :ref:`xgboost-ray`
