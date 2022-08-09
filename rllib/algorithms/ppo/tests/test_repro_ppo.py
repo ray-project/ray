@@ -5,8 +5,8 @@ import ray
 from ray.tune import register_env
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.env.deterministic_envs import (
-    DeterministicCartPole,
-    DeterministicPendulum,
+    create_cartpole_deterministic,
+    create_pendulum_deterministic,
 )
 from ray.rllib.utils.test_utils import check_reproducibilty
 
@@ -24,12 +24,10 @@ class TestReproPPO(unittest.TestCase):
         """Tests whether the algorithm is reproducible within 3 iterations
         on discrete env cartpole."""
 
-        register_env(
-            "DeterministicCartPole-v0", lambda _: DeterministicCartPole(seed=42)
-        )
+        register_env("DeterministicCartPole-v0", create_cartpole_deterministic)
         configs = (
             ppo.PPOConfig()
-            .environment(env="DeterministicCartPole-v0")
+            .environment(env="DeterministicCartPole-v0", env_config={"seed": 42})
             .rollouts(rollout_fragment_length=8)
             .training(train_batch_size=64, sgd_minibatch_size=32, num_sgd_iter=2)
         )
@@ -43,12 +41,11 @@ class TestReproPPO(unittest.TestCase):
     def test_reproducibility_ppo_pendulum(self):
         """Tests whether the algorithm is reproducible within 3 iterations
         on continuous env pendulum."""
-        register_env(
-            "DeterministicPendulum-v1", lambda _: DeterministicPendulum(seed=42)
-        )
+
+        register_env("DeterministicPendulum-v1", create_pendulum_deterministic)
         configs = (
             ppo.PPOConfig()
-            .environment(env="DeterministicPendulum-v1")
+            .environment(env="DeterministicPendulum-v1", env_config={"seed": 42})
             .rollouts(rollout_fragment_length=8)
             .training(train_batch_size=64, sgd_minibatch_size=32, num_sgd_iter=2)
         )

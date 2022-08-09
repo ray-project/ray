@@ -1,17 +1,18 @@
 import unittest
-
 import os
+
 import ray
+
 from ray.tune import register_env
 import ray.rllib.algorithms.dqn as dqn
-from ray.rllib.examples.env.deterministic_envs import DeterministicCartPole
+from ray.rllib.examples.env.deterministic_envs import create_cartpole_deterministic
 from ray.rllib.utils.test_utils import check_reproducibilty
 
 
-class TestReproPPO(unittest.TestCase):
+class TestReproDQN(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -21,23 +22,15 @@ class TestReproPPO(unittest.TestCase):
         """Tests whether the algorithm is reproducible within 3 iterations
         on discrete env cartpole."""
 
-        register_env(
-            "DeterministicCartPole-v0", lambda _: DeterministicCartPole(seed=42)
+        register_env("DeterministicCartPole-v0", create_cartpole_deterministic)
+        config = dqn.DQNConfig().environment(
+            env="DeterministicCartPole-v0", env_config={"seed": 42}
         )
-        config = (
-            dqn.DQNConfig()
-            # .reporting(
-            #     min_sample_timesteps_per_iteration=0,
-            #     min_train_timesteps_per_iteration=0,
-            #     min_time_s_per_iteration=0,
-            # )
-            .environment(env="DeterministicCartPole-v0")
-        )
-        # tf-gpu is excluded for determnism
+        # tf-gpu is excluded for determinism
         # reason: https://github.com/tensorflow/tensorflow/issues/2732
         # https://github.com/tensorflow/tensorflow/issues/2652
         frameworks = ["torch"]
-        if int(os.environ.get("RLLIB_NUM_GPUS", 0)) > 0:
+        if int(os.environ.get("RLLIB_NUM_GPUS", 0)) == 0:
             frameworks.append("tf")
 
         check_reproducibilty(
