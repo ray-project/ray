@@ -54,7 +54,10 @@ class RuntimeEnvContext:
             executable = "java"
             ray_jars = os.path.join(get_ray_jars_dir(), "*")
 
-            local_java_jars = []
+            local_java_jars = [
+                "/Users/xmo/Desktop/ray/demo/java-demo/demo/target/demo-1.0-SNAPSHOT-jar-with-dependencies.jar",
+                # "/Users/xmo/Desktop/ray/demo/java-demo/demo/target/demo-1.0-SNAPSHOT.jar",
+            ]
             for java_jar in self.java_jars:
                 local_java_jars.append(f"{java_jar}/*")
                 local_java_jars.append(java_jar)

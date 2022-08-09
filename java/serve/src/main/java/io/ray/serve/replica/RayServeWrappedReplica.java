@@ -157,12 +157,10 @@ public class RayServeWrappedReplica implements RayServeReplica {
    */
   @Override
   public Object handleRequest(Object requestMetadata, Object requestArgs) {
-    boolean isCrossLanguage = requestMetadata instanceof byte[];
     return replica.handleRequest(
-        isCrossLanguage
-            ? ServeProtoUtil.parseRequestMetadata((byte[]) requestMetadata)
-            : (RequestMetadata) requestMetadata,
-        isCrossLanguage ? ServeProtoUtil.parseRequestWrapper((byte[]) requestArgs) : requestArgs);
+       ServeProtoUtil.parseRequestMetadata((byte[]) requestMetadata),
+       requestArgs);
+      //  requestArgs instanceof byte[] ? ServeProtoUtil.parseRequestWrapper((byte[]) requestArgs) : requestArgs);
   }
 
   /**
