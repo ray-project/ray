@@ -121,7 +121,7 @@ If you have a large dataset but not a lot of available memory, you can use the
 :meth:`predict_pipelined <ray.train.batch_predictor.BatchPredictor.predict_pipelined>` method.
 
 Unlike :py:meth:`predict` which will load the entire data into memory, ``predict_pipelined`` will create a 
-:class:`DatasetPipeline`` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
+:class:`DatasetPipeline` object, which will *lazily* load the data and perform inference on a smaller batch of data at a time.
 
 The lazy loading of the data will allow you to operate on datasets much greater than your available memory.
 Execution can be triggered by pulling from the pipeline, as shown in the example below.
