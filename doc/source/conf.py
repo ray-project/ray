@@ -311,9 +311,6 @@ def setup(app):
     # to give thumbs up / down and feedback on existing docs pages.
     app.add_js_file("js/rate-the-docs.es.min.js")
 
-    # Custom docstring processor
-    app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
-
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)
     # Download docs from ecosystem library repos
