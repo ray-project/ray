@@ -1051,7 +1051,7 @@ def get_call_location(back: int = 1):
 def get_ray_doc_version():
     """Get the docs.ray.io version corresponding to the ray.__version__."""
     # The ray.__version__ can be official Ray release (such as 1.12.0), or
-    # dev (3.0.0dev0) or release candidate (2.0.0rc0). For the later we map
+    # dev (3.0.0dev0) or release candidate (2.0.0rc1). For the later we map
     # to the master doc version at docs.ray.io.
     if re.match(r"^\d+\.\d+\.\d+$", ray.__version__) is None:
         return "master"
@@ -1172,13 +1172,13 @@ def get_wheel_filename(
         sys_platform: The platform as returned by sys.platform. Examples:
             "darwin", "linux", "win32"
         ray_version: The Ray version as returned by ray.__version__ or
-            `ray --version`.  Examples: "2.0.0rc0"
+            `ray --version`.  Examples: "2.0.0rc1"
         py_version (str):
             The major and minor Python versions concatenated.  Examples: "36",
             "37", "38", "39"
     Returns:
         The wheel file name.  Examples:
-            ray-2.0.0rc0-cp38-cp38-manylinux2014_x86_64.whl
+            ray-2.0.0rc1-cp38-cp38-manylinux2014_x86_64.whl
     """
     assert py_version in ["36", "37", "38", "39"], py_version
 
