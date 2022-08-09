@@ -1,7 +1,10 @@
 # References
 
+The following pages provide reference documentation for using Ray Cluster. It is applicable for Kuberay users or users of Ray Clusters on VMs.
+Refer to the {ref}`Kuberay documentation<kuberay-api-reference>` or {ref}`Ray Clusters on VM documentation<ray-clusters-vms-reference>` for references specific to those deployment types.
+
 ```{toctree}
-:caption: The following pages provide reference documentation for Ray Clusters.
+:caption: "Reference documentation for Ray Clusters:"
 :maxdepth: '2'
 :name: ray-clusters-reference
 

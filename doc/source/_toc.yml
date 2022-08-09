@@ -335,9 +335,6 @@ parts:
                 sections:
                   - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/todo
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
-              sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-cli
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-configuration
           - file: cluster/cluster_under_construction/references/index
             title: References
 
