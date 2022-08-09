@@ -187,4 +187,4 @@ Here is a [link][ConfigLink] to the configuration shown below.
 
 [RayExamples]: https://github.com/ray-project/ray/tree/master/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs
 [KubeRayExamples]: https://ray-project.github.io/kuberay/components/operator/#running-an-example-cluster
-[ConfigLink]:
+[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/7aeb1ab9cf7adb58fd9418c0e08984ff0fe6d018/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/migration-example.yaml
