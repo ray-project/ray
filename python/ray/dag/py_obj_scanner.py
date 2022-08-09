@@ -101,10 +101,10 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
         assert self._found is not None, "find_nodes must be called first"
         self._replace_table = table
         self._buf.seek(0)
-        return pickle.load(self._buf)
+        replaced = pickle.load(self._buf)
+        # Clear out the global references to prevent memory leak.
+        del _instances[id(self)]
+        return replaced
 
     def _replace_index(self, i: int) -> SourceType:
         return self._replace_table[self._found[i]]
-
-    def __del__(self):
-        del _instances[id(self)]
