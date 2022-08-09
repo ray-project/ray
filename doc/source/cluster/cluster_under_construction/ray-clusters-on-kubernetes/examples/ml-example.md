@@ -191,4 +191,4 @@ kubectl delete raycluster raycluster-xgboost-benchmark
 If you're on a public cloud, don't forget to clean up the underlying
 node group and/or Kubernetes cluster.
 
-[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/0e74bc20b576ff2deedc214ca8ec9dbec24ef2cc/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/xgboost-benchmark.yaml
+[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/291bba69fb90ee5e8401540ef55b7b74dd13f5c5/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/xgboost-benchmark-autoscaler.yaml

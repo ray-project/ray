@@ -62,7 +62,7 @@ Here is a minimal ConfigMap which tells a Fluent Bit sidecar to
 :end-before: ---
 ```
 A few notes on the above config:
-- In addition to streaming logs to stdout, you can use an OUTPUT clause to export logs to any
+- In addition to streaming logs to stdout, you can use an [OUTPUT] clause to export logs to any
   [storage backend][FluentBitStorage] supported by Fluent Bit.
 - The `Path_Key true` line above ensures that file names are included in the log records
   emitted by Fluent Bit.
