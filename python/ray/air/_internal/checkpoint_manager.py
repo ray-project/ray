@@ -13,6 +13,7 @@ import ray
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
 from ray.air._internal.util import is_nan
+from ray.tune.utils.util import flatten_dict
 from ray.util import log_once
 
 
@@ -46,7 +47,10 @@ class _TrackedCheckpoint:
             if metrics are not available. Usually this should be monotonically
             increasing for each tracked checkpoint.
         metrics: Observed metrics for this checkpoint. This is used to determine
-            the value of the ``checkpoint_score_attr``.
+            the value of the ``checkpoint_score_attr``. The metrics are flattened
+            for nested metrics.
+            For example, `{"evaluation": {"episode_reward_mean": 0.22}` is converted
+            into `"evaluation/episode_reward_mean"`.
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
     """
@@ -65,7 +69,7 @@ class _TrackedCheckpoint:
         self.id = checkpoint_id
         self.storage_mode = storage_mode
 
-        self.metrics = metrics or {}
+        self.metrics = flatten_dict(metrics) if metrics else {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
 
         if (
