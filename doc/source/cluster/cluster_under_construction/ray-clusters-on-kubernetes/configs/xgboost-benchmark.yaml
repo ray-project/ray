@@ -41,7 +41,6 @@ kind: RayCluster
 metadata:
   labels:
     controller-tools.k8s.io: "1.0"
-    # An unique identifier for the head node and workers of this cluster.
   name: raycluster-xgboost-benchmark
 spec:
   # Uncomment the next line to experiment with autoscaling.

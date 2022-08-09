@@ -60,7 +60,7 @@ per 16-CPU Kubernetes node. The pattern of one Ray pod per Kubernetes node is en
 Broadly speaking, it is more efficient to use a few large Ray pods than many small ones.
 :::
 
-We recommend taking a look at the config file applied in the following command.
+We recommend taking a look at the [config file][ConfigLink] applied in the following command.
 ```shell
 # Starting from the parent directory of cloned Ray master,
 pushd ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/
@@ -190,3 +190,5 @@ kubectl delete raycluster raycluster-xgboost-benchmark
 ```
 If you're on a public cloud, don't forget to clean up the underlying
 node group and/or Kubernetes cluster.
+
+[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/0e74bc20b576ff2deedc214ca8ec9dbec24ef2cc/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/xgboost-benchmark.yaml

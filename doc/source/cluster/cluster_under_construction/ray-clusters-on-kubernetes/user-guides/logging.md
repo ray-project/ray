@@ -46,6 +46,9 @@ the Ray container's `/tmp/ray` directory to the relevant `hostPath`.
 In this section, we give an example of how to set up log-emitting
 [Fluent Bit][FluentBit] sidecars for Ray pods.
 
+See the full config for a single-pod RayCluster with a logging sidecar [here][config-link].
+We now discuss this configuration and show how to deploy it.
+
 ## Configure log processing
 The first step is to create a ConfigMap with configuration
 for FluentBit.
@@ -142,3 +145,4 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [Fluentd]: https://docs.fluentd.org/
 [Promtail]: https://grafana.com/docs/loki/latest/clients/promtail/
 [KubDoc]: https://kubernetes.io/docs/concepts/cluster-administration/logging/
+[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/779e9f7c5733ef9a471ad2bb61723158ff942e92/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/ray-cluster.log.yaml
