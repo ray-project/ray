@@ -20,7 +20,7 @@ The following is a list of community supported cluster managers.
    lsf.rst
 
 
-Implementing a custom node provider
+Using a custom cloud or cluster manager
 ===================================
 
 To use the Ray Cluster Launcher and Autoscaler on other cloud providers or cluster managers, you can implement the `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`_ interface (100 LOC).

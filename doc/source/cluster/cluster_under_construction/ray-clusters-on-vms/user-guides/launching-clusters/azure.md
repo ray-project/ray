@@ -19,23 +19,22 @@ pip install -U ray[default]
 
 ### Install and Configure Azure CLI
 
-Next, install the Azure CLI (`pip install -U azure-cli azure-identity`) then login using (`az login`).  
+Next, install the Azure CLI (`pip install -U azure-cli azure-identity`) and login using `az login`.
 
 ```
-# install azure cli.
+# Install azure cli.
 pip install azure-cli azure-identity
 
-# login into azure, this will redirect you 
-# to your web browser.
+# Login to azure. This will redirect you to your web browser.
 az login
 ```
 
 ### Start Ray with the Ray Cluster Launcher
 
 
-The provided [example-full.yaml](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) cluster config file will create a small cluster with a Standard DS2v3 node (on-demand) configured to autoscale up to two Standard DS2v3 worker nodes ([spot-instances](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms)).
+The provided [cluster config file](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) will create a small cluster with a Standard DS2v3 on-demand head node that is configured to autoscale to up to two Standard DS2v3 [spot-instance](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms) worker nodes.
 
-Note that you'll need to fill in your [resource group](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [location](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set subscription to use from the command line `az account set -s <subscription_id>` or by filling the [subscription_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config.
+Note that you'll need to fill in your Azure [resource_group](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L42) and [location](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L41) in those templates. You also need set the subscription to use. You can do this from the command line with `az account set -s <subscription_id>` or by filling in the [subscription_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml#L44) in the cluster config file.
 
 
 
@@ -45,7 +44,7 @@ Test that it works by running the following commands from your local machine:
 # Download the example-full.yaml
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/azure/example-full.yaml
 
-# Update the example-full.yaml to update resource group, location, and subscription_id.
+# Update the example-full.yaml to update resource_group, location, and subscription_id.
 # vi example-full.yaml
 
 # Create or update the cluster. When the command finishes, it will print
@@ -60,7 +59,7 @@ ray attach example-full.yaml
 ray down example-full.yaml
 ```
 
-Congrats, you have started a Ray cluster on Azure!
+Congratulations, you have started a Ray cluster on Azure!
 
 ## Using Azure portal 
 
