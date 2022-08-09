@@ -923,6 +923,13 @@ def _set_up_config_for_head_node(
     # head node won't be able to connect to workers
     remote_config["auth"].pop("ssh_proxy_command", None)
 
+    # Drop the head_node field if it was introduced. It is technically not a
+    # valid field in the config, but it may have been introduced after
+    # validation (see _bootstrap_config() call to
+    # provider_cls.bootstrap_config(config)). The head node will never try to
+    # launch a head node so it doesn't need these defaults.
+    remote_config.pop("head_node", None)
+
     if "ssh_private_key" in config["auth"]:
         remote_key_path = "~/ray_bootstrap_key.pem"
         remote_config["auth"]["ssh_private_key"] = remote_key_path
