@@ -136,6 +136,11 @@ We also recommend taking a look at example RayCluster CRs in the [Ray docs][RayE
 and in the [KubeRay docs][KubeRayExamples].
 
 ### Legacy Ray Operator values.yaml
+Here is a `values.yaml` for the legacy Ray Operator's Helm chart which specifies a Ray cluster
+with the following features
+- A head pod annotated with a `"CPU":0` override to prevent scheduling Ray workloads on the head.
+- A CPU worker group annotated with custom resource capacities.
+- A GPU worker group.
 ```yaml
 image: rayproject/ray-ml:2.0.0-gpu
 headPodType: rayHeadType
@@ -165,6 +170,17 @@ operatorImage: rayproject/ray:2.0.0
 ```
 
 ### KubeRay RayCluster CR
+In this section, we show a KubeRay RayCluster CR equivalent to the above legacy Ray Operator Helm configuration.
+
+```{note}
+The configuration below is more verbose, as it does not employ Helm.
+Helm support for KubeRay is in progress; to try it out read KubeRay's [Helm docs][KubeRayHelm].
+
+Currently, we recommend directly deploying KubeRay RayCluster CRs without Helm.
+```
+
+Here is a [link][ConfigLink] to the configuration shown below.
+
 ```yaml
 apiVersion: ray.io/v1alpha1
 kind: RayCluster
@@ -271,3 +287,4 @@ spec:
 
 [RayExamples]: https://github.com/ray-project/ray/tree/master/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs
 [KubeRayExamples]: https://ray-project.github.io/kuberay/components/operator/#running-an-example-cluster
+[ConfigLink]:
