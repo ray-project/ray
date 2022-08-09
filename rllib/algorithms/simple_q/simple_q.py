@@ -358,11 +358,6 @@ class SimpleQ(Algorithm):
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
             # Use deprecated replay() to support old replay buffers for now
             train_batch = self.local_replay_buffer.sample(batch_size)
-            # If not yet learning, early-out here and do not perform learning, weight-
-            # synching, or target net updating.
-            if train_batch is None or len(train_batch) == 0:
-                self.workers.local_worker().set_global_vars(global_vars)
-                return {}
 
             # Learn on the training batch.
             # Use simple optimizer (only for multi-agent or tf-eager; all other
