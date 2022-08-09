@@ -27,18 +27,18 @@ AIR User Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: air-ingest
+    .. link-button:: trainer
         :type: ref
-        :text: Configuring Training Datasets
+        :text: Using Trainers
         :classes: btn-link btn-block stretched-link
 
     ---
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: trainer
+    .. link-button:: air-ingest
         :type: ref
-        :text: Using Trainers
+        :text: Configuring Training Datasets
         :classes: btn-link btn-block stretched-link
 
     ---

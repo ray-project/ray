@@ -41,9 +41,6 @@ from ray.data.row import TableRow
 
 try:
     import pyarrow
-
-    # This import is necessary to load the tensor extension type.
-    from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
 except ImportError:
     pyarrow = None
 
