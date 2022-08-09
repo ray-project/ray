@@ -57,7 +57,7 @@ def train_func(config: dict):
             for batch in dataset.iter_tf_batches(
                 batch_size=batch_size, dtypes=tf.float32
             ):
-                yield batch["x"], batch["y"]
+                yield tf.expand_dims(batch["x"], 1), batch["y"]
 
         output_signature = (
             tf.TensorSpec(shape=(None, 1), dtype=tf.float32),
