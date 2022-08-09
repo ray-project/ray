@@ -66,9 +66,6 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                         f"Potentially the GCS is down: {e}"
                     ),
                 )
-            except ray.exceptions.RayActorError:
-                self._controller = None
-                config = ServeApplicationSchema.get_empty_schema_dict()
 
         return Response(
             text=json.dumps(config),
@@ -91,15 +88,10 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 StatusOverview as StatusOverviewProto,
             )
 
-            try:
-                serve_status = await controller.get_serve_status.remote()
-                proto = StatusOverviewProto.FromString(serve_status)
-                status = StatusOverview.from_proto(proto)
-                status_json_str = serve_status_to_schema(status).json()
-            except ray.exceptions.RayActorError:
-                self._controller = None
-                status_json = ServeStatusSchema.get_empty_schema_dict()
-                status_json_str = json.dumps(status_json)
+            serve_status = await controller.get_serve_status.remote()
+            proto = StatusOverviewProto.FromString(serve_status)
+            status = StatusOverview.from_proto(proto)
+            status_json_str = serve_status_to_schema(status).json()
 
         return Response(
             text=status_json_str,
