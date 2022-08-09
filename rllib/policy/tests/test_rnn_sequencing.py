@@ -154,6 +154,7 @@ class TestRNNSequencing(unittest.TestCase):
             np.arange(B * T)[:, np.newaxis], repeats=F, axis=-1
         ).astype(np.int32)
         check(inputs_numpy.shape, (B * T, F))
+        seq_lens = np.random.randint(1, T + 1, (B,))
 
         time_shift_diff_batch_major = np.ones(shape=(B, T - 1, F), dtype=np.int32)
         time_shift_diff_time_major = np.ones(shape=(T - 1, B, F), dtype=np.int32)
@@ -162,7 +163,7 @@ class TestRNNSequencing(unittest.TestCase):
             # Test tensorflow batch-major
             padded_inputs = tf.constant(inputs_numpy)
             batch_major_outputs = add_time_dimension(
-                padded_inputs, max_seq_len=T, framework="tf", time_major=False
+                padded_inputs, seq_lens=seq_lens, framework="tf", time_major=False
             )
             check(batch_major_outputs.shape.as_list(), [B, T, F])
             time_shift_diff = batch_major_outputs[:, 1:] - batch_major_outputs[:, :-1]
@@ -172,7 +173,7 @@ class TestRNNSequencing(unittest.TestCase):
             # Test torch batch-major
             padded_inputs = torch.from_numpy(inputs_numpy)
             batch_major_outputs = add_time_dimension(
-                padded_inputs, max_seq_len=T, framework="torch", time_major=False
+                padded_inputs, seq_lens=seq_lens, framework="torch", time_major=False
             )
             check(batch_major_outputs.shape, (B, T, F))
             time_shift_diff = batch_major_outputs[:, 1:] - batch_major_outputs[:, :-1]
@@ -181,7 +182,7 @@ class TestRNNSequencing(unittest.TestCase):
             # Test torch time-major
             padded_inputs = torch.from_numpy(inputs_numpy)
             time_major_outputs = add_time_dimension(
-                padded_inputs, max_seq_len=T, framework="torch", time_major=True
+                padded_inputs, seq_lens=seq_lens, framework="torch", time_major=True
             )
             check(time_major_outputs.shape, (T, B, F))
             time_shift_diff = time_major_outputs[1:] - time_major_outputs[:-1]

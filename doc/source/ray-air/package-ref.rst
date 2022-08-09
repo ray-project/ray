@@ -27,7 +27,7 @@ Built-in Preprocessors
 .. automethod:: ray.data.Dataset.train_test_split
     :noindex:
 
-.. _air-trainer-ref:
+.. _air-abstract-trainer-ref:
 
 Trainer
 ~~~~~~~
@@ -99,6 +99,12 @@ Tuner
 .. autoclass:: ray.tune.tuner.Tuner
     :members:
 
+TuneConfig
+##########
+
+.. automodule:: ray.tune.tune_config
+    :members:
+
 Tuner Results
 #############
 
@@ -113,6 +119,8 @@ Serving
 .. autoclass:: ray.serve.air_integrations.PredictorDeployment
 
 .. autoclass:: ray.serve.air_integrations.PredictorWrapper
+
+.. _air-trainer-ref:
 
 Trainer and Predictor Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

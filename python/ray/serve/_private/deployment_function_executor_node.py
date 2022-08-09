@@ -66,13 +66,16 @@ class DeploymentFunctionExecutorNode(DAGNode):
             "deployment_function_handle": self._deployment_function_handle,
             "args": self.get_args(),
             "kwargs": self.get_kwargs(),
+            "uuid": self.get_stable_uuid(),
         }
 
     @classmethod
     def from_json(cls, input_json):
         assert input_json[DAGNODE_TYPE_KEY] == DeploymentFunctionExecutorNode.__name__
-        return cls(
+        node = cls(
             input_json["deployment_function_handle"],
             input_json["args"],
             input_json["kwargs"],
         )
+        node._stable_uuid = input_json["uuid"]
+        return node

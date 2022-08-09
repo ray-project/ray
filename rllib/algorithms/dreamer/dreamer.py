@@ -408,37 +408,34 @@ class Dreamer(Algorithm):
         dreamer_train_iters = self.config["dreamer_train_iters"]
         batch_size = self.config["batch_size"]
 
-        # Possibly collect samples multiple times at the beginning of training before
-        # learning starts
-        sampled_this_step = False
-        while (
-            self.current_timestep
-            < self.config["num_steps_sampled_before_learning_starts"]
-            or not sampled_this_step
-        ):
-
-            # Collect SampleBatches from rollout workers.
-            batch = synchronous_parallel_sample(worker_set=self.workers)
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
-            self.local_replay_buffer.add(batch)
-            sampled_this_step = True
+        # Collect SampleBatches from rollout workers.
+        batch = synchronous_parallel_sample(worker_set=self.workers)
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
 
         fetches = {}
 
-        # Dreamer training loop.
-        # Run multiple sub-iterations for each training iteration.
-        for n in range(dreamer_train_iters):
-            print(f"sub-iteration={n}/{dreamer_train_iters}")
-            batch = self.local_replay_buffer.sample(batch_size)
-            fetches = local_worker.learn_on_batch(batch)
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
 
-        if fetches:
-            # Custom logging.
-            policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
-            if "log_gif" in policy_fetches:
-                gif = policy_fetches["log_gif"]
-                policy_fetches["log_gif"] = self._postprocess_gif(gif)
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            # Dreamer training loop.
+            # Run multiple sub-iterations for each training iteration.
+            for n in range(dreamer_train_iters):
+                print(f"sub-iteration={n}/{dreamer_train_iters}")
+                batch = self.local_replay_buffer.sample(batch_size)
+                fetches = local_worker.learn_on_batch(batch)
+
+            if fetches:
+                # Custom logging.
+                policy_fetches = fetches[DEFAULT_POLICY_ID]["learner_stats"]
+                if "log_gif" in policy_fetches:
+                    gif = policy_fetches["log_gif"]
+                    policy_fetches["log_gif"] = self._postprocess_gif(gif)
+
+        self.local_replay_buffer.add(batch)
 
         return fetches
 

@@ -10,13 +10,14 @@ import pytest
 import requests
 
 import ray
+import ray.actor
 import ray._private.state
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.common import ApplicationStatus, DeploymentStatus
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.context import get_global_client
 from ray.serve.schema import ServeApplicationSchema
@@ -561,6 +562,69 @@ class TestDeployApp:
         # Ensure config checkpoint has been deleted
         assert client.get_serve_status().app_status.deployment_timestamp == 0
 
+    @pytest.mark.parametrize(
+        "option_to_update,config_update",
+        [
+            ("num_replicas", True),
+            ("autoscaling_config", True),
+            ("user_config", True),
+            ("ray_actor_options", False),
+        ],
+    )
+    def test_deploy_config_update(
+        self, client: ServeControllerClient, option_to_update: str, config_update: bool
+    ):
+        """
+        Check that replicas stay alive when lightweight config updates are made and
+        replicas are torn down when code updates are made.
+        """
+
+        def deployment_running():
+            serve_status = client.get_serve_status()
+            return (
+                serve_status.get_deployment_status("f") is not None
+                and serve_status.app_status.status == ApplicationStatus.RUNNING
+                and serve_status.get_deployment_status("f").status
+                == DeploymentStatus.HEALTHY
+            )
+
+        config_template = {
+            "import_path": "ray.serve.tests.test_config_files.pid.node",
+            "deployments": [
+                {
+                    "name": "f",
+                    "autoscaling_config": None,
+                    "user_config": None,
+                    "ray_actor_options": {"num_cpus": 0.1},
+                },
+            ],
+        }
+
+        client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(deployment_running, timeout=15)
+        pid1 = requests.get("http://localhost:8000/f").text
+
+        updated_options = {
+            "num_replicas": 2,
+            "autoscaling_config": {"max_replicas": 2},
+            "user_config": {"name": "bob"},
+            "ray_actor_options": {"num_cpus": 0.2},
+        }
+        config_template["deployments"][0][option_to_update] = updated_options[
+            option_to_update
+        ]
+
+        client.deploy_app(ServeApplicationSchema.parse_obj(config_template))
+        wait_for_condition(deployment_running, timeout=15)
+
+        # This assumes that Serve implements round-robin routing for its replicas. As
+        # long as that doesn't change, this test shouldn't be flaky; however if that
+        # routing ever changes, this test could become mysteriously flaky
+        pids = []
+        for _ in range(4):
+            pids.append(requests.get("http://localhost:8000/f").text)
+        assert (pid1 in pids) == config_update
+
 
 def test_controller_recover_and_delete(shutdown_ray):
     """Ensure that in-progress deletion can finish even after controller dies."""
@@ -648,6 +712,42 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function):
     finally:
         os.unlink(deploy_file.name)
         os.unlink(shutdown_file.name)
+
+
+def test_handle_early_detect_failure(shutdown_ray):
+    """Check that handle can be notified about replicas failure.
+
+    It should detect replica raises ActorError and take them out of the replicas set.
+    """
+    ray.init()
+    serve.start(detached=True)
+
+    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    def f(do_crash: bool = False):
+        if do_crash:
+            os._exit(1)
+        return os.getpid()
+
+    handle = serve.run(f.bind())
+    pids = ray.get([handle.remote() for _ in range(2)])
+    assert len(set(pids)) == 2
+    assert len(handle.router._replica_set.in_flight_queries.keys()) == 2
+
+    client = get_global_client()
+    # Kill the controller so that the replicas membership won't be updated
+    # through controller health check + long polling.
+    ray.kill(client._controller, no_restart=True)
+
+    with pytest.raises(RayActorError):
+        ray.get(handle.remote(do_crash=True))
+
+    pids = ray.get([handle.remote() for _ in range(10)])
+    assert len(set(pids)) == 1
+    assert len(handle.router._replica_set.in_flight_queries.keys()) == 1
+
+    # Restart the controller, and then clean up all the replicas
+    serve.start(detached=True)
+    serve.shutdown()
 
 
 def test_autoscaler_shutdown_node_http_everynode(

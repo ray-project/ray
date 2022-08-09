@@ -33,7 +33,10 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.monitor import Monitor
-from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
+from ray.autoscaler._private.prom_metrics import (
+    AutoscalerPrometheusMetrics,
+    NullMetric,
+)
 from ray.autoscaler._private.providers import (
     _DEFAULT_CONFIGS,
     _NODE_PROVIDERS,
@@ -3363,6 +3366,15 @@ def test_import():
     import ray.autoscaler  # noqa
     import ray.autoscaler.sdk  # noqa
     from ray.autoscaler.sdk import request_resources  # noqa
+
+
+def test_prom_null_metric_inc_fix():
+    """Verify the bug fix https://github.com/ray-project/ray/pull/27532
+    for NullMetric's signature.
+    Check that NullMetric can be called with or without an argument.
+    """
+    NullMetric().inc()
+    NullMetric().inc(5)
 
 
 if __name__ == "__main__":

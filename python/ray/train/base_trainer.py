@@ -27,7 +27,7 @@ GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
 
@@ -43,20 +43,20 @@ class BaseTrainer(abc.ABC):
 
     How does a trainer work?
 
-        - First, initialize the Trainer. The initialization runs locally,
-          so heavyweight setup should not be done in __init__.
-        - Then, when you call ``trainer.fit()``, the Trainer is serialized
-          and copied to a remote Ray actor. The following methods are then
-          called in sequence on the remote actor.
-        - ``trainer.setup()``: Any heavyweight Trainer setup should be
-          specified here.
-        - ``trainer.preprocess_datasets()``: The provided
-          ray.data.Dataset are preprocessed with the provided
-          ray.data.Preprocessor.
-        - ``trainer.train_loop()``: Executes the main training logic.
-        - Calling ``trainer.fit()`` will return a ``ray.result.Result``
-          object where you can access metrics from your training run, as well
-          as any checkpoints that may have been saved.
+    - First, initialize the Trainer. The initialization runs locally,
+      so heavyweight setup should not be done in __init__.
+    - Then, when you call ``trainer.fit()``, the Trainer is serialized
+      and copied to a remote Ray actor. The following methods are then
+      called in sequence on the remote actor.
+    - ``trainer.setup()``: Any heavyweight Trainer setup should be
+      specified here.
+    - ``trainer.preprocess_datasets()``: The provided
+      ray.data.Dataset are preprocessed with the provided
+      ray.data.Preprocessor.
+    - ``trainer.train_loop()``: Executes the main training logic.
+    - Calling ``trainer.fit()`` will return a ``ray.result.Result``
+      object where you can access metrics from your training run, as well
+      as any checkpoints that may have been saved.
 
     **How do I create a new Trainer?**
 
@@ -322,7 +322,7 @@ class BaseTrainer(abc.ABC):
         """
         raise NotImplementedError
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="beta")
     def fit(self) -> Result:
         """Runs training.
 

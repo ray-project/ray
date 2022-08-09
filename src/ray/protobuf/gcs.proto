@@ -247,6 +247,8 @@ message GcsNodeInfo {
 
   // The user-provided identifier or name for this node.
   string node_name = 12;
+  // The information of the agent process.
+  AgentInfo agent_info = 13;
 }
 
 message HeartbeatTableData {

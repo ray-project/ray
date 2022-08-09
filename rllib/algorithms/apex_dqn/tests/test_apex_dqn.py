@@ -26,7 +26,7 @@ class TestApexDQN(unittest.TestCase):
             .rollouts(num_rollout_workers=0)
             .resources(num_gpus=0)
             .training(
-                num_steps_sampled_before_learning_starts=1000,
+                num_steps_sampled_before_learning_starts=0,
                 optimizer={
                     "num_replay_buffer_shards": 1,
                 },
@@ -51,7 +51,7 @@ class TestApexDQN(unittest.TestCase):
             .rollouts(num_rollout_workers=3)
             .resources(num_gpus=0)
             .training(
-                num_steps_sampled_before_learning_starts=1000,
+                num_steps_sampled_before_learning_starts=0,
                 optimizer={
                     "num_replay_buffer_shards": 1,
                 },
@@ -122,6 +122,8 @@ class TestApexDQN(unittest.TestCase):
             )
             .reporting(
                 min_sample_timesteps_per_iteration=10,
+                # Make sure that results contain info on default policy
+                min_train_timesteps_per_iteration=10,
                 # 0 metrics reporting delay, this makes sure timestep,
                 # which lr depends on, is updated after each worker rollout.
                 min_time_s_per_iteration=0,

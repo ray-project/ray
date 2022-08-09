@@ -337,33 +337,34 @@ class AlphaZero(Algorithm):
             The results dict from executing the training iteration.
         """
 
-        # Possibly collect samples multiple times at the beginning of training before
-        # learning starts
-        sampled_this_step = False
-        while (
-            self.current_timestep
-            < self.config["num_steps_sampled_before_learning_starts"]
-            or not sampled_this_step
-        ):
-            # Sample n MultiAgentBatches from n workers.
-            new_sample_batches = synchronous_parallel_sample(
-                worker_set=self.workers, concat=False
-            )
+        # Sample n MultiAgentBatches from n workers.
+        new_sample_batches = synchronous_parallel_sample(
+            worker_set=self.workers, concat=False
+        )
 
-            for batch in new_sample_batches:
-                # Update sampling step counters.
-                self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-                # Store new samples in the replay buffer
-                # Use deprecated add_batch() to support old replay buffers for now
-                if self.local_replay_buffer is not None:
-                    self.local_replay_buffer.add(batch)
-            sampled_this_step = True
+        for batch in new_sample_batches:
+            # Update sampling step counters.
+            self._counters[NUM_ENV_STEPS_SAMPLED] += batch.env_steps()
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+            # Store new samples in the replay buffer
+            # Use deprecated add_batch() to support old replay buffers for now
+            if self.local_replay_buffer is not None:
+                self.local_replay_buffer.add(batch)
 
         if self.local_replay_buffer is not None:
-            train_batch = self.local_replay_buffer.sample(
-                self.config["train_batch_size"]
-            )
+            # Update target network every `target_network_update_freq` sample steps.
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self._by_agent_steps
+                else NUM_ENV_STEPS_SAMPLED
+            ]
+
+            if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+                train_batch = self.local_replay_buffer.sample(
+                    self.config["train_batch_size"]
+                )
+            else:
+                train_batch = None
         else:
             train_batch = concat_samples(new_sample_batches)
 

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class LightGBMPredictor(Predictor):
     """A predictor for LightGBM models.
 

@@ -2602,18 +2602,6 @@ class Algorithm(Trainable):
             alg = "USER_DEFINED"
         record_extra_usage_tag(TagKey.RLLIB_ALGORITHM, alg)
 
-    @property
-    def current_timestep(self):
-        """Returns the current environment- or agent step.
-
-        Returns: The number of agent steps sampled, if counting step by agent
-            steps, i.e. if `self._by_agent_steps=True`. The number of environment
-            steps sampled otherwise.
-        """
-        return self._counters[
-            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
-        ]
-
     @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)

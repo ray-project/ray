@@ -12,7 +12,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
 )
 from ray.tune.error import TuneError
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -70,7 +70,7 @@ def is_function_trainable(trainable: Union[str, Callable, Type]) -> bool:
     )
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool = True):
     """Register a trainable function or class.
 
@@ -101,7 +101,7 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def register_env(name: str, env_creator: Callable):
     """Register a custom environment for use with RLlib.
 
@@ -118,7 +118,7 @@ def register_env(name: str, env_creator: Callable):
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def register_input(name: str, input_creator: Callable):
     """Register a custom input api for RLlib.
 

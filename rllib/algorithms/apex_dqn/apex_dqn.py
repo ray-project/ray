@@ -432,33 +432,29 @@ class ApexDQN(DQN):
         num_samples_ready_dict = self.get_samples_and_store_to_replay_buffers()
         worker_samples_collected = defaultdict(int)
 
-        # Possibly collect samples multiple times at the beginning of training before
-        # learning starts
-        sampled_this_step = False
-        while (
-            self.current_timestep
-            < self.config["num_steps_sampled_before_learning_starts"]
-            or not sampled_this_step
-        ):
-            for worker, samples_infos in num_samples_ready_dict.items():
-                for samples_info in samples_infos:
-                    self._counters[NUM_AGENT_STEPS_SAMPLED] += samples_info[
-                        "agent_steps"
-                    ]
-                    self._counters[NUM_ENV_STEPS_SAMPLED] += samples_info["env_steps"]
-                    worker_samples_collected[worker] += samples_info["agent_steps"]
-            # update the weights of the workers that returned samples
-            # only do this if there are remote workers (config["num_workers"] > 1)
-            if self.workers.remote_workers():
-                self.update_workers(worker_samples_collected)
-            sampled_this_step = True
+        for worker, samples_infos in num_samples_ready_dict.items():
+            for samples_info in samples_infos:
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += samples_info["agent_steps"]
+                self._counters[NUM_ENV_STEPS_SAMPLED] += samples_info["env_steps"]
+                worker_samples_collected[worker] += samples_info["agent_steps"]
 
-        # trigger a sample from the replay actors and enqueue operation to the
-        # learner thread.
-        self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
-            worker_samples_collected
-        )
-        self.update_replay_sample_priority()
+        # update the weights of the workers that returned samples
+        # only do this if there are remote workers (config["num_workers"] > 1)
+        if self.workers.remote_workers():
+            self.update_workers(worker_samples_collected)
+
+        # Update target network every `target_network_update_freq` sample steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_SAMPLED if self._by_agent_steps else NUM_ENV_STEPS_SAMPLED
+        ]
+
+        if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+            # trigger a sample from the replay actors and enqueue operation to the
+            # learner thread.
+            self.sample_from_replay_buffer_place_on_learner_queue_non_blocking(
+                worker_samples_collected
+            )
+            self.update_replay_sample_priority()
 
         return copy.deepcopy(self.learner_thread.learner_info)
 

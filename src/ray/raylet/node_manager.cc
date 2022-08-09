@@ -16,11 +16,11 @@
 
 #include <cctype>
 #include <csignal>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 
 #include "absl/time/clock.h"
-#include "boost/filesystem.hpp"
 #include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -2858,6 +2858,10 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }
+}
+
+const ray::Status NodeManager::TryToGetAgentInfo(rpc::AgentInfo *agent_info) const {
+  return agent_manager_->TryToGetAgentInfo(agent_info);
 }
 
 }  // namespace raylet

@@ -371,7 +371,7 @@ def _configure_key_pair(config):
     os.makedirs(os.path.expanduser("~/.ssh"), exist_ok=True)
 
     # Try a few times to get or create a good key pair.
-    MAX_NUM_KEYS = 30
+    MAX_NUM_KEYS = 60
     for i in range(MAX_NUM_KEYS):
 
         key_name = config["provider"].get("key_pair", {}).get("key_name")
