@@ -3,6 +3,11 @@
 This page discusses autoscaling in the context of Ray on Kubernetes.
 For details on autoscaler configuration see the {ref}`configuration guide<kuberay-autoscaling-config>`.
 
+:::{note}
+Autoscaling is supported only with Ray versions at least
+as new  as 1.11.0.
+:::
+
 (autoscaler-pro-con)=
 ## Should I enable autoscaling?
 Ray Autoscaler support is optional.
@@ -87,8 +92,29 @@ There is no relationship between the Ray Autoscaler and the Kubernetes
 [Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) (VPA),
 which is meant to size individual pods to the appropriate size based on current and past usage.
 If you find that the load on your individual Ray pods is too high, there are a number
-of manual techniques to decrease the load.
+of manual techniques to decrease the load
 One method is to schedule fewer tasks/actors per node by increasing the resource
 requirements specified in the `ray.remote` annotation.
 For example, changing `@ray.remote(num_cpus=2)` to `@ray.remote(num_cpus=4)`
 will halve the quantity of that task or actor that can fit in a given Ray pod.
+
+## Autoscaling architecture
+The following diagram illustrates the integration of the Ray Autoscaler
+with the KubeRay operator.
+```{eval-rst}
+.. image:: /cluster/cluster_under_construction/ray-clusters-on-kubernetes/images/AutoscalerOperator.svg
+    :align: center
+..
+    Find the source document here (https://docs.google.com/drawings/d/1LdOg9JQuN5AOII-vDpSaFBsTeg0JGWcsbyNNLP1yovg/edit)
+```
+
+Worker pod upscaling occurs through the following sequence of events:
+1. The user submits a Ray workload.
+2. Workload resource requirements are aggregated by the Ray head container
+   and communicated to the Ray autoscaler sidecar.
+3. The autoscaler determines that a Ray worker pod must be added to satisfy the workload's resource requirement.
+4. The autoscaler requests an addtional worker pod by incrementing the RayCluster CR's `replicas` field.
+5. The KubeRay operator creates a Ray worker pod to match the new `replicas` specification.
+6. The Ray scheduler places the user's workload on the new worker pod.
+
+See also the operator architecture diagram in the [KubeRay documentation](https://ray-project.github.io/kuberay/components/operator/).
