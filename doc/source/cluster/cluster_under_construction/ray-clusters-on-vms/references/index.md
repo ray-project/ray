@@ -1,4 +1,4 @@
-# References
+# API References
 
 The following pages provide reference documentation for using Ray Clusters on virtual machines.
 For reference documentation that is common to both Ray Clusters on VMs and Kubernetes, see {ref}`Ray Clusters References<ray-clusters-reference>`.
