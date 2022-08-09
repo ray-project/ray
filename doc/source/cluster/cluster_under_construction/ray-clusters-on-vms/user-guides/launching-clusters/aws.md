@@ -1,16 +1,16 @@
 
 # Launching Ray Clusters on AWS
 
-This guide details the steps needed to start a Ray cluster in AWS.
+This guide details the steps needed to start a Ray cluster on AWS.
 
-To start an AWS Ray cluster, you need to use Ray cluster launcher and AWS Python SDK.
+To start an AWS Ray cluster, you need to use the Ray Cluster Launcher with AWS Python SDK.
 
 
 ## Install Ray Cluster Launcher
-The Ray cluster launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install it, or follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
+The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
 
 ```
-# install ray cluster launcher, which is part of ray command line tool.
+# install ray
 pip install -U ray[default]
 ```
 
@@ -27,16 +27,16 @@ export AWS_ACCESS_KEY_ID=foo
 export AWS_SECRET_ACCESS_KEY=bar
 export AWS_SESSION_TOKEN=baz
 
-# alternative, you can also setup AWS credentials using ~/.aws/credentials file
+# alternatively, you can setup AWS credentials using ~/.aws/credentials file
 echo "[default]
 aws_access_key_id=foo
 aws_secret_access_key=bar
 aws_session_token=baz" >> ~/.aws/credentials
 ```
 
-## Start Ray with Ray Cluster Launcher
+## Start Ray with the Ray Cluster Launcher
 
-Once Boto3 is configured to manage resources on your AWS account, you should be ready to launch your cluster using cluster launcher. The provided [example-full.yaml](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml) cluster config file will create a small cluster with an m5.large head node (on-demand) configured to autoscale up to two m5.large workers ([spot-instances](https://aws.amazon.com/ec2/spot/)).
+Once Boto3 is configured to manage resources in your AWS account, you should be ready to launch your cluster using the cluster launcher. The provided [example-full.yaml](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml) cluster config file will create a small cluster with an m5.large head node (on-demand) configured to autoscale up to two m5.large workers ([spot-instances](https://aws.amazon.com/ec2/spot/)).
 
 Test that it works by running the following commands from your local machine:
 
@@ -48,7 +48,7 @@ wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autosca
 # out the command that can be used to SSH into the cluster head node.
 ray up example-full.yaml
 
-# Get a remote screen on the head node.
+# Get a remote shell on the head node.
 ray attach example-full.yaml
 
 # Try running a Ray program.
@@ -62,14 +62,14 @@ ray down example-full.yaml
 Congrats, you have started a Ray cluster on AWS!
 
 
-If you want to learn more about Ray cluster launcher. See this blog post for a [step by step guide](https://medium.com/distributed-computing-with-ray/a-step-by-step-guide-to-scaling-your-first-python-application-in-the-cloud-8761fe331ef1) to using the Ray Cluster Launcher.
+If you want to learn more about Ray Cluster Launcher. See this blog post for a [step by step guide](https://medium.com/distributed-computing-with-ray/a-step-by-step-guide-to-scaling-your-first-python-application-in-the-cloud-8761fe331ef1) to using the Ray Cluster Launcher.
 
 
 ## AWS Configurations
 
 ### Using Amazon EFS
 
-To utilize Amazon EFS in Ray the cluster, install some utilities and mount the EFS in `setup_commands`, as follows. Note that these instructions only work if you are using the AWS Autoscaler.
+To utilize Amazon EFS in the Ray cluster, install some utilities and mount the EFS in `setup_commands`, as follows. Note that these instructions only work if you are using the Ray Cluster Launcher on AWS.
 
 ```
 # Note You need to replace the {{FileSystemId}} to your own EFS ID before using the config.

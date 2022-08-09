@@ -3,14 +3,14 @@
 
 This guide details the steps needed to start a Ray cluster in GCP.
 
-To start a GCP Ray cluster, you need to use Ray cluster launcher and Google API client.
+To start a GCP Ray cluster, you need to use the Ray Cluster Launcher with Google API client.
 
 
 ## Install Ray Cluster Launcher
-The Ray cluster launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install it, or follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
+The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
 
 ```
-# install ray cluster launcher, which is part of ray command line tool.
+# install ray
 pip install -U ray[default]
 ```
 
@@ -25,7 +25,7 @@ Next, install Google API Client using `pip install -U google-api-python-client`.
 pip install google-api-python-client
 ```
 
-## Start Ray with Ray Cluster Launcher
+## Start Ray with the Ray Cluster Launcher
 
 Once the API client is configured to manage resources on your GCP account, you should be ready to launch your cluster. The provided [example-full.yaml](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml) cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 [preemptible workers](https://cloud.google.com/preemptible-vms/). Note that you'll need to fill in your [project_id](https://github.com/ray-project/ray/blob/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/gcp/example-full.yaml#L42) in those templates.
 

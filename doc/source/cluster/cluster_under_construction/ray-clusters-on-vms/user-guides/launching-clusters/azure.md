@@ -1,19 +1,19 @@
 
 # Launching Ray Clusters on Azure 
 
-This guide details the steps needed to start a Ray cluster in Azure.
+This guide details the steps needed to start a Ray cluster on Azure.
 
 There are two ways to start an Azure Ray cluster.
-- Launch through Ray Cluster launcher.
+- Launch through Ray Cluster Launcher.
 - Deploy a cluster using Azure portal .
 
 
 ## Using Ray Cluster Launcher 
 ### Install Ray Cluster Launcher
-The Ray cluster launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install it, or follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
+The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
 
 ```
-# install ray cluster launcher, which is part of ray command line tool.
+# install ray
 pip install -U ray[default]
 ```
 
@@ -30,7 +30,7 @@ pip install azure-cli azure-identity
 az login
 ```
 
-### Start Ray with Ray Cluster Launcher
+### Start Ray with the Ray Cluster Launcher
 
 
 The provided [example-full.yaml](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) cluster config file will create a small cluster with a Standard DS2v3 node (on-demand) configured to autoscale up to two Standard DS2v3 worker nodes ([spot-instances](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms)).

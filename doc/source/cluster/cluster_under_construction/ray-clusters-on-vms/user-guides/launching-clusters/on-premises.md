@@ -1,22 +1,22 @@
-# Launching On-Premises Cluster
+# Launching a Cluser On-Premises
 
-This docs describes how to set up an on-premises Ray cluster, i.e., to run Ray on bare metal machines, or in a private cloud. We provide two ways to start an on-premises cluster.
+This document describes how to set up an on-premises Ray cluster, i.e., to run Ray on bare metal machines, or in a private cloud. We provide two ways to start an on-premises cluster.
 
 * You can **manually set up** the Ray cluster by installing the Ray package and starting the Ray processes on each node. 
-* Alternatively, if you know all the nodes in advance and have ssh access to them, you should start the ray cluster using **cluster-launcher**.
+* Alternatively, if you know all the nodes in advance and have ssh access to them, you should start the Ray cluster using the **cluster-launcher**.
 
 
 ## Manually Set up a Ray Cluster 
-This section assumes that you have a list of machines and that the nodes in the cluster can communicate with each other. It also assumes that Ray is installed on each machine.  You can use pip to install it, or follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
+This section assumes that you have a list of machines and that the nodes in the cluster can communicate with each other. It also assumes that Ray is installed on each machine. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
 
 ```
-# install ray cluster launcher, which is part of ray command line tool.
+# install ray
 pip install -U ray[default]
 ```
 
 
 ### Start Head Node
-On the head node (just choose one node to be the head node), run the following. If the --port argument is omitted, Ray will choose port 6379, falling back to a random port.
+On the head node (just choose one node to be the head node), run the following. If the --port argument is omitted, Ray will first choose port 6379, and then fall back to a random port if in 6379 is in use.
 
 ```
 ray start --head --port=6379
@@ -25,7 +25,7 @@ ray start --head --port=6379
 ray start --address='<ip address>:6379'
 ```
 
-The command will print out the address of the Ray GCS server that was started (the local node IP address plus the port number you specified). If connection fails, check your firewall settings and network configuration.
+The command will print out the address of the Ray GCS server that was started (the local node IP address plus the port number you specified). If the connection fails, check your firewall settings and network configuration.
 
 ### Start Worker Nodes
 Then on each of the other nodes, run the following command to connect to the head node you just created.
@@ -36,7 +36,7 @@ ray start --address=<head-node-address:port>
 ```
 Make sure to replace `head-node-address:port` with the value printed by the command on the head node (it should look something like 123.45.67.89:6379).
 
-Note that if your compute nodes are on their own subnetwork with Network Address Translation, to connect from a regular machine outside that subnetwork, the command printed by the head node will not work. You need to find the address that will reach the head node from the second machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on the DNS.
+Note that if your compute nodes are on their own subnetwork with Network Address Translation, to connect from a regular machine outside that subnetwork, the command printed by the head node will not work. You need to find an address that will reach the head node from the second machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on the DNS.
 
 ### Configure Nodes
 
@@ -77,14 +77,14 @@ nc: connect to compute04.berkeley.edu port 6379 (tcp) failed: Connection refused
 
 ## Using Ray Cluster Launcher 
 ### Install Ray Cluster Launcher
-The Ray cluster launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install it, or follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
+The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install it, or follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
 
 ```
-# install ray cluster launcher, which is part of ray command line tool.
+# install ray
 pip install ray
 ```
 
-### Start Ray with Ray Cluster Launcher
+### Start Ray with the Ray Cluster Launcher
 
 The provided [example-full.yaml](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml) cluster config file will create a Ray cluster given a list of nodes.
 
