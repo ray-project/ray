@@ -185,7 +185,8 @@ class UpdateTargetAndKL:
             metrics.counters[NUM_TARGET_UPDATES] += 1
             metrics.counters[LAST_TARGET_UPDATE_TS] = cur_ts
             # Update Target Network
-            self.local_worker.foreach_policy_to_train(lambda p, _: p.update_target())
+            self.workers.local_worker().foreach_policy_to_train(lambda p,
+                                                                 _: p.update_target())
             # Also update KL Coeff
             if self.config["use_kl_loss"]:
                 self.update_kl(fetches)
