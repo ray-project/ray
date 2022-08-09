@@ -1,6 +1,7 @@
 # coding: utf-8
 import logging
 import os
+import copy
 import platform
 import random
 import signal
@@ -13,7 +14,13 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray._private.internal_api import memory_summary
-from ray._private.test_utils import SignalActor, put_object, wait_for_condition
+from ray._private.test_utils import (
+    SignalActor,
+    put_object,
+    wait_for_condition,
+    wait_for_num_actors,
+)
+import ray._private.gcs_utils as gcs_utils
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -697,6 +704,46 @@ def test_forward_nested_ref(shutdown_only):
     for _ in range(3):
         ray.get(b.check_ref.remote())
         time.sleep(1)
+
+
+def test_out_of_band_actor_handle_deserialization(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return 1
+
+    actor = Actor.remote()
+
+    @ray.remote
+    def func(config):
+        # deep copy will pickle and unpickle the actor handle.
+        config = copy.deepcopy(config)
+        return ray.get(config["actor"].ping.remote())
+
+    assert ray.get(func.remote({"actor": actor})) == 1
+
+
+def test_out_of_band_actor_handle_bypass_reference_counting(shutdown_only):
+    import pickle
+
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return 1
+
+    actor = Actor.remote()
+    serialized = pickle.dumps({"actor": actor})
+    del actor
+
+    wait_for_num_actors(1, gcs_utils.ActorTableData.DEAD)
+
+    config = pickle.loads(serialized)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(config["actor"].ping.remote())
 
 
 if __name__ == "__main__":
