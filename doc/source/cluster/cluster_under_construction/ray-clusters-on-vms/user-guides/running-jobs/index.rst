@@ -19,7 +19,5 @@ To run an interactive Ray workload and see the output in real time in a client o
 .. toctree::
     :maxdepth: 2
 
-    job-submission-cli.rst
-    job-submission-rest.rst
-    job-submission-sdk.rst
+    job-submission.rst
     ray-client.rst
