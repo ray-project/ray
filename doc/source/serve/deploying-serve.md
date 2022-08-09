@@ -16,7 +16,7 @@ This section should help you:
 ## Lifetime of a Ray Serve Instance
 
 Ray Serve instances run on top of Ray clusters and are started using {mod}`serve.run <ray.serve.run>`.
-Once {mod}`serve.run <ray.serve.run>` has been called, serve instance will be created automatically.
+Once {mod}`serve.run <ray.serve.run>` is called, serve instance is created automatically.
 The Serve instance will be torn down when the script exits.
 
 :::{note}
@@ -33,21 +33,10 @@ In general, **Option 2 is recommended for most users** because it allows you to 
 
 1. Start Ray and deploy with Ray Serve all in a single Python file.
 
-```python
-import ray
-from ray import serve
-import time
-
-
-@serve.deployment
-def my_func(request):
-  return "hello"
-
-serve.run(my_func.bind())
-
-# Serve will be shut down once the script exits, so keep it alive manually.
-while True:
-    time.sleep(5)
+```{literalinclude} ../serve/doc_code/deploying_serve_example.py
+:start-after: __deploy_in_single_file_1_start__
+:end-before: __deploy_in_single_file_1_end__
+:language: python
 ```
 
 2. First running `ray start --head` on the machine, then connecting to the running local Ray cluster using `ray.init(address="auto")` in your Serve script(s). You can run multiple scripts to update your deployments over time.
@@ -57,18 +46,10 @@ ray start --head # Start local Ray cluster.
 serve start # Start Serve on the local Ray cluster.
 ```
 
-```python
-import ray
-from ray import serve
-
-# This will connect to the running Ray cluster.
-ray.init(address="auto", namespace="serve")
-
-@serve.deployment
-def my_func(request):
-  return "hello"
-
-serve.run(my_func.bind())
+```{literalinclude} ../serve/doc_code/deploying_serve_example.py
+:start-after: __deploy_in_single_file_2_start__
+:end-before: __deploy_in_single_file_2_end__
+:language: python
 ```
 
 (deploying-serve-on-kubernetes)=
@@ -159,19 +140,10 @@ $ kubectl -n ray describe service ray-head
 
 With the cluster now running, we can run a simple script to start Ray Serve and deploy a "hello world" deployment:
 
-> ```python
-> import ray
-> from ray import serve
->
-> # Connect to the running Ray cluster.
-> ray.init(address="auto")
->
->
-> @serve.deployment(route_prefix="/hello")
-> def hello(request):
->     return "hello world"
->
-> serve.run(hello.bind())
+> ```{literalinclude} ../serve/doc_code/deploying_serve_example.py
+> :start-after: __deploy_in_k8s_start__
+> :end-before: __deploy_in_k8s_end__
+> :language: python
 > ```
 
 Save this script locally as `deploy.py` and run it on the head node using `ray submit`:

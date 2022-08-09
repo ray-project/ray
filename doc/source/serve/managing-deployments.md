@@ -20,25 +20,10 @@ Get in touch with us if you're using or considering using [Ray Serve](https://do
 Often you want to be able to update your code or configuration options for a deployment over time.
 Deployments can be updated simply by updating the code or configuration options and calling `serve.run()` again.
 
-```python
-@serve.deployment(name="my_deployment", num_replicas=1)
-class SimpleDeployment:
-    pass
-
-# Creates one initial replica.
-serve.run(SimpleDeployment.bind())
-
-# Re-deploys, creating an additional replica.
-# This could be the SAME Python script, modified and re-run.
-@serve.deployment(name="my_deployment", num_replicas=2)
-class SimpleDeployment:
-    pass
-
-serve.run(SimpleDeployment.bind())
-
-# You can also use Deployment.options() to change options without redefining
-# the class. This is useful for programmatically updating deployments.
-serve.run(SimpleDeployment.options(num_replicas=2).bind())
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __basic_example_start__
+:end-before: __basic_example_end__
+:language: python
 ```
 
 By default, each call to `serve.run()` will cause a redeployment, even if the underlying code and options didn't change.
@@ -62,19 +47,10 @@ To update the config options for a running deployment, simply redeploy it with t
 
 To scale out a deployment to many processes, simply configure the number of replicas.
 
-```python
-# Create with a single replica.
-@serve.deployment(num_replicas=1)
-def func(*args):
-    pass
-
-serve.run(func.bind())
-
-# Scale up to 10 replicas.
-serve.run(func.options(num_replicas=10).bind())
-
-# Scale back down to 1 replica.
-serve.run(func.options(num_replicas=1).bind())
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __scaling_out_start__
+:end-before: __scaling_out_end__
+:language: python
 ```
 
 (ray-serve-autoscaling)=
@@ -86,18 +62,10 @@ It reacts to traffic spikes via observing queue sizes and making scaling decisio
 To configure it, you can set the `autoscaling` field in deployment options.
 
 
-```python
-@serve.deployment(
-    autoscaling_config={
-        "min_replicas": 1,
-        "max_replicas": 5,
-        "target_num_ongoing_requests_per_replica": 10,
-    })
-def func(_):
-    time.sleep(1)
-    return ""
-
-serve.run(func.bind()) # The func deployment will now autoscale based on requests demand.
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __autoscaling_start__
+:end-before: __autoscaling_end__
+:language: python
 ```
 
 The `min_replicas` and `max_replicas` fields configure the range of replicas which the
@@ -169,14 +137,10 @@ OMP_NUM_THREADS=12 ray start --head
 OMP_NUM_THREADS=12 ray start --address=$HEAD_NODE_ADDRESS
 ```
 
-```python
-@serve.deployment
-class MyDeployment:
-    def __init__(self, parallelism):
-        os.environ["OMP_NUM_THREADS"] = parallelism
-        # Download model weights, initialize model, etc.
-
-serve.run(MyDeployment.bind())
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __configure_parallism_start__
+:end-before: __configure_parallism_end__
+:language: python
 ```
 
 :::{note}

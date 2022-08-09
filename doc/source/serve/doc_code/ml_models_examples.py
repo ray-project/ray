@@ -1,5 +1,6 @@
 from ray import serve
 
+
 # __batch_example_start__
 @serve.deployment(route_prefix="/increment")
 class BatchingExample:
