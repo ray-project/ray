@@ -246,7 +246,6 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_tag_filters=tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
-
 - label: ":brain: RLlib: tests/ dir (R)"
   conditions: ["RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
   commands:
