@@ -2,9 +2,7 @@ import datetime
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, Tuple
-
-from cachetools import TTLCache
+from typing import Callable, Dict, Optional, Tuple
 
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S,
@@ -78,7 +76,11 @@ class NodeAvailabilitySummary:
                 attempted_time = datetime.datetime.fromtimestamp(
                     record.last_checked_timestamp
                 )
-                formatted_time = f"{attempted_time.hour}:{attempted_time.minute}:{attempted_time.second}"
+                formatted_time = (
+                    f"{attempted_time.hour}:"
+                    f"{attempted_time.minute}:"
+                    f"{attempted_time.second}"
+                )
                 formatted_line = (
                     f" {node_type} (attempted={formatted_time}): {category}"
                 )
