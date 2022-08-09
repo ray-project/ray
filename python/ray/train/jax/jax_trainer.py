@@ -120,7 +120,6 @@ class JaxTrainer(DataParallelTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
         """Return scaling config dataclass after validating updated keys."""
@@ -129,22 +128,26 @@ class JaxTrainer(DataParallelTrainer):
             dataclass=scaling_config,
             allowed_keys=cls._scaling_config_allowed_keys,
         )
-        
+
         # case-insensitivize
         # since `tpu` is not the standard resources in ray currently
-        # add these lines to prevent the cases where the users 
+        # add these lines to prevent the cases where the users
         # give the lower-case `tpu` as the resources
         # and change the key to upper case!
         resources_per_worker = scaling_config.resources_per_worker
         if resources_per_worker:
             resources_per_worker_upper = {
-                k.upper(): v for k, v in resources_per_worker.items() if k.upper() == 'TPU'
+                k.upper(): v
+                for k, v in resources_per_worker.items()
+                if k.upper() == "TPU"
             }
             scaling_config.resources_per_worker = resources_per_worker_upper
-        
-        if 'PACK' in scaling_config.placement_strategy: 
-            scaling_config.placement_strategy = 'SPREAD'
-            logger.info("In JaxTrainer, the `placement_stategy` need to be `SPREAD`."
-                        " Placement strategy is now changed to `SPREAD`")
-        
+
+        if "PACK" in scaling_config.placement_strategy:
+            scaling_config.placement_strategy = "SPREAD"
+            logger.info(
+                "In JaxTrainer, the `placement_stategy` need to be `SPREAD`."
+                " Placement strategy is now changed to `SPREAD`"
+            )
+
         return scaling_config

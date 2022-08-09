@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 RAY_TPU_DEV_ENV = "RAY_TPU_DEV"
 
+
 @PublicAPI(stability="beta")
 @dataclass
 class JaxConfig(BackendConfig):
@@ -34,8 +35,10 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
         index: Index (i.e. world rank) of the current worker.
     """
     import jax
+
     # not import jax at the top to avoid tpulib_lockfile error
     jax.distributed.initialize(master_addr_with_port, num_workers, index)
+
 
 def release_tpu_lock(try_remove_tpulib_lock: bool = False):
     """release the tpulib lock file when using tpu for training.
@@ -54,13 +57,18 @@ def release_tpu_lock(try_remove_tpulib_lock: bool = False):
             environment variable to release the lock file.
     """
     if try_remove_tpulib_lock:
-        # If one of the workers has an error during training, 
-        # you will be left with processes that are using the TPUs on the other workers. 
-        # This will stop you from restarting your job until those processes a terminated and release the TPU.
-        # The following command should end all these processes. 
+        # If one of the workers has an error during training,
+        # you will be left with processes that are using the TPUs on the other workers.
+        # This will stop you from restarting your job
+        # until those processes are terminated and release the TPU.
+        # The following command should end all these processes.
         # see more details: https://github.com/google/jax/issues/10192
-        subprocess.run("sudo lsof -w /dev/accel0", shell=True) # kill all processes using the TPUs
-        subprocess.run("sudo rm -f /tmp/libtpu_lockfile", shell=True) # remove the lock file
+        subprocess.run(
+            "sudo lsof -w /dev/accel0", shell=True
+        )  # kill all processes using the TPUs
+        subprocess.run(
+            "sudo rm -f /tmp/libtpu_lockfile", shell=True
+        )  # remove the lock file
     else:
         if os.path.exists("/tmp/libtpu_lockfile"):
 
@@ -79,7 +87,7 @@ class _JaxBackend(Backend):
         master_addr_with_port = f"{master_addr}:{master_port}"
         num_workers = len(worker_group)
 
-        if worker_group.num_gpus_per_worker: 
+        if worker_group.num_gpus_per_worker:
             # Get setup tasks in order to throw errors on failure.
             setup_futures = []
             for i in range(len(worker_group)):
@@ -95,12 +103,14 @@ class _JaxBackend(Backend):
             ray.get(setup_futures)
 
         additional_resources_per_worker = worker_group.additional_resources_per_worker
-        
-        # in case where `use_tpu == True``: 
-        if additional_resources_per_worker and additional_resources_per_worker.pop("TPU", False): 
+
+        # in case where `use_tpu == True``:
+        if additional_resources_per_worker and additional_resources_per_worker.pop(
+            "TPU", False
+        ):
             # Get setup tasks in order to throw errors on failure.
             try_remove_tpulib_lock = bool(os.environ.get(RAY_TPU_DEV_ENV, False))
-            
+
             worker_group.execute(
                 release_tpu_lock,
                 try_remove_tpulib_lock=try_remove_tpulib_lock,
