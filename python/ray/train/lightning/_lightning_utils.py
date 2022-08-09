@@ -9,6 +9,14 @@ if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
+class TorchIterableDataset(IterableDataset):
+    def __init__(self, iterator):
+        self.iterator = iterator
+
+    def __iter__(self):
+        yield from self.iterator
+
+
 def process_datasets(
     train_dataset: "Dataset",
     val_dataset: "Dataset",
@@ -18,30 +26,23 @@ def process_datasets(
 ) -> pytorch_lightning.LightningDataModule:
     """Convert Ray dataset shards to a PTL DataModule."""
 
-    def _iter_to_dataset(iterator):
-        dataset = IterableDataset()
-        # no need to split workload across workers in `__iter__` because data is
-        # already sharded.
-        dataset.__iter__ = lambda self: iterator
-        return dataset
-
     torch_datasets = {
-        "train_dataset": _iter_to_dataset(train_dataset.iter_torch_batches())
+        "train_dataset": TorchIterableDataset(train_dataset.iter_torch_batches())
     }
     if val_dataset:
-        torch_datasets["val_dataset"] = _iter_to_dataset(
+        torch_datasets["val_dataset"] = TorchIterableDataset(
             val_dataset.iter_torch_batches()
         )
     if test_dataset:
-        torch_datasets["test_dataset"] = _iter_to_dataset(
+        torch_datasets["test_dataset"] = TorchIterableDataset(
             test_dataset.iter_torch_batches()
         )
     if predict_dataset:
-        torch_datasets["predict_dataset"] = _iter_to_dataset(
+        torch_datasets["predict_dataset"] = TorchIterableDataset(
             predict_dataset.iter_torch_batches()
         )
     return pytorch_lightning.LightningDataModule.from_datasets(
-        **torch_datasets, batch_size=batch_size  # , num_workers=0
+        **torch_datasets, batch_size=batch_size, num_workers=0
     )
 
 
