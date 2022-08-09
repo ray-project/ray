@@ -16,16 +16,16 @@ cartpole_dt:
         framework: torch
         train_batch_size: 2048
         target_return: 200
-        lr: 0.001
+        lr: 0.01
         optimizer:
-            weight_decay: 0.0001
-            betas: [0.9, 0.95]
+            weight_decay: 0.1
+            betas: [0.9, 0.999]
         replay_buffer_config:
             capacity: 20
         # model
         model:
-            max_seq_len: 5
-        num_layers: 2
+            max_seq_len: 3
+        num_layers: 1
         num_heads: 1
         embed_dim: 64
         # rollout

@@ -4,7 +4,10 @@ from typing import List, Optional, Type, Tuple, Dict, Any, Union
 
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm, AlgorithmConfig
-from ray.rllib.algorithms.dt.segmentation_buffer import SegmentationBuffer
+from ray.rllib.algorithms.dt.segmentation_buffer import (
+    SegmentationBuffer,
+    MultiAgentSegmentationBuffer,
+)
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
@@ -53,7 +56,9 @@ class DTConfig(AlgorithmConfig):
         self.use_return_output = False
         self.target_return = None
 
+        # TODO(charlesjsun): Dont' change type doc, also the other two are auto filled
         self.replay_buffer_config = {
+            "type": MultiAgentSegmentationBuffer,
             "capacity": 20,
         }
 
@@ -158,12 +163,9 @@ class DT(Algorithm):
             self.config.get("replay_buffer_config") is not None
         ), "Must specify replay_buffer_config."
         replay_buffer_type = self.config["replay_buffer_config"].get("type")
-        if replay_buffer_type is None:
-            self.config["replay_buffer_config"]["type"] = SegmentationBuffer
-        else:
-            assert (
-                replay_buffer_type == SegmentationBuffer
-            ), "replay_buffer's type must be SegmentationBuffer."
+        assert (
+            replay_buffer_type == MultiAgentSegmentationBuffer
+        ), "replay_buffer's type must be MultiAgentSegmentationBuffer."
 
         model_max_seq_len = self.config["model"].get("max_seq_len")
         assert model_max_seq_len is not None, "Must specify model's max_seq_len."
@@ -203,11 +205,11 @@ class DT(Algorithm):
         with self._timers[SAMPLE_TIMER]:
             train_batch = synchronous_parallel_sample(worker_set=self.workers)
         # TODO(charlesjsun): Fix multiagent later
-        # train_batch = train_batch.as_multi_agent()
+        train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
-        num_steps = train_batch[SampleBatch.OBS].shape[0]
+        num_steps = train_batch.env_steps()
         batch_size = int(math.ceil(num_steps / self.config["model"]["max_seq_len"]))
 
         self.local_replay_buffer.add(train_batch)

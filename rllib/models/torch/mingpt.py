@@ -7,7 +7,8 @@ References:
 1) the official GPT-2 TensorFlow implementation released by OpenAI:
 https://github.com/openai/gpt-2/blob/master/src/model.py
 2) huggingface/transformers PyTorch implementation:
-https://github.com/huggingface/transformers/blob/main/src/transformers/models/gpt2/modeling_gpt2.py
+https://github.com/huggingface/transformers/blob/main/src/transformers
+        /models/gpt2/modeling_gpt2.py
 """
 
 import math
@@ -40,8 +41,10 @@ class GPTConfig:
 
 class NewGELU(nn.Module):
     """
-    Implementation of the GELU activation function currently in Google BERT repo (identical to OpenAI GPT).
-    Reference: Gaussian Error Linear Units (GELU) paper: https://arxiv.org/abs/1606.08415
+    Implementation of the GELU activation function currently in Google BERT
+    repo (identical to OpenAI GPT).
+    Reference: Gaussian Error Linear Units (GELU) paper:
+    https://arxiv.org/abs/1606.08415
     """
 
     def forward(self, x):
@@ -59,7 +62,7 @@ class NewGELU(nn.Module):
 
 class CausalSelfAttention(nn.Module):
     """
-    A vanilla multi-head masked self-attention layer with a projection at the end.
+    Vanilla multi-head masked self-attention layer with a projection at the end.
     It is possible to use torch.nn.MultiheadAttention here but I am including an
     explicit implementation here to show that there is nothing too scary here.
     """
@@ -74,7 +77,8 @@ class CausalSelfAttention(nn.Module):
         # regularization
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
-        # causal mask to ensure that attention is only applied to the left in the input sequence
+        # causal mask to ensure that attention is only applied to the left
+        # in the input sequence
         self.register_buffer(
             "bias",
             torch.tril(torch.ones(config.block_size, config.block_size)).view(
@@ -85,25 +89,21 @@ class CausalSelfAttention(nn.Module):
         self.n_embed = config.n_embed
 
     def forward(self, x, attention_masks=None):
-        (
-            B,
-            T,
-            C,
-        ) = x.size()  # batch size, sequence length, embedding dimensionality (n_embed)
+        # batch size, sequence length, embedding dimensionality (n_embed)
+        B, T, C = x.size()
 
-        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+        # calculate query, key, values for all heads in batch and move head
+        # forward to be the batch dim
         q, k, v = self.c_attn(x).split(self.n_embed, dim=2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(
-            1, 2
-        )  # (B, nh, T, hs)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(
-            1, 2
-        )  # (B, nh, T, hs)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(
-            1, 2
-        )  # (B, nh, T, hs)
+        # (B, nh, T, hs)
+        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        # (B, nh, T, hs)
+        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
+        # (B, nh, T, hs)
+        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
 
-        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
+        # causal self-attention; Self-attend:
+        # (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
         att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
         if attention_masks is not None:
@@ -111,9 +111,8 @@ class CausalSelfAttention(nn.Module):
         att = F.softmax(att, dim=-1)
         att = self.attn_dropout(att)
         y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        y = (
-            y.transpose(1, 2).contiguous().view(B, T, C)
-        )  # re-assemble all head outputs side by side
+        # re-assemble all head outputs side by side
+        y = y.transpose(1, 2).contiguous().view(B, T, C)
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))
@@ -137,7 +136,8 @@ class Block(nn.Module):
             )
         )
         m = self.mlp
-        self.mlpf = lambda x: m.dropout(m.c_proj(m.act(m.c_fc(x))))  # MLP forward
+        # MLP forward
+        self.mlpf = lambda x: m.dropout(m.c_proj(m.act(m.c_fc(x))))
 
     def forward(self, x, attention_masks=None):
         x = x + self.attn(self.ln_1(x), attention_masks=attention_masks)
@@ -154,30 +154,33 @@ def configure_gpt_optimizer(
     **kwargs,
 ) -> torch.optim.Optimizer:
     """
-    This long function is unfortunately doing something very simple and is being very defensive:
-    We are separating out all parameters of the model into two buckets: those that will experience
-    weight decay for regularization and those that won't (biases, and layernorm/embedding weights).
-    We are then returning the PyTorch optimizer object.
+    This long function is unfortunately doing something very simple and is
+    being very defensive: We are separating out all parameters of the model
+    into two buckets: those that will experience weight decay for regularization
+    and those that won't (biases, and layernorm/embedding weights). We are then
+    returning the PyTorch optimizer object.
     """
 
-    # separate out all parameters to those that will and won't experience regularizing weight decay
+    # separate out all parameters to those that will and won't experience
+    # regularizing weight decay
     decay = set()
     no_decay = set()
-    whitelist_weight_modules = (torch.nn.Linear,)
-    blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
+    whitelist_w_modules = (torch.nn.Linear,)
+    blacklist_w_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
     for mn, m in model.named_modules():
         for pn, p in m.named_parameters():
             fpn = "%s.%s" % (mn, pn) if mn else pn  # full param name
-            # random note: because named_modules and named_parameters are recursive
-            # we will see the same tensors p many many times. but doing it this way
-            # allows us to know which parent module any tensor p belongs to...
+            # random note: because named_modules and named_parameters are
+            # recursive we will see the same tensors p many many times. but
+            # doing it this way allows us to know which parent module any
+            # tensor p belongs to...
             if pn.endswith("bias"):
                 # all biases will not be decayed
                 no_decay.add(fpn)
-            elif pn.endswith("weight") and isinstance(m, whitelist_weight_modules):
+            elif pn.endswith("weight") and isinstance(m, whitelist_w_modules):
                 # weights of whitelist modules will be weight decayed
                 decay.add(fpn)
-            elif pn.endswith("weight") and isinstance(m, blacklist_weight_modules):
+            elif pn.endswith("weight") and isinstance(m, blacklist_w_modules):
                 # weights of blacklist modules will NOT be weight decayed
                 no_decay.add(fpn)
 
@@ -187,21 +190,20 @@ def configure_gpt_optimizer(
     union_params = decay | no_decay
     assert (
         len(inter_params) == 0
-    ), "parameters %s made it into both decay/no_decay sets!" % (str(inter_params),)
-    assert (
-        len(param_dict.keys() - union_params) == 0
-    ), "parameters %s were not separated into either decay/no_decay set!" % (
-        str(param_dict.keys() - union_params),
+    ), f"parameters {str(inter_params)} made it into both decay/no_decay sets!"
+    assert len(param_dict.keys() - union_params) == 0, (
+        f"parameters {str(param_dict.keys() - union_params)} were not "
+        f"separated into either decay/no_decay set!"
     )
 
     # create the pytorch optimizer object
     optim_groups = [
         {
-            "params": [param_dict[pn] for pn in sorted(list(decay))],
+            "params": [param_dict[pn] for pn in sorted(decay)],
             "weight_decay": weight_decay,
         },
         {
-            "params": [param_dict[pn] for pn in sorted(list(no_decay))],
+            "params": [param_dict[pn] for pn in sorted(no_decay)],
             "weight_decay": 0.0,
         },
     ]
@@ -226,7 +228,8 @@ class GPT(nn.Module):
             )
         )
 
-        # init all weights, and apply a special scaled init to the residual projections, per GPT-2 paper
+        # init all weights, and apply a special scaled init to the residual
+        # projections, per GPT-2 paper
         self.apply(self._init_weights)
         for pn, p in self.named_parameters():
             if pn.endswith("c_proj.weight"):
@@ -248,28 +251,32 @@ class GPT(nn.Module):
     def forward(self, input_embeds, attention_masks=None):
         """
         input_embeds: [batch_size x seq_len x n_embed]
-        attention_masks: [batch_size x seq_len], 0 means don't attend, 1 means attend
+        attention_masks: [batch_size x seq_len], 0 don't attend, 1 attend
         """
         B, T, C = input_embeds.size()
-        assert (
-            T <= self.block_size
-        ), f"Cannot forward sequence of length {T}, block size is only {self.block_size}"
+        assert T <= self.block_size, (
+            f"Cannot forward sequence of length {T}, "
+            f"block size is only {self.block_size}"
+        )
 
         if attention_masks is not None:
             _B, _T = attention_masks.size()
             assert _B == B and _T == T
             # We create a 3D attention mask from a 2D tensor mask.
             # Sizes are [batch_size, 1, 1, to_seq_len]
-            # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
-            # this attention mask is more simple than the triangular masking of causal attention
-            # used in OpenAI GPT, we just need to prepare the broadcast dimension here.
+            # So we can broadcast to
+            # [batch_size, num_heads, from_seq_length, to_seq_length]
+            # this attention mask is more simple than the triangular
+            # masking of causal attention used in OpenAI GPT, we just need
+            # to prepare the broadcast dimension here.
             attention_masks = attention_masks[:, None, None, :]
 
-            # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
-            # masked positions, this operation will create a tensor which is 0.0 for
-            # positions we want to attend and -inf for masked positions.
-            # Since we are adding it to the raw scores before the softmax, this is
-            # effectively the same as removing these entirely.
+            # Since attention_mask is 1.0 for positions we want to attend
+            # and 0.0 for masked positions, this operation will create a
+            # tensor which is 0.0 for positions we want to attend and -inf
+            # for masked positions. Since we are adding it to the raw scores
+            # before the softmax, this is effectively the same as removing
+            # these entirely.
             attention_masks = attention_masks.to(dtype=input_embeds.dtype)
             attention_masks = (1.0 - attention_masks) * -1e9
 
