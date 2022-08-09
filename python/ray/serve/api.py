@@ -11,7 +11,8 @@ from uvicorn.lifespan.on import LifespanOn
 
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray._private.utils import deprecated
 
 from ray.serve.application import Application
 from ray.serve._private.client import ServeControllerClient
@@ -19,7 +20,6 @@ from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    MIGRATION_MESSAGE,
 )
 from ray.serve.context import (
     ReplicaContext,
@@ -42,7 +42,6 @@ from ray.serve._private.utils import (
     ensure_serialization_context,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
-    guarded_deprecation_warning,
 )
 
 from ray.serve._private import api as _private_api
@@ -50,8 +49,8 @@ from ray.serve._private import api as _private_api
 logger = logging.getLogger(__file__)
 
 
-@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-@Deprecated(message=MIGRATION_MESSAGE)
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
+@PublicAPI(stability="beta")
 def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
@@ -104,7 +103,7 @@ def start(
     return client
 
 
-@PublicAPI(stability="stable")
+@PublicAPI
 def shutdown() -> None:
     """Completely shut down the connected Serve instance.
 
@@ -125,7 +124,7 @@ def shutdown() -> None:
     _set_global_client(None)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def get_replica_context() -> ReplicaContext:
     """If called from a deployment, returns the deployment and replica tag.
 
@@ -271,7 +270,7 @@ def deployment(
     pass
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Optional[str] = None,
@@ -389,8 +388,8 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
-@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-@Deprecated(message=MIGRATION_MESSAGE)
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
+@PublicAPI
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
 
@@ -413,8 +412,8 @@ def get_deployment(name: str) -> Deployment:
     return _private_api.get_deployment(name)
 
 
-@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-@Deprecated(message=MIGRATION_MESSAGE)
+@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
+@PublicAPI
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
 
@@ -512,7 +511,7 @@ def run(
         return ingress._get_handle()
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 

@@ -16,7 +16,7 @@ from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
 from ray.serve._private.json_serde import DAGNodeEncoder
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -153,7 +153,7 @@ def transform_ray_dag_to_serve_dag(
         # serve DAG end to end executable.
         def replace_with_handle(node):
             if isinstance(node, DeploymentNode):
-                return RayServeDeploymentHandle(node._deployment.name)
+                return RayServeLazySyncHandle(node._deployment.name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 

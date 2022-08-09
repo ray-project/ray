@@ -13,7 +13,7 @@ class BasicDriver:
         self.dag = dag
 
     async def __call__(self):
-        return await (await self.dag.remote())
+        return await self.dag.remote()
 
 
 FNode = f.bind()

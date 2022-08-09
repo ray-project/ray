@@ -5,7 +5,7 @@ from ray.dag.dag_node import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.config import DeploymentConfig
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeLazySyncHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -70,7 +70,7 @@ class DeploymentFunctionNode(DAGNode):
                 _internal=True,
             )
         # TODO (jiaodong): Polish with async handle support later
-        self._deployment_handle = RayServeDeploymentHandle(self._deployment.name)
+        self._deployment_handle = RayServeLazySyncHandle(self._deployment.name)
 
     def _copy_impl(
         self,

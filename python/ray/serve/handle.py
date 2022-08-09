@@ -1,9 +1,9 @@
 import asyncio
 import concurrent.futures
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 import inspect
-import os
 from typing import Coroutine, Dict, Optional, Union
 import threading
 
@@ -14,7 +14,6 @@ from ray import serve
 from ray.serve._private.common import EndpointTag
 from ray.serve._private.constants import (
     SERVE_HANDLE_JSON_KEY,
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
     ServeHandleType,
 )
 from ray.serve._private.utils import (
@@ -30,13 +29,6 @@ from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _global_async_loop = None
-
-
-# Feature flag to revert to legacy behavior of synchronous deployment
-# handle in dynamic dispatch. This is here as an escape hatch and last resort.
-FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
-    os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
-)
 
 
 def _wrap_into_async_task(async_func):
@@ -316,11 +308,22 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
-@DeveloperAPI
-class RayServeDeploymentHandle:
-    """Send requests to a deployment. This class should not be manually created."""
+USE_SYNC_LAZY_HANDLE = True
 
-    # """Lazily initialized handle that only gets fulfilled upon first execution."""
+
+@contextmanager
+def set_use_sync_lazy_handle(to):
+    global USE_SYNC_LAZY_HANDLE
+    old = USE_SYNC_LAZY_HANDLE
+    USE_SYNC_LAZY_HANDLE = to
+    yield
+    USE_SYNC_LAZY_HANDLE = old
+
+
+@DeveloperAPI
+class RayServeLazySyncHandle:
+    """Lazily initialized handle that only gets fulfilled upon first execution."""
+
     def __init__(
         self,
         deployment_name: str,
@@ -330,19 +333,20 @@ class RayServeDeploymentHandle:
         self.handle_options = handle_options or HandleOptions()
         # For Serve DAG we need placeholder in DAG binding and building without
         # requirement of serve.start; Thus handle is fulfilled at runtime.
-        self.handle: RayServeHandle = None
+        self.handle = None
 
     def options(self, *, method_name: str):
         return self.__class__(
             self.deployment_name, HandleOptions(method_name=method_name)
         )
 
-    def remote(self, *args, **kwargs) -> asyncio.Task:
+    def remote(self, *args, **kwargs):
         if not self.handle:
             handle = serve._private.api.get_deployment(
                 self.deployment_name
-            )._get_handle(sync=FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC)
+            )._get_handle(sync=USE_SYNC_LAZY_HANDLE)
             self.handle = handle.options(method_name=self.handle_options.method_name)
+        # TODO (jiaodong): Polish async handles later for serve pipeline
         return self.handle.remote(*args, **kwargs)
 
     @classmethod
@@ -355,7 +359,7 @@ class RayServeDeploymentHandle:
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
         }
-        return RayServeDeploymentHandle._deserialize, (serialized_data,)
+        return RayServeLazySyncHandle._deserialize, (serialized_data,)
 
     def __getattr__(self, name):
         return self.options(method_name=name)

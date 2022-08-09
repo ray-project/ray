@@ -1,3 +1,0 @@
-import_path: ray.serve.tests.test_config_files.test_dag.basic_dag.DagNode
-
-port: 8005

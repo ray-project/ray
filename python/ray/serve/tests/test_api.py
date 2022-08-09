@@ -1,6 +1,5 @@
 import asyncio
 import os
-from ray.serve.deployment_graph import RayServeDAGHandle
 
 import requests
 import pytest
@@ -387,11 +386,11 @@ def test_run_get_ingress_node(serve_instance):
 
     @serve.deployment
     class Driver:
-        def __init__(self, dag: RayServeDAGHandle):
+        def __init__(self, dag):
             self.dag = dag
 
         async def __call__(self, *args):
-            return await (await self.dag.remote())
+            return await self.dag.remote()
 
     @serve.deployment
     class f:

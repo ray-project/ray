@@ -1,9 +1,9 @@
 from enum import Enum
 from typing import List, TypeVar
-from ray.serve.handle import RayServeDeploymentHandle
 
 import starlette.requests
 
+import ray
 from ray import serve
 from ray.serve.deployment_graph import InputNode
 from ray.serve.drivers import DAGDriver
@@ -52,17 +52,15 @@ class Subtract:
     }
 )
 class Router:
-    def __init__(
-        self, adder: RayServeDeploymentHandle, subtractor: RayServeDeploymentHandle
-    ):
+    def __init__(self, adder: RayHandleLike, subtractor: RayHandleLike):
         self.adder = adder
         self.subtractor = subtractor
 
-    async def route(self, op: Operation, input: int) -> int:
+    def route(self, op: Operation, input: int) -> int:
         if op == Operation.ADD:
-            return await (await self.adder.add.remote(input))
+            return ray.get(self.adder.add.remote(input))
         elif op == Operation.SUBTRACT:
-            return await (await self.subtractor.subtract.remote(input))
+            return ray.get(self.subtractor.subtract.remote(input))
 
 
 async def json_resolver(request: starlette.requests.Request) -> List:

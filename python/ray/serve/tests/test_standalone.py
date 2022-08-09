@@ -417,7 +417,6 @@ def test_no_http(ray_shutdown):
 
     ray.init(num_cpus=16)
     for i, option in enumerate(options):
-        print(f"[{i+1}/{len(options)}] Running with {option}")
         serve.start(**option)
 
         # Only controller actor should exist
@@ -598,6 +597,7 @@ def test_snapshot_always_written_to_internal_kv(
     webui_url = ray_start_with_dashboard["webui_url"]
 
     def get_deployment_snapshot():
+        print("!!!", requests.get(f"http://{webui_url}/api/snapshot").json())
         snapshot = requests.get(f"http://{webui_url}/api/snapshot").json()["data"][
             "snapshot"
         ]

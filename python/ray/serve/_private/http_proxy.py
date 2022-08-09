@@ -56,7 +56,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
     while retries < MAX_REPLICA_FAILURE_RETRIES:
-        assignment_task: asyncio.Task = handle.remote(request)
+        assignment_task = handle.remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task], return_when=FIRST_COMPLETED
         )

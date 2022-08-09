@@ -42,7 +42,7 @@ class Driver:
 
     async def __call__(self, inp: Any) -> Any:
         print(f"Driver got {inp}")
-        return await (await self.dag.remote(inp))
+        return await self.dag.remote(inp)
 
 
 @serve.deployment

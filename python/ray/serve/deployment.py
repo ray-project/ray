@@ -18,14 +18,15 @@ from ray.serve.config import (
     AutoscalingConfig,
     DeploymentConfig,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve._private.utils import DEFAULT, guarded_deprecation_warning
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.serve._private.utils import DEFAULT
+from ray.util.annotations import PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,
     DeploymentSchema,
 )
+from ray._private.utils import deprecated
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -200,8 +201,10 @@ class Deployment:
                 },
             )
 
-    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-    @Deprecated(message=MIGRATION_MESSAGE)
+    @deprecated(
+        instructions="Please see https://docs.ray.io/en/latest/serve/index.html"
+    )
+    @PublicAPI
     def deploy(self, *init_args, _blocking=True, **init_kwargs):
         """Deploy or update this deployment.
 
@@ -242,8 +245,10 @@ class Deployment:
             _blocking=_blocking,
         )
 
-    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-    @Deprecated(message=MIGRATION_MESSAGE)
+    @deprecated(
+        instructions="Please see https://docs.ray.io/en/latest/serve/index.html"
+    )
+    @PublicAPI
     def delete(self):
         """Delete this deployment."""
 
@@ -255,8 +260,10 @@ class Deployment:
 
         return get_global_client().delete_deployments([self._name])
 
-    @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
-    @Deprecated(message=MIGRATION_MESSAGE)
+    @deprecated(
+        instructions="Please see https://docs.ray.io/en/latest/serve/index.html"
+    )
+    @PublicAPI
     def get_handle(
         self, sync: Optional[bool] = True
     ) -> Union[RayServeHandle, RayServeSyncHandle]:

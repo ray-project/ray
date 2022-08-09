@@ -5,6 +5,7 @@ import logging
 import pickle
 import random
 import sys
+from types import CoroutineType
 from typing import Any, Dict, List, Optional
 
 import ray
@@ -46,14 +47,15 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
-    async def resolve_async_tasks(self):
-        """Find all unresolved asyncio.Task and gather them all at once."""
-        scanner = _PyObjScanner(source_type=asyncio.Task)
-        tasks = scanner.find_nodes((self.args, self.kwargs))
-
-        if len(tasks) > 0:
-            resolved = await asyncio.gather(*tasks)
-            replacement_table = dict(zip(tasks, resolved))
+    async def resolve_coroutines(self):
+        scanner = _PyObjScanner(scan_type=CoroutineType)
+        coros = scanner.find_nodes((self.args, self.kwargs))
+        print("resolving coros", coros)
+        if len(coros) > 0:
+            # Allow multiple await on the same coroutine
+            futures = [asyncio.ensure_future(coro) for coro in coros]
+            resolved = await asyncio.gather(*futures)
+            replacement_table = dict(zip(coros, resolved))
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
 
 
@@ -227,7 +229,7 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
-        await query.resolve_async_tasks()
+        await query.resolve_coroutines()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(

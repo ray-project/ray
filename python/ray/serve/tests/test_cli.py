@@ -461,7 +461,7 @@ def test_run_runtime_env(ray_start_stop):
             "--working-dir",
             (
                 "https://github.com/ray-project/test_dag/archive/"
-                "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
+                "76a741f6de31df78411b1f302071cde46f098418.zip"
             ),
         ]
     )
@@ -481,7 +481,7 @@ class NoArgDriver:
         self.dag = dag
 
     async def __call__(self):
-        return await (await self.dag.remote())
+        return await self.dag.remote()
 
 
 TestBuildFNode = global_f.bind()
