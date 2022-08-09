@@ -3361,7 +3361,7 @@ py_test(
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
     data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.new",
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022",
     ]),
     args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
@@ -3373,7 +3373,7 @@ py_test(
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
     data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.old",
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022",
     ]),
     args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )

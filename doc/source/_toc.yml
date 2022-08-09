@@ -15,8 +15,8 @@ parts:
     - file: ray-air/user-guides
       sections:
         - file: ray-air/preprocessors
-        - file: ray-air/check-ingest
         - file: ray-air/trainer
+        - file: ray-air/check-ingest
         - file: ray-air/tuner
         - file: ray-air/predictors
         - file: ray-air/examples/serving_guide
@@ -171,7 +171,6 @@ parts:
               - file: serve/managing-deployments
               - file: serve/handling-dependencies
               - file: serve/http-guide
-              - file: serve/http-adapters
               - file: serve/handle-guide
               - file: serve/ml-models
               - file: serve/deploying-serve
@@ -215,12 +214,10 @@ parts:
         title: More Libraries
         sections:
           - file: ray-more-libs/joblib
-          - file: ray-more-libs/lightgbm-ray
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
           - file: ray-more-libs/ray-lightning
           - file: ray-core/examples/using-ray-with-pytorch-lightning
-          - file: ray-more-libs/xgboost-ray
           - file: ray-core/examples/dask_xgboost/dask_xgboost
           - file: ray-core/examples/modin_xgboost/modin_xgboost
           - file: workflows/concepts
@@ -276,12 +273,11 @@ parts:
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/getting-started
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides
               sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/config.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/k8s-cluster-setup.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/config.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/autoscaling.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/logging.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/gpu.md
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/networking.md
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/kuberay-vs-legacy.md
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples
               sections:
