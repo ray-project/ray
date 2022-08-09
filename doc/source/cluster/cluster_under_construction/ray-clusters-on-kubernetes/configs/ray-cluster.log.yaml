@@ -47,7 +47,7 @@ spec:
             requests:
               cpu: "1"
               memory: "1G"
-          # Share logs with fluentbit
+          # Share logs with Fluent Bit
           volumeMounts:
           - mountPath: /tmp/ray
             name: ray-logs
