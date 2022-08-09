@@ -35,6 +35,10 @@ from ray.autoscaler._private.local.node_provider import (
     record_local_head_state_if_needed,
 )
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher, NodeLauncher
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+    NodeProviderAvailabilityTracker,
+)
 from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import _get_node_provider
@@ -57,7 +61,6 @@ from ray.autoscaler._private.util import (
     validate_config,
     with_head_node_ip,
 )
-from ray.autoscaler._private.node_provider_availability_tracker import NodeProviderAvailabilityTracker, NodeAvailabilitySummary
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -209,7 +212,6 @@ class StandardAutoscaler:
             self.config_reader = read_fn
         else:
             self.config_reader = config_reader
-
 
         self.node_provider_availability_tracker = NodeProviderAvailabilityTracker()
         # Prefix each line of info string with cluster name if True

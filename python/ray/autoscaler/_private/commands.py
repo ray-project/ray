@@ -43,7 +43,9 @@ from ray.autoscaler._private.constants import (
 )
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.log_timer import LogTimer
-from ray.autoscaler._private.node_provider_availability_tracker import NodeAvailabilitySummary
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+)
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS,
     _PROVIDER_PRETTY_NAMES,
@@ -133,9 +135,16 @@ def debug_status(status, error) -> str:
         timestamp = status_dict.get("time")
         if lm_summary_dict and autoscaler_summary_dict and timestamp:
             lm_summary = LoadMetricsSummary(**lm_summary_dict)
-            node_availability_summary_dict = autoscaler_summary_dict.pop("node_availability_summary", {})
-            node_availability_summary = NodeAvailabilitySummary.from_fields(**node_availability_summary_dict)
-            autoscaler_summary = AutoscalerSummary(node_availability_summary=node_availability_summary, **autoscaler_summary_dict)
+            node_availability_summary_dict = autoscaler_summary_dict.pop(
+                "node_availability_summary", {}
+            )
+            node_availability_summary = NodeAvailabilitySummary.from_fields(
+                **node_availability_summary_dict
+            )
+            autoscaler_summary = AutoscalerSummary(
+                node_availability_summary=node_availability_summary,
+                **autoscaler_summary_dict,
+            )
             report_time = datetime.datetime.fromtimestamp(timestamp)
             status = format_info_string(
                 lm_summary, autoscaler_summary, time=report_time
