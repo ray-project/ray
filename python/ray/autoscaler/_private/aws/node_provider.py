@@ -24,6 +24,7 @@ from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import BOTO_CREATE_MAX_RETRIES, BOTO_MAX_RETRIES
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
     TAG_RAY_LAUNCH_CONFIG,
@@ -449,6 +450,17 @@ class AWSNodeProvider(NodeProvider):
                 break
             except botocore.exceptions.ClientError as exc:
                 if attempt == max_tries:
+                    try:
+                        exc = NodeLaunchException(
+                            category=exc.response["Error"]["Code"],
+                            description=["Error"]["Message"],
+                            source_exception=exc
+                        )
+                    except Exception:
+                        # In theory, all ClientError's we expect to get should
+                        # have these fields, but just in case we can't parse
+                        # it, it's fine, just throw the original error.
+                        pass
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",
                         exc=exc,

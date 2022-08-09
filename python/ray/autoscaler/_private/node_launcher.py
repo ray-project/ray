@@ -6,6 +6,7 @@ import time
 import traceback
 from typing import Any, Dict, Optional
 
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import hash_launch_conf
 from ray.autoscaler.tags import (
@@ -111,9 +112,15 @@ class BaseNodeLauncher:
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
         launch_start_time = time.time()
-        self.provider.create_node_with_resources(
-            node_config, node_tags, count, resources
-        )
+        try:
+            self.provider.create_node_with_resources(
+                node_config, node_tags, count, resources
+            )
+        except NodeLaunchException as node_launch_exception:
+            # Do some special handling if we have a structured error.
+            self.log(f"Failed to launch {node_type}: ({node_launch_exception.category}): {node_launch_exception.description}")
+            # Reraise to trigger the more general exception handling code.
+            raise node_launch_exception.source_exception
         launch_time = time.time() - launch_start_time
         for _ in range(count):
             # Note: when launching multiple nodes we observe the time it
