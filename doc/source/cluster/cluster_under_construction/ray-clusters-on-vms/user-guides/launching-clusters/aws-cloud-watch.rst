@@ -1,11 +1,4 @@
-.. warning::
-    This page is under construction!
-
 .. include:: /_includes/clusters/we_are_hiring.rst
-
-.. _cluster-cloud-under-construction-aws:
-
-.. _aws-cluster-under-construction:
 
 Monitor Ray using Amazon CloudWatch
 ===================================
