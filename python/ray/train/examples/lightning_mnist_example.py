@@ -2,6 +2,8 @@ import argparse
 import pytorch_lightning
 import torch
 import ray.data
+from ray.data.extensions import TensorArray
+from pandas import DataFrame
 from torchvision.datasets import MNIST
 from torchvision.transforms import ToTensor
 
@@ -18,17 +20,19 @@ class LitModel(pytorch_lightning.LightningModule):
         return torch.relu(self.layer1(x.view(x.size(0), -1)))
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
+        x = batch["image"]
+        y = batch["label"]
         y_hat = self(x)
         loss = torch.nn.functional.cross_entropy(y_hat, y)
+        self.log("train_loss", loss)
         return loss
 
     def test_step(self, batch, batch_idx):
-        x, y = batch
+        x = batch["image"]
+        y = batch["label"]
         y_hat = self(x)
         loss = torch.nn.functional.cross_entropy(y_hat, y)
-
-        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_loss", loss)
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
@@ -37,20 +41,26 @@ class LitModel(pytorch_lightning.LightningModule):
     # `test_dataloader`, or `predict_dataloader` hooks here.
 
 
+def convert_batch_to_pandas(batch):
+    images = TensorArray([image.numpy() for image, _ in batch])
+    labels = [label for _, label in batch]
+    return DataFrame({"image": images, "label": labels})
+
+
 train_dataset = ray.data.read_datasource(
     ray.data.datasource.SimpleTorchDatasource(),
     parallelism=1,
     dataset_factory=lambda: MNIST(
-        "./", train=True, download=True, transform=ToTensor()
+        "~/data", train=True, download=True, transform=ToTensor()
     ),
-)
+).map_batches(convert_batch_to_pandas)
 test_dataset = ray.data.read_datasource(
     ray.data.datasource.SimpleTorchDatasource(),
     parallelism=1,
     dataset_factory=lambda: MNIST(
-        "./", train=False, download=True, transform=ToTensor()
+        "~/data", train=False, download=True, transform=ToTensor()
     ),
-)
+).map_batches(convert_batch_to_pandas)
 
 
 def train_lightning_mnist(num_workers=2, use_gpu=False, epochs=4):
@@ -65,12 +75,14 @@ def train_lightning_mnist(num_workers=2, use_gpu=False, epochs=4):
         },  # arguments that will be passed to `LitModel.__init__`
         # for valid keywords to pass to `trainer_init_config`, see
         # https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init
-        trainer_init_config={},
+        trainer_init_config={"max_epochs": epochs},
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": train_dataset, "test": test_dataset},
     )
     results = trainer.fit()
     print(f"Results: {results.metrics}")
+    checkpoint = results.checkpoint
+    print(f"Checkpoint: {checkpoint}")
 
 
 if __name__ == "__main__":
@@ -103,10 +115,10 @@ if __name__ == "__main__":
     import ray
 
     if args.smoke_test:
-        ray.init(num_cpus=4)
+        # ray.init(num_cpus=4)
         train_lightning_mnist()
     else:
-        ray.init(address=args.address)
+        # ray.init(address=args.address)
         train_lightning_mnist(
             num_workers=args.num_workers, use_gpu=args.use_gpu, epochs=args.epochs
         )
