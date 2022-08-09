@@ -1,6 +1,6 @@
 (kuberay-vs-legacy)=
 
-# KubeRay vs. the legacy Ray Operator
+# KubeRay vs. the Legacy Ray Operator
 
 Using the [KubeRay operator](https://ray-project.github.io/kuberay/components/operator/)
 is the preferred way to deploy Ray on Kubernetes.
