@@ -37,7 +37,19 @@ available_node_types:
         BlockDeviceMappings:
             - DeviceName: /dev/sda1
               Ebs:
-                  VolumeSize: 50
+                  VolumeSize: 250
+
+    quota_issue_worker:
+      node_config:
+        InstanceType: p4d.24xlarge
+        ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
+        min_workers: 1
+        max_workers: 1
+        # Set primary volume to 25 GiB
+        BlockDeviceMappings:
+            - DeviceName: /dev/sda1
+              Ebs:
+                  VolumeSize: 250
 
 # List of shell commands to install ray from source.
 setup_commands:
@@ -56,7 +68,7 @@ setup_commands:
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
-    - git clone https://github.com/ray-project/ray || true
+    - git clone https://github.com/wuisawesome/ray -b launch_status || true
     - ray/ci/env/install-bazel.sh
     - cd ray/python/ray/dashboard/client; npm ci; npm run build
     - pip install boto3==1.4.8 cython==0.29.26 aiohttp grpcio psutil setproctitle
