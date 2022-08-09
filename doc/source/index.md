@@ -85,7 +85,7 @@ or [Slurm](cluster/slurm) clusters.
 
 Ray is a unified framework for scaling AI and Python applications.
 Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for
-accelerating ML workloads:
+simplifying ML compute:
 
 <img src="images/what-is-ray-padded.svg" alt="what-is-ray">
 
