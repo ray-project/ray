@@ -33,7 +33,33 @@ class NodeAvailabilitySummary:
     ]  # Mapping from node type to node availability record.
 
     def __str__(self) -> str:
-        return ""
+        if self:
+            formatted_lines = []
+            sorted_keys = sorted(self.node_availabilities.keys(), key=lambda node_type: self.node_availabilities[node_type].last_checked_timestamp)
+            for node_type in sorted_keys:
+                record = self.node_availabilities[node_type]
+                category = "Available"
+                if not record.is_available:
+                    assert record.unavailable_node_information is not None
+                    category = record.unavailable_node_information.category
+                attempted_time = datetime.datetime.fromtimestamp(record.last_checked_timestamp)
+                formatted_time = f"{attempted_time.hour}:{attempted_time.minute}:{attempted_time.second}"
+                formatted_line = f" {node_type} (attempted={formatted_time}): {category}"
+                formatted_lines.append(formatted_line)
+
+            assert formatted_lines
+            longest_line_length = len(max(formatted_lines, key=len))
+
+            return ("Node Availability\n" +
+                    ("-" * longest_line_length) + "\n" +
+                    "Node types:\n" +
+                    ("\n".join(formatted_lines)))
+
+        else:
+            return ""
+
+    def __bool__(self) -> bool:
+        return bool(self.node_availabilities)
 
 
 class NodeProviderAvailabilityTracker:
@@ -82,13 +108,15 @@ class NodeProviderAvailabilityTracker:
                 node_type=node_type,
                 is_available=False,
                 last_checked_timestamp=timestamp,
-                unavailable_node_information=None,
+                unavailable_node_information=info,
             )
 
-        if node_type in self.store:
-            del self.store[node_type]
-
         expiration_time = timestamp + self.ttl
+
+        # TODO (Alex): In theory it would be nice to make this dictionary
+        # ordered by expiration time, unfortunately that's a bit difficult
+        # since `update_node_availability` can be called with out of order
+        # timestamps.
         self.store[node_type] = (expiration_time, record)
 
         self._remove_old_entries()
@@ -125,15 +153,10 @@ class NodeProviderAvailabilityTracker:
         )
 
     def _remove_old_entries(self):
-        """Remove any expired entries from the cache. Note that python
-        dictionaries are ordered by insertion time and we always reinsert
-        entries upon updating them, therefore we iterate through the dictionary
-        in expiration order.
+        """Remove any expired entries from the cache.
         """
         cur_time = self.timer()
         with self.lock:
             for key, (expiration_time, _) in list(self.store.items()):
                 if expiration_time < cur_time:
                     del self.store[key]
-                else:
-                    break

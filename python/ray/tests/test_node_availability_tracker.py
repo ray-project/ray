@@ -1,3 +1,4 @@
+import datetime
 import os
 import sys
 import pytest
@@ -11,7 +12,7 @@ from ray.autoscaler._private.node_availability_tracker import (
 )
 
 
-cur_time = 0
+cur_time = float(0)
 
 
 @pytest.fixture
@@ -115,12 +116,98 @@ def test_expire_multiple(tracker: NodeProviderAvailabilityTracker):
     assert "my-node-b" not in summary.node_availabilities
 
     assert summary.node_availabilities["my-node-a"].node_type == "my-node-a"
-    assert not summary.node_availabilities["my-node-a"].is_available
     assert summary.node_availabilities["my-node-a"].last_checked_timestamp == 30
 
     assert summary.node_availabilities["my-node-c"].node_type == "my-node-c"
-    assert summary.node_availabilities["my-node-c"].is_available
     assert summary.node_availabilities["my-node-c"].last_checked_timestamp == 20
+
+
+def test_summary(tracker: NodeProviderAvailabilityTracker):
+    exc = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.")
+    tracker.update_node_availability("my-node-a", 0, exc)
+
+    tracker.update_node_availability("my-node-b", 1, None)
+
+    summary = tracker.summary()
+
+    expected = {
+        "my-node-a": NodeAvailabilityRecord(
+            node_type="my-node-a",
+            is_available=False,
+            last_checked_timestamp=0,
+            unavailable_node_information=UnavailableNodeInformation(
+                category="DontFeelLikeIt",
+                description="This seems like a lot of work."
+            )
+        ),
+        "my-node-b": NodeAvailabilityRecord(
+            node_type="my-node-b",
+            is_available=True,
+            last_checked_timestamp=1,
+            unavailable_node_information=None,
+        ),
+    }
+
+    assert summary.node_availabilities == expected
+
+
+def get_timestamp(hour: int, minute: int, second: int, microsecond: int) -> float:
+    # Year, month, day don't just need to be filled out consistently.
+    dt = datetime.datetime(
+        year=2012,
+        month=12,
+        day=21,
+        hour=hour,
+        minute=minute,
+        second=second,
+        microsecond=microsecond
+    )
+    return dt.timestamp()
+
+
+def test_summary_string(tracker: NodeProviderAvailabilityTracker):
+    global cur_time
+
+    cur_time = get_timestamp(
+        hour=12,
+        minute=13,
+        second=17,
+        microsecond=1234,
+    )
+    exc = NodeLaunchException("InsufficientInstanceCapacity", "Some message about spot instances.")
+    tracker.update_node_availability("spot-gpu", cur_time, exc)
+
+    cur_time = get_timestamp(
+        hour=12,
+        minute=13,
+        second=51,
+        microsecond=4123,
+    )
+    exc = NodeLaunchException("InstanceLimitExceeded", "Some message about pesky quotas.")
+    tracker.update_node_availability("newer-gpu-type", cur_time, exc)
+
+    cur_time = get_timestamp(
+        hour=12,
+        minute=14,
+        second=18,
+        microsecond=1,
+    )
+    tracker.update_node_availability("on-demand-gpu", cur_time, None)
+
+    summary = tracker.summary()
+
+    summary_str = str(summary)
+
+    expected = """
+Node Availability
+------------------------------------------------------------
+Node types:
+ spot-gpu (attempted=12:13:17): InsufficientInstanceCapacity
+ newer-gpu-type (attempted=12:13:51): InstanceLimitExceeded
+ on-demand-gpu (attempted=12:14:18): Available
+    """.strip()
+
+    assert summary_str == expected
 
 
 if __name__ == "__main__":
