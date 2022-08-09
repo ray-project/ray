@@ -16,14 +16,8 @@ This section should help you:
 ## Lifetime of a Ray Serve Instance
 
 Ray Serve instances run on top of Ray clusters and are started using {mod}`serve.run <ray.serve.run>`.
-Once {mod}`serve.run <ray.serve.run>` has been called, further API calls can be used to create and update the deployments that will be used to serve your Python code (including ML models).
+Once {mod}`serve.run <ray.serve.run>` has been called, serve instance will be created automatically.
 The Serve instance will be torn down when the script exits.
-
-When running on a long-lived Ray cluster (e.g., one started using `ray start`),
-you can also deploy a Ray Serve instance as a long-running
-service using `serve.run`. In this case, the Serve instance will continue to
-run on the Ray cluster even after the script that calls it exits. If you want to run another script
-to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
 
 :::{note}
 All Serve actors– including the Serve controller, the HTTP proxies, and the deployment replicas– run in the `"serve"` namespace, even if the Ray driver namespace is different.
