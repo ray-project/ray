@@ -55,7 +55,7 @@ class NodeAvailabilitySummary:
 
         return NodeAvailabilitySummary(node_availabilities=parsed)
 
-    def summary_string(self, separator_len : int) -> str:
+    def summary_string(self, separator_len: int) -> str:
         if self:
             formatted_lines = []
             sorted_keys = sorted(

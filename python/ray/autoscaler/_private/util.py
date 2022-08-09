@@ -701,10 +701,11 @@ Usage:
 Demands:
 {demand_report}"""
 
-    node_availability_summary_str = \
+    node_availability_summary_str = (
         autoscaler_summary.node_availability_summary.summary_string(
             separator_len=len(header)
         )
+    )
     if node_availability_summary_str:
         formatted_output += "\n\n" + node_availability_summary_str
         pass
