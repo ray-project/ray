@@ -131,7 +131,7 @@ See the {ref}`configuration guide<kuberay-config-miscellaneous>` for details.
 ## Migration: Example
 This section presents an example of the migration process.
 Specifically, we translate a Helm values.yaml configuration for the legacy Ray Operator into
-a RayCluster CR for KubeRay.
+an example RayCluster CR for KubeRay.
 We also recommend taking a look at example RayCluster CRs in the [Ray docs][RayExamples]
 and in the [KubeRay docs][KubeRayExamples].
 
