@@ -104,7 +104,7 @@ class AutoscalerSummary:
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
-    node_availability_summary: NodeAvailabilitySummary
+    node_availability_summary: NodeAvailabilitySummary = NodeAvailabilitySummary({})
 
 
 class NonTerminatedNodes:
@@ -301,9 +301,10 @@ class StandardAutoscaler:
             self.foreground_node_launcher = BaseNodeLauncher(
                 provider=self.provider,
                 pending=self.pending_launches,
+                event_summarizer=self.event_summarizer,
+                node_provider_availability_tracker=self.node_provider_availability_tracker,
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
-                event_summarizer=self.event_summarizer,
             )
         else:
             self.launch_queue = queue.Queue()
@@ -314,9 +315,10 @@ class StandardAutoscaler:
                     queue=self.launch_queue,
                     index=i,
                     pending=self.pending_launches,
+                    event_summarizer=self.event_summarizer,
+                    node_provider_availability_tracker=self.node_provider_availability_tracker,
                     node_types=self.available_node_types,
                     prom_metrics=self.prom_metrics,
-                    event_summarizer=self.event_summarizer,
                 )
                 node_launcher.daemon = True
                 node_launcher.start()
