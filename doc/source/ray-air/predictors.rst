@@ -35,7 +35,7 @@ Predictors expose a ``predict`` method that accepts an input batch of type ``Dat
 
 **Life of a prediction:** Underneath the hood, when the ``Predictor.predict`` method is called the following occurs:
 
-- The input batch is converted into a Pandas DataFrame. Tensor input (like a ``np.ndarray``) will be converted into a single column Pandas Dataframe.
+- The input batch is converted into a Pandas DataFrame. Tensor input (like a ``np.ndarray``) will be converted into a single-column Pandas Dataframe.
 - If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to transform the DataFrame.
 - The transformed DataFrame will be passed to the model for inference.
 - The predictions will be outputted by ``predict`` in the same type as the original input.

@@ -3,10 +3,8 @@
 
 # __air_generic_preprocess_start__
 import ray
-from ray.data.preprocessors import StandardScaler
-from ray.air.config import ScalingConfig
 
-
+# Load data.
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
@@ -16,21 +14,16 @@ train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 test_dataset = valid_dataset.map_batches(
     lambda df: df.drop("target", axis=1), batch_format="pandas"
 )
-
-# Create a preprocessor to scale some columns
-columns_to_scale = ["mean radius", "mean texture"]
-preprocessor = StandardScaler(columns=columns_to_scale)
 # __air_generic_preprocess_end__
 
 # __air_tf_preprocess_start__
 import numpy as np
-import pandas as pd
 
-from ray.data.preprocessors import Concatenator, Chain
+from ray.data.preprocessors import Concatenator, Chain, StandardScaler
 
-# Chain the preprocessors together.
+# Create a preprocessor to scale some columns and concatenate the result.
 preprocessor = Chain(
-    preprocessor,
+    StandardScaler(columns=["mean radius", "mean texture"]),
     Concatenator(exclude=["target"], dtype=np.float32),
 )
 # __air_tf_preprocess_end__

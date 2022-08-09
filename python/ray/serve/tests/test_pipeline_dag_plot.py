@@ -108,7 +108,7 @@ class NoargDriver:
         self.dag = dag
 
     async def __call__(self):
-        return await self.dag.remote()
+        return await (await self.dag.remote())
 
 
 async def json_resolver(request: starlette.requests.Request):

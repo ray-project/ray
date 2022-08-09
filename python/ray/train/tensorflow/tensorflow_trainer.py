@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TensorflowTrainer(DataParallelTrainer):
     """A Trainer for data parallel Tensorflow training.
 
@@ -43,8 +43,7 @@ class TensorflowTrainer(DataParallelTrainer):
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>` and
-    :ref:`Ray Train function utils <train-api-func-utils>`.
+    :ref:`Ray AIR session methods <air-session-ref>`.
 
     .. code-block:: python
 
@@ -68,8 +67,8 @@ class TensorflowTrainer(DataParallelTrainer):
             # Returns the rank of the worker on the current node.
             session.get_local_rank()
 
-    You can also use any of the :ref:`TensorFlow specific function utils
-    <train-api-tensorflow-utils>`.
+    You can also use :meth:`ray.train.tensorflow.prepare_dataset_shard`
+    within your training code.
 
     .. code-block:: python
 

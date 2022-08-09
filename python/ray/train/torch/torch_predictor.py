@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TorchPredictor(DLPredictor):
     """A predictor for PyTorch models.
 

@@ -19,10 +19,10 @@ State CLI allows users to access the state of various resources (e.g., actor, ta
 .. click:: ray.experimental.state.state_cli:object_summary
    :prog: ray summary objects
 
-.. click:: ray.experimental.state.state_cli:list
+.. click:: ray.experimental.state.state_cli:ray_list
    :prog: ray list
 
-.. click:: ray.experimental.state.state_cli:get
+.. click:: ray.experimental.state.state_cli:ray_get
    :prog: ray get
 
 .. _ray-logs-api-doc:
@@ -35,6 +35,44 @@ Note that only the logs from alive nodes are available through this API.
 
 .. click:: ray.scripts.scripts:ray_logs
     :prog: ray logs
+
+State Python SDK
+-----------------
+
+State APIs are also exported as functions. 
+
+Summary APIs
+~~~~~~~~~~~~
+.. autofunction:: ray.experimental.state.api.summarize_actors
+.. autofunction:: ray.experimental.state.api.summarize_objects
+.. autofunction:: ray.experimental.state.api.summarize_tasks
+
+List APIs
+~~~~~~~~~~
+
+.. autofunction:: ray.experimental.state.api.list_actors
+.. autofunction:: ray.experimental.state.api.list_placement_groups
+.. autofunction:: ray.experimental.state.api.list_nodes
+.. autofunction:: ray.experimental.state.api.list_jobs
+.. autofunction:: ray.experimental.state.api.list_workers
+.. autofunction:: ray.experimental.state.api.list_tasks
+.. autofunction:: ray.experimental.state.api.list_objects
+.. autofunction:: ray.experimental.state.api.list_runtime_envs
+
+Get APIs
+~~~~~~~~~
+
+.. autofunction:: ray.experimental.state.api.get_actor
+.. autofunction:: ray.experimental.state.api.get_placement_group
+.. autofunction:: ray.experimental.state.api.get_node
+.. autofunction:: ray.experimental.state.api.get_worker
+.. autofunction:: ray.experimental.state.api.get_task
+.. autofunction:: ray.experimental.state.api.get_objects
+
+Log APIs
+~~~~~~~~
+.. autofunction:: ray.experimental.state.api.list_logs
+.. autofunction:: ray.experimental.state.api.get_log
 
 .. _state-api-schema:
 

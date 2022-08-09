@@ -1,6 +1,3 @@
-.. warning::
-    This page is under construction!
-
 .. include:: /_includes/clusters/we_are_hiring.rst
 
 .. _ray-yarn-deploy-under-construction:
@@ -136,7 +133,7 @@ Clean up all started processes even if the application fails or is killed.
 
 Putting things together, we have:
 
-.. literalinclude:: /../yarn/ray-skein.yaml
+.. literalinclude:: /cluster/cluster_under_construction/doc_code/yarn/ray-skein.yaml
    :language: yaml
    :start-after: # Head service
    :end-before: # Worker service
@@ -159,7 +156,7 @@ Start all of the processes needed on a ray worker node, blocking until killed by
 
 Putting things together, we have:
 
-.. literalinclude:: /../yarn/ray-skein.yaml
+.. literalinclude:: /cluster/cluster_under_construction/doc_code/yarn/ray-skein.yaml
    :language: yaml
    :start-after: # Worker service
 
@@ -168,7 +165,7 @@ Running a Job
 
 Within your Ray script, use the following to connect to the started Ray cluster:
 
-.. literalinclude:: /../yarn/example.py
+.. literalinclude:: /cluster/cluster_under_construction/doc_code/yarn/example.py
     :language: python
     :start-after: if __name__ == "__main__"
 
@@ -180,7 +177,7 @@ You can use the following command to launch the application as specified by the 
 
 Once it has been submitted, you can see the job running on the YARN dashboard.
 
-.. image:: /images/yarn-job.png
+.. image:: /cluster/cluster_under_construction/images/yarn-job.png
 
 Cleaning Up
 -----------

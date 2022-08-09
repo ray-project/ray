@@ -10,9 +10,9 @@ import ray
 from ray.workflow.common import (
     TaskID,
     WorkflowRef,
-    WorkflowStepRuntimeOptions,
+    WorkflowTaskRuntimeOptions,
 )
-from ray.workflow.workflow_context import WorkflowStepContext
+from ray.workflow.workflow_context import WorkflowTaskContext
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +33,14 @@ class Task:
     """Data class for a workflow task."""
 
     name: str
-    options: WorkflowStepRuntimeOptions
+    options: WorkflowTaskRuntimeOptions
     user_metadata: Dict
     func_body: Optional[Callable]
 
     def to_dict(self) -> Dict:
         return {
             "name": self.name,
-            "step_options": self.options.to_dict(),
+            "task_options": self.options.to_dict(),
             "user_metadata": self.user_metadata,
         }
 
@@ -78,7 +78,7 @@ class WorkflowExecutionState:
     # The arguments for the task.
     task_input_args: Dict[TaskID, ray.ObjectRef] = field(default_factory=dict)
     # The context of the task.
-    task_context: Dict[TaskID, WorkflowStepContext] = field(default_factory=dict)
+    task_context: Dict[TaskID, WorkflowTaskContext] = field(default_factory=dict)
     # The execution metadata of a task.
     task_execution_metadata: Dict[TaskID, TaskExecutionMetadata] = field(
         default_factory=dict
@@ -235,7 +235,7 @@ class WorkflowExecutionState:
             elif not self.pending_input_set[tid]:
                 self.append_frontier_to_run(tid)
 
-    def init_context(self, context: WorkflowStepContext) -> None:
+    def init_context(self, context: WorkflowTaskContext) -> None:
         """Initialize the context of all tasks."""
         for task_id, task in self.tasks.items():
             options = task.options
