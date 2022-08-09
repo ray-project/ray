@@ -1,11 +1,13 @@
 from typing import Optional
 
+
 class NodeLaunchException(Exception):
-    def __init__(self,
-            category : str,
-            description : str,
-            source_exception : Optional[Exception] = None
-            ):
+    def __init__(
+        self,
+        category: str,
+        description: str,
+        source_exception: Optional[Exception] = None,
+    ):
         super().__init__(f"Node Launch Exception ({category}): {description}")
         self.category = category
         self.description = description

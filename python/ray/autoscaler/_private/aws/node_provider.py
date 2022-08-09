@@ -23,8 +23,8 @@ from ray.autoscaler._private.aws.utils import (
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import BOTO_CREATE_MAX_RETRIES, BOTO_MAX_RETRIES
 from ray.autoscaler._private.log_timer import LogTimer
-from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.node_launch_exception import NodeLaunchException
+from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
     TAG_RAY_LAUNCH_CONFIG,
@@ -454,7 +454,7 @@ class AWSNodeProvider(NodeProvider):
                         exc = NodeLaunchException(
                             category=exc.response["Error"]["Code"],
                             description=["Error"]["Message"],
-                            source_exception=exc
+                            source_exception=exc,
                         )
                     except Exception:
                         # In theory, all ClientError's we expect to get should
