@@ -61,7 +61,7 @@ setup_commands:
     - sudo apt-get update
     - sudo apt-get install -y build-essential curl unzip
     # Install Node.js in order to build the dashboard.
-    - curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash
+    - curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash
     - sudo apt-get install -y nodejs
     # Install Anaconda.
     - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true

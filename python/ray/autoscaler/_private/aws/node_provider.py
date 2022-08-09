@@ -453,13 +453,14 @@ class AWSNodeProvider(NodeProvider):
                     try:
                         exc = NodeLaunchException(
                             category=exc.response["Error"]["Code"],
-                            description=["Error"]["Message"],
+                            description=exc.response["Error"]["Message"],
                             source_exception=exc,
                         )
                     except Exception:
                         # In theory, all ClientError's we expect to get should
                         # have these fields, but just in case we can't parse
                         # it, it's fine, just throw the original error.
+                        cli_logger.warning("Couldn't parse exception.", exc)
                         pass
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",
