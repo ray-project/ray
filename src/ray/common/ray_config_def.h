@@ -78,11 +78,19 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
 /// Threshold when the node is beyond the memory capacity.
 /// Ranging from [0, 1]
-RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.85)
+
+/// Node is running low on memory if it has less than
+/// memory_usage_free_threshold_Mib free memory.
+RAY_CONFIG(uint64_t, memory_usage_free_threshold_Mib, 1024)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
-RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
+/// The monitor will detect the node is above usage threshold
+/// by using the lesser of (ray_mem_total - memory_usage_free_threshold_Mib)
+/// and (ray_mem_total * memory_usage_threshold_fraction),
+/// where ray_mem_total is computed in ResourceSpec.
+RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 100)
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
