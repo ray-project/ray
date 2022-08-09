@@ -284,7 +284,7 @@ the same pre-loaded batch:
             self.get_policy(policy_id).update_kl(kl_divergence)
 
         # Update global vars on local worker as well.
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.set_global_vars(global_vars)
 
         return train_results
 

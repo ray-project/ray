@@ -127,7 +127,7 @@ class MyAlgo(Algorithm):
             - self._counters[LAST_TARGET_UPDATE_TS]
             >= 500
         ):
-            self.workers.local_worker().get_policy("dqn_policy").update_target()
+            self.local_worker.get_policy("dqn_policy").update_target()
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
                 "agent_steps_trained_DQN"

@@ -321,11 +321,11 @@ The ``train_batch`` is then passed to another utility function: ``train_one_step
 Methods like ``train_one_step`` and ``multi_gpu_train_one_step`` are used for training our Policy.
 Further documentation with examples can be found on the :ref:`train ops documentation page <train-ops-docs>`.
 
-The training updates on the policy are only applied to its version inside ``self.workers.local_worker``.
+The training updates on the policy are only applied to its version inside ``self.local_worker``.
 Note that each WorkerSet has n remote workers and exactly one "local worker" and that each worker (remote and local ones)
 holds a copy of the policy.
 
-Now that we updated the local policy (the copy in self.workers.local_worker), we need to make sure
+Now that we updated the local policy (the copy in self.local_worker), we need to make sure
 that the copies in all remote workers (self.workers.remote_workers) have their weights synchronized
 (from the local one):
 
