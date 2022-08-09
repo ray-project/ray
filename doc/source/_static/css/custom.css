@@ -246,7 +246,6 @@ details.dropdown .summary-up, details.dropdown .summary-down {
   top: 1em;
 }
 
-
 /* custom css for shadow class */
 .shadow {
   box-shadow: 0 0.2rem 0.5rem rgb(0 0 0 / 5%), 0 0 0.0625rem rgb(0 0 0 / 10%) !important;
