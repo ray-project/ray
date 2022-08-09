@@ -8,7 +8,7 @@ import zipfile
 import ray.data
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
-from ray.rllib.offline.json_reader import from_json_data
+from ray.rllib.offline.json_reader import from_json_data, postprocess_actions
 from ray.rllib.policy.sample_batch import concat_samples, SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.typing import SampleBatchType, AlgorithmConfigDict
@@ -251,6 +251,7 @@ class DatasetReader(InputReader):
             d = next(self._iter).as_pydict()
             # Columns like obs are compressed when written by DatasetWriter.
             d = from_json_data(d, self._ioctx.worker)
+            d = postprocess_actions(d, self._ioctx)
             count += d.count
             ret.append(self._postprocess_if_needed(d))
         ret = concat_samples(ret)
