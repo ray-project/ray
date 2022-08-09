@@ -380,7 +380,7 @@ class DQN(SimpleQ):
 
             # Old-style replay buffers return None if learning has not started
             if train_batch is None or len(train_batch) == 0:
-                self.local_worker.set_global_vars(global_vars)
+                self.set_global_vars(global_vars)
                 break
 
             # Postprocess batch before we learn on it

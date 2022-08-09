@@ -921,7 +921,7 @@ class Impala(Algorithm):
             self.workers_that_need_updates = set()
 
         # Update global vars of the local worker.
-        self.local_worker.set_global_vars(global_vars)
+        self.set_global_vars(global_vars)
 
     @override(Algorithm)
     def on_worker_failures(

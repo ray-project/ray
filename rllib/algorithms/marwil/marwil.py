@@ -267,7 +267,7 @@ class MARWIL(Algorithm):
                 self.workers.sync_weights(global_vars=global_vars)
 
         # Update global vars on local worker as well.
-        self.local_worker.set_global_vars(global_vars)
+        self.set_global_vars(global_vars)
 
         return train_results
 
