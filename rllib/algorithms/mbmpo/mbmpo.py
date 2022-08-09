@@ -281,7 +281,7 @@ class MetaUpdate:
         # MAML Meta-update.
         fetches = None
         for i in range(self.maml_optimizer_steps):
-            fetches = self.local_worker.learn_on_batch(samples)
+            fetches = self.workers.local_worker().learn_on_batch(samples)
         learner_stats = get_learner_stats(fetches)
 
         # Update KLs.
@@ -296,7 +296,7 @@ class MetaUpdate:
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
-        self.local_worker.foreach_policy_to_train(update)
+        self.workers.local_worker().foreach_policy_to_train(update)
 
         # Modify Reporting Metrics.
         metrics = _get_shared_metrics()
@@ -305,7 +305,7 @@ class MetaUpdate:
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
 
         if self.step_counter == self.num_steps - 1:
-            td_metric = self.local_worker.foreach_policy(fit_dynamics)[0]
+            td_metric = self.workers.local_worker().foreach_policy(fit_dynamics)[0]
 
             # Sync workers with meta policy.
             self.workers.sync_weights()

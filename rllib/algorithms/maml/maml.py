@@ -197,7 +197,7 @@ class MetaUpdate:
         metrics.counters[STEPS_SAMPLED_COUNTER] += samples.count
         fetches = None
         for i in range(self.maml_optimizer_steps):
-            fetches = self.local_worker.learn_on_batch(samples)
+            fetches = self.workers.local_worker().learn_on_batch(samples)
         learner_stats = get_learner_stats(fetches)
 
         # Sync workers with meta policy
@@ -218,7 +218,7 @@ class MetaUpdate:
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
-        self.local_worker.foreach_policy_to_train(update)
+        self.workers.local_worker().foreach_policy_to_train(update)
 
         # Modify Reporting Metrics
         metrics = _get_shared_metrics()
