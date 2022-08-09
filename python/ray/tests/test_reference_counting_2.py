@@ -1,6 +1,7 @@
 # coding: utf-8
 import logging
 import os
+import copy
 import platform
 import random
 import signal
@@ -697,6 +698,25 @@ def test_forward_nested_ref(shutdown_only):
     for _ in range(3):
         ray.get(b.check_ref.remote())
         time.sleep(1)
+
+
+def test_out_of_band_actor_handle_deserialization(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    class Actor:
+        def ping(self):
+            return 1
+
+    actor = Actor.remote()
+
+    @ray.remote
+    def func(config):
+        # deep copy will pickle and unpickle the actor handle.
+        config = copy.deepcopy(config)
+        return ray.get(config["actor"].ping.remote())
+
+    assert ray.get(func.remote({"actor": actor})) == 1
 
 
 if __name__ == "__main__":
