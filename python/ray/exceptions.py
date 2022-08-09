@@ -293,6 +293,10 @@ class RayActorError(RayError):
             if cause.node_ip_address != "":
                 error_msg_lines.append(f"\tip: {cause.node_ip_address}")
             error_msg_lines.append(cause.error_message)
+            if cause.never_started:
+                error_msg_lines.append(
+                    "The actor never ran - it was cancelled before it started running."
+                )
             self.error_msg = "\n".join(error_msg_lines)
 
     @property
@@ -439,6 +443,26 @@ class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
             + (
                 "The object has already been deleted by the reference counting "
                 "protocol. This should not happen."
+            )
+        )
+
+
+@DeveloperAPI
+class ObjectFreedError(ObjectLostError):
+    """Indicates that an object was manually freed by the application.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return (
+            self._base_str()
+            + "\n\n"
+            + (
+                "The object was manually freed using the internal `free` call. "
+                "Please ensure that `free` is only called once the object is no "
+                "longer needed."
             )
         )
 

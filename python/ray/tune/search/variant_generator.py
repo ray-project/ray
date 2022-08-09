@@ -58,7 +58,7 @@ def generate_variants(
         yield resolved_vars, spec
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def grid_search(values: Iterable) -> Dict[str, List]:
     """Convenience method for specifying grid search over a value.
 

@@ -11,8 +11,7 @@ from uvicorn.lifespan.on import LifespanOn
 
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray._private.utils import deprecated
+from ray.util.annotations import Deprecated, PublicAPI
 
 from ray.serve.application import Application
 from ray.serve._private.client import ServeControllerClient
@@ -20,6 +19,7 @@ from ray.serve.config import AutoscalingConfig, DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    MIGRATION_MESSAGE,
 )
 from ray.serve.context import (
     ReplicaContext,
@@ -42,6 +42,7 @@ from ray.serve._private.utils import (
     ensure_serialization_context,
     in_interactive_shell,
     install_serve_encoders_to_fastapi,
+    guarded_deprecation_warning,
 )
 
 from ray.serve._private import api as _private_api
@@ -49,8 +50,8 @@ from ray.serve._private import api as _private_api
 logger = logging.getLogger(__file__)
 
 
-@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
-@PublicAPI(stability="beta")
+@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+@Deprecated(message=MIGRATION_MESSAGE)
 def start(
     detached: bool = False,
     http_options: Optional[Union[dict, HTTPOptions]] = None,
@@ -103,7 +104,7 @@ def start(
     return client
 
 
-@PublicAPI
+@PublicAPI(stability="stable")
 def shutdown() -> None:
     """Completely shut down the connected Serve instance.
 
@@ -124,7 +125,7 @@ def shutdown() -> None:
     _set_global_client(None)
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def get_replica_context() -> ReplicaContext:
     """If called from a deployment, returns the deployment and replica tag.
 
@@ -270,7 +271,7 @@ def deployment(
     pass
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def deployment(
     _func_or_class: Optional[Callable] = None,
     name: Optional[str] = None,
@@ -352,6 +353,12 @@ def deployment(
             "autoscaling_config is provided."
         )
 
+    if version is not None:
+        logger.warning(
+            "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
+            "Explicitly specifying version will raise an error in the future!"
+        )
+
     config = DeploymentConfig.from_default(
         ignore_none=True,
         num_replicas=num_replicas,
@@ -382,8 +389,8 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
-@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
-@PublicAPI
+@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+@Deprecated(message=MIGRATION_MESSAGE)
 def get_deployment(name: str) -> Deployment:
     """Dynamically fetch a handle to a Deployment object.
 
@@ -406,8 +413,8 @@ def get_deployment(name: str) -> Deployment:
     return _private_api.get_deployment(name)
 
 
-@deprecated(instructions="Please see https://docs.ray.io/en/latest/serve/index.html")
-@PublicAPI
+@guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
+@Deprecated(message=MIGRATION_MESSAGE)
 def list_deployments() -> Dict[str, Deployment]:
     """Returns a dictionary of all active deployments.
 
@@ -417,7 +424,7 @@ def list_deployments() -> Dict[str, Deployment]:
     return _private_api.list_deployments()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def run(
     target: Union[ClassNode, FunctionNode],
     _blocking: bool = True,
@@ -435,15 +442,18 @@ def run(
             A user-built Serve Application or a ClassNode that acts as the
             root node of DAG. By default ClassNode is the Driver
             deployment unless user provides a customized one.
-        host: The host passed into serve.start().
-        port: The port passed into serve.start().
+        host: Host for HTTP servers to listen on. Defaults to
+            "127.0.0.1". To expose Serve publicly, you probably want to set
+            this to "0.0.0.0".
+        port: Port for HTTP server. Defaults to 8000.
 
     Returns:
         RayServeHandle: A regular ray serve handle that can be called by user
             to execute the serve DAG.
     """
     client = _private_api.serve_start(
-        detached=True, http_options={"host": host, "port": port}
+        detached=True,
+        http_options={"host": host, "port": port, "location": "EveryNode"},
     )
 
     # Record after Ray has been started.
@@ -503,7 +513,7 @@ def run(
         return ingress._get_handle()
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 def build(target: Union[ClassNode, FunctionNode]) -> Application:
     """Builds a Serve application into a static application.
 

@@ -784,12 +784,10 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
 
 ``Tuner.fit()`` returns an ``ResultGrid`` object that allows further analysis of the training results and retrieving the checkpoint(s) of the trained agent.
-It also simplifies saving the trained agent. For example:
 
 .. code-block:: python
 
     # ``Tuner.fit()`` allows setting a custom log directory (other than ``~/ray-results``)
-    # and automatically saving the trained agent
     results = ray.tune.Tuner(
         ppo.PPO,
         param_space=config,
@@ -805,7 +803,7 @@ It also simplifies saving the trained agent. For example:
         trial=analysis.get_best_trial("episode_reward_mean"),
         metric="episode_reward_mean")
 
-    # or simply get the last checkpoint (with highest "training_iteration")
+    # or simply get the last checkpoint (with highest "training_step")
     last_checkpoint = analysis.get_last_checkpoint()
     # if there are multiple trials, select a specific trial or automatically
     # choose the best one according to a given metric
