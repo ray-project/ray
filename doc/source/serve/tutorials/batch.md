@@ -64,8 +64,8 @@ finishes, a larger batch may be executed. This behavior can be tuned using the
 timeout may improve throughput at the cost of latency under low load.
 :::
 
-Let's define a deployment that takes in a list of vectors, combines them into a 
-matrix, and multiples the combined vectors by a another fixed matrix.
+Let's define a deployment that takes in a list of input strings and runs 
+vectorized text generation on the inputs.
 
 ```{literalinclude} ../doc_code/tutorial_batch.py
 :end-before: __doc_define_servable_end__
@@ -159,7 +159,7 @@ handle = serve.run(generator)
 ```
 
 Generally, to enqueue a query, you can call `handle.method.remote(data)`. This call 
-returns immediatelywith a [Ray ObjectRef](ray-object-refs). You can call `ray.get` to 
+returns immediately with a [Ray ObjectRef](ray-object-refs). You can call `ray.get` to 
 retrieve the result. Add the following to the same Python script.
 
 ```python
@@ -186,28 +186,4 @@ Finally, let's run the script.
 $ python tutorial_batch.py
 ```
 
-You should get an output like the following.
-```python
-(pid=...) Our input array has shape: 1
-(pid=...) Our input array has shape: 4
-(pid=...) Our input array has shape: 4
-Result batch is [
-    'Once upon a time, when I got to look at and see the work of my parents (I still can\'t stand them,) they said, "Boys, you\'re going to like it if you\'ll stay away from him or make him look',
-
-    "Hi my name is Lewis and I like to look great. When I'm not playing against, it's when I play my best and always feel most comfortable. I get paid by the same people who make my games, who work hardest for me.", 
-
-    "My name is Mary, and my favorite person in these two universes, the Green Lantern and the Red Lantern, are the same, except they're two of the Green Lanterns, but they also have their own different traits. Now their relationship is known", 
-
-    'My name is Clara and I am married and live in Philadelphia. I am an English language teacher and translator. I am passionate about the issues that have so inspired me and my journey. My story begins with the discovery of my own child having been born', 
-
-    'My name is Julien and I like to travel with my son on vacations... In fact I really prefer to spend more time with my son."\n\nIn 2011, the following year he was diagnosed with terminal Alzheimer\'s disease, and since then,', 
-
-    "Today I accidentally got lost and went on another tour in August. My story was different, but it had so many emotions that it made me happy. I'm proud to still be able to go back to Oregon for work.\n\nFor the longest", 
-
-    'My greatest wish is to return your loved ones to this earth where they can begin their own free and prosperous lives. This is true only on occasion as it is not intended or even encouraged to be so.\n\nThe Gospel of Luke 8:29', 
-
-    'In a galaxy far far away, the most brilliant and powerful beings known would soon enter upon New York, setting out to restore order to the state. When the world turned against them, Darth Vader himself and Obi-Wan Kenobi, along with the Jedi', 
-
-    'My best talent is that I can make a movie with somebody who really has a big and strong voice. I do believe that they would be great writers. I can tell you that to make sure."\n\n\nWith this in mind, "Ghostbusters'
-]
-```
+You should get a similar output like before!
