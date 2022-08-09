@@ -174,7 +174,8 @@ In this section, we show a KubeRay RayCluster CR equivalent to the above legacy 
 
 ```{note}
 The configuration below is more verbose, as it does not employ Helm.
-Helm support for KubeRay is in progress; to try it out read KubeRay's [Helm docs][KubeRayHelm].
+Helm support for KubeRay is in progress; to try it, out read KubeRay's [Helm docs][KubeRayHelm].
+KubeRay's Helm charts can be found on GitHub [here][KubeRayHelmCode].
 
 Currently, we recommend directly deploying KubeRay RayCluster CRs without Helm.
 ```
@@ -188,3 +189,5 @@ Here is a [link][ConfigLink] to the configuration shown below.
 [RayExamples]: https://github.com/ray-project/ray/tree/master/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs
 [KubeRayExamples]: https://ray-project.github.io/kuberay/components/operator/#running-an-example-cluster
 [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/7aeb1ab9cf7adb58fd9418c0e08984ff0fe6d018/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/migration-example.yaml
+[KubeRayHelm]: https://ray-project.github.io/kuberay/deploy/helm/
+[KubeRayHelmCode]: https://github.com/ray-project/kuberay/tree/master/helm-chart
