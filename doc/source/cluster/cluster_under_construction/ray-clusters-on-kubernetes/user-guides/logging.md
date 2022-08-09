@@ -46,7 +46,7 @@ the Ray container's `/tmp/ray` directory to the relevant `hostPath`.
 In this section, we give an example of how to set up log-emitting
 [Fluent Bit][FluentBit] sidecars for Ray pods.
 
-See the full config for a single-pod RayCluster with a logging sidecar [here][config-link].
+See the full config for a single-pod RayCluster with a logging sidecar [here][ConfigLink].
 We now discuss this configuration and show how to deploy it.
 
 ## Configure log processing
