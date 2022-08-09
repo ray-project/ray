@@ -302,7 +302,8 @@ class StandardAutoscaler:
                 provider=self.provider,
                 pending=self.pending_launches,
                 event_summarizer=self.event_summarizer,
-                node_provider_availability_tracker=self.node_provider_availability_tracker,
+                node_provider_availability_tracker=
+                    self.node_provider_availability_tracker,
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
             )
@@ -316,7 +317,8 @@ class StandardAutoscaler:
                     index=i,
                     pending=self.pending_launches,
                     event_summarizer=self.event_summarizer,
-                    node_provider_availability_tracker=self.node_provider_availability_tracker,
+                    node_provider_availability_tracker=
+                        self.node_provider_availability_tracker,
                     node_types=self.available_node_types,
                     prom_metrics=self.prom_metrics,
                 )
