@@ -17,13 +17,13 @@ class BatchTextGenerator:
         self.model = model
 
     @serve.batch(max_batch_size=4)
-    async def handle_batch(self, inputs: List[str]):
+    async def handle_batch(self, inputs: List[str]) -> List[str]:
         print("Our input array has length:", len(inputs))
 
         results = self.model(inputs)
         return [result[0]["generated_text"] for result in results]
 
-    async def __call__(self, request: Request):
+    async def __call__(self, request: Request) -> List[str]:
         return await self.handle_batch(request.query_params["text"])
         # __doc_define_servable_end__
 
