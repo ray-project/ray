@@ -452,7 +452,8 @@ def run(
             to execute the serve DAG.
     """
     client = _private_api.serve_start(
-        detached=True, http_options={"host": host, "port": port}
+        detached=True,
+        http_options={"host": host, "port": port, "location": "EveryNode"},
     )
 
     # Record after Ray has been started.
