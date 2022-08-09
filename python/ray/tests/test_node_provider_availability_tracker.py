@@ -215,28 +215,32 @@ Node types:
 
 
 def test_summary_from_dict():
-    orig = NodeAvailabilitySummary(node_availabilities={
-        "my-node-a": NodeAvailabilityRecord(
-            node_type="my-node-a",
-            is_available=False,
-            last_checked_timestamp=0,
-            unavailable_node_information=UnavailableNodeInformation(
-                category="DontFeelLikeIt", description="This seems like a lot of work."
+    orig = NodeAvailabilitySummary(
+        node_availabilities={
+            "my-node-a": NodeAvailabilityRecord(
+                node_type="my-node-a",
+                is_available=False,
+                last_checked_timestamp=0,
+                unavailable_node_information=UnavailableNodeInformation(
+                    category="DontFeelLikeIt",
+                    description="This seems like a lot of work.",
+                ),
             ),
-        ),
-        "my-node-b": NodeAvailabilityRecord(
-            node_type="my-node-b",
-            is_available=True,
-            last_checked_timestamp=1,
-            unavailable_node_information=None,
-        ),
-    })
+            "my-node-b": NodeAvailabilityRecord(
+                node_type="my-node-b",
+                is_available=True,
+                last_checked_timestamp=1,
+                unavailable_node_information=None,
+            ),
+        }
+    )
 
     to_dict = dataclasses.asdict(orig)
 
     remarshalled = NodeAvailabilitySummary.from_fields(**to_dict)
 
     assert orig == remarshalled
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
