@@ -8,6 +8,7 @@ Dataset API
 **Basic Transformations**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.map
     ray.data.Dataset.map_batches
@@ -21,6 +22,7 @@ Dataset API
 **Sorting, Shuffling, Repartitioning**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.sort
     ray.data.Dataset.random_shuffle
@@ -30,6 +32,7 @@ Dataset API
 **Splitting and Merging Datasets**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.split
     ray.data.Dataset.split_at_indices
@@ -41,6 +44,7 @@ Dataset API
 **Grouped and Global Aggregations**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.groupby
     ray.data.Dataset.aggregate
@@ -53,6 +57,7 @@ Dataset API
 **Converting to Pipeline**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.repeat
     ray.data.Dataset.window
@@ -60,6 +65,7 @@ Dataset API
 **Consuming Datasets**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.show
     ray.data.Dataset.take
@@ -72,6 +78,7 @@ Dataset API
 **I/O and Conversion**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.write_parquet
     ray.data.Dataset.write_json
@@ -93,6 +100,7 @@ Dataset API
 **Inspecting Metadata**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.count
     ray.data.Dataset.schema
@@ -105,6 +113,7 @@ Dataset API
 **Execution**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.fully_executed
     ray.data.Dataset.is_fully_executed
@@ -113,6 +122,7 @@ Dataset API
 **Serialization**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.Dataset.has_serializable_lineage
     ray.data.Dataset.serialize_lineage

@@ -8,6 +8,7 @@ DatasetPipeline API
 **Basic Transformations**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.DatasetPipeline.map
     ray.data.DatasetPipeline.map_batches
@@ -20,6 +21,7 @@ DatasetPipeline API
 **Sorting, Shuffling, Repartitioning**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.DatasetPipeline.sort_each_window
     ray.data.DatasetPipeline.random_shuffle_each_window
@@ -29,6 +31,7 @@ DatasetPipeline API
 **Splitting DatasetPipelines**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.DatasetPipeline.split
     ray.data.DatasetPipeline.split_at_indices
@@ -36,6 +39,7 @@ DatasetPipeline API
 **Creating DatasetPipelines**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.DatasetPipeline.repeat
     ray.data.DatasetPipeline.rewindow
@@ -44,6 +48,7 @@ DatasetPipeline API
 **Consuming DatasetPipelines**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.DatasetPipeline.show
     ray.data.DatasetPipeline.show_windows
@@ -57,6 +62,7 @@ DatasetPipeline API
 **I/O and Conversion**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.DatasetPipeline.write_json
     ray.data.DatasetPipeline.write_csv
@@ -68,6 +74,7 @@ DatasetPipeline API
 **Inspecting Metadata**
 
 .. autosummary::
+    :nosignatures:
 
     ray.data.DatasetPipeline.schema
     ray.data.DatasetPipeline.count
