@@ -107,7 +107,8 @@ class DreamerConfig(AlgorithmConfig):
         # .training()
         self.gamma = 0.99
         # Number of timesteps to collect from rollout workers before we start
-        # sampling from replay buffers for learning.
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
         self.num_steps_sampled_before_learning_starts = 0
 
         # .environment()

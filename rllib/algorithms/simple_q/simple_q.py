@@ -112,7 +112,8 @@ class SimpleQConfig(AlgorithmConfig):
             "replay_sequence_length": 1,
         }
         # Number of timesteps to collect from rollout workers before we start
-        # sampling from replay buffers for learning.
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
         self.num_steps_sampled_before_learning_starts = 1000
         self.store_buffer_in_checkpoints = False
         self.lr_schedule = None
