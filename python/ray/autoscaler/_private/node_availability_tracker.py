@@ -35,25 +35,37 @@ class NodeAvailabilitySummary:
     def __str__(self) -> str:
         if self:
             formatted_lines = []
-            sorted_keys = sorted(self.node_availabilities.keys(), key=lambda node_type: self.node_availabilities[node_type].last_checked_timestamp)
+            sorted_keys = sorted(
+                self.node_availabilities.keys(),
+                key=lambda node_type: self.node_availabilities[
+                    node_type
+                ].last_checked_timestamp,
+            )
             for node_type in sorted_keys:
                 record = self.node_availabilities[node_type]
                 category = "Available"
                 if not record.is_available:
                     assert record.unavailable_node_information is not None
                     category = record.unavailable_node_information.category
-                attempted_time = datetime.datetime.fromtimestamp(record.last_checked_timestamp)
+                attempted_time = datetime.datetime.fromtimestamp(
+                    record.last_checked_timestamp
+                )
                 formatted_time = f"{attempted_time.hour}:{attempted_time.minute}:{attempted_time.second}"
-                formatted_line = f" {node_type} (attempted={formatted_time}): {category}"
+                formatted_line = (
+                    f" {node_type} (attempted={formatted_time}): {category}"
+                )
                 formatted_lines.append(formatted_line)
 
             assert formatted_lines
             longest_line_length = len(max(formatted_lines, key=len))
 
-            return ("Node Availability\n" +
-                    ("-" * longest_line_length) + "\n" +
-                    "Node types:\n" +
-                    ("\n".join(formatted_lines)))
+            return (
+                "Node Availability\n"
+                + ("-" * longest_line_length)
+                + "\n"
+                + "Node types:\n"
+                + ("\n".join(formatted_lines))
+            )
 
         else:
             return ""
@@ -153,8 +165,7 @@ class NodeProviderAvailabilityTracker:
         )
 
     def _remove_old_entries(self):
-        """Remove any expired entries from the cache.
-        """
+        """Remove any expired entries from the cache."""
         cur_time = self.timer()
         with self.lock:
             for key, (expiration_time, _) in list(self.store.items()):

@@ -136,9 +136,8 @@ def test_summary(tracker: NodeProviderAvailabilityTracker):
             is_available=False,
             last_checked_timestamp=0,
             unavailable_node_information=UnavailableNodeInformation(
-                category="DontFeelLikeIt",
-                description="This seems like a lot of work."
-            )
+                category="DontFeelLikeIt", description="This seems like a lot of work."
+            ),
         ),
         "my-node-b": NodeAvailabilityRecord(
             node_type="my-node-b",
@@ -160,7 +159,7 @@ def get_timestamp(hour: int, minute: int, second: int, microsecond: int) -> floa
         hour=hour,
         minute=minute,
         second=second,
-        microsecond=microsecond
+        microsecond=microsecond,
     )
     return dt.timestamp()
 
@@ -174,7 +173,9 @@ def test_summary_string(tracker: NodeProviderAvailabilityTracker):
         second=17,
         microsecond=1234,
     )
-    exc = NodeLaunchException("InsufficientInstanceCapacity", "Some message about spot instances.")
+    exc = NodeLaunchException(
+        "InsufficientInstanceCapacity", "Some message about spot instances."
+    )
     tracker.update_node_availability("spot-gpu", cur_time, exc)
 
     cur_time = get_timestamp(
@@ -183,7 +184,9 @@ def test_summary_string(tracker: NodeProviderAvailabilityTracker):
         second=51,
         microsecond=4123,
     )
-    exc = NodeLaunchException("InstanceLimitExceeded", "Some message about pesky quotas.")
+    exc = NodeLaunchException(
+        "InstanceLimitExceeded", "Some message about pesky quotas."
+    )
     tracker.update_node_availability("newer-gpu-type", cur_time, exc)
 
     cur_time = get_timestamp(
