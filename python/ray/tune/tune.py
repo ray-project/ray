@@ -9,6 +9,7 @@ import warnings
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, Union
 
 import ray
+from ray.air.callbacks.wandb import WandbLoggerCallback
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -363,6 +364,14 @@ def run(
     # `locals()` is equal to args and kwargs
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
+
+    for callback in callbacks:
+        if isinstance(callback, WandbLoggerCallback):
+            from ray.tune.integration.wandb import WandbTrainableMixin
+
+            config = config or {}
+            config.setdefault("wandb", {}).setdefault("project", callback.project)
+            run_or_experiment.__mixins__ = (WandbTrainableMixin,)
 
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
