@@ -115,5 +115,157 @@ See the {ref}`configuration guide<rayStartParams>` for details.
 
 [KuberaySingleNamespace]: https://github.com/ray-project/kuberay#single-namespace-version
 
+### Ray Version
+The Ray version (e.g. 2.0.0) should be supplied under the RayCluster CR's `spec.rayVersion`.
+See the {ref}`configuration guide<kuberay-config-miscellaneous>` for details.
+
 ### Init Containers and Pre-Stop hooks
-Pass...
+There are two pieces of configuration that should be included in all KubeRay RayCluster CRs.
+- Worker pods need an init container that awaits creation of the Ray head service.
+- Ray containers for the Ray head and worker should include a preStop hook with a `ray stop`
+  command.
+While future versions of KubeRay may inject this configuration automatically,
+currently these elements must be included in all RayCluster CRs.
+See the {ref}`configuration guide<kuberay-config-miscellaneous>` for details.
+
+## Migration: Example
+This section presents an example of the migration process.
+Specifically, we translate a Helm values.yaml configuration for the legacy Ray Operator into
+a RayCluster CR for KubeRay.
+We also recommend taking a look at example RayCluster CRs in the [Ray docs][RayExamples]
+and in the [KubeRay docs][KubeRayExamples].
+
+### Legacy Ray Operator values.yaml
+```yaml
+image: rayproject/ray-ml:2.0.0-gpu
+headPodType: rayHeadType
+podTypes:
+    rayHeadType:
+        CPU: 14
+        memory: 54Gi
+        # Annotate the head pod as having 0 CPU
+        # to prevent the head pod from scheduling Ray workloads.
+        rayResources: {"CPU": 0}
+    rayCPUWorkerType:
+        # Start with 2 CPU workers. Allow scaling up to 3 CPU workers.
+        minWorkers: 2
+        maxWorkers: 3
+        memory: 54Gi
+        CPU: 14
+        # Annotate the Ray worker pod as having 1 unit of Custom capacity and 5 units of "Custom2" capacity
+        rayResources: {"Custom": 1, "Custom2": 5}
+    rayGPUWorkerType:
+        minWorkers: 0
+        maxWorkers: 5
+        CPU: 3
+        GPU: 1
+        memory: 50Gi
+
+operatorImage: rayproject/ray:2.0.0
+```
+
+### KubeRay values.yaml
+```yaml
+apiVersion: ray.io/v1alpha1
+kind: RayCluster
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: raycluster-example
+spec:
+  # To use autoscaling, the following field must be included.
+  enableInTreeAutoscaling: true
+  # The Ray version must be supplied.
+  rayVersion: '2.0.0'
+  headGroupSpec:
+    serviceType: ClusterIP
+    rayStartParams:
+      dashboard-host: '0.0.0.0'
+      block: 'true'
+      # Annotate the head pod as having 0 CPU
+      # to prevent the head pod from scheduling Ray workloads.
+      num-cpus: 0
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray-ml:2.0.0-gpu
+          resources:
+            limits:
+              cpu: "14"
+              memory: "54Gi"
+            requests:
+              cpu: "14"
+              memory: "54Gi"
+          # Keep this in container configs.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+  workerGroupSpecs:
+  # Start with 2 CPU workers. Allow scaling up to 3 CPU workers.
+  - replicas: 2
+    minReplicas: 2
+    maxReplicas: 3
+    groupName: rayCPUWorkerType
+    rayStartParams:
+      block: 'true'
+      # Annotate the Ray worker pod as having 1 unit of "Custom" capacity and 5 units of "Custom2" capacity
+      resources: '"{\"Custom\": 1, \"Custom2\": 5}"'
+    template:
+      spec:
+        containers:
+        - name: ray-worker
+          image: rayproject/ray-ml:2.0.0-gpu
+          resources:
+            limits:
+              cpu: "14"
+              memory: "54Gi"
+            requests:
+              cpu: "14"
+              memory: "54Gi"
+          # Keep the lifecycle block in Ray container configs.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+        # Keep the initContainers block in worker pod configs.
+        initContainers:
+        - name: init-myservice
+          image: busybox:1.28
+          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+  # Start with 0 GPU workers. Allow scaling up to 5 GPU workers.
+  - replicas: 0
+    minReplicas: 0
+    maxReplicas: 5
+    groupName: rayGPUWorkerType
+    rayStartParams:
+      block: 'true'
+    template:
+      spec:
+        containers:
+        - name: ray-worker
+          image: rayproject/ray-ml:2.0.0-gpu
+          resources:
+            limits:
+              cpu: "3"
+              memory: "50Gi"
+              nvidia.com/gpu: 1
+            requests:
+              cpu: "3"
+              memory: "50Gi"
+              nvidia.com/gpu: 1
+          # Keep the lifecycle block in Ray container configs.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+        # Keep the initContainers block in worker pod configs.
+        initContainers:
+        - name: init-myservice
+          image: busybox:1.28
+          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+```
+
+[RayExamples]: https://github.com/ray-project/ray/tree/master/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs
+[KubeRayExamples]: https://ray-project.github.io/kuberay/components/operator/#running-an-example-cluster
