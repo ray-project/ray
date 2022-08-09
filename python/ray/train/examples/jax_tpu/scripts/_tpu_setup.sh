@@ -13,3 +13,5 @@ pip3 install scipy --upgrade
 pip3 install pandas --upgrade
 pip3 install flax
 
+cat <<EOF > /var/www/html/index.html
+<html><body><p>Linux startup script added directly.</p></body></html>
