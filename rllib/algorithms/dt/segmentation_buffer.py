@@ -13,6 +13,7 @@ class SegmentationBuffer:
     """A minimal replay buffer used by Decision Transformer (DT)
     to process episodes into max_seq_len length segments and do shuffling.
     """
+
     def __init__(
         self,
         capacity: int = 20,
@@ -32,9 +33,7 @@ class SegmentationBuffer:
         self._buffer = []
 
     def add(self, batch: SampleBatch):
-        """
-
-        """
+        """ """
         episodes = batch.split_by_episode()
         for episode in episodes:
             self._add_single(episode)
@@ -60,9 +59,7 @@ class SegmentationBuffer:
             self._buffer[replace_ind] = episode
 
     def sample(self, batch_size: int) -> SampleBatch:
-        """
-
-        """
+        """ """
         samples = [self._sample_single() for _ in range(batch_size)]
         return concat_samples(samples)
 
@@ -143,9 +140,8 @@ class SegmentationBuffer:
 
 
 class MultiAgentSegmentationBuffer:
-    """
+    """ """
 
-    """
     def __init__(
         self,
         capacity: int = 20,

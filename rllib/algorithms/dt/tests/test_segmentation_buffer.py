@@ -24,12 +24,18 @@ torch, _ = try_import_torch()
 
 
 def _generate_episode_batch(max_ep_len, eps_id, obs_dim=8, act_dim=3):
-    batch = SampleBatch({
-        SampleBatch.OBS: np.full((max_ep_len, obs_dim), eps_id, dtype=np.float32),
-        SampleBatch.ACTIONS: np.full((max_ep_len, act_dim), eps_id + 100, dtype=np.float32),
-        SampleBatch.RETURNS_TO_GO: np.full((max_ep_len,), eps_id + 200, dtype=np.float32),
-        SampleBatch.EPS_ID: np.full((max_ep_len,), eps_id, dtype=np.long),
-    })
+    batch = SampleBatch(
+        {
+            SampleBatch.OBS: np.full((max_ep_len, obs_dim), eps_id, dtype=np.float32),
+            SampleBatch.ACTIONS: np.full(
+                (max_ep_len, act_dim), eps_id + 100, dtype=np.float32
+            ),
+            SampleBatch.RETURNS_TO_GO: np.full(
+                (max_ep_len,), eps_id + 200, dtype=np.float32
+            ),
+            SampleBatch.EPS_ID: np.full((max_ep_len,), eps_id, dtype=np.long),
+        }
+    )
     return batch
 
 
