@@ -1,11 +1,13 @@
+import gym
+from typing import Dict, Union, List, Tuple, Optional
+import numpy as np
+
 from ray.rllib.policy.policy import Policy, ViewRequirement
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.typing import AlgorithmConfigDict, TensorStructType, TensorType
-from typing import Dict, Union, List, Tuple, Optional
-from ray.rllib.utils.annotations import override
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-import numpy as np
-import gym
+from ray.rllib.utils.typing import AlgorithmConfigDict, TensorStructType, TensorType
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.debug import update_global_seed_if_necessary
 
 
 class CliffWalkingWallPolicy(Policy):
@@ -23,6 +25,7 @@ class CliffWalkingWallPolicy(Policy):
         action_space: gym.Space,
         config: AlgorithmConfigDict,
     ):
+        update_global_seed_if_necessary(seed=config.get("seed"))
         super().__init__(observation_space, action_space, config)
 
         # Known optimal action dist for each of the 48 states and 4 actions
