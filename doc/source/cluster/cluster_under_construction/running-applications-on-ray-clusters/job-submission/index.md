@@ -1,10 +1,13 @@
 (ref-deployment-guide-under-construction)=
 
-# Job Submission (migrated from old deployment guide)
+# Job Submission
 :::{warning}
 This page is under construction!
 :::
 
+:::{note}
+(cade@) This was migrated from the old deployment guide
+:::
 
 This section explains how to set up a distributed Ray cluster and run your workloads on it.
 
@@ -15,7 +18,7 @@ To trigger a Ray workload from your local machine, a CI system, or a third-party
 To run an interactive Ray workload and see the output in real time in a client of your choice (e.g. your local machine, SageMaker Studio, or Google Colab), you can use {ref}`Ray Client <ray-client>`.
 
 ```{toctree}
-:maxdepth: '2'
+:maxdepth: '1'
 
 job-submission-overview
 cli

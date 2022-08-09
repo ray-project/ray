@@ -1,11 +1,11 @@
 .. warning::
     This page is under construction!
 
-.. _jobs-overview-under-construction-cli:
+.. _jobs-overview-under-construction:
 
-==================
-Ray Job Submission
-==================
+===========================
+Ray Job Submission Overview
+===========================
 
 .. note::
 
