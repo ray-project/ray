@@ -53,25 +53,22 @@ for FluentBit.
 Here is a minimal ConfigMap which tells a Fluent Bit sidecar to
 * Tail Ray logs.
 * Output the logs to the container's stdout.
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: fluentbit-config
-data:
-  fluent-bit.conf: |
-    [INPUT]
-        Name tail
-        Path /tmp/ray/session_latest/logs/*
-        Tag ray
-        Path_Key true
-        Refresh_Interval 5
-    [OUTPUT]
-        Name stdout
-        Match *
+```{literalinclude} ../configs/ray-cluster.log.yaml
+:language: yaml
+:start-after: Fluent Bit ConfigMap
+:end-before: ---
 ```
-In addition to streaming logs to stdout, you can export logs to any
-[storage backend][FluentBitStorage] supported by Fluent Bit.
+A few notes on the above config:
+- In addition to streaming logs to stdout, you can use an OUTPUT clause to export logs to any
+  [storage backend][FluentBitStorage] supported by Fluent Bit.
+- The `Path_Key true` line above ensures that file names are included in the log records
+  emitted by Fluent Bit.
+- The `Refresh_Interval 5` line asks Fluent Bit to refresh the list of files
+  in the log directory once per 5 seconds, rather than the default 60.
+  The reason is that the directory `/tmp/ray/session_latest/logs/` does not exist
+  initially (Ray must create it first). Setting the `Refresh_Interval` low allows us to see logs
+  in the Fluent Bit container's stoud sooner.
+
 
 ## Add logging sidecars to your RayCluster CR.
 
@@ -80,45 +77,36 @@ For each pod template in our RayCluster CR, we
 need to add two volumes: One volume for Ray's logs
 and another volume to store Fluent Bit configuration from the ConfigMap
 applied above.
-```yaml
-volumes:
-- name: ray-logs
-  emptyDir: {}
-- name: fluentbit-config
-  configMap:
-    name: fluentbit-config
+```{literalinclude} ../configs/ray-cluster.log.yaml
+:language: yaml
+:start-after: Log and config volumes
 ```
 
 ### Mount the Ray log directory
 Add the following volume mount to the Ray container's configuration.
-```yaml
-volumeMounts:
-- mountPath: /tmp/ray
-  name: ray-logs
+```{literalinclude} ../configs/ray-cluster.log.yaml
+:language: yaml
+:start-after: Share logs with Fluent Bit
+:end-before: Fluent Bit sidecar
 ```
 
 ### Add the Fluent Bit sidecar
 Finally, add the Fluent Bit sidecar container to each Ray pod config
 in your RayCluster CR.
-```yaml
-- name: fluentbit
-  image: fluent/fluent-bit:1.9.6
-  volumeMounts:
-  - mountPath: /tmp/ray
-    name: ray-logs
-  - mountPath: /fluent-bit/etc/fluent-bit.conf
-    name: fluentbit-config
+```{literalinclude} ../configs/ray-cluster.log.yaml
+:language: yaml
+:start-after: Fluent Bit sidecar
+:end-before: Log and config volumes
 ```
 Mounting the `ray-logs` volume gives the sidecar container access to Ray's logs.
-The `fluentbit-config` volume gives the sidecar access to logging configuration.
+The <nobr>`fluentbit-config`</nobr> volume gives the sidecar access to logging configuration.
 
 ### Putting everything together
 Putting all of the above elements together, we have the following yaml configuration
-for a single-pod RayCluster will a log-processing sidecar:
-```{literalinclude} ../config/ray-cluster.log.yaml
+for a single-pod RayCluster will a log-processing sidecar.
+```{literalinclude} ../configs/ray-cluster.log.yaml
 :language: yaml
 ```
-
 
 ## Deploying a RayCluster with logging CR.
 (kuberay-logging-tldr)=

@@ -1,42 +1,21 @@
-# Minimal configuration for a fluent-bit
-# side-car.
+# Fluent Bit ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: fluentbit-config
 data:
   fluent-bit.conf: |
-    # Tail the Ray log directory.
     [INPUT]
         Name tail
         Path /tmp/ray/session_latest/logs/*
         Tag ray
-        # Include file names in the log records.
         Path_Key true
-        # The target Path /tmp/ray/session_latest/logs/
-        # doesn't exist initially. (ray needs to create it this directory first)
-        # Shorten the refresh interval from the default 60
-        # so that we can see the logs sooner.
         Refresh_Interval 5
-    # Output to stdout.
     [OUTPUT]
         Name stdout
         Match *
-# With the above configuration, Fluent Bit will tail all Ray logs and print them to stdout.
-# For log aggregation, you can either scrape from the sidecar's stdout or
-# specify an [OUTPUT] clause that routs logs to any of Fluent Bit's supported
-# output destinations (S3, elastic search, ...)
-# See Fluent Bit's documentation for details.
-# Besides Fluent Bit, there are another number of other log processing options --
-# e.g. Fluentd, Promtail, Filebeat, ...
-# In place of the sidecar pattern for log aggregation, you could instead collect logs
-# at the host level using a daemonset -- for this to work, you would mount
-# the Ray container's /tmp/ray to the appropriate hostPath.
 ---
-# The Ray container resource requests and limits in this config are too small for production!
-# For examples with more realistic resource configuration, see
-# ray-cluster.complete.large.yaml and
-# ray-cluster.autoscaler.large.yaml.
+# RayCluster CR with a FluentBit sidecar
 apiVersion: ray.io/v1alpha1
 kind: RayCluster
 metadata:
@@ -72,9 +51,10 @@ spec:
           volumeMounts:
           - mountPath: /tmp/ray
             name: ray-logs
+        # Fluent Bit sidecar
         - name: fluentbit
           image: fluent/fluent-bit:1.9.6
-          # Thes resource requests for Fluent Bit should be sufficient in production.
+          # These resource requests for Fluent Bit should be sufficient in production.
           resources:
             requests:
               cpu: 100m
@@ -82,19 +62,16 @@ spec:
             limits:
               cpu: 100m
               memory: 128Mi
-          # Access the Ray container's logs.
           volumeMounts:
           - mountPath: /tmp/ray
             name: ray-logs
-          # Access the configMap configuring Fluent Bit.
           - mountPath: /fluent-bit/etc/fluent-bit.conf
-          # This file is where Fluent Bit looks for its configuration.
             subPath: fluent-bit.conf
             name: fluentbit-config
+        # Log and config volumes
         volumes:
         - name: ray-logs
           emptyDir: {}
-        # Mount the configMap containing Fluent Bit configuration.
         - name: fluentbit-config
           configMap:
             name: fluentbit-config
