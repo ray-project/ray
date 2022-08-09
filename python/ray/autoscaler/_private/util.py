@@ -700,6 +700,11 @@ Usage:
 
 Demands:
 {demand_report}"""
+
+    node_availability_summary_str = str(autoscaler_summary.node_availability_summary)
+    if node_availability_summary_str:
+        formatted_output += "\n" + node_availability_summary_str
+        pass
     return formatted_output
 
 

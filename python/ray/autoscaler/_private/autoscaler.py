@@ -57,6 +57,7 @@ from ray.autoscaler._private.util import (
     validate_config,
     with_head_node_ip,
 )
+from ray.autoscaler._private.node_provider_availability_tracker import NodeProviderAvailabilityTracker, NodeAvailabilitySummary
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
@@ -100,6 +101,7 @@ class AutoscalerSummary:
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
+    node_availability_summary: NodeAvailabilitySummary
 
 
 class NonTerminatedNodes:
@@ -208,6 +210,8 @@ class StandardAutoscaler:
         else:
             self.config_reader = config_reader
 
+
+        self.node_provider_availability_tracker = NodeProviderAvailabilityTracker()
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
         # Keep this before self.reset (self.provider needs to be created
@@ -1424,6 +1428,7 @@ class StandardAutoscaler:
             pending_nodes=pending_nodes,
             pending_launches=pending_launches,
             failed_nodes=failed_nodes,
+            node_availability_summary=self.node_provider_availability_tracker.summary(),
         )
 
     def info_string(self):
