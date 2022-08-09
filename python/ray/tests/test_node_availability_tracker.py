@@ -3,7 +3,12 @@ import sys
 import pytest
 
 from ray.autoscaler.node_launch_exception import NodeLaunchException
-from ray.autoscaler._private.node_availability_tracker import NodeProviderAvailabilityTracker, NodeAvailabilitySummary, NodeAvailabilityRecord, UnavailableNodeInformation
+from ray.autoscaler._private.node_availability_tracker import (
+    NodeProviderAvailabilityTracker,
+    NodeAvailabilitySummary,
+    NodeAvailabilityRecord,
+    UnavailableNodeInformation,
+)
 
 
 cur_time = 0
@@ -13,38 +18,42 @@ cur_time = 0
 def tracker() -> NodeProviderAvailabilityTracker:
     global cur_time
     cur_time = 1
+
     def get_time():
         global cur_time
         return cur_time
-    return NodeProviderAvailabilityTracker(timer=get_time, ttl=60*30)
+
+    return NodeProviderAvailabilityTracker(timer=get_time, ttl=60 * 30)
 
 
-def test_basic(tracker : NodeProviderAvailabilityTracker):
-    first_failure = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.")
+def test_basic(tracker: NodeProviderAvailabilityTracker):
+    first_failure = NodeLaunchException(
+        "DontFeelLikeIt", "This seems like a lot of work."
+    )
     tracker.update_node_availability("my-node-a", 0, first_failure)
     assert len(tracker.summary().node_availabilities) == 1
 
 
-def test_expiration(tracker : NodeProviderAvailabilityTracker):
+def test_expiration(tracker: NodeProviderAvailabilityTracker):
     global cur_time
 
     exc = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.")
     tracker.update_node_availability("my-node-a", 1, exc)
     assert len(tracker.summary().node_availabilities) == 1
 
-    cur_time += 60*30 + 1
+    cur_time += 60 * 30 + 1
 
     assert len(tracker.summary().node_availabilities) == 0
 
 
-def test_expiration_after_update(tracker : NodeProviderAvailabilityTracker):
+def test_expiration_after_update(tracker: NodeProviderAvailabilityTracker):
     global cur_time
 
     exc = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.")
     tracker.update_node_availability("my-node-a", 1, exc)
     assert len(tracker.summary().node_availabilities) == 1
 
-    cur_time += 60*30 - 1
+    cur_time += 60 * 30 - 1
 
     tracker.update_node_availability("my-node-a", cur_time, exc)
     assert len(tracker.summary().node_availabilities) == 1
@@ -57,21 +66,21 @@ def test_expiration_after_update(tracker : NodeProviderAvailabilityTracker):
     assert len(tracker.summary().node_availabilities) == 0
 
 
-def test_reinsert_after_expiration(tracker : NodeProviderAvailabilityTracker):
+def test_reinsert_after_expiration(tracker: NodeProviderAvailabilityTracker):
     global cur_time
 
     exc = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.")
     tracker.update_node_availability("my-node-a", 1, exc)
     assert len(tracker.summary().node_availabilities) == 1
 
-    cur_time += 60*30 + 1
+    cur_time += 60 * 30 + 1
 
     assert len(tracker.summary().node_availabilities) == 0
     tracker.update_node_availability("my-node-a", cur_time, exc)
     assert len(tracker.summary().node_availabilities) == 1
 
 
-def test_expire_multiple(tracker : NodeProviderAvailabilityTracker):
+def test_expire_multiple(tracker: NodeProviderAvailabilityTracker):
     """
     Insert A
     Insert B
@@ -96,7 +105,7 @@ def test_expire_multiple(tracker : NodeProviderAvailabilityTracker):
     tracker.update_node_availability("my-node-a", 30, exc)
 
     # This is after B expires
-    cur_time = 60*30 + 11
+    cur_time = 60 * 30 + 11
     assert len(tracker.summary().node_availabilities) == 2
 
     summary = tracker.summary()

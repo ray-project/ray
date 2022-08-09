@@ -1,13 +1,16 @@
-from cachetools import TTLCache
-from dataclasses import dataclass
 import datetime
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple
 
+from cachetools import TTLCache
+
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S,
+)
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
-from ray.autoscaler._private.constants import AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S
 
 @dataclass
 class UnavailableNodeInformation:
@@ -29,7 +32,6 @@ class NodeAvailabilitySummary:
         str, NodeAvailabilityRecord
     ]  # Mapping from node type to node availability record.
 
-
     def __str__(self) -> str:
         return ""
 
@@ -37,34 +39,39 @@ class NodeAvailabilitySummary:
 class NodeProviderAvailabilityTracker:
     """A thread safe, TTL cache of node provider availability. We don't use
     cachetools.TTLCache because we want fine grain control over when entries
-    expire (e.g. insert an entry at a previous point in time). """
-    def __init__(self,
-                 timer : Callable[[], float] = time.time,
-                 ttl : float = AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S
-                 ):
+    expire (e.g. insert an entry at a previous point in time)."""
+
+    def __init__(
+        self,
+        timer: Callable[[], float] = time.time,
+        ttl: float = AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S,
+    ):
         """
         A cache that tracks the availability of nodes and throw away entries which have grown too stale.
 
         Args:
-          timer (Callable[[], float]): A function that returns the current time in seconds.
-          ttl (float): The ttl from the insertion timestamp of an entry.
+          timer: A function that returns the current time in seconds.
+          ttl: The ttl from the insertion timestamp of an entry.
         """
         self.timer = timer
         self.ttl = ttl
         # Mapping from node type to (eviction_time, record)
-        self.store : Dict[str, Tuple[float, NodeAvailabilityRecord]] = {}
+        self.store: Dict[str, Tuple[float, NodeAvailabilityRecord]] = {}
         # A global lock to simplify thread safety handling.
         self.lock = threading.RLock()
 
     def _unsafe_update_node_availability(
-            self, node_type : str, timestamp: int, node_launch_exception: Optional[NodeLaunchException]
+        self,
+        node_type: str,
+        timestamp: int,
+        node_launch_exception: Optional[NodeLaunchException],
     ) -> None:
         if node_launch_exception is None:
             record = NodeAvailabilityRecord(
                 node_type=node_type,
                 is_available=True,
                 last_checked_timestamp=timestamp,
-                unavailable_node_information=None
+                unavailable_node_information=None,
             )
         else:
             info = UnavailableNodeInformation(
@@ -75,7 +82,7 @@ class NodeProviderAvailabilityTracker:
                 node_type=node_type,
                 is_available=False,
                 last_checked_timestamp=timestamp,
-                unavailable_node_information=None
+                unavailable_node_information=None,
             )
 
         if node_type in self.store:
@@ -87,21 +94,35 @@ class NodeProviderAvailabilityTracker:
         self._remove_old_entries()
 
     def update_node_availability(
-            self, node_type : str, timestamp: int, node_launch_exception: Optional[NodeLaunchException]
+        self,
+        node_type: str,
+        timestamp: int,
+        node_launch_exception: Optional[NodeLaunchException],
     ) -> None:
         """
         Update the availability and details of a single ndoe type.
 
         Args:
-          node_type (str): The node type.
-          timestamp (float): The timestamp that this information is accurate as of.
+          node_type: The node type.
+          timestamp: The timestamp that this information is accurate as of.
+          node_launch_exception: Details about why the node launch failed. If empty, the node type will be considered available.
         """
         with self.lock:
-            self._unsafe_update_node_availability(node_type, timestamp, node_launch_exception)
+            self._unsafe_update_node_availability(
+                node_type, timestamp, node_launch_exception
+            )
 
     def summary(self) -> NodeAvailabilitySummary:
+        """
+        Returns a summary of node availabilities and their staleness.
+
+        Returns
+            A summary of node availabilities and their staleness.
+        """
         self._remove_old_entries()
-        return NodeAvailabilitySummary({node_type : record for node_type, (_, record) in self.store.items()})
+        return NodeAvailabilitySummary(
+            {node_type: record for node_type, (_, record) in self.store.items()}
+        )
 
     def _remove_old_entries(self):
         """Remove any expired entries from the cache. Note that python
