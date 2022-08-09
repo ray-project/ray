@@ -51,7 +51,7 @@ We now discuss this configuration and show how to deploy it.
 
 ## Configure log processing
 The first step is to create a ConfigMap with configuration
-for FluentBit.
+for Fluent Bit.
 
 Here is a minimal ConfigMap which tells a Fluent Bit sidecar to
 * Tail Ray logs.
