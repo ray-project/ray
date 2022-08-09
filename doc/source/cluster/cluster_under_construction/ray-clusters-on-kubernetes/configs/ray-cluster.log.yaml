@@ -1,0 +1,77 @@
+# Fluent Bit ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentbit-config
+data:
+  fluent-bit.conf: |
+    [INPUT]
+        Name tail
+        Path /tmp/ray/session_latest/logs/*
+        Tag ray
+        Path_Key true
+        Refresh_Interval 5
+    [OUTPUT]
+        Name stdout
+        Match *
+---
+# RayCluster CR with a FluentBit sidecar
+apiVersion: ray.io/v1alpha1
+kind: RayCluster
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: raycluster-complete-logs
+spec:
+  rayVersion: '2.0.0'
+  headGroupSpec:
+    serviceType: ClusterIP
+    rayStartParams:
+      dashboard-host: '0.0.0.0'
+      block: 'true'
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray:2.0.0
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","ray stop"]
+          # This config is meant for demonstration purposes only.
+          # Use larger Ray containers in production!
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1G"
+            requests:
+              cpu: "1"
+              memory: "1G"
+          # Share logs with Fluent Bit
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-logs
+        # Fluent Bit sidecar
+        - name: fluentbit
+          image: fluent/fluent-bit:1.9.6
+          # These resource requests for Fluent Bit should be sufficient in production.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+          - mountPath: /tmp/ray
+            name: ray-logs
+          - mountPath: /fluent-bit/etc/fluent-bit.conf
+            subPath: fluent-bit.conf
+            name: fluentbit-config
+        # Log and config volumes
+        volumes:
+        - name: ray-logs
+          emptyDir: {}
+        - name: fluentbit-config
+          configMap:
+            name: fluentbit-config

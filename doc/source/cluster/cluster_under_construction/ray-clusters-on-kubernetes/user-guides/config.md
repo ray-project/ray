@@ -27,12 +27,14 @@ metadata:
   name: raycluster-complete
 spec:
   rayVersion: "2.0.0"
-  enableInTreeAutoscaling: True
+  enableInTreeAutoscaling: true
   autoscalerOptions:
      ...
   headGroupSpec:
+    serviceType: ClusterIP # Options are ClusterIP, NodePort, and LoadBalancer
+    enableIngress: false # Optional
     rayStartParams:
-      block: True
+      block: true
       dashboard-host: "0.0.0.0"
       ...
     template: # Pod template
@@ -48,13 +50,20 @@ spec:
                 requests:
                   cpu: 14
                   memory: 54Gi
-              ports:
+              # Keep this preStop hook in each Ray container config.
+              lifecycle:
+                preStop:
+                  exec:
+                    command: ["/bin/sh","-c","ray stop"]
+              ports: # Optional service port overrides
               - containerPort: 6379
                 name: gcs
               - containerPort: 8265
                 name: dashboard
               - containerPort: 10001
                 name: client
+              - containerPort: 8000
+                name: serve
                 ...
   workerGroupSpecs:
   - groupName: small-group
@@ -64,6 +73,12 @@ spec:
     rayStartParams:
         ...
     template: # Pod template
+      spec:
+        # Keep this initContainer in each workerGroup template.
+        initContainers:
+        - name: init-myservice
+          image: busybox:1.28
+          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
         ...
   # Another workerGroup
   - groupName: medium-group
@@ -75,7 +90,8 @@ spec:
 
 The rest of this guide will discuss the `RayCluster` CR's config fields.
 
-## The Ray version
+(kuberay-config-ray-version)=
+## The Ray Version
 The field `rayVersion` specifies the version of Ray used in the Ray cluster.
 The `rayVersion` is used to fill default values for certain config fields.
 The Ray container images specified in the RayCluster CR should carry
@@ -112,38 +128,6 @@ The bulk of the configuration for a `headGroupSpec` or
 template which determines the configuration for the pods in the group.
 Here are some of the subfields of the pod `template` to pay attention to:
 
-#### ports
-Under `headGroupSpec`, the Ray head container should list the ports for the services it exposes.
-```yaml
-ports:
-- containerPort: 6379
-name: gcs
-- containerPort: 8265
-name: dashboard
-- containerPort: 10001
-name: client
-```
-The KubeRay operator will configure a Kubernetes Service exposing these ports.
-The name of the configured Kubernetes Service is the name, `metadata.name`, of the RayCluster
-followed by the suffix\
-`-head-svc`. For the example CR given on this page, the name of
-the head service will be\
-`raycluster-example-head-svc`. Kubernetes networking (`kube-dns`) then allows us to address
-the Ray head's services using the name `raycluster-example-head-svc`.
-For example, the Ray Client server can be accessed from a pod
-in the same Kubernetes namespace using
-```python
-ray.init("ray://raycluster-example-head-svc:10001")
-```
-The Ray Client server can be accessed from a pod in another namespace using
-```python
-ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
-```
-(This assumes the Ray cluster was deployed into the default Kuberentes namespace.
-If the Ray cluster is deployed in a non-default namespace, use that namespace in
-place of `default`.)
-Ray Client and other services can be exposed outside the Kubernetes cluster
-using port-forwarding or an ingress. See {ref}`this guide <kuberay-networking>` for more details.
 
 #### resources
 It’s important to specify container CPU and memory requests and limits for
@@ -258,12 +242,85 @@ The field `rayStartParams.resources` should only be used for custom resources. T
 `CPU`, `GPU`, and `memory` are forbidden. If you need to specify overrides for those resource
 fields, use the Ray start parameters `num-cpus`, `num-gpus`, or `memory`.
 
+(kuberay-networking)=
+## Services and Networking
+### The Ray head service.
+The KubeRay operator automatically configures a Kubernetes Service exposing the default ports
+for several services of the Ray head pod, including
+- Ray Client (default port 10001)
+- Ray Dashboard (default port 8265)
+- Ray GCS server (default port 6379)
+- Ray Serve (default port 8000)
+
+The name of the configured Kubernetes Service is the name, `metadata.name`, of the RayCluster
+followed by the suffix <nobr>`head-svc`</nobr>. For the example CR given on this page, the name of
+the head service will be
+<nobr>`raycluster-example-head-svc`</nobr>. Kubernetes networking (`kube-dns`) then allows us to address
+the Ray head's services using the name <nobr>`raycluster-example-head-svc`</nobr>.
+For example, the Ray Client server can be accessed from a pod
+in the same Kubernetes namespace using
+```python
+ray.init("ray://raycluster-example-head-svc:10001")
+```
+The Ray Client server can be accessed from a pod in another namespace using
+```python
+ray.init("ray://raycluster-example-head-svc.default.svc.cluster.local:10001")
+```
+(This assumes the Ray cluster was deployed into the default Kuberentes namespace.
+If the Ray cluster is deployed in a non-default namespace, use that namespace in
+place of `default`.)
+
+### ServiceType, Ingresses
+Ray Client and other services can be exposed outside the Kubernetes cluster
+using port-forwarding or an ingress.
+The simplest way to access the Ray head's services is to use port-forwarding.
+
+Other means of exposing the head's services outside the cluster may require using
+a service of type LoadBalancer or NodePort. Set `headGroupSpec.serviceType`
+to the appropriate type for your application.
+
+You may wish to set up an ingress to expose the Ray head's services outside the cluster.
+If you set the optional boolean field `headGroupSpec.enableIngress` to `true`,
+the KubeRay operator will create an ingress for your Ray cluster. See the [KubeRay documentation][IngressDoc]
+for details. However, it is up to you to set up an ingress controller.
+Moreover, the ingress created by the KubeRay operator [might not be compatible][IngressIssue] with your network setup.
+It is valid to omit the `headGroupSpec.enableIngress` field and configure an ingress object yourself.
+
+
+### Specifying non-default ports.
+If you wish to override the ports exposed by the Ray head service, you may do so by specifying
+the Ray head container's `ports` list, under `headGroupSpec`.
+Here is an example of a list of non-default ports for the Ray head service.
+```yaml
+ports:
+- containerPort: 6380
+  name: gcs
+- containerPort: 8266
+  name: dashboard
+- containerPort: 10002
+  name: client
+```
+If the head container's `ports` list is specified, the Ray head service will expose precisely
+the ports in the list. In the above example, the head service will expose just three ports;
+in particular there will be no port exposed for Ray Serve.
+
+For the Ray head to actually use the non-default ports specified in the ports list,
+you must also specify the relevant `rayStartParams`. For the above example,
+```yaml
+rayStartParams:
+  port: "6380"
+  dashboard-port: "8266"
+  ray-client-server-port: "10002"
+  ...
+```
+
 
 (kuberay-autoscaling-config)=
-## Autoscaler configuration
+## Autoscaler Configuration
 ```{note}
 If you are deciding whether to use autoscaling for a particular Ray application,
-check out this {ref}`discussion<autoscaler-pro-con>`.
+check out this {ref}`discussion<autoscaler-pro-con>`. Note that autoscaling is
+supported only with Ray versions at least as new as Ray 1.11.0.
 ```
 To enable the optional Ray Autoscaler support, set `enableInTreeAutoscaling:true`.
 The KubeRay operator will then automatically configure an autoscaling sidecar container
@@ -299,9 +356,9 @@ for a {ref}`set period of time<kuberay-idle-timeout>`. In this context, "resourc
 (such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
 Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
 
-The autoscaler scales Ray worker pods down by adding the Ray pods' names to the `RayCluster` CR's
-`scaleStrategy.workersToDelete` list and decrementing the `replicas` field of the relevant
-`workerGroupSpec`.
+To scale down Ray pods of a given `workerGroup`, the autoscaler
+adds the Ray pods' names to the relevant `workerGroupSpec`'s
+`scaleStrategy.workersToDelete` list and decrements the `replicas` field.
 
 #### Manually scaling
 You may manually adjust a `RayCluster`'s scale by editing the `replicas` or `workersToDelete` fields.
@@ -383,3 +440,36 @@ environment variables, for debugging and development purposes.
 These fields should be formatted following the
 [Kuberentes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
 for container environment variables.
+
+(kuberay-config-miscellaneous)=
+## Pod and container lifecyle: preStop hooks and initContainers
+There are two pieces of pod configuration that should always be included
+in the RayCluster CR. Future versions of KubeRay may configure these elements automatically.
+
+## initContainer
+It is required for the configuration of each `workerGroupSpec`'s pod template to include
+the following block:
+```yaml
+initContainers:
+- name: init-myservice
+  image: busybox:1.28
+  command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
+```
+This instructs the worker pod to wait for creation of the Ray head service. The worker's `ray start`
+command will use this service to connect to the Ray head.
+
+(It is not required to include this init container in the Ray head pod's configuration.)
+
+## preStopHook
+It is recommended for every Ray container's configuration
+to include the following blocking block:
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command: ["/bin/sh","-c","ray stop"]
+```
+To ensure graceful termination, `ray stop` is executed prior to the Ray pod's termination.
+
+[IngressDoc]: https://ray-project.github.io/kuberay/guidance/ingress/
+[IngressIssue]: https://github.com/ray-project/kuberay/issues/441

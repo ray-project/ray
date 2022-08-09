@@ -15,9 +15,8 @@ different Ray versions in the same Kubernetes cluster.
 ```{eval-rst}
 .. image:: /cluster/cluster_under_construction/ray-clusters-on-kubernetes/images/ray_on_kubernetes.png
     :align: center
-
 ..
-  https://docs.google.com/drawings/d/1E3FQgWWLuj8y2zPdKXjoWKrfwgYXw6RV_FWRwK8dVlg/edit
+  Find source document here: https://docs.google.com/drawings/d/1E3FQgWWLuj8y2zPdKXjoWKrfwgYXw6RV_FWRwK8dVlg/edit
 ```
 
 
@@ -56,7 +55,7 @@ The Ray docs present all the information you need to start running Ray workloads
     +++
     .. link-button:: kuberay-examples
         :type: ref
-        :text: Example workloads
+        :text: Try example workloads
         :classes: btn-outline-info btn-block
     ---
     **User Guides**
@@ -67,7 +66,18 @@ The Ray docs present all the information you need to start running Ray workloads
     +++
     .. link-button:: kuberay-guides
         :type: ref
-        :text: User Guides
+        :text: Read the User Guides
+        :classes: btn-outline-info btn-block
+    ---
+    **API Reference**
+    ^^^
+
+    Find API references on RayCluster configuration.
+
+    +++
+    .. link-button:: kuberay-api-reference
+        :type: ref
+        :text: Check API references
         :classes: btn-outline-info btn-block
 ```
 ## The KubeRay project
