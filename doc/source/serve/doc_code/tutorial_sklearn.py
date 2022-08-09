@@ -8,6 +8,7 @@ import numpy as np
 import os
 import tempfile
 from starlette.requests import Request
+from typing import Dict
 
 from sklearn.datasets import load_iris
 from sklearn.ensemble import GradientBoostingClassifier
@@ -58,7 +59,7 @@ class BoostingModel:
         with open(label_path) as f:
             self.label_list = json.load(f)
 
-    async def __call__(self, starlette_request: Request):
+    async def __call__(self, starlette_request: Request) -> Dict:
         payload = await starlette_request.json()
         print("Worker: received starlette request with data", payload)
 

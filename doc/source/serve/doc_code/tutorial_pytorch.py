@@ -5,6 +5,7 @@ from ray import serve
 from io import BytesIO
 from PIL import Image
 from starlette.requests import Request
+from typing import Dict
 
 import torch
 from torchvision import transforms
@@ -30,7 +31,7 @@ class ImageModel:
             ]
         )
 
-    async def __call__(self, starlette_request: Request):
+    async def __call__(self, starlette_request: Request) -> Dict:
         image_payload_bytes = await starlette_request.body()
         pil_image = Image.open(BytesIO(image_payload_bytes))
         print("[1/3] Parsed image data: {}".format(pil_image))

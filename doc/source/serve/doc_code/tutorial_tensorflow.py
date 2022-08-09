@@ -6,6 +6,7 @@ import os
 import tempfile
 import numpy as np
 from starlette.requests import Request
+from typing import Dict
 
 import tensorflow as tf
 # __doc_import_end__
@@ -55,7 +56,7 @@ class TFMnistModel:
         self.model_path = model_path
         self.model = tf.keras.models.load_model(model_path)
 
-    async def __call__(self, starlette_request: Request):
+    async def __call__(self, starlette_request: Request) -> Dict:
         # Step 1: transform HTTP request -> tensorflow input
         # Here we define the request schema to be a json array.
         input_array = np.array((await starlette_request.json())["array"])
