@@ -206,8 +206,7 @@ class Simulator:
             provider=self.autoscaler.provider,
             pending=self.autoscaler.pending_launches,
             event_summarizer=EventSummarizer(),
-            node_provider_availability_tracker=\
-                self.autoscaler.node_provider_availability_tracker,
+            node_provider_availability_tracker=self.autoscaler.node_provider_availability_tracker,
             queue=self.autoscaler.launch_queue,
             index=0,
             node_types=self.autoscaler.available_node_types,

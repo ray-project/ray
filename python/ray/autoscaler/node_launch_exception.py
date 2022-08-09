@@ -4,6 +4,10 @@ from ray.util.annotations import DeveloperAPI
 
 @DeveloperAPI
 class NodeLaunchException(Exception):
+    """A structured exception that can be thrown by a node provider during a
+    `create_node` call to pass additional information for observability.
+    """
+
     def __init__(
         self,
         category: str,
