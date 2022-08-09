@@ -164,7 +164,7 @@ podTypes:
 operatorImage: rayproject/ray:2.0.0
 ```
 
-### KubeRay values.yaml
+### KubeRay RayCluster CR
 ```yaml
 apiVersion: ray.io/v1alpha1
 kind: RayCluster
