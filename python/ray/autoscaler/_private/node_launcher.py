@@ -6,10 +6,12 @@ import time
 import traceback
 from typing import Any, Dict, Optional
 
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeProviderAvailabilityTracker,
+)
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import hash_launch_conf
 from ray.autoscaler.node_launch_exception import NodeLaunchException
-from ray.autoscaler._private.node_provider_availability_tracker import NodeProviderAvailabilityTracker
 from ray.autoscaler.tags import (
     NODE_KIND_WORKER,
     STATUS_UNINITIALIZED,
@@ -41,7 +43,7 @@ class BaseNodeLauncher:
         provider,
         pending,
         event_summarizer,
-        node_provider_availability_tracker : NodeProviderAvailabilityTracker,
+        node_provider_availability_tracker: NodeProviderAvailabilityTracker,
         prom_metrics=None,
         node_types=None,
         index=None,
@@ -80,7 +82,9 @@ class BaseNodeLauncher:
             )
             logger.exception("Launch failed")
         else:
-            self.node_provider_availability_tracker.update_node_availability(node_type, node_launch_start_time, None)
+            self.node_provider_availability_tracker.update_node_availability(
+                node_type, node_launch_start_time, None
+            )
         finally:
             self.pending.dec(node_type, count)
             self.prom_metrics.pending_nodes.set(self.pending.value)
@@ -123,7 +127,9 @@ class BaseNodeLauncher:
                 node_config, node_tags, count, resources
             )
         except NodeLaunchException as node_launch_exception:
-            self.node_provider_availability_tracker.update_node_availability(node_type, launch_start_time, node_launch_exception)
+            self.node_provider_availability_tracker.update_node_availability(
+                node_type, launch_start_time, node_launch_exception
+            )
             # Do some special handling if we have a structured error.
             self.log(
                 f"Failed to launch {node_type}: "

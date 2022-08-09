@@ -114,8 +114,8 @@ class NodeProviderAvailabilityTracker:
         timer: Callable[[], float] = time.time,
         ttl: float = AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S,
     ):
-        """
-        A cache that tracks the availability of nodes and throw away entries which have grown too stale.
+        """ A cache that tracks the availability of nodes and throw away
+        entries which have grown too stale.
 
         Args:
           timer: A function that returns the current time in seconds.
@@ -175,8 +175,8 @@ class NodeProviderAvailabilityTracker:
         Args:
           node_type: The node type.
           timestamp: The timestamp that this information is accurate as of.
-          node_launch_exception: Details about why the node launch failed. If empty, the node type will be considered available.
-        """
+          node_launch_exception: Details about why the node launch failed. If
+            empty, the node type will be considered available. """
         with self.lock:
             self._unsafe_update_node_availability(
                 node_type, timestamp, node_launch_exception
