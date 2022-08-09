@@ -40,7 +40,8 @@ See the [Configuration page](../../ray-core/configure.html#configuring-ray) for 
 
 ### Troubleshooting
 
-If you see `Unable to connect to GCS at ...`, this means the head node is inaccessible at the given `--address`. Some possible causes include: 
+If you see `Unable to connect to GCS at ...`, this means the head node is inaccessible at the given `--address`.
+Some possible causes include:
 
 - the head node is not actually running;
 - a different version of Ray is running at the specified address;
