@@ -56,6 +56,8 @@ AUTOSCALER_MAX_NODES_TRACKED = 1500
 
 AUTOSCALER_MAX_FAILURES_DISPLAYED = 20
 
+AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S = env_integer("AUTOSCALER_NODE_AVAILABILITY_MAX_STALENESS_S", 30 * 60)
+
 # The maximum allowed resource demand vector size to guarantee the resource
 # demand scheduler bin packing algorithm takes a reasonable amount of time
 # to run.
