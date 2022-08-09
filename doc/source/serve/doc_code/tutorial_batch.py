@@ -2,11 +2,8 @@
 # __doc_import_begin__
 from typing import List
 
-import numpy as np
 from starlette.requests import Request
 from transformers import pipeline, Pipeline
-from datasets import load_dataset
-import random
 
 from ray import serve
 # __doc_import_end__
@@ -24,7 +21,7 @@ class BatchTextGenerator:
         print("Our input array has length:", len(inputs))
 
         results = self.model(inputs)
-        return [result[0]['generated_text'] for result in results]
+        return [result[0]["generated_text"] for result in results]
 
     async def __call__(self, request: Request):
         return await self.handle_batch(request.query_params["text"])
