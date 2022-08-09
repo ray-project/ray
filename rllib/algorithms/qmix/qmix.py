@@ -273,8 +273,6 @@ class QMix(SimpleQ):
                 min_steps=self.config["train_batch_size"],
                 count_by_agent_steps=self._by_agent_steps,
             )
-            if train_batch is None:
-                return {}
 
             # Learn on the training batch.
             # Use simple optimizer (only for multi-agent or tf-eager; all other
