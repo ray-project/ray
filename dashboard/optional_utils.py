@@ -261,6 +261,10 @@ def init_ray_and_catch_exceptions() -> Callable:
                     try:
                         address = self.get_gcs_address()
                         logger.info(f"Connecting to ray with address={address}")
+                        # Set the gcs rpc timeout to shorter
+                        os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
+                            dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
+                        )
                         # Init ray without logging to driver
                         # to avoid infinite logging issue.
                         ray.init(
