@@ -748,7 +748,7 @@ cdef execute_task(
                                         core_worker.get_current_task_id()),
                                     exc_info=True)
                     else:
-                        logger.info("Task failed with unretryable exception:"
+                        logger.debug("Task failed with unretryable exception:"
                                     " {}.".format(
                                         core_worker.get_current_task_id()),
                                     exc_info=True)
