@@ -200,7 +200,7 @@ def test_summary_string(tracker: NodeProviderAvailabilityTracker):
 
     summary = tracker.summary()
 
-    summary_str = str(summary)
+    summary_str = summary.summary_string(separator_len=60)
 
     expected = """
 Node Availability

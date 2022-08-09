@@ -55,10 +55,7 @@ class NodeAvailabilitySummary:
 
         return NodeAvailabilitySummary(node_availabilities=parsed)
 
-    def __eq__(self, other: "NodeAvailabilitySummary"):
-        return self.node_availabilities == other.node_availabilities
-
-    def __str__(self) -> str:
+    def summary_string(self, separator_len : int) -> str:
         if self:
             formatted_lines = []
             sorted_keys = sorted(
@@ -86,12 +83,9 @@ class NodeAvailabilitySummary:
                 )
                 formatted_lines.append(formatted_line)
 
-            assert formatted_lines
-            longest_line_length = len(max(formatted_lines, key=len))
-
             return (
                 "Node Availability\n"
-                + ("-" * longest_line_length)
+                + ("-" * separator_len)
                 + "\n"
                 + "Node types:\n"
                 + ("\n".join(formatted_lines))
@@ -99,6 +93,10 @@ class NodeAvailabilitySummary:
 
         else:
             return ""
+        pass
+
+    def __eq__(self, other: "NodeAvailabilitySummary"):
+        return self.node_availabilities == other.node_availabilities
 
     def __bool__(self) -> bool:
         return bool(self.node_availabilities)
