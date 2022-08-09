@@ -12,7 +12,7 @@ Ray Client: Interactive Development
 
 The Ray Client is an API that connects a Python script to a **remote** Ray cluster. Effectively, it allows you to leverage a remote Ray cluster just like you would with Ray running on your local machine.
 
-By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you can connect from your laptop (or anywhere) directly to a remote cluster and scale-out your Ray code, while maintaining the ability to develop interactively in a Python shell. **This will only work with Ray 1.5+.** If you're using an older version of ray, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_
+By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you can connect from your laptop (or anywhere) directly to a remote cluster and scale-out your Ray code, while maintaining the ability to develop interactively in a Python shell. **This will only work with Ray 1.5+.**
 
 
 .. code-block:: python
@@ -21,8 +21,6 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
    import ray
 
    # Starting the Ray client. This connects to a remote Ray cluster.
-   # If you're using a version of Ray prior to 1.5, use the 1.4.1 example
-   # instead: https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html
    ray.init("ray://<head_node_host>:10001")
 
    # Normal Ray code follows
@@ -237,7 +235,7 @@ Similarly, the minor Python (e.g., 3.6 vs 3.7) must match between the client and
 Starting a connection on older Ray versions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you encounter ``socket.gaierror: [Errno -2] Name or service not known`` when using ``ray.init("ray://...")`` then you may be on a version of Ray prior to 1.5 that does not support starting client connections through ``ray.init``. If this is the case, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_ for Ray Client.
+If you encounter ``socket.gaierror: [Errno -2] Name or service not known`` when using ``ray.init("ray://...")`` then you may be on a version of Ray prior to 1.5 that does not support starting client connections through ``ray.init``.
 
 Connection through the Ingress
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
