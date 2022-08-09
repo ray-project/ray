@@ -1,4 +1,4 @@
-# Launching a Cluser On-Premises
+# Launching an On-Premise Cluster
 
 This document describes how to set up an on-premises Ray cluster, i.e., to run Ray on bare metal machines, or in a private cloud. We provide two ways to start an on-premises cluster.
 
