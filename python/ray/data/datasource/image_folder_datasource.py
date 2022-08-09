@@ -228,40 +228,43 @@ class _ImageFolderDatasourceReader(_FileBasedDatasourceReader):
 
     def _estimate_files_encoding_ratio(self) -> float:
         """Return an estimate of the image files encoding ratio."""
-        # Prefetch one image file into memory, and use it to estimate data size for
-        # all images, because all images are homogeneous with same size after resizing.
-        # Resizing is always enforced when reading every image in ImageFolderDatasource
-        # and we have to prefetch one image file into memory, to get 3rd dimension of
-        # image (RGB or grayscale).
-        import pandas as pd
-
         start_time = time.perf_counter()
-
         # Filter out empty file to avoid noise.
         non_empty_path_and_size = list(
             filter(lambda p: p[1] > 0, zip(self._paths, self._file_sizes))
         )
-        if len(non_empty_path_and_size) == 0:
+        num_files = len(non_empty_path_and_size)
+        if num_files == 0:
             logger.warn(
                 "All input image files are empty. "
                 "Use on-disk file size to estimate images in-memory size."
             )
             return IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
 
-        # Prefetch first non-empty image file to do estimation.
-        path = non_empty_path_and_size[0][0]
-        single_image_block: pd.DataFrame = self._delegate._read_file(
-            self._filesystem.open_input_stream(path),
-            path,
-            self._reader_args.get("root"),
-            self._reader_args.get("size"),
-        )
-        single_image_memory_size = single_image_block.memory_usage(deep=True).sum()
-        total_estimated_memory_size = single_image_memory_size * len(
-            non_empty_path_and_size
-        )
-        total_file_size = sum(p[1] for p in non_empty_path_and_size)
-        ratio = total_estimated_memory_size / total_file_size
+        size = self._reader_args.get("size")
+        mode = self._reader_args.get("mode")
+        if size is not None and mode is not None:
+            # Use image size and mode to calculate data size for all images,
+            # because all images are homogeneous with same size after resizing.
+            # Resizing is enforced when reading every image in ImageFolderDatasource
+            # when `size` argument is provided.
+            if mode in ["1", "L", "P"]:
+                dimension = 1
+            elif mode in ["RGB", "YCbCr", "LAB", "HSV"]:
+                dimension = 3
+            elif mode in ["RGBA", "CMYK", "I", "F"]:
+                dimension = 4
+            else:
+                logger.warn(f"Found unknown image mode: {mode}.")
+                return IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
+            height, width = size
+            single_image_size = height * width * dimension
+            total_estimated_size = single_image_size * num_files
+            total_file_size = sum(p[1] for p in non_empty_path_and_size)
+            ratio = total_estimated_size / total_file_size
+        else:
+            # TODO(chengsu): sample images to estimate data size
+            ratio = IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT
 
         sampling_duration = time.perf_counter() - start_time
         if sampling_duration > 5:

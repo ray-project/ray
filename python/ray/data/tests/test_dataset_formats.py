@@ -2960,15 +2960,18 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize(
-    "image_size,expected_size,expected_ratio",
-    [(64, 30000, 5), (16, 2400, 0.5)],
+    "image_size,image_mode,expected_size,expected_ratio",
+    [(64, "RGB", 30000, 4), (32, "L", 3500, 0.5), (256, "RGBA", 750000, 85)],
 )
 def test_image_folder_reader_estimate_data_size(
-    ray_start_regular_shared, image_size, expected_size, expected_ratio
+    ray_start_regular_shared, image_size, image_mode, expected_size, expected_ratio
 ):
-    root = os.path.join(os.path.dirname(__file__), "image-folder")
+    root = "example://image-folders/different-sizes"
     ds = ray.data.read_datasource(
-        ImageFolderDatasource(), root=root, size=(image_size, image_size)
+        ImageFolderDatasource(),
+        root=root,
+        size=(image_size, image_size),
+        mode=image_mode,
     )
 
     data_size = ds.size_bytes()
@@ -2987,6 +2990,7 @@ def test_image_folder_reader_estimate_data_size(
         partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
         root=root,
         size=(image_size, image_size),
+        mode=image_mode,
     )
     assert (
         reader._encoding_ratio >= expected_ratio
