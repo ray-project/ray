@@ -308,11 +308,6 @@ parts:
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/lsf
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/index
                 title: Running Jobs
-                sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-cli
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-sdk
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-rest
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/ray-client
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/index
               title: Examples
               sections:
