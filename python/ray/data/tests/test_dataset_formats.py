@@ -3004,10 +3004,9 @@ def test_csv_read_filter_no_file(shutdown_only, tmp_path):
     path = os.path.join(str(tmp_path), "test.parquet")
     pq.write_table(table, path)
 
-    error_message = "Not found any input file to read from"
-    with pytest.raises(ValueError) as e:
+    error_message = "No input files found to read"
+    with pytest.raises(ValueError, match=error_message):
         ray.data.read_csv(path)
-    assert error_message in str(e.value)
 
 
 class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):

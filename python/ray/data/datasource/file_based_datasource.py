@@ -357,7 +357,7 @@ class _FileBasedDatasourceReader(Reader):
             self._file_sizes = [path_to_size[p] for p in self._paths]
             if len(self._paths) == 0:
                 raise ValueError(
-                    "Not found any input file to read from. Please double check "
+                    "No input files found to read. Please double check that "
                     "'partition_filter' field is set properly."
                 )
 
