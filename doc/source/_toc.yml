@@ -295,11 +295,6 @@ parts:
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/installing-ray
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/index
                 title: Launching Clusters
-                sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/aws
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/azure
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/gcp
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/add-your-own-cloud-provider
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-ray-cluster-on-prem
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/monitoring-and-observing-ray-cluster
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/large-cluster-best-practices
