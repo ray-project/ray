@@ -751,10 +751,10 @@ py_test(
 )
 
 py_test(
-    name = "test_worker_failures",
-    tags = ["team:rllib", "tests_dir", "tests_dir_W"],
+    name = "tests/test_worker_failures",
+    tags = ["team:rllib", "tests_dir", "algorithms_dir_generic"],
     size = "large",
-    srcs = ["tests/test_worker_failures.py"]
+    srcs = ["algorithms/tests/test_worker_failures.py"]
 )
 
 py_test(
