@@ -2998,7 +2998,7 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     assert ds.to_pandas().equals(expected_df)
 
 
-def test_csv_read_filter_no_file(ray_start_regular_shared, tmp_path):
+def test_csv_read_filter_no_file(shutdown_only, tmp_path):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     table = pa.Table.from_pandas(df)
     path = os.path.join(str(tmp_path), "test.parquet")
