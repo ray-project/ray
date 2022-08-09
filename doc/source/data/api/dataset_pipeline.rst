@@ -5,74 +5,74 @@ DatasetPipeline API
 
 .. autoclass:: ray.data.dataset_pipeline.DatasetPipeline
 
-.. tabbed:: Basic Transformations
+**Basic Transformations**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.DatasetPipeline.map
-        ray.data.DatasetPipeline.map_batches
-        ray.data.DatasetPipeline.flat_map
-        ray.data.DatasetPipeline.foreach_window
-        ray.data.DatasetPipeline.filter
-        ray.data.DatasetPipeline.add_column
-        ray.data.DatasetPipeline.drop_columns
+    ray.data.DatasetPipeline.map
+    ray.data.DatasetPipeline.map_batches
+    ray.data.DatasetPipeline.flat_map
+    ray.data.DatasetPipeline.foreach_window
+    ray.data.DatasetPipeline.filter
+    ray.data.DatasetPipeline.add_column
+    ray.data.DatasetPipeline.drop_columns
 
-.. tabbed:: Sorting, Shuffling, Repartitioning
+**Sorting, Shuffling, Repartitioning**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.DatasetPipeline.sort_each_window
-        ray.data.DatasetPipeline.random_shuffle_each_window
-        ray.data.DatasetPipeline.randomize_block_order_each_window
-        ray.data.DatasetPipeline.repartition_each_window
+    ray.data.DatasetPipeline.sort_each_window
+    ray.data.DatasetPipeline.random_shuffle_each_window
+    ray.data.DatasetPipeline.randomize_block_order_each_window
+    ray.data.DatasetPipeline.repartition_each_window
 
-.. tabbed:: Splitting and Merging DatasetPipelines
+**Splitting DatasetPipelines**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.DatasetPipeline.split
-        ray.data.DatasetPipeline.split_at_indices
+    ray.data.DatasetPipeline.split
+    ray.data.DatasetPipeline.split_at_indices
 
-.. tabbed:: Creating DatasetPipelines
+**Creating DatasetPipelines**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.DatasetPipeline.repeat
-        ray.data.DatasetPipeline.rewindow
-        ray.data.DatasetPipeline.from_iterable
+    ray.data.DatasetPipeline.repeat
+    ray.data.DatasetPipeline.rewindow
+    ray.data.DatasetPipeline.from_iterable
 
-.. tabbed:: Consuming DatasetPipelines
+**Consuming DatasetPipelines**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.DatasetPipeline.show
-        ray.data.DatasetPipeline.show_windows
-        ray.data.DatasetPipeline.take
-        ray.data.DatasetPipeline.take_all
-        ray.data.DatasetPipeline.iter_rows
-        ray.data.DatasetPipeline.iter_batches
-        ray.data.DatasetPipeline.iter_torch_batches
-        ray.data.DatasetPipeline.iter_tf_batches
+    ray.data.DatasetPipeline.show
+    ray.data.DatasetPipeline.show_windows
+    ray.data.DatasetPipeline.take
+    ray.data.DatasetPipeline.take_all
+    ray.data.DatasetPipeline.iter_rows
+    ray.data.DatasetPipeline.iter_batches
+    ray.data.DatasetPipeline.iter_torch_batches
+    ray.data.DatasetPipeline.iter_tf_batches
 
-.. tabbed:: I/O and Conversion
+**I/O and Conversion**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.DatasetPipeline.write_json
-        ray.data.DatasetPipeline.write_csv
-        ray.data.DatasetPipeline.write_parquet
-        ray.data.DatasetPipeline.write_datasource
-        ray.data.DatasetPipeline.to_tf
-        ray.data.DatasetPipeline.to_torch
+    ray.data.DatasetPipeline.write_json
+    ray.data.DatasetPipeline.write_csv
+    ray.data.DatasetPipeline.write_parquet
+    ray.data.DatasetPipeline.write_datasource
+    ray.data.DatasetPipeline.to_tf
+    ray.data.DatasetPipeline.to_torch
 
-.. tabbed:: Inspecting Metadata
+**Inspecting Metadata**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.DatasetPipeline.schema
-        ray.data.DatasetPipeline.count
-        ray.data.DatasetPipeline.stats
-        ray.data.DatasetPipeline.sum
+    ray.data.DatasetPipeline.schema
+    ray.data.DatasetPipeline.count
+    ray.data.DatasetPipeline.stats
+    ray.data.DatasetPipeline.sum
 
 Basic transformations
 ---------------------
@@ -102,8 +102,8 @@ Sorting, Shuffling, Repartitioning
 
 .. automethod:: ray.data.DatasetPipeline.repartition_each_window
 
-Splitting and Merging DatasetPipelines
---------------------------------------
+Splitting DatasetPipelines
+--------------------------
 
 .. automethod:: ray.data.DatasetPipeline.split
 

@@ -5,119 +5,118 @@ Dataset API
 
 .. autoclass:: ray.data.Dataset
 
-.. tabbed:: Basic Transformations
+**Basic Transformations**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.Dataset.map
-        ray.data.Dataset.map_batches
-        ray.data.Dataset.flat_map
-        ray.data.Dataset.filter
-        ray.data.Dataset.add_column
-        ray.data.Dataset.drop_columns
-        ray.data.Dataset.random_sample
-        ray.data.Dataset.limit
+    ray.data.Dataset.map
+    ray.data.Dataset.map_batches
+    ray.data.Dataset.flat_map
+    ray.data.Dataset.filter
+    ray.data.Dataset.add_column
+    ray.data.Dataset.drop_columns
+    ray.data.Dataset.random_sample
+    ray.data.Dataset.limit
 
-.. tabbed:: Sorting, Shuffling, Repartitioning
+**Sorting, Shuffling, Repartitioning**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.Dataset.sort
-        ray.data.Dataset.random_shuffle
-        ray.data.Dataset.randomize_block_order
-        ray.data.Dataset.repartition
+    ray.data.Dataset.sort
+    ray.data.Dataset.random_shuffle
+    ray.data.Dataset.randomize_block_order
+    ray.data.Dataset.repartition
 
-.. tabbed:: Splitting and Merging Datasets
+**Splitting and Merging Datasets**
 
-    .. autosummary::
+.. autosummary::
 
-        ray.data.Dataset.split
-        ray.data.Dataset.split_at_indices
-        ray.data.Dataset.split_proportionately
-        ray.data.Dataset.train_test_split
-        ray.data.Dataset.union
-        ray.data.Dataset.zip
+    ray.data.Dataset.split
+    ray.data.Dataset.split_at_indices
+    ray.data.Dataset.split_proportionately
+    ray.data.Dataset.train_test_split
+    ray.data.Dataset.union
+    ray.data.Dataset.zip
 
+**Grouped and Global Aggregations**
 
-.. tabbed:: Grouped and Global Aggregations
+.. autosummary::
 
-    .. autosummary::
+    ray.data.Dataset.groupby
+    ray.data.Dataset.aggregate
+    ray.data.Dataset.sum
+    ray.data.Dataset.min
+    ray.data.Dataset.max
+    ray.data.Dataset.mean
+    ray.data.Dataset.std
 
-        ray.data.Dataset.groupby
-        ray.data.Dataset.aggregate
-        ray.data.Dataset.sum
-        ray.data.Dataset.min
-        ray.data.Dataset.max
-        ray.data.Dataset.mean
-        ray.data.Dataset.std
+**Converting to Pipeline**
 
-.. tabbed:: Converting to Pipeline
+.. autosummary::
 
-    .. autosummary::
+    ray.data.Dataset.repeat
+    ray.data.Dataset.window
 
-        ray.data.Dataset.repeat
-        ray.data.Dataset.window
+**Consuming Datasets**
 
-.. tabbed:: Consuming Datasets
+.. autosummary::
 
-    .. autosummary::
+    ray.data.Dataset.show
+    ray.data.Dataset.take
+    ray.data.Dataset.take_all
+    ray.data.Dataset.iter_rows
+    ray.data.Dataset.iter_batches
+    ray.data.Dataset.iter_torch_batches
+    ray.data.Dataset.iter_tf_batches
 
-        ray.data.Dataset.show
-        ray.data.Dataset.take
-        ray.data.Dataset.take_all
-        ray.data.Dataset.iter_rows
-        ray.data.Dataset.iter_batches
-        ray.data.Dataset.iter_torch_batches
-        ray.data.Dataset.iter_tf_batches
+**I/O and Conversion**
 
-.. tabbed:: I/O and Conversion
+.. autosummary::
 
-    .. autosummary::
+    ray.data.Dataset.write_parquet
+    ray.data.Dataset.write_json
+    ray.data.Dataset.write_csv
+    ray.data.Dataset.write_numpy
+    ray.data.Dataset.write_datasource
+    ray.data.Dataset.to_torch
+    ray.data.Dataset.to_tf
+    ray.data.Dataset.to_dask
+    ray.data.Dataset.to_mars
+    ray.data.Dataset.to_modin
+    ray.data.Dataset.to_spark
+    ray.data.Dataset.to_pandas
+    ray.data.Dataset.to_pandas_refs
+    ray.data.Dataset.to_numpy_refs
+    ray.data.Dataset.to_arrow_refs
+    ray.data.Dataset.to_random_access_dataset
 
-        ray.data.Dataset.write_parquet
-        ray.data.Dataset.write_json
-        ray.data.Dataset.write_csv
-        ray.data.Dataset.write_numpy
-        ray.data.Dataset.write_datasource
-        ray.data.Dataset.to_torch
-        ray.data.Dataset.to_tf
-        ray.data.Dataset.to_dask
-        ray.data.Dataset.to_mars
-        ray.data.Dataset.to_modin
-        ray.data.Dataset.to_spark
-        ray.data.Dataset.to_pandas
-        ray.data.Dataset.to_pandas_refs
-        ray.data.Dataset.to_numpy_refs
-        ray.data.Dataset.to_arrow_refs
-        ray.data.Dataset.to_random_access_dataset
+**Inspecting Metadata**
 
-.. tabbed:: Inspecting Metadata
+.. autosummary::
 
-    .. autosummary::
+    ray.data.Dataset.count
+    ray.data.Dataset.schema
+    ray.data.Dataset.num_blocks
+    ray.data.Dataset.size_bytes
+    ray.data.Dataset.input_files
+    ray.data.Dataset.stats
+    ray.data.Dataset.get_internal_block_refs
 
-        ray.data.Dataset.count
-        ray.data.Dataset.schema
-        ray.data.Dataset.num_blocks
-        ray.data.Dataset.size_bytes
-        ray.data.Dataset.input_files
-        ray.data.Dataset.stats
-        ray.data.Dataset.get_internal_block_refs
+**Execution**
 
-.. tabbed:: Execution
+.. autosummary::
 
-    .. autosummary::
+    ray.data.Dataset.fully_executed
+    ray.data.Dataset.is_fully_executed
+    ray.data.Dataset.lazy
 
-        ray.data.Dataset.fully_executed
-        ray.data.Dataset.is_fully_executed
-        ray.data.Dataset.lazy
+**Serialization**
 
-.. tabbed:: Serialization
+.. autosummary::
 
-    .. autosummary::
-
-        ray.data.Dataset.has_serializable_lineage
-        ray.data.Dataset.serialize_lineage
-        ray.data.Dataset.deserialize_lineage
+    ray.data.Dataset.has_serializable_lineage
+    ray.data.Dataset.serialize_lineage
+    ray.data.Dataset.deserialize_lineage
 
 Basic Transformations
 ---------------------
