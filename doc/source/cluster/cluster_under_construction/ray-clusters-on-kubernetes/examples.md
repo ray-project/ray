@@ -10,7 +10,7 @@ If you are new to your cloud provider's Kubernetes service, we recommend
 taking a look at the documentation links collected {ref}`here<kuberay-k8s-setup>`
 :::
 
-This section presents example Ray workloads try out on your Kubernetes cluster.
+This section presents example Ray workloads to try out on your Kubernetes cluster.
 
 More examples will be added in the future. Running the distributed XGBoost example below is a
 great way to start experimenting with production Ray workloads on Kubernetes.
