@@ -1,13 +1,13 @@
 # Launching an On-Premise Cluster
 
-This document describes how to set up an on-premises Ray cluster, i.e., to run Ray on bare metal machines, or in a private cloud. We provide two ways to start an on-premises cluster.
+This document describes how to set up an on-premise Ray cluster, i.e., to run Ray on bare metal machines, or in a private cloud. We provide two ways to start an on-premise cluster.
 
 * You can [manually set up](./on-premises.html#manually-set-up-a-ray-cluster) the Ray cluster by installing the Ray package and starting the Ray processes on each node.
-* Alternatively, if you know all the nodes in advance and have ssh access to them, you should start the Ray cluster using the [cluster-launcher](./on-premises.html#using-ray-cluster-launcher).
+* Alternatively, if you know all the nodes in advance and have SSH access to them, you should start the Ray cluster using the [cluster-launcher](./on-premises.html#using-ray-cluster-launcher).
 
 
 ## Manually Set up a Ray Cluster 
-This section assumes that you have a list of machines and that the nodes in the cluster can communicate with each other. It also assumes that Ray is installed on each machine. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
+This section assumes that you have a list of machines and that the nodes in the cluster share the same network. It also assumes that Ray is installed on each machine. You can use pip to install the ray command line tool with cluster launcher support. Follow the [Ray installation instructions](https://docs.ray.io/en/latest/ray-overview/installation.html) for more details.
 
 ```
 # install ray
@@ -15,17 +15,14 @@ pip install -U ray[default]
 ```
 
 
-### Start Head Node
-On the head node (just choose one node to be the head node), run the following. If the --port argument is omitted, Ray will first choose port 6379, and then fall back to a random port if in 6379 is in use.
+### Start the Head Node
+Choose any node to be the head node and run the following. If the `--port` argument is omitted, Ray will first choose port 6379, and then fall back to a random port if in 6379 is in use.
 
 ```
 ray start --head --port=6379
-
-# To connect to this Ray runtime from another node, run
-ray start --address='<ip address>:6379'
 ```
 
-The command will print out the address of the Ray GCS server that was started (the local node IP address plus the port number you specified). If the connection fails, check your firewall settings and network configuration.
+The command will print out the Ray cluster address, which can be passed to `ray start` on other machines to start the worker nodes (see below). If you receive a ConnectionError, check your firewall settings and network configuration.
 
 ### Start Worker Nodes
 Then on each of the other nodes, run the following command to connect to the head node you just created.
@@ -36,14 +33,12 @@ ray start --address=<head-node-address:port>
 ```
 Make sure to replace `head-node-address:port` with the value printed by the command on the head node (it should look something like 123.45.67.89:6379).
 
-Note that if your compute nodes are on their own subnetwork with Network Address Translation, to connect from a regular machine outside that subnetwork, the command printed by the head node will not work. You need to find an address that will reach the head node from the second machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on the DNS.
+Note that if your compute nodes are on their own subnetwork with Network Address Translation, the address printed by the head node will not work if connecting from a machine outside that subnetwork. You will need to use a head node address reachable from the remote machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on DNS.
 
-### Configure Nodes
-
-The ray start command also allows you configure the node's resources. For example, if you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this with the flags --num-cpus=10 and --num-gpus=1. 
+Ray autodetects the resources (e.g., CPU) available on each node, but you can also manually override this by passing custom resources to the `ray start` command. For example, if you wish to specify that a machine has 10 CPUs and 1 GPU available for use by Ray, you can do this with the flags `--num-cpus=10` and `--num-gpus=1`. 
 See the [Configuration page](../../ray-core/configure.html#configuring-ray) for more information.
 
-### Trouble Shooting
+### Troubleshooting
 
 If you see `Unable to connect to GCS at ...`, this means the head node is inaccessible at the given `--address` (because, for example, the head node is not actually running, a different version of Ray is running at the specified address, the specified address is wrong, or there are firewall settings preventing access).
 
