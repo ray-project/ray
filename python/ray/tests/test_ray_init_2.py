@@ -108,7 +108,12 @@ def test_env_var_no_override():
 
 @pytest.mark.parametrize(
     "override_url",
-    [None, "https://external_dashboard_url", "new_external_dashboard_url"],
+    [
+        None,
+        "https://external_dashboard_url",
+        "https://external_dashboard_url/path1/?query_param1=val1&query_param2=val2",
+        "new_external_dashboard_url",
+    ],
 )
 def test_hosted_external_dashboard_url(override_url, shutdown_only):
     """
