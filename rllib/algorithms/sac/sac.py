@@ -260,7 +260,7 @@ class SACConfig(AlgorithmConfig):
         if grad_clip is not None:
             self.grad_clip = grad_clip
         if optimization_config is not None:
-            self.optimization_config = optimization_config
+            self.optimization = optimization_config
         if target_network_update_freq is not None:
             self.target_network_update_freq = target_network_update_freq
         if _deterministic_loss is not None:
