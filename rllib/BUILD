@@ -2934,7 +2934,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/offline_rl.py",
+    name = "examples/offline_rl_torch",
     main = "examples/offline_rl.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_M"],
     size = "medium",
