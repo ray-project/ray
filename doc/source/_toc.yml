@@ -291,7 +291,6 @@ parts:
               sections:
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/index
                 title: Launching Clusters
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-ray-cluster-on-prem
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/large-cluster-best-practices
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/configuring-autoscaling
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/index
