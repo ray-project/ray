@@ -186,7 +186,7 @@ Here is a [link][ConfigLink] to the configuration shown below.
 :language: yaml
 ```
 
-[RayExamples]: https://github.com/ray-project/ray/tree/master/doc/source/cluster/ray-clusters-on-kubernetes/configs
+[RayExamples]: https://github.com/ray-project/ray/tree/master/doc/source/cluster/kubernetes/configs
 [KubeRayExamples]: https://ray-project.github.io/kuberay/components/operator/#running-an-example-cluster
 [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/7aeb1ab9cf7adb58fd9418c0e08984ff0fe6d018/doc/source/cluster/ray-clusters-on-kubernetes/configs/migration-example.yaml
 [KubeRayHelm]: https://ray-project.github.io/kuberay/deploy/helm/
