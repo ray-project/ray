@@ -213,6 +213,8 @@ If your dataset contains missing values, replace them with
     :start-after: __simple_imputer_start__
     :end-before: __simple_imputer_end__
 
+.. _air-custom-preprocessors:
+
 Implementing custom preprocessors
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -232,8 +234,6 @@ If your preprocessor doesn't need to be fit, construct a
     :language: python
     :start-after: __custom_stateless_start__
     :end-before: __custom_stateless_end__
-
-.. _air-encoding-categorical-data:
 
 Categorical data
 ~~~~~~~~~~~~~~~~
@@ -264,8 +264,6 @@ model can understand, encode categories using one of the preprocessors described
     If you're using LightGBM, you don't need to encode your categorical data. Instead,
     use :class:`~ray.data.preprocessors.Categorizer` to convert your data to
     `pandas.CategoricalDtype`.
-
-.. _air-scaling-numerical-data:
 
 Numerical data
 ~~~~~~~~~~~~~~
@@ -310,8 +308,6 @@ Additionally, if your model expects a tensor or ``ndarray``, create a tensor usi
     :language: python
     :start-after: __concatenate_start__
     :end-before: __concatenate_end__
-
-.. _air-encoding-text:
 
 Text Data
 ~~~~~~~~~
