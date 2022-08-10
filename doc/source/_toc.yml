@@ -299,6 +299,18 @@ parts:
       - file: cluster/references/index
         title: References
 
+      - file: cluster-deprecated/index
+        title: Deprecated
+        sections:
+        - file: cluster-deprecated/key-concepts
+        - file: cluster-deprecated/cloud
+        - file: cluster-deprecated/quickstart
+        - file: cluster-deprecated/usage-stats
+        - file: cluster-deprecated/user-guide
+        - file: cluster-deprecated/cluster_under_construction.md
+        - file: cluster-deprecated/deploy
+        - file: cluster-deprecated/api
+
   - caption: References
     chapters:
       - file: ray-references/api
