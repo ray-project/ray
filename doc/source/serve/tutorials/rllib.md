@@ -72,7 +72,7 @@ pass them into the restored `Algorithm` using the `compute_single_action` method
 from starlette.requests import Request
 
 
-@serve.deployment(route_prefix="/cartpole-ppo")
+@serve.deployment
 class ServePPOModel:
     def __init__(self, checkpoint_path) -> None:
         # Re-create the originally used config.
@@ -99,12 +99,11 @@ and use `Algorithm.compute_actions(...)` to process a batch of inputs.
 :::
 
 Now that we've defined our `ServePPOModel` service, let's deploy it to Ray Serve.
-The deployment will be exposed through the `/cartpole-ppo` route.
 
 ```{code-cell} python3
 :tags: [hide-output]
-serve.start()
-ServePPOModel.deploy(checkpoint_path)
+ppo_model = ServePPOModel.bind(checkpoint_path)
+serve.run(ppo_model)
 ```
 
 Note that the `checkpoint_path` that we passed to the `deploy()` method will be passed to
@@ -123,7 +122,7 @@ for _ in range(5):
 
     print(f"-> Sending observation {obs}")
     resp = requests.get(
-        "http://localhost:8000/cartpole-ppo", json={"observation": obs.tolist()}
+        "http://localhost:8000/", json={"observation": obs.tolist()}
     )
     print(f"<- Received response {resp.json()}")
 ```
