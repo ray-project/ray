@@ -2,7 +2,7 @@
 
 # Sample Development Workflow
 
-When developing a new application, iteration speed is critical.  This page describes a sample development workflow for Ray Serve applications, optimized for iteration speed. If you're ready to go to production, you can jump to the [Production Workflow](production-workflow.md) section.
+This page describes the recommended development workflow for Ray Serve applications when iterating in development. Once you're ready to go to production, you can jump to the [Production Guide](production-guide.md) section.
 
 ## Project structure
 
