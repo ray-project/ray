@@ -42,6 +42,7 @@ struct AddressWorkeridExtractor {
     return addr.worker_id();
   }
 };
+
 /// Since the owner address has high redundency across objects, 
 /// we use boost::flyweight to maintain an intern table to reduce
 /// memory footprint per object. 
@@ -678,7 +679,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
-    /// using the ObjectID. 
+    /// using the ObjectID.
     absl::optional<InternAddress> owner_address;
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
