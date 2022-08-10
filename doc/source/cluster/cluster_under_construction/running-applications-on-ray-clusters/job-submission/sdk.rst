@@ -123,7 +123,7 @@ To get information about all jobs, call ``client.list_jobs()``.  This returns a 
 Dependency Management
 ---------------------
 
-Similar to the :ref:`Jobs CLI <jobs-quickstart-under-construction>`, we can also package our application's dependencies by using a Ray :ref:`runtime environment <runtime environment>`.
+Similar to the :ref:`Jobs CLI <jobs-quickstart-under-construction>`, we can also package our application's dependencies by using a Ray :ref:`runtime environment <runtime-environments>`.
 Using the Python SDK, the syntax looks something like this:
 
 .. code-block:: python
