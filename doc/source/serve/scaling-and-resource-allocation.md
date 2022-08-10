@@ -15,7 +15,7 @@ The number of replicas is specified by the `num_replicas` field in the deploymen
 By default, `num_replicas` is 1.
 
 ```python
-# Create with a ten replicas.
+# Create with a deployment with ten replicas.
 @serve.deployment(num_replicas=10)
 def func(*args):
     pass
