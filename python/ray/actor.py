@@ -1292,8 +1292,10 @@ class ActorHandle:
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        state = self._serialization_helper()
-        return ActorHandle._deserialization_helper, state
+        (serialized, _) = self._serialization_helper()
+        # There is no outer object ref when the actor handle is
+        # deserialized out-of-band using pickle.
+        return ActorHandle._deserialization_helper, (serialized, None)
 
 
 def _modify_class(cls):
