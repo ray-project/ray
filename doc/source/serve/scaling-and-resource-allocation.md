@@ -129,6 +129,7 @@ def func_2(*args):
 
 In this example, each replica of each deployment will be allocated 0.5 GPUs.  The same can be done to multiplex over CPUs, using `"num_cpus"`.
 
+(serve-omp-num-threads)=
 
 ## Configuring Parallelism with OMP_NUM_THREADS
 
