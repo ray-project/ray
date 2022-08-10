@@ -47,34 +47,6 @@ To prevent this, you may provide a `version` string for the deployment as a keyw
 If provided, the replicas will only be updated if the value of `version` is updated; if the value of `version` is unchanged, the call to `.deploy()` will be a no-op.
 When a redeployment happens, Serve will perform a rolling update, bringing down at most 20% of the replicas at any given time.
 
-## Configuring Parallelism with OMP_NUM_THREADS
-
-Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
-The number of CPUs they use is controlled by the OMP_NUM_THREADS environment variable.
-To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` by default because Ray workers and actors use a single CPU by default.
-If you *do* want to enable this parallelism in your Serve deployment, just set OMP_NUM_THREADS to the desired value either when starting Ray or in your function/class definition:
-
-```bash
-OMP_NUM_THREADS=12 ray start --head
-OMP_NUM_THREADS=12 ray start --address=$HEAD_NODE_ADDRESS
-```
-
-```python
-@serve.deployment
-class MyDeployment:
-    def __init__(self, parallelism):
-        os.environ["OMP_NUM_THREADS"] = parallelism
-        # Download model weights, initialize model, etc.
-
-MyDeployment.deploy()
-```
-
-:::{note}
-Some other libraries may not respect `OMP_NUM_THREADS` and have their own way to configure parallelism.
-For example, if you're using OpenCV, you'll need to manually set the number of threads using `cv2.setNumThreads(num_threads)` (set to 0 to disable multi-threading).
-You can check the configuration using `cv2.getNumThreads()` and `cv2.getNumberOfCPUs()`.
-:::
-
 (managing-deployments-user-configuration)=
 
 ## User Configuration
