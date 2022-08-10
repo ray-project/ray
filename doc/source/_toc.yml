@@ -172,7 +172,6 @@ parts:
               - file: serve/handling-dependencies
               - file: serve/http-guide
               - file: serve/handle-guide
-              - file: serve/ml-models
               - file: serve/model_composition
               - file: serve/deploying-serve
               - file: serve/monitoring
