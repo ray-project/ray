@@ -59,7 +59,8 @@ class _DAGNodeNameGenerator(object):
             node_name = node._deployment_function_handle.deployment_name
         else:
             raise ValueError(
-                "get_executor_node_name() should only be called on CERTAIN instances."
+                f"get_executor_node_name() cannot be called on {type(node).__name__} "
+                "instances."
             )
 
         if node_name not in self.name_to_suffix:

@@ -88,6 +88,7 @@ class DAGNode(DAGNodeBase):
         _execute_impl() on that DAGNode
         """
         import asyncio
+
         cache = {}
         for k, v in self.cache_from_last_execute.items():
             if isinstance(v, asyncio.Task):

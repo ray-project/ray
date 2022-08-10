@@ -3,14 +3,13 @@ from ray.dag import (
     DAGNode,
     InputNode,
     InputAttributeNode,
-    ClassNode,
 )
 from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
 from ray.serve._private.json_serde import dagnode_from_json
 from ray.dag.utils import _DAGNodeNameGenerator
 
 from functools import partial
-from typing import Any, Dict, List
+from typing import Any, Dict
 from collections import defaultdict
 import json
 
@@ -32,12 +31,27 @@ class GraphVisualizer:
     def block_type(self, node):
         return_type = node.get_return_type()
 
-        if return_type == "int":
+        if return_type == "<class 'int'>":
             return gr.Number
-        elif return_type == "str":
+        elif return_type == "<class 'str'>":
             return gr.Textbox
-        elif return_type == "DataFrame":
+        elif return_type == "<class 'bool'>":
+            return gr.Checkbox
+        elif return_type == "<class 'pandas.core.frame.DataFrame'>":
             return gr.Dataframe
+        elif (
+            return_type == "<class 'list'>"
+            or return_type == "<class 'numpy.ndarray'>"
+            or return_type == "typing.List"
+        ):
+            return gr.JSON
+        elif (
+            return_type == "<class 'PIL.PngImagePlugin.PngImageFile'>"
+            or return_type == "<class 'PIL.JpegImagePlugin.JpegImageFile'>"
+        ):
+            return gr.Image
+        elif return_type == "typing.Tuple[int, int]":
+            return gr.Audio
         return gr.Textbox
 
     def update_block(self, u, *args):
@@ -80,27 +94,24 @@ class GraphVisualizer:
             with gr.Row():
                 render_depth(depth)
 
-    def top_sort_depth(self, dag) -> List[DAGNode]:
-        def topologicalSortUtil(u):
-            uuid = u.get_stable_uuid()
-            visited[uuid] = True
-            names[uuid] = self.name_generator.get_executor_node_name(u)
-            self.uuid_to_node[uuid] = u
+    def get_depth_and_name(self, node: DAGNode):
+        if isinstance(node, (InputNode, DeploymentExecutorNode)):
+            return node
 
-            for v in u._get_all_child_nodes():
-                if isinstance(v, InputNode) or isinstance(v, DeploymentExecutorNode):
-                    continue
+        uuid = node.get_stable_uuid()
 
-                child_uuid = v.get_stable_uuid()
-                if visited[child_uuid] is False:
-                    topologicalSortUtil(v)
-                    depths[uuid] = max(depths[uuid], depths[child_uuid] + 1)
+        # getting name
+        self.names[uuid] = self.name_generator.get_executor_node_name(node)
+        self.uuid_to_node[uuid] = node
 
-        names = {}
-        visited = defaultdict(bool)
-        depths = defaultdict(lambda: 0)
-        topologicalSortUtil(dag)
-        return names, depths
+        # getting depth
+        for child_node in node._get_all_child_nodes():
+            if not isinstance(child_node, (InputNode, DeploymentExecutorNode)):
+                self.depths[uuid] = max(
+                    self.depths[uuid], self.depths[child_node.get_stable_uuid()] + 1
+                )
+
+        return node
 
     def submit_fn(self, *args):
         self.dag_handle.predict.remote(args)
@@ -118,8 +129,12 @@ class GraphVisualizer:
         dag_node_json = ray.get(self.dag_handle.get_dag_node_json.remote())
         dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
 
+        self.names = {}
+        self.depths = defaultdict(lambda: 0)
+        dag.apply_recursive(lambda node: self.get_depth_and_name(node))
+
         with gr.Blocks() as demo:
-            self.make_blocks(*self.top_sort_depth(dag))
+            self.make_blocks(self.names, self.depths)
             self.dfs_attach_change_events(dag)
 
             submit = gr.Button("Submit")

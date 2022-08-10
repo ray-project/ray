@@ -69,7 +69,8 @@ class InputNode(DAGNode):
         if len(args) != 0 or len(kwargs) != 0:
             raise ValueError("InputNode should not take any args or kwargs.")
 
-        self.return_types = return_types
+        if return_types:
+            self.return_types = [str(type) for type in return_types]
         super().__init__([], {}, {}, other_args_to_resolve=_other_args_to_resolve)
 
     def _copy_impl(
@@ -180,7 +181,13 @@ class InputAttributeNode(DAGNode):
         >>> ray_dag.execute([2, 3])
     """
 
-    def __init__(self, dag_input_node: InputNode, key: str, accessor_method: str, return_type: str = None):
+    def __init__(
+        self,
+        dag_input_node: InputNode,
+        key: str,
+        accessor_method: str,
+        return_type: str = None,
+    ):
         self._dag_input_node = dag_input_node
         self._key = key
         self._accessor_method = accessor_method

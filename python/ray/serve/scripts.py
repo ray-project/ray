@@ -266,9 +266,7 @@ def deploy(config_file_name: str, address: str):
 @click.option(
     "--gradio",
     is_flag=True,
-    help=(
-        "Whether to enable gradio visualization of deployment graph."
-    ),
+    help=("Whether to enable gradio visualization of deployment graph."),
 )
 def run(
     config_or_import_path: str,
@@ -324,6 +322,7 @@ def run(
 
         if gradio:
             from ray.dag.gradio_utils import GraphVisualizer
+
             visualizer = GraphVisualizer()
             visualizer.visualize_with_gradio(handle)
         else:

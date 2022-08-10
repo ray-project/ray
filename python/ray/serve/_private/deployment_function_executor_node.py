@@ -44,7 +44,10 @@ class DeploymentFunctionExecutorNode(DAGNode):
         new_other_args_to_resolve: Dict[str, Any],
     ) -> "DeploymentFunctionExecutorNode":
         return DeploymentFunctionExecutorNode(
-            self._deployment_function_handle, new_args, new_kwargs
+            self._deployment_function_handle,
+            new_args,
+            new_kwargs,
+            new_other_args_to_resolve,
         )
 
     def _execute_impl(self, *args, **kwargs) -> ObjectRef:
