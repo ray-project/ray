@@ -5,6 +5,7 @@ import os
 
 import pytorch_lightning
 
+import ray
 from ray.util import PublicAPI
 from ray.train.torch import TorchTrainer, TorchConfig
 from ray.air.config import ScalingConfig, DatasetConfig, RunConfig
@@ -12,6 +13,7 @@ from ray.train.trainer import GenDataset
 from ray.data.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
 from ray.air import session
+from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.lightning._lightning_utils import process_datasets, TrainReportLogger
 
@@ -165,11 +167,24 @@ class LightningTrainer(TorchTrainer):
 
 def _lightning_train_loop_per_worker(config):
     # $MASTER_ADDR and $MASTER_PORT are already set
-    # TODO: set $NODE_RANK properly. for homogenous clusters:
-    # node_rank = (world_rank - local_rank) / num_workers_per_node
-    os.environ["NODE_RANK"] = "0"
+    # TODO: is order of `ray.state.node_ids` deterministic?
+    node_ids = ray._private.state.node_ids()
+    num_nodes = len(node_ids)
+    world_size = session.get_world_size()
+    assert num_nodes <= world_size
+    node_ids.remove(NODE_ID_PREFIX + os.environ["MASTER_ADDR"])
+    if len(node_ids) > 0:
+        # we add 1 because we removed the head node:
+        node_rank = 1 + node_ids.index(ray._private.state.current_node_id())
+    else:
+        # there are no more elements in `node_ids`, which means the only node
+        # is the head node.
+        node_rank = 0
+    assert node_rank < num_nodes
+    assert node_rank <= session.get_world_rank()
+    os.environ["NODE_RANK"] = str(node_rank)
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
+    os.environ["WORLD_SIZE"] = str(world_size)
 
     LightningModule = config.pop("_lightning_module")
     lightning_module_init_config = config.pop("_lightning_module_init_config")
