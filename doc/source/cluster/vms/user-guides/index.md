@@ -11,7 +11,7 @@ at the {ref}`introductory guide<ref-cluster-quick-start-vms-under-construction>`
 :caption: "In these guides, we go into further depth on several topics related to deployments of Ray clusters on VMs."
 :maxdepth: '1'
 launching-clusters/index
-community-supported-cluster-manager/index
+community/index
 configuring-autoscaling
 large-cluster-best-practices
 ```
