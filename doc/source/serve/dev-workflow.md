@@ -13,7 +13,7 @@ There are a few reasonable options for organizing your project structure, depend
 
 ## Local Development using Python handles
 
-You can use `serve.run` in process to run and test your application locally, using a Python handle to send requests rather than HTTP.
+You can use `serve.run` in a Python script to run and test your application locally, using a handle to send requests rather than HTTP.
 
 Benefits:
 
