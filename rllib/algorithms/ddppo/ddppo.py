@@ -255,8 +255,8 @@ class DDPPO(PPO):
         # Initialize torch process group for
         if self.config["_disable_execution_plan_api"] is True:
             self._curr_learner_info = {}
-            ip = ray.get(self.workers.remote_workers()[0].get_node_ip.remote())
-            port = ray.get(self.workers.remote_workers()[0].find_free_port.remote())
+            ip = ray.get(self.remote_workers[0].get_node_ip.remote())
+            port = ray.get(self.remote_workers[0].find_free_port.remote())
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
             logger.info("Creating torch process group with leader {}".format(address))
 
@@ -266,15 +266,15 @@ class DDPPO(PPO):
                     worker.setup_torch_data_parallel.remote(
                         url=address,
                         world_rank=i,
-                        world_size=len(self.workers.remote_workers()),
+                        world_size=len(self.remote_workers),
                         backend=self.config["torch_distributed_backend"],
                     )
-                    for i, worker in enumerate(self.workers.remote_workers())
+                    for i, worker in enumerate(self.remote_workers)
                 ]
             )
             logger.info("Torch process group init completed")
             self._ddppo_worker_manager = AsyncRequestsManager(
-                self.workers.remote_workers(),
+                self.remote_workers,
                 max_remote_requests_in_flight_per_worker=1,
                 ray_wait_timeout_s=0.03,
             )
@@ -282,7 +282,7 @@ class DDPPO(PPO):
     @override(PPO)
     def training_step(self) -> ResultDict:
         # Shortcut.
-        first_worker = self.workers.remote_workers()[0]
+        first_worker = self.remote_workers[0]
 
         self._ddppo_worker_manager.call_on_all_available(
             self._sample_and_train_torch_distributed
@@ -307,7 +307,7 @@ class DDPPO(PPO):
 
             # Broadcast the local set of global vars.
             global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_SAMPLED]}
-            for worker in self.workers.remote_workers():
+            for worker in self.remote_workers:
                 worker.set_global_vars.remote(global_vars)
 
         # Sync down the weights from 1st remote worker (only if we have received

@@ -160,7 +160,7 @@ class A3C(Algorithm):
     def setup(self, config: PartialAlgorithmConfigDict):
         super().setup(config)
         self._worker_manager = AsyncRequestsManager(
-            self.workers.remote_workers(), max_remote_requests_in_flight_per_worker=1
+            self.remote_workers, max_remote_requests_in_flight_per_worker=1
         )
 
     @override(Algorithm)

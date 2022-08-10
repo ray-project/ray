@@ -207,7 +207,7 @@ class CQL(SAC):
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
         # Update remote workers's weights after learning on local worker
-        if self.workers.remote_workers():
+        if self.remote_workers:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 self.workers.sync_weights()
 

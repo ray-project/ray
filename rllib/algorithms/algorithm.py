@@ -147,7 +147,7 @@ class Algorithm(Trainable):
     Algorithms contain a WorkerSet under `self.workers`. A WorkerSet is
     normally composed of a single local worker
     (self.local_worker), used to compute and apply learning updates,
-    and optionally one or more remote workers (self.workers.remote_workers()),
+    and optionally one or more remote workers (self.remote_workers),
     used to generate environment samples in parallel.
 
     Each worker (remotes or local) contains a PolicyMap, which itself
@@ -2607,6 +2607,10 @@ class Algorithm(Trainable):
     @property
     def local_worker(self):
         return self.workers.local_worker()
+
+    @property
+    def remote_workers(self):
+        return self.workers.remote_workers()
 
     @property
     def set_global_vars(self):

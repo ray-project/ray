@@ -600,7 +600,7 @@ class Impala(Algorithm):
                 )
 
             self._sampling_actor_manager = AsyncRequestsManager(
-                self.workers.remote_workers(),
+                self.remote_workers,
                 max_remote_requests_in_flight_per_worker=self.config[
                     "max_requests_in_flight_per_sampler_worker"
                 ],
@@ -791,7 +791,7 @@ class Impala(Algorithm):
         Union[ActorHandle, RolloutWorker], List[Union[ObjectRef, SampleBatchType]]
     ]:
         # Perform asynchronous sampling on all (remote) rollout workers.
-        if self.workers.remote_workers():
+        if self.remote_workers:
             self._sampling_actor_manager.call_on_all_available(
                 lambda worker: worker.sample()
             )
@@ -906,7 +906,7 @@ class Impala(Algorithm):
         global_vars = {"timestep": self._counters[NUM_AGENT_STEPS_TRAINED]}
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
-            self.workers.remote_workers()
+            self.remote_workers
             and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
             >= self.config["broadcast_interval"]
             and self.workers_that_need_updates

@@ -381,16 +381,11 @@ class AlphaStar(appo.APPO):
         def _set_policy_learners(worker):
             worker._distributed_learners = distributed_learners
 
-        ray.get(
-            [
-                w.apply.remote(_set_policy_learners)
-                for w in self.workers.remote_workers()
-            ]
-        )
+        ray.get([w.apply.remote(_set_policy_learners) for w in self.remote_workers])
 
         self.distributed_learners = distributed_learners
         self._sampling_actor_manager = AsyncRequestsManager(
-            self.workers.remote_workers(),
+            self.remote_workers,
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
@@ -423,7 +418,7 @@ class AlphaStar(appo.APPO):
         #   shards, instead of here (to the driver).
         with self._timers[SAMPLE_TIMER]:
             # if there are no remote workers (e.g. num_workers=0)
-            if not self.workers.remote_workers():
+            if not self.remote_workers:
                 worker = self.local_worker
                 statistics = worker.apply(self._sample_and_send_to_buffer)
                 sample_results = {worker: [statistics]}
@@ -492,7 +487,7 @@ class AlphaStar(appo.APPO):
                 "league_builder": self.league_builder.__getstate__(),
             }
 
-            for worker in self.workers.remote_workers():
+            for worker in self.remote_workers:
                 worker.set_weights.remote(policy_weights_ref, global_vars)
 
         return train_infos

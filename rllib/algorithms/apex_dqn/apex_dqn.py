@@ -354,9 +354,9 @@ class ApexDQN(DQN):
 
         # Tag those workers (top 1/3rd indices) that we should collect episodes from
         # for metrics due to `PerWorkerEpsilonGreedy` exploration strategy.
-        if self.workers.remote_workers():
-            self._remote_workers_for_metrics = self.workers.remote_workers()[
-                -len(self.workers.remote_workers()) // 3 :
+        if self.remote_workers:
+            self._remote_workers_for_metrics = self.remote_workers[
+                -len(self.remote_workers) // 3 :
             ]
 
         num_replay_buffer_shards = self.config["optimizer"]["num_replay_buffer_shards"]
@@ -400,7 +400,7 @@ class ApexDQN(DQN):
             ray_wait_timeout_s=self.config["timeout_s_replay_manager"],
         )
         self._sampling_actor_manager = AsyncRequestsManager(
-            self.workers.remote_workers(),
+            self.remote_workers,
             max_remote_requests_in_flight_per_worker=self.config[
                 "max_requests_in_flight_per_sampler_worker"
             ],
@@ -439,7 +439,7 @@ class ApexDQN(DQN):
 
         # update the weights of the workers that returned samples
         # only do this if there are remote workers (config["num_workers"] > 1)
-        if self.workers.remote_workers():
+        if self.remote_workers:
             self.update_workers(worker_samples_collected)
         # trigger a sample from the replay actors and enqueue operation to the
         # learner thread.
@@ -452,7 +452,7 @@ class ApexDQN(DQN):
 
     def get_samples_and_store_to_replay_buffers(self):
         # in the case the num_workers = 0
-        if not self.workers.remote_workers():
+        if not self.remote_workers:
             with self._timers[SAMPLE_TIMER]:
                 local_sampling_worker = self.local_worker
                 batch = local_sampling_worker.sample()
