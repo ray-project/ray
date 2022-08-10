@@ -8,6 +8,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
+from ray.train.jax.utils import ensure_tpu_resources_capitalized
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -128,26 +129,13 @@ class JaxTrainer(DataParallelTrainer):
             allowed_keys=cls._scaling_config_allowed_keys,
         )
 
-        # case-insensitivize
-        # since `tpu` is not the standard resources in ray currently
-        # add these lines to prevent the cases where the users
-        # give the lower-case `tpu` as the resources
-        # and change the key to upper case!
-        resources_per_worker = scaling_config.resources_per_worker
-        if resources_per_worker:
-            resources_per_worker_upper = {}
-            for k, v in resources_per_worker.items():
-                if k.upper() == "TPU": 
-                    resources_per_worker_upper[k.upper()] = v
-                else:                     
-                    resources_per_worker_upper[k] = v
-            scaling_config.resources_per_worker = resources_per_worker_upper
-
+        scaling_config = ensure_tpu_resources_capitalized(scaling_config)
+        
+        use_gpu = scaling_config.use_gpu
+        use_tpu = not scaling_config.resources_per_worker.get("TPU", 0)
+        
         # cpu parallelism is not supported in jax
-        if (
-            scaling_config.use_gpu is False
-            or resources_per_worker.get("TPU", 0) == 0
-        ):
+        if not (use_gpu or use_tpu): 
             logger.warning(
                 "cpu parallelism is not supported in jax. "
                 "Please use distributed GPU or TPU training instead. "
