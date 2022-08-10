@@ -216,35 +216,35 @@ After defining our configuration, we will use the Ray Cluster Launcher to start 
 Run the application in the cloud
 --------------------------------
 
-We are now ready to execute the application in across multiple machines on our Ray cloud cluster.
+We are now ready to execute an application on our Ray Cluster.
 ``ray.init()`` will now automatically connect to the newly created cluster.
 
-Next, run the following command:
+As a quick example, we can now execute a Python command on the Ray Cluster that connects to Ray and exits:
 
 .. code-block:: shell
 
-    $ ray submit config.yaml script.py
+    $ ray exec config.yaml 'python -c "import ray; ray.init()"'
+    2022-08-10 11:23:17,093 INFO worker.py:1312 -- Connecting to existing Ray cluster at address: <remote IP address>:6379...
+    2022-08-10 11:23:17,097 INFO worker.py:1490 -- Connected to Ray cluster.
 
-The output should now look similar to the following:
+You can also optionally get a remote shell using ``ray attach`` and run commands directly on the cluster. This command will create an SSH connection to the head node of the Ray Cluster.
 
-.. parsed-literal::
+.. code-block:: shell
 
-    Connecting to existing Ray cluster at address: <IP address>...
+    # From a remote client:
+    $ ray attach config.yaml
 
-    This cluster consists of
-        3 nodes in total
-        6.0 CPU resources in total
+    # Now on the head node...
+    $ python -c "import ray; ray.init()"
 
-    Tasks executed
-        3425 tasks on xxx.xxx.xxx.xxx
-        3834 tasks on xxx.xxx.xxx.xxx
-        2741 tasks on xxx.xxx.xxx.xxx
+For a full reference on the Ray Cluster CLI tools, please refer to :ref:`the cluster commands reference <cluster-commands>`.
 
-In this sample output, 3 nodes were started. If the output only shows 1 node, you may want to increase the ``secs`` in ``time.sleep(secs)`` to give Ray more time to start additional nodes.
+While these tools are useful for ad-hoc execution on the Ray Cluster, the recommended way to execute an application on a Ray Cluster is to use :ref:`Ray Jobs <ray-jobs-under-construction>`. Check out the :ref:`quickstart guide <jobs-quickstart-under-construction>` to get started!
 
-The Ray CLI offers additional functionality. For example, you can monitor the Ray cluster status with ``ray monitor config.yaml``, and you can connect to the cluster (ssh into the head node) with ``ray attach config.yaml``. For a full reference on the Ray CLI, please refer to :ref:`the cluster commands reference <cluster-commands>`.
+Deleting a Ray Cluster
+----------------------
 
-To finish, don't forget to shut down the cluster. Run the following command:
+To shut down your cluster, run the following command:
 
 .. code-block:: shell
 
