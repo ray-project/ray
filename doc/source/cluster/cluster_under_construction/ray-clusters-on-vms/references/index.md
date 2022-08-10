@@ -1,3 +1,5 @@
+(cluster-vms-reference-index)=
+
 # API References
 
 The following pages provide reference documentation for using Ray Clusters on virtual machines.

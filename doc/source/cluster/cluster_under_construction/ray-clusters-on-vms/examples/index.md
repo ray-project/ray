@@ -1,3 +1,4 @@
+(cluster-vms-examples-index)=
 # Examples
 
 :::{warning}
