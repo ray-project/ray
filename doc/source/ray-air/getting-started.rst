@@ -7,17 +7,17 @@ Ray AI Runtime (AIR)
 
     AIR is currently in **beta**. Fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__ to get involved. We'll be holding office hours, development sprints, and other activities as we get closer to the GA release. Join us!
 
-Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables easy scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks, all in just Python.
+Ray AI Runtime (AIR) is a scalable and unified toolkit for ML applications. AIR enables simple scaling of individual workloads, end-to-end workflows, and popular ecosystem frameworks, all in just Python.
 
 ..
   https://docs.google.com/drawings/d/1atB1dLjZIi8ibJ2-CoHdd3Zzyl_hDRWyK2CJAVBBLdU/edit
 
 .. image:: images/ray-air.svg
 
-AIR comes with ready-to-use libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>`, as well as an ecosystem of integrations.
+AIR builds on Ray's best-in-class libraries for :ref:`Preprocessing <datasets>`, :ref:`Training <train-docs>`, :ref:`Tuning <tune-main>`, :ref:`Scoring <air-predictors>`, :ref:`Serving <rayserve>`, and :ref:`Reinforcement Learning <rllib-index>` to bring together an ecosystem of integrations.
 
-Why AIR?
---------
+ML Compute, Simplified
+----------------------
 
 Ray AIR aims to simplify the ecosystem of machine learning frameworks, platforms, and tools. It does this by leveraging Ray to provide a seamless, unified, and open experience for scalable ML:
 
@@ -196,12 +196,12 @@ Project Status
 
 AIR is currently in **beta**. If you have questions for the team or are interested in getting involved in the development process, fill out `this short form <https://forms.gle/wCCdbaQDtgErYycT6>`__.
 
-For an overview of the AIR libraries, ecosystem integrations, and their readiness, check out the latest `AIR ecosystem map <https://docs.ray.io/en/master/_images/air-ecosystem.svg>`_.
+For an overview of the AIR libraries, ecosystem integrations, and their readiness, check out the latest :ref:`AIR ecosystem map <air-ecosystem-map>`.
 
 Next Steps
 ----------
 
 - :ref:`air-key-concepts`
-- `Examples <https://github.com/ray-project/ray/tree/master/python/ray/air/examples>`__
+- :ref:`air-examples-ref`
 - :ref:`Deployment Guide <air-deployment>`
 - :ref:`API reference <air-api-ref>`

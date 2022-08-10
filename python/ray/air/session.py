@@ -223,8 +223,9 @@ def get_dataset_shard(
 ) -> Optional[Union["Dataset", "DatasetPipeline"]]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
-    You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
-    it to the appropriate framework-specific Dataset.
+    You should call ``iter_torch_batches()`` or ``iter_tf_batches()``
+    on this shard to convert it to the appropriate
+    framework-specific data type.
 
     .. code-block:: python
 
@@ -237,8 +238,9 @@ def get_dataset_shard(
             model = Net()
             for iter in range(100):
                 # Trainer will automatically handle sharding.
-                data_shard = session.get_dataset_shard().to_torch()
-                model.train(data_shard)
+                data_shard = session.get_dataset_shard("train")
+                for batch in data_shard.iter_torch_batches():
+                    # ...
             return model
 
         train_dataset = ray.data.from_items(

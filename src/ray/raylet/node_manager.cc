@@ -2922,10 +2922,6 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
   };
 }
 
-const ray::Status NodeManager::TryToGetAgentInfo(rpc::AgentInfo *agent_info) const {
-  return agent_manager_->TryToGetAgentInfo(agent_info);
-}
-
 }  // namespace raylet
 
 }  // namespace ray

@@ -292,6 +292,7 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path):
     # Check that --temp-dir arg worked:
     assert os.path.isfile(os.path.join(temp_dir, "ray_current_cluster"))
     assert os.path.isdir(os.path.join(temp_dir, "session_latest"))
+    _die_on_error(result)
 
     _die_on_error(runner.invoke(scripts.stop))
 
@@ -299,6 +300,24 @@ def test_ray_start(configure_lang, monkeypatch, tmp_path):
         _check_output_via_pattern("test_ray_start_localhost.txt", result)
     else:
         _check_output_via_pattern("test_ray_start.txt", result)
+
+    # Check that we can rerun `ray start` even though the cluster address file
+    # is already written.
+    _die_on_error(
+        runner.invoke(
+            scripts.start,
+            [
+                "--head",
+                "--log-style=pretty",
+                "--log-color",
+                "False",
+                "--port",
+                "0",
+                "--temp-dir",
+                temp_dir,
+            ],
+        )
+    )
 
 
 def _ray_start_hook(ray_params, head):
@@ -834,9 +853,8 @@ def test_ray_status(shutdown_only, monkeypatch):
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported on Windows")
 def test_ray_status_multinode(ray_start_cluster):
-    NODE_NUMBER = 4
     cluster = ray_start_cluster
-    for _ in range(NODE_NUMBER):
+    for _ in range(4):
         cluster.add_node(num_cpus=2)
     runner = CliRunner()
 
@@ -851,12 +869,8 @@ def test_ray_status_multinode(ray_start_cluster):
 
     wait_for_condition(output_ready)
 
-    def check_result():
-        result = runner.invoke(scripts.status, [])
-        _check_output_via_pattern("test_ray_status_multinode.txt", result)
-        return True
-
-    wait_for_condition(check_result)
+    result = runner.invoke(scripts.status, [])
+    _check_output_via_pattern("test_ray_status_multinode.txt", result)
 
 
 @pytest.mark.skipif(

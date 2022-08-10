@@ -1,6 +1,6 @@
 (kuberay-ml-example)=
 
-# XGBoost-Ray on Kubernetes
+# Ray AIR XGBoostTrainer on Kubernetes
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
@@ -12,7 +12,7 @@ In this guide, we show you how to run a sample Ray machine learning
 workload on Kubernetes infrastructure.
 
 We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
-To learn more about XGBoost-Ray, check out that library's {ref}`documentation<xgboost-ray>`.
+To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrainer documentation <train-gbdt-guide>`.
 
 ```{admonition} Optional: Autoscaling
 This guide includes notes on how to deploy the XGBoost benchmark with optional Ray Autoscaler support.
@@ -44,14 +44,13 @@ operator and Kubernetes system components. After the workload is submitted, 9 ad
 scale up to accommodate Ray worker pods. These nodes will scale back down after the workload is complete.
 ```
 
-## Deploying the KubeRay operator
+## Deploy the KubeRay operator
 
-Once you have set up your Kubernetes cluster, deploy the KubeRay operator:
-```shell
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.3.0-rc.0"
-```
+Once you have set up your Kubernetes cluster, deploy the KubeRay operator.
+Refer to the {ref}`Getting Started guide<kuberay-operator-deploy>`
+for instructions on this step.
 
-## Deploying a Ray cluster
+## Deploy a Ray cluster
 
 Now we're ready to deploy the Ray cluster that will execute our workload.
 
@@ -61,7 +60,7 @@ per 16-CPU Kubernetes node. The pattern of one Ray pod per Kubernetes node is en
 Broadly speaking, it is more efficient to use a few large Ray pods than many small ones.
 :::
 
-We recommend taking a look at the config file applied in the following command.
+We recommend taking a look at the [config file][ConfigLink] applied in the following command.
 ```shell
 # Starting from the parent directory of cloned Ray master,
 pushd ray/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/
@@ -79,7 +78,7 @@ One Ray head pod will be created. Once the workload starts, the Ray autoscaler w
 creation of Ray worker pods. Kubernetes autoscaling will then create nodes to place the Ray pods.
 ```
 
-## Running the workload
+## Run the workload
 
 To observe the startup progress of the Ray head pod, run the following command.
 
@@ -176,7 +175,7 @@ you might not match {ref}`the numbers quoted in the benchmark docs<xgboost-bench
 #### Model parameters
 The file `model.json` in the Ray head pod contains the parameters for the trained model.
 Other result data will be available in the directory `ray_results` in the head pod.
-Refer to the {ref}`XGBoost-Ray documentation<xgboost-ray>` for details.
+Refer to the {ref}`the XGBoostTrainer documentation <train-gbdt-guide>` for details.
 
 ```{admonition} Scale-down
 If autoscaling is enabled, Ray worker pods will scale down after 60 seconds.
@@ -191,3 +190,5 @@ kubectl delete raycluster raycluster-xgboost-benchmark
 ```
 If you're on a public cloud, don't forget to clean up the underlying
 node group and/or Kubernetes cluster.
+
+[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/291bba69fb90ee5e8401540ef55b7b74dd13f5c5/doc/source/cluster/cluster_under_construction/ray-clusters-on-kubernetes/configs/xgboost-benchmark-autoscaler.yaml
