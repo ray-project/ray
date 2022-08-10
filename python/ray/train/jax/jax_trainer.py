@@ -137,11 +137,13 @@ class JaxTrainer(DataParallelTrainer):
         # and change the key to upper case!
         resources_per_worker = scaling_config.resources_per_worker
         if resources_per_worker:
-            resources_per_worker_upper = {
-                k.upper(): v
-                for k, v in resources_per_worker.items()
-                if k.upper() == "TPU"
-            }
+            resources_per_worker_upper = {}
+            for k, v in resources_per_worker.items():
+                if k.upper() == "TPU": 
+                    resources_per_worker_upper[k.upper()] = v
+                else:                     
+                    resources_per_worker_upper[k] = v
+            print(resources_per_worker_upper)
             scaling_config.resources_per_worker = resources_per_worker_upper
 
         # cpu parallelism is not supported in jax
