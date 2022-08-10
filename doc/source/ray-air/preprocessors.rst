@@ -210,8 +210,6 @@ model can understand, encode categories using one of the preprocessors described
     use :class:`~ray.data.preprocessors.Categorizer` to convert your data to
     `pandas.CategoricalDtype`.
 
-.. _air-scaling-numerical-data:
-
 Numerical data
 ~~~~~~~~~~~~~~
 
@@ -255,8 +253,6 @@ Additionally, if your model expects a tensor or ``ndarray``, create a tensor usi
     :language: python
     :start-after: __concatenate_start__
     :end-before: __concatenate_end__
-
-.. _air-encoding-text:
 
 Text Data
 ~~~~~~~~~
