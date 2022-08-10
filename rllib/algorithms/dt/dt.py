@@ -22,7 +22,10 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    ResultDict, TensorStructType, PolicyID, TensorType,
+    ResultDict,
+    TensorStructType,
+    PolicyID,
+    TensorType,
 )
 
 logger = logging.getLogger(__name__)
@@ -252,14 +255,11 @@ class DT(Algorithm):
             "DT must take in input_dict for inference. "
             "See get_initial_input_dict() and get_next_input_dict()."
         )
-        assert full_fetch, (
-            "DT needs full_fetch=True. Pass extra into get_next_input_dict()."
-        )
+        assert (
+            full_fetch
+        ), "DT needs full_fetch=True. Pass extra into get_next_input_dict()."
         return super().compute_single_action(
-            *args,
-            input_dict=input_dict.copy(),
-            full_fetch=full_fetch,
-            **kwargs
+            *args, input_dict=input_dict.copy(), full_fetch=full_fetch, **kwargs
         )
 
     @PublicAPI
@@ -286,9 +286,6 @@ class DT(Algorithm):
         extra: Dict[str, TensorType],
         policy_id: PolicyID = DEFAULT_POLICY_ID,
     ) -> SampleBatch:
-        """
-
-        """
+        """ """
         policy = self.get_policy(policy_id)
         return policy.get_next_input_dict(input_dict, action, reward, next_obs, extra)
-

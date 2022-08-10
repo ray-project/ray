@@ -35,7 +35,8 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import (
     TrainerConfigDict,
-    TensorType, TensorStructType,
+    TensorType,
+    TensorStructType,
 )
 
 torch, nn = try_import_torch()
@@ -43,18 +44,15 @@ F = nn.functional
 
 
 class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
-    """
+    """ """
 
-    """
     def __init__(
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: TrainerConfigDict,
     ):
-        """
-
-        """
+        """ """
         print("DT Policy Config")
         import pprint
 
@@ -151,9 +149,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
 
     @PublicAPI
     def get_initial_input_dict(self, observation: TensorStructType) -> SampleBatch:
-        """
-
-        """
+        """ """
         observation = convert_to_numpy(observation)
         obs_shape = observation.shape
         obs_dtype = observation.dtype
@@ -164,10 +160,13 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         # Here we will pad observations to batch size 1
         # and seq_len according to view_requirements.
 
-        observations = np.concatenate([
-            np.zeros((self.max_seq_len - 1, *obs_shape), dtype=obs_dtype),
-            observation[None],
-        ], axis=0)
+        observations = np.concatenate(
+            [
+                np.zeros((self.max_seq_len - 1, *obs_shape), dtype=obs_dtype),
+                observation[None],
+            ],
+            axis=0,
+        )
 
         actions = np.zeros((self.max_seq_len - 1, *act_shape), dtype=act_dtype)
 
@@ -177,13 +176,15 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
 
         timesteps = np.full(self.max_seq_len - 1, fill_value=-1, dtype=np.int32)
 
-        input_dict = SampleBatch({
-            SampleBatch.OBS: observations,
-            SampleBatch.ACTIONS: actions,
-            SampleBatch.RETURNS_TO_GO: rtg,
-            SampleBatch.REWARDS: rewards,
-            SampleBatch.T: timesteps,
-        })
+        input_dict = SampleBatch(
+            {
+                SampleBatch.OBS: observations,
+                SampleBatch.ACTIONS: actions,
+                SampleBatch.RETURNS_TO_GO: rtg,
+                SampleBatch.REWARDS: rewards,
+                SampleBatch.T: timesteps,
+            }
+        )
         return input_dict
 
     @PublicAPI
@@ -195,9 +196,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         next_obs: TensorStructType,
         extra: Dict[str, TensorType],
     ) -> SampleBatch:
-        """
-
-        """
+        """ """
         # creates a copy of input_dict with only numpy arrays
         input_dict = tree.map_structure(convert_to_numpy, input_dict)
         # convert everything else to numpy as well
@@ -205,27 +204,39 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             (action, reward, next_obs, extra)
         )
 
-        input_dict[SampleBatch.OBS] = np.concatenate([
-            input_dict[SampleBatch.OBS][1:],
-            next_obs[None],
-        ], axis=0)
+        input_dict[SampleBatch.OBS] = np.concatenate(
+            [
+                input_dict[SampleBatch.OBS][1:],
+                next_obs[None],
+            ],
+            axis=0,
+        )
 
-        input_dict[SampleBatch.ACTIONS] = np.concatenate([
-            input_dict[SampleBatch.ACTIONS][1:],
-            action[None],
-        ], axis=0)
+        input_dict[SampleBatch.ACTIONS] = np.concatenate(
+            [
+                input_dict[SampleBatch.ACTIONS][1:],
+                action[None],
+            ],
+            axis=0,
+        )
 
         input_dict[SampleBatch.REWARDS] = np.asarray(reward)
 
-        input_dict[SampleBatch.RETURNS_TO_GO] = np.concatenate([
-            input_dict[SampleBatch.RETURNS_TO_GO][1:],
-            np.asarray(extra[SampleBatch.RETURNS_TO_GO])[None],
-        ], axis=0)
+        input_dict[SampleBatch.RETURNS_TO_GO] = np.concatenate(
+            [
+                input_dict[SampleBatch.RETURNS_TO_GO][1:],
+                np.asarray(extra[SampleBatch.RETURNS_TO_GO])[None],
+            ],
+            axis=0,
+        )
 
-        input_dict[SampleBatch.T] = np.concatenate([
-            input_dict[SampleBatch.T][1:],
-            input_dict[SampleBatch.T][-1:] + 1,
-        ], axis=0)
+        input_dict[SampleBatch.T] = np.concatenate(
+            [
+                input_dict[SampleBatch.T][1:],
+                input_dict[SampleBatch.T][-1:] + 1,
+            ],
+            axis=0,
+        )
 
         return input_dict
 
@@ -259,7 +270,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         obs_batch[SampleBatch.T] = torch.where(
             uncliped_timesteps < 0,
             torch.zeros_like(uncliped_timesteps),
-            uncliped_timesteps
+            uncliped_timesteps,
         )
 
         # compute returns to go
