@@ -267,7 +267,7 @@ parts:
           - file: cluster/cluster_under_construction/key-concepts
             title: Key Concepts
           - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/index
-            title: Ray Clusters on Kubernetes
+            title: Deploy a Ray Cluster on Kubernetes
             sections:
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/getting-started
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides
@@ -283,7 +283,7 @@ parts:
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples/ml-example.md
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/references
           - file: cluster/cluster_under_construction/ray-clusters-on-vms/index
-            title: Ray Clusters on VMs
+            title: Deploying a Ray Cluster on VMs
             sections:
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/getting-started
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/index
