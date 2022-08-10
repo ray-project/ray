@@ -9,6 +9,7 @@ from ray.train.backend import BackendConfig, Backend
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.util import PublicAPI
+from ray.train.jax.utils import str2bool
 
 logger = logging.getLogger(__name__)
 
@@ -115,10 +116,11 @@ class _JaxBackend(Backend):
 
         additional_resources_per_worker = worker_group.additional_resources_per_worker
 
-        # in case where `use_tpu` is `True`:
+
         if use_tpu:
             # Get setup tasks in order to throw errors on failure.
-            try_remove_tpulib_lock = bool(os.environ.get(RAY_TPU_DEV_ENV, False))
+            # Note: os.environ.get(RAY_TPU_DEV_ENV, 'False') is a string!
+            try_remove_tpulib_lock = str2bool(os.environ.get(RAY_TPU_DEV_ENV, 'False'))
 
             worker_group.execute(
                 release_tpu_lock,

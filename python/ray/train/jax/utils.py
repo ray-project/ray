@@ -18,3 +18,7 @@ def ensure_tpu_resources_capitalized(scaling_config: ScalingConfig) -> ScalingCo
                 resources_per_worker_upper[k] = v
         scaling_config.resources_per_worker = resources_per_worker_upper
     return scaling_config
+
+def str2bool(v):
+    """Convert string to boolean."""
+    return v.lower() in ("yes", "y", "true", "t", "1")
