@@ -267,7 +267,7 @@ parts:
           - file: cluster/cluster_under_construction/key-concepts
             title: Key Concepts
           - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/index
-            title: Ray Clusters on Kubernetes
+            title: Deploying a Ray Cluster on Kubernetes
             sections:
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/getting-started
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides
@@ -283,7 +283,7 @@ parts:
                 - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples/ml-example.md
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/references
           - file: cluster/cluster_under_construction/ray-clusters-on-vms/index
-            title: Ray Clusters on VMs
+            title: Deploying a Ray Cluster on VMs
             sections:
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/getting-started
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/index
@@ -303,8 +303,6 @@ parts:
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/yarn
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/slurm
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/lsf
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/index
-                title: Running Jobs
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/index
               title: Examples
               sections:
@@ -322,6 +320,8 @@ parts:
                 sections:
                   - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/todo
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
+          - file: cluster/cluster_under_construction/running-applications-on-ray-clusters/index
+            title: Running Applications on Ray Clusters
           - file: cluster/cluster_under_construction/references/index
             title: References
 
