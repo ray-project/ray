@@ -30,10 +30,6 @@ class GraphVisualizer:
         self.count = 0
 
     def block_type(self, node):
-        # TODO(cindy): allow types of input to be passed into InputNode()
-        if isinstance(node, InputAttributeNode):
-            return gr.Number
-
         return_type = node.get_return_type()
 
         if return_type == "int":

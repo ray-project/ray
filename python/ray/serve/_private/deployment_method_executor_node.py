@@ -75,8 +75,8 @@ class DeploymentMethodExecutorNode(DAGNode):
         }
 
     def get_return_type(self) -> str:
-        if "func_annotations" in self._bound_other_args_to_resolve:
-            return self._bound_other_args_to_resolve["func_annotations"]
+        if "return_type_annotation" in self._bound_other_args_to_resolve:
+            return self._bound_other_args_to_resolve["return_type_annotation"]
 
     @classmethod
     def from_json(cls, input_json):

@@ -63,10 +63,6 @@ class FunctionNode(DAGNode):
     def get_import_path(self):
         return f"{self._body.__module__}.{self._body.__qualname__}"
 
-    def get_return_type(self):
-        if self._body.__annotations__ and "return" in self._body.__annotations__:
-            return self._body.__annotations__["return"]
-
     def to_json(self) -> Dict[str, Any]:
         return {
             DAGNODE_TYPE_KEY: FunctionNode.__name__,

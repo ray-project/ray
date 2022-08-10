@@ -149,7 +149,7 @@ class DAGDriver:
         root_dag_node = dag_handle.dag_node
 
         if root_dag_node is not None:
-            return root_dag_node.get_graph_object_refs_from_last_execute()
+            return await root_dag_node.get_graph_object_refs_from_last_execute()
 
     async def get_dag_node_json(self):
         return self.dags[self.MATCH_ALL_ROUTE_PREFIX].dag_node_json

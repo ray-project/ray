@@ -235,12 +235,6 @@ class ClassMethodNode(DAGNode):
         body = self._parent_class_node._body.__ray_actor_class__
         return f"{body.__module__}.{body.__qualname__}"
 
-    def get_return_type(self) -> str:
-        method = getattr(self._parent_class_node._body, self._method_name)
-
-        if method.__annotations__ and "return" in method.__annotations__:
-            return method.__annotations__["return"]
-
     def to_json(self) -> Dict[str, Any]:
         return {
             DAGNODE_TYPE_KEY: ClassMethodNode.__name__,
