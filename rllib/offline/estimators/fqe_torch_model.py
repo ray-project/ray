@@ -61,7 +61,7 @@ class FQETorchModel:
 
         if model is None:
             model = {
-                "fcnet_hiddens": [8, 8],
+                "fcnet_hiddens": [32, 32, 32],
                 "fcnet_activation": "relu",
                 "vf_share_layers": True,
             }
@@ -75,6 +75,7 @@ class FQETorchModel:
             framework="torch",
             name="TorchQModel",
         ).to(self.device)
+
         self.target_q_model: TorchModelV2 = ModelCatalog.get_model_v2(
             self.observation_space,
             self.action_space,
@@ -83,6 +84,7 @@ class FQETorchModel:
             framework="torch",
             name="TargetTorchQModel",
         ).to(self.device)
+
         self.n_iters = n_iters
         self.lr = lr
         self.min_loss_threshold = min_loss_threshold
