@@ -46,7 +46,7 @@ class CartPoleCrashing(CartPoleEnv):
         else:
             init_time_s = np.random.randint(
                 config.get("init_time_s_min", 0),
-                config.get("init_time_s_max", 0),
+                config.get("init_time_s_max", 1),
             )
         print(f"Initializing crashing env with init-delay of {init_time_s}sec ...")
         time.sleep(init_time_s)
