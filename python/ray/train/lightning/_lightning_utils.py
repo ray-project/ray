@@ -60,10 +60,7 @@ class TrainReportLogger(pytorch_lightning.loggers.Logger):
     def log_hyperparams(self, param: "argparse.Namespace"):
         pass
 
-    @pytorch_lightning.utilities.rank_zero_only
     def log_metrics(self, metrics, step):
-        # TODO: do we want `rank_zero_only` here?
-
         # `metrics` is a dictionary of metric names and values
         # TODO: also report global step and epoch in `metrics` dict?
         session.report(metrics)
