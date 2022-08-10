@@ -146,7 +146,7 @@ def train_func(config: Dict):
 
     rng = jax.random.PRNGKey(0)
     rng, init_rng = jax.random.split(rng)
-    init_rng = jax_utils.replicate(rng)
+    init_rng = jax_utils.replicate(init_rng)
 
     # Create model & optimizer.
     state = create_train_state(init_rng, learning_rate, momentum)
@@ -197,7 +197,7 @@ if __name__ == "__main__":
         help="Sets number of workers for training.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=True, help="Enables GPU training"
+        "--no-gpu", action="store_true", default=False, help="disable GPU training"
     )
     parser.add_argument(
         "--num-gpu-per-worker",
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     ray.init(address=args.address)
     train_mnist(
         num_workers=args.num_workers,
-        use_gpu=args.use_gpu,
+        use_gpu=not args.no_gpu,
         num_gpu_per_worker=args.num_gpu_per_worker,
     )
     ray.shutdown()
