@@ -16,7 +16,7 @@ This section should help you:
 ## Lifetime of a Ray Serve Instance
 
 Ray Serve instances run on top of Ray clusters and are started using {mod}`serve.run <ray.serve.run>`.
-Once {mod}`serve.run <ray.serve.run>` is called, serve instance is created automatically.
+Once {mod}`serve.run <ray.serve.run>` is called, a Serve instance is created automatically.
 The Serve instance will be torn down when the script exits.
 
 :::{note}
