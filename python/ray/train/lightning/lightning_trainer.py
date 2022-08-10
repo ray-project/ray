@@ -11,7 +11,6 @@ from ray.air.config import ScalingConfig, DatasetConfig, RunConfig
 from ray.train.trainer import GenDataset
 from ray.data.preprocessor import Preprocessor
 from ray.air.checkpoint import Checkpoint
-from ray.train._internal.utils import get_address_and_port
 from ray.air import session
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.lightning._lightning_utils import process_datasets, TrainReportLogger
@@ -125,9 +124,8 @@ class LightningTrainer(TorchTrainer):
             "_lightning_module_init_config"
         ] = lightning_module_init_config
 
-        head_node_addr, head_node_port = get_address_and_port()
         super().__init__(
-            train_loop_per_worker=_create_train_loop(head_node_addr, head_node_port),
+            train_loop_per_worker=_lightning_train_loop_per_worker,
             train_loop_config=trainer_init_config,
             torch_config=torch_config,
             scaling_config=scaling_config,
@@ -155,10 +153,6 @@ class LightningTrainer(TorchTrainer):
             raise ValueError(
                 "The 'strategy' key in 'trainer_init_config' can only be " "'ddp'."
             )
-        if "num_nodes" in trainer_init_config:
-            raise ValueError(
-                "Do not set the 'num_nodes' key in " "'trainer_init_config'."
-            )
         if any(
             isinstance(logger, TrainReportLogger)
             for logger in trainer_init_config.get("logger", [])
@@ -169,31 +163,31 @@ class LightningTrainer(TorchTrainer):
             )
 
 
-def _create_train_loop(head_node_addr, head_node_port):
-    def _lightning_train_loop_per_worker(config):
-        os.environ["MASTER_ADDR"] = head_node_addr
-        os.environ["MASTER_PORT"] = str(head_node_port)
-        os.environ["NODE_RANK"] = str(session.get_world_rank())
-        os.environ["LOCAL_RANK"] = str(session.get_local_rank())
-        os.environ["WORLD_SIZE"] = str(session.get_world_size())
+def _lightning_train_loop_per_worker(config):
+    # $MASTER_ADDR and $MASTER_PORT are already set
+    # TODO: set $NODE_RANK properly. for homogenous clusters:
+    # node_rank = (world_rank - local_rank) / num_workers_per_node
+    os.environ["NODE_RANK"] = "0"
+    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
+    os.environ["WORLD_SIZE"] = str(session.get_world_size())
 
-        LightningModule = config.pop("_lightning_module")
-        lightning_module_init_config = config.pop("_lightning_module_init_config")
-        lightning_module_instance = LightningModule(**lightning_module_init_config)
+    LightningModule = config.pop("_lightning_module")
+    lightning_module_init_config = config.pop("_lightning_module_init_config")
+    lightning_module_instance = LightningModule(**lightning_module_init_config)
 
-        datamodule = process_datasets(
-            session.get_dataset_shard(TRAIN_DATASET_KEY),
-            session.get_dataset_shard("val"),
-            session.get_dataset_shard("test"),
-            session.get_dataset_shard("predict"),
-            batch_size=lightning_module_init_config.pop("batch_size", None),
-        )
+    datamodule = process_datasets(
+        session.get_dataset_shard(TRAIN_DATASET_KEY),
+        session.get_dataset_shard("val"),
+        session.get_dataset_shard("test"),
+        session.get_dataset_shard("predict"),
+        batch_size=lightning_module_init_config.pop("batch_size", None),
+    )
 
-        # TODO: do we need to do anything for Train checkpointing?
-        config["strategy"] = "ddp"
-        config["logger"] = [*config.get("logger", []), TrainReportLogger()]
-        trainer = pytorch_lightning.Trainer(**config)
-        # TODO: disable PTL checkpointing because we checkpoint in Train?
-        trainer.fit(lightning_module_instance, datamodule=datamodule)
-
-    return _lightning_train_loop_per_worker
+    # TODO: do we need to do anything for Train checkpointing?
+    config["strategy"] = "ddp"
+    config["devices"] = session.get_world_size()  # TODO: still correct for num_nodes>1?
+    # config["num_nodes"] = 1
+    config["logger"] = [*config.get("logger", []), TrainReportLogger()]
+    trainer = pytorch_lightning.Trainer(**config)
+    # TODO: disable PTL checkpointing because we checkpoint in Train?
+    trainer.fit(lightning_module_instance, datamodule=datamodule)
