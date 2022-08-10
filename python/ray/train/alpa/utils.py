@@ -23,12 +23,10 @@ except ModuleNotFoundError:
         "alpa isn't installed. To install alpa, run 'pip install " "alpa'."
     )
 
-
 # os
 import os
 import time
 import numpy as np
-
 
 # jax
 from jax.lib import xla_client
@@ -128,21 +126,6 @@ def get_bundle2ip(pg=None):
         ip_list.append(dict_bg2ip[str(i)])
 
     return ip_list
-
-
-# def env_integer(key, default):
-#     if key in os.environ:
-#         value = os.environ[key]
-#         if value.isdigit():
-#             return int(os.environ[key])
-
-#         logger.debug(
-#             f"Found {key} in environment, but value must "
-#             f"be an integer. Got: {value}. Returning "
-#             f"provided default {default}."
-#         )
-#         return default
-#     return default
 
 
 def create_placement_group(
@@ -246,6 +229,10 @@ def get_bundle_idx(placement_group, device_ips):
     return sorted_bundle_idx
 
 
+##########################################
+# Alpa Device Mesh monkey patch Utilities
+##########################################
+
 # monkey patch
 def monkey__init__(
     self,
@@ -335,11 +322,6 @@ def monkey_launch_xla_servers(self):
                 os.environ.get("XLA_FLAGS", "") + f" --xla_gpu_autotune_level"
                 f"={global_config.xla_gpu_autotune_level}"
             ),
-            # "NCCL_LAUNCH_MODE": "PARALLEL",
-            # "XLA_FLAGS": "--xla_dump_to=hlo --xla_dump_hlo_pass_re=.*"
-            # "NCCL_DEBUG": "INFO" if i == 0 else "VERSION",
-            # "NCCL_DEBUG_SUBSYS": "ALL",
-            # "RAY_IGNORE_UNHANDLED_ERRORS": "True",
         }
 
         if global_config.resharding_mode == "broadcast":
@@ -415,6 +397,11 @@ alpa.device_mesh.DistributedPhysicalDeviceMesh._launch_xla_servers = (
     monkey_launch_xla_servers
 )
 alpa.device_mesh.DistributedPhysicalDeviceMesh.shutdown = monkey_shutdown
+
+
+########################################
+# utils Utilities
+########################################
 
 
 def is_ray_node_resource(resource_key):
@@ -494,54 +481,9 @@ def update_jax_platform(platform):
     xb.get_backend.cache_clear()
 
 
-# def get_bundle2ip(pg=None):
-#     """get the ip address list from placement group
-
-#     The ordering of the ip address are aligned with each bundle index.
-#     """
-
-#     if pg:
-#         pg_id = pg.id.hex()
-#     # dictionary: bundle_group to node_ip
-#     dict_bg2ip = dict()
-
-#     resources_list = ray._private.state.state._available_resources_per_node().values()
-
-#     for resource in resources_list:
-#         resource_name_list = resource.keys()
-
-#         # ic(resource_name_list, pg_id)
-#         node_ip = None
-#         bundle_index_list = []
-#         for resource_name in resource_name_list:
-#             # when bundles are created, pg resources are
-#             # specified as [resource]_[bundle_index]_[pg_id]
-#             if pg:
-#                 try_bundle_index = re.findall(
-#                     rf"bundle_group_(\d+)_{pg_id}", resource_name
-#                 )
-#             else:
-#                 try_bundle_index = re.findall(r"bundle_group_(\d+)_.*", resource_name)
-
-#             try_node_ip = re.findall(
-#                 r"^node:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$)", resource_name
-#             )
-
-#             if try_node_ip:
-#                 node_ip = try_node_ip[0]
-
-#             if try_bundle_index:
-#                 bundle_index_list.append(try_bundle_index[0])
-
-#         dict_bg2ip.update(
-#             **dict(zip(bundle_index_list, [node_ip] * len(bundle_index_list)))
-#         )
-
-#     ip_list = []
-#     for i in range(len(dict_bg2ip)):
-#         ip_list.append(dict_bg2ip[str(i)])
-
-#     return ip_list
+########################################
+# Alpa Trainer Cluster Manager Utilities
+########################################
 
 
 class AlpaManager:
@@ -708,6 +650,3 @@ class AlpaManager:
 
         else:
             self.placement_group = current_placement_group
-
-
-# Used ports for XLA distributed runtime servers.
