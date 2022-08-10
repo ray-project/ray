@@ -1,5 +1,7 @@
 .. _ray-job-submission-api-ref:
 
+.. TODO: Remove :noindex: tags below.
+
 Ray Job Submission API
 ======================
 
@@ -57,6 +59,7 @@ JobSubmissionClient
 
 .. autoclass:: ray.job_submission.JobSubmissionClient
     :members:
+    :noindex:
 
 .. _job-status-ref:
 
@@ -65,6 +68,7 @@ JobStatus
 
 .. autoclass:: ray.job_submission.JobStatus
     :members:
+    :noindex:
 
 .. _job-info-ref:
 
@@ -73,3 +77,4 @@ JobInfo
 
 .. autoclass:: ray.job_submission.JobInfo
     :members:
+    :noindex:
