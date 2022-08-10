@@ -1,11 +1,6 @@
 import argparse
 import pytorch_lightning
 import torch
-import ray.data
-from ray.data.extensions import TensorArray
-from pandas import DataFrame
-from torchvision.datasets import MNIST
-from torchvision.transforms import ToTensor
 
 
 # model adapted from
@@ -24,6 +19,7 @@ class LitModel(pytorch_lightning.LightningModule):
         y = batch["label"]
         y_hat = self(x)
         loss = torch.nn.functional.cross_entropy(y_hat, y)
+        # TODO: should users pass `sync_dist=True` when `on_epoch=True`?
         self.log("train_loss", loss)
         return loss
 
@@ -41,31 +37,40 @@ class LitModel(pytorch_lightning.LightningModule):
     # `test_dataloader`, or `predict_dataloader` hooks here.
 
 
-def convert_batch_to_pandas(batch):
-    images = TensorArray([image.numpy() for image, _ in batch])
-    labels = [label for _, label in batch]
-    return DataFrame({"image": images, "label": labels})
+def get_datasets():
+    import ray.data
+    from ray.data.extensions import TensorArray
+    from pandas import DataFrame
+    from torchvision.datasets import MNIST
+    from torchvision.transforms import ToTensor
+
+    def convert_batch_to_pandas(batch):
+        images = TensorArray([image.numpy() for image, _ in batch])
+        labels = [label for _, label in batch]
+        return DataFrame({"image": images, "label": labels})
+
+    train_dataset = ray.data.read_datasource(
+        ray.data.datasource.SimpleTorchDatasource(),
+        parallelism=1,
+        dataset_factory=lambda: MNIST(
+            "~/data", train=True, download=True, transform=ToTensor()
+        ),
+    ).map_batches(convert_batch_to_pandas)
+    test_dataset = ray.data.read_datasource(
+        ray.data.datasource.SimpleTorchDatasource(),
+        parallelism=1,
+        dataset_factory=lambda: MNIST(
+            "~/data", train=False, download=True, transform=ToTensor()
+        ),
+    ).map_batches(convert_batch_to_pandas)
+    return train_dataset, test_dataset
 
 
-train_dataset = ray.data.read_datasource(
-    ray.data.datasource.SimpleTorchDatasource(),
-    parallelism=1,
-    dataset_factory=lambda: MNIST(
-        "~/data", train=True, download=True, transform=ToTensor()
-    ),
-).map_batches(convert_batch_to_pandas)
-test_dataset = ray.data.read_datasource(
-    ray.data.datasource.SimpleTorchDatasource(),
-    parallelism=1,
-    dataset_factory=lambda: MNIST(
-        "~/data", train=False, download=True, transform=ToTensor()
-    ),
-).map_batches(convert_batch_to_pandas)
-
-
-def train_lightning_mnist(num_workers=2, use_gpu=False, epochs=4):
+def train_lightning_mnist(num_workers=4, use_gpu=False, epochs=4):
     from ray.train.lightning import LightningTrainer
     from ray.air.config import ScalingConfig
+
+    train_dataset, test_dataset = get_datasets()
 
     # don't set `trainer_init_config["devices"]`
     trainer = LightningTrainer(
@@ -115,10 +120,10 @@ if __name__ == "__main__":
     import ray
 
     if args.smoke_test:
-        # ray.init(num_cpus=4)
+        ray.init(num_cpus=6)
         train_lightning_mnist()
     else:
-        # ray.init(address=args.address)
+        ray.init(address=args.address)
         train_lightning_mnist(
             num_workers=args.num_workers, use_gpu=args.use_gpu, epochs=args.epochs
         )
