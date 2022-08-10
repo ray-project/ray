@@ -9,7 +9,7 @@ Ray comes with following observability features:
 2. :ref:`ray status <monitor-cluster>`
 3. :ref:`Prometheus metrics <multi-node-metrics>`
 
-Please refer to :ref:`observability <observability-index>` for more on Ray's observability features.
+Please refer to :ref:`the observability documentation <observability>` for more on Ray's observability features.
 
 
 Monitoring the cluster via the dashboard

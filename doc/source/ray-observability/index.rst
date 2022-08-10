@@ -1,7 +1,7 @@
-Observability
-===============
+.. _observability:
 
-.. _observability-index:
+Observability
+=============
 
 .. toctree::
     :maxdepth: 2
