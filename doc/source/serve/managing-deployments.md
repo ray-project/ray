@@ -21,8 +21,8 @@ Often you want to be able to update your code or configuration options for a dep
 Deployments can be updated simply by updating the code or configuration options and calling `serve.run()` again.
 
 ```{literalinclude} ../serve/doc_code/managing_deployments.py
-:start-after: __basic_example_start__
-:end-before: __basic_example_end__
+:start-after: __updating_a_deployment_start__
+:end-before: __updating_a_deployment_end__
 :language: python
 ```
 
