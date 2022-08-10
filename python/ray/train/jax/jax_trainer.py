@@ -132,7 +132,7 @@ class JaxTrainer(DataParallelTrainer):
         scaling_config = ensure_tpu_resources_capitalized(scaling_config)
         
         use_gpu = scaling_config.use_gpu
-        use_tpu = not scaling_config.resources_per_worker.get("TPU", 0)
+        use_tpu = scaling_config.resources_per_worker and not scaling_config.resources_per_worker.get("TPU", 0)
         
         # cpu parallelism is not supported in jax
         if not (use_gpu or use_tpu): 

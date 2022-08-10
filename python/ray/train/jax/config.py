@@ -90,7 +90,7 @@ class _JaxBackend(Backend):
         
         additional_resources_per_worker = worker_group.additional_resources_per_worker
     
-        use_tpu = additional_resources_per_worker.get("TPU", False)
+        use_tpu = additional_resources_per_worker and additional_resources_per_worker.get("TPU", False)
         
 
         if use_gpu:
@@ -111,9 +111,7 @@ class _JaxBackend(Backend):
         additional_resources_per_worker = worker_group.additional_resources_per_worker
 
         # in case where `use_tpu` is `True`:
-        if additional_resources_per_worker and additional_resources_per_worker.pop(
-            "TPU", False
-        ):
+        if use_tpu:
             # Get setup tasks in order to throw errors on failure.
             try_remove_tpulib_lock = bool(os.environ.get(RAY_TPU_DEV_ENV, False))
 
