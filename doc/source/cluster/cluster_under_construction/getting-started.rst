@@ -32,8 +32,9 @@ or onto infrastructure platforms not listed here by :ref:`providing a custom nod
 How can I run workloads on Ray clusters?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Workloads can be submitted to your cluster via :ref:`Ray Job Submission<ref-deployment-guide-under-construction>`.
-Ray clusters provide a dashboard to :ref:`monitor and observe<cluster-monitoring-and-observability>` the status of your application.
-When enabled, autoscaling is a powerful feature of Ray. See :ref:`Autoscaling<cluster-autoscaler-discussion>` for information on
+Ray Jobs allow you to package your application and its dependencies for execution on a cluster.
+Ray Clusters also provide tools for :ref:`monitoring and observing<cluster-monitoring-and-observability>` the status of your application.
+Finally, when enabled, autoscaling is a powerful feature of Ray Clusters that automatically provisions resources for your Ray Job. See :ref:`Autoscaling<cluster-autoscaler-discussion>` for information on
 whether to enable autoscaling and how autoscaling works.
 
 Where to go from here?

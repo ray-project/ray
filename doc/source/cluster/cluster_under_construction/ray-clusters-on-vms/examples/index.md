@@ -7,7 +7,6 @@ at the {ref}`introductory guide<ref-cluster-quick-start-vms-under-construction>`
 :::
 
 This section presents example Ray workloads to try out on your Ray cluster.
-
-More examples will be added in the future. Running the distributed XGBoost example below is a
-great way to start experimenting with production Ray workloads.
+Running the distributed XGBoost example below is a great way to start
+experimenting with production Ray workloads.
 - {ref}`clusters-vm-ml-example`
