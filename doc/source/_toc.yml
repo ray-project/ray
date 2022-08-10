@@ -300,7 +300,7 @@ parts:
         title: References
 
       - file: cluster-deprecated/index
-        title: Deprecated
+        title: Deprecated Ray Clusters Docs
         sections:
         - file: cluster-deprecated/key-concepts
         - file: cluster-deprecated/cloud
