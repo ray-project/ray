@@ -116,11 +116,10 @@ class _JaxBackend(Backend):
 
         additional_resources_per_worker = worker_group.additional_resources_per_worker
 
-
         if use_tpu:
             # Get setup tasks in order to throw errors on failure.
             # Note: os.environ.get(RAY_TPU_DEV_ENV, 'False') is a string!
-            try_remove_tpulib_lock = str2bool(os.environ.get(RAY_TPU_DEV_ENV, 'False'))
+            try_remove_tpulib_lock = str2bool(os.environ.get(RAY_TPU_DEV_ENV, "False"))
 
             worker_group.execute(
                 release_tpu_lock,

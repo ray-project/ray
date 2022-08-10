@@ -18,14 +18,6 @@ from ray.tune.tuner import Tuner
 
 
 @pytest.fixture
-def ray_start_8_cpus():
-    address_info = ray.init(num_cpus=8)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
 def ray_start_4_cpus_2_gpus():
     address_info = ray.init(num_cpus=4, num_gpus=2)
     yield address_info
@@ -55,7 +47,7 @@ def test_jax_get_device(ray_start_4_cpus_2_gpus):
 
     results = trainer.fit()
     devices = results.metrics["devices"]
-    assert devices[0] == 2 and devices[1] == 2 and len(devices) == 2
+    assert len(devices) == 2 and devices[0] == 2 and devices[1] == 2
 
 
 def test_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
@@ -109,10 +101,6 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
     # Check that loss decreases in each trial.
     for path, df in analysis.trial_dataframes.items():
         assert df.loc[1, "loss"] < df.loc[0, "loss"]
-
-
-def test_tune_jax_mnist(ray_start_8_cpus):
-    tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 
 def test_tune_jax_mnist_gpu(ray_start_4_cpus_2_gpus):
