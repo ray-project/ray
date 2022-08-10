@@ -82,7 +82,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 **upscale_delay_s[default_value=30.0]**: How long the cluster needs to wait before scaling up replicas.
 
 :::{note}
-`downscale_delay_s` and `upscale_delay_s` are to control the frequency of doing autoscaling work. For example, if your use case takes a long time to do initialization work, you can increase `downscale_delay_s` to make the downscaling happen slowly.
+`downscale_delay_s` and `upscale_delay_s` control the frequency of doing autoscaling work. For example, if your application takes a long time to do initialization work, you can increase `downscale_delay_s` to make the downscaling happen slowly.
 :::
 
 **smoothing_factor[default_value=1]**: The multiplicative factor to speedup/slowdown each autoscaling step. For example, when the use case has high traffic volume in short period of time, you can increase `smoothing_factor` to scale up the resource quickly.
