@@ -371,7 +371,7 @@ Total of `0.45` secs.
 
 ## More Examples using deployment graph api
 
-We provide more examples in using the deployment graph api in [here](../deployment-graph.md)
+We provide more examples in using the deployment graph api in [here](../deployment-graph-patterns.md)
 
 ## Conclusion
 
