@@ -1,4 +1,3 @@
-import ray
 from ray import serve
 import time
 import os
@@ -12,6 +11,7 @@ class SimpleDeployment:
 
 # Creates one initial replica.
 serve.run(SimpleDeployment.bind())
+
 
 # Re-deploys, creating an additional replica.
 # This could be the SAME Python script, modified and re-run.
@@ -44,6 +44,7 @@ serve.run(func.options(num_replicas=10).bind())
 serve.run(func.options(num_replicas=1).bind())
 # __scaling_out_end__
 
+
 # __autoscaling_start__
 @serve.deployment(
     autoscaling_config={
@@ -61,6 +62,7 @@ serve.run(
     func.bind()
 )  # The func deployment will now autoscale based on requests demand.
 # __autoscaling_end__
+
 
 # __configure_parallism_start__
 @serve.deployment

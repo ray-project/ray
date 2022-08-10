@@ -3,7 +3,6 @@ import subprocess
 # __deploy_in_single_file_1_start__
 import ray
 from ray import serve
-import time
 
 
 @serve.deployment

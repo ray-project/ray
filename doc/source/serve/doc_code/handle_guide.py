@@ -2,6 +2,7 @@ import ray
 from ray import serve
 import requests
 
+
 # __basic_example_start__
 @serve.deployment
 class Deployment:

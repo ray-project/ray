@@ -26,6 +26,7 @@ with InputNode() as dag_input:
 
 # __user_input_and_preprocessor_end__
 
+
 # __model_and_combiner_instantiate_start__
 @serve.deployment
 class Model:
@@ -52,7 +53,7 @@ class Combiner:
         r2_ref = await self.m2.forward.remote(req)
 
         # Async gathering of model forward results for same request data
-        rst = await asyncio.gather(*[r1_ref, r2_ref])
+        await asyncio.gather(*[r1_ref, r2_ref])
 
 
 # DAG building
@@ -65,6 +66,7 @@ with InputNode() as dag_input:
     combiner = Combiner.bind(m1, m2)
     dag = combiner.run.bind(preprocessed_1, preprocessed_2, dag_input[2])
 # __model_and_combiner_instantiate_end__
+
 
 # __dynamic_aggregate_start__
 @serve.deployment
@@ -92,8 +94,8 @@ class Combiner:
 # __dynamic_aggregate_end__
 
 # __driver_to_http_ingress_start__
-from ray.serve.drivers import DAGDriver
-from ray.serve.http_adapters import json_request
+from ray.serve.drivers import DAGDriver  # noqa: E402
+from ray.serve.http_adapters import json_request  # noqa: E402
 
 # DAG building
 with InputNode() as dag_input:
@@ -111,16 +113,15 @@ with InputNode() as dag_input:
 # __driver_to_http_ingress_end__
 
 # __full_e2e_code_start__
-import time
-import asyncio
-import requests
-import starlette
+import time  # noqa: E402
+import asyncio  # noqa: E402,F811
+import requests  # noqa: E402
 
-import ray
-from ray import serve
-from ray.serve.dag import InputNode
-from ray.serve.drivers import DAGDriver
-from ray.serve.http_adapters import json_request
+import ray  # noqa: E402
+from ray import serve  # noqa: E402
+from ray.serve.dag import InputNode  # noqa: E402
+from ray.serve.drivers import DAGDriver  # noqa: E402
+from ray.serve.http_adapters import json_request  # noqa: E402
 
 
 @serve.deployment
