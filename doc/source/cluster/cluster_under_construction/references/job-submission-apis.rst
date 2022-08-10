@@ -3,7 +3,7 @@
 Ray Job Submission API
 ======================
 
-For an overview with examples see :ref:`Ray Job Submission (VM stacks)<jobs-overview-under-construction-cli>` or :ref:`Ray Job Submission (Kubernetes)<kuberay-job>`
+For an overview with examples see :ref:`Ray Job Submission (VM stacks)<jobs-overview-under-construction>` or :ref:`Ray Job Submission (Kubernetes)<kuberay-job>`
 
 .. _ray-job-submission-cli-ref-under-construction:
 
