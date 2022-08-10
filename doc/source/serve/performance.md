@@ -23,6 +23,10 @@ We are continuously benchmarking Ray Serve. The metrics we care about are latenc
   so its scalability is bounded by Ray’s scalability. Please see Ray’s [scalability envelope](https://github.com/ray-project/ray/blob/master/release/benchmarks/README.md)
   to learn more about the maximum number of nodes and other limitations.
 
+We run long-running benchmarks nightly. You can check out [our workloads in the Ray repository](https://github.com/ray-project/ray/tree/master/release/serve_tests/workloads).
+
+You can see our nightly benchmark runs [here](https://buildkite.com/ray-project/release-tests-branch/builds?branch=master). They're labeled as "Nightly tests." For example, [here's the nightly benchmark run from July 22nd, 2022](https://buildkite.com/ray-project/release-tests-branch/builds/806). You can see the results by clicking "Serve tests" and choosing a workload.
+
 You can check out our [microbenchmark instructions](https://github.com/ray-project/ray/blob/master/python/ray/serve/benchmarks/README.md)
 to benchmark on your hardware.
 
