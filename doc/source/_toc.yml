@@ -302,19 +302,7 @@ parts:
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/index
               title: Examples
               sections:
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/index
-                sections:
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/launching-ray-cluster
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/running-job-via-job-submission
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/scale-your-job-with-autoscaling
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/observe-your-app
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/shutting-down-your-ray-cluster
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-development/index
-                sections:
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-development/todo
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/index
-                sections:
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/todo
+              - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/ml-example
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
           - file: cluster/cluster_under_construction/running-applications-on-ray-clusters/index
             title: Running Applications on Ray Clusters
