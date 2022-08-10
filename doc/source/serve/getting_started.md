@@ -13,9 +13,9 @@ We'll use two models in this tutorial:
 * [HuggingFace's TranslationPipeline](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.TranslationPipeline) as a text-translation model
 * [HuggingFace's SummarizationPipeline](https://huggingface.co/docs/transformers/v4.21.0/en/main_classes/pipelines#transformers.SummarizationPipeline) as a text-summarizer model
 
-You can follow along using your own models from any Python framework. Check out our [guide on serving ML models](serve-ml-models-tutorial) from popular Python frameworks for more info.
+You can also follow along using your own models from any Python framework.
 
-After deploying these models, we'll test them with HTTP requests.
+After deploying those two models, we'll test them with HTTP requests.
 
 :::{tip}
 If you have suggestions on how to improve this tutorial,
