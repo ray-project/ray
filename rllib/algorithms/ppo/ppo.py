@@ -239,7 +239,7 @@ class UpdateKL:
 
         # Update KL on all trainable policies within the local (trainer)
         # Worker.
-        self.local_worker.foreach_policy_to_train(update)
+        self.workers.local_worker().foreach_policy_to_train(update)
 
 
 def warn_about_bad_reward_scales(config, result):
