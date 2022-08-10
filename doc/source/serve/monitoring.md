@@ -202,12 +202,8 @@ The following metrics are exposed by Ray Serve:
      - The number of exceptions that have occurred in the deployment.
    * - ``serve_deployment_replica_starts``
      - The number of times this replica has been restarted due to failure.
-   * - ``serve_deployment_queuing_latency_ms``
-     - The latency for queries in the replica's queue waiting to be processed.
    * - ``serve_deployment_processing_latency_ms``
      - The latency for queries to be processed.
-   * - ``serve_replica_queued_queries``
-     - The current number of queries queued in the deployment replicas.
    * - ``serve_replica_processing_queries``
      - The current number of queries being processed.
    * - ``serve_num_http_requests``
