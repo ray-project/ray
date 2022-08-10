@@ -17,7 +17,7 @@ $ pip install transformers
 
 ## Quickstart: Deploy your Gradio app with Ray Serve
 
-shows you an easy way to deploy your app onto Ray Serve. First, create a new Python file named `demo.py`. Second, import `GradioServer` from Ray Serve to deploy your Gradio app later, `gradio`, and `transformers.pipeline` to load text summarization models.
+This section shows you an easy way to deploy your app onto Ray Serve. First, create a new Python file named `demo.py`. Second, import `GradioServer` from Ray Serve to deploy your Gradio app later, `gradio`, and `transformers.pipeline` to load text summarization models.
 ```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration.py
 :start-after: __doc_import_begin__
 :end-before: __doc_import_end__
@@ -32,21 +32,16 @@ Remember you can substitute this with your own Gradio app if you want to try sca
 :end-before: __doc_gradio_app_end__
 ```
 
-
-### `GradioServer` as a deployment wrapper
-In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests.
-:::{note} 
-`GradioServer` is simply `GradioIngress` but wrapped in a Serve deployment.
-:::
-```{literalinclude} ../../../../python/ray/serve/gradio_integrations.py
-:start-after: __doc_gradio_ingress_begin__
-:end-before: __doc_gradio_ingress_end__
-```
-
 ### Deploying Gradio Server
-Replicas in a deployment are copies of your program running on Ray Serve, where each replica runs on a separate Ray cluster node's worker process. More replicas scales your deployment by serving more client requests. You can increase the number of replicas of your application or increase the number of CPUs and/or GPUs available to each replica.
+In order to deploy your Gradio app onto Ray Serve, you need to wrap your Gradio app in a Serve [deployment](serve-key-concepts-deployment). `GradioServer` acts as that wrapper. It serves your Gradio app remotely on Ray Serve so that it can process and respond to HTTP requests. 
 
-Using either the example we created above or an existing Gradio app (of type `Interface`, `Block`, `Parallel`, etc.), wrap it in your Gradio Server.
+Replicas in a deployment are copies of your program running on Ray Serve, where each replica runs on a separate Ray cluster node's worker process. More replicas scales your deployment by serving more client requests. By wrapping your application in `GradioServer`, you can increase the number of replicas of your application or increase the number of CPUs and/or GPUs available to each replica.
+
+:::{note} 
+`GradioServer` is simply `GradioIngress` but wrapped in a Serve deployment. You can use `GradioServer` for the simple wrap-and-deploy use case, but as you will see in the next section, you can use `GradioIngress` to define your own Gradio Server for more customized use cases.
+:::
+
+Using either the example app `io` we created above or an existing Gradio app (of type `Interface`, `Block`, `Parallel`, etc.), wrap it in your Gradio Server.
 
 ```{literalinclude} ../../../../python/ray/serve/examples/doc/gradio-integration.py
 :start-after: __doc_app_begin__

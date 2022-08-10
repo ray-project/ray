@@ -12,7 +12,6 @@ except ModuleNotFoundError:
 
 
 @PublicAPI(stability="alpha")
-# __doc_gradio_ingress_begin__
 class GradioIngress:
     """User-facing class that wraps a Gradio App in a Serve Deployment"""
 
@@ -23,9 +22,6 @@ class GradioIngress:
         sender = ASGIHTTPSender()
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
-
-
-# __doc_gradio_ingress_end__
 
 
 GradioServer = serve.deployment(GradioIngress)
