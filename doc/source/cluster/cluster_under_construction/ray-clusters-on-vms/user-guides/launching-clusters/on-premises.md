@@ -9,7 +9,7 @@ This document describes how to set up an on-premise Ray cluster, i.e., to run Ra
 
 (manual-setup-cluster)=
 
-## Manually Set up a Ray Cluster 
+## Manually Set up a Ray Cluster
 This section assumes that you have a list of machines and that the nodes in the cluster share the same network. It also assumes that Ray is installed on each machine. You can use pip to install the ray command line tool with cluster launcher support. Follow the [Ray installation instructions](installation) for more details.
 
 ```bash
@@ -36,7 +36,7 @@ Make sure to replace `head-node-address:port` with the value printed by the comm
 
 Note that if your compute nodes are on their own subnetwork with Network Address Translation, the address printed by the head node will not work if connecting from a machine outside that subnetwork. You will need to use a head node address reachable from the remote machine. If the head node has a domain address like compute04.berkeley.edu, you can simply use that in place of an IP address and rely on DNS.
 
-Ray autodetects the resources (e.g., CPU) available on each node, but you can also manually override this by passing custom resources to the `ray start` command. For example, if you wish to specify that a machine has 10 CPUs and 1 GPU available for use by Ray, you can do this with the flags `--num-cpus=10` and `--num-gpus=1`. 
+Ray autodetects the resources (e.g., CPU) available on each node, but you can also manually override this by passing custom resources to the `ray start` command. For example, if you wish to specify that a machine has 10 CPUs and 1 GPU available for use by Ray, you can do this with the flags `--num-cpus=10` and `--num-gpus=1`.
 See the [Configuration page](../../ray-core/configure.html#configuring-ray) for more information.
 
 ### Troubleshooting
@@ -78,16 +78,16 @@ nc: connect to compute04.berkeley.edu port 6379 (tcp) failed: Connection refused
 ```
 (manual-cluster-launcher)=
 
-## Using Ray Cluster Launcher
+## Using Ray cluster launcher
 
-The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install it, or follow [install ray](installation) for more detailed instructions.
+The Ray cluster launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install it, or follow [install ray](installation) for more detailed instructions.
 
 ```bash
 # install ray
 pip install "ray[default]"
 ```
 
-### Start Ray with the Ray Cluster Launcher
+### Start Ray with the Ray cluster launcher
 
 The provided [example-full.yaml](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/local/example-full.yaml) cluster config file will create a Ray cluster given a list of nodes.
 

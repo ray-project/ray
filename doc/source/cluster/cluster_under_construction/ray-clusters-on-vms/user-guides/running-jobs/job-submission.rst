@@ -78,14 +78,14 @@ Next, start a local Ray cluster:
 Note the address and port returned in the terminal---this will be where we submit job requests to, as explained further in the examples below.  If you do not see this, ensure the Ray Dashboard is installed by running :code:`pip install "ray[default]"`.
 
 At this point, the job is ready to be submitted by one of the :ref:`Ray Job APIs<ray-job-apis>`.
-Continue on to see examples of running and interacting with this sample job. 
+Continue on to see examples of running and interacting with this sample job.
 
 .. _ray-job-apis-under-construction-cli:
 
 Ray Job Submission APIs
 -----------------------
 
-Ray provides three APIs for job submission: 
+Ray provides three APIs for job submission:
 
 * A :ref:`command line interface<ray-job-cli>`, the easiest way to get started.
 * A :ref:`Python SDK<ray-job-sdk>`, the recommended way to submit jobs programmatically.
@@ -101,7 +101,7 @@ All three APIs for job submission share the following key inputs:
 * **Runtime Environment**: Specifies files, packages, and other dependencies for your job.  See :ref:`Runtime Environments<runtime-environments>` for details.
 
     * Example: ``{working_dir="/data/my_files", pip=["requests", "pendulum==2.1.2"]}``
-    * Of special note: the field :code:`working_dir` specifies the files your job needs to run. The entrypoint command will be run in the remote cluster's copy of the `working_dir`, so for the entrypoint ``python my_ray_script.py``, the file ``my_ray_script.py`` must be in the directory specified by ``working_dir``. 
+    * Of special note: the field :code:`working_dir` specifies the files your job needs to run. The entrypoint command will be run in the remote cluster's copy of the `working_dir`, so for the entrypoint ``python my_ray_script.py``, the file ``my_ray_script.py`` must be in the directory specified by ``working_dir``.
 
         * If :code:`working_dir` is a local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.  This option has a size limit of 100 MB and is recommended for rapid iteration and experimentation.
         * If :code:`working_dir` is a remote URI hosted on S3, GitHub or others: It will be downloaded and unpacked to where your submitted application runs.  This option has no size limit and is recommended for production use.  For details, see :ref:`remote-uris`.
@@ -112,7 +112,7 @@ All three APIs for job submission share the following key inputs:
 CLI
 ^^^
 
-The easiest way to get started with Ray job submission is to use the Job Submission CLI. 
+The easiest way to get started with Ray job submission is to use the Job Submission CLI.
 
 Jump to the :ref:`API Reference<ray-job-submission-cli-ref>`, or continue reading for a walkthrough.
 
@@ -120,7 +120,7 @@ Jump to the :ref:`API Reference<ray-job-submission-cli-ref>`, or continue readin
 Using the CLI on a local cluster
 """"""""""""""""""""""""""""""""
 
-First, start a local Ray cluster (e.g. with ``ray start --head``) and open a terminal (on the head node, which is your local machine).  
+First, start a local Ray cluster (e.g. with ``ray start --head``) and open a terminal (on the head node, which is your local machine).
 
 Next, set the :code:`RAY_ADDRESS` environment variable:
 
@@ -128,10 +128,10 @@ Next, set the :code:`RAY_ADDRESS` environment variable:
 
     export RAY_ADDRESS="http://127.0.0.1:8265"
 
-This tells the jobs CLI how to find your Ray cluster.  Here we are specifying port ``8265`` on the head node, the port that the Ray Dashboard listens on.  
+This tells the jobs CLI how to find your Ray cluster.  Here we are specifying port ``8265`` on the head node, the port that the Ray Dashboard listens on.
 (Note that this port is different from the port used to connect to the cluster via :ref:`Ray Client <ray-client>`, which is ``10001`` by default.)
 
-Now you are ready to use the CLI.  
+Now you are ready to use the CLI.
 Here are some examples of CLI commands from the Quick Start example and their output:
 
 .. code-block::
@@ -172,7 +172,7 @@ Here are some examples of CLI commands from the Quick Start example and their ou
 
 .. warning::
 
-    When using the CLI, do not wrap the entrypoint command in quotes.  For example, use 
+    When using the CLI, do not wrap the entrypoint command in quotes.  For example, use
     ``ray job submit --working_dir="." -- python script.py`` instead of ``ray job submit --working_dir="." -- "python script.py"``.
     Otherwise you may encounter the error ``/bin/sh: 1: python script.py: not found``.
 
@@ -187,8 +187,8 @@ Using the CLI on a remote cluster
 
 Above, we ran the "Quick Start" example on a local Ray cluster.  When connecting to a `remote` cluster via the CLI, you need to be able to access the Ray Dashboard port of the cluster over HTTP.
 
-One way to do this is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node. 
-If you started your remote cluster with the :ref:`Ray Cluster Launcher <ref-cluster-quick-start>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
+One way to do this is to port forward ``127.0.0.1:8265`` on your local machine to ``127.0.0.1:8265`` on the head node.
+If you started your remote cluster with the :ref:`Ray cluster launcher <ref-cluster-quick-start>`, then the port forwarding can be set up automatically using the ``ray dashboard`` command (see :ref:`monitor-cluster` for details).
 
 To use this, run the following command on your local machine, where ``cluster.yaml`` is the configuration file you used to launch your cluster:
 
@@ -196,7 +196,7 @@ To use this, run the following command on your local machine, where ``cluster.ya
 
     ray dashboard cluster.yaml
 
-Once this is running, check that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.  
+Once this is running, check that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.
 
 Next, set the :code:`RAY_ADDRESS` environment variable:
 

@@ -1,22 +1,22 @@
 
-# Launching Ray Clusters on Azure 
+# Launching Ray Clusters on Azure
 
 This guide details the steps needed to start a Ray cluster on Azure.
 
 There are two ways to start an Azure Ray cluster.
-- Launch through Ray Cluster Launcher.
+- Launch through Ray cluster launcher.
 - Deploy a cluster using Azure portal .
 
 ```{note}
 Azure cluster configurations are community-maintained.
 ```
 
-## Using Ray Cluster Launcher 
+## Using Ray cluster launcher
 
 
-### Install Ray Cluster Launcher
+### Install Ray cluster launcher
 
-The Ray Cluster Launcher is part of the `ray` CLI. Use the CLI to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray CLI with cluster launcher support. Follow [the Ray installation documentation](installation) for more detailed instructions.
+The Ray cluster launcher is part of the `ray` CLI. Use the CLI to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray CLI with cluster launcher support. Follow [the Ray installation documentation](installation) for more detailed instructions.
 
 ```bash
 # install ray
@@ -35,7 +35,7 @@ pip install azure-cli azure-identity
 az login
 ```
 
-### Start Ray with the Ray Cluster Launcher
+### Start Ray with the Ray cluster launcher
 
 
 The provided [cluster config file](https://github.com/ray-project/ray/tree/eacc763c84d47c9c5b86b26a32fd62c685be84e6/python/ray/autoscaler/azure/example-full.yaml) will create a small cluster with a Standard DS2v3 on-demand head node that is configured to autoscale to up to two Standard DS2v3 [spot-instance](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/spot-vms) worker nodes.
@@ -67,7 +67,7 @@ ray down example-full.yaml
 
 Congratulations, you have started a Ray cluster on Azure!
 
-## Using Azure portal 
+## Using Azure portal
 
 Alternatively, you can deploy a cluster using Azure portal directly. Please note that autoscaling is done using Azure VM Scale Sets and not through the Ray autoscaler. This will deploy [Azure Data Science VMs (DSVM)](https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/) for both the head node and the auto-scalable cluster managed by [Azure Virtual Machine Scale Sets](https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/).
 The head node conveniently exposes both SSH as well as JupyterLab.

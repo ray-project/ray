@@ -3,11 +3,11 @@
 
 This guide details the steps needed to start a Ray cluster on AWS.
 
-To start an AWS Ray cluster, you should use the Ray Cluster Launcher with the AWS Python SDK.
+To start an AWS Ray cluster, you should use the Ray cluster launcher with the AWS Python SDK.
 
-## Install Ray Cluster Launcher
+## Install Ray cluster launcher
 
-The Ray Cluster Launcher is part of the `ray` CLI. Use the CLI to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray CLI with cluster launcher support. Follow [the Ray installation documentation](installation) for more detailed instructions.
+The Ray cluster launcher is part of the `ray` CLI. Use the CLI to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray CLI with cluster launcher support. Follow [the Ray installation documentation](installation) for more detailed instructions.
 
 ```bash
 # install ray
@@ -34,7 +34,7 @@ aws_secret_access_key=bar
 aws_session_token=baz" >> ~/.aws/credentials
 ```
 
-## Start Ray with the Ray Cluster Launcher
+## Start Ray with the Ray cluster launcher
 
 Once Boto3 is configured to manage resources in your AWS account, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml) will create a small cluster with an m5.large head node (on-demand) configured to autoscale to up to two m5.large [spot-instance](https://aws.amazon.com/ec2/spot/) workers.
 
@@ -62,14 +62,14 @@ ray down example-full.yaml
 Congrats, you have started a Ray cluster on AWS!
 
 
-If you want to learn more about the Ray Cluster Launcher, see this blog post for a [step by step guide](https://medium.com/distributed-computing-with-ray/a-step-by-step-guide-to-scaling-your-first-python-application-in-the-cloud-8761fe331ef1).
+If you want to learn more about the Ray cluster launcher, see this blog post for a [step by step guide](https://medium.com/distributed-computing-with-ray/a-step-by-step-guide-to-scaling-your-first-python-application-in-the-cloud-8761fe331ef1).
 
 
 ## AWS Configurations
 
 ### Using Amazon EFS
 
-To utilize Amazon EFS in the Ray cluster, you will need to install some additional utilities and mount the EFS in `setup_commands`. Note that these instructions only work if you are using the Ray Cluster Launcher on AWS.
+To utilize Amazon EFS in the Ray cluster, you will need to install some additional utilities and mount the EFS in `setup_commands`. Note that these instructions only work if you are using the Ray cluster launcher on AWS.
 
 ```yaml
 # Note You need to replace the {{FileSystemId}} with your own EFS ID before using the config.
