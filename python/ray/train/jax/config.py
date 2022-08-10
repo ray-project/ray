@@ -34,9 +34,8 @@ def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: i
         num_workers: Total number of all the workers.
         index: Index (i.e. world rank) of the current worker.
     """
-    import jax
-
     # not import jax at the top to avoid tpulib_lockfile error
+    import jax
     jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
 
@@ -87,7 +86,6 @@ class _JaxBackend(Backend):
         master_addr_with_port = f"{master_addr}:{master_port}"
         num_workers = len(worker_group)
 
-        print(worker_group.num_gpus_per_worker)
         if worker_group.num_gpus_per_worker:
             # Get setup tasks in order to throw errors on failure.
             setup_futures = []

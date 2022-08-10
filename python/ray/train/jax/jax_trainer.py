@@ -123,13 +123,11 @@ class JaxTrainer(DataParallelTrainer):
     @classmethod
     def _validate_scaling_config(cls, scaling_config: ScalingConfig) -> ScalingConfig:
         """Return scaling config dataclass after validating updated keys."""
-        # TODO: test whether to add tpu into the scalingconfig
         ensure_only_allowed_dataclass_keys_updated(
             dataclass=scaling_config,
             allowed_keys=cls._scaling_config_allowed_keys,
         )
 
-        print(scaling_config, scaling_config.resources_per_worker)
         # case-insensitivize
         # since `tpu` is not the standard resources in ray currently
         # add these lines to prevent the cases where the users
@@ -143,7 +141,6 @@ class JaxTrainer(DataParallelTrainer):
                     resources_per_worker_upper[k.upper()] = v
                 else:                     
                     resources_per_worker_upper[k] = v
-            print(resources_per_worker_upper)
             scaling_config.resources_per_worker = resources_per_worker_upper
 
         # cpu parallelism is not supported in jax
