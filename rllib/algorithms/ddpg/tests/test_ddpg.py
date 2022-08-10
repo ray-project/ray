@@ -34,10 +34,11 @@ class TestDDPG(unittest.TestCase):
 
     def test_ddpg_compilation(self):
         """Test whether DDPG can be built with both frameworks."""
-        config = ddpg.DDPGConfig().training(num_steps_sampled_before_learning_starts=0)
-        config.num_workers = 0
-        config.num_envs_per_worker = 2
-        config.num_steps_sampled_before_learning_starts = 0
+        config = (
+            ddpg.DDPGConfig()
+            .training(num_steps_sampled_before_learning_starts=0)
+            .rollouts(num_rollout_workers=0, num_envs_per_worker=2)
+        )
         explore = config.exploration_config.update({"random_timesteps": 100})
         config.exploration(exploration_config=explore)
 
