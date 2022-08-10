@@ -193,10 +193,7 @@ dataset = ray.data.from_items([{"X": 1.0, "Y": 2.0}, {"X": 4.0, "Y": 0.0}])
 print(dataset.take())
 # [{'X': 1.0, 'Y': 2.0}, {'X': 4.0, 'Y': 0.0}]
 
-preprocessor = Chain(
-    StandardScaler(columns=["X", "Y"]),
-    Concatenator()
-)
+preprocessor = Chain(StandardScaler(columns=["X", "Y"]), Concatenator())
 dataset_transformed = preprocessor.fit_transform(dataset)
 print(dataset_transformed.take())
 # [{'concat_out': array([-1.,  1.])}, {'concat_out': array([ 1., -1.])}]
