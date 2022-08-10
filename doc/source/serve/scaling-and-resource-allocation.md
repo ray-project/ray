@@ -95,7 +95,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 
 You may want to specify a deployment's resource requirements to reserve cluster resources like GPUs.  To assign hardware resources per replica, you can pass resource requirements to
 `ray_actor_options`.
-By default, each replica requires one CPU.
+By default, each replica reserves one CPU.
 To learn about options to pass in, take a look at [Resources with Actors guide](actor-resource-guide).
 
 For example, to create a deployment where each replica uses a single GPU, you can do the
