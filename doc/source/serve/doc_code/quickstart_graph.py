@@ -4,6 +4,7 @@ from ray.serve.drivers import DAGDriver
 from ray.serve.dag import InputNode
 from ray.serve.http_adapters import json_request
 
+
 # 1. Define the models in our composition graph
 @serve.deployment
 class Adder:
