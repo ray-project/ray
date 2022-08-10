@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <boost/flyweight.hpp>
+#include <boost/flyweight/key_value.hpp>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -30,6 +33,20 @@
 
 namespace ray {
 namespace core {
+
+/// Extract a key to identify a Address so that the flyweight can look 
+/// up the Address from the pool.
+struct AddressWorkeridExtractor {
+  const std::string& operator()(const rpc::Address& addr)const
+  {
+    return addr.worker_id();
+  }
+};
+
+/// Since the owner address has high redundency across objects, 
+/// we use boost::flyweight to maintain an intern table to reduce
+/// memory footprint per object. 
+typedef boost::flyweight<boost::flyweights::key_value<std::string,rpc::Address,AddressWorkeridExtractor>> InternAddress;
 
 // Interface for mocking.
 class ReferenceCounterInterface {
@@ -663,7 +680,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
     /// using the ObjectID.
-    absl::optional<rpc::Address> owner_address;
+    absl::optional<InternAddress> owner_address;
     /// If this object is owned by us and stored in plasma, and reference
     /// counting is enabled, then some raylet must be pinning the object value.
     /// This is the address of that raylet.
