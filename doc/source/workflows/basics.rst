@@ -7,7 +7,7 @@ Ray DAG
 -------
 
 Normally, Ray tasks are executed eagerly. Ray DAG provides a way to build the
-DAG without execution, and Ray Workflow is based on Ray DAGs. 
+DAG without execution, and Ray Workflow is based on Ray DAGs.
 
 It is simple to build a Ray DAG: just replace all ``.remote(...)`` with
 ``.bind(...)`` in a Ray application. Ray DAGs can be composed arbitrarily
@@ -128,7 +128,7 @@ To retrieve a workflow result, you can assign ``workflow_id`` when running a wor
 The workflow results can be retrieved with
 ``workflow.get_output(workflow_id)``. If a workflow is not given
 ``workflow_id``, a random string is set as the ``workflow_id``. To confirm
-``workflow_id`` in the situation, call ``ray.workflow.list_all()``. 
+``workflow_id`` in the situation, call ``ray.workflow.list_all()``.
 
 .. code-block:: python
 
