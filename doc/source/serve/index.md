@@ -139,14 +139,13 @@ Serve is easy to use. You can test your models (and your entire deployment graph
 :::{dropdown} ML engineer
 :animate: fade-in-slide-down
 
-Serve helps you scale out the deployment and run them reliably in an efficient, cost-saving manner. Serve offers a first-class model composition API to help you combine models together to build end-to-end application. Additionally, Serve natively run on Kubernetes which minimal operation overhead.
-
+Serve helps you scale out the deployment and runs them reliably, efficiently, and cheaply to save costs. With Serve's first-class model composition API, you can combine models together and build end-to-end application. Additionally, Serve natively runs on Kubernetes with minimal operation overhead.
 :::
 
 :::{dropdown} ML Platform engineer
 :animate: fade-in-slide-down
 
-Serve specializes in ML model serving and can be a reliably component in your ML Platform stack.
+Serve specializes in ML model serving. As such, it can be an important and reliable component as part of your ML Platform stack.
 Serve supports arbitrary Python code and therefore integrates well with the MLOps ecosystem. You can use it with model optimizers (ONNX, TVM), model monitoring systems (Seldon Alibi, Arize), model registries (MLFlow, Weights and Biases), machine learning frameworks (XGBoost, Scikit-learn), data app UIs (Gradio, Streamlit), and Web API frameworks (FastAPI, gRPC).
 
 :::
@@ -157,12 +156,11 @@ Serve supports arbitrary Python code and therefore integrates well with the MLOp
 :::{dropdown} TFServing, TorchServe, ONNXRuntime
 :animate: fade-in-slide-down
 
-Ray Serve is *framework agnostic*, you can use any Python framework and libraries.
+Ray Serve is *framework agnostic*, so you can use any Python framework and libraries.
 We believe data scientists are not bounded a particular machine learning framework.
 They use the best tool available for the job.
 
-Compared to these framework specific solution, Ray Serve doesn't perform any optimizations
-to make your ML model run faster. However, you can still optimize the models yourself
+Compared to these framework-specific solutions, Ray Serve doesn't perform any optimizations to make your ML model run faster. However, you can still optimize the models yourself
 and run them in Ray Serve: for example, you can run a model compiled by
 [PyTorch JIT](https://pytorch.org/docs/stable/jit.html).
 :::
@@ -170,7 +168,7 @@ and run them in Ray Serve: for example, you can run a model compiled by
 :::{dropdown} AWS SageMaker, Azure ML, Google Vertex AI
 :animate: fade-in-slide-down
 
-Ray Serve brings the scalability and parallelism of these hosted offering to
+Ray Serve brings the scalability and parallelism of these hosted offerings to
 your own infrastructure. You can use our [cluster launcher](cluster-cloud)
 to deploy Ray Serve to all major public clouds, K8s, as well as on bare-metal, on-premise machines.
 
