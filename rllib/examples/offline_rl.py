@@ -44,14 +44,12 @@ parser.add_argument(
 
 
 if __name__ == "__main__":
-    import ray
-    ray.init(local_mode=True)
     args = parser.parse_args()
 
     # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
-
     config = (
-        cql.CQLConfig().framework(framework="torch")
+        cql.CQLConfig()
+        .framework(framework="torch")
         .rollouts(
             num_rollout_workers=0,
             rollout_fragment_length=1,
@@ -147,8 +145,9 @@ if __name__ == "__main__":
     # features, which then to pass through the Q-head.
     model_out, _ = cql_model({"obs": obs})
     # The estimated Q-values from the (historic) actions in the batch.
-    q_values_old = cql_model.get_q_values(model_out, torch.from_numpy(batch[
-                                                                          "actions"]))[0]
+    q_values_old = cql_model.get_q_values(
+        model_out, torch.from_numpy(batch["actions"])
+    )[0]
     # The estimated Q-values for the new actions computed by our policy.
     actions_new = cql_policy.compute_actions_from_input_dict({"obs": obs})[0]
     q_values_new = cql_model.get_q_values(model_out, torch.from_numpy(actions_new))[0]
