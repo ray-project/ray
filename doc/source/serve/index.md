@@ -47,7 +47,7 @@ For more examples, select from the tabs.
 
 :::{tabbed} Model composition
 
-In this example we demonstrate Serve's model composition API allowing you to express complex computation graph and deploy them as a unit.
+In this example we demonstrate Serve's model composition API allowing you to express a complex computation graph and deploy it as a unit.
 
 ```{literalinclude} doc_code/quickstart_graph.py
 :language: python
@@ -63,7 +63,7 @@ In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) int
 ```
 :::
 
-:::{tabbed} HuggingFace model
+:::{tabbed} Hugging Face model
 
 To run this example, install the following: ``pip install transformers``
 
@@ -172,9 +172,9 @@ Ray Serve brings the scalability and parallelism of these hosted offerings to
 your own infrastructure. You can use our [cluster launcher](cluster-cloud)
 to deploy Ray Serve to all major public clouds, K8s, as well as on bare-metal, on-premise machines.
 
-Compared to these offerings, Ray Serve lacks a unified user interface and functionality
+Compared to these offerings, Ray Serve lacks a unified user interface and functionality to
 let you manage the lifecycle of the models, visualize it's performance, etc. Ray
-Serve focuses on just model serving and provides the primitives for you to
+Serve primarily focuses on model serving and provides the primitives for you to
 build your own ML platform on top.
 :::
 
@@ -182,9 +182,9 @@ build your own ML platform on top.
 :animate: fade-in-slide-down
 
 You can develop Ray Serve on your laptop, deploy it on a dev box, and scale it out
-to multiple machines or K8s cluster without changing one lines of code. It's a lot
-easier to get started with when you don't need to provision and manage K8s cluster.
-When it's time to deploy, you can use the our native Kubernetes Operator
+to multiple machines or a K8s cluster with minimal or no changes to code. It's a lot
+easier to get started with when you don't need to provision and manage a K8s cluster.
+When it's time to deploy, you can use our [Kubernetes Operator](https://ray-project.github.io/kuberay/guidance/rayservice/)
 to transparently put your Ray Serve application in K8s.
 :::
 
@@ -192,15 +192,13 @@ to transparently put your Ray Serve application in K8s.
 :animate: fade-in-slide-down
 
 Ray Serve is a special purpose distributed model server built for large scale applications.
-This means we can work with any model packaging and registry format. Many of the tools are
-focused on serving one models. Ray Serve is built for end-to-end machine learning application
-in mind with our unique model composition API and advanced autoscaling capabilities.
-
+This means we can work with any model packaging and registry format.
+Many of the tools are focused on serving one ML framework-specific type of a model. By contrast, Ray Serve is framework-agnostic and allows you to build an end-to-end machine learning application with its unique model composition API and advanced autoscaling capabilities.
 :::
 
 We truly believe Serve is unique as it gives you end to end control
 over the API while delivering scalability and high performance. To achieve
-something like what Serve offers, you often need to glue together multiple
+Serve's feature offerings, you often need to glue together multiple
 frameworks like Tensorflow Serving, SageMaker, or even roll your own
 batching server.
 
