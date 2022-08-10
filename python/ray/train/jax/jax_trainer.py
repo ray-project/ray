@@ -129,6 +129,7 @@ class JaxTrainer(DataParallelTrainer):
             allowed_keys=cls._scaling_config_allowed_keys,
         )
 
+        print(scaling_config)
         # case-insensitivize
         # since `tpu` is not the standard resources in ray currently
         # add these lines to prevent the cases where the users
