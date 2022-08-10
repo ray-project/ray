@@ -3,11 +3,14 @@
 Monitoring and observability
 ----------------------------
 
-Ray comes with 3 main observability features:
+Ray comes with following observability features:
 
 1. :ref:`The dashboard <Ray-dashboard>`
 2. :ref:`ray status <monitor-cluster>`
 3. :ref:`Prometheus metrics <multi-node-metrics>`
+
+Please refer to :ref:`the observability documentation <observability>` for more on Ray's observability features.
+
 
 Monitoring the cluster via the dashboard
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

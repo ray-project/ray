@@ -8,7 +8,7 @@
 Cluster Launcher Commands
 =========================
 
-This document overviews common commands for using the Ray Cluster Launcher.
+This document overviews common commands for using the Ray cluster launcher.
 See the :ref:`Cluster Configuration <cluster-config>` docs on how to customize the configuration file.
 
 Launching a cluster (``ray up``)

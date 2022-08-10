@@ -23,10 +23,11 @@ How can I use Ray clusters?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray clusters are officially supported on the following technology stacks:
 
-* The :ref:`Ray Cluster Launcher on AWS and GCP<ref-cluster-quick-start-vms-under-construction>`. Community-supported Azure and Aliyun integrations also exist.
+* The :ref:`Ray cluster launcher on AWS and GCP<ref-cluster-quick-start-vms-under-construction>`. Community-supported Azure and Aliyun integrations also exist.
 * :ref:`KubeRay, the official way to run Ray on Kubernetes<kuberay-index>`.
 
-Advanced users may want to :ref:`deploy Ray clusters on-premise<cluster-private-setup-under-construction>` or even onto infrastructure platforms not listed here by :ref:`providing a custom node provider<additional-cloud-providers-under-construction>`.
+Advanced users may want to :ref:`deploy Ray clusters on-premise <on-prem>`
+or onto infrastructure platforms not listed here by :ref:`providing a custom node provider <ref-cluster-setup-under-construction>`.
 
 Where to go from here?
 ----------------------
@@ -48,7 +49,7 @@ Where to go from here?
 
     ---
 
-    **I want to run Ray on a cloud provider** 
+    **I want to run Ray on a cloud provider**
     ^^^
     Take a sample application designed to run on a laptop and scale it up in the
     cloud. Access to an AWS or GCP account is required.
