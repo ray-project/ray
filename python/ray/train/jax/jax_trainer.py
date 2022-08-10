@@ -151,8 +151,8 @@ class JaxTrainer(DataParallelTrainer):
         # between the nodes, the connections is to be established by NCCL;
         # within the nodes, jax can already enable communicates automatically.
         # so, no end to use jax backend to make the connections.
-        # NOT `STRICT_SPREAD`: if the users use the trainer on one of GPU nodes instead 
-        # of on the extra cpu nodes, then `STRICT_SPREAD` will hang on for the resources.
+        # NOT `STRICT_SPREAD`: if the users use the trainer on one of GPU nodes instead
+        # of on the extra cpu nodes, then `STRICT_SPREAD` will hang on for the resources
         if "PACK" in scaling_config.placement_strategy:
             scaling_config.placement_strategy = "SPREAD"
             logger.info(

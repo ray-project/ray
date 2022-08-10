@@ -1,6 +1,9 @@
 # This example showcases how to use Jax (pmap) with Ray Train.
 # Original code: (without pmap)
 # https://github.com/google/flax/blob/main/examples/mnist/train.py
+# parallel version: (with flax & pmap)
+# https://flax.readthedocs.io/en/latest/guides/ensembling.html
+
 import argparse
 from typing import Dict
 from ray.air import session
@@ -20,42 +23,46 @@ def get_datasets():
     import jax
 
     """Load MNIST train and test datasets into memory."""
+    # utils
+    def drop_last(data, num_shards):
+        # drop the last batch if it's not full
+        # to make the dataset evenly divisible by num_shards
+        return data[len(data) // num_shards * num_shards :]
+
     # shard the dataset
-    def shard_fn(x):
+    def shard_across_nodes(x):
         # shard the dataset for each node (each process)
-        return einops.rearrange(x, "(d l) ... -> d l ...", d=jax.process_count())[
-            jax.process_index()
-        ]
+        shards = einops.rearrange(x, "(d l) ... -> d l ...", d=jax.process_count())
+        return shards[jax.process_index()]
 
     # Hide any GPUs from TensorFlow. Otherwise TF might reserve memory and make
     # it unavailable to JAX.
+    #  this is specifically for `tensorflow_datasets`
     import tensorflow as tf
 
     tf.config.experimental.set_visible_devices([], "GPU")
 
     ds_builder = tfds.builder("mnist")
     ds_builder.download_and_prepare()
-    test_ds = tfds.as_numpy(ds_builder.as_dataset(split="test", batch_size=-1))
-    train_ds = tfds.as_numpy(ds_builder.as_dataset(split="train", batch_size=-1))
+    _test_ds = tfds.as_numpy(ds_builder.as_dataset(split="test", batch_size=-1))
+    _train_ds = tfds.as_numpy(ds_builder.as_dataset(split="train", batch_size=-1))
 
-    # TODO: warning about the sharding dimension
-    # train_ds["image"] = train_ds["image"][
-    #     : len(train_ds["image"]) // jax.device_count() * jax.device_count()
-    # ]
-    # train_ds["label"] = train_ds["label"][
-    #     : len(train_ds["label"]) // jax.device_count() * jax.device_count()
-    # ]
-    # test_ds["image"] = test_ds["image"][
-    #     : len(test_ds["image"]) // jax.device_count() * jax.device_count()
-    # ]
-    # test_ds["label"] = test_ds["label"][
-    #     : len(test_ds["label"]) // jax.device_count() * jax.device_count()
-    # ]
+    test_ds, train_ds = {}, {}
 
-    train_ds["image"] = np.float32(shard_fn(train_ds["image"])) / 255.0
-    test_ds["image"] = np.float32(shard_fn(test_ds["image"])) / 255.0
-    train_ds["label"] = np.int32(shard_fn(train_ds["label"]))
-    test_ds["label"] = np.int32(shard_fn(test_ds["label"]))
+    # Note: use `jax.device_count()` instead of `jax.process_count()`
+    # details:
+    # `jax.device_count()`  --- total shard number
+    # `jax.process_count()` --- shard number across different nodes
+    # `jax.local_device_count()` -- shard number within one nodes
+    train_ds["image"] = drop_last(_train_ds["image"], jax.device_count())
+    test_ds["image"] = drop_last(_test_ds["image"], jax.device_count())
+    train_ds["label"] = drop_last(_train_ds["label"], jax.device_count())
+    test_ds["label"] = drop_last(_test_ds["label"], jax.device_count())
+
+    train_ds["image"] = np.float32(shard_across_nodes(train_ds["image"])) / 255.0
+    test_ds["image"] = np.float32(shard_across_nodes(test_ds["image"])) / 255.0
+    train_ds["label"] = np.int32(shard_across_nodes(train_ds["label"]))
+    test_ds["label"] = np.int32(shard_across_nodes(test_ds["label"]))
     return train_ds, test_ds
 
 
@@ -84,6 +91,7 @@ def train_func(config: Dict):
             x = nn.Dense(features=10)(x)
             return x
 
+    # NOTE: pmap is used to parallelize the training process across multiple nodes
     @functools.partial(jax.pmap, static_broadcasted_argnums=(1, 2))
     def create_train_state(rng, learning_rate, momentum):
         """Creates initial `TrainState`."""
@@ -95,7 +103,8 @@ def train_func(config: Dict):
     @functools.partial(jax.pmap, axis_name="ensemble")
     def train_step(state, images, labels):
         """Computes gradients, loss and accuracy for a single batch."""
-
+        # Reference:
+        # https://flax.readthedocs.io/en/latest/guides/ensembling.html#parallel-functions
         def loss_fn(params):
             logits = MLP().apply({"params": params}, images)
             one_hot = jax.nn.one_hot(labels, 10)
@@ -113,6 +122,8 @@ def train_func(config: Dict):
 
     def train_epoch(state, train_ds, batch_size):
         """Train for a single epoch."""
+        # Reference:
+        # https://flax.readthedocs.io/en/latest/guides/ensembling.html#training-the-ensemble
         train_ds_size = len(train_ds["image"])
         steps_per_epoch = train_ds_size // batch_size
 
