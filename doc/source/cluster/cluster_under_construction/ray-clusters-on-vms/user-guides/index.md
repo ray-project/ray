@@ -13,7 +13,7 @@ TODO(cade) remove duplication in toc structure
 
 ```{toctree}
 :caption: "In these guides, we go into further depth on several topics related to deployments of Ray clusters on VMs."
-:maxdepth: '2'
+:maxdepth: '1'
 launching-clusters/index
 community-supported-cluster-manager/index
 configuring-autoscaling

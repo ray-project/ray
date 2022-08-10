@@ -12,7 +12,7 @@ Community Supported Cluster Managers
 The following is a list of community supported cluster managers.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    yarn.rst
    slurm.rst

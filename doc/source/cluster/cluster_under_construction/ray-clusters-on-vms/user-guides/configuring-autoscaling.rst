@@ -15,7 +15,7 @@ If a user tries to launch an actor, task, or placement group but there are insuf
 The autoscaler adds nodes to satisfy resource demands in the queue, and removes nodes when they become idle.
 
 Parameters
-==========
+~~~~~~~~~~
 
 The following are the autoscaling parameters that are specified with cluster launch. They can also be modified at runtime by
 updating the cluster config.
@@ -46,6 +46,6 @@ greater than or equal to available_node_types.<node_type_name>.min_workers. It m
   is satisfied. This may disrupt running workloads.
 
 Autoscaler SDK
-==============
+~~~~~~~~~~~~~~
 
 For more information on programmatic access to the autoscaler, see :ref:`Autoscaler SDK<ref-autoscaler-sdk-under-construction>`.
