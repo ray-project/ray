@@ -190,7 +190,6 @@ parts:
               - file: serve/migration
           - file: serve/architecture
           - file: serve/tutorials/index
-          - file: serve/faq
           - file: serve/package-ref
 
       - file: rllib/index
