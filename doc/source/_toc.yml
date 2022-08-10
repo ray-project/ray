@@ -280,7 +280,6 @@ parts:
           sections:
           - file: cluster/vms/user-guides/launching-clusters/index
             title: Launching Clusters
-          - file: cluster/vms/user-guides/monitoring
           - file: cluster/vms/user-guides/large-cluster-best-practices
           - file: cluster/vms/user-guides/configuring-autoscaling
           - file: cluster/vms/user-guides/community/index
