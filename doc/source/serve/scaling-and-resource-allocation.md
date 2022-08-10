@@ -4,7 +4,7 @@ This guide helps you to:
 
 - scale your deployments horizontally by specifying a number of replicas
 - scale up and down automatically to react to changing traffic
-- allocate hardware resources (CPUs, GPUs, etc) for each deployment.
+- allocate hardware resources (CPUs, GPUs, etc) for each deployment
 
 (scaling-out-a-deployment)=
 
@@ -15,7 +15,7 @@ The number of replicas is specified by the `num_replicas` field in the deploymen
 By default, `num_replicas` is 1.
 
 ```python
-# Create with a ten replicas.
+# Create with a deployment with ten replicas.
 @serve.deployment(num_replicas=10)
 def func(*args):
     pass
@@ -68,21 +68,21 @@ There are several user-specified parameters the autoscaling algorithm takes into
 :::{note}
 Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deployment; the scale up will be started when you start sending traffic. There will be a cold start time as the Ray ServeHandle waits (blocks) for available replicas to assign the request.
 :::
-**max_replicas[default_value=1]**: Max replicas is the maximum number of replicas for the deployment. Ray Serve Autoscaling will rely on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc) are not enough to bring up more replicas.
+**max_replicas[default_value=1]**: The maximum number of replicas for the deployment. Ray Serve Autoscaling will rely on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
 
-**target_num_ongoing_requests_per_replica[default_value=1]**: The config is to maintain how many ongoing requests are expected to run concurrently per replica at most. If the number is lower, the scale up will be done more aggressively.
+**target_num_ongoing_requests_per_replica[default_value=1]**: How many ongoing requests are expected to run concurrently per replica. The autoscaler scales up if the value is lower than the current number of ongoing requests per replica. Similarly, the autoscaler scales down if it's higher than the current number of ongoing requests. Scaling happens quicker if there's a high disparity between this value and the current number of ongoing requests.
 :::{note}
 - It is always recommended to load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_num_ongoing_requests_per_replica` number to maintain high performance.
 - Internally, the autoscaler will decide to scale up or down by comparing `target_num_ongoing_requests_per_replica` to the number of `RUNNING` and `PENDING` tasks on each replica.
 - `target_num_ongoing_requests_per_replica` is only a target value used for autoscaling (not a hard limit), the real ongoing requests number can be higher than the config.
 :::
 
-**downscale_delay_s[default_value=600.0]**: The config is to control how long the cluster needs to wait before scaling down replicas.
+**downscale_delay_s[default_value=600.0]**: How long the cluster needs to wait before scaling down replicas.
 
-**upscale_delay_s[default_value=30.0]**: The config is to control how long the cluster need to wait before scaling up replicas.
+**upscale_delay_s[default_value=30.0]**: How long the cluster needs to wait before scaling up replicas.
 
 :::{note}
-`downscale_delay_s` and `upscale_delay_s` are to control the frequency of doing autoscaling work. For example, if your use case takes a long time to do initialization work, you can increase `downscale_delay_s` to make the downscaling happen slowly.
+`downscale_delay_s` and `upscale_delay_s` control the frequency of doing autoscaling work. For example, if your application takes a long time to do initialization work, you can increase `downscale_delay_s` to make the downscaling happen slowly.
 :::
 
 **smoothing_factor[default_value=1]**: The multiplicative factor to speedup/slowdown each autoscaling step. For example, when the use case has high traffic volume in short period of time, you can increase `smoothing_factor` to scale up the resource quickly.
@@ -93,10 +93,10 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 
 ## Resource Management (CPUs, GPUs)
 
-You may want to specify a deployment's resource requirements, for example if a deployment requires a GPU.  To assign hardware resources per replica, you can pass resource requirements to
+You may want to specify a deployment's resource requirements to reserve cluster resources like GPUs.  To assign hardware resources per replica, you can pass resource requirements to
 `ray_actor_options`.
-By default, each replica requires one CPU.
-To learn about options to pass in, take a look at [Resources with Actors guide](actor-resource-guide).
+By default, each replica reserves one CPU.
+To learn about options to pass in, take a look at the [Resources with Actors guide](actor-resource-guide).
 
 For example, to create a deployment where each replica uses a single GPU, you can do the
 following:
@@ -134,9 +134,9 @@ In this example, each replica of each deployment will be allocated 0.5 GPUs.  Th
 ## Configuring Parallelism with OMP_NUM_THREADS
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
-The number of CPUs they use is controlled by the OMP_NUM_THREADS environment variable.
+The number of CPUs they use is controlled by the `OMP_NUM_THREADS` environment variable.
 To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` by default because Ray workers and actors use a single CPU by default.
-If you *do* want to enable this parallelism in your Serve deployment, just set OMP_NUM_THREADS to the desired value either when starting Ray or in your function/class definition:
+If you *do* want to enable this parallelism in your Serve deployment, just set `OMP_NUM_THREADS` to the desired value either when starting Ray or in your function/class definition:
 
 ```bash
 OMP_NUM_THREADS=12 ray start --head
