@@ -1,4 +1,5 @@
 from ray import serve
+from typing import List, Dict, Any
 
 
 # __batch_example_start__
@@ -8,14 +9,14 @@ class BatchingExample:
         self.count = 0
 
     @serve.batch
-    async def handle_batch(self, requests):
+    async def handle_batch(self, requests: List[Any]) -> List[Dict]:
         responses = []
         for request in requests:
             responses.append(request.json())
 
         return responses
 
-    async def __call__(self, request):
+    async def __call__(self, request) -> List[Dict]:
         return await self.handle_batch(request)
 
 

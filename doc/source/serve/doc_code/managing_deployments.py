@@ -67,7 +67,7 @@ serve.run(
 # __configure_parallism_start__
 @serve.deployment
 class MyDeployment:
-    def __init__(self, parallelism):
+    def __init__(self, parallelism: str):
         os.environ["OMP_NUM_THREADS"] = parallelism
         # Download model weights, initialize model, etc.
 
