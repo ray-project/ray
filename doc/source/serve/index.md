@@ -139,7 +139,7 @@ Serve is easy to use. You can test your models (and your entire deployment graph
 :::{dropdown} ML engineer
 :animate: fade-in-slide-down
 
-Serve helps you scale out the deployment and run them reliably in efficient, cost-saving manner. Serve offers a first-class model composition API to help you combine models together to build end to end application. Additionally, Serve natively run on Kubernetes which minimal operation overhead.
+Serve helps you scale out the deployment and run them reliably in an efficient, cost-saving manner. Serve offers a first-class model composition API to help you combine models together to build end-to-end application. Additionally, Serve natively run on Kubernetes which minimal operation overhead.
 
 :::
 
