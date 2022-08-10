@@ -5,9 +5,9 @@ This guide details the steps needed to start a Ray cluster in GCP.
 
 To start a GCP Ray cluster, you will use the Ray Cluster Launcher with the Google API client.
 
-
 ## Install Ray Cluster Launcher
-The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](installation) for more detailed instructions.
+
+The Ray Cluster Launcher is part of the `ray` CLI. Use the CLI to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray CLI with cluster launcher support. Follow [the Ray installation documentation](installation) for more detailed instructions.
 
 ```bash
 # install ray

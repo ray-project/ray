@@ -5,9 +5,9 @@ This guide details the steps needed to start a Ray cluster on AWS.
 
 To start an AWS Ray cluster, you should use the Ray Cluster Launcher with the AWS Python SDK.
 
-
 ## Install Ray Cluster Launcher
-The Ray Cluster Launcher is a command line tool that allows you to start, stop and SSH to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the Ray CLI, which includes cluster launcher support. Follow the general [installation instructions](installation) for more details.
+
+The Ray Cluster Launcher is part of the `ray` CLI. Use the CLI to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray CLI with cluster launcher support. Follow [the Ray installation documentation](installation) for more detailed instructions.
 
 ```bash
 # install ray

@@ -7,10 +7,16 @@ There are two ways to start an Azure Ray cluster.
 - Launch through Ray Cluster Launcher.
 - Deploy a cluster using Azure portal .
 
+```{note}
+Azure cluster configurations are community-maintained.
+```
 
 ## Using Ray Cluster Launcher 
+
+
 ### Install Ray Cluster Launcher
-The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](installation) for more detailed instructions.
+
+The Ray Cluster Launcher is part of the `ray` CLI. Use the CLI to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray CLI with cluster launcher support. Follow [the Ray installation documentation](installation) for more detailed instructions.
 
 ```bash
 # install ray
