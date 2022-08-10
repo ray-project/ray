@@ -146,8 +146,7 @@ class JaxTrainer(DataParallelTrainer):
         # cpu parallelism is not supported in jax
         if (
             scaling_config.use_gpu is False
-            and "TPU" in resources_per_worker
-            and resources_per_worker["TPU"] > 0
+            or resources_per_worker.get("TPU", 0) == 0
         ):
             logger.warning(
                 "cpu parallelism is not supported in jax. "
