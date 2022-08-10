@@ -1,3 +1,5 @@
+(cluster-autoscaler-discussion)=
+
 # Autoscaling
 :::{warning}
 This page is under construction!

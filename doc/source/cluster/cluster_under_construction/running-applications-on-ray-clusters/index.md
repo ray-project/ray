@@ -1,3 +1,4 @@
+(running-applications-on-ray-clusters-index)=
 # Index
 :::{warning}
 This page is under construction!

@@ -19,8 +19,8 @@ of machines.
 A Ray cluster is a set of one or more nodes that are running Ray and share the same :ref:`head node<cluster-head-node-under-construction>`.
 Ray clusters can either be a fixed-size number of nodes or :ref:`can autoscale<cluster-autoscaler-under-construction>` (i.e., automatically provision or deprovision the number of nodes in a cluster) according to the demand of the Ray workload.
 
-How can I use Ray clusters?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+How can I deploy a Ray cluster?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray clusters are officially supported on the following technology stacks:
 
 * The :ref:`Ray cluster launcher on AWS and GCP<ref-cluster-quick-start-vms-under-construction>`. Community-supported Azure and Aliyun integrations also exist.
@@ -28,6 +28,13 @@ Ray clusters are officially supported on the following technology stacks:
 
 Advanced users may want to :ref:`deploy Ray clusters on-premise <on-prem>`
 or onto infrastructure platforms not listed here by :ref:`providing a custom node provider <ref-cluster-setup-under-construction>`.
+
+How can I run workloads on Ray clusters?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Workloads can be submitted to your cluster via :ref:`Ray Job Submission<ref-deployment-guide-under-construction>`.
+Ray clusters provide a dashboard to :ref:`monitor and observe<cluster-monitoring-and-observability>` the status of your application.
+When enabled, autoscaling is a powerful feature of Ray. See :ref:`Autoscaling<cluster-autoscaler-discussion>` for information on
+whether to enable autoscaling and how autoscaling works.
 
 Where to go from here?
 ----------------------
@@ -49,7 +56,7 @@ Where to go from here?
 
     ---
 
-    **I want to run Ray on a cloud provider**
+    **I want to deploy Ray on a cloud provider**
     ^^^
     Take a sample application designed to run on a laptop and scale it up in the
     cloud. Access to an AWS or GCP account is required.
@@ -61,7 +68,7 @@ Where to go from here?
         :classes: btn-outline-info btn-block
     ---
 
-    **I want to run Ray on Kubernetes**
+    **I want to deploy Ray on Kubernetes**
     ^^^
     Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
     remote Kubernetes cluster or on your laptop via KinD.
@@ -70,6 +77,17 @@ Where to go from here?
     .. link-button:: kuberay-quickstart
         :type: ref
         :text: Getting Started with Ray on Kubernetes
+        :classes: btn-outline-info btn-block
+    ---
+
+    **I want to learn about running applications on a Ray cluster**
+    ^^^
+    Learn about running and monitoring applications on your Ray cluster.
+
+    +++
+    .. link-button:: running-applications-on-ray-clusters-index
+        :type: ref
+        :text: Learn about running applications on a Ray cluster
         :classes: btn-outline-info btn-block
 
 .. include:: /_includes/clusters/announcement_bottom.rst
