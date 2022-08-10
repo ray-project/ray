@@ -88,7 +88,7 @@ class SegmentationBuffer:
         returns_to_go = episode[SampleBatch.RETURNS_TO_GO][si : ei + 1].reshape(-1, 1)
 
         length = obs.shape[0]
-        timesteps = np.arange(si, si + length)
+        timesteps = np.arange(si, si + length, dtype=np.int32)
         masks = np.ones(length, dtype=returns_to_go.dtype)
 
         # Back pad returns-to-go with 0 if at end of rollout.

@@ -3,7 +3,7 @@ pendulum_medium_expert_dt:
     run: DT
     stop:
         # We could make this -200, but given that we have 4 cpus for our tests, we will have to settle for -300.
-        evaluation/episode_reward_mean: -300
+        evaluation/episode_reward_mean: -350
         timesteps_total: 20000000
     config:
         input: 'dataset'
@@ -20,10 +20,10 @@ pendulum_medium_expert_dt:
         # training
         framework: torch
         train_batch_size: 512
-        target_return: -150.0
+        target_return: -120.0
         lr: 0.0
-        lr_schedule: [[0, 0.0], [10000, 0.01]]
-        grad_clip: 0.25
+        lr_schedule: [[0, 0.0], [100000, 0.01]]
+        grad_clip: 1.0
         optimizer:
             weight_decay: 0.1
 #            betas: [0.9, 0.95]

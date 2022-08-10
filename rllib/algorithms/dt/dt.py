@@ -11,16 +11,18 @@ from ray.rllib.algorithms.dt.segmentation_buffer import (
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
-from ray.rllib.utils.annotations import override
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     SAMPLE_TIMER,
     NUM_AGENT_STEPS_TRAINED,
 )
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
-    ResultDict,
+    ResultDict, TensorStructType, PolicyID, TensorType,
 )
 
 logger = logging.getLogger(__name__)
@@ -203,6 +205,7 @@ class DT(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         with self._timers[SAMPLE_TIMER]:
+            # TODO: Add ability to do obs_filter for offline sampling.
             train_batch = synchronous_parallel_sample(worker_set=self.workers)
         # TODO(charlesjsun): Fix multiagent later
         train_batch = train_batch.as_multi_agent()
@@ -235,3 +238,57 @@ class DT(Algorithm):
         self.workers.local_worker().set_global_vars(global_vars)
 
         return train_results
+
+    @PublicAPI
+    @override(Algorithm)
+    def compute_single_action(
+        self,
+        *args,
+        input_dict: Optional[SampleBatch] = None,
+        full_fetch: bool = True,
+        **kwargs,
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
+        assert input_dict is not None, (
+            "DT must take in input_dict for inference. "
+            "See get_initial_input_dict() and get_next_input_dict()."
+        )
+        assert full_fetch, (
+            "DT needs full_fetch=True. Pass extra into get_next_input_dict()."
+        )
+        return super().compute_single_action(
+            *args,
+            input_dict=input_dict.copy(),
+            full_fetch=full_fetch,
+            **kwargs
+        )
+
+    @PublicAPI
+    def get_initial_input_dict(
+        self,
+        observation: TensorStructType,
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+    ) -> SampleBatch:
+        """
+        Args:
+            observation: Single (unbatched) observation from the environment.
+            policy_id:
+        """
+        policy = self.get_policy(policy_id)
+        return policy.get_initial_input_dict(observation)
+
+    @PublicAPI
+    def get_next_input_dict(
+        self,
+        input_dict: SampleBatch,
+        action: TensorStructType,
+        reward: TensorStructType,
+        next_obs: TensorStructType,
+        extra: Dict[str, TensorType],
+        policy_id: PolicyID = DEFAULT_POLICY_ID,
+    ) -> SampleBatch:
+        """
+
+        """
+        policy = self.get_policy(policy_id)
+        return policy.get_next_input_dict(input_dict, action, reward, next_obs, extra)
+

@@ -1,16 +1,14 @@
-import functools
 from pathlib import Path
 import os
 import unittest
+
+import gym
 
 import ray
 from ray.rllib.algorithms.dt import DTConfig
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import (
-    check_compute_single_action,
-    check_train_results,
-)
+from ray.rllib.utils.test_utils import check_train_results
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -28,15 +26,10 @@ class TestDT(unittest.TestCase):
     def test_dt_compilation(self):
         """Test whether a CRR algorithm can be built with all supported frameworks."""
 
-        # TODO: terrible asset management style
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
-        # data_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
         print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
-        # Will use the Json Reader in this example until we convert over the example
-        # files over to Parquet, since the dataset json reader cannot handle large
-        # block sizes.
 
         def input_reading_fn(ioctx):
             return JsonReader(ioctx.config["input_config"]["paths"], ioctx)
@@ -45,8 +38,11 @@ class TestDT(unittest.TestCase):
 
         config = (
             DTConfig()
-            .environment(env="Pendulum-v1", clip_actions=True)
-            # .environment(env="CartPole-v0")
+            .environment(
+                env="Pendulum-v1",
+                clip_actions=True,
+                normalize_actions=True,
+            )
             .framework("torch")
             .offline_data(
                 input_=input_reading_fn,
@@ -55,15 +51,16 @@ class TestDT(unittest.TestCase):
             )
             .training(
                 train_batch_size=200,
-                # use_obs_output=True,
-                # use_return_output=True,
-                target_return=-300,
+                target_return=-120,
                 replay_buffer_config={
                     "capacity": 8,
                 },
                 model={
                     "max_seq_len": 4,
                 },
+                num_layers=1,
+                num_heads=1,
+                embed_dim=64,
             )
             .evaluation(
                 evaluation_interval=2,
@@ -77,28 +74,50 @@ class TestDT(unittest.TestCase):
                 num_rollout_workers=0,
                 horizon=200,
             )
+            .reporting(min_time_s_per_iteration=1)
         )
 
         num_iterations = 4
 
         for _ in ["torch"]:
-            algorithm = config.build()
+            algo = config.build()
             # check if 4 iterations raises any errors
             for i in range(num_iterations):
-                results = algorithm.train()
+                results = algo.train()
                 check_train_results(results)
                 print(results)
                 if (i + 1) % 2 == 0:
                     # evaluation happens every 2 iterations
                     eval_results = results["evaluation"]
                     print(
-                        f"iter={algorithm.iteration} "
+                        f"iter={algo.iteration} "
                         f"R={eval_results['episode_reward_mean']}"
                     )
 
-            # check_compute_single_action(algorithm)
+            # do example inference rollout
+            env = gym.make("Pendulum-v1")
 
-            algorithm.stop()
+            obs = env.reset()
+            input_dict = algo.get_initial_input_dict(obs)
+
+            for _ in range(200):
+                action, _, extra = algo.compute_single_action(input_dict=input_dict)
+                obs, reward, done, _ = env.step(action)
+                if done:
+                    break
+                else:
+                    input_dict = algo.get_next_input_dict(
+                        input_dict,
+                        action,
+                        reward,
+                        obs,
+                        extra,
+                    )
+
+            algo.stop()
+
+    def test_loss(self):
+        pass
 
 
 if __name__ == "__main__":

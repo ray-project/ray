@@ -25,8 +25,8 @@ def _generate_episode_batch(max_ep_len, eps_id, obs_dim=8, act_dim=3):
             SampleBatch.RETURNS_TO_GO: np.full(
                 (max_ep_len,), eps_id + 200, dtype=np.float32
             ),
-            SampleBatch.EPS_ID: np.full((max_ep_len,), eps_id, dtype=np.long),
-            SampleBatch.T: np.arange(max_ep_len),
+            SampleBatch.EPS_ID: np.full((max_ep_len,), eps_id, dtype=np.int32),
+            SampleBatch.T: np.arange(max_ep_len, dtype=np.int32),
         }
     )
     return batch
