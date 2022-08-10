@@ -355,6 +355,11 @@ class _FileBasedDatasourceReader(Reader):
             path_to_size = dict(zip(self._paths, self._file_sizes))
             self._paths = self._partition_filter(self._paths)
             self._file_sizes = [path_to_size[p] for p in self._paths]
+            if len(self._paths) == 0:
+                raise ValueError(
+                    "No input files found to read. Please double check that "
+                    "'partition_filter' field is set properly."
+                )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0

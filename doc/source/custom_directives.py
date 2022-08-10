@@ -18,56 +18,11 @@ from sphinx.util.console import red  # type: ignore
 import mock
 
 __all__ = [
-    "fix_xgb_lgbm_docs",
     "DownloadAndPreprocessEcosystemDocs",
     "mock_modules",
     "update_context",
     "LinkcheckSummarizer",
 ]
-
-try:
-    FileNotFoundError
-except NameError:
-    FileNotFoundError = IOError
-
-
-def fix_xgb_lgbm_docs(app, what, name, obj, options, lines):
-    """Fix XGBoost-Ray and LightGBM-Ray docstrings.
-
-    For ``app.connect('autodoc-process-docstring')``.
-    See https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html
-
-    Removes references to XGBoost ``callback_api`` and sets explicit module
-    references to classes and functions that are named the same way in both
-    XGBoost-Ray and LightGBM-Ray.
-    """
-
-    def _remove_xgboost_refs(replacements: list):
-        """Remove ``callback_api`` ref to XGBoost docs.
-
-        Fixes ``undefined label: callback_api (if the link has no caption
-        the label must precede a section header)``
-        """
-        if name.startswith("xgboost_ray"):
-            replacements.append((":ref:`callback_api`", "Callback API"))
-
-    def _replace_ray_params(replacements: list):
-        """Replaces references to ``RayParams`` with module-specific ones.
-
-        Fixes ``more than one target found for cross-reference 'RayParams'``.
-        """
-        if name.startswith("xgboost_ray"):
-            replacements.append(("RayParams", "xgboost_ray.RayParams"))
-        elif name.startswith("lightgbm_ray"):
-            replacements.append(("RayParams", "lightgbm_ray.RayParams"))
-
-    replacements = []
-    _remove_xgboost_refs(replacements)
-    _replace_ray_params(replacements)
-    if replacements:
-        for i, _ in enumerate(lines):
-            for replacement in replacements:
-                lines[i] = lines[i].replace(*replacement)
 
 
 # Taken from https://github.com/edx/edx-documentation
@@ -173,13 +128,6 @@ def mock_modules():
 # Add doc files from external repositories to be downloaded during build here
 # (repo, ref, path to get, path to save on disk)
 EXTERNAL_MARKDOWN_FILES = [
-    ("ray-project/xgboost_ray", "master", "README.md", "ray-more-libs/xgboost-ray.md"),
-    (
-        "ray-project/lightgbm_ray",
-        "master",
-        "README.md",
-        "ray-more-libs/lightgbm-ray.md",
-    ),
     (
         "ray-project/ray_lightning",
         "6aed848f757a03c03166c1a9bddfeea5153e7b90",
