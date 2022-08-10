@@ -59,7 +59,7 @@ A Ray head node and 9 Ray worker nodes will be created.
 
 We will use {ref}`Ray Job Submission<jobs-overview>` to kick off the workload.
 
-### Connect to the cluster.
+### Connect to the cluster
 
 First, we connect to the Job server. Run the following blocking command
 in a separate shell.
@@ -68,7 +68,7 @@ ray dashboard cluster.yaml
 ```
 This will forward remote port 8265 to port 8265 on localhost.
 
-### Submit the workload.
+### Submit the workload
 
 We'll use the {ref}`Ray Job Python SDK<ray-job-sdk>` to submit the XGBoost workload.
 
@@ -86,7 +86,7 @@ python xgboost_submit.py
 popd
 ```
 
-### Observe progress.
+### Observe progress
 
 The benchmark may take up to 30 minutes to run.
 Use the following tools to observe its progress.
@@ -107,7 +107,6 @@ View `localhost:8265` in your browser to access the Ray Dashboard.
 
 Observe autoscaling status and Ray resource usage with
 ```shell
-# Substitute the name of your Ray cluster's head pod.
 ray exec cluster.yaml 'ray status'
 ```
 
