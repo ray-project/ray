@@ -213,8 +213,8 @@ After defining our configuration, we will use the Ray Cluster Launcher to start 
 
     $ ray up -y config.yaml
 
-Run the application in the cloud
---------------------------------
+Running applications on a Ray Cluster
+-------------------------------------
 
 We are now ready to execute an application on our Ray Cluster.
 ``ray.init()`` will now automatically connect to the newly created cluster.
