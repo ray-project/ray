@@ -178,7 +178,6 @@ parts:
               - file: serve/deploying-serve
               - file: serve/monitoring
               - file: serve/performance
-              - file: serve/autoscaling
               - file: serve/production
               - file: serve/migration
           - file: serve/architecture
