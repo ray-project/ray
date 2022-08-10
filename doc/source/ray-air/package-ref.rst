@@ -17,7 +17,7 @@ Preprocessor
 .. autoclass:: ray.data.preprocessor.Preprocessor
     :members:
 
-General Preprocessors
+Generic Preprocessors
 #####################
 
 .. autoclass:: ray.data.preprocessors.BatchMapper
