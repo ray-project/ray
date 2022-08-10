@@ -122,6 +122,25 @@ def test_internal_kv(ray_start_regular):
         kv._internal_kv_list("@namespace_abc", namespace="n")
 
 
+def test_exit_logging():
+    log = run_string_as_driver(
+        """
+import ray
+
+@ray.remote
+class A:
+    def pid(self):
+        import os
+        return os.getpid()
+
+
+a = A.remote()
+ray.get(a.pid.remote())
+    """
+    )
+    assert "Traceback" not in log
+
+
 def test_run_on_all_workers(call_ray_start, tmp_path):
     # This test is to ensure run_function_on_all_workers are executed
     # on all workers.

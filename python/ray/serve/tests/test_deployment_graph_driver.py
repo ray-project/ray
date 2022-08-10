@@ -1,7 +1,4 @@
-import contextlib
-import io
 import sys
-import numpy as np
 from pydantic import BaseModel
 
 import pytest
@@ -10,11 +7,9 @@ import starlette.requests
 from starlette.testclient import TestClient
 
 from ray.serve.drivers import DAGDriver, SimpleSchemaIngress, _load_http_adapter
-from ray.serve.http_adapters import json_request
 from ray.serve.dag import InputNode
 from ray import serve
 import ray
-from ray._private.test_utils import wait_for_condition
 
 
 def my_resolver(a: int):
@@ -95,107 +90,90 @@ def echo(inp):
     return inp
 
 
-def test_dag_driver_default(serve_instance):
-    with InputNode() as inp:
-        dag = echo.bind(inp)
-
-    handle = serve.run(DAGDriver.bind(dag))
-    assert ray.get(handle.predict.remote(42)) == 42
-
-    resp = requests.post("http://127.0.0.1:8000/", json={"array": [1]})
-    print(resp.text)
-
-    resp.raise_for_status()
-    assert resp.json() == "starlette!"
+async def json_resolver(request: starlette.requests.Request):
+    return await request.json()
 
 
-async def resolver(my_custom_param: int):
-    return my_custom_param
+def test_multi_dag(serve_instance):
+    """Test multi dags within dag deployment"""
 
+    @serve.deployment
+    class D1:
+        def forward(self):
+            return "D1"
 
-def test_dag_driver_custom_schema(serve_instance):
-    with InputNode() as inp:
-        dag = echo.bind(inp)
+    @serve.deployment
+    class D2:
+        def forward(self):
+            return "D2"
 
-    handle = serve.run(DAGDriver.bind(dag, http_adapter=resolver))
-    assert ray.get(handle.predict.remote(42)) == 42
+    @serve.deployment
+    class D3:
+        def __call__(self):
+            return "D3"
 
-    resp = requests.get("http://127.0.0.1:8000/?my_custom_param=100")
-    print(resp.text)
-    resp.raise_for_status()
-    assert resp.json() == 100
+    @serve.deployment
+    def D4():
+        return "D4"
 
-
-def test_dag_driver_custom_pydantic_schema(serve_instance):
-    with InputNode() as inp:
-        dag = echo.bind(inp)
-
-    handle = serve.run(DAGDriver.bind(dag, http_adapter=MyType))
-    assert ray.get(handle.predict.remote(MyType(a=1, b="str"))) == MyType(a=1, b="str")
-
-    resp = requests.post("http://127.0.0.1:8000/", json={"a": 1, "b": "str"})
-    print(resp.text)
-    resp.raise_for_status()
-    assert resp.json() == {"a": 1, "b": "str"}
-
-
-@serve.deployment
-def combine(*args):
-    return list(args)
-
-
-def test_dag_driver_partial_input(serve_instance):
-    with InputNode() as inp:
-        dag = DAGDriver.bind(
-            combine.bind(echo.bind(inp[0]), echo.bind(inp[1]), echo.bind(inp[2])),
-            http_adapter=json_request,
-        )
+    d1 = D1.bind()
+    d2 = D2.bind()
+    d3 = D3.bind()
+    d4 = D4.bind()
+    dag = DAGDriver.bind(
+        {
+            "/my_D1": d1.forward.bind(),
+            "/my_D2": d2.forward.bind(),
+            "/my_D3": d3,
+            "/my_D4": d4,
+        }
+    )
     handle = serve.run(dag)
-    assert ray.get(handle.predict.remote([1, 2, [3, 4]])) == [1, 2, [3, 4]]
-    assert ray.get(handle.predict.remote(1, 2, [3, 4])) == [1, 2, [3, 4]]
 
-    resp = requests.post("http://127.0.0.1:8000/", json=[1, 2, [3, 4]])
-    print(resp.text)
-    resp.raise_for_status()
-    assert resp.json() == [1, 2, [3, 4]]
+    for i in range(1, 5):
+        assert ray.get(handle.predict_with_route.remote(f"/my_D{i}")) == f"D{i}"
+        assert requests.post(f"http://127.0.0.1:8000/my_D{i}", json=1).json() == f"D{i}"
+        assert requests.get(f"http://127.0.0.1:8000/my_D{i}", json=1).json() == f"D{i}"
 
 
-@serve.deployment
-def return_np_int(_):
-    return [np.int64(42)]
+def test_multi_dag_with_inputs(serve_instance):
+    @serve.deployment
+    class D1:
+        def forward(self, input):
+            return input
 
+    @serve.deployment
+    class D2:
+        def forward(self, input1, input2):
+            return input1 + input2
 
-def test_driver_np_serializer(serve_instance):
-    # https://github.com/ray-project/ray/pull/24215#issuecomment-1115237058
-    with InputNode() as inp:
-        dag = DAGDriver.bind(return_np_int.bind(inp))
-    serve.run(dag)
-    assert requests.get("http://127.0.0.1:8000/").json() == [42]
+    @serve.deployment
+    def D3(input):
+        return input
 
+    d1 = D1.bind()
+    d2 = D2.bind()
 
-def test_dag_driver_sync_warning(serve_instance):
-    with InputNode() as inp:
-        dag = echo.bind(inp)
-
-    log_file = io.StringIO()
-    with contextlib.redirect_stderr(log_file):
-
-        handle = serve.run(DAGDriver.bind(dag))
-        assert ray.get(handle.predict.remote(42)) == 42
-
-        def wait_for_request_success_log():
-            lines = log_file.getvalue().splitlines()
-            for line in lines:
-                if "DAGDriver" in line and "HANDLE predict OK" in line:
-                    return True
-            return False
-
-        wait_for_condition(wait_for_request_success_log)
-
-        assert (
-            "You are retrieving a sync handle inside an asyncio loop."
-            not in log_file.getvalue()
+    with InputNode() as dag_input:
+        dag = DAGDriver.bind(
+            {
+                "/my_D1": d1.forward.bind(dag_input),
+                "/my_D2": d2.forward.bind(dag_input[0], dag_input[1]),
+                "/my_D3": D3.bind(dag_input),
+            },
+            http_adapter=json_resolver,
         )
+        handle = serve.run(dag)
+
+    assert ray.get(handle.predict_with_route.remote("/my_D1", 1)) == 1
+    assert ray.get(handle.predict_with_route.remote("/my_D2", 10, 2)) == 12
+    assert ray.get(handle.predict_with_route.remote("/my_D3", 100)) == 100
+    assert requests.post("http://127.0.0.1:8000/my_D1", json=1).json() == 1
+    assert requests.post("http://127.0.0.1:8000/my_D2", json=[1, 2]).json() == 3
+    assert requests.post("http://127.0.0.1:8000/my_D3", json=100).json() == 100
+    assert requests.get("http://127.0.0.1:8000/my_D1", json=1).json() == 1
+    assert requests.get("http://127.0.0.1:8000/my_D2", json=[1, 2]).json() == 3
+    assert requests.get("http://127.0.0.1:8000/my_D3", json=100).json() == 100
 
 
 if __name__ == "__main__":

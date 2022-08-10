@@ -638,8 +638,7 @@ class SampleBatch(dict):
         if framework == "torch":
             assert torch is not None
             for k, v in self.items():
-                if isinstance(v, np.ndarray) and v.dtype != object:
-                    self[k] = convert_to_torch_tensor(v, device)
+                self[k] = convert_to_torch_tensor(v, device)
         else:
             raise NotImplementedError
         return self
@@ -1250,6 +1249,10 @@ class MultiAgentBatch:
             This very instance of MultiAgentBatch.
         """
         return self
+
+    def __getitem__(self, key: str) -> SampleBatch:
+        """Returns the SampleBatch for the given policy id."""
+        return self.policy_batches[key]
 
     def __str__(self):
         return "MultiAgentBatch({}, env_steps={})".format(

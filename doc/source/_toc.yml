@@ -15,10 +15,9 @@ parts:
     - file: ray-air/user-guides
       sections:
         - file: ray-air/preprocessors
-        - file: ray-air/checkpoints
+        - file: ray-air/trainer
         - file: ray-air/check-ingest
-        - file: ray-air/config-scaling
-        - file: ray-air/examples/analyze_tuning_results
+        - file: ray-air/tuner
         - file: ray-air/predictors
         - file: ray-air/examples/serving_guide
         - file: ray-air/deployment
@@ -30,6 +29,7 @@ parts:
         - file: ray-air/examples/huggingface_text_classification
         - file: ray-air/examples/sklearn_example
         - file: ray-air/examples/xgboost_example
+        - file: ray-air/examples/analyze_tuning_results
         - file: ray-air/examples/lightgbm_example
         - file: ray-air/examples/torch_incremental_learning
         - file: ray-air/examples/rl_serving_example
@@ -66,10 +66,16 @@ parts:
       - file: train/train
         title: Ray Train
         sections:
-          - file: train/user_guide
-          - file: train/examples
+          - file: train/getting-started
+          - file: train/key-concepts
+          - file: train/user-guides
+            sections:
+              - file: train/config_guide
+              - file: train/dl_guide
+              - file: train/gbdt
+              - file: train/architecture
           - file: train/faq
-          - file: train/architecture
+          - file: train/examples
           - file: train/api
 
       - file: tune/index
@@ -165,24 +171,23 @@ parts:
               - file: serve/managing-deployments
               - file: serve/handling-dependencies
               - file: serve/http-guide
-              - file: serve/http-adapters
               - file: serve/handle-guide
               - file: serve/ml-models
+              - file: serve/model_composition
               - file: serve/deploying-serve
               - file: serve/monitoring
               - file: serve/performance
               - file: serve/autoscaling
-              - file: serve/deployment-graph
-                sections:
-                  - file: serve/deployment-graph/deployment-graph-e2e-tutorial
-                  - file: serve/deployment-graph/chain_nodes_same_class_different_args
-                  - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
-                  - file: serve/deployment-graph/control_flow_based_on_user_inputs
-                  - file: serve/deployment-graph/visualize_dag_during_development
-                  - file: serve/deployment-graph/http_endpoint_for_dag_graph
               - file: serve/production
+              - file: serve/migration
           - file: serve/architecture
           - file: serve/tutorials/index
+            sections:
+              - file: serve/tutorials/deployment-graph-patterns
+                sections:
+                  - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
+                  - file: serve/tutorials/deployment-graph-patterns/branching_input
+                  - file: serve/tutorials/deployment-graph-patterns/conditional
           - file: serve/faq
           - file: serve/package-ref
 
@@ -208,12 +213,10 @@ parts:
         title: More Libraries
         sections:
           - file: ray-more-libs/joblib
-          - file: ray-more-libs/lightgbm-ray
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
           - file: ray-more-libs/ray-lightning
           - file: ray-core/examples/using-ray-with-pytorch-lightning
-          - file: ray-more-libs/xgboost-ray
           - file: ray-core/examples/dask_xgboost/dask_xgboost
           - file: ray-core/examples/modin_xgboost/modin_xgboost
           - file: workflows/concepts
@@ -253,16 +256,6 @@ parts:
       - file: cluster/key-concepts
       - file: cluster/user-guide
       - file: cluster/cloud
-      - file: cluster/kuberay
-        sections:
-          - file: cluster/kuberay/quickstart
-          - file: cluster/kuberay/config
-          - file: cluster/kuberay/k8s-cluster-setup
-          - file: cluster/kuberay/logging
-          - file: cluster/kuberay/networking
-          - file: cluster/kuberay/gpu
-          - file: cluster/kuberay/ml-example
-          - file: cluster/kuberay/kuberay-vs-legacy
       - file: cluster/deploy
       - file: cluster/api
       - file: cluster/usage-stats
@@ -274,31 +267,32 @@ parts:
           - file: cluster/cluster_under_construction/key-concepts
             title: Key Concepts
           - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/index
-            title: Ray Clusters on Kubernetes
+            title: Deploying a Ray Cluster on Kubernetes
             sections:
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/getting-started
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides
+              sections:
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/k8s-cluster-setup.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/config.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/autoscaling.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/logging.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/gpu.md
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/kuberay-vs-legacy.md
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples
+              sections:
+                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples/ml-example.md
             - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/references
           - file: cluster/cluster_under_construction/ray-clusters-on-vms/index
-            title: Ray Clusters on VMs
+            title: Deploying a Ray Cluster on VMs
             sections:
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/getting-started
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/index
               title: User Guides
               sections:
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/installing-ray
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/index
                 title: Launching Clusters
-                sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/aws
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/azure
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/gcp
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/add-your-own-cloud-provider
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-ray-cluster-on-prem
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/monitoring-and-observing-ray-cluster
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/large-cluster-best-practices
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/multi-tenancy-best-practices
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/configuring-autoscaling
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/index
                 title: Community-supported Cluster Managers
@@ -306,13 +300,6 @@ parts:
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/yarn
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/slurm
                 - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/lsf
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/index
-                title: Running Jobs
-                sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-cli
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-sdk
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-rest
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/ray-client
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/index
               title: Examples
               sections:
@@ -330,11 +317,10 @@ parts:
                 sections:
                   - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/todo
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
-              sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/job-submission-apis
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-cli
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-configuration
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/autoscaler-sdk-api
+          - file: cluster/cluster_under_construction/running-applications-on-ray-clusters/index
+            title: Running Applications on Ray Clusters
+          - file: cluster/cluster_under_construction/references/index
+            title: References
 
   - caption: References
     chapters:

@@ -15,6 +15,7 @@ def test_node_selection():
             detached=True,
             config=http_options,
             head_node_id=head_node_id,
+            gcs_client=None,
             _start_proxies_on_init=False,
         )
 

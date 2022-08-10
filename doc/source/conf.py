@@ -97,12 +97,12 @@ versionwarning_messages = {
     #     "This document is for the latest pip release. "
     #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
     # ),
-    "master": (
-        "<b>Got questions?</b> Join "
-        f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
-        "for Q&A on all things Ray, as well as to share and learn use cases "
-        "and best practices with the Ray community."
-    ),
+    # "master": (
+    #     "<b>Got questions?</b> Join "
+    #     f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
+    #     "for Q&A on all things Ray, as well as to share and learn use cases "
+    #     "and best practices with the Ray community."
+    # ),
 }
 
 versionwarning_body_selector = "#main-content"
@@ -309,9 +309,6 @@ def setup(app):
     # https://github.com/medmunds/rate-the-docs for allowing users
     # to give thumbs up / down and feedback on existing docs pages.
     app.add_js_file("js/rate-the-docs.es.min.js")
-
-    # Custom docstring processor
-    app.connect("autodoc-process-docstring", fix_xgb_lgbm_docs)
 
     base_path = Path(__file__).parent
     github_docs = DownloadAndPreprocessEcosystemDocs(base_path)

@@ -138,6 +138,48 @@ def test_sync_nodes_only_diff(ray_start_2_cpus, temp_data_dirs):
     ray.get(unpack)  # Wait until finished for teardown
 
 
+@pytest.mark.parametrize("exclude", [["subdir/*"], ["*/level1.txt"]])
+def test_sync_nodes_exclude_different_node(ray_start_2_cpus, temp_data_dirs, exclude):
+    """Check that excluding files works"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    assert_file(True, tmp_source, "level0.txt")
+    assert_file(True, tmp_source, "subdir/level1.txt")
+    assert_file(False, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "subdir/level1.txt")
+
+    node_ip = ray.util.get_node_ip_address()
+    _sync_dir_between_different_nodes(
+        source_ip=node_ip,
+        source_path=tmp_source,
+        target_ip=node_ip,
+        target_path=tmp_target,
+        exclude=exclude,
+    )
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "subdir/level1.txt")
+
+
+@pytest.mark.parametrize("exclude", [["subdir/*"], ["*/level1.txt"]])
+def test_sync_nodes_exclude_same_node(ray_start_2_cpus, temp_data_dirs, exclude):
+    """Check that excluding files works"""
+    tmp_source, tmp_target = temp_data_dirs
+
+    assert_file(True, tmp_source, "level0.txt")
+    assert_file(True, tmp_source, "subdir/level1.txt")
+    assert_file(False, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "subdir/level1.txt")
+
+    node_ip = ray.util.get_node_ip_address()
+    _sync_dir_on_same_node(
+        ip=node_ip, source_path=tmp_source, target_path=tmp_target, exclude=exclude
+    )
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "subdir/level1.txt")
+
+
 def test_delete_on_node(ray_start_2_cpus, temp_data_dirs):
     """Check that delete on node works."""
     tmp_source, tmp_target = temp_data_dirs

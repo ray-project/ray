@@ -133,11 +133,14 @@ test_core() {
 }
 
 prepare_docker() {
+    rm "${WORKSPACE_DIR}"/python/dist/* ||:
     pushd "${WORKSPACE_DIR}/python"
+    pip install -e . --verbose
     python setup.py bdist_wheel
     tmp_dir="/tmp/prepare_docker_$RANDOM"
     mkdir -p $tmp_dir
     cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
+    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
     base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
     echo "
     FROM $base_image
@@ -147,7 +150,7 @@ prepare_docker() {
     COPY ./*.whl /
     EXPOSE 8000
     EXPOSE 10001
-    RUN pip install ray[serve] --no-index --find-links=/ && pip install redis
+    RUN pip install /${wheel}[serve]
     RUN sudo apt update && sudo apt install curl -y
     " > $tmp_dir/Dockerfile
 

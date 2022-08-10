@@ -1,3 +1,5 @@
+(serve-managing-deployments-guide)=
+
 # Managing Deployments
 
 This section should help you:
@@ -55,6 +57,8 @@ All of these options can be specified either in {mod}`@serve.deployment <ray.ser
 
 To update the config options for a running deployment, simply redeploy it with the new options set.
 
+(scaling-out-a-deployment)=
+
 ### Scaling Out
 
 To scale out a deployment to many processes, simply configure the number of replicas.
@@ -73,6 +77,8 @@ func.options(num_replicas=10).deploy()
 # Scale back down to 1 replica.
 func.options(num_replicas=1).deploy()
 ```
+
+(ray-serve-autoscaling)=
 
 #### Autoscaling
 
@@ -109,7 +115,8 @@ code and set this number based on end to end latency objective.
 :::{note}
 The Ray Serve Autoscaler is an application-level autoscaler that sits on top of the [Ray Autoscaler](cluster-index).
 Concretely, this means that the Ray Serve autoscaler asks Ray to start a number of replica actors based on the request demand.
-If the Ray Autoscaler determines there aren't enough available CPUs to place these actors, it responds by adding more nodes.
+If the Ray Autoscaler determines there aren't enough available CPUs to place these actors, it responds by requesting more nodes.
+The underlying cloud provider will then respond by adding more nodes.
 Similarly, when Ray Serve scales down and terminates some replica actors, it may result in some nodes being empty, at which point the Ray autoscaler will remove those nodes.
 :::
 
@@ -131,6 +138,8 @@ def func(*args):
     return do_something_with_my_gpu()
 ```
 
+(serve-fractional-resources-guide)=
+
 ### Fractional Resources
 
 The resources specified in `ray_actor_options` can also be *fractional*.
@@ -148,6 +157,7 @@ def func(*args):
     return do_something_with_my_gpu()
 ```
 
+(serve-omp-num-threads)=
 ### Configuring Parallelism with OMP_NUM_THREADS
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
@@ -195,3 +205,6 @@ is set.  In particular, it's also called when new replicas are created in the
 future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
+:::{note}
+The `user_config` and its contents must be JSON-serializable.
+:::

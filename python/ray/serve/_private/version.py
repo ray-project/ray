@@ -1,5 +1,5 @@
 from abc import ABC
-import pickle
+import json
 from typing import Any, Optional
 from zlib import crc32
 
@@ -20,9 +20,12 @@ class DeploymentVersion:
 
         self.user_config = user_config
         # TODO(simon): make this xlang compatible
-        pickled_user_config = pickle.dumps(user_config)
-        self.user_config_hash = crc32(pickled_user_config)
-        self._hash = crc32(pickled_user_config + self.code_version.encode("utf-8"))
+        if isinstance(user_config, bytes):
+            serialized_user_config = user_config
+        else:
+            serialized_user_config = str.encode(json.dumps(user_config, sort_keys=True))
+        self.user_config_hash = crc32(serialized_user_config)
+        self._hash = crc32(serialized_user_config + self.code_version.encode("utf-8"))
 
     def __hash__(self) -> int:
         return self._hash
