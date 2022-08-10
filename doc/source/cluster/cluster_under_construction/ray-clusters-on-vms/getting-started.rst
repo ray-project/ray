@@ -219,7 +219,7 @@ Running applications on a Ray Cluster
 We are now ready to execute an application on our Ray Cluster.
 ``ray.init()`` will now automatically connect to the newly created cluster.
 
-As a quick example, we can now execute a Python command on the Ray Cluster that connects to Ray and exits:
+As a quick example, we execute a Python command on the Ray Cluster that connects to Ray and exits:
 
 .. code-block:: shell
 
