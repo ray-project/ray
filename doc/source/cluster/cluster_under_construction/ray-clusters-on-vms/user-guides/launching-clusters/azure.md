@@ -5,7 +5,7 @@ This guide details the steps needed to start a Ray cluster on Azure.
 
 There are two ways to start an Azure Ray cluster.
 - Launch through Ray cluster launcher.
-- Deploy a cluster using Azure portal .
+- Deploy a cluster using Azure portal.
 
 ```{note}
 Azure cluster configurations are community-maintained.
