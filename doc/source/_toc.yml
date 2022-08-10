@@ -321,8 +321,6 @@ parts:
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
           - file: cluster/cluster_under_construction/running-applications-on-ray-clusters/index
             title: Running Applications on Ray Clusters
-            sections:
-              - file: cluster/cluster_under_construction/running-applications-on-ray-clusters/monitoring-and-observability
           - file: cluster/cluster_under_construction/references/index
             title: References
 
