@@ -33,7 +33,7 @@ The Ray docs present all the information you need to start running Ray workloads
 ```{eval-rst}
 .. panels::
     :container: text-center
-    :column: col-lg-12 p-2
+    :column: col-lg-6 px-3 py-2
     :card:
 
     **Getting Started**

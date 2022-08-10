@@ -9,7 +9,7 @@ users may deploy Ray clusters onto more platforms.
 ```{eval-rst}
 .. panels::
     :container: text-center
-    :column: col-lg-12 p-2
+    :column: col-lg-6 px-3 py-2
     :card:
 
     **Getting Started**
