@@ -27,7 +27,7 @@ GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
 
@@ -43,20 +43,20 @@ class BaseTrainer(abc.ABC):
 
     How does a trainer work?
 
-        - First, initialize the Trainer. The initialization runs locally,
-          so heavyweight setup should not be done in __init__.
-        - Then, when you call ``trainer.fit()``, the Trainer is serialized
-          and copied to a remote Ray actor. The following methods are then
-          called in sequence on the remote actor.
-        - ``trainer.setup()``: Any heavyweight Trainer setup should be
-          specified here.
-        - ``trainer.preprocess_datasets()``: The provided
-          ray.data.Dataset are preprocessed with the provided
-          ray.data.Preprocessor.
-        - ``trainer.train_loop()``: Executes the main training logic.
-        - Calling ``trainer.fit()`` will return a ``ray.result.Result``
-          object where you can access metrics from your training run, as well
-          as any checkpoints that may have been saved.
+    - First, initialize the Trainer. The initialization runs locally,
+      so heavyweight setup should not be done in __init__.
+    - Then, when you call ``trainer.fit()``, the Trainer is serialized
+      and copied to a remote Ray actor. The following methods are then
+      called in sequence on the remote actor.
+    - ``trainer.setup()``: Any heavyweight Trainer setup should be
+      specified here.
+    - ``trainer.preprocess_datasets()``: The provided
+      ray.data.Dataset are preprocessed with the provided
+      ray.data.Preprocessor.
+    - ``trainer.train_loop()``: Executes the main training logic.
+    - Calling ``trainer.fit()`` will return a ``ray.result.Result``
+      object where you can access metrics from your training run, as well
+      as any checkpoints that may have been saved.
 
     **How do I create a new Trainer?**
 
@@ -84,16 +84,17 @@ class BaseTrainer(abc.ABC):
                 # preprocessed by self.preprocessor
                 dataset = self.datasets["train"]
 
-                torch_ds = dataset.to_torch(label_column="y")
+                torch_ds = dataset.iter_torch_batches(dtypes=torch.float)
                 loss_fn = torch.nn.MSELoss()
 
                 for epoch_idx in range(10):
                     loss = 0
                     num_batches = 0
-                    for X, y in iter(torch_ds):
+                    for batch in torch_ds:
+                        X, y = torch.unsqueeze(batch["x"], 1), batch["y"]
                         # Compute prediction error
                         pred = self.model(X)
-                        batch_loss = loss_fn(pred, y.float())
+                        batch_loss = loss_fn(pred, y)
 
                         # Backpropagation
                         self.optimizer.zero_grad()
@@ -182,7 +183,7 @@ class BaseTrainer(abc.ABC):
         return f"<{self.__class__.__name__}>"
 
     def __new__(cls, *args, **kwargs):
-        """Store the init args as attributes so this can be merged with Tune hparams."""
+        # Store the init args as attributes so this can be merged with Tune hparams.
         trainer = super(BaseTrainer, cls).__new__(cls)
         parameters = inspect.signature(cls.__init__).parameters
         parameters = list(parameters.keys())
@@ -251,7 +252,7 @@ class BaseTrainer(abc.ABC):
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
 
-        Note: this method is run on a remote process.
+        .. note:: This method is run on a remote process.
 
         This method will not be called on the driver, so any expensive setup
         operations should be placed here and not in ``__init__``.
@@ -264,7 +265,7 @@ class BaseTrainer(abc.ABC):
     def preprocess_datasets(self) -> None:
         """Called during fit() to preprocess dataset attributes with preprocessor.
 
-        Note: This method is run on a remote process.
+        .. note:: This method is run on a remote process.
 
         This method is called prior to entering the training_loop.
 
@@ -309,20 +310,21 @@ class BaseTrainer(abc.ABC):
         this training loop.
 
         Example:
-            .. code-block: python
 
-                from ray.train.trainer import BaseTrainer
+        .. code-block: python
 
-                class MyTrainer(BaseTrainer):
-                    def training_loop(self):
-                        for epoch_idx in range(5):
-                            ...
-                            session.report({"epoch": epoch_idx})
+            from ray.train.trainer import BaseTrainer
+
+            class MyTrainer(BaseTrainer):
+                def training_loop(self):
+                    for epoch_idx in range(5):
+                        ...
+                        session.report({"epoch": epoch_idx})
 
         """
         raise NotImplementedError
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="beta")
     def fit(self) -> Result:
         """Runs training.
 

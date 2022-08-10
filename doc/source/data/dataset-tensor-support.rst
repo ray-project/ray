@@ -191,6 +191,22 @@ Because Tensor datasets rely on Datasets-specific extension types, they can only
     :start-after: __write_2_begin_
     :end-before: __write_2_end__
 
+.. _disable_tensor_extension_casting:
+
+Disabling Tensor Extension Casting
+----------------------------------
+
+To disable automatic casting of Pandas and Arrow arrays to
+:class:`TensorArray <ray.data.extensions.tensor_extension.TensorArray>`, run the code
+below.
+
+.. code-block::
+
+    from ray.data.context import DatasetContext
+
+    ctx = DatasetContext.get_current()
+    ctx.enable_tensor_extension_casting = False
+
 Limitations
 -----------
 

@@ -206,7 +206,7 @@ class TunerInternal:
 
         if not synced:
             # If we didn't sync, use the restore_path local dir
-            self._experiment_checkpoint_dir = path_or_uri
+            self._experiment_checkpoint_dir = os.path.expanduser(path_or_uri)
         else:
             # If we synced, `experiment_checkpoint_dir` will contain a temporary
             # directory. Create an experiment checkpoint dir instead and move
@@ -226,7 +226,7 @@ class TunerInternal:
             Tuple of (downloaded from remote, local_dir)
         """
         if not is_non_local_path_uri(restore_path):
-            return False, restore_path
+            return False, os.path.expanduser(restore_path)
 
         tempdir = Path(tempfile.mkdtemp("tmp_experiment_dir"))
 

@@ -142,7 +142,7 @@ class SimpleQConfig(AlgorithmConfig):
         self.evaluation_config = {"explore": False}
 
         # `reporting()`
-        self.min_time_s_per_iteration = 1
+        self.min_time_s_per_iteration = None
         self.min_sample_timesteps_per_iteration = 1000
 
         # Deprecated.
