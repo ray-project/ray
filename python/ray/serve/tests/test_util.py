@@ -10,7 +10,7 @@ from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
-from ray.serve.utils import (
+from ray.serve._private.utils import (
     get_deployment_import_path,
     override_runtime_envs_except_env_vars,
     serve_encoders,
@@ -118,7 +118,7 @@ class TestGetDeploymentImportPath:
 
         code = (
             "from ray import serve\n"
-            "from ray.serve.utils import get_deployment_import_path\n"
+            "from ray.serve._private.utils import get_deployment_import_path\n"
             "@serve.deployment\n"
             "def main_f(*args):\n"
             "\treturn 'reached main_f'\n"
@@ -258,7 +258,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
             runtime_env={
                 "py_modules": [
                     "https://github.com/ray-project/test_dag/archive/"
-                    "76a741f6de31df78411b1f302071cde46f098418.zip"
+                    "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
                 ],
                 "env_vars": {"var1": "hello"},
             }

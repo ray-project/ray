@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass
 
 import ray
+from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air._internal.remote_storage import (
     fs_hint,
     upload_to_uri,
@@ -29,7 +30,6 @@ from ray.tune.callback import Callback
 from ray.tune.result import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.tune.experiment import Trial
@@ -38,6 +38,13 @@ logger = logging.getLogger(__name__)
 
 # Syncing period for syncing checkpoints between nodes or to cloud.
 DEFAULT_SYNC_PERIOD = 300
+
+_EXCLUDE_FROM_SYNC = [
+    "./checkpoint_-00001",
+    "./checkpoint_tmp*",
+    "./save_to_object*",
+    "./rank_*",
+]
 
 
 def _validate_upload_dir(sync_config: "SyncConfig") -> bool:
@@ -139,8 +146,8 @@ class Syncer(abc.ABC):
     This class handles data transfer for two cases:
 
     1. Synchronizing data from the driver to external storage. This affects
-      experiment-level checkpoints and trial-level checkpoints if no cloud storage
-      is used.
+       experiment-level checkpoints and trial-level checkpoints if no cloud storage
+       is used.
     2. Synchronizing data from remote trainables to external storage.
 
     Synchronizing tasks are usually asynchronous and can be awaited using ``wait()``.
@@ -504,6 +511,7 @@ class SyncerCallback(Callback):
             source_path=self._remote_trial_logdir(trial),
             target_ip=ray.util.get_node_ip_address(),
             target_path=self._local_trial_logdir(trial),
+            exclude=_EXCLUDE_FROM_SYNC,
         )
         self._sync_times[trial.trial_id] = time.time()
         if wait:

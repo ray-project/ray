@@ -70,8 +70,6 @@ class PowerTransformer(Preprocessor):
 
     def __repr__(self):
         return (
-            f"PowerTransformer("
-            f"columns={self.columns}, "
-            f"method={self.method}, "
-            f"power={self.power})"
+            f"{self.__class__.__name__}(columns={self.columns!r}, "
+            f"power={self.power!r}, method={self.method!r})"
         )

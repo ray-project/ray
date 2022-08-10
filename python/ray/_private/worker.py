@@ -1138,7 +1138,7 @@ def init(
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _metrics_export_port(int): Port number Ray exposes system metrics
+        _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
         _system_config: Configuration for overriding
@@ -1165,7 +1165,7 @@ def init(
             arguments is passed in.
     """
     if configure_logging:
-        setup_logger(logging_level, logging_format)
+        setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1192,8 +1192,6 @@ def init(
     _node_name: str = kwargs.pop("_node_name", None)
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
-    if not logging_format:
-        logging_format = ray_constants.LOGGER_FORMAT
 
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
@@ -1226,7 +1224,15 @@ def init(
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
         builder._init_args(**passed_kwargs)
-        return builder.connect()
+        ctx = builder.connect()
+        from ray._private.usage import usage_lib
+
+        if passed_kwargs.get("allow_multiple") is True:
+            with ctx:
+                usage_lib.put_pre_init_usage_stats()
+        else:
+            usage_lib.put_pre_init_usage_stats()
+        return ctx
 
     if kwargs:
         # User passed in extra keyword arguments but isn't connecting through
@@ -1465,7 +1471,7 @@ def init(
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
-    dashboard_url = _global_node.address_info["webui_url"]
+    dashboard_url = _global_node.webui_url_with_protocol
     # We logged the address before attempting the connection, so we don't need
     # to log it again.
     info_str = "Connected to Ray cluster."
@@ -1473,7 +1479,7 @@ def init(
         info_str = "Started a local Ray instance."
     if dashboard_url:
         logger.info(
-            info_str + " View the dashboard at %s%shttp://%s%s%s.",
+            info_str + " View the dashboard at %s%s%s%s%s.",
             colorama.Style.BRIGHT,
             colorama.Fore.GREEN,
             dashboard_url,
@@ -2036,7 +2042,7 @@ def connect(
             )
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
+        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory)
@@ -2441,6 +2447,10 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
     have been created with Actor.options(name="name").remote(). This
     works for both detached & non-detached actors.
 
+    This method is a sync call and it'll timeout after 60s. This can be modified
+    by setting OS env RAY_gcs_server_request_timeout_seconds before starting
+    the cluster.
+
     Args:
         name: The name of the actor.
         namespace: The namespace of the actor, or None to specify the current
@@ -2719,7 +2729,6 @@ def remote(
     resources: Dict[str, float] = Undefined,
     accelerator_type: str = Undefined,
     memory: Union[int, float] = Undefined,
-    object_store_memory: int = Undefined,
     max_calls: int = Undefined,
     max_restarts: int = Undefined,
     max_task_retries: int = Undefined,
@@ -2801,7 +2810,6 @@ def remote(*args, **kwargs):
             on a node with the specified type of accelerator.
             See `ray.accelerators` for accelerator types.
         memory: The heap memory request for this task/actor.
-        object_store_memory: The object store memory request for actors only.
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
@@ -2834,9 +2842,9 @@ def remote(*args, **kwargs):
             this actor or task and its children. See
             :ref:`runtime-environments` for detailed documentation. This API is
             in beta and may change before becoming stable.
-        retry_exceptions: Only for *remote functions*. This specifies
-            whether application-level errors should be retried
-            up to max_retries times.
+        retry_exceptions: Only for *remote functions*. This specifies whether
+            application-level errors should be retried up to max_retries times.
+            This can be a boolean or a list of exceptions that should be retried.
         scheduling_strategy: Strategy about how to
             schedule a remote function or actor. Possible values are
             None: ray will figure out the scheduling strategy to use, it

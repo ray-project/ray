@@ -5,9 +5,9 @@ import warnings
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
+    from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
     from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
-    from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 
 class _CallbackMeta(ABCMeta):

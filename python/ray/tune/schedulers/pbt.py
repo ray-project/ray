@@ -7,6 +7,7 @@ import random
 import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
@@ -18,7 +19,6 @@ from ray.tune.search.variant_generator import format_vars
 from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 from ray.util.debug import log_once
-from ray.util.ml_utils.checkpoint_manager import CheckpointStorage
 
 logger = logging.getLogger(__name__)
 

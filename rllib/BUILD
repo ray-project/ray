@@ -94,6 +94,16 @@ py_test(
     args = ["--yaml-dir=tuned_examples/a2c"]
 )
 
+py_test(
+    name = "learning_tests_cartpole_a2c_fake_gpus",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/a2c/cartpole-a2c-fake-gpus.yaml"],
+    args = ["--yaml-dir=tuned_examples/a2c"]
+)
+
 # A3C
 
 # py_test(
@@ -880,6 +890,14 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
 
+# DQN Reproducibility
+py_test(
+    name = "test_repro_dqn",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
+)
+
 # Dreamer
 py_test(
     name = "test_dreamer",
@@ -964,6 +982,14 @@ py_test(
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
 )
 
+# PPO Reproducibility
+py_test(
+    name = "test_repro_ppo",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
+)
+
 # QMix
 py_test(
     name = "test_qmix",
@@ -1002,6 +1028,14 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/simple_q/tests/test_simple_q.py"]
+)
+
+# SimpleQ Reproducibility
+py_test(
+    name = "test_repro_simple_q",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/simple_q/tests/test_repro_simple_q.py"]
 )
 
 # SlateQ
@@ -1615,7 +1649,7 @@ py_test(
 
 py_test(
     name = "test_async_requests_manager",
-    tags = ["team:rllib", "execution"],
+    tags = ["team:rllib", "execution", "exclusive"],
     size = "medium",
     srcs = ["execution/tests/test_async_requests_manager.py"]
 )
@@ -1712,10 +1746,24 @@ py_test(
 
 py_test(
     name = "test_ope",
-    tags = ["team:rllib", "offline", "torch_only", "gpu"],
-    size = "large",
+    tags = ["team:rllib", "offline"],
+    size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
-    data = ["tests/data/cartpole/large.json"],
+    data = ["tests/data/cartpole/small.json"],
+)
+
+py_test(
+    name = "test_dm_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dm_learning.py"],
+)
+
+py_test(
+    name = "test_dr_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dr_learning.py"],
 )
 
 # --------------------------------------------------------------------
@@ -1755,7 +1803,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_sample_batch",
-    tags = ["team:rllib", "policy"],
+    tags = ["team:rllib", "policy", "gpu"],
     size = "small",
     srcs = ["policy/tests/test_sample_batch.py"]
 )
@@ -3301,7 +3349,7 @@ py_test(
 py_test(
     name = "examples/bandit/lin_ts_train_wheel_env",
     main = "examples/bandit/lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/lin_ts_train_wheel_env.py"],
 )
@@ -3309,7 +3357,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ts_train_wheel_env",
     main = "examples/bandit/tune_lin_ts_train_wheel_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ts_train_wheel_env.py"],
 )
@@ -3317,7 +3365,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ucb_train_recommendation",
     main = "examples/bandit/tune_lin_ucb_train_recommendation.py",
-    tags = ["team:rllib","exclusive",  "examples", ],
+    tags = ["team:rllib","exclusive",  "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recommendation.py"],
 )
@@ -3325,7 +3373,7 @@ py_test(
 py_test(
     name = "examples/bandit/tune_lin_ucb_train_recsim_env",
     main = "examples/bandit/tune_lin_ucb_train_recsim_env.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_B"],
     size = "small",
     srcs = ["examples/bandit/tune_lin_ucb_train_recsim_env.py"],
 )
@@ -3333,36 +3381,36 @@ py_test(
 py_test(
     name = "examples/connectors/run_connector_policy",
     main = "examples/connectors/run_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
-    data = [
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
-    ],
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022",
+    ]),
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
 
 py_test(
     name = "examples/connectors/adapt_connector_policy",
     main = "examples/connectors/adapt_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
-    data = [
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6",
-    ],
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6"]
+    data = glob([
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022",
+    ]),
+    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )
 
 py_test(
     name = "examples/connectors/self_play_with_policy_checkpoint",
     main = "examples/connectors/self_play_with_policy_checkpoint.py",
-    tags = ["team:rllib", "exclusive", "examples", ],
+    tags = ["team:rllib", "exclusive", "examples", "examples_C", "examples_C_AtoT"],
     size = "small",
     srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
-    data = [
+    data = glob([
         "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
-    ],
+    ]),
     args = [
         "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
         "--train_iteration=1"  # Smoke test.
@@ -3427,6 +3475,7 @@ py_test_module_list(
     "tests/test_vector_env.py",
     "env/tests/test_multi_agent_env.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
+    "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
     "examples/env/tests/test_coin_game_vectorized_env.py",
     "examples/env/tests/test_matrix_sequential_social_dilemma.py",

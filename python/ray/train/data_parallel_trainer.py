@@ -10,6 +10,7 @@ from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
@@ -18,7 +19,6 @@ from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
-from ray.util.ml_utils.checkpoint_manager import _TrackedCheckpoint
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -81,8 +81,7 @@ class DataParallelTrainer(BaseTrainer):
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray AIR session methods <air-session-ref>` and
-    :ref:`Ray Train function utils <train-api-func-utils>`.
+    :ref:`Ray AIR session methods <air-session-ref>`.
 
     .. code-block:: python
 

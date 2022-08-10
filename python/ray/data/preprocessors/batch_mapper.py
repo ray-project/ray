@@ -27,4 +27,4 @@ class BatchMapper(Preprocessor):
 
     def __repr__(self):
         fn_name = getattr(self.fn, "__name__", self.fn)
-        return f"BatchMapper(fn={fn_name})"
+        return f"{self.__class__.__name__}(fn={fn_name})"

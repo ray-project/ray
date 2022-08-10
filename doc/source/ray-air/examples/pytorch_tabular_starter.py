@@ -3,34 +3,27 @@
 
 # __air_generic_preprocess_start__
 import ray
-from ray.data.preprocessors import StandardScaler
-from ray.air import train_test_split
 
 # Load data.
 dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
 
 # Split data into train and validation.
-train_dataset, valid_dataset = train_test_split(dataset, test_size=0.3)
+train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
 
 # Create a test dataset by dropping the target column.
 test_dataset = valid_dataset.map_batches(
     lambda df: df.drop("target", axis=1), batch_format="pandas"
 )
-
-# Create a preprocessor to scale some columns
-columns_to_scale = ["mean radius", "mean texture"]
-preprocessor = StandardScaler(columns=columns_to_scale)
 # __air_generic_preprocess_end__
 
 # __air_pytorch_preprocess_start__
 import numpy as np
-import pandas as pd
 
-from ray.data.preprocessors import Concatenator, Chain
+from ray.data.preprocessors import Concatenator, Chain, StandardScaler
 
-# Chain the preprocessors together.
+# Create a preprocessor to scale some columns and concatenate the result.
 preprocessor = Chain(
-    preprocessor,
+    StandardScaler(columns=["mean radius", "mean texture"]),
     Concatenator(exclude=["target"], dtype=np.float32),
 )
 # __air_pytorch_preprocess_end__
@@ -67,18 +60,6 @@ def train_loop_per_worker(config):
     # Get the Ray Dataset shard for this data parallel worker,
     # and convert it to a PyTorch Dataset.
     train_data = train.get_dataset_shard("train")
-
-    def to_tensor_iterator(dataset, batch_size):
-        data_iterator = dataset.iter_batches(
-            batch_format="numpy", batch_size=batch_size
-        )
-        for d in data_iterator:
-            # "concat_out" is the output column of the Concatenator.
-            yield (
-                torch.Tensor(d["concat_out"]).float(),
-                torch.Tensor(d["target"]).float(),
-            )
-
     # Create model.
     model = create_model(num_features)
     model = train.torch.prepare_model(model)
@@ -87,7 +68,11 @@ def train_loop_per_worker(config):
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
     for cur_epoch in range(epochs):
-        for inputs, labels in to_tensor_iterator(train_data, batch_size):
+        for batch in train_data.iter_torch_batches(
+            batch_size=batch_size, dtypes=torch.float32
+        ):
+            # "concat_out" is the output column of the Concatenator.
+            inputs, labels = batch["concat_out"], batch["target"]
             optimizer.zero_grad()
             predictions = model(inputs)
             train_loss = loss_fn(predictions, labels.unsqueeze(1))
@@ -162,4 +147,5 @@ predicted_probabilities = batch_predictor.predict(test_dataset)
 predicted_probabilities.show()
 # {'predictions': array([1.], dtype=float32)}
 # {'predictions': array([0.], dtype=float32)}
+# ...
 # __air_pytorch_batchpred_end__

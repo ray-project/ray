@@ -23,7 +23,7 @@ from ray.rllib.execution.common import (
 )
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
 from ray.rllib.utils.annotations import Deprecated, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
@@ -547,7 +547,7 @@ class MBMPO(Algorithm):
                 metrics = post_process_metrics(prefix, workers, metrics)
 
                 if len(split) > num_inner_steps:
-                    out = SampleBatch.concat_samples(buf)
+                    out = concat_samples(buf)
                     out["split"] = np.array(split)
                     buf = []
                     split = []

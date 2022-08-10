@@ -708,33 +708,59 @@ class Worker:
             return resp.runtime_context
         return json.loads(resp.json)
 
-    def internal_kv_get(self, key: bytes) -> bytes:
-        req = ray_client_pb2.KVGetRequest(key=key)
-        resp = self._call_stub("KVGet", req, metadata=self.metadata)
+    def internal_kv_get(self, key: bytes, namespace: Optional[bytes]) -> bytes:
+        req = ray_client_pb2.KVGetRequest(key=key, namespace=namespace)
+        try:
+            resp = self._call_stub("KVGet", req, metadata=self.metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e)
         if resp.HasField("value"):
             return resp.value
         # Value is None when the key does not exist in the KV.
         return None
 
-    def internal_kv_exists(self, key: bytes) -> bytes:
-        req = ray_client_pb2.KVGetRequest(key=key)
-        resp = self._call_stub("KVGet", req, metadata=self.metadata)
-        return resp.value
+    def internal_kv_exists(self, key: bytes, namespace: Optional[bytes]) -> bool:
+        req = ray_client_pb2.KVExistsRequest(key=key, namespace=namespace)
+        try:
+            resp = self._call_stub("KVExists", req, metadata=self.metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e)
+        return resp.exists
 
-    def internal_kv_put(self, key: bytes, value: bytes, overwrite: bool) -> bool:
-        req = ray_client_pb2.KVPutRequest(key=key, value=value, overwrite=overwrite)
+    def internal_kv_put(
+        self, key: bytes, value: bytes, overwrite: bool, namespace: Optional[bytes]
+    ) -> bool:
+        req = ray_client_pb2.KVPutRequest(
+            key=key, value=value, overwrite=overwrite, namespace=namespace
+        )
         metadata = self._add_ids_to_metadata(self.metadata)
-        resp = self._call_stub("KVPut", req, metadata=metadata)
+        try:
+            resp = self._call_stub("KVPut", req, metadata=metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e)
         return resp.already_exists
 
-    def internal_kv_del(self, key: bytes) -> None:
-        req = ray_client_pb2.KVDelRequest(key=key)
+    def internal_kv_del(
+        self, key: bytes, del_by_prefix: bool, namespace: Optional[bytes]
+    ) -> int:
+        req = ray_client_pb2.KVDelRequest(
+            key=key, del_by_prefix=del_by_prefix, namespace=namespace
+        )
         metadata = self._add_ids_to_metadata(self.metadata)
-        self._call_stub("KVDel", req, metadata=metadata)
+        try:
+            resp = self._call_stub("KVDel", req, metadata=metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e)
+        return resp.deleted_num
 
-    def internal_kv_list(self, prefix: bytes) -> bytes:
-        req = ray_client_pb2.KVListRequest(prefix=prefix)
-        return self._call_stub("KVList", req, metadata=self.metadata).keys
+    def internal_kv_list(
+        self, prefix: bytes, namespace: Optional[bytes]
+    ) -> List[bytes]:
+        try:
+            req = ray_client_pb2.KVListRequest(prefix=prefix, namespace=namespace)
+            return self._call_stub("KVList", req, metadata=self.metadata).keys
+        except grpc.RpcError as e:
+            raise decode_exception(e)
 
     def pin_runtime_env_uri(self, uri: str, expiration_s: int) -> None:
         req = ray_client_pb2.ClientPinRuntimeEnvURIRequest(

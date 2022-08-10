@@ -1,33 +1,33 @@
 .. _workflows:
 
-Workflows: Fast, Durable Application Flows
-==========================================
+Ray Workflow: Fast, Durable Application Flows
+=============================================
 
 .. warning::
 
-  Workflows is available as **alpha** in Ray 1.7+. Expect rough corners and for its APIs and storage format to change. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
+  Ray Workflow is available as **alpha** in Ray 1.7+. Expect rough corners and for its APIs and storage format to change. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
-Ray Workflows provides high-performance, *durable* application workflows using Ray tasks as the underlying execution engine. It is intended to support both large-scale workflows (e.g., ML and data pipelines) and long-running business workflows (when used together with Ray Serve).
+Ray Workflow provides high-performance, *durable* application workflows using Ray tasks as the underlying execution engine. It is intended to support both large-scale workflows (e.g., ML and data pipelines) and long-running business workflows (when used together with Ray Serve).
 
 .. image:: workflows.svg
 
 ..
   https://docs.google.com/drawings/d/113uAs-i4YjGBNxonQBC89ns5VqL3WeQHkUOWPSpeiXk/edit
 
-Why Workflows?
---------------
+Why Ray Workflow?
+-----------------
 
 **Flexibility:** Combine the flexibility of Ray's dynamic task graphs with strong durability guarantees. Branch or loop conditionally based on runtime data. Use Ray distributed libraries seamlessly within workflow tasks.
 
-**Performance:** Workflows offers sub-second overheads for task launch and supports workflows with hundreds of thousands of tasks. Take advantage of the Ray object store to pass distributed datasets between tasks with zero-copy overhead.
+**Performance:** Ray Workflow offers sub-second overheads for task launch and supports workflows with hundreds of thousands of tasks. Take advantage of the Ray object store to pass distributed datasets between tasks with zero-copy overhead.
 
-**Dependency management:** Workflows leverages Ray's runtime environment feature to snapshot the code dependencies of a workflow. This enables management of workflows and virtual actors as code is upgraded over time.
+**Dependency management:** Ray Workflow leverages Ray's runtime environment feature to snapshot the code dependencies of a workflow. This enables management of workflows as code is upgraded over time.
 
-You might find that workflows is *lower level* compared to engines such as `AirFlow <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__ (which can also run on Ray). This is because workflows focuses more on core workflow primitives as opposed to tools and integrations.
+You might find that Ray Workflow is *lower level* compared to engines such as `AirFlow <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__ (which can also run on Ray). This is because Ray Workflow focuses more on core workflow primitives as opposed to tools and integrations.
 
 Concepts
 --------
-Workflows provides the *task* and *virtual actor* durable primitives, which are analogous to Ray's non-durable tasks and actors.
+Ray Workflow provides the durable *task* primitives, which are analogous to Ray's non-durable tasks.
 
 Ray DAG
 ~~~~~~~

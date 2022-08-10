@@ -350,6 +350,16 @@ class _FileBasedDatasourceReader(Reader):
         self._paths, self._file_sizes = meta_provider.expand_paths(
             paths, self._filesystem
         )
+        if self._partition_filter is not None:
+            # Use partition filter to skip files which are not needed.
+            path_to_size = dict(zip(self._paths, self._file_sizes))
+            self._paths = self._partition_filter(self._paths)
+            self._file_sizes = [path_to_size[p] for p in self._paths]
+            if len(self._paths) == 0:
+                raise ValueError(
+                    "No input files found to read. Please double check that "
+                    "'partition_filter' field is set properly."
+                )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -366,9 +376,6 @@ class _FileBasedDatasourceReader(Reader):
         _block_udf = self._block_udf
 
         paths, file_sizes = self._paths, self._file_sizes
-        if self._partition_filter is not None:
-            paths = self._partition_filter(paths)
-
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
         read_options = reader_args.get("read_options")
@@ -642,7 +649,13 @@ def _unwrap_protocol(path):
     """
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
-    return parsed.netloc + parsed.path + query
+    netloc = parsed.netloc
+    if parsed.scheme == "s3" and "@" in parsed.netloc:
+        # If the path contains an @, it is assumed to be an anonymous
+        # credentialed path, and we need to strip off the credentials.
+        netloc = parsed.netloc.split("@")[-1]
+
+    return netloc + parsed.path + query
 
 
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):

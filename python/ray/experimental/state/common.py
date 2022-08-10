@@ -3,7 +3,12 @@ from abc import ABC
 from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
+from urllib.parse import urlparse
 
+import ray
+import ray._private.ray_constants as ray_constants
+import ray._private.services as services
+from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskType
 from ray.dashboard.modules.job.common import JobInfo
@@ -174,12 +179,17 @@ class StateSchema(ABC):
     """
 
     @classmethod
-    def columns(cls) -> Set[str]:
-        """Return a list of all columns."""
-        cols = set()
+    def list_columns(cls) -> List[str]:
+        """Return a list of columns."""
+        cols = []
         for f in fields(cls):
-            cols.add(f.name)
+            cols.append(f.name)
         return cols
+
+    @classmethod
+    def columns(cls) -> Set[str]:
+        """Return a set of all columns."""
+        return set(cls.list_columns())
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -302,6 +312,8 @@ class ActorState(StateSchema):
 
     #: The id of the actor.
     actor_id: str = state_column(filterable=True)
+    #: The class name of the actor.
+    class_name: str = state_column(filterable=True)
     #: The state of the actor.
     #:
     #: - DEPENDENCIES_UNREADY: Actor is waiting for dependency to be ready.
@@ -318,8 +330,6 @@ class ActorState(StateSchema):
     #:   but means the actor was dead more than once.
     #: - DEAD: The actor is permanatly dead.
     state: TypeActorStatus = state_column(filterable=True)
-    #: The class name of the actor.
-    class_name: str = state_column(filterable=True)
     #: The name of the actor given by the `name` argument.
     name: Optional[str] = state_column(filterable=True)
     #: The pid of the actor. 0 if it is not created yet.
@@ -340,6 +350,8 @@ class PlacementGroupState(StateSchema):
 
     #: The id of the placement group.
     placement_group_id: str = state_column(filterable=True)
+    #: The name of the placement group if it is given by the name argument.
+    name: str = state_column(filterable=True)
     #: The state of the placement group.
     #:
     #: - PENDING: The placement group creation is pending scheduling.
@@ -351,8 +363,6 @@ class PlacementGroupState(StateSchema):
     #: - RESCHEDULING: The placement group is rescheduling because some of
     #:   bundles are dead because they were on dead nodes.
     state: TypePlacementGroupStatus = state_column(filterable=True)
-    #: The name of the placement group if it is given by the name argument.
-    name: str = state_column(filterable=True)
     #: The bundle specification of the placement group.
     bundles: dict = state_column(filterable=False, detail=True)
     #: True if the placement group is detached. False otherwise.
@@ -382,6 +392,13 @@ class NodeState(StateSchema):
 
 class JobState(JobInfo, StateSchema):
     """The state of the job that's submitted by Ray's Job APIs"""
+
+    @classmethod
+    def list_columns(cls) -> List[str]:
+        cols = ["job_id"]
+        for f in fields(cls):
+            cols.append(f.name)
+        return cols
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -474,14 +491,8 @@ class ObjectState(StateSchema):
 
     #: The id of the object.
     object_id: str = state_column(filterable=True)
-    #: The pid of the owner.
-    pid: int = state_column(filterable=True)
-    #: The ip address of the owner.
-    ip: str = state_column(filterable=True)
     #: The size of the object in mb.
     object_size: int = state_column(filterable=True)
-    #: The callsite of the object.
-    call_site: str = state_column(filterable=True)
     #: The status of the task that creates the object.
     #:
     #: - NIL: We don't have a status for this task because we are not the owner or the
@@ -499,14 +510,6 @@ class ObjectState(StateSchema):
     #:   to the remote worker + queueing time from the execution side.
     #: - RUNNING: The task that is running.
     task_status: TypeTaskStatus = state_column(filterable=True)
-    #: The worker type that creates the object.
-    #:
-    #: - WORKER: The regular Ray worker process that executes tasks or
-    #:   instantiates an actor.
-    #: - DRIVER: The driver (Python script that calls `ray.init`).
-    #: - SPILL_WORKER: The worker that spills objects.
-    #: - RESTORE_WORKER: The worker that restores objects.
-    type: TypeWorkerType = state_column(filterable=True)
     #: The reference type of the object.
     #: See :ref:`Debugging with Ray Memory <debug-with-ray-memory>` for more details.
     #:
@@ -522,6 +525,20 @@ class ObjectState(StateSchema):
     #:   `a = ray.put(1)` -> `b = ray.put([a])`. a is serialized within a list.
     #: - UNKNOWN_STATUS: The object ref status is unkonwn.
     reference_type: TypeReferenceType = state_column(filterable=True)
+    #: The callsite of the object.
+    call_site: str = state_column(filterable=True)
+    #: The worker type that creates the object.
+    #:
+    #: - WORKER: The regular Ray worker process that executes tasks or
+    #:   instantiates an actor.
+    #: - DRIVER: The driver (Python script that calls `ray.init`).
+    #: - SPILL_WORKER: The worker that spills objects.
+    #: - RESTORE_WORKER: The worker that restores objects.
+    type: TypeWorkerType = state_column(filterable=True)
+    #: The pid of the owner.
+    pid: int = state_column(filterable=True)
+    #: The ip address of the owner.
+    ip: str = state_column(filterable=True)
 
 
 @dataclass(init=True)
@@ -532,11 +549,11 @@ class RuntimeEnvState(StateSchema):
     runtime_env: str = state_column(filterable=True)
     #: Whether or not the runtime env creation has succeeded.
     success: bool = state_column(filterable=True)
-    #: The node id of this runtime environment.
-    node_id: str = state_column(filterable=True)
     #: The latency of creating the runtime environment.
     #: Available if the runtime env is successfully created.
     creation_time_ms: Optional[float] = state_column(filterable=False)
+    #: The node id of this runtime environment.
+    node_id: str = state_column(filterable=True)
     #: The number of actors and tasks that use this runtime environment.
     ref_cnt: int = state_column(detail=True, filterable=False)
     #: The error message if the runtime environment creation has failed.
@@ -616,7 +633,7 @@ class ListApiResponse:
             ObjectState,
             RuntimeEnvState,
         ]
-    ] = None
+    ]
     # List API can have a partial failure if queries to
     # all sources fail. For example, getting object states
     # require to ping all raylets, and it is possible some of
@@ -626,6 +643,13 @@ class ListApiResponse:
     partial_failure_warning: str = ""
     # A list of warnings to print.
     warnings: Optional[List[str]] = None
+
+    def __post_init__(self):
+        assert self.total is not None
+        assert self.num_after_truncation is not None
+        assert self.num_filtered is not None
+        assert self.result is not None
+        assert isinstance(self.result, list)
 
 
 """
@@ -662,7 +686,6 @@ class TaskSummaries:
     def to_summary(cls, *, tasks: List[Dict]):
         # NOTE: The argument tasks contains a list of dictionary
         # that have the same k/v as TaskState.
-        # TODO(sang): Refactor this to use real dataclass.
         summary = {}
         total_tasks = 0
         total_actor_tasks = 0
@@ -719,7 +742,6 @@ class ActorSummaries:
     def to_summary(cls, *, actors: List[Dict]):
         # NOTE: The argument tasks contains a list of dictionary
         # that have the same k/v as ActorState.
-        # TODO(sang): Refactor this to use real dataclass.
         summary = {}
         total_actors = 0
 
@@ -778,7 +800,6 @@ class ObjectSummaries:
     def to_summary(cls, *, objects: List[Dict]):
         # NOTE: The argument tasks contains a list of dictionary
         # that have the same k/v as ObjectState.
-        # TODO(sang): Refactor this to use real dataclass.
         summary = {}
         total_objects = 0
         total_size_mb = 0
@@ -854,7 +875,71 @@ class SummaryApiResponse:
     # Carried over from ListApiResponse
     # Number of resources returned by data sources after truncation
     num_after_truncation: int
+    # Number of resources after filtering
+    num_filtered: int
     result: StateSummary = None
     partial_failure_warning: str = ""
     # A list of warnings to print.
     warnings: Optional[List[str]] = None
+
+
+def resource_to_schema(resource: StateResource) -> StateSchema:
+    if resource == StateResource.ACTORS:
+        return ActorState
+    elif resource == StateResource.JOBS:
+        return JobState
+    elif resource == StateResource.NODES:
+        return NodeState
+    elif resource == StateResource.OBJECTS:
+        return ObjectState
+    elif resource == StateResource.PLACEMENT_GROUPS:
+        return PlacementGroupState
+    elif resource == StateResource.RUNTIME_ENVS:
+        return RuntimeEnvState
+    elif resource == StateResource.TASKS:
+        return TaskState
+    elif resource == StateResource.WORKERS:
+        return WorkerState
+    else:
+        assert False, "Unreachable"
+
+
+def ray_address_to_api_server_url(address: Optional[str]) -> str:
+    """Parse a ray cluster bootstrap address into API server URL.
+
+    When an address is provided, it will be used to query GCS for
+    API server address from GCS.
+
+    When an address is not provided, it will first try to auto-detect
+    a running ray instance, or look for local GCS process.
+
+    Args:
+        address: Ray cluster bootstrap address. Could also be `auto`.
+
+    Return:
+        API server HTTP URL.
+    """
+    address = services.canonicalize_bootstrap_address_or_die(address)
+    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    api_server_url = ray._private.utils.internal_kv_get_with_retry(
+        gcs_client,
+        ray_constants.DASHBOARD_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        num_retries=20,
+    )
+
+    if api_server_url is None:
+        raise ValueError(
+            (
+                "Couldn't obtain the API server address from GCS. It is likely that "
+                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
+                "still alive."
+            )
+        )
+
+    # Add http protocol to API server URL if it doesn't
+    # already contain a protocol.
+    if not urlparse(api_server_url).scheme:
+        api_server_url = "http://" + api_server_url
+    return api_server_url.decode()

@@ -1110,7 +1110,7 @@ class Dataset(Generic[T]):
 
         A common use case for this would be splitting the dataset into train
         and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
-        See also :func:`ray.air.train_test_split` for a higher level abstraction.
+        See also ``Dataset.train_test_split`` for a higher level abstraction.
 
         The indices to split at will be calculated in such a way so that all splits
         always contains at least one element. If that is not possible,
@@ -1133,7 +1133,7 @@ class Dataset(Generic[T]):
         Time complexity: O(num splits)
 
         See also: ``Dataset.split``, ``Dataset.split_at_indices``,
-        :func:`ray.air.train_test_split`
+        ``Dataset.train_test_split``
 
         Args:
             proportions: List of proportions to split the dataset according to.
@@ -1170,6 +1170,63 @@ class Dataset(Generic[T]):
             )
 
         return self.split_at_indices(split_indices)
+
+    def train_test_split(
+        self,
+        test_size: Union[int, float],
+        *,
+        shuffle: bool = False,
+        seed: Optional[int] = None,
+    ) -> Tuple["Dataset[T]", "Dataset[T]"]:
+        """Split the dataset into train and test subsets.
+
+        Example:
+            .. code-block:: python
+
+                import ray
+
+                ds = ray.data.range(8)
+                train, test = ds.train_test_split(test_size=0.25)
+                print(train.take())  # [0, 1, 2, 3, 4, 5]
+                print(test.take())  # [6, 7]
+
+        Args:
+            test_size: If float, should be between 0.0 and 1.0 and represent the
+                proportion of the dataset to include in the test split. If int,
+                represents the absolute number of test samples. The train split will
+                always be the compliment of the test split.
+            shuffle: Whether or not to globally shuffle the dataset before splitting.
+                Defaults to False. This may be a very expensive operation with large
+                datasets.
+            seed: Fix the random seed to use for shuffle, otherwise one will be chosen
+                based on system randomness. Ignored if ``shuffle=False``.
+
+        Returns:
+            Train and test subsets as two Datasets.
+        """
+        dataset = self
+
+        if shuffle:
+            dataset = dataset.random_shuffle(seed=seed)
+
+        if not isinstance(test_size, (int, float)):
+            raise TypeError(f"`test_size` must be int or float got {type(test_size)}.")
+        if isinstance(test_size, float):
+            if test_size <= 0 or test_size >= 1:
+                raise ValueError(
+                    "If `test_size` is a float, it must be bigger than 0 and smaller "
+                    f"than 1. Got {test_size}."
+                )
+            return dataset.split_proportionately([1 - test_size])
+        else:
+            dataset_length = dataset.count()
+            if test_size <= 0 or test_size >= dataset_length:
+                raise ValueError(
+                    "If `test_size` is an int, it must be bigger than 0 and smaller "
+                    f"than the size of the dataset ({dataset_length}). "
+                    f"Got {test_size}."
+                )
+            return dataset.split_at_indices([dataset_length - test_size])
 
     def union(self, *other: List["Dataset[T]"]) -> "Dataset[T]":
         """Combine this dataset with others of the same type.
@@ -1687,7 +1744,11 @@ class Dataset(Generic[T]):
         return Dataset(plan, self._epoch, self._lazy)
 
     def limit(self, limit: int) -> "Dataset[T]":
-        """Limit the dataset to the first number of records specified.
+        """Truncate the dataset to the first ``limit`` records.
+
+        Contrary to :meth`.take`, this will not move any data to the caller's
+        machine. Instead, it will return a new ``Dataset`` pointing to the truncated
+        distributed data.
 
         Examples:
             >>> import ray
@@ -1702,12 +1763,47 @@ class Dataset(Generic[T]):
         Returns:
             The truncated dataset.
         """
-
-        left, _ = self._split(limit, return_right_half=False)
-        return left
+        start_time = time.perf_counter()
+        # Truncate the block list to the minimum number of blocks that contains at least
+        # `limit` rows.
+        block_list = self._plan.execute().truncate_by_rows(limit)
+        blocks, metadata, _, _ = _split_at_index(block_list, limit)
+        split_duration = time.perf_counter() - start_time
+        meta_for_stats = [
+            BlockMetadata(
+                num_rows=m.num_rows,
+                size_bytes=m.size_bytes,
+                schema=m.schema,
+                input_files=m.input_files,
+                exec_stats=None,
+            )
+            for m in metadata
+        ]
+        dataset_stats = DatasetStats(
+            stages={"limit": meta_for_stats},
+            parent=self._plan.stats(),
+        )
+        dataset_stats.time_total_s = split_duration
+        return Dataset(
+            ExecutionPlan(
+                BlockList(
+                    blocks,
+                    metadata,
+                    owned_by_consumer=block_list._owned_by_consumer,
+                ),
+                dataset_stats,
+                run_by_consumer=block_list._owned_by_consumer,
+            ),
+            self._epoch,
+            self._lazy,
+        )
 
     def take(self, limit: int = 20) -> List[T]:
-        """Take up to the given number of records from the dataset.
+        """Return up to ``limit`` records from the dataset.
+
+        This will move up to ``limit`` records to the caller's machine; if
+        ``limit`` is very large, this can result in an OutOfMemory crash on
+        the caller.
 
         Time complexity: O(limit specified)
 
@@ -1725,7 +1821,11 @@ class Dataset(Generic[T]):
         return output
 
     def take_all(self, limit: int = 100000) -> List[T]:
-        """Take all the records in the dataset.
+        """Return all of the records in the dataset.
+
+        This will move the entire dataset to the caller's machine; if the
+        dataset is very large, this can result in an OutOfMemory crash on
+        the caller.
 
         Time complexity: O(dataset size)
 
@@ -3223,7 +3323,7 @@ class Dataset(Generic[T]):
                         )
                     else:
                         logger.info(
-                            f"{OK_PREFIX} This pipeline's windows can each fit in "
+                            f"{OK_PREFIX} This pipeline's windows likely fit in "
                             "object store memory without spilling."
                         )
                 except Exception as e:
@@ -3392,78 +3492,6 @@ class Dataset(Generic[T]):
             A deserialized ``Dataset`` instance.
         """
         return pickle.loads(serialized_ds)
-
-    def _split(
-        self, index: int, return_right_half: bool
-    ) -> ("Dataset[T]", "Dataset[T]"):
-        start_time = time.perf_counter()
-        block_list = self._plan.execute()
-        left_blocks, left_metadata, right_blocks, right_metadata = _split_at_index(
-            block_list,
-            index,
-            return_right_half,
-        )
-        split_duration = time.perf_counter() - start_time
-        left_meta_for_stats = [
-            BlockMetadata(
-                num_rows=m.num_rows,
-                size_bytes=m.size_bytes,
-                schema=m.schema,
-                input_files=m.input_files,
-                exec_stats=None,
-            )
-            for m in left_metadata
-        ]
-        left_dataset_stats = DatasetStats(
-            stages={"split": left_meta_for_stats},
-            parent=self._plan.stats(),
-        )
-        left_dataset_stats.time_total_s = split_duration
-        left = Dataset(
-            ExecutionPlan(
-                BlockList(
-                    left_blocks,
-                    left_metadata,
-                    owned_by_consumer=block_list._owned_by_consumer,
-                ),
-                left_dataset_stats,
-                run_by_consumer=block_list._owned_by_consumer,
-            ),
-            self._epoch,
-            self._lazy,
-        )
-        if return_right_half:
-            right_meta_for_stats = [
-                BlockMetadata(
-                    num_rows=m.num_rows,
-                    size_bytes=m.size_bytes,
-                    schema=m.schema,
-                    input_files=m.input_files,
-                    exec_stats=None,
-                )
-                for m in right_metadata
-            ]
-            right_dataset_stats = DatasetStats(
-                stages={"split": right_meta_for_stats},
-                parent=self._plan.stats(),
-            )
-            right_dataset_stats.time_total_s = split_duration
-            right = Dataset(
-                ExecutionPlan(
-                    BlockList(
-                        right_blocks,
-                        right_metadata,
-                        owned_by_consumer=block_list._owned_by_consumer,
-                    ),
-                    right_dataset_stats,
-                    run_by_consumer=block_list._owned_by_consumer,
-                ),
-                self._epoch,
-                self._lazy,
-            )
-        else:
-            right = None
-        return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
         block_list = self._plan.execute()

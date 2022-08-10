@@ -2,7 +2,6 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-from ray.data.extensions import TensorArray
 from ray.data.preprocessor import Preprocessor
 
 
@@ -56,24 +55,24 @@ class Concatenator(Preprocessor):
         raise_if_missing: bool = False,
     ):
         self.output_column_name = output_column_name
-        self.included_columns = include
-        self.excluded_columns = exclude or []
+        self.include = include
+        self.exclude = exclude or []
         self.dtype = dtype
         self.raise_if_missing = raise_if_missing
 
     def _validate(self, df: pd.DataFrame):
         total_columns = set(df)
-        if self.excluded_columns and self.raise_if_missing:
-            missing_columns = set(self.excluded_columns) - total_columns.intersection(
-                set(self.excluded_columns)
+        if self.exclude and self.raise_if_missing:
+            missing_columns = set(self.exclude) - total_columns.intersection(
+                set(self.exclude)
             )
             if missing_columns:
                 raise ValueError(
                     f"Missing columns specified in 'exclude': {missing_columns}"
                 )
-        if self.included_columns and self.raise_if_missing:
-            missing_columns = set(self.included_columns) - total_columns.intersection(
-                set(self.included_columns)
+        if self.include and self.raise_if_missing:
+            missing_columns = set(self.include) - total_columns.intersection(
+                set(self.include)
             )
             if missing_columns:
                 raise ValueError(
@@ -84,23 +83,33 @@ class Concatenator(Preprocessor):
         self._validate(df)
 
         included_columns = set(df)
-        if self.included_columns:  # subset of included columns
-            included_columns = set(self.included_columns)
+        if self.include:  # subset of included columns
+            included_columns = set(self.include)
 
-        columns_to_concat = list(included_columns - set(self.excluded_columns))
-        concatenated = df[columns_to_concat].to_numpy(dtype=self.dtype)
+        columns_to_concat = list(included_columns - set(self.exclude))
+        ordered_columns_to_concat = [
+            col for col in df.columns if col in columns_to_concat
+        ]
+        concatenated = df[ordered_columns_to_concat].to_numpy(dtype=self.dtype)
         df = df.drop(columns=columns_to_concat)
-        try:
-            concatenated = TensorArray(concatenated)
-        except TypeError:
-            pass
-        df[self.output_column_name] = concatenated
+        # Use a Pandas Series for column assignment to get more consistent
+        # behavior across Pandas versions.
+        df.loc[:, self.output_column_name] = pd.Series(list(concatenated))
         return df
 
     def __repr__(self):
-        return (
-            f"Concatenator(output_column_name={self.output_column_name}, "
-            f"include={self.included_columns}, "
-            f"exclude={self.excluded_columns}, "
-            f"dtype={self.dtype})"
-        )
+        default_values = {
+            "output_column_name": "concat_out",
+            "include": None,
+            "exclude": [],
+            "dtype": None,
+            "raise_if_missing": False,
+        }
+
+        non_default_arguments = []
+        for parameter, default_value in default_values.items():
+            value = getattr(self, parameter)
+            if value != default_value:
+                non_default_arguments.append(f"{parameter}={value}")
+
+        return f"{self.__class__.__name__}({', '.join(non_default_arguments)})"

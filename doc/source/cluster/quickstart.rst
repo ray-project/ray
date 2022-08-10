@@ -1,6 +1,6 @@
 .. include:: /_includes/clusters/announcement.rst
 
-.. include:: we_are_hiring.rst
+.. include:: /_includes/clusters/we_are_hiring.rst
 
 .. _ref-cluster-quick-start:
 

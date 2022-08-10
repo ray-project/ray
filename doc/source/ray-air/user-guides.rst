@@ -22,15 +22,15 @@ AIR User Guides
         :type: ref
         :text: Using Preprocessors
         :classes: btn-link btn-block stretched-link
+
     ---
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: /ray-air/checkpoints
+    .. link-button:: trainer
         :type: ref
-        :text: Using Checkpoints
+        :text: Using Trainers
         :classes: btn-link btn-block stretched-link
-
 
     ---
     :img-top: /ray-overview/images/ray_svg_logo.svg
@@ -45,18 +45,9 @@ AIR User Guides
     :img-top: /ray-overview/images/ray_svg_logo.svg
 
     +++
-    .. link-button:: air-scaling-config
+    .. link-button:: /ray-air/tuner
         :type: ref
-        :text: Configuring Trainer Scaling
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: /ray-air/examples/analyze_tuning_results
-        :type: ref
-        :text: Analyzing Tune Results
+        :text: Configuring Hyperparameter Tuning
         :classes: btn-link btn-block stretched-link
 
     ---
@@ -84,13 +75,4 @@ AIR User Guides
     .. link-button:: air-deployment
         :type: ref
         :text: How to Deploy AIR
-        :classes: btn-link btn-block stretched-link
-
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
-
-    +++
-    .. link-button:: benchmarks
-        :type: ref
-        :text: Benchmarks
         :classes: btn-link btn-block stretched-link

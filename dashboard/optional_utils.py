@@ -250,7 +250,7 @@ def aiohttp_cache(
         return _wrapper
 
 
-def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
+def init_ray_and_catch_exceptions() -> Callable:
     """Decorator to be used on methods that require being connected to Ray."""
 
     def decorator_factory(f: Callable) -> Callable:
@@ -261,6 +261,10 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                     try:
                         address = self.get_gcs_address()
                         logger.info(f"Connecting to ray with address={address}")
+                        # Set the gcs rpc timeout to shorter
+                        os.environ["RAY_gcs_server_request_timeout_seconds"] = str(
+                            dashboard_consts.GCS_RPC_TIMEOUT_SECONDS
+                        )
                         # Init ray without logging to driver
                         # to avoid infinite logging issue.
                         ray.init(
@@ -271,14 +275,6 @@ def init_ray_and_catch_exceptions(connect_to_serve: bool = False) -> Callable:
                     except Exception as e:
                         ray.shutdown()
                         raise e from None
-
-                if connect_to_serve:
-                    from ray import serve
-
-                    serve.start(
-                        detached=True,
-                        http_options={"host": "0.0.0.0", "location": "EveryNode"},
-                    )
 
                 return await f(self, *args, **kwargs)
             except Exception as e:

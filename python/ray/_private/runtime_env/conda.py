@@ -315,6 +315,13 @@ class CondaPlugin(RuntimeEnvPlugin):
         context: RuntimeEnvContext,
         logger: logging.Logger = default_logger,
     ) -> int:
+        if uri is None:
+            # The "conda" field is the name of an existing conda env, so no
+            # need to create one.
+            # TODO(architkulkarni): Try "conda activate" here to see if the
+            # env exists, and raise an exception if it doesn't.
+            return 0
+
         # Currently create method is still a sync process, to avoid blocking
         # the loop, need to run this function in another thread.
         # TODO(Catch-Bull): Refactor method create into an async process, and

@@ -25,7 +25,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 from ray.rllib.utils.test_utils import check_learning_achieved
 
@@ -180,15 +180,18 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    results = tune.run(
+    results = tune.Tuner(
         "PPO",
-        config=config,
-        stop=stop,
-        verbose=1,
-        checkpoint_freq=5,
-        checkpoint_at_end=True,
-        restore=args.from_checkpoint,
-    )
+        param_space=config,
+        run_config=air.RunConfig(
+            stop=stop,
+            verbose=1,
+            checkpoint_config=air.CheckpointConfig(
+                checkpoint_frequency=5,
+                checkpoint_at_end=True,
+            ),
+        ),
+    ).fit()
 
     # And check the results.
     if args.as_test:
