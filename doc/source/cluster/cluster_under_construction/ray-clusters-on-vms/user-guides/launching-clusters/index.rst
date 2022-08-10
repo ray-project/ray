@@ -6,6 +6,8 @@
 Launching Ray Clusters
 ======================
 
+In this section, you can find guides for launching Ray clusters on various cluster management frameworks and clouds.
+
 .. toctree::
     :maxdepth: 2
 

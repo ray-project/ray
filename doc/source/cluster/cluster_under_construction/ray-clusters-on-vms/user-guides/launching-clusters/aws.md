@@ -7,9 +7,9 @@ To start an AWS Ray cluster, you should use the Ray Cluster Launcher with the AW
 
 
 ## Install Ray Cluster Launcher
-The Ray Cluster Launcher is a command line tool that allows you to start, stop and SSH to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the Ray CLI, which includes cluster launcher support. Follow the general [installation instructions](https://docs.ray.io/en/latest/ray-overview/installation.html) for more details.
+The Ray Cluster Launcher is a command line tool that allows you to start, stop and SSH to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the Ray CLI, which includes cluster launcher support. Follow the general [installation instructions](installation) for more details.
 
-```
+```bash
 # install ray
 pip install -U ray[default]
 ```
@@ -18,7 +18,7 @@ pip install -U ray[default]
 
 Next, install AWS SDK using `pip install -U boto3` and configure your AWS credentials following [the AWS guide](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html).
 
-```
+```bash
 # install AWS Python SDK (boto3)
 pip install -U boto3
 
@@ -40,7 +40,7 @@ Once Boto3 is configured to manage resources in your AWS account, you should be 
 
 Test that it works by running the following commands from your local machine:
 
-```
+```bash
 # Download the example-full.yaml
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/aws/example-full.yaml
 
@@ -71,7 +71,7 @@ If you want to learn more about the Ray Cluster Launcher, see this blog post for
 
 To utilize Amazon EFS in the Ray cluster, you will need to install some additional utilities and mount the EFS in `setup_commands`. Note that these instructions only work if you are using the Ray Cluster Launcher on AWS.
 
-```
+```yaml
 # Note You need to replace the {{FileSystemId}} with your own EFS ID before using the config.
 # You may also need to modify the SecurityGroupIds for the head and worker nodes in the config file.
 
@@ -98,7 +98,7 @@ In various scenarios, worker nodes may need write access to an S3 bucket, e.g., 
 
 If you see errors like “Unable to locate credentials”, make sure that the correct `IamInstanceProfile` is configured for worker nodes in your cluster config file. This may look like:
 
-```
+```yaml
 worker_nodes:
     InstanceType: m5.xlarge
     ImageId: latest_dlami
@@ -108,13 +108,13 @@ worker_nodes:
 
 You can verify if the set up is correct by SSHing into a worker node and running
 
-```
+```bash
 aws configure list
 ```
 
 You should see something like
 
-```
+```bash
       Name                    Value             Type    Location
       ----                    -----             ----    --------
    profile                <not set>             None    None

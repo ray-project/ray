@@ -7,9 +7,9 @@ To start a GCP Ray cluster, you will use the Ray Cluster Launcher with the Googl
 
 
 ## Install Ray Cluster Launcher
-The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
+The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](installation) for more detailed instructions.
 
-```
+```bash
 # install ray
 pip install -U ray[default]
 ```
@@ -20,7 +20,7 @@ If you have never created a Google APIs Console project, read google Cloud's [Ma
 Next, install the Google API Client using `pip install -U google-api-python-client`.
 
 
-```
+```bash
 # Install the Google API Client.
 pip install google-api-python-client
 ```
@@ -32,7 +32,7 @@ Once the Google API client is configured to manage resources on your GCP account
 
 Test that it works by running the following commands from your local machine:
 
-```
+```bash
 # Download the example-full.yaml
 wget https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/gcp/example-full.yaml
 

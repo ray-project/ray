@@ -5,12 +5,11 @@
 Community Supported Cluster Managers
 ====================================
 
-The following is a list of community supported cluster managers.
-
 .. note::
 
     If you're using AWS, Azure or GCP you can use the :ref:`Ray Cluster Launcher <cluster-cloud>` to simplify the cluster setup process.
 
+The following is a list of community supported cluster managers.
 
 .. toctree::
    :maxdepth: 2
@@ -26,7 +25,8 @@ Using a custom cloud or cluster manager
 The Ray cluster launcher currently supports AWS, Azure, GCP, Aliyun and Kuberay out of the box. To use the Ray Cluster Launcher and Autoscaler on other cloud providers or cluster managers, you can implement the `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`_ interface (100 LOC).
 Once the node provider is implemented, you can register it in the `provider section <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/local/example-full.yaml#L18>`_ of the cluster launcher config.
 
-.. code-block:: text
+.. code-block:: yaml
+
     provider:
       type: "external"
       module: "my.module.MyCustomNodeProvider"

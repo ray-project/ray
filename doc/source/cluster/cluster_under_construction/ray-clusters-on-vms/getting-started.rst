@@ -12,7 +12,7 @@ Ray Clusters Quick Start
 
 This quick start demonstrates the capabilities of the Ray cluster. Using the Ray cluster, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
 
-For launching a Ray cluster manually, you can refer to the `on-premise cluster setup <./user-guides/launching-clusters/on-premises.html>`_ guide.
+For launching a Ray cluster manually, you can refer to the :ref:`on-premise cluster setup <on-prem>` guide.
 
 About the demo
 --------------

@@ -10,9 +10,9 @@ There are two ways to start an Azure Ray cluster.
 
 ## Using Ray Cluster Launcher 
 ### Install Ray Cluster Launcher
-The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](https://docs.ray.io/en/latest/ray-overview/installation.html) for more detailed instructions.
+The Ray Cluster Launcher is part of the `ray` command line tool. It allows you to start, stop and attach to a running ray cluster using commands such as  `ray up`, `ray down` and `ray attach`. You can use pip to install the ray command line tool with cluster launcher support. Follow [install ray](installation) for more detailed instructions.
 
-```
+```bash
 # install ray
 pip install -U ray[default]
 ```
@@ -21,7 +21,7 @@ pip install -U ray[default]
 
 Next, install the Azure CLI (`pip install -U azure-cli azure-identity`) and login using `az login`.
 
-```
+```bash
 # Install azure cli.
 pip install azure-cli azure-identity
 
@@ -40,7 +40,7 @@ Note that you'll need to fill in your Azure [resource_group](https://github.com/
 
 Test that it works by running the following commands from your local machine:
 
-```
+```bash
 # Download the example-full.yaml
 wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/autoscaler/azure/example-full.yaml
 
@@ -71,7 +71,7 @@ The head node conveniently exposes both SSH as well as JupyterLab.
 Once the template is successfully deployed the deployment Outputs page provides the ssh command to connect and the link to the JupyterHub on the head node (username/password as specified on the template input).
 Use the following code in a Jupyter notebook (using the conda environment specified in the template input, py38_tensorflow by default) to connect to the Ray cluster.
 
-```
+```python
 import ray; ray.init()
 ```
 
