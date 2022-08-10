@@ -18,6 +18,7 @@ The following is a list of community supported cluster managers.
    slurm.rst
    lsf.rst
 
+.. _ref-additional-cloud-providers-under-construction:
 
 Using a custom cloud or cluster manager
 =======================================
