@@ -1,19 +1,15 @@
 # coding: utf-8
-import copy
 import logging
 import os
 import sys
-import time
 
 import numpy as np
 import pytest
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
-    convert_actor_state,
     kill_actor_and_wait_for_failure,
     put_object,
     wait_for_condition,
