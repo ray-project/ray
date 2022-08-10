@@ -27,7 +27,7 @@ def setup_jax_gpu_environment(master_addr_with_port: str, num_workers: int, inde
     """Set up distributed jax training information.
 
     This function should be called on each worker. Only multi-gpu instances need
-    to set up the distributed connections currently! The function will not called 
+    to set up the distributed connections currently! The function will not called
     on CPU or TPU instances.
 
     Args:
@@ -37,6 +37,7 @@ def setup_jax_gpu_environment(master_addr_with_port: str, num_workers: int, inde
     """
     # not import jax at the top to avoid tpulib_lockfile error
     import jax
+
     jax.distributed.initialize(master_addr_with_port, num_workers, index)
 
 
@@ -76,7 +77,8 @@ def release_tpu_lock(try_remove_tpulib_lock: bool = False):
                 "The tpulib lock file exists, and you might"
                 "be unable to use the tpu for training. Please "
                 "remove it (`/tmp/libtpu_lockfile`) manually or "
-                "set ``RAY_TPU_DEV=1`` to release it."
+                "set ``RAY_TPU_DEV=1`` to release it. Notice that "
+                "`lsof -w /dev/accel0` will end all processes using the TPUs."
             )
 
 
@@ -88,11 +90,13 @@ class _JaxBackend(Backend):
         num_workers = len(worker_group)
 
         use_gpu = bool(worker_group.num_gpus_per_worker)
-        
+
         additional_resources_per_worker = worker_group.additional_resources_per_worker
-    
-        use_tpu = additional_resources_per_worker and additional_resources_per_worker.get("TPU", False)
-        
+
+        use_tpu = (
+            additional_resources_per_worker
+            and additional_resources_per_worker.get("TPU", False)
+        )
 
         if use_gpu:
             # Get setup tasks in order to throw errors on failure.

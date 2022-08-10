@@ -1,5 +1,6 @@
 from ray.air.config import ScalingConfig
 
+
 def ensure_tpu_resources_capitalized(scaling_config: ScalingConfig) -> ScalingConfig:
     """Ensure that the resources_per_worker has capitalized keys."""
     # case-insensitivize
@@ -11,9 +12,9 @@ def ensure_tpu_resources_capitalized(scaling_config: ScalingConfig) -> ScalingCo
     if resources_per_worker:
         resources_per_worker_upper = {}
         for k, v in resources_per_worker.items():
-            if k.upper() == "TPU": 
+            if k.upper() == "TPU":
                 resources_per_worker_upper[k.upper()] = v
-            else:                     
+            else:
                 resources_per_worker_upper[k] = v
         scaling_config.resources_per_worker = resources_per_worker_upper
     return scaling_config
