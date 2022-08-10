@@ -277,13 +277,6 @@ parts:
         - file: cluster/vms/getting-started
         - file: cluster/vms/user-guides/index
           title: User Guides
-          sections:
-          - file: cluster/vms/user-guides/launching-clusters/index
-            title: Launching Clusters
-          - file: cluster/vms/user-guides/large-cluster-best-practices
-          - file: cluster/vms/user-guides/configuring-autoscaling
-          - file: cluster/vms/user-guides/community/index
-            title: Community-supported Cluster Managers
         - file: cluster/vms/examples/index
           title: Examples
           sections:
