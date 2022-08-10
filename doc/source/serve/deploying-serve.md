@@ -23,7 +23,7 @@ The Serve instance will be torn down when the script exits.
 All Serve actors– including the Serve controller, the HTTP proxies, and the deployment replicas– run in the `"serve"` namespace, even if the Ray driver namespace is different.
 :::
 
-If `serve.run()` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster and run `serve.run()`.
+If `serve.run()` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster with `ray.init(address=...)` and run `serve.run()`.
 
 ## Deploying on a Single Node
 
