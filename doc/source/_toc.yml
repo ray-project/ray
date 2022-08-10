@@ -286,6 +286,7 @@ parts:
           - file: cluster/vms/user-guides/community/index
             title: Community-supported Cluster Managers
             sections:
+<<<<<<< HEAD
             - file: cluster/vms/user-guides/community/yarn
             - file: cluster/vms/user-guides/community/slurm
             - file: cluster/vms/user-guides/community/lsf
@@ -310,6 +311,31 @@ parts:
         - file: cluster-deprecated/cluster_under_construction.md
         - file: cluster-deprecated/deploy
         - file: cluster-deprecated/api
+=======
+            - file: cluster/cluster_under_construction/ray-clusters-on-vms/getting-started
+            - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/index
+              title: User Guides
+              sections:
+              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/index
+                title: Launching Clusters
+              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/large-cluster-best-practices
+              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/configuring-autoscaling
+              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/index
+                title: Community-supported Cluster Managers
+                sections:
+                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/yarn
+                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/slurm
+                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/lsf
+            - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/index
+              title: Examples
+              sections:
+              - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/ml-example
+            - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
+          - file: cluster/cluster_under_construction/running-applications-on-ray-clusters/index
+            title: Running Applications on Ray Clusters
+          - file: cluster/cluster_under_construction/references/index
+            title: References
+>>>>>>> 54a9b1d2d03b3d836c9d71c775c21e341ad52bdb
 
   - caption: References
     chapters:
