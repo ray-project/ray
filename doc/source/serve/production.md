@@ -460,11 +460,11 @@ deployment_statuses:
 
 ## Updating Your Serve Application in Production
 
-You can also update your Serve applications once they're in production. You can update the settings in your config file and redeploy it using the `serve deploy` command. You can also add new deployment settings or remove old deployment settings from the config. This is because `serve deploy` is **idempotent**. Your Serve application's config always matches the latest config you deployed successfully– regardless of what config files you deployed before that.
+You can update your Serve applications once they're in production by updating the settings in your config file and redeploying it using the `serve deploy` command. In the redeployed config file, you can add new deployment settings or remove old deployment settings. This is because `serve deploy` is **idempotent**, meaning your Serve application's config always matches (or honors) the latest config you deployed successfully – regardless of what config files you deployed before that.
 
 ### Lightweight Config Updates
 
-Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. Changing `num_replicas`, `autoscaling_config`, and/or `user_config` in an entry of the `deployments` section of the config file is considered a lightweight config update, and won't tear down the replicas for that deployment.
+Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying `num_replicas`, `autoscaling_config`, and/or `user_config` is considered a lightweight config update, and won't tear down the replicas for that deployment.
 
 :::{note}
 Lightweight config updates are only possible for deployments that are included as entries under `deployments` in the config file. If a deployment is not included in the config file, replicas of that deployment will be torn down and brought up again each time you redeploy with `serve deploy`.
@@ -558,10 +558,10 @@ The price has updated! The same request now returns `10` instead of `6`, reflect
 
 ### Code Updates
 
-Similarly, you can update any other setting in any deployment in the config file. If a deployment setting other than `num_replicas`, `autoscaling_config`, or `user_config` is changed, it is considered a code update and the deployment replicas will be restarted. Note that the following are all considered "changes", and (if considered a code update) will trigger tear down of replicas:
-* Changing an existing setting.
-* Adding an override setting that was previously not present in the config file.
-* Removing a setting from the config file.
+Similarly, you can update any other setting in any deployment in the config file. If a deployment setting other than `num_replicas`, `autoscaling_config`, or `user_config` is changed, it is considered a code update, and the deployment replicas will be restarted. Note that the following modifications are all considered "changes", and will trigger tear down of replicas:
+* changing an existing setting
+* adding an override setting that was previously not present in the config file
+* removing a setting from the config file
 
 Note also that changing `import_path` or `runtime_env` is considered a code update for all deployments, and will tear down all running deployments and restart them.
 
