@@ -252,6 +252,10 @@ class BlockAccessor(Generic[T]):
         """Iterate over the rows of this block."""
         raise NotImplementedError
 
+    def get_keys(self, key: KeyFn) -> np.ndarray:
+        """Return the keys for rows in this block."""
+        raise NotImplementedError
+
     def slice(self, start: int, end: int, copy: bool) -> Block:
         """Return a slice of this block.
 

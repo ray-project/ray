@@ -47,6 +47,16 @@ class SimpleBlockBuilder(BlockBuilder[T]):
         for item in block:
             self._size_estimator.add(item)
 
+    def get_keys(self, key: KeyFn) -> np.ndarray:
+        assert not isinstance(key, str)
+        if key is None:
+            keys = np.array([None] * len(self._items))
+        else:
+            assert callable(key)
+            keys = np.array([key(item) for item in self._items])
+        assert keys.ndim == 1
+        return keys
+
     def num_rows(self) -> int:
         return len(self._items)
 

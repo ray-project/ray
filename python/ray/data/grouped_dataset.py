@@ -1,5 +1,7 @@
 from typing import Any, Callable, Generic, List, Tuple, Union
 
+import numpy as np
+
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.plan import AllToAllStage
@@ -258,6 +260,20 @@ class GroupedDataset(Generic[T]):
                 return None
 
         # Returns the group boundaries.
+        def get_key_boundaries(batch):
+            boundaries = []
+            block_accessor = BlockAccessor.for_block(batch)
+            # print("XXX accessor type in get boundaries:", type(block_accessor))
+            keys = block_accessor.get_keys(self._key)
+            unique_keys = np.unique(keys)
+            print("XXX unique values:", unique_keys.size)
+            for k in unique_keys:
+                idx = np.searchsorted(keys, k, side="right")
+                assert idx > 0
+                boundaries.append(idx)
+            return boundaries
+
+        # Returns the group boundaries.
         def get_boundaries(block):
             boundaries = []
             pre = None
@@ -272,8 +288,11 @@ class GroupedDataset(Generic[T]):
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def group_fn(batch):
+            print("XXX batch type:", batch)
             block_accessor = BlockAccessor.for_block(batch)
-            boundaries = get_boundaries(block_accessor)
+            # print("XXX accessor type:", type(block_accessor))
+            boundaries = get_key_boundaries(batch)
+            # boundaries = get_boundaries(block_accessor)
             builder = block_accessor.builder()
             start = 0
             for end in boundaries:
