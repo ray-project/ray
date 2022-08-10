@@ -228,10 +228,13 @@ ray start --head --metrics-export-port=8080
 
 Then run the following script:
 
-```{literalinclude} ../../../python/ray/serve/examples/doc/snippet_metrics.py
+```{literalinclude} doc_code/snippet_metrics.py
+:start-after: __start__
+:end-before: __end__
+:language: python
 ```
 
-The requests will loop and can be canceled with `Ctrl-C`. 
+The requests will loop and can be canceled with `ctrl-c`. 
 
 While this is running, in your web browser navigate to `localhost:8080`.
 In the output there, you can search for `serve_` to locate the metrics above.
