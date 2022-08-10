@@ -60,7 +60,8 @@ dataclasses; python_version < '3.7'
 feather-format
 google-api-python-client
 google-cloud-storage
-gym-minigrid
+# Minigrid now supports Gym 0.25, change the following line back to "gym-minigrid" as soon as this is resolved
+git+https://github.com/Farama-Foundation/gym-minigrid/@b8b6bd4c66531016a8470d1160b9def79f9f766c
 kubernetes
 lxml
 moto[s3,server]
