@@ -4,7 +4,7 @@ This guide helps you to:
 
 - scale your deployments horizontally by specifying a number of replicas
 - scale up and down automatically to react to changing traffic
-- allocate hardware resources (CPUs, GPUs, etc) for each deployment.
+- allocate hardware resources (CPUs, GPUs, etc) for each deployment
 
 (scaling-out-a-deployment)=
 
