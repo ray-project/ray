@@ -29,6 +29,7 @@ from ray.dag import (
 from ray.dag.function_node import FunctionNode
 from ray.dag.input_node import InputNode
 from ray.dag.utils import _DAGNodeNameGenerator
+from ray.dag.gradio_utils import type_to_string
 
 
 def build(ray_dag_root_node: DAGNode) -> List[Deployment]:
@@ -228,7 +229,7 @@ def transform_ray_dag_to_serve_dag(
         parent_class = parent_deployment_node._deployment._func_or_class
         method = getattr(parent_class, dag_node._method_name)
         if "return" in method.__annotations__:
-            other_args_to_resolve["return_type_annotation"] = str(
+            other_args_to_resolve["return_type_annotation"] = type_to_string(
                 method.__annotations__["return"]
             )
 
@@ -250,7 +251,7 @@ def transform_ray_dag_to_serve_dag(
 
         other_args_to_resolve = dag_node.get_other_args_to_resolve()
         if "return" in dag_node._body.__annotations__:
-            other_args_to_resolve["return_type_annotation"] = str(
+            other_args_to_resolve["return_type_annotation"] = type_to_string(
                 dag_node._body.__annotations__["return"]
             )
 

@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Union
 
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
+from ray.dag.gradio_utils import type_to_string
 from ray.dag.constants import DAGNODE_TYPE_KEY
 from ray.util.annotations import DeveloperAPI
 
@@ -70,7 +71,7 @@ class InputNode(DAGNode):
             raise ValueError("InputNode should not take any args or kwargs.")
 
         if return_types:
-            self.return_types = [str(type) for type in return_types]
+            self.return_types = [type_to_string(type) for type in return_types]
         super().__init__([], {}, {}, other_args_to_resolve=_other_args_to_resolve)
 
     def _copy_impl(
