@@ -7,6 +7,8 @@ import json
 import numpy as np
 import os
 import tempfile
+from starlette.requests import Request
+from typing import Dict
 
 from sklearn.datasets import load_iris
 from sklearn.ensemble import GradientBoostingClassifier
@@ -49,15 +51,15 @@ with open(LABEL_PATH, "w") as f:
 
 
 # __doc_define_servable_begin__
-@serve.deployment(route_prefix="/classifier")
+@serve.deployment
 class BoostingModel:
-    def __init__(self, model_path, label_path):
+    def __init__(self, model_path: str, label_path: str):
         with open(model_path, "rb") as f:
             self.model = pickle.load(f)
         with open(label_path) as f:
             self.label_list = json.load(f)
 
-    async def __call__(self, starlette_request):
+    async def __call__(self, starlette_request: Request) -> Dict:
         payload = await starlette_request.json()
         print("Worker: received starlette request with data", payload)
 
@@ -74,5 +76,5 @@ class BoostingModel:
 
 
 # __doc_deploy_begin__
-app = BoostingModel.bind(MODEL_PATH, LABEL_PATH)
+boosting_model = BoostingModel.bind(MODEL_PATH, LABEL_PATH)
 # __doc_deploy_end__

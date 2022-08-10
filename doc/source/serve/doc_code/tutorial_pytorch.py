@@ -4,6 +4,8 @@ from ray import serve
 
 from io import BytesIO
 from PIL import Image
+from starlette.requests import Request
+from typing import Dict
 
 import torch
 from torchvision import transforms
@@ -13,7 +15,7 @@ from torchvision.models import resnet18
 
 
 # __doc_define_servable_begin__
-@serve.deployment(route_prefix="/image_predict")
+@serve.deployment
 class ImageModel:
     def __init__(self):
         self.model = resnet18(pretrained=True).eval()
@@ -29,7 +31,7 @@ class ImageModel:
             ]
         )
 
-    async def __call__(self, starlette_request):
+    async def __call__(self, starlette_request: Request) -> Dict:
         image_payload_bytes = await starlette_request.body()
         pil_image = Image.open(BytesIO(image_payload_bytes))
         print("[1/3] Parsed image data: {}".format(pil_image))
@@ -48,5 +50,5 @@ class ImageModel:
 
 
 # __doc_deploy_begin__
-app = ImageModel.bind()
+image_model = ImageModel.bind()
 # __doc_deploy_end__

@@ -73,9 +73,3 @@ flag to toggle between them.
 The async handle has performance advantage because it uses asyncio directly; as compared
 to the sync handle, which talks to an asyncio event loop in a thread. To learn more about
 the reasoning behind these, checkout our [architecture documentation](serve-architecture).
-
-## Integrating with existing web servers
-
-Ray Serve comes with its own HTTP server out of the box, but if you have an existing
-web application, you can still plug in Ray Serve to scale up your compute using the `ServeHandle`.
-For a tutorial with sample code, see {ref}`serve-web-server-integration-tutorial`.
