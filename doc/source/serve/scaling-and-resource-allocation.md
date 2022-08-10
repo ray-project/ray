@@ -109,7 +109,7 @@ def func(*args):
 
 (serve-fractional-resources-guide)=
 
-### Fractional Resources
+### Fractional CPUs and Fractional GPUs
 
 Suppose you have two models and each doesn't fully saturate a GPU.  You might want to have them share a GPU by allocating 0.5 GPUs each.
 
