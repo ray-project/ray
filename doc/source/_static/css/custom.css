@@ -175,7 +175,33 @@ pre {
 
 .btn-outline-info:hover, .btn-outline-primary:hover{
   border-color: var(--buttons-color-blue);
-  background-color: var(--buttons-color-blue);;
+  background-color: var(--buttons-color-blue);
+}
+
+.btn-outline-info.active:not(:disabled):not(.disabled), .btn-outline-info:not(:disabled):not(.disabled):active, .show>.btn-outline-info.dropdown-toggle {
+  border-color: var(--buttons-color-blue);
+  background-color: var(--buttons-color-blue);
+  color: #fff;
+}
+
+.btn-info, .btn-info:hover, .btn-info:focus {
+  border-color: var(--buttons-color-blue);
+  background-color: var(--buttons-color-blue);
+}
+
+.btn-info.active:not(:disabled):not(.disabled), .btn-info:not(:disabled):not(.disabled):active, .show>.btn-info.dropdown-toggle {
+  border-color: var(--buttons-color-blue);
+  background-color: var(--buttons-color-blue);
+}
+
+.btn-info:hover{
+  opacity: 90%;
+}
+
+.btn-info:disabled{
+  border-color: var(--background-color-disabled);
+  background-color: var(--background-color-disabled);
+  opacity: 100%;
 }
 
 /* custom css for pre elements */
@@ -251,6 +277,11 @@ details.dropdown .summary-up, details.dropdown .summary-down {
   box-shadow: 0 0.2rem 0.5rem rgb(0 0 0 / 5%), 0 0 0.0625rem rgb(0 0 0 / 10%) !important;
 }
 
+/* custom css for text area */
+textarea {
+  border-color: var(--border-color-gray);
+}
+
 /* custom css for footer */
 footer {
   margin-top: 1rem;
@@ -272,6 +303,7 @@ footer {
   --tabs-color-underline: #e0e0e0;
   --border-color-gray: #e0e0e0;
   --background-color-light-gray:#fafafa;
+  --background-color-disabled: #9E9E9E;
 }
 
 :root {
