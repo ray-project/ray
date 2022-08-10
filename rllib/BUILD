@@ -890,6 +890,14 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
 
+# DQN Reproducibility
+py_test(
+    name = "test_repro_dqn",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
+)
+
 # Dreamer
 py_test(
     name = "test_dreamer",
@@ -974,6 +982,14 @@ py_test(
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
 )
 
+# PPO Reproducibility
+py_test(
+    name = "test_repro_ppo",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
+)
+
 # QMix
 py_test(
     name = "test_qmix",
@@ -1012,6 +1028,14 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/simple_q/tests/test_simple_q.py"]
+)
+
+# SimpleQ Reproducibility
+py_test(
+    name = "test_repro_simple_q",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/simple_q/tests/test_repro_simple_q.py"]
 )
 
 # SlateQ
@@ -1728,6 +1752,20 @@ py_test(
     data = ["tests/data/cartpole/small.json"],
 )
 
+py_test(
+    name = "test_dm_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dm_learning.py"],
+)
+
+py_test(
+    name = "test_dr_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dr_learning.py"],
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
@@ -1765,7 +1803,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_sample_batch",
-    tags = ["team:rllib", "policy"],
+    tags = ["team:rllib", "policy", "gpu"],
     size = "small",
     srcs = ["policy/tests/test_sample_batch.py"]
 )
@@ -3347,7 +3385,7 @@ py_test(
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
     data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.new",
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022",
     ]),
     args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
@@ -3359,7 +3397,7 @@ py_test(
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
     data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.old",
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022",
     ]),
     args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )

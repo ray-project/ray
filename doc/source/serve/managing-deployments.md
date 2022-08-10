@@ -157,6 +157,7 @@ def func(*args):
     return do_something_with_my_gpu()
 ```
 
+(serve-omp-num-threads)=
 ### Configuring Parallelism with OMP_NUM_THREADS
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
