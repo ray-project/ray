@@ -1,6 +1,6 @@
-(vm-ml-example)=
+(clusters-vm-ml-example)=
 
-# XGBoost-Ray on VMs
+# Ray AIR XGBoostTrainer on VMs
 
 :::{note}
 To learn the basics of Ray on VMs, we recommend taking a look
