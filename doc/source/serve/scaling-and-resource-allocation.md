@@ -77,7 +77,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 - `target_num_ongoing_requests_per_replica` is only a target value used for autoscaling (not a hard limit), the real ongoing requests number can be higher than the config.
 :::
 
-**downscale_delay_s[default_value=600.0]**: The config is to control how long the cluster needs to wait before scaling down replicas.
+**downscale_delay_s[default_value=600.0]**: How long the cluster needs to wait before scaling down replicas.
 
 **upscale_delay_s[default_value=30.0]**: The config is to control how long the cluster need to wait before scaling up replicas.
 
