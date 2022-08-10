@@ -63,7 +63,7 @@ Broadly speaking, it is more efficient to use a few large Ray pods than many sma
 We recommend taking a look at the [config file][ConfigLink] applied in the following command.
 ```shell
 # Starting from the parent directory of cloned Ray master,
-pushd ray/doc/source/cluster/ray-clusters-on-kubernetes/configs/
+pushd ray/doc/source/cluster/kubernetes/configs/
 kubectl apply -f xgboost-benchmark.yaml
 popd
 ```
@@ -102,7 +102,7 @@ kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
 
 We'll use the {ref}`Ray Job Python SDK<ray-job-sdk>` to submit the XGBoost workload.
 
-```{literalinclude} ../doc_code/xgboost_submit.py
+```{literalinclude} /cluster/doc_code/xgboost_submit.py
 :language: python
 ```
 
@@ -111,7 +111,7 @@ The script is available in the Ray repository.
 
 ```shell
 # From the parent directory of cloned Ray master.
-pushd ray/doc/source/cluster/ray-clusters-on-kubernetes/doc_code/
+pushd ray/doc/source/cluster/doc_code/
 python xgboost_submit.py
 popd
 ```

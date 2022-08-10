@@ -72,7 +72,7 @@ This will forward remote port 8265 to port 8265 on localhost.
 
 We'll use the {ref}`Ray Job Python SDK<ray-job-sdk>` to submit the XGBoost workload.
 
-```{literalinclude} ../../ray-clusters-on-kubernetes/doc_code/xgboost_submit.py
+```{literalinclude} /cluster/doc_code/xgboost_submit.py
 :language: python
 ```
 
@@ -81,7 +81,7 @@ The script is also available in the Ray repository.
 
 ```shell
 # From the parent directory of cloned Ray master.
-pushd ray/doc/source/cluster/ray-clusters-on-kubernetes/doc_code/
+pushd ray/doc/source/cluster/doc_code/
 python xgboost_submit.py
 popd
 ```

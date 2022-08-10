@@ -123,7 +123,7 @@ Now, run the following commands to deploy the Fluent Bit ConfigMap and a single-
 a Fluent Bit sidecar.
 ```shell
 # Starting from the parent of cloned Ray master.
-pushd ray/doc/source/cluster/ray-clusters-on-kubernetes/configs/
+pushd ray/doc/source/cluster/kubernetes/configs/
 kubectl apply -f ray-cluster.log.yaml
 popd
 ```

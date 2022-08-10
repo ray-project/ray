@@ -13,7 +13,7 @@ heterogenous compute nodes (including GPUs) as well as running multiple Ray clus
 different Ray versions in the same Kubernetes cluster.
 
 ```{eval-rst}
-.. image:: /cluster/ray-clusters-on-kubernetes/images/ray_on_kubernetes.png
+.. image:: images/ray_on_kubernetes.png
     :align: center
 ..
   Find source document here: https://docs.google.com/drawings/d/1E3FQgWWLuj8y2zPdKXjoWKrfwgYXw6RV_FWRwK8dVlg/edit

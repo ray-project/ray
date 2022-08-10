@@ -255,46 +255,46 @@ parts:
         title: Getting Started
       - file: cluster/key-concepts
         title: Key Concepts
-      - file: cluster/ray-clusters-on-kubernetes/index
+      - file: cluster/kubernetes/index
         title: Deploying a Ray Cluster on Kubernetes
         sections:
-        - file: cluster/ray-clusters-on-kubernetes/getting-started
-        - file: cluster/ray-clusters-on-kubernetes/user-guides
+        - file: cluster/kubernetes/getting-started
+        - file: cluster/kubernetes/user-guides
           sections:
-            - file: cluster/ray-clusters-on-kubernetes/user-guides/k8s-cluster-setup.md
-            - file: cluster/ray-clusters-on-kubernetes/user-guides/config.md
-            - file: cluster/ray-clusters-on-kubernetes/user-guides/autoscaling.md
-            - file: cluster/ray-clusters-on-kubernetes/user-guides/logging.md
-            - file: cluster/ray-clusters-on-kubernetes/user-guides/gpu.md
-            - file: cluster/ray-clusters-on-kubernetes/user-guides/kuberay-vs-legacy.md
-        - file: cluster/ray-clusters-on-kubernetes/examples
+            - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
+            - file: cluster/kubernetes/user-guides/config.md
+            - file: cluster/kubernetes/user-guides/autoscaling.md
+            - file: cluster/kubernetes/user-guides/logging.md
+            - file: cluster/kubernetes/user-guides/gpu.md
+            - file: cluster/kubernetes/user-guides/kuberay-vs-legacy.md
+        - file: cluster/kubernetes/examples
           sections:
-            - file: cluster/ray-clusters-on-kubernetes/examples/ml-example.md
-        - file: cluster/ray-clusters-on-kubernetes/references
-      - file: cluster/ray-clusters-on-vms/index
+            - file: cluster/kubernetes/examples/ml-example.md
+        - file: cluster/kubernetes/references
+      - file: cluster/vms/index
         title: Deploying a Ray Cluster on VMs
         sections:
-        - file: cluster/ray-clusters-on-vms/getting-started
-        - file: cluster/ray-clusters-on-vms/user-guides/index
+        - file: cluster/vms/getting-started
+        - file: cluster/vms/user-guides/index
           title: User Guides
           sections:
-          - file: cluster/ray-clusters-on-vms/user-guides/launching-clusters/index
+          - file: cluster/vms/user-guides/launching-clusters/index
             title: Launching Clusters
-          - file: cluster/ray-clusters-on-vms/user-guides/monitoring-and-observing-ray-cluster
-          - file: cluster/ray-clusters-on-vms/user-guides/large-cluster-best-practices
-          - file: cluster/ray-clusters-on-vms/user-guides/configuring-autoscaling
-          - file: cluster/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/index
+          - file: cluster/vms/user-guides/monitoring
+          - file: cluster/vms/user-guides/large-cluster-best-practices
+          - file: cluster/vms/user-guides/configuring-autoscaling
+          - file: cluster/vms/user-guides/community/index
             title: Community-supported Cluster Managers
             sections:
-            - file: cluster/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/yarn
-            - file: cluster/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/slurm
-            - file: cluster/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/lsf
-        - file: cluster/ray-clusters-on-vms/examples/index
+            - file: cluster/vms/user-guides/community/yarn
+            - file: cluster/vms/user-guides/community/slurm
+            - file: cluster/vms/user-guides/community/lsf
+        - file: cluster/vms/examples/index
           title: Examples
           sections:
-          - file: cluster/ray-clusters-on-vms/examples/ml-example
-        - file: cluster/ray-clusters-on-vms/references/index
-      - file: cluster/running-applications-on-ray-clusters/index
+          - file: cluster/vms/examples/ml-example
+        - file: cluster/vms/references/index
+      - file: cluster/running-applications/index
         title: Running Applications on Ray Clusters
       - file: cluster/references/index
         title: References

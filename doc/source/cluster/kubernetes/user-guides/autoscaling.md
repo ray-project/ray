@@ -101,8 +101,9 @@ will halve the quantity of that task or actor that can fit in a given Ray pod.
 ## Autoscaling architecture
 The following diagram illustrates the integration of the Ray Autoscaler
 with the KubeRay operator.
+
 ```{eval-rst}
-.. image:: /cluster/ray-clusters-on-kubernetes/images/AutoscalerOperator.svg
+.. image:: ../images/AutoscalerOperator.svg
     :align: center
 ..
     Find the source document here (https://docs.google.com/drawings/d/1LdOg9JQuN5AOII-vDpSaFBsTeg0JGWcsbyNNLP1yovg/edit)
