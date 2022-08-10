@@ -2,7 +2,7 @@ try:
     import jax  # noqa: F401
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
-        "Jax isn't installed. To install Jax on cpu or gpu, please check"
+        "Jax isn't installed. To install Jax, please check"
         " `https://github.com/google/jax#installation` for the instructions."
     )
 

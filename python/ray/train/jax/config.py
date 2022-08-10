@@ -23,11 +23,12 @@ class JaxConfig(BackendConfig):
         return _JaxBackend
 
 
-def setup_jax_environment(master_addr_with_port: str, num_workers: int, index: int):
+def setup_jax_gpu_environment(master_addr_with_port: str, num_workers: int, index: int):
     """Set up distributed jax training information.
 
     This function should be called on each worker. Only multi-gpu instances need
-    to set up the distributed connections currently!
+    to set up the distributed connections currently! The function will not called 
+    on CPU or TPU instances.
 
     Args:
         master_addr_with_port: The master work's address plus the port.
@@ -100,7 +101,7 @@ class _JaxBackend(Backend):
                 setup_futures.append(
                     worker_group.execute_single_async(
                         i,
-                        setup_jax_environment,
+                        setup_jax_gpu_environment,
                         master_addr_with_port=master_addr_with_port,
                         num_workers=num_workers,
                         index=i,
