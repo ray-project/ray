@@ -44,55 +44,61 @@ parser.add_argument(
 
 
 if __name__ == "__main__":
+    import ray
+    ray.init(local_mode=True)
     args = parser.parse_args()
 
     # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
 
-    config = cql.DEFAULT_CONFIG.copy()
-    config["num_workers"] = 0  # Run locally.
-    config["horizon"] = 200
-    config["soft_horizon"] = True
-    config["no_done_at_end"] = True
-    config["n_step"] = 3
-    config["bc_iters"] = 0
-    config["clip_actions"] = False
-    config["normalize_actions"] = True
-    config["num_steps_sampled_before_learning_starts"] = 256
-    config["rollout_fragment_length"] = 1
-    config["tau"] = 0.005
-    config["target_entropy"] = "auto"
-    config["q_model_config"] = {
-        "fcnet_hiddens": [256, 256],
-        "fcnet_activation": "relu",
-    }
-    config["input_config"] = {
-        "paths": ["tests/data/pendulum/enormous.zip"],
-        "format": "json",
-    }
-    config["policy_model_config"] = {
-        "fcnet_hiddens": [256, 256],
-        "fcnet_activation": "relu",
-    }
-    config["optimization"] = {
-        "actor_learning_rate": 3e-4,
-        "critic_learning_rate": 3e-4,
-        "entropy_learning_rate": 3e-4,
-    }
-    config["train_batch_size"] = 256
-    config["target_network_update_freq"] = 1
-    config["min_train_timesteps_per_iteration"] = 1000
-    config["log_level"] = "INFO"
-    config["env"] = "Pendulum-v1"
-
-    # Set up evaluation.
-    config["evaluation_num_workers"] = 1
-    config["evaluation_interval"] = 1
-    config["evaluation_duration"] = 10
-    # This should be False b/c iterations are very long and this would
-    # cause evaluation to lag one iter behind training.
-    config["evaluation_parallel_to_training"] = False
-    # Evaluate on actual environment.
-    config["evaluation_config"] = {"input": "sampler"}
+    config = (
+        cql.CQLConfig().framework(framework="torch")
+        .rollouts(
+            num_rollout_workers=0,
+            rollout_fragment_length=1,
+            horizon=200,
+            soft_horizon=True,
+        )
+        .training(
+            n_step=3,
+            bc_iters=0,
+            clip_actions=False,
+            tau=0.005,
+            target_entropy="auto",
+            q_model_config={
+                "fcnet_hiddens": [256, 256],
+                "fcnet_activation": "relu",
+            },
+            policy_model_config={
+                "fcnet_hiddens": [256, 256],
+                "fcnet_activation": "relu",
+            },
+            optimization_config={
+                "actor_learning_rate": 3e-4,
+                "critic_learning_rate": 3e-4,
+                "entropy_learning_rate": 3e-4,
+            },
+            train_batch_size=256,
+            target_network_update_freq=1,
+        )
+        .reporting(min_train_timesteps_per_iteration=1000)
+        .debugging(log_level="INFO")
+        .environment(normalize_actions=True, env="Pendulum-v1")
+        .offline_data(
+            input_config={
+                "paths": ["tests/data/pendulum/enormous.zip"],
+                "format": "json",
+            }
+        )
+        .evaluation(
+            evaluation_num_workers=1,
+            evaluation_interval=1,
+            evaluation_duration=10,
+            evaluation_parallel_to_training=False,
+            evaluation_config={"input": "sampler"},
+        )
+    )
+    # evaluation_parallel_to_training should be False b/c iterations are very long
+    # and this would cause evaluation to lag one iter behind training.
 
     # Check, whether we can learn from the given file in `num_iterations`
     # iterations, up to a reward of `min_reward`.
@@ -124,30 +130,29 @@ if __name__ == "__main__":
     # (cont.) actions, do the following:
     obs_batch = torch.from_numpy(np.random.random(size=(5, 3)))
     action_batch = torch.from_numpy(np.random.random(size=(5, 1)))
-    q_values = cql_model.get_q_values(obs_batch, action_batch)
+    q_values = cql_model.get_q_values(obs_batch, action_batch)[0]
     # If you are using the "twin_q", there'll be 2 Q-networks and
     # we usually consider the min of the 2 outputs, like so:
-    twin_q_values = cql_model.get_twin_q_values(obs_batch, action_batch)
-    final_q_values = torch.min(q_values, twin_q_values)
-    print(final_q_values)
+    twin_q_values = cql_model.get_twin_q_values(obs_batch, action_batch)[0]
+    final_q_values = torch.min(q_values, twin_q_values)[0]
+    print(f"final_q_values={final_q_values.detach().numpy()}")
 
     # Example on how to do evaluation on the trained Algorithm.
     # using the data from our buffer.
     # Get a sample (MultiAgentBatch).
 
-    multi_agent_batch = synchronous_parallel_sample(worker_set=cql_algorithm.workers)
-    # All experiences have been buffered for `default_policy`
-    batch = multi_agent_batch.policy_batches["default_policy"]
+    batch = synchronous_parallel_sample(worker_set=cql_algorithm.workers)
     obs = torch.from_numpy(batch["obs"])
     # Pass the observations through our model to get the
     # features, which then to pass through the Q-head.
     model_out, _ = cql_model({"obs": obs})
     # The estimated Q-values from the (historic) actions in the batch.
-    q_values_old = cql_model.get_q_values(model_out, torch.from_numpy(batch["actions"]))
+    q_values_old = cql_model.get_q_values(model_out, torch.from_numpy(batch[
+                                                                          "actions"]))[0]
     # The estimated Q-values for the new actions computed by our policy.
     actions_new = cql_policy.compute_actions_from_input_dict({"obs": obs})[0]
-    q_values_new = cql_model.get_q_values(model_out, torch.from_numpy(actions_new))
-    print(f"Q-val batch={q_values_old}")
-    print(f"Q-val policy={q_values_new}")
+    q_values_new = cql_model.get_q_values(model_out, torch.from_numpy(actions_new))[0]
+    print(f"Q-val batch={q_values_old.detach().numpy()}")
+    print(f"Q-val policy={q_values_new.detach().numpy()}")
 
     cql_algorithm.stop()

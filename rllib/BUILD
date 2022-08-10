@@ -2934,11 +2934,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/offline_training.py",
-    main = "examples/multi_agent_two_trainers.py",
+    name = "examples/offline_rl.py",
+    main = "examples/offline_rl.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/offline_training.py"],
+    srcs = ["examples/offline_rl.py"],
     args = ["--as-test", "--stop-reward=-300", "--stop-iters=1"]
 )
 
