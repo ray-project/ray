@@ -134,7 +134,7 @@ In this example, each replica of each deployment will be allocated 0.5 GPUs.  Th
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
 The number of CPUs they use is controlled by the `OMP_NUM_THREADS` environment variable.
-To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` by default because Ray workers and actors use a single CPU by default.
+To [avoid contention](omp-num-thread-note), Ray sets `OMP_NUM_THREADS=1` by default because Ray tasks and actors use a single CPU by default.
 If you *do* want to enable this parallelism in your Serve deployment, just set `OMP_NUM_THREADS` to the desired value either when starting Ray or in your function/class definition:
 
 ```bash
