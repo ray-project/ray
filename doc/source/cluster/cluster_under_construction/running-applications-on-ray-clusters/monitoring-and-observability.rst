@@ -73,13 +73,19 @@ below.
 
 .. tabbed:: If using Kubernetes
 
-    Execute a command on the cluster using ``kubectl`` and the configured
+    Execute a command on the cluster using ``kubectl exec`` and the configured
     RayCluster name. We will use the Service targeting the Ray head pod to
     execute a CLI command on the cluster.
 
     .. code-block:: shell
 
-        $ kubectl exec <RayCluster name>-head-svc "ray status"
+        # First, find the name of the Ray head service.
+        $ kubectl get pod | grep <RayCluster name>-head
+        # NAME                                             READY   STATUS    RESTARTS   AGE
+        # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
+
+        # Then, use the name of the Ray head service to run `ray status`.
+        $ kubectl exec <RayCluster name>-head-xxxxx "ray status"
 
 .. _multi-node-metrics:
 
