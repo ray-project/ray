@@ -70,7 +70,7 @@ Ray Serve Autoscaling allows the `min_replicas` to be 0 when starting your deplo
 :::
 **max_replicas[default_value=1]**: The maximum number of replicas for the deployment. Ray Serve Autoscaling will rely on the Ray Autoscaler to scale up more nodes when the currently available cluster resources (CPUs, GPUs, etc.) are not enough to support more replicas.
 
-**target_num_ongoing_requests_per_replica[default_value=1]**: The config is to maintain how many ongoing requests are expected to run concurrently per replica at most. If the number is lower, the scale up will be done more aggressively.
+**target_num_ongoing_requests_per_replica[default_value=1]**: How many ongoing requests are expected to run concurrently per replica. The autoscaler scales up if the value is lower than the current number of ongoing requests per replica. Similarly, the autoscaler scales down if it's higher than the current number of ongoing requests. Scaling happens quicker if there's a high disparity between this value and the current number of ongoing requests.
 :::{note}
 - It is always recommended to load test your workloads. For example, if the use case is latency sensitive, you can lower the `target_num_ongoing_requests_per_replica` number to maintain high performance.
 - Internally, the autoscaler will decide to scale up or down by comparing `target_num_ongoing_requests_per_replica` to the number of `RUNNING` and `PENDING` tasks on each replica.
