@@ -23,7 +23,7 @@ This section shows you an easy way to deploy your app onto Ray Serve. First, cre
 :end-before: __doc_import_end__
 ```
 
-Then, we construct the (optional) Gradio app `io`:
+Then, we construct the (optional) Gradio app `io`. This application takes in text and uses the [T5 Small](https://huggingface.co/t5-small) text summarization model loaded using [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to summarize that text.
 :::{note} 
 Remember you can substitute this with your own Gradio app if you want to try scaling up your own Gradio app!
 :::
