@@ -13,27 +13,29 @@ class TuneCallback(Callback):
     """Base class for Tune's PyTorch Lightning callbacks."""
 
     _allowed = [
-        "init_start",
-        "init_end",
         "fit_start",
         "fit_end",
         "sanity_check_start",
         "sanity_check_end",
-        "epoch_start",
-        "epoch_end",
-        "batch_start",
+        "train_epoch_start",
+        "train_epoch_end",
+        "validation_epoch_start",
+        "validation_epoch_end",
+        "test_epoch_start",
+        "test_epoch_end",
+        "train_batch_start",
+        "train_batch_end",
         "validation_batch_start",
         "validation_batch_end",
         "test_batch_start",
         "test_batch_end",
-        "batch_end",
         "train_start",
         "train_end",
         "validation_start",
         "validation_end",
         "test_start",
         "test_end",
-        "keyboard_interrupt",
+        "exception",
     ]
 
     def __init__(self, on: Union[str, List[str]] = "validation_end"):
@@ -76,16 +78,36 @@ class TuneCallback(Callback):
         if "sanity_check_end" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_epoch_start(self, trainer: Trainer, pl_module: LightningModule):
-        if "epoch_start" in self._on:
+    def on_train_epoch_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "train_epoch_start" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
-        if "epoch_end" in self._on:
+    def on_train_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "train_epoch_end" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_batch_start(self, trainer: Trainer, pl_module: LightningModule):
-        if "batch_start" in self._on:
+    def on_validation_epoch_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "validation_epoch_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_validation_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "validation_epoch_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_test_epoch_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "test_epoch_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_test_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "test_epoch_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_train_batch_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "train_batch_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_train_batch_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "train_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
     def on_validation_batch_start(
@@ -134,10 +156,6 @@ class TuneCallback(Callback):
         if "test_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_batch_end(self, trainer: Trainer, pl_module: LightningModule):
-        if "batch_end" in self._on:
-            self._handle(trainer, pl_module)
-
     def on_train_start(self, trainer: Trainer, pl_module: LightningModule):
         if "train_start" in self._on:
             self._handle(trainer, pl_module)
@@ -162,8 +180,8 @@ class TuneCallback(Callback):
         if "test_end" in self._on:
             self._handle(trainer, pl_module)
 
-    def on_keyboard_interrupt(self, trainer: Trainer, pl_module: LightningModule):
-        if "keyboard_interrupt" in self._on:
+    def on_exception(self, trainer: Trainer, pl_module: LightningModule):
+        if "exception" in self._on:
             self._handle(trainer, pl_module)
 
 
@@ -180,7 +198,7 @@ class TuneReportCallback(TuneCallback):
             value will be the metric key reported to PyTorch Lightning.
         on: When to trigger checkpoint creations. Must be one of
             the PyTorch Lightning event hooks (less the ``on_``), e.g.
-            "batch_start", or "train_end". Defaults to "validation_end".
+            "train_batch_start", or "train_end". Defaults to "validation_end".
 
     Example:
 
@@ -253,7 +271,7 @@ class _TuneCheckpointCallback(TuneCallback):
             directory. Defaults to "checkpoint".
         on: When to trigger checkpoint creations. Must be one of
             the PyTorch Lightning event hooks (less the ``on_``), e.g.
-            "batch_start", or "train_end". Defaults to "validation_end".
+            "train_batch_start", or "train_end". Defaults to "validation_end".
 
 
     """
@@ -288,7 +306,7 @@ class TuneReportCheckpointCallback(TuneCallback):
             directory. Defaults to "checkpoint".
         on: When to trigger checkpoint creations. Must be one of
             the PyTorch Lightning event hooks (less the ``on_``), e.g.
-            "batch_start", or "train_end". Defaults to "validation_end".
+            "train_batch_start", or "train_end". Defaults to "validation_end".
 
 
     Example:

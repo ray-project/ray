@@ -108,7 +108,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
                 max_epochs=1,
                 callbacks=[
                     _TuneCheckpointCallback(
-                        "trainer.ckpt", on=["batch_end", "train_end"]
+                        "trainer.ckpt", on=["train_batch_end", "train_end"]
                     )
                 ],
             )
