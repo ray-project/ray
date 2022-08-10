@@ -293,7 +293,6 @@ parts:
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/index
                 title: Launching Clusters
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-ray-cluster-on-prem
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/monitoring-and-observing-ray-cluster
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/large-cluster-best-practices
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/multi-tenancy-best-practices
               - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/configuring-autoscaling
@@ -322,6 +321,8 @@ parts:
             - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
           - file: cluster/cluster_under_construction/running-applications-on-ray-clusters/index
             title: Running Applications on Ray Clusters
+            sections:
+              - file: cluster/cluster_under_construction/running-applications-on-ray-clusters/monitoring-and-observability
           - file: cluster/cluster_under_construction/references/index
             title: References
 
