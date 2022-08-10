@@ -14,5 +14,4 @@ launching-clusters/index
 community-supported-cluster-manager/index
 configuring-autoscaling
 large-cluster-best-practices
-monitoring-and-observing-ray-cluster
 ```
