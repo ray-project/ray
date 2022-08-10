@@ -26,7 +26,8 @@ Ray clusters are officially supported on the following technology stacks:
 * The :ref:`Ray cluster launcher on AWS and GCP<ref-cluster-quick-start-vms-under-construction>`. Community-supported Azure and Aliyun integrations also exist.
 * :ref:`KubeRay, the official way to run Ray on Kubernetes<kuberay-index>`.
 
-Advanced users may want to [deploy Ray clusters on-premise](/cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/on-premises.html) or even onto infrastructure platforms not listed here by [providing a custom node provide](/cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/index.html).
+Advanced users may want to :ref:`deploy Ray clusters on-premise <on-prem>`
+or onto infrastructure platforms not listed here by :ref:`providing a custom node provider <ref-cluster-setup-under-construction>`.
 
 Where to go from here?
 ----------------------
