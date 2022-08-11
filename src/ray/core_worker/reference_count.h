@@ -660,15 +660,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return nested_reference_count.get();
     }
 
-    /// Extract a key to identify a Address so that the flyweight can look 
-    /// up the Address from the pool.
-    struct AddressWorkeridExtractor {
-      const std::string& operator()(const rpc::Address& addr)const
-      {
-        return addr.worker_id();
-      }
-    };
-
     /// Description of the call site where the reference was created.
     std::string call_site = "<unknown>";
     /// Object size if known, otherwise -1;
