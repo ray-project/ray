@@ -32,8 +32,6 @@ We can add the code below to deploy and test Serve locally.
 :language: python
 ```
 
-This test code could be in the same file or a different file.  Before moving to the next section, remove or comment out the local testing code above if you added it in the same file.
-
 ## Local Development with HTTP requests
 
 You can use the `serve run` CLI command to run and test your application locally using HTTP to send requests (similar to how you might use the `uvicorn` command if you're familiar with [Uvicorn](https://www.uvicorn.org/)).
