@@ -64,7 +64,7 @@ void GrpcServer::Run() {
   // We will need to further investigate into which set of gRPC settings on
   // client/server for keepalive are misconfigured:
   // https://github.com/ray-project/ray/issues/25367
-  builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PING_STRIKES, 8);
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PING_STRIKES, 16);
 
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config
