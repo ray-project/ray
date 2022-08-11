@@ -1,6 +1,7 @@
 from ray import serve
 
 import logging
+from starlette.requests import Request
 
 logger = logging.getLogger("ray.serve")
 
@@ -10,7 +11,7 @@ class Counter:
     def __init__(self):
         self.count = 0
 
-    async def __call__(self, request):
+    async def __call__(self, request: Request) -> int:
         self.count += 1
         return self.count
 

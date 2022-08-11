@@ -3,6 +3,8 @@
 
 # __serve_example_begin__
 import requests
+from starlette.requests import Request
+from typing import Dict
 
 from sklearn.datasets import load_iris
 from sklearn.ensemble import GradientBoostingClassifier
@@ -23,7 +25,7 @@ class BoostingModel:
         self.model = model
         self.label_list = iris_dataset["target_names"].tolist()
 
-    async def __call__(self, request):
+    async def __call__(self, request: Request) -> Dict:
         payload = (await request.json())["vector"]
         print(f"Received http request with data {payload}")
 

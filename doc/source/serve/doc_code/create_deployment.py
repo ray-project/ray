@@ -12,7 +12,7 @@ import os
 from random import random
 
 import requests
-import starlette.requests
+from starlette.requests import Request
 from ray import serve
 
 #
@@ -47,7 +47,7 @@ class Predictor:
         return (f"(pid: {self.pid}); path: {self.path}; "
                 f"data: {float(data):.3f}; prediction: {pred:.3f}")
 
-    async def __call__(self, http_request: starlette.requests.Request) -> str:
+    async def __call__(self, http_request: Request) -> str:
         data = float(await http_request.query_params['data'])
         return await self.predict(data)
 
@@ -68,7 +68,7 @@ class ServeHandleDemo:
                 random_prediction = await predictor.predict.remote(random())
                 print(f"prediction: {random_prediction}")
 
-    async def __call__(self, http_request: starlette.requests.Request) -> str:
+    async def __call__(self, http_request: Request):
         return await self.run()
 
 
