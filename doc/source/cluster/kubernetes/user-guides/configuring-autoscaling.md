@@ -27,7 +27,7 @@ $ kubectl create -k kuberay/ray-operator/config/default
 $ kubectl apply -f kuberay/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
-Now, we can run a Ray program on the head pod that asks the autoscaler to scale the cluster to a total of 3 CPUs. The head and worker in our example cluster each have a capacity of 1 CPU, so the request should trigger upscaling of an additional worker pod.
+Now, we can run a Ray program on the head pod that uses the [autoscaler Python SDK](ref-autoscaler-sdk-under-construction) to scale the cluster to a total of 3 CPUs. The head and worker pods in our [example cluster config](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) each have a capacity of 1 CPU, and we specified a minimum of 1 worker pod. Thus, the request should trigger upscaling of one additional worker pod.
 
 Note that in real-life scenarios, you will want to use larger Ray pods. In fact, it is advantageous to size each Ray pod to take up an entire Kubernetes node. See the [configuration guide](kuberay-config) for more details.
 
@@ -85,6 +85,8 @@ the requirements of your Ray application.
 to the same value.
 The Ray autoscaler will then take over and modify the `replicas` field as pods are added to or removed from the cluster.
 
+For an example, check out the [config file](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) that we used in the above quickstart guide.
+
 ### Upscaling and downscaling speed
 
 If needed, you can also control the rate at which nodes should be added to or removed from the cluster. For applications with many short-lived tasks, you may wish to adjust the upscaling and downscaling speed to be more conservative.
@@ -102,7 +104,7 @@ carries the following subfields:
 
 ### Configuring the autoscaler sidecar container
 
-The `autoscalerOptions` also provides some options for configuring the autoscaler itself. Usually , it is not necessary to modify these options.
+The `autoscalerOptions` also provides some options for configuring the autoscaler itself. Usually, it should not be necessary to modify these options.
 
 **`resources`**: The `resources` subfield of `autoscalerOptions` sets optional resource overrides
 for the autoscaler sidecar container. These overrides
@@ -119,25 +121,23 @@ resources:
     memory: "512Mi"
 ```
 
-**`image`**: The `image` subfield of `autoscalerOptions` optionally overrides the autoscaler container image.
+The following `autoscalerOptions` suboptions are also available for testing and development of the autoscaler itself.
+
+**`image`**: This field overrides the autoscaler container image.
 If your `RayCluster`'s `spec.RayVersion` is at least `2.0.0`, the autoscaler will default to using
 **the same image** as the Ray container. (Ray autoscaler code is bundled with the rest of Ray.)
 For older Ray versions, the autoscaler will default to the image `rayproject/ray:2.0.0`.
 
-**`imagePullPolicy`**: subfield of `autoscalerOptions` optionally overrides the autoscaler container's
+**`imagePullPolicy`**: This field overrides the autoscaler container's
 image pull policy. The default is `Always`.
 
-The `image` and `imagePullPolicy` overrides are provided primarily for the purposes of autoscaler testing and
-development.
-
-The `env` and `envFrom` fields specify autoscaler container
-environment variables, for debugging and development purposes.
-These fields should be formatted following the
+**`env`** and **`envFrom`**: These fields specify autoscaler container
+environment variables. These fields should be formatted following the
 [Kuberentes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
 for container environment variables.
 
 
-## Ray Autoscaler vs. other autoscalers
+## Understanding the Ray Autoscaler in the Context of Kubernetes
 We describe the relationship between the Ray autoscaler and other autoscalers in the Kubernetes
 ecosystem.
 

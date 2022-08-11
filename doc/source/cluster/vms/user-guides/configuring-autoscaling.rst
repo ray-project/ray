@@ -46,7 +46,7 @@ If needed, you can also control the rate at which nodes should be added to or re
 launches are allowed. The minimum number of pending launches is 5 regardless of this setting.
 
 `idle_timeout_minutes[default_value=5, min_value=0]`: The number of minutes that need to pass before an idle worker node is removed by the
-autoscaler. The smaller the value, the more aggressive downscaling will be. Worker nodes are idle when they hold no active tasks, actors, or referenced objects (either in-memory or spilled to disk). This parameter does not affect the head node.
+autoscaler. The smaller the value, the more aggressive downscaling will be. Worker nodes are considered idle when they hold no active tasks, actors, or referenced objects (either in-memory or spilled to disk). This parameter does not affect the head node.
 
 Autoscaler SDK
 --------------
