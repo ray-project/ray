@@ -57,9 +57,10 @@ class DTConfig(AlgorithmConfig):
         }
         self.grad_clip = None
 
-        # TODO(charlesjsun): Dont' change type doc, also the other two are auto filled
         self.replay_buffer_config = {
+            # Do not change the type of replay buffer.
             "type": MultiAgentSegmentationBuffer,
+            # How many trajectories/episodes does the buffer hold.
             "capacity": 20,
         }
 
@@ -74,8 +75,7 @@ class DTConfig(AlgorithmConfig):
         # Don't change
         self.offline_sampling = True
         self.postprocess_inputs = True
-
-        # TODO(charlesjsun): discount = None
+        self.discount = None
 
     def training(
         self,

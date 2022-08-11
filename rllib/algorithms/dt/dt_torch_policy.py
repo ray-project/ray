@@ -15,7 +15,6 @@ from typing import (
 import tree
 from gym.spaces import Discrete, Box
 
-from ray.rllib.algorithms import AlgorithmConfig
 from ray.rllib.algorithms.dt.dt_torch_model import DTTorchModel
 from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.models.catalog import ModelCatalog
@@ -82,6 +81,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
     ) -> Tuple[ModelV2, Type[TorchDistributionWrapper]]:
         # Model
         model_config = self.config["model"]
+        # TODO: make these better with better AlgorithmConfig options.
         model_config.update(
             dict(
                 embed_dim=self.config["embed_dim"],
@@ -167,8 +167,8 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         act_shape = self.action_space.shape
         act_dtype = self.action_space.dtype
 
-        # Here we will pad observations to batch size 1
-        # and seq_len according to view_requirements.
+        # Here we will pad all the required inputs to its proper sequence length
+        # as their ViewRequirement.
 
         observations = np.concatenate(
             [
@@ -184,6 +184,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
 
         rewards = np.zeros((), dtype=np.float32)
 
+        # -1 for masking in action_distribution_fn
         timesteps = np.full(self.max_seq_len - 1, fill_value=-1, dtype=np.int32)
 
         input_dict = SampleBatch(
@@ -227,6 +228,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             (action, reward, next_obs, extra)
         )
 
+        # Shift observations
         input_dict[SampleBatch.OBS] = np.concatenate(
             [
                 input_dict[SampleBatch.OBS][1:],
@@ -235,6 +237,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             axis=0,
         )
 
+        # Shift actions
         input_dict[SampleBatch.ACTIONS] = np.concatenate(
             [
                 input_dict[SampleBatch.ACTIONS][1:],
@@ -243,8 +246,11 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             axis=0,
         )
 
+        # Reward is not a sequence, it's only used to calculate next rtg.
         input_dict[SampleBatch.REWARDS] = np.asarray(reward)
 
+        # See methods action_distribution_fn and extra_action_out for an explanation
+        # of why this is done.
         input_dict[SampleBatch.RETURNS_TO_GO] = np.concatenate(
             [
                 input_dict[SampleBatch.RETURNS_TO_GO][1:],
@@ -253,6 +259,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             axis=0,
         )
 
+        # Shift and increment timesteps
         input_dict[SampleBatch.T] = np.concatenate(
             [
                 input_dict[SampleBatch.T][1:],
@@ -345,11 +352,14 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             device=rtg.device,
         )
 
-        # Then based on weather we are currently at the first timestep or
+        # Then based on whether we are currently at the first timestep or not
+        # we use the initial_rtg or updated_rtg.
         new_rtg = torch.where(new_timestep == 0, initial_rtg, updated_rtg[:, None])
+        # Append the new_rtg to the batch.
         obs_batch[SampleBatch.RETURNS_TO_GO] = torch.cat([rtg, new_rtg], dim=1)[
             ..., None
         ]
+        # NOTE: now go read the method extra_action_out.
 
         # Pad current action (is not actually attended to and used during inference)
         actions = obs_batch[SampleBatch.ACTIONS]
@@ -361,7 +371,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         obs_batch[SampleBatch.ACTIONS] = torch.cat([actions, action_pad], dim=1)
 
         # Run inference on model
-        model_out, _ = model(obs_batch)
+        model_out, _ = model(obs_batch)  # noop, just returns obs.
         preds = self.model.get_prediction(model_out, obs_batch)
         pred_action = preds[SampleBatch.ACTIONS][:, -1]
 
@@ -375,7 +385,15 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         model: TorchModelV2,
         action_dist: TorchDistributionWrapper,
     ) -> Dict[str, TensorType]:
-        # Note: input_dict contains the updated values from action_distribution_fn
+        # NOTE: this function is only and always called after action_distribution_fn
+        # as long as they're being called by TorchPolicyV2._compute_action_helper
+        # which is called by PolicyV2.compute_actions_from_input_dict.
+        # Since action_distribution_fn modifies input_dict, input_dict now contains
+        # the updated RETURNS_TO_GO. We extract it and outputs it as extra_action_out.
+        # This is used by env_runner and is actually how it adds custom keys to
+        # SimpleListCollector and allows ViewRequirements to work.
+        # This is also used in user inference in get_next_input_dict, which takes
+        # this output as one of the input.
         return {
             # rtg still has the leftover extra 3rd dimension for inference
             SampleBatch.RETURNS_TO_GO: input_dict[SampleBatch.RETURNS_TO_GO][:, -1, 0],
@@ -390,7 +408,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
     ) -> Union[TensorType, List[TensorType]]:
 
         train_batch = self._lazy_tensor_dict(train_batch)
-        model_out, _ = self.model(train_batch)
+        model_out, _ = self.model(train_batch)  # noop, just returns obs.
         preds = self.model.get_prediction(model_out, train_batch)
         targets = self.model.get_targets(model_out, train_batch)
         masks = train_batch[SampleBatch.ATTENTION_MASKS]
