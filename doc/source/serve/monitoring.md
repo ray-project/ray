@@ -207,6 +207,8 @@ You can use Loki to filter your Ray Serve logs and gather insights quicker.
 
 ## Built-in Ray Serve metrics
 
+You can leverage built-in Ray Serve metrics to get a closer look at your application's performance.
+
 Ray Serve exposes important system metrics like the number of successful and
 errored requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default,
 the metrics are exposed in Prometheus format on each node.
@@ -259,11 +261,11 @@ Then run the following script:
 
 The requests will loop and can be canceled with `ctrl-c`. 
 
-While this is running, in your web browser navigate to `localhost:8080`.
+While this script is running, go to `localhost:8080` in your web browser.
 In the output there, you can search for `serve_` to locate the metrics above.
-The metrics are updated once every ten seconds, and you will need to refresh the page to see the new values.
+The metrics are updated once every ten seconds, so you need to refresh the page to see new values.
 
-For example, after running the script for some time and refreshing `localhost:8080` you should be able to find metrics similar to the following:
+For example, after running the script for some time and refreshing `localhost:8080` you should find metrics similar to the following:
 
 ```
 ray_serve_deployment_processing_latency_ms_count{..., replica="sleeper#jtzqhX"} 48.0
@@ -272,7 +274,7 @@ ray_serve_deployment_processing_latency_ms_sum{..., replica="sleeper#jtzqhX"} 48
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a [custom metric](application-level-metrics) to use in your deployment, and tag it with the current deployment or replica.
+You can even define a [custom metric](application-level-metrics) for your deployment and tag it with deployment or replica metadata.
 Here's an example:
 
 ```{literalinclude} doc_code/monitoring/custom_metric_snippet.py
@@ -280,7 +282,7 @@ Here's an example:
 :end-before: __end__
 ```
 
-And the emitted logs:
+The emitted logs include:
 
 ```
 # HELP ray_my_counter The number of odd-numbered requests to this deployment.
@@ -288,5 +290,4 @@ And the emitted logs:
 ray_my_counter{..., deployment="MyDeployment"} 5.0
 ```
 
-See the
-[Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+See the [Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
