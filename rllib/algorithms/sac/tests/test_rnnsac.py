@@ -46,6 +46,7 @@ class TestRNNSAC(unittest.TestCase):
                     "zero_init_states": True,
                 },
                 lr=5e-4,
+                num_steps_sampled_before_learning_starts=0,
             )
         )
         num_iterations = 1

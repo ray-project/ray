@@ -90,18 +90,27 @@ def train_func(config: dict):
             ],
         )
 
+    def to_tf_dataset(dataset, batch_size):
+        def to_tensor_iterator():
+            for batch in dataset.iter_tf_batches(
+                batch_size=batch_size, dtypes=tf.float32
+            ):
+                yield batch["image"], batch["label"]
+
+        output_signature = (
+            tf.TensorSpec(shape=(None, 784), dtype=tf.float32),
+            tf.TensorSpec(shape=(None, 784), dtype=tf.float32),
+        )
+        tf_dataset = tf.data.Dataset.from_generator(
+            to_tensor_iterator, output_signature=output_signature
+        )
+        return prepare_dataset_shard(tf_dataset)
+
     results = []
     for epoch in range(epochs):
-        tf_dataset = prepare_dataset_shard(
-            dataset_shard.to_tf(
-                feature_columns=["image"],
-                label_column="label",
-                output_signature=(
-                    tf.TensorSpec(shape=(None, 784), dtype=tf.float32),
-                    tf.TensorSpec(shape=(None, 784), dtype=tf.float32),
-                ),
-                batch_size=per_worker_batch_size,
-            )
+        tf_dataset = to_tf_dataset(
+            dataset=dataset_shard,
+            batch_size=per_worker_batch_size,
         )
         history = multi_worker_model.fit(
             tf_dataset, callbacks=[TrainCheckpointReportCallback()]
