@@ -22,7 +22,7 @@ We are continuously benchmarking Ray Serve. The metrics we care about are latenc
   so its scalability is bounded by Ray’s scalability. Please see Ray’s [scalability envelope](https://github.com/ray-project/ray/blob/master/release/benchmarks/README.md)
   to learn more about the maximum number of nodes and other limitations.
 
-We run long-running benchmarks nightly. These include:
+We run long-running benchmarks nightly:
 
 ```{eval-rst}
 .. list-table::
