@@ -8,29 +8,26 @@
 Ray Clusters Overview
 =====================
 
-What is a Ray cluster?
-----------------------
+Ray enables seamless scaling of workloads from a laptop to a large cluster. To run Ray
+applications on multiple nodes, you must first *deploy a Ray cluster*.
 
-One of Ray's strengths is the ability to leverage multiple machines for
-distributed execution. Ray is great for multiprocessing on a single machine.
-However, the real power of Ray is the ability to seamlessly scale to a cluster
-of machines.
+A Ray cluster is a set of worker nodes connected to a common :ref:`Ray head node <cluster-head-node>`.
+Ray clusters can be fixed-size, or they may :ref:`autoscale up and down <cluster-autoscaler>` according
+to the resources requested by applications running on the cluster.
 
-A Ray cluster is a set of one or more nodes that are running Ray and share the same :ref:`head node<cluster-head-node>`.
-Ray clusters can either be a fixed-size number of nodes or :ref:`can autoscale<cluster-autoscaler>` (i.e., automatically provision or deprovision the number of nodes in a cluster) according to the demand of the Ray workload.
+Where can I deploy Ray clusters?
+--------------------------------
 
-How can I use Ray clusters?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ray clusters are officially supported on the following technology stacks:
+Ray provides native cluster deployment support on the following technology stacks:
 
-* The :ref:`Ray cluster launcher on AWS and GCP<ref-cluster-quick-start>`. Community-supported Azure and Aliyun integrations also exist.
-* :ref:`KubeRay, the official way to run Ray on Kubernetes<kuberay-index>`.
+* On :ref:`AWS and GCP <ref-cluster-quick-start>`. Community-supported Azure and Aliyun integrations also exist.
+* On :ref:`Kubernetes, via the KubeRay project <kuberay-index>`.
 
-Advanced users may want to :ref:`deploy Ray clusters on-premise <on-prem>`
-or onto infrastructure platforms not listed here by :ref:`providing a custom node provider <ref-cluster-setup>`.
+Advanced users may want to :ref:`deploy Ray clusters manually <on-prem>`
+or onto platforms not listed here by :ref:`implementing a custom node provider <ref-cluster-setup>`.
 
-Where to go from here?
-----------------------
+What's next?
+------------
 
 .. panels::
     :container: text-center
@@ -57,19 +54,19 @@ Where to go from here?
     +++
     .. link-button:: ref-cluster-quick-start
         :type: ref
-        :text: Getting Started with Ray Clusters on VMs
+        :text: Get Started with Ray on VMs
         :classes: btn-outline-info btn-block
     ---
 
     **I want to run Ray on Kubernetes**
     ^^^
     Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
-    remote Kubernetes cluster or on your laptop via KinD.
+    Kubernetes cluster or on your laptop via KinD.
 
     +++
     .. link-button:: kuberay-quickstart
         :type: ref
-        :text: Getting Started with Ray on Kubernetes
+        :text: Get Started with Ray on Kubernetes
         :classes: btn-outline-info btn-block
 
 .. include:: /_includes/clusters/announcement_bottom.rst
