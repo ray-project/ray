@@ -14,17 +14,13 @@ You can use the Ray dashboard to get a high-level overview of your Ray cluster a
 This includes details such as:
 * the number of deployment replicas currently running
 * logs for your Serve controller, deployment replicas, and HTTP proxies
-* the Ray nodes (i.e. machines) running in your Ray cluster
+* the Ray nodes (i.e. machines) running in your Ray cluster.
 
 You can access the Ray dashboard at port 8265 at your cluster's URI.
-For example, if you're running Ray Serve on a local Ray cluster, you can access the dashboard by going to this address in your browser:
+For example, if you're running Ray Serve locally, you can access the dashboard by going to `http://localhost:8265` in your browser.
 
-```
-http://localhost:8265
-```
-
-We can view important information about our application here.
-For example, we can inspect our deployment replicas by navigating to the Ray dashboard's "Actors" tab while our Serve application is running:
+You can view important information about your application here.
+For example, you can inspect your deployment replicas by navigating to the Ray dashboard's "Actors" tab while your Serve application is running:
 
 ```{image} https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard-2-replicas.png
 :align: center
