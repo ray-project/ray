@@ -153,7 +153,7 @@ scrape_configs:
 ```
 
 The relevant part for Ray Serve is the `static_configs` field, where we have indicated the location of our log files with `__path__`.
-The expression `*.*` will match all files, but not directories, which cause an error with Promtail.
+The expression `*.*` will match all files, but it won't match directories since they cause an error with Promtail.
 
 We'll run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
 
