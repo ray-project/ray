@@ -119,7 +119,7 @@ refactor your deployment to accept batches (especially for GPU-based ML inferenc
   we recommend choosing the largest batch size your function can handle
   without losing the sublinear performance improvement.
   For example, suppose it takes 1ms to process 1 query, 5ms to process 10 queries,
-  and 6ms to process 11 queries. Here you should set the batch size to to 10
+  and 6ms to process 11 queries. Here you should set the batch size to 10
   because adding more queries won’t improve the performance.
 - `batch_wait_timeout` specifies the maximum amount of time to wait before
   a batch should be processed, even if it’s not full.  It should be set according
