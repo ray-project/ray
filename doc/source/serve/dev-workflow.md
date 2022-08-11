@@ -50,18 +50,13 @@ Now run the following command in your terminal:
 
 ```bash
 serve run local_dev:HelloDeployment
-```
-
-This will output something similar to the following:
-
-```console
-2022-08-11 11:31:47,692 INFO scripts.py:294 -- Deploying from import path: "local_dev:graph".
-2022-08-11 11:31:50,372 INFO worker.py:1481 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265.
-(ServeController pid=9865) INFO 2022-08-11 11:31:54,039 controller 9865 http_state.py:129 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-dff7dc5b97b4a11facaed746f02448224aa0c1fb651988ba7197e949' on node 'dff7dc5b97b4a11facaed746f02448224aa0c1fb651988ba7197e949' listening on '127.0.0.1:8000'
-(ServeController pid=9865) INFO 2022-08-11 11:31:55,373 controller 9865 deployment_state.py:1232 - Adding 1 replicas to deployment 'Doubler'.
-(ServeController pid=9865) INFO 2022-08-11 11:31:55,389 controller 9865 deployment_state.py:1232 - Adding 1 replicas to deployment 'HelloDeployment'.
-(HTTPProxyActor pid=9872) INFO:     Started server process [9872]
-2022-08-11 11:31:57,383 SUCC scripts.py:315 -- Deployed successfully.
+# 2022-08-11 11:31:47,692 INFO scripts.py:294 -- Deploying from import path: "local_dev:graph".
+# 2022-08-11 11:31:50,372 INFO worker.py:1481 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265.
+# (ServeController pid=9865) INFO 2022-08-11 11:31:54,039 controller 9865 http_state.py:129 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-dff7dc5b97b4a11facaed746f02448224aa0c1fb651988ba7197e949' on node 'dff7dc5b97b4a11facaed746f02448224aa0c1fb651988ba7197e949' listening on '127.0.0.1:8000'
+# (ServeController pid=9865) INFO 2022-08-11 11:31:55,373 controller 9865 deployment_state.py:1232 - Adding 1 replicas to deployment 'Doubler'.
+# (ServeController pid=9865) INFO 2022-08-11 11:31:55,389 controller 9865 deployment_state.py:1232 - Adding 1 replicas to deployment 'HelloDeployment'.
+# (HTTPProxyActor pid=9872) INFO:     Started server process [9872]
+# 2022-08-11 11:31:57,383 SUCC scripts.py:315 -- Deployed successfully.
 ```
 
 The `serve run` command blocks the terminal and can be canceled with Ctrl-C.
@@ -70,13 +65,8 @@ Now that Serve is running, we can pass in HTTP requests to the application and s
 For simplicity, we'll just use the `curl` command to send requests from another terminal.
 
 ```bash
-curl -X PUT "http://localhost:8000/?name=Ray"   
-```
-
-This will output:
-
-```console
-Hello, Ray! Hello, Ray!
+curl -X PUT "http://localhost:8000/?name=Ray"
+# Hello, Ray! Hello, Ray!
 ```
 
 After you're done testing, you can shut down Ray Serve by interrupting the `serve run` command (e.g., with Ctrl-C):
