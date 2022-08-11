@@ -118,7 +118,7 @@ We run long-running benchmarks nightly. These include:
 The performance numbers above come from a recent run of the nightly benchmarks.
 :::
 
-[]: # 'See https://github.com/ray-project/ray/pull/27711 for more context on the benchmarks.'
+<!--- See https://github.com/ray-project/ray/pull/27711 for more context on the benchmarks. -->
 
 Check out [our benchmark workloads'](https://github.com/ray-project/ray/tree/master/release/serve_tests/workloads) source code directly to get a better sense of what they test. You can see which cluster templates each benchmark uses [here](https://github.com/ray-project/ray/blob/8eca6ae852e2d23bcf49680fef6f0384a1b63564/release/release_tests.yaml#L2328-L2576) (under the `cluster_compute` key), and you can see what type of nodes each template spins up [here](https://github.com/ray-project/ray/tree/master/release/serve_tests).
 
