@@ -70,4 +70,4 @@ Ray Jobs enable users to submit locally developed-and-tested applications to a
 remote Ray cluster. Ray Job Submission simplifies the experience of packaging,
 deploying, and managing a Ray application.
 
-To learn how to run workloads on a Ray Cluster, refer to the :ref:`Ray Jobs guide<ray-jobs-under-construction>`.
+To learn how to run workloads on a Ray Cluster, refer to the :ref:`Ray Jobs guide<ray-jobs>`.

@@ -1,7 +1,7 @@
 .. warning::
     This page is under construction!
 
-.. _jobs-quickstart-under-construction:
+.. _jobs-quickstart:
 
 =================================
 Quickstart Using the Ray Jobs CLI
@@ -35,7 +35,7 @@ For convenience, this guide will assume that you are using a local Ray Cluster, 
 
 This will create a Ray head node on our local machine that we can use for development purposes.
 Note the Ray Dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job.
-For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <ref-cluster-quick-start-vms-under-construction>` and :ref:`Kubernetes <kuberay-quickstart>`.
+For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <ref-cluster-quick-start-vms>` and :ref:`Kubernetes <kuberay-quickstart>`.
 
 
 Submitting a Ray Job
@@ -258,5 +258,5 @@ Now let's try it with a runtime environment that pins the version of the ``reque
     # Job 'raysubmit_vGGV4MiP9rYkYUnb' succeeded
     # ------------------------------------------
 
-The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-api-ref-under-construction>`.
-For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk-under-construction>` and :ref:`job submission using REST <ray-job-rest-api-under-construction>`.
+The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-api-ref>`.
+For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk>` and :ref:`job submission using REST <ray-job-rest-api>`.

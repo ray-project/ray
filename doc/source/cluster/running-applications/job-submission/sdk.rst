@@ -34,7 +34,7 @@ For convenience, this guide will assume that you are using a local Ray Cluster, 
 
 This will create a Ray head node on our local machine that we can use for development purposes.
 Note the Ray Dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job.
-For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <ref-cluster-quick-start-vms-under-construction>` and :ref:`Kubernetes <kuberay-quickstart>`.
+For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <ref-cluster-quick-start-vms>` and :ref:`Kubernetes <kuberay-quickstart>`.
 
 Submitting a Ray Job
 --------------------
@@ -123,7 +123,7 @@ To get information about all jobs, call ``client.list_jobs()``.  This returns a 
 Dependency Management
 ---------------------
 
-Similar to the :ref:`Jobs CLI <jobs-quickstart-under-construction>`, we can also package our application's dependencies by using a Ray :ref:`runtime environment <runtime-environments>`.
+Similar to the :ref:`Jobs CLI <jobs-quickstart>`, we can also package our application's dependencies by using a Ray :ref:`runtime environment <runtime-environments>`.
 Using the Python SDK, the syntax looks something like this:
 
 .. code-block:: python
