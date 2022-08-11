@@ -1,9 +1,4 @@
-.. warning::
-    This page is under construction!
-
 .. include:: /_includes/clusters/announcement.rst
-
-.. include:: /_includes/clusters/we_are_hiring.rst
 
 .. _ref-cluster-quick-start:
 

@@ -1,7 +1,3 @@
-.. include:: /_includes/clusters/announcement.rst
-
-.. include:: /_includes/clusters/we_are_hiring.rst
-
 .. _cluster-index:
 
 
@@ -21,7 +17,7 @@ Where can I deploy Ray clusters?
 Ray provides native cluster deployment support on the following technology stacks:
 
 * On :ref:`AWS and GCP <ref-cluster-quick-start>`. Community-supported Azure and Aliyun integrations also exist.
-* On :ref:`Kubernetes, via the KubeRay project <kuberay-index>`.
+* On :ref:`Kubernetes <kuberay-index>`, via the officially supported KubeRay project.
 
 Advanced users may want to :ref:`deploy Ray clusters manually <on-prem>`
 or onto platforms not listed here by :ref:`implementing a custom node provider <ref-cluster-setup>`.

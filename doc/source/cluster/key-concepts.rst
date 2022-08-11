@@ -1,23 +1,12 @@
-.. warning::
-    This page is under construction!
-
-.. include:: /_includes/clusters/we_are_hiring.rst
-
 Key Concepts
 ============
 
 .. _cluster-key-concepts:
 
-
-This page introduces the following key concepts concerning Ray clusters:
-
-.. contents::
-    :local:
-
-Ray cluster
-------------
-A **Ray cluster** is comprised of a :ref:`head node<cluster-head-node>`
-and any number of :ref:`worker nodes<cluster-worker-nodes>`.
+Ray Cluster
+-----------
+A Ray cluster consists of a single :ref:`head node <cluster-head-node>`
+and any number of connected :ref:`worker nodes <cluster-worker-nodes>`:
 
 .. figure:: images/ray-cluster.svg
     :align: center
@@ -25,11 +14,10 @@ and any number of :ref:`worker nodes<cluster-worker-nodes>`.
     
     *A Ray cluster with two worker nodes. Each node runs Ray helper processes to
     facilitate distributed scheduling and memory management. The head node runs
-    additional control processes, which are highlighted.*
+    additional control processes (highlighted in blue).*
 
-The number of worker nodes in a cluster may change with application demand, according
-to your Ray cluster configuration. This is known as *autoscaling*. The head node runs
-the :ref:`autoscaler<cluster-autoscaler>`.
+The number of worker nodes may be *autoscaled* with application demand as specified
+by your Ray cluster configuration. The head node runs the :ref:`autoscaler <cluster-autoscaler>`.
 
 .. note::
     Ray nodes are implemented as pods when :ref:`running on Kubernetes<kuberay-index>`.

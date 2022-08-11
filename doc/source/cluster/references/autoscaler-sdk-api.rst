@@ -1,5 +1,3 @@
-.. include:: /_includes/clusters/we_are_hiring.rst
-
 .. _ref-autoscaler-sdk:
 
 Autoscaler SDK
