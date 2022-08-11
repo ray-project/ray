@@ -9,6 +9,7 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
@@ -116,6 +117,14 @@ class _StatsActor:
 
 def _get_or_create_stats_actor():
     ctx = DatasetContext.get_current()
+    scheduling_strategy = ctx.scheduling_strategy
+    if not ray.util.client.ray.is_connected():
+        # Pin the stats actor to the local node
+        # so it fate-shares with the driver.
+        scheduling_strategy = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
     return _StatsActor.options(
         name=STATS_ACTOR_NAME,
         namespace=STATS_ACTOR_NAMESPACE,

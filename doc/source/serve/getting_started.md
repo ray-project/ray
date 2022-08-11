@@ -4,18 +4,18 @@
 
 This tutorial will walk you through the process of deploying models with Ray Serve. It will show you how to
 
-* Expose your models over HTTP using Ray Serve [deployments](serve-managing-deployments-guide)
-* Scale your deployments to meet your workload's requirements
-* Allocate resources like fractional GPUs and CPUs to your deployments
-* Compose multiple-model machine learning pipelines with Ray Serve [deployment graphs](deployment-graph-e2e-tutorial)
-* Port your FastAPI applications to Ray Serve
+* expose your models over HTTP using Ray Serve [deployments](serve-managing-deployments-guide)
+* test your deployments over HTTP
+* compose multiple-model machine learning pipelines with Ray Serve [deployment graphs](serve-model-composition-guide)
 
 We'll use two models in this tutorial:
 
 * [HuggingFace's TranslationPipeline](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.TranslationPipeline) as a text-translation model
 * [HuggingFace's SummarizationPipeline](https://huggingface.co/docs/transformers/v4.21.0/en/main_classes/pipelines#transformers.SummarizationPipeline) as a text-summarizer model
 
-After deploying these models, we'll test them with HTTP requests.
+You can also follow along using your own models from any Python framework.
+
+After deploying those two models, we'll test them with HTTP requests.
 
 :::{tip}
 If you have suggestions on how to improve this tutorial,
@@ -64,9 +64,7 @@ tutorial. You can follow along using arbitrary models from any
 Python framework. Check out our tutorials on scikit-learn,
 PyTorch, and Tensorflow for more info and examples:
 
-- {ref}`serve-sklearn-tutorial`
-- {ref}`serve-pytorch-tutorial`
-- {ref}`serve-tensorflow-tutorial`
+- {ref}`serve-ml-models-tutorial`
 
 (converting-to-ray-serve-deployment)=
 ## Converting to a Ray Serve Deployment
@@ -100,7 +98,21 @@ The decorator converts `Translator` from a Python class into a Ray Serve
 
 Each deployment stores a single Python function or class that you write and uses
 it to serve requests. You can scale and configure each of your deployments independently using
-parameters in the `@serve.deployment` decorator.
+parameters in the `@serve.deployment` decorator. The example configures a few common parameters:
+
+* `num_replicas`: an integer that determines how many copies of our deployment process run in Ray. Requests are load balanced across these replicas, allowing you to scale your deployments horizontally.
+* `ray_actor_options`: a dictionary containing configuration options for each replica.
+    * `num_cpus`: a float representing the logical number of CPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer CPUs than replicas.
+    * `num_gpus`: a float representing the logical number of GPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer GPUs than replicas.
+
+All these parameters are optional, so feel free to omit them:
+
+```python
+...
+@serve.deployment
+class Translator:
+  ...
+```
 
 Deployments receive Starlette HTTP `request` objects [^f1]. If your deployment stores a Python function, the function is called on this `request` object. If your deployment stores a class, the class's `__call__` method is called on this `request` object. The return value is sent back in the HTTP response body.
 
@@ -168,71 +180,6 @@ $ python model_client.py
 
 Bonjour monde!
 ```
-
-## Scaling Ray Serve Deployments
-
-We can scale Ray Serve deployments up and down to meet our workload's requirements. Ray Serve offers a parameter in the `@serve.deployment` decorator called `num_replicas`. `num_replicas` is an integer that determines how many copies of our deployment process run in Ray. By default, it's set to 1. If we set it to a higher number, we can create more copies (called `replicas`) of our deployment. When many clients make requests to our deployments at the same time, their requests are routed to different replicas, allowing us to split our workload across the replicas. This lets us horizontally scale our deployments to take full advantage of our computing resources. Check out our guide on [scaling out a deployment](scaling-out-a-deployment) for more info.
-
-As an example, we can rewrite our `Translator` class to use 3 replicas to handle more client requests smoothly. All we need to do is set `num_replicas` in the decorator:
-
-```python
-...
-
-@serve.deployment(
-  num_replicas=3
-)
-class Translator:
-    ...
-
-...
-```
-
-We can also manually tune the number of replicas for our deployments in production. See the guide on [putting Ray Serve in production](serve-in-production) to learn more.
-
-Ray Serve also offers autoscaling, allowing you to set `min_replicas` and `max_replicas` on your deployments. Ray Serve will automatically scale your deployments to fit their usage. This feature also lets you scale to zero, so your deployments can have 0 replicas during periods of zero usage, allowing you to automatically save resources. See the guide on [Ray Serve autoscaling](ray-serve-autoscaling) to learn more.
-
-## Reserving Fine-Grained Resources including Fractional GPUs and CPUs
-
-Ray Serve allows us to reserve fine-grained resources for each of our deployment's replicas. These resources include the number of CPUs and GPUs that we'd like to allocate per replica. The `@serve.deployment` decorator offers a parameter called `ray_actor_options`, which is a dictionary of settings for each of our replicas. Two of these settings are `num_cpus` and `num_gpus`, which control the number of CPUs and the number of GPUs reserved for each deployment replica.
-
-For example, we can rewrite `Translator`, so each replica has access to 2 CPUs and 1 GPU. All we need to do is set `num_cpus` and `num_gpus` in the decorator:
-
-```python
-...
-
-@serve.deployment(
-  ray_actor_options={
-    "num_cpus": 2,
-    "num_gpus": 1,
-  }
-)
-class Translator:
-    ...
-
-...
-```
-
-Note that these settings represent logical CPUs and GPUs, so we can also set them to fractions. Fractional GPUs and CPUs allow us to pack multiple deployment replicas together on the same machine, so they can share the available GPUs and CPUs.
-
-For example, if we have a machine with 2 CPUs and 1 GPU, we can rewrite `Translator` to reserve all the available resources with 2 replicas:
-
-```python
-...
-
-@serve.deployment(
-  num_replicas=2,
-  ray_actor_options={
-    "num_cpus": 1,
-    "num_gpus": 0.5,
-  }
-)
-class Translator:
-    ...
-
-...
-```
-
-See the guides on [Ray Serve resource management](serve-cpus-gpus) and [Ray Serve's fractional resources](serve-fractional-resources-guide) to learn more.
 
 ## Composing Machine Learning Models with Deployment Graphs
 
@@ -305,38 +252,7 @@ $ python graph_client.py
 c'était le meilleur des temps, c'était le pire des temps .
 ```
 
-Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources.
-
-## Porting FastAPI Applications to Ray Serve
-
-Ray Serve also lets you port your existing
-[FastAPI](https://fastapi.tiangolo.com/) Applications. You can also
-integrate your Ray Serve applications with FastAPI to access features like
-advanced HTTP parsing, automatic UI and documentation generation, and Pydantic
-type-checking. For more info about FastAPI with Serve, please see
-{ref}`serve-fastapi-http`.
-
-You can define a Serve deployment by adding the `@serve.ingress` decorator to
-your FastAPI app. As an example of FastAPI, here's a modified version of our
-`Translator` class:
-
-```{literalinclude} ../serve/doc_code/getting_started/fastapi_model.py
-:start-after: __fastapi_start__
-:end-before: __fastapi_end__
-:language: python
-```
-
-We can run this script and then send HTTP requests to the deployment:
-
-```{literalinclude} ../serve/doc_code/getting_started/fastapi_model.py
-:start-after: __fastapi_client_start__
-:end-before: __fastapi_client_end__
-:language: python
-```
-
-Congratulations! You just built and deployed machine learning models on Ray
-Serve! You should now have enough context to dive into the {doc}`key-concepts` to
-get a deeper understanding of Ray Serve.
+Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources. See the guide on [model composition](serve-model-composition-guide) to learn more.
 
 ## Next Steps
 

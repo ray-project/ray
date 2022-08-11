@@ -180,7 +180,7 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
-    exclude = [],
+    exclude = ["source/ray-air/doc_code/hf_trainer.py"],  # Too large
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )

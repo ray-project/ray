@@ -23,6 +23,7 @@ from ray.rllib.utils.test_utils import (
     framework_iterator,
 )
 
+
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = SampleBatch(
     {
@@ -238,7 +239,10 @@ class TestPPO(unittest.TestCase):
             assert len(matching) == 1, matching
             log_std_var = matching[0]
 
-            def get_value():
+            # linter yells at you if you don't pass in the parameters.
+            # reason: https://docs.python-guide.org/writing/gotchas/
+            # #late-binding-closures
+            def get_value(fw=fw, policy=policy, log_std_var=log_std_var):
                 if fw == "tf":
                     return policy.get_session().run(log_std_var)[0]
                 elif fw == "torch":

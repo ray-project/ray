@@ -81,9 +81,6 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 class ScalingConfig:
     """Configuration for scaling training.
 
-    This is the schema for the scaling_config dict, and after beta, this will be the
-    actual representation for Scaling config objects.
-
     Args:
         trainer_resources: Resources to allocate for the trainer. If None is provided,
             will default to 1 CPU.
@@ -268,7 +265,7 @@ class ScalingConfig:
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
-    These configs define how the Dataset should be read into the DataParallelTrainer.
+    This config defines how the Dataset should be read into the DataParallelTrainer.
     It configures the preprocessing, splitting, and ingest strategy per-dataset.
 
     DataParallelTrainers declare default DatasetConfigs for each dataset passed in the
@@ -430,15 +427,17 @@ class DatasetConfig:
 @dataclass
 @PublicAPI(stability="beta")
 class FailureConfig:
-    """Configuration related to failure handling of each run/trial.
+    """Configuration related to failure handling of each training/tuning run.
 
     Args:
         max_failures: Tries to recover a run at least this many times.
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
-        fail_fast: Whether to fail upon the first error.
-            If fail_fast='raise' provided, Tune will automatically
+        fail_fast: Whether to fail upon the first error. Only used for
+            Ray Tune - this does not apply
+            to single training runs (e.g. with ``Trainer.fit()``).
+            If fail_fast='raise' provided, Ray Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution (it
             is best used with `ray.init(local_mode=True)`).
@@ -545,14 +544,11 @@ class CheckpointConfig:
 @dataclass
 @PublicAPI(stability="beta")
 class RunConfig:
-    """Runtime configuration for individual trials that are run.
+    """Runtime configuration for training and tuning runs.
 
-    This contains information that applies to individual runs of Trainable classes.
-    This includes both running a Trainable by itself or running a hyperparameter
-    tuning job on top of a Trainable (applies to each trial).
-
-    At resume, Ray Tune will automatically apply the same run config so that resumed
-    run uses the same run config as the original run.
+    Upon resuming from a training or tuning run checkpoint,
+    Ray Train/Tune will automatically apply the RunConfig from
+    the previously checkpointed run.
 
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced

@@ -4,7 +4,7 @@ Torch Data Prefetching Benchmark
 ================================
 
 We provide a benchmark example to show how the auto pipeline for host to device data transfer speeds up training on GPUs.
-This functionality can be easily enabled by setting ``auto_transfer=True`` in :ref:`train.torch.prepare_data_loader() <train-api-torch-prepare-data-loader>`.
+This functionality can be easily enabled by setting ``auto_transfer=True`` in :func:`train.torch.prepare_data_loader`.
 
 .. code-block:: python
 
