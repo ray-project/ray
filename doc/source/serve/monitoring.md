@@ -2,9 +2,11 @@
 
 # Monitoring Ray Serve
 
-This section should help you understand how to debug and monitor your Serve application.
-There are three main ways to do this:
-Using the Ray Dashboard, using Ray logging, and using built-in Ray Serve metrics.
+This section should help you debug and monitor your Serve applications by:
+
+* using the Ray dashboard
+* using Ray logging
+* using built-in Ray Serve metrics
 
 ## Ray Dashboard
 
@@ -53,7 +55,7 @@ This produces a few INFO-level log messages about startup from the Serve control
 
 Next, let's create a simple deployment that logs a custom log message when it's queried:
 
-```{literalinclude} ../serve/doc_code/monitoring.py
+```{literalinclude} doc_code/monitoring/monitoring.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -162,7 +164,7 @@ As above, you may need to replace `./promtail-darwin-amd64` with the appropriate
 
 Run the following Python script to deploy a basic Serve deployment with a Serve deployment logger and make some requests:
 
-```{literalinclude} doc_code/deployment_logger.py
+```{literalinclude} doc_code/monitoring/deployment_logger.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -231,7 +233,7 @@ ray start --head --metrics-export-port=8080
 
 Then run the following script:
 
-```{literalinclude} doc_code/metrics_snippet.py
+```{literalinclude} doc_code/monitoring/metrics_snippet.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -255,7 +257,7 @@ which indicates that the average processing latency is just over one second, as 
 You can even define a [custom metric](application-level-metrics) to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
-```{literalinclude} doc_code/custom_metric_snippet.py
+```{literalinclude} doc_code/monitoring/custom_metric_snippet.py
 :start-after: __start__
 :end-before: __end__
 ```
