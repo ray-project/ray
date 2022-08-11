@@ -283,7 +283,7 @@ parts:
           sections:
             - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
             - file: cluster/kubernetes/user-guides/config.md
-            - file: cluster/kubernetes/user-guides/autoscaling.md
+            - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
             - file: cluster/kubernetes/user-guides/logging.md
             - file: cluster/kubernetes/user-guides/gpu.md
         - file: cluster/kubernetes/examples
@@ -292,8 +292,6 @@ parts:
         - file: cluster/kubernetes/references
       - file: cluster/running-applications/index
         title: Running Ray Applications
-      - file: cluster/references/index
-        title: References
 
   - caption: References
     chapters:

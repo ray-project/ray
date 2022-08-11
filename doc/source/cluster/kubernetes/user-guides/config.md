@@ -89,6 +89,7 @@ spec:
 ```
 
 The rest of this guide will discuss the `RayCluster` CR's config fields.
+See also the [guide](kuberay-autoscaling-config) on configuring Ray autoscaling with KubeRay.
 
 (kuberay-config-ray-version)=
 ## The Ray Version
@@ -313,134 +314,6 @@ rayStartParams:
   ray-client-server-port: "10002"
   ...
 ```
-
-
-(kuberay-autoscaling-config)=
-## Autoscaler Configuration
-```{note}
-If you are deciding whether to use autoscaling for a particular Ray application,
-check out this {ref}`discussion<autoscaler-pro-con>`. Note that autoscaling is
-supported only with Ray versions at least as new as Ray 1.11.0.
-```
-To enable the optional Ray Autoscaler support, set `enableInTreeAutoscaling:true`.
-The KubeRay operator will then automatically configure an autoscaling sidecar container
-for the Ray head pod. The autoscaler container collects resource metrics from the Ray cluster
-and automatically adjusts the `replicas` field of each `workerGroupSpec` as needed to fulfill
-the requirements of your Ray application.
-
-Use the fields `minReplicas` and `maxReplicas` to constrain the number of `replicas` of an autoscaling
-`workerGroup`. When deploying an autoscaling cluster, one typically sets `replicas` and `minReplicas`
-to the same value.
-The Ray autoscaler will then take over and modify the `replicas` field as needed by
-the Ray application.
-
-### Autoscaler operation
-We describe how the autoscaler interacts with the `RayCluster` CR.
-
-#### Scale up
-The autoscaler scales worker pods up to accomodate the load of logical resources
-from your Ray application. For example, suppose you submit a task requesting 2 GPUs:
-```python
-@ray.remote(num_gpus=2)
-...
-```
-If your Ray cluster does not currently have any GPU worker pods, and if your configuration
-specifies a worker type with at least 2 units of GPU capacity, a GPU pod will be
-upscaled.
-
-The autoscaler scales Ray worker pods up by editing the `replicas` field of the relevant `workerGroupSpec`.
-
-#### Scale down
-The autoscaler scales a worker pod down when the pod has not been using any logical resources
-for a {ref}`set period of time<kuberay-idle-timeout>`. In this context, "resources" are the logical Ray resources
-(such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
-Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
-
-To scale down Ray pods of a given `workerGroup`, the autoscaler
-adds the Ray pods' names to the relevant `workerGroupSpec`'s
-`scaleStrategy.workersToDelete` list and decrements the `replicas` field.
-
-#### Manually scaling
-You may manually adjust a `RayCluster`'s scale by editing the `replicas` or `workersToDelete` fields.
-(It is also possible to implement custom scaling logic that adjusts scale on your behalf.)
-It is however, not recommended to manually edit `replicas` or `workersToDelete` for a `RayCluster` with
-autoscaling enabled.
-
-### autoscalerOptions
-To enable Ray autoscaler support, it is enough to set `enableInTreeAutoscaling:true`.
-Should you need to adjust autoscaling behavior or change the autoscaler container's configuration,
-you can use the `RayCluster` CR's `autoscalerOptions` field. The `autoscalerOptions` field
-carries the following subfields:
-
-#### upscalingMode
-The `upscalingMode` field can be used to control the rate of Ray pod upscaling.
-
-UpscalingMode is `Conservative`, `Default`, or `Aggressive`.
-- `Conservative`: Upscaling is rate-limited; the number of pending worker pods is at most the number
-  of worker pods connected to the Ray cluster.
-- `Default`: Upscaling is not rate-limited.
-- `Aggressive`: An alias for Default; upscaling is not rate-limited.
-
-You may wish to use `Conservative` upscaling if you plan to submit many short-lived tasks
-to your Ray cluster. In this situation, `Default` upscaling may trigger the _thrashing_ behavior:
-- The autoscaler sees resource demands from the submitted short-lived tasks.
-- The autoscaler immediately creates Ray pods to accomodate the demand.
-- By the time the additional Ray pods are provisioned, the tasks have already run to completion.
-- The additional Ray pods are unused and scale down after a period of idleness.
-
-Note, however, that it is generally not recommended to over-parallelize with Ray.
-Since running a Ray task incurs scheduling overhead, it is usually preferable to use
-a few long-running tasks over many short-running tasks. Ensuring that each task has
-a non-trivial amount of work to do will also help prevent the autoscaler from over-provisioning
-Ray pods.
-
-(kuberay-idle-timeout)=
-#### idleTimeoutSeconds
-`idleTimeoutSeconds` is the number of seconds to wait before scaling down a worker pod
-which is not using resources. In this context, "resources" are the logical Ray resources
-(such as CPU, GPU, memory, and custom resources) specified in Ray task and actor annotations.
-Usage of the Ray Object Store also marks a Ray worker pod as active and prevents downscaling.
-
-`idleTimeoutSeconds` defaults to 60 seconds.
-
-#### resources
-The `resources` subfield of `autoscalerOptions` sets optional resource overrides
-for the autoscaler sidecar container. These overrides
-should be specified in the standard [container resource
-spec format](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#resources).
-The default values are as indicated below:
-```
-resources:
-  limits:
-    cpu: "500m"
-    memory: "512Mi"
-  requests:
-    cpu: "500m"
-    memory: "512Mi"
-```
-These defaults should be suitable for most use-cases.
-However, we do recommend monitoring autoscaler container resource usage and adjusting as needed.
-
-#### image and imagePullPolicy
-The `image` subfield of `autoscalerOptions` optionally overrides the autoscaler container image.
-If your `RayCluster`'s `spec.RayVersion` is at least `2.0.0`, the autoscaler will default to using
-**the same image** as the Ray container. (Ray autoscaler code is bundled with the rest of Ray.)
-For older Ray versions, the autoscaler will default to the image `rayproject/ray:2.0.0`.
-
-The `imagePullPolicy` subfield of `autoscalerOptions` optionally overrides the autoscaler container's
-image pull policy. The default is `Always`.
-
-The `image` and `imagePullPolicy` overrides are provided primarily for the purposes of autoscaler testing and
-development.
-
-#### env and envFrom
-
-The `env` and `envFrom` fields specify autoscaler container
-environment variables, for debugging and development purposes.
-These fields should be formatted following the
-[Kuberentes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
-for container environment variables.
-
 (kuberay-config-miscellaneous)=
 ## Pod and container lifecyle: preStop hooks and initContainers
 There are two pieces of pod configuration that should always be included
