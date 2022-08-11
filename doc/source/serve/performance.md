@@ -184,15 +184,3 @@ refactor your deployment to accept batches (especially for GPU-based ML inferenc
 
   The larger that `batch_wait_timeout` is, the more full the typical batch will be.
   To maximize throughput, you should set `batch_wait_timeout` as large as possible without exceeding your desired expected latency in the equation above.
-
-### Scaling HTTP servers
-
-Sometimes it’s not about your code: Serve’s HTTP server can become the bottleneck.
-If you observe that the CPU utilization for `HTTPProxyActor` spikes up to 100%, the HTTP server is the bottleneck.
-Serve only starts a single HTTP server on the Ray head node by default.
-This server can handle about 3k queries per second.
-If your workload exceeds this number, you might want to consider starting one
-HTTP server per Ray node to spread the load via the `location` field of [`http_options`](core-apis); e.g. `http_options={“location”: “EveryNode”})`.
-This configuration tells Serve to spawn one HTTP server per node.
-You should put an external load balancer in front of your Serve application to balance
-across multiple HTTP servers.
