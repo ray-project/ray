@@ -36,7 +36,7 @@ The performance issue you're most likely to encounter is high latency and/or low
 Once you set up [monitoring](serve-monitoring) with Ray and Ray Serve, you can likely observe the following:
 
 - `serve_num_router_requests` is constant while your load increases
-- `serve_deployment_queuing_latency_ms` is spiking up as queries queue up in the background
+- `serve_deployment_processing_latency_ms` is spiking up as queries queue up in the background
 
 Given these symptoms, there are several ways to fix the issue.
 
