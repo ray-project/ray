@@ -3,7 +3,7 @@
 
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _cluster-config-under-construction:
+.. _cluster-config:
 
 Cluster YAML Configuration Options
 ==================================
@@ -52,7 +52,7 @@ Syntax
 Custom types
 ------------
 
-.. _cluster-configuration-docker-type-under-construction:
+.. _cluster-configuration-docker-type:
 
 Docker
 ~~~~~~
@@ -72,7 +72,7 @@ Docker
     :ref:`disable_automatic_runtime_detection <cluster-configuration-disable-automatic-runtime-detection>`: bool
     :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
 
-.. _cluster-configuration-auth-type-under-construction:
+.. _cluster-configuration-auth-type:
 
 Auth
 ~~~~
@@ -99,7 +99,7 @@ Auth
         :ref:`ssh_user <cluster-configuration-ssh-user>`: str
         :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
 
-.. _cluster-configuration-provider-type-under-construction:
+.. _cluster-configuration-provider-type:
 
 Provider
 ~~~~~~~~
@@ -135,7 +135,7 @@ Provider
         :ref:`project_id <cluster-configuration-project-id>`: str
         :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
 
-.. _cluster-configuration-security-group-type-under-construction:
+.. _cluster-configuration-security-group-type:
 
 Security Group
 ~~~~~~~~~~~~~~
@@ -148,7 +148,7 @@ Security Group
         :ref:`IpPermissions <cluster-configuration-ip-permissions>`:
             - `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
 
-.. _cluster-configuration-node-types-type-under-construction:
+.. _cluster-configuration-node-types-type:
 
 Node types
 ~~~~~~~~~~
@@ -176,7 +176,7 @@ created according to cluster configuration and Ray resource demands.
         ...
     ...
 
-.. _cluster-configuration-node-config-type-under-construction:
+.. _cluster-configuration-node-config-type:
 
 Node config
 ~~~~~~~~~~~
@@ -198,7 +198,7 @@ nodes with the newly applied ``node_config`` will then be created according to c
 
     A YAML object as defined in `the GCP docs <https://cloud.google.com/compute/docs/reference/rest/v1/instances>`_.
 
-.. _cluster-configuration-node-docker-type-under-construction:
+.. _cluster-configuration-node-docker-type:
 
 Node Docker
 ~~~~~~~~~~~
@@ -212,7 +212,7 @@ Node Docker
     :ref:`disable_automatic_runtime_detection <cluster-configuration-disable-automatic-runtime-detection>`: bool
     :ref:`disable_shm_size_detection <cluster-configuration-disable-shm-size-detection>`: bool
 
-.. _cluster-configuration-resources-type-under-construction:
+.. _cluster-configuration-resources-type:
 
 Resources
 ~~~~~~~~~
@@ -227,7 +227,7 @@ Resources
     <custom_resource2>: int
     ...
 
-.. _cluster-configuration-file-mounts-type-under-construction:
+.. _cluster-configuration-file-mounts-type:
 
 File mounts
 ~~~~~~~~~~~
@@ -240,7 +240,7 @@ File mounts
 Properties and Definitions
 --------------------------
 
-.. _cluster-configuration-cluster-name-under-construction:
+.. _cluster-configuration-cluster-name:
 
 ``cluster_name``
 ~~~~~~~~~~~~~~~~
@@ -253,7 +253,7 @@ The name of the cluster. This is the namespace of the cluster.
 * **Default:** "default"
 * **Pattern:** ``[a-zA-Z0-9_]+``
 
-.. _cluster-configuration-max-workers-under-construction:
+.. _cluster-configuration-max-workers:
 
 ``max_workers``
 ~~~~~~~~~~~~~~~
@@ -267,7 +267,7 @@ The maximum number of workers the cluster will have at any given time.
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 
-.. _cluster-configuration-upscaling-speed-under-construction:
+.. _cluster-configuration-upscaling-speed:
 
 ``upscaling_speed``
 ~~~~~~~~~~~~~~~~~~~
@@ -281,7 +281,7 @@ The number of nodes allowed to be pending as a multiple of the current number of
 * **Minimum:** ``0.0``
 * **Maximum:** Unbounded
 
-.. _cluster-configuration-idle-timeout-minutes-under-construction:
+.. _cluster-configuration-idle-timeout-minutes:
 
 ``idle_timeout_minutes``
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -295,7 +295,7 @@ The number of minutes that need to pass before an idle worker node is removed by
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 
-.. _cluster-configuration-docker-under-construction:
+.. _cluster-configuration-docker:
 
 ``docker``
 ~~~~~~~~~~
@@ -317,7 +317,7 @@ In rare cases when Docker is not available on the system by default (e.g., bad A
         - sudo usermod -aG docker $USER
         - sudo systemctl restart docker -f
 
-.. _cluster-configuration-provider-under-construction:
+.. _cluster-configuration-provider:
 
 ``provider``
 ~~~~~~~~~~~~
@@ -328,7 +328,7 @@ The cloud provider-specific configuration properties.
 * **Importance:** High
 * **Type:** :ref:`Provider <cluster-configuration-provider-type>`
 
-.. _cluster-configuration-auth-under-construction:
+.. _cluster-configuration-auth:
 
 ``auth``
 ~~~~~~~~
@@ -339,7 +339,7 @@ Authentication credentials that Ray will use to launch nodes.
 * **Importance:** High
 * **Type:** :ref:`Auth <cluster-configuration-auth-type>`
 
-.. _cluster-configuration-available-node-types-under-construction:
+.. _cluster-configuration-available-node-types:
 
 ``available_node_types``
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -373,7 +373,7 @@ Each node type is identified by a user-specified key.
             resources: {"CPU": 2}
             min_workers: 0
 
-.. _cluster-configuration-head-node-type-under-construction:
+.. _cluster-configuration-head-node-type:
 
 ``head_node_type``
 ~~~~~~~~~~~~~~~~~~
@@ -391,7 +391,7 @@ head node. Changing the :ref:`node_config<cluster-configuration-node-config>` of
 * **Type:** String
 * **Pattern:** ``[a-zA-Z0-9_]+``
 
-.. _cluster-configuration-file-mounts-under-construction:
+.. _cluster-configuration-file-mounts:
 
 ``file_mounts``
 ~~~~~~~~~~~~~~~
@@ -403,7 +403,7 @@ The files or directories to copy to the head and worker nodes.
 * **Type:** :ref:`File mounts <cluster-configuration-file-mounts-type>`
 * **Default:** ``[]``
 
-.. _cluster-configuration-cluster-synced-files-under-construction:
+.. _cluster-configuration-cluster-synced-files:
 
 ``cluster_synced_files``
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -415,7 +415,7 @@ A list of paths to the files or directories to copy from the head node to the wo
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-rsync-exclude-under-construction:
+.. _cluster-configuration-rsync-exclude:
 
 ``rsync_exclude``
 ~~~~~~~~~~~~~~~~~
@@ -429,7 +429,7 @@ Example for a pattern in the list: ``**/.git/**``.
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-rsync-filter-under-construction:
+.. _cluster-configuration-rsync-filter:
 
 ``rsync_filter``
 ~~~~~~~~~~~~~~~~
@@ -443,7 +443,7 @@ Example for a pattern in the list: ``.gitignore``.
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-initialization-commands-under-construction:
+.. _cluster-configuration-initialization-commands:
 
 ``initialization_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -455,7 +455,7 @@ A list of commands that will be run before the :ref:`setup commands <cluster-con
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-setup-commands-under-construction:
+.. _cluster-configuration-setup-commands:
 
 ``setup_commands``
 ~~~~~~~~~~~~~~~~~~
@@ -491,7 +491,7 @@ A list of commands to run to set up nodes. These commands will always run on the
           - sudo pkill -9 dpkg || true
           - sudo dpkg --configure -a
 
-.. _cluster-configuration-head-setup-commands-under-construction:
+.. _cluster-configuration-head-setup-commands:
 
 ``head_setup_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -503,7 +503,7 @@ A list of commands to run to set up the head node. These commands will be merged
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-worker-setup-commands-under-construction:
+.. _cluster-configuration-worker-setup-commands:
 
 ``worker_setup_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -515,7 +515,7 @@ A list of commands to run to set up the worker nodes. These commands will be mer
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-head-start-ray-commands-under-construction:
+.. _cluster-configuration-head-start-ray-commands:
 
 ``head_start_ray_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -535,7 +535,7 @@ Commands to start ray on the head node. You don't need to change this.
           - ray stop
           - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
-.. _cluster-configuration-worker-start-ray-commands-under-construction:
+.. _cluster-configuration-worker-start-ray-commands:
 
 ``worker_start_ray_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -555,7 +555,7 @@ Command to start ray on worker nodes. You don't need to change this.
           - ray stop
           - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
 
-.. _cluster-configuration-image-under-construction:
+.. _cluster-configuration-image:
 
 ``docker.image``
 ~~~~~~~~~~~~~~~~
@@ -573,7 +573,7 @@ The Ray project provides Docker images on `DockerHub <https://hub.docker.com/u/r
 * ``rayproject/ray-ml:latest``: No CUDA support, includes ML dependencies.
 * ``rayproject/ray:latest``: No CUDA support, no ML dependencies.
 
-.. _cluster-configuration-head-image-under-construction:
+.. _cluster-configuration-head-image:
 
 ``docker.head_image``
 ~~~~~~~~~~~~~~~~~~~~~
@@ -583,7 +583,7 @@ Docker image for the head node to override the default :ref:`docker image <clust
 * **Importance:** Low
 * **Type:** String
 
-.. _cluster-configuration-worker-image-under-construction:
+.. _cluster-configuration-worker-image:
 
 ``docker.worker_image``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -593,7 +593,7 @@ Docker image for the worker nodes to override the default :ref:`docker image <cl
 * **Importance:** Low
 * **Type:** String
 
-.. _cluster-configuration-container-name-under-construction:
+.. _cluster-configuration-container-name:
 
 ``docker.container_name``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -605,7 +605,7 @@ The name to use when starting the Docker container.
 * **Type:** String
 * **Default:** ray_container
 
-.. _cluster-configuration-pull-before-run-under-construction:
+.. _cluster-configuration-pull-before-run:
 
 ``docker.pull_before_run``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -617,7 +617,7 @@ If enabled, the latest version of image will be pulled when starting Docker. If 
 * **Type:** Boolean
 * **Default:** ``True``
 
-.. _cluster-configuration-run-options-under-construction:
+.. _cluster-configuration-run-options:
 
 ``docker.run_options``
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -629,7 +629,7 @@ The extra options to pass to ``docker run``.
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-head-run-options-under-construction:
+.. _cluster-configuration-head-run-options:
 
 ``docker.head_run_options``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -641,7 +641,7 @@ The extra options to pass to ``docker run`` for head node only.
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-worker-run-options-under-construction:
+.. _cluster-configuration-worker-run-options:
 
 ``docker.worker_run_options``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -653,7 +653,7 @@ The extra options to pass to ``docker run`` for worker nodes only.
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-disable-automatic-runtime-detection-under-construction:
+.. _cluster-configuration-disable-automatic-runtime-detection:
 
 ``docker.disable_automatic_runtime_detection``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -666,7 +666,7 @@ If enabled, Ray will not try to use the NVIDIA Container Runtime if GPUs are pre
 * **Default:** ``False``
 
 
-.. _cluster-configuration-disable-shm-size-detection-under-construction:
+.. _cluster-configuration-disable-shm-size-detection:
 
 ``docker.disable_shm_size_detection``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -680,7 +680,7 @@ If ``--shm-size=<>`` is manually added to ``run_options``, this is *automaticall
 * **Default:** ``False``
 
 
-.. _cluster-configuration-ssh-user-under-construction:
+.. _cluster-configuration-ssh-user:
 
 ``auth.ssh_user``
 ~~~~~~~~~~~~~~~~~
@@ -691,7 +691,7 @@ The user that Ray will authenticate with when launching new nodes.
 * **Importance:** High
 * **Type:** String
 
-.. _cluster-configuration-ssh-private-key-under-construction:
+.. _cluster-configuration-ssh-private-key:
 
 ``auth.ssh_private_key``
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -722,7 +722,7 @@ The user that Ray will authenticate with when launching new nodes.
     * **Importance:** Low
     * **Type:** String
 
-.. _cluster-configuration-ssh-public-key-under-construction:
+.. _cluster-configuration-ssh-public-key:
 
 ``auth.ssh_public_key``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -743,7 +743,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     Not available.
 
-.. _cluster-configuration-type-under-construction:
+.. _cluster-configuration-type:
 
 ``provider.type``
 ~~~~~~~~~~~~~~~~~
@@ -772,7 +772,7 @@ The user that Ray will authenticate with when launching new nodes.
     * **Importance:** High
     * **Type:** String
 
-.. _cluster-configuration-region-under-construction:
+.. _cluster-configuration-region:
 
 ``provider.region``
 ~~~~~~~~~~~~~~~~~~~
@@ -799,7 +799,7 @@ The user that Ray will authenticate with when launching new nodes.
     * **Type:** String
     * **Default:** us-west1
 
-.. _cluster-configuration-availability-zone-under-construction:
+.. _cluster-configuration-availability-zone:
 
 ``provider.availability_zone``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -828,7 +828,7 @@ The user that Ray will authenticate with when launching new nodes.
     * **Type:** String
     * **Default:** us-west1-a
 
-.. _cluster-configuration-location-under-construction:
+.. _cluster-configuration-location:
 
 ``provider.location``
 ~~~~~~~~~~~~~~~~~~~~~
@@ -850,7 +850,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     Not available.
 
-.. _cluster-configuration-resource-group-under-construction:
+.. _cluster-configuration-resource-group:
 
 ``provider.resource_group``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -872,7 +872,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     Not available.
 
-.. _cluster-configuration-subscription-id-under-construction:
+.. _cluster-configuration-subscription-id:
 
 ``provider.subscription_id``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -894,7 +894,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     Not available.
 
-.. _cluster-configuration-project-id-under-construction:
+.. _cluster-configuration-project-id:
 
 ``provider.project_id``
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -916,7 +916,7 @@ The user that Ray will authenticate with when launching new nodes.
     * **Type:** String
     * **Default:** ``null``
 
-.. _cluster-configuration-cache-stopped-nodes-under-construction:
+.. _cluster-configuration-cache-stopped-nodes:
 
 ``provider.cache_stopped_nodes``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -929,7 +929,7 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
 * **Type:** Boolean
 * **Default:** ``True``
 
-.. _cluster-configuration-security-group-under-construction:
+.. _cluster-configuration-security-group:
 
 ``provider.security_group``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -951,7 +951,7 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
     Not available.
 
 
-.. _cluster-configuration-group-name-under-construction:
+.. _cluster-configuration-group-name:
 
 ``security_group.GroupName``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -963,7 +963,7 @@ The name of the security group. This name must be unique within the VPC.
 * **Type:** String
 * **Default:** ``"ray-autoscaler-{cluster-name}"``
 
-.. _cluster-configuration-ip-permissions-under-construction:
+.. _cluster-configuration-ip-permissions:
 
 ``security_group.IpPermissions``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -974,7 +974,7 @@ The inbound rules associated with the security group.
 * **Importance:** Medium
 * **Type:** `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
 
-.. _cluster-configuration-node-config-under-construction:
+.. _cluster-configuration-node-config:
 
 ``available_node_types.<node_type_name>.node_type.node_config``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -985,7 +985,7 @@ The configuration to be used to launch the nodes on the cloud service provider. 
 * **Importance:** High
 * **Type:** :ref:`Node config <cluster-configuration-node-config-type>`
 
-.. _cluster-configuration-resources-under-construction:
+.. _cluster-configuration-resources:
 
 ``available_node_types.<node_type_name>.node_type.resources``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -999,7 +999,7 @@ The resources that a node type provides, which enables the autoscaler to automat
 
 In some cases, adding special nodes without any resources may be desirable. Such nodes can be used as a driver which connects to the cluster to launch jobs. In order to manually add a node to an autoscaled cluster, the *ray-cluster-name* tag should be set and *ray-node-type* tag should be set to unmanaged. Unmanaged nodes can be created by setting the resources to ``{}`` and the :ref:`maximum workers <cluster-configuration-node-min-workers>` to 0. The Autoscaler will not attempt to start, stop, or update unmanaged nodes. The user is responsible for properly setting up and cleaning up unmanaged nodes.
 
-.. _cluster-configuration-node-min-workers-under-construction:
+.. _cluster-configuration-node-min-workers:
 
 ``available_node_types.<node_type_name>.node_type.min_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1013,7 +1013,7 @@ The minimum number of workers to maintain for this node type regardless of utili
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 
-.. _cluster-configuration-node-max-workers-under-construction:
+.. _cluster-configuration-node-max-workers:
 
 ``available_node_types.<node_type_name>.node_type.max_workers``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1029,7 +1029,7 @@ Note, for the nodes of type ``head_node_type`` the default number of max workers
 * **Minimum:** ``0``
 * **Maximum:** cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`
 
-.. _cluster-configuration-node-type-worker-setup-commands-under-construction:
+.. _cluster-configuration-node-type-worker-setup-commands:
 
 ``available_node_types.<node_type_name>.node_type.worker_setup_commands``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1041,7 +1041,7 @@ A list of commands to run to set up worker nodes of this type. These commands wi
 * **Type:** List of String
 * **Default:** ``[]``
 
-.. _cluster-configuration-cpu-under-construction:
+.. _cluster-configuration-cpu:
 
 ``available_node_types.<node_type_name>.node_type.resources.CPU``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1071,7 +1071,7 @@ A list of commands to run to set up worker nodes of this type. These commands wi
     * **Type:** Integer
 
 
-.. _cluster-configuration-gpu-under-construction:
+.. _cluster-configuration-gpu:
 
 ``available_node_types.<node_type_name>.node_type.resources.GPU``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1100,7 +1100,7 @@ A list of commands to run to set up worker nodes of this type. These commands wi
     * **Importance:** High
     * **Type:** Integer
 
-.. _cluster-configuration-memory-under-construction:
+.. _cluster-configuration-memory:
 
 ``available_node_types.<node_type_name>.node_type.resources.memory``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1129,7 +1129,7 @@ A list of commands to run to set up worker nodes of this type. These commands wi
     * **Importance:** High
     * **Type:** Integer
         
- .. _cluster-configuration-object-store-memory-under-construction:
+ .. _cluster-configuration-object-store-memory:
 
 ``available_node_types.<node_type_name>.node_type.resources.object-store-memory``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1158,7 +1158,7 @@ A list of commands to run to set up worker nodes of this type. These commands wi
     * **Importance:** High
     * **Type:** Integer
 
-.. _cluster-configuration-node-docker-under-construction:
+.. _cluster-configuration-node-docker:
 
 ``available_node_types.<node_type_name>.docker``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -66,13 +66,11 @@ ray up my_cluster_config.yaml
 Then, run your Ray script using one of the following options:
 
 1. on the head node of the cluster (``python train_script.py``)
-2. via ``ray job submit`` ({ref}`docs <jobs-overview>`) from your laptop (``ray job submit -- python train.py``)
+2. via ``ray job submit`` from your laptop (``ray job submit -- python train.py``)
 
 ## Multi-node Training from your Laptop
-Ray provides capabilities to run multi-node and GPU training all from your laptop through
-{ref}`Ray Client <ray-client>`
 
-Ray's {ref}`Cluster launcher <ref-cluster-quick-start>` to setup the cluster.
+First, use Ray's {ref}`Cluster launcher <ref-cluster-quick-start>` to setup the cluster.
 Then, add this line to the beginning of your script to connect to the cluster:
 ```python
 import ray

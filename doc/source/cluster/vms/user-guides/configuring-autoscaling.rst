@@ -1,6 +1,6 @@
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _deployment-guide-autoscaler-under-construction:
+.. _deployment-guide-autoscaler:
 
 Configuring Autoscaling
 =======================
@@ -48,4 +48,4 @@ greater than or equal to available_node_types.<node_type_name>.min_workers. It m
 Autoscaler SDK
 ==============
 
-For more information on programmatic access to the autoscaler, see :ref:`Autoscaler SDK<ref-autoscaler-sdk-under-construction>`.
+For more information on programmatic access to the autoscaler, see :ref:`Autoscaler SDK<ref-autoscaler-sdk>`.

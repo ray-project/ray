@@ -1,7 +1,7 @@
 .. warning::
     This page is under construction!
 
-.. _jobs-overview-under-construction:
+.. _jobs-overview:
 
 ===========================
 Ray Job Submission Overview

@@ -1,7 +1,7 @@
 .. warning::
     This page is under construction!
 
-.. _ray-job-cli-under-construction:
+.. _ray-job-cli:
 
 CLI
 ^^^

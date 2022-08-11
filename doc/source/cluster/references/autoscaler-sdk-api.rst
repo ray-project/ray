@@ -1,11 +1,11 @@
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _ref-autoscaler-sdk-under-construction:
+.. _ref-autoscaler-sdk:
 
 Autoscaler SDK
 ==============
 
-.. _ref-autoscaler-sdk-request-resources-under-construction:
+.. _ref-autoscaler-sdk-request-resources:
 
 ray.autoscaler.sdk.request_resources
 ------------------------------------

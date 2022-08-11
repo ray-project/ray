@@ -1,6 +1,6 @@
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _ray-slurm-deploy-under-construction:
+.. _ray-slurm-deploy:
 
 Deploying on Slurm
 ==================
@@ -14,7 +14,7 @@ Slurm usage with Ray can be a little bit unintuitive.
 
     SLURM support is still a work in progress. SLURM users should be aware
     of current limitations regarding networking.
-    See :ref:`here <slurm-network-ray-under-construction>` for more explanations.
+    See :ref:`here <slurm-network-ray>` for more explanations.
 
     SLURM support is community-maintained. Maintainer GitHub handle: tupui.
 
@@ -40,9 +40,9 @@ The below walkthrough will do the following:
 5. Launch Ray processes in (n-1) worker nodes and connects them to the head node by providing the head node address.
 6. After the underlying ray cluster is ready, submit the user specified task.
 
-See :ref:`slurm-basic.sh <slurm-basic-under-construction>` for an end-to-end example.
+See :ref:`slurm-basic.sh <slurm-basic>` for an end-to-end example.
 
-.. _ray-slurm-headers-under-construction:
+.. _ray-slurm-headers:
 
 sbatch directives
 ~~~~~~~~~~~~~~~~~
@@ -149,7 +149,7 @@ Finally, you can invoke your Python script:
    :language: bash
    :start-after: __doc_script_start__
 
-.. _slurm-network-ray-under-construction:
+.. _slurm-network-ray:
 
 SLURM networking caveats
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -224,8 +224,8 @@ set an internal IP
 Python-interface SLURM scripts
 ------------------------------
 
-[Contributed by @pengzhenghao] Below, we provide a helper utility (:ref:`slurm-launch.py <slurm-launch-under-construction>`) to auto-generate SLURM scripts and launch.
-``slurm-launch.py`` uses an underlying template (:ref:`slurm-template.sh <slurm-template-under-construction>`) and fills out placeholders given user input.
+[Contributed by @pengzhenghao] Below, we provide a helper utility (:ref:`slurm-launch.py <slurm-launch>`) to auto-generate SLURM scripts and launch.
+``slurm-launch.py`` uses an underlying template (:ref:`slurm-template.sh <slurm-template>`) and fills out placeholders given user input.
 
 You can feel free to copy both files into your cluster for use. Feel free to also open any PRs for contributions to improve this script!
 
@@ -255,12 +255,12 @@ There are other options you can use when calling ``python slurm-launch.py``:
 * ``--partition`` (``-p``): The partition you wish to use. Default: "", will use user's default partition.
 * ``--load-env``: The command to setup your environment. For example: ``module load cuda/10.1``. Default: "".
 
-Note that the :ref:`slurm-template.sh <slurm-template-under-construction>` is compatible with both IPV4 and IPV6 ip address of the computing nodes.
+Note that the :ref:`slurm-template.sh <slurm-template>` is compatible with both IPV4 and IPV6 ip address of the computing nodes.
 
 Implementation
 ~~~~~~~~~~~~~~
 
-Concretely, the (:ref:`slurm-launch.py <slurm-launch-under-construction>`) does the following things:
+Concretely, the (:ref:`slurm-launch.py <slurm-launch>`) does the following things:
 
 1. It automatically writes your requirements, e.g. number of CPUs, GPUs per node, the number of nodes and so on, to a sbatch script name ``{exp-name}_{date}-{time}.sh``. Your command (``--command``) to launch your own job is also written into the sbatch script.
 2. Then it will submit the sbatch script to slurm manager via a new process.

@@ -2,7 +2,7 @@
 
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _cluster-index-under-construction:
+.. _cluster-index:
 
 
 Ray Clusters Overview
@@ -16,18 +16,18 @@ distributed execution. Ray is great for multiprocessing on a single machine.
 However, the real power of Ray is the ability to seamlessly scale to a cluster
 of machines.
 
-A Ray cluster is a set of one or more nodes that are running Ray and share the same :ref:`head node<cluster-head-node-under-construction>`.
-Ray clusters can either be a fixed-size number of nodes or :ref:`can autoscale<cluster-autoscaler-under-construction>` (i.e., automatically provision or deprovision the number of nodes in a cluster) according to the demand of the Ray workload.
+A Ray cluster is a set of one or more nodes that are running Ray and share the same :ref:`head node<cluster-head-node>`.
+Ray clusters can either be a fixed-size number of nodes or :ref:`can autoscale<cluster-autoscaler>` (i.e., automatically provision or deprovision the number of nodes in a cluster) according to the demand of the Ray workload.
 
 How can I use Ray clusters?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Ray clusters are officially supported on the following technology stacks:
 
-* The :ref:`Ray cluster launcher on AWS and GCP<ref-cluster-quick-start-vms-under-construction>`. Community-supported Azure and Aliyun integrations also exist.
+* The :ref:`Ray cluster launcher on AWS and GCP<ref-cluster-quick-start>`. Community-supported Azure and Aliyun integrations also exist.
 * :ref:`KubeRay, the official way to run Ray on Kubernetes<kuberay-index>`.
 
 Advanced users may want to :ref:`deploy Ray clusters on-premise <on-prem>`
-or onto infrastructure platforms not listed here by :ref:`providing a custom node provider <ref-cluster-setup-under-construction>`.
+or onto infrastructure platforms not listed here by :ref:`providing a custom node provider <ref-cluster-setup>`.
 
 Where to go from here?
 ----------------------
@@ -42,7 +42,7 @@ Where to go from here?
     Understand the key concepts and main ways of interacting with a Ray cluster.
 
     +++
-    .. link-button:: cluster-key-concepts-under-construction
+    .. link-button:: cluster-key-concepts
         :type: ref
         :text: Learn Key Concepts
         :classes: btn-outline-info btn-block
@@ -55,7 +55,7 @@ Where to go from here?
     cloud. Access to an AWS or GCP account is required.
 
     +++
-    .. link-button:: ref-cluster-quick-start-vms-under-construction
+    .. link-button:: ref-cluster-quick-start
         :type: ref
         :text: Getting Started with Ray Clusters on VMs
         :classes: btn-outline-info btn-block

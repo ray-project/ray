@@ -1,6 +1,6 @@
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _ref-cluster-setup-under-construction:
+.. _ref-cluster-setup:
 
 Community Supported Cluster Managers
 ====================================
@@ -18,7 +18,7 @@ The following is a list of community supported cluster managers.
    slurm.rst
    lsf.rst
 
-.. _ref-additional-cloud-providers-under-construction:
+.. _ref-additional-cloud-providers:
 
 Using a custom cloud or cluster manager
 =======================================

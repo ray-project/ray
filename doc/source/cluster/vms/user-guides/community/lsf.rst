@@ -1,6 +1,6 @@
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _ray-LSF-deploy-under-construction:
+.. _ray-LSF-deploy:
 
 Deploying on LSF
 ================

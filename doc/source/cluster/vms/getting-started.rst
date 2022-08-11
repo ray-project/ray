@@ -5,7 +5,7 @@
 
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _ref-cluster-quick-start-vms-under-construction:
+.. _ref-cluster-quick-start:
 
 Ray Clusters Quick Start
 ========================

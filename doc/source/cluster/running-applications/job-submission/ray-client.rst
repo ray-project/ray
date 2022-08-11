@@ -3,7 +3,7 @@
 
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _ray-client-under-construction:
+.. _ray-client:
 
 Ray Client: Interactive Development
 ===================================
@@ -61,7 +61,7 @@ Ray Client should be used when you want to connect a script or an interactive sh
 * Use ``ray.init("localhost:<port>")`` (non-client connection, local address) if you're developing locally or on the head node of your cluster and you have already started the cluster (i.e. ``ray start --head`` has already been run)
 * Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to automatically create a local cluster and attach directly to it OR if you are using Ray Job submission.
 
-.. _how-do-you-use-the-ray-client-under-construction:
+.. _how-do-you-use-the-ray-client:
 
 How do you use the Ray Client?
 ------------------------------
