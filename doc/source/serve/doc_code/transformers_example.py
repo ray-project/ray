@@ -14,8 +14,8 @@ class SentimentAnalysisDeployment:
 
 
 # 2: Deploy the deployment.
-serve.start()
-SentimentAnalysisDeployment.deploy()
+
+serve.run(SentimentAnalysisDeployment.bind())
 
 # 3: Query the deployment and print the result.
 print(
