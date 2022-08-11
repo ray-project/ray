@@ -106,15 +106,6 @@ serve run  --address=ray://<cluster-ip-address>:10001 --working_dir="./project/s
 
 :::
 
-
-Or for a runtime environment using fields other than `working_dir`:
-
-:::{tip}
-You can also specify runtime environments on a per-deployment basis; see TODO link for details.
-:::
-
-% TODO: Can you actually upload local files to a remote cluster using `serve run --runtime-env`? In other words can you use a Ray Client address as the `--address` parameter, and Serve will wait for the files to be downloaded to the cluster before running the deployment?
-
 A common pattern is to use the root directory of your project as the `working_dir` of your runtime environment when testing on a remote cluster.
 
 ## What's Next?
