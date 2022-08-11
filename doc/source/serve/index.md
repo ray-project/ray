@@ -155,7 +155,7 @@ Serve supports arbitrary Python code and therefore integrates well with the MLOp
 :animate: fade-in-slide-down
 
 Ray Serve is *framework agnostic*, so you can use it alongside any other Python framework or library.
-We believe data scientists should not be bounded to a particular machine learning framework.
+We believe data scientists should not be bound to a particular machine learning framework.
 They should be empowered to use the best tool available for the job.
 
 Compared to these framework-specific solutions, Ray Serve doesn't perform any model-specific optimizations to make your ML model run faster. However, you can still optimize the models yourself
