@@ -1,14 +1,17 @@
 .. _ray-job-submission-api-ref-under-construction:
 
-Ray Job Submission API
-======================
+.. TODO: Remove :noindex: tags below.
 
-For an overview with examples see :ref:`Ray Job Submission (VM stacks)<jobs-overview-under-construction>` or :ref:`Ray Job Submission (Kubernetes)<kuberay-job>`
+Ray Job Submission API Reference
+================================
+
+For an overview with examples see :ref:`Ray Job Submission<jobs-overview>`.
 
 .. _ray-job-submission-cli-ref-under-construction:
 
 Job Submission CLI
 ------------------
+
 .. _ray-job-submit-doc-under-construction:
 
 .. click:: ray.dashboard.modules.job.cli:submit
@@ -75,5 +78,3 @@ JobInfo
 .. autoclass:: ray.job_submission.JobInfo
     :members:
     :noindex:
-
-TODO: cade@ to remove noindex entries in this file.

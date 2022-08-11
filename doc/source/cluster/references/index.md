@@ -9,6 +9,5 @@ Refer to the {ref}`KubeRay documentation<kuberay-api-reference>` or {ref}`Ray Cl
 :name: ray-clusters-reference
 
 autoscaler-sdk-api
-job-submission-apis
 ```
 
