@@ -14,11 +14,10 @@ Each deployment consists of one or more [replicas](serve-architecture#high-level
 The number of replicas is specified by the `num_replicas` field in the deployment options.
 By default, `num_replicas` is 1.
 
-```python
-# Create with a deployment with ten replicas.
-@serve.deployment(num_replicas=10)
-def func(*args):
-    pass
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __scaling_out_start__
+:end-before: __scaling_out_end__
+:language: python
 ```
 
 (ray-serve-autoscaling)=
@@ -28,16 +27,10 @@ def func(*args):
 Serve also supports a demand-based replica autoscaler. It adjusts to traffic spikes by observing queue sizes and making scaling decisions to add or remove replicas.
 To configure it, you can set the `autoscaling_config` field in deployment options.
 
-```python
-@serve.deployment(
-    autoscaling_config={
-        "min_replicas": 1,
-        "max_replicas": 5,
-        "target_num_ongoing_requests_per_replica": 10,
-    })
-def func(_):
-    time.sleep(1)
-    return ""
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __autoscaling_start__
+:end-before: __autoscaling_end__
+:language: python
 ```
 
 The `min_replicas` and `max_replicas` fields configure the range of replicas which the
@@ -142,14 +135,10 @@ OMP_NUM_THREADS=12 ray start --head
 OMP_NUM_THREADS=12 ray start --address=$HEAD_NODE_ADDRESS
 ```
 
-```python
-@serve.deployment
-class MyDeployment:
-    def __init__(self, parallelism):
-        os.environ["OMP_NUM_THREADS"] = parallelism
-        # Download model weights, initialize model, etc.
-
-MyDeployment.deploy()
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __configure_parallism_start__
+:end-before: __configure_parallism_end__
+:language: python
 ```
 
 :::{note}
