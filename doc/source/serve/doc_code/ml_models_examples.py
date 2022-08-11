@@ -1,5 +1,5 @@
 from ray import serve
-from typing import List, Dict, Any
+from typing import List, Dict
 
 from starlette.requests import Request
 
