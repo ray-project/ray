@@ -172,6 +172,7 @@ parts:
               - file: serve/handling-dependencies
               - file: serve/http-guide
               - file: serve/handle-guide
+              - file: serve/ray-air-serve-guide
               - file: serve/ml-models
               - file: serve/batching-guide
               - file: serve/model_composition
