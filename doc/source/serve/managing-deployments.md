@@ -18,33 +18,17 @@ Get in touch with us if you're using or considering using [Ray Serve](https://do
 ## Updating a Deployment
 
 Often you want to be able to update your code or configuration options for a deployment over time.
-Deployments can be updated simply by updating the code or configuration options and calling `deploy()` again.
+Deployments can be updated simply by updating the code or configuration options and calling `serve.run()` again.
 
-```python
-@serve.deployment(name="my_deployment", num_replicas=1)
-class SimpleDeployment:
-    pass
-
-# Creates one initial replica.
-SimpleDeployment.deploy()
-
-# Re-deploys, creating an additional replica.
-# This could be the SAME Python script, modified and re-run.
-@serve.deployment(name="my_deployment", num_replicas=2)
-class SimpleDeployment:
-    pass
-
-SimpleDeployment.deploy()
-
-# You can also use Deployment.options() to change options without redefining
-# the class. This is useful for programmatically updating deployments.
-SimpleDeployment.options(num_replicas=2).deploy()
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __updating_a_deployment_start__
+:end-before: __updating_a_deployment_end__
+:language: python
 ```
 
-By default, each call to `.deploy()` will cause a redeployment, even if the underlying code and options didn't change.
+By default, each call to `serve.run()` will cause a redeployment, even if the underlying code and options didn't change.
 This could be detrimental if you have many deployments in a script and and only want to update one: if you re-run the script, all of the deployments will be redeployed, not just the one you updated.
 To prevent this, you may provide a `version` string for the deployment as a keyword argument in the decorator or `Deployment.options()`.
-If provided, the replicas will only be updated if the value of `version` is updated; if the value of `version` is unchanged, the call to `.deploy()` will be a no-op.
 When a redeployment happens, Serve will perform a rolling update, bringing down at most 20% of the replicas at any given time.
 
 (configuring-a-deployment)=
@@ -63,19 +47,10 @@ To update the config options for a running deployment, simply redeploy it with t
 
 To scale out a deployment to many processes, simply configure the number of replicas.
 
-```python
-# Create with a single replica.
-@serve.deployment(num_replicas=1)
-def func(*args):
-    pass
-
-func.deploy()
-
-# Scale up to 10 replicas.
-func.options(num_replicas=10).deploy()
-
-# Scale back down to 1 replica.
-func.options(num_replicas=1).deploy()
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __scaling_out_start__
+:end-before: __scaling_out_end__
+:language: python
 ```
 
 (ray-serve-autoscaling)=
@@ -87,18 +62,10 @@ It reacts to traffic spikes via observing queue sizes and making scaling decisio
 To configure it, you can set the `autoscaling` field in deployment options.
 
 
-```python
-@serve.deployment(
-    autoscaling_config={
-        "min_replicas": 1,
-        "max_replicas": 5,
-        "target_num_ongoing_requests_per_replica": 10,
-    })
-def func(_):
-    time.sleep(1)
-    return ""
-
-func.deploy() # The func deployment will now autoscale based on requests demand.
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __autoscaling_start__
+:end-before: __autoscaling_end__
+:language: python
 ```
 
 The `min_replicas` and `max_replicas` fields configure the range of replicas which the
@@ -157,6 +124,7 @@ def func(*args):
     return do_something_with_my_gpu()
 ```
 
+(serve-omp-num-threads)=
 ### Configuring Parallelism with OMP_NUM_THREADS
 
 Deep learning models like PyTorch and Tensorflow often use multithreading when performing inference.
@@ -169,14 +137,10 @@ OMP_NUM_THREADS=12 ray start --head
 OMP_NUM_THREADS=12 ray start --address=$HEAD_NODE_ADDRESS
 ```
 
-```python
-@serve.deployment
-class MyDeployment:
-    def __init__(self, parallelism):
-        os.environ["OMP_NUM_THREADS"] = parallelism
-        # Download model weights, initialize model, etc.
-
-MyDeployment.deploy()
+```{literalinclude} ../serve/doc_code/managing_deployments.py
+:start-after: __configure_parallism_start__
+:end-before: __configure_parallism_end__
+:language: python
 ```
 
 :::{note}

@@ -6,19 +6,15 @@
 ## Core APIs
 
 ```{eval-rst}
+.. autofunction:: ray.serve.run
+```
+
+```{eval-rst}
 .. autofunction:: ray.serve.start
 ```
 
 ```{eval-rst}
 .. autofunction:: ray.serve.deployment
-```
-
-```{eval-rst}
-.. autofunction:: ray.serve.list_deployments
-```
-
-```{eval-rst}
-.. autofunction:: ray.serve.get_deployment
 ```
 
 ```{eval-rst}
