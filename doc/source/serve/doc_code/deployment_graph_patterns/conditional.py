@@ -3,7 +3,9 @@
 
 import ray
 from ray import serve
-from ray.dag.input_node import InputNode
+from ray.serve.drivers import DAGDriver
+from ray.serve.http_adapters import json_request
+from ray.serve.deployment_graph import InputNode
 
 
 @serve.deployment
@@ -32,10 +34,14 @@ with InputNode() as user_input:
     output2 = model2.forward.bind(input_number)
     combine_output = combine.bind(output1, output2, input_operation)
 
-max_output = ray.get(combine_output.execute(1, "max"))
+graph = DAGDriver.bind(combine_output, http_adapter=json_request)
+
+handle = serve.run(graph)
+
+max_output = ray.get(handle.predict.remote(1, "max"))
 print(max_output)
 
-sum_output = ray.get(combine_output.execute(1, "sum"))
+sum_output = ray.get(handle.predict.remote(1, "sum"))
 print(sum_output)
 # __graph_end__
 
