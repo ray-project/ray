@@ -33,8 +33,6 @@ Install Ray Serve and its dependencies:
 pip install "ray[serve]"
 ```
 
-To run this example, install the following: ``pip install ray["serve"]``
-
 In this quick-start example we will define a simple "hello world" deployment, deploy it behind HTTP locally, and query it.
 
 ```{literalinclude} doc_code/quickstart.py
@@ -47,7 +45,7 @@ For more examples, select from the tabs.
 
 :::{tabbed} Model composition
 
-In this example we demonstrate Serve's model composition API allowing you to express a complex computation graph and deploy it as a unit.
+In this example we demonstrate Serve's model composition API allowing you to express a complex computation graph and deploy it as a Serve application.
 
 ```{literalinclude} doc_code/quickstart_graph.py
 :language: python
@@ -132,26 +130,26 @@ Because it's built on top of Ray, you can run it anywhere Ray can: on your lapto
 :::{dropdown} Data scientist
 :animate: fade-in-slide-down
 
-Serve is easy to use. You can test your models (and your entire deployment graph) on your local machine before deploying it to production on a cluster. You don't need to know heavyweight Kubernetes concepts or cloud providers to use Serve.
+Serve is easy to use. You can test your models (and your entire deployment graph) on your local machine before deploying it to production on a cluster. You don't need to know heavyweight Kubernetes concepts or cloud configurations to use Serve.
 
 :::
 
 :::{dropdown} ML engineer
 :animate: fade-in-slide-down
 
-Serve helps you scale out the deployment and runs them reliably, efficiently, and cheaply to save costs. With Serve's first-class model composition API, you can combine models together and build end-to-end application. Additionally, Serve natively runs on Kubernetes with minimal operation overhead.
+Serve helps you scale out the deployment and runs them reliably and efficiently to save costs. With Serve's first-class model composition API, you can combine models together and build end-to-end applications. Additionally, Serve natively runs on Kubernetes with minimal operation overhead.
 :::
 
-:::{dropdown} ML Platform engineer
+:::{dropdown} ML platform engineer
 :animate: fade-in-slide-down
 
-Serve specializes in ML model serving. As such, it can be an important and reliable component as part of your ML Platform stack.
+Serve specializes in ML model serving. As such, it can be an important and reliable component as part of your ML platform stack.
 Serve supports arbitrary Python code and therefore integrates well with the MLOps ecosystem. You can use it with model optimizers (ONNX, TVM), model monitoring systems (Seldon Alibi, Arize), model registries (MLFlow, Weights and Biases), machine learning frameworks (XGBoost, Scikit-learn), data app UIs (Gradio, Streamlit), and Web API frameworks (FastAPI, gRPC).
 
 :::
 
 
-## How does Serve compare to X
+## How does Serve compare to ...
 
 :::{dropdown} TFServing, TorchServe, ONNXRuntime
 :animate: fade-in-slide-down
@@ -161,8 +159,8 @@ We believe data scientists are not bounded a particular machine learning framewo
 They use the best tool available for the job.
 
 Compared to these framework-specific solutions, Ray Serve doesn't perform any optimizations to make your ML model run faster. However, you can still optimize the models yourself
-and run them in Ray Serve: for example, you can run a model compiled by
-[PyTorch JIT](https://pytorch.org/docs/stable/jit.html).
+and run them in Ray Serve. for example, you can run a model compiled by
+[PyTorch JIT](https://pytorch.org/docs/stable/jit.html) or [ONNXRuntime](https://onnxruntime.ai/).
 :::
 
 :::{dropdown} AWS SageMaker, Azure ML, Google Vertex AI
