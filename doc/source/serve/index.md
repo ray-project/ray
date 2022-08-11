@@ -175,7 +175,7 @@ managing the lifecycle of your models, visualizing their performance, etc. Ray
 Serve primarily focuses on model serving and providing the primitives for you to
 build your own ML platform on top.
 
-If you are looking for end-to-end ML pipeline framework from data processing to serving, check out [Ray AI Runtime](air).
+If you are looking for end-to-end ML pipeline framework that can handle everything from data processing to serving, check out [Ray AI Runtime](air).
 :::
 
 :::{dropdown} Seldon, KServe, Cortex
