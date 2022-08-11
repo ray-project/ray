@@ -99,7 +99,7 @@ There are handful of ways to address these issues:
    * Are you reserving GPUs for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_gpus”: 1}`)?
    * Are you reserving one or more cores for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_cpus”: 2}`)?
    * Are you setting [OMP_NUM_THREADS](serve-omp-num-threads) to increase the performance of your deep learning framework?
-2. Consider using async methods in your callable. See [the section below](serve-performance-async-methods).
+2. Consider using `async` methods in your callable. See [the section below](serve-performance-async-methods).
 3. Consider batching your requests. See [the section below](serve-performance-batching-requests).
 
 (serve-performance-async-methods)=
