@@ -52,7 +52,7 @@ Here we used the `execute` method to directly send a Python object to the deploy
 
 ## Local Development with HTTP requests
 
-You can use the `serve run` CLI command to run and test your application locally using HTTP to send requests (similar to how you might use `uvicorn run` if you're familiar with Uvicorn):
+You can use the `serve run` CLI command to run and test your application locally using HTTP to send requests (similar to how you might use the `uvicorn` command if you're familiar with [Uvicorn](https://www.uvicorn.org/)).
 
 ```bash
 serve run local_dev:HelloDeployment
