@@ -94,7 +94,7 @@ curl -X GET http://<cluster-ip-address>:8000/hello?name=Ray
 For more complex runtime environments, you can pass in a YAML file; see [serve run](serve_cli.md#serve-run) for details.
 
 :::{tip}
-If you need to upload local modules that reside in a directory that's not a subdirectory of your `working_dir`, use the `"py_modules"` field of `runtime_env`.
+If you need to upload local modules that reside in a directory that's not a subdirectory of your `working_dir`, use the `"py_modules"` field of `runtime_env`; e.g. `--runtime-env-json='{"working_dir": "/dir1", "py_modules": ["/dir2/my_module"]}'`.
 :::
 
 :::{tip}
