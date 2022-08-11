@@ -130,7 +130,7 @@ def _get_or_create_stats_actor():
         namespace=STATS_ACTOR_NAMESPACE,
         get_if_exists=True,
         lifetime="detached",
-        scheduling_strategy=ctx.scheduling_strategy,
+        scheduling_strategy=scheduling_strategy,
     ).remote()
 
 
