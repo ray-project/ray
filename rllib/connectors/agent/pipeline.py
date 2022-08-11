@@ -40,7 +40,9 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
         return ret
 
     def to_state_dict(self):
-        return AgentConnectorPipeline.__name__, [c.to_state_dict() for c in self.connectors]
+        return AgentConnectorPipeline.__name__, [
+            c.to_state_dict() for c in self.connectors
+        ]
 
     @staticmethod
     def from_state_dict(ctx: ConnectorContext, params: List[Any]):
