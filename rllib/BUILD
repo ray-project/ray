@@ -890,6 +890,14 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
 
+# DQN Reproducibility
+py_test(
+    name = "test_repro_dqn",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
+)
+
 # Dreamer
 py_test(
     name = "test_dreamer",
@@ -974,6 +982,14 @@ py_test(
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
 )
 
+# PPO Reproducibility
+py_test(
+    name = "test_repro_ppo",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
+)
+
 # QMix
 py_test(
     name = "test_qmix",
@@ -1012,6 +1028,14 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/simple_q/tests/test_simple_q.py"]
+)
+
+# SimpleQ Reproducibility
+py_test(
+    name = "test_repro_simple_q",
+    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    size = "large",
+    srcs = ["algorithms/simple_q/tests/test_repro_simple_q.py"]
 )
 
 # SlateQ
@@ -1191,7 +1215,7 @@ py_test(
         "--env", "Pendulum-v1",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"replay_buffer_config\": {\"learning_starts\": 100}, \"min_time_s_per_iteration\": 1, \"batch_mode\": \"complete_episodes\"}'",
+        "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"num_steps_sampled_before_learning_starts\": 100, \"min_time_s_per_iteration\": 1, \"batch_mode\": \"complete_episodes\"}'",
         "--ray-num-cpus", "4",
         ]
 )
@@ -1248,7 +1272,7 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"replay_buffer_config\": {\"learning_starts\": 0}, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
+        "--config", "'{\"framework\": \"tf\", \"input\": \"tests/data/cartpole\", \"num_steps_sampled_before_learning_starts\": 0, \"off_policy_estimation_methods\": {\"wis\": {\"type\": \"wis\"}, \"is\": {\"type\": \"is\"}}, \"exploration_config\": {\"type\": \"SoftQ\"}}'"
         ]
 )
 
@@ -1260,7 +1284,7 @@ py_test(
         "--env", "PongDeterministic-v4",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000, \"learning_starts\": 10000}, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
+        "--config", "'{\"framework\": \"tf\", \"lr\": 1e-4, \"exploration_config\": {\"epsilon_timesteps\": 200000, \"final_epsilon\": 0.01}, \"replay_buffer_config\": {\"capacity\": 10000}, \"num_steps_sampled_before_learning_starts\": 10000, \"rollout_fragment_length\": 4, \"target_network_update_freq\": 1000, \"gamma\": 0.99}'"
         ]
 )
 
@@ -1726,6 +1750,20 @@ py_test(
     size = "medium",
     srcs = ["offline/estimators/tests/test_ope.py"],
     data = ["tests/data/cartpole/small.json"],
+)
+
+py_test(
+    name = "test_dm_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dm_learning.py"],
+)
+
+py_test(
+    name = "test_dr_learning",
+    tags = ["team:rllib", "offline"],
+    size = "large",
+    srcs = ["offline/estimators/tests/test_dr_learning.py"],
 )
 
 # --------------------------------------------------------------------
@@ -3121,7 +3159,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "examples_R"],
     size = "large",
     srcs = ["examples/recommender_system_with_recsim_and_slateq.py"],
-    args = ["--stop-iters=2", "--learning-starts=100", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
+    args = ["--stop-iters=2", "--num-steps-sampled-before-learning_starts=100", "--framework=tf2", "--use-tune", "--random-test-episodes=10", "--env-num-candidates=50", "--env-slate-size=2"],
 )
 
 py_test(
@@ -3347,7 +3385,7 @@ py_test(
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
     data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.new",
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022",
     ]),
     args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
@@ -3359,7 +3397,7 @@ py_test(
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
     data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6.old",
+        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022",
     ]),
     args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )

@@ -11,7 +11,6 @@ Ray Serve functionality and how to integrate different modeling frameworks.
 
 serve-ml-models
 batch
-web-server-integration
 rllib
 gradio-integration
 ```

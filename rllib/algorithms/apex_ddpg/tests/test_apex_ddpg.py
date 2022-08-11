@@ -25,7 +25,7 @@ class TestApexDDPG(unittest.TestCase):
             .rollouts(num_rollout_workers=2)
             .reporting(min_sample_timesteps_per_iteration=100)
             .training(
-                replay_buffer_config={"learning_starts": 0},
+                num_steps_sampled_before_learning_starts=0,
                 optimizer={"num_replay_buffer_shards": 1},
             )
             .environment(env="Pendulum-v1")
