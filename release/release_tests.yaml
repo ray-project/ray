@@ -1954,6 +1954,8 @@
     test_name: many_ppo
     test_suite: long_running_tests
 
+  stable: false
+
   frequency: nightly
   team: ml
   env: staging
@@ -2701,6 +2703,30 @@
 
   alert: default
 
+- name: rllib_learning_tests_ppo
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ppo
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
 - name: rllib_learning_tests_bc
   group: RLlib tests
   working_dir: rllib_tests
@@ -2739,7 +2765,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
@@ -4132,6 +4158,25 @@
     script: python dataset_random_access.py
     wait_for_nodes:
       num_nodes: 15
+
+    type: sdk_command
+    file_manager: sdk
+
+- name: pipelined_data_ingest_benchmark
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
+    wait_for_nodes:
+      num_nodes: 20
 
     type: sdk_command
     file_manager: sdk

@@ -7,7 +7,7 @@ This tutorial will walk you through the process of deploying models with Ray Ser
 * Expose your models over HTTP using Ray Serve [deployments](serve-managing-deployments-guide)
 * Scale your deployments to meet your workload's requirements
 * Allocate resources like fractional GPUs and CPUs to your deployments
-* Compose multiple-model machine learning pipelines with Ray Serve [deployment graphs](deployment-graph-e2e-tutorial)
+* Compose multiple-model machine learning pipelines with Ray Serve [deployment graphs](serve-model-composition-guide)
 * Port your FastAPI applications to Ray Serve
 
 We'll use two models in this tutorial:
@@ -64,9 +64,7 @@ tutorial. You can follow along using arbitrary models from any
 Python framework. Check out our tutorials on scikit-learn,
 PyTorch, and Tensorflow for more info and examples:
 
-- {ref}`serve-sklearn-tutorial`
-- {ref}`serve-pytorch-tutorial`
-- {ref}`serve-tensorflow-tutorial`
+- {ref}`serve-ml-models-tutorial`
 
 (converting-to-ray-serve-deployment)=
 ## Converting to a Ray Serve Deployment
@@ -305,7 +303,7 @@ $ python graph_client.py
 c'était le meilleur des temps, c'était le pire des temps .
 ```
 
-Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources.
+Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources. See the guide on [model composition](serve-model-composition-guide) to learn more.
 
 ## Porting FastAPI Applications to Ray Serve
 

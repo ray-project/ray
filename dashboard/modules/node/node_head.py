@@ -80,6 +80,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
 
     async def _update_stubs(self, change):
         if change.old:

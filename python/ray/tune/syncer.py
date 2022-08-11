@@ -146,8 +146,8 @@ class Syncer(abc.ABC):
     This class handles data transfer for two cases:
 
     1. Synchronizing data from the driver to external storage. This affects
-      experiment-level checkpoints and trial-level checkpoints if no cloud storage
-      is used.
+       experiment-level checkpoints and trial-level checkpoints if no cloud storage
+       is used.
     2. Synchronizing data from remote trainables to external storage.
 
     Synchronizing tasks are usually asynchronous and can be awaited using ``wait()``.
