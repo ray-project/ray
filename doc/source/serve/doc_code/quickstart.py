@@ -17,8 +17,7 @@ class MyModelDeployment:
 
 
 # 2: Deploy the model.
-serve.start()
-MyModelDeployment.deploy(msg="Hello world!")
+serve.run(MyModelDeployment.bind(msg="Hello world!"))
 
 # 3: Query the deployment and print the result.
 print(requests.get("http://localhost:8000/").json())
