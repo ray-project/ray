@@ -252,21 +252,6 @@ parts:
         title: Getting Started
       - file: cluster/key-concepts
         title: Key Concepts
-      - file: cluster/kubernetes/index
-        title: Deploying on Kubernetes
-        sections:
-        - file: cluster/kubernetes/getting-started
-        - file: cluster/kubernetes/user-guides
-          sections:
-            - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
-            - file: cluster/kubernetes/user-guides/config.md
-            - file: cluster/kubernetes/user-guides/autoscaling.md
-            - file: cluster/kubernetes/user-guides/logging.md
-            - file: cluster/kubernetes/user-guides/gpu.md
-        - file: cluster/kubernetes/examples
-          sections:
-            - file: cluster/kubernetes/examples/ml-example.md
-        - file: cluster/kubernetes/references
       - file: cluster/vms/index
         title: Deploying on VMs
         sections:
@@ -289,6 +274,21 @@ parts:
           sections:
           - file: cluster/vms/examples/ml-example
         - file: cluster/vms/references/index
+      - file: cluster/kubernetes/index
+        title: Deploying on Kubernetes
+        sections:
+        - file: cluster/kubernetes/getting-started
+        - file: cluster/kubernetes/user-guides
+          sections:
+            - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
+            - file: cluster/kubernetes/user-guides/config.md
+            - file: cluster/kubernetes/user-guides/autoscaling.md
+            - file: cluster/kubernetes/user-guides/logging.md
+            - file: cluster/kubernetes/user-guides/gpu.md
+        - file: cluster/kubernetes/examples
+          sections:
+            - file: cluster/kubernetes/examples/ml-example.md
+        - file: cluster/kubernetes/references
       - file: cluster/running-applications/index
         title: Running Ray Applications
       - file: cluster/references/index
