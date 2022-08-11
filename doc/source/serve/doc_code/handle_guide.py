@@ -1,15 +1,16 @@
 import ray
 from ray import serve
 import requests
+from starlette.requests import Request
 
 
 # __basic_example_start__
 @serve.deployment
 class Deployment:
-    def method1(self, arg):
+    def method1(self, arg: str) -> str:
         return f"Method1: {arg}"
 
-    def __call__(self, arg):
+    def __call__(self, arg: str) -> str:
         return f"__call__: {arg}"
 
 
@@ -23,10 +24,10 @@ ray.get(handle.method1.remote("hi"))  # Call a different method.
 # __async_handle_start__
 @serve.deployment(route_prefix="/api")
 class Deployment:
-    def say_hello(self, name: str):
+    def say_hello(self, name: str) -> str:
         return f"Hello {name}!"
 
-    def __call__(self, request):
+    def __call__(self, request: Request) -> str:
         return self.say_hello(request.query_params["name"])
 
 
