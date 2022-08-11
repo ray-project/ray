@@ -30,6 +30,64 @@ while the Ray application is running. On the other hand, if you pre-provision a 
 number of Ray workers, all of the Ray workers can be started in parallel, potentially reducing your application's
 runtime.
 
+### Getting Started with Autoscaling
+
+First, follow the [quickstart guide](kuberay-quickstart) to create an autoscaling cluster. The commands to create the KubeRay operator and deploy an autoscaling cluster are summarized here:
+
+```bash
+# Optionally use kind to run the examples locally.
+# kind create cluster
+
+$ git clone https://github.com/ray-project/kuberay -b release-0.3
+# Create the KubeRay operator.
+$ kubectl create -k kuberay/ray-operator/config/default
+# Create an autoscaling Ray cluster.
+$ kubectl apply -f kuberay/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+```
+
+Now, we can run a Ray program on the head pod that asks the autoscaler to scale the cluster to a total of 3 CPUs. The head and worker in our example cluster each have a capacity of 1 CPU, so the request should trigger upscaling of an additional worker pod.
+
+Note that in real-life scenarios, you will want to use larger Ray pods. In fact, it is advantageous to size each Ray pod to take up an entire Kubernetes node. See the [configuration guide](kuberay-config) for more details.
+
+To run the Ray program, we will first get the name of the Ray head pod:
+
+```bash
+$ kubectl get pods --selector=ray.io/cluster=raycluster-autoscaler --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers
+# raycluster-autoscaler-head-xxxxx
+```
+
+Then, we can run the Ray program using ``kubectl exec``:
+```bash
+$ kubectl exec raycluster-autoscaler-head-xxxxx -it -c ray-head -- python -c \"import ray; ray.init(); ray.autoscaler.sdk.request_resources(num_cpus=3)
+```
+
+The last command should have triggered Ray pod upscaling. To confirm the new worker pod is up, let's query the RayCluster's pods again:
+
+```bash
+$ kubectl get pod --selector=ray.io/cluster=raycluster-autoscaler
+# NAME                                             READY   STATUS    RESTARTS   AGE
+# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          XXs
+# raycluster-autoscaler-worker-small-group-yyyyy   1/1     Running   0          XXs
+# raycluster-autoscaler-worker-small-group-zzzzz   1/1     Running   0          XXs 
+```
+
+To get a summary of your cluster's status, run `ray status` on your cluster's Ray head node.
+```bash
+# Substitute your head pod's name in place of \"raycluster-autoscaler-head-xxxxx
+$ kubectl exec raycluster-autoscaler-head-xxxxx -it -c ray-head -- ray status
+# ======== Autoscaler status: 2022-07-21 xxxxxxxxxx ========
+# ....
+```
+
+Alternatively, to examine the full autoscaling logs, fetch the stdout of the Ray head pod's autoscaler sidecar:
+```bash
+# This command gets the last 20 lines of autoscaler logs.
+# Substitute your head pod's name in place of \"raycluster-autoscaler-head-xxxxx
+$ kubectl logs raycluster-autoscaler-head-xxxxx -c autoscaler | tail -n 20
+# ======== Autoscaler status: 2022-07-21 xxxxxxxxxx ========
+# ...
+```
+
 ## Ray Autoscaler vs. other autoscalers
 We describe the relationship between the Ray autoscaler and other autoscalers in the Kubernetes
 ecosystem.

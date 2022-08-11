@@ -73,26 +73,12 @@ To learn more about the autoscaler and how to configure it, refer to the followi
 
 .. _cluster-clients-and-jobs-under-construction:
 
-..
+Ray Jobs
+--------
 
-Clients and Jobs
-----------------
-TODO
-~~~~
-TODO: Update the following section so that we recommend the best tool for first-time users:
-See https://anyscaleteam.slack.com/archives/C01CLKUN38V/p1659990371608629?thread_ts=1659981502.811539&cid=C01CLKUN38V
+The main method for running a workload on a Ray cluster is to use Ray Jobs.
+Ray Jobs enable users to submit locally developed-and-tested applications to a
+remote Ray cluster. Ray Job Submission simplifies the experience of packaging,
+deploying, and managing a Ray application.
 
-Clients and Jobs
-~~~~~~~~~~~~~~~~
-Ray provides two methods for running workloads on a Ray Cluster: the Ray Client, and Ray Job Submission.
-
-* **The Ray Client** enables interactive development by connecting a local Python script or shell to the cluster.
-  Developers can scale-out their local programs on the cloud as if it were on their laptop. The Ray Client is used
-  by specifying the :ref:`head node<cluster-head-node-under-construction>` address as an argument to `ray.init`.
-* **Ray Job Submission** enables users to submit locally developed-and-tested applications to a remote Ray
-  Cluster. Ray Job Submission simplifies the experience of packaging, deploying, and managing a Ray application.
-
-To learn how to run workloads on a Ray Cluster, refer to the following user guides:
-
-* :ref:`Running Ray workloads on VMs<ref-deployment-guide-under-construction>`.
-* The :ref:`Ray Job Submission<kuberay-job>` and :ref:`Ray Client<kuberay-client>` sections in :ref:`Getting Started with Ray on Kubernetes<kuberay-quickstart>`.
+To learn how to run workloads on a Ray Cluster, refer to the :ref:`Ray Jobs guide<ray-jobs-under-construction>`.
