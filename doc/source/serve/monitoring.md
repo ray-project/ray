@@ -4,7 +4,7 @@
 
 This section should help you debug and monitor your Serve applications by:
 
-* using the Ray dashboard
+* using the Ray Dashboard
 * using Ray logging
 * using built-in Ray Serve metrics
 
