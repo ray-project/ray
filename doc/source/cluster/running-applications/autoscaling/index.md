@@ -1,3 +1,4 @@
+(autoscaling)=
 # Autoscaling
 
 The Ray autoscaler is a Ray cluster process that automatically scales a cluster up and down based on resource demand.
@@ -8,7 +9,7 @@ Autoscaling is supported only with Ray versions at least
 as new  as 1.11.0.
 :::
 
-Note that the autoscaler only considers logical resource requests for scaling (i.e., those specified in @ray.remote and displayed in `ray status`), not physical machine utilization. If a user tries to launch an actor, task, or placement group but there are insufficient resources, the request will be queued. The autoscaler adds nodes to satisfy resource demands in this queue.
+Note that the autoscaler only considers logical resource requests for scaling (i.e., those specified in ``@ray.remote`` and displayed in `ray status`), not physical machine utilization. If a user tries to launch an actor, task, or placement group but there are insufficient resources, the request will be queued. The autoscaler adds nodes to satisfy resource demands in this queue.
 The autoscaler also removes nodes after they become idle for some time.
 A node is considered idle if it has no active tasks or actors and no objects.
 
