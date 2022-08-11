@@ -283,8 +283,7 @@ class GroupedDataset(Generic[T]):
             for end in boundaries:
                 group = block_accessor.slice(start, end, False)
                 applied = fn(group)
-                if applied is not None:
-                    builder.add_block(applied)
+                builder.add_block(applied)
                 start = end
 
             rs = builder.build()
