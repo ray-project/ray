@@ -1,124 +1,72 @@
-# HTTP with Serve
-
-
+# HTTP API
 
 This section should help you understand how to:
-
 - send HTTP requests to Serve deployments
 - use Ray Serve to integrate with FastAPI
 - use customized HTTP Adapters
-
-
-:::{note}
-HTTP Proxy HA is enabled by using [REST API](serve-in-production-deploying) or [Kubernetes operator](deploying-serve-on-kubernetes) to start the Ray Serve
-:::
+- choose which feature to use for your use case
 
 (serve-http)=
-
 ## Calling Deployments via HTTP
+When you deploy a Serve application, the ingress deployment (the one passed to `serve.run`) will be exposed over HTTP.
 
-When you deploy a Serve application, the ingress deployment (the one passed to `serve.run`) will be exposed over HTTP. If you want to route to another deployment, you can do so using the [ServeHandle API](serve-model-composition).
-
-```python
-@serve.deployment
-class Counter:
-    def __call__(self, request):
-        pass
+```{literalinclude} ../serve/doc_code/http_guide.py
+:start-after: __begin_starlette__
+:end-before: __end_starlette__
+:language: python
 ```
 
-Any request to the Serve HTTP server at `/` is routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code).
+Any request to the Serve HTTP server at `/` is routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code or custom headers).
 
-Below, we discuss some advanced features for customizing Ray Serve's HTTP functionality.
+Commonly, you just need the API to accept numpy array. You can use Serve's `DAGDriver` to simply the request parsing.
+
+```{literalinclude} ../serve/doc_code/http_guide.py
+:start-after: __begin_dagdriver__
+:end-before: __end_dagdriver__
+:language: python
+```
+
+```{note}
+Serve provides a library of HTTP adapters help you avoid boilerplate code. The [later section](serve-http-adapters) dive deeper into how it works.
+```
 
 (serve-fastapi-http)=
-
 ## FastAPI HTTP Deployments
 
 If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.api.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out [their documentation](https://fastapi.tiangolo.com/).
 
-```python
-import ray
-
-from fastapi import FastAPI
-from ray import serve
-
-app = FastAPI()
-ray.init(address="auto", namespace="summarizer")
-
-@serve.deployment(route_prefix="/hello")
-@serve.ingress(app)
-class MyFastAPIDeployment:
-    @app.get("/")
-    def root(self):
-        return "Hello, world!"
-
-serve.run(MyFastAPIDeployment.bind())
+```{literalinclude} ../serve/doc_code/http_guide.py
+:start-after: __begin_fastapi__
+:end-before: __end_fastapi__
+:language: python
 ```
 
 Now if you send a request to `/hello`, this will be routed to the `root` method of our deployment. We can also easily leverage FastAPI to define multiple routes with different HTTP methods:
 
-```python
-import ray
-
-from fastapi import FastAPI
-from ray import serve
-
-app = FastAPI()
-ray.init(address="auto", namespace="summarizer")
-
-@serve.deployment(route_prefix="/hello")
-@serve.ingress(app)
-class MyFastAPIDeployment:
-    @app.get("/")
-    def root(self):
-        return "Hello, world!"
-
-    @app.post("/{subpath}")
-    def root(self, subpath: str):
-        return f"Hello from {subpath}!"
-
-serve.run(MyFastAPIDeployment.bind())
+```{literalinclude} ../serve/doc_code/http_guide.py
+:start-after: __begin_fastapi_multi_routes__
+:end-before: __end_fastapi_multi_routes__
+:language: python
 ```
 
 You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 
-```python
-import ray
-
-from fastapi import FastAPI
-from ray import serve
-
-app = FastAPI()
-ray.init(address="auto", namespace="summarizer")
-
-@app.get("/")
-def f():
-    return "Hello from the root!"
-
-# ... add more routes, routers, etc. to `app` ...
-
-@serve.deployment(route_prefix="/")
-@serve.ingress(app)
-class FastAPIWrapper:
-    pass
-
-serve.run(FastAPIWrapper.bind())
+```{literalinclude} ../serve/doc_code/http_guide.py
+:start-after: __begin_byo_fastapi__
+:end-before: __end_byo_fastapi__
+:language: python
 ```
 
 This is useful for scaling out an existing FastAPI app with no modifications necessary.
-Existing middlewares, automatic OpenAPI documentation generation, and other advanced FastAPI features should work as-is.
+Existing middlewares, **automatic OpenAPI documentation generation**, and other advanced FastAPI features should work as-is.
 
-To try it out, save a code snippet in a local python file (e.g. `main.py`) and in the same directory, run the following commands to start a local Ray cluster on your machine.
-
-```bash
-ray start --head
-python main.py
+```{note}
+Serve currently do not support WebSocket endpoint. If you have a use case needing it, please [let us know](https://github.com/ray-project/ray/issues/new/choose)!
 ```
 
 (serve-http-adapters)=
 
 ## HTTP Adapters
-
 HTTP adapters are functions that convert raw HTTP requests to basic Python types that you know and recognize.
 
 For example, here is an adapter that extracts the JSON content from a request:
@@ -141,7 +89,6 @@ def parse_query_args(field_a: int, field_b: str):
 You can specify different type signatures to facilitate the extraction of HTTP fields, including
 - [query parameters](https://fastapi.tiangolo.com/tutorial/query-params/),
 - [body parameters](https://fastapi.tiangolo.com/tutorial/body/),
-and 
 - [many other data types](https://fastapi.tiangolo.com/tutorial/extra-data-types/).
 
 For more details, you can take a look at the [FastAPI documentation](https://fastapi.tiangolo.com/).
@@ -212,14 +159,6 @@ async def endpoint(np_array = Depends(json_to_ndarray)):
     ...
 ```
 
-It has the following schema for input:
-
-(serve-ndarray-schema)=
-
-```{eval-rst}
-.. autopydantic_model:: ray.serve.http_adapters.NdArray
-
-```
 
 ### Pydantic models as adapters
 
@@ -251,3 +190,11 @@ Here is a list of adapters; please feel free to [contribute more](https://github
 
 ```
 
+## Choosing the right HTTP feature
+
+Serve offers a layered approach to expose your model with the right HTTP API.
+
+Considering your use case, you can choose the right level of abstraction:
+- If the built-in adapters fit your use case or you can supply your own adapter, use `DAGDriver` with `http_adapter`.
+- If you are comfortable working with the raw request object, use `starlette.request.Requests` API.
+- If you want a fully fledge API server with validation and doc generation, use the FastAPI integration.
