@@ -15,8 +15,8 @@ parts:
     - file: ray-air/user-guides
       sections:
         - file: ray-air/preprocessors
-        - file: ray-air/check-ingest
         - file: ray-air/trainer
+        - file: ray-air/check-ingest
         - file: ray-air/tuner
         - file: ray-air/predictors
         - file: ray-air/examples/serving_guide
@@ -171,25 +171,23 @@ parts:
               - file: serve/managing-deployments
               - file: serve/handling-dependencies
               - file: serve/http-guide
-              - file: serve/http-adapters
               - file: serve/handle-guide
               - file: serve/ml-models
+              - file: serve/model_composition
               - file: serve/deploying-serve
               - file: serve/monitoring
               - file: serve/performance
               - file: serve/autoscaling
-              - file: serve/deployment-graph
-                sections:
-                  - file: serve/deployment-graph/deployment-graph-e2e-tutorial
-                  - file: serve/deployment-graph/chain_nodes_same_class_different_args
-                  - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
-                  - file: serve/deployment-graph/control_flow_based_on_user_inputs
-                  - file: serve/deployment-graph/visualize_dag_during_development
-                  - file: serve/deployment-graph/http_endpoint_for_dag_graph
               - file: serve/production
               - file: serve/migration
           - file: serve/architecture
           - file: serve/tutorials/index
+            sections:
+              - file: serve/tutorials/deployment-graph-patterns
+                sections:
+                  - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
+                  - file: serve/tutorials/deployment-graph-patterns/branching_input
+                  - file: serve/tutorials/deployment-graph-patterns/conditional
           - file: serve/faq
           - file: serve/package-ref
 
@@ -215,12 +213,10 @@ parts:
         title: More Libraries
         sections:
           - file: ray-more-libs/joblib
-          - file: ray-more-libs/lightgbm-ray
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
           - file: ray-more-libs/ray-lightning
           - file: ray-core/examples/using-ray-with-pytorch-lightning
-          - file: ray-more-libs/xgboost-ray
           - file: ray-core/examples/dask_xgboost/dask_xgboost
           - file: ray-core/examples/modin_xgboost/modin_xgboost
           - file: workflows/concepts
