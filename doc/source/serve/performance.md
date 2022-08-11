@@ -97,27 +97,33 @@ We run long-running benchmarks nightly. These include:
        * cluster_max_P90_latency_ms = 637.39
        * cluster_max_P99_latency_ms = 1930.0
    * - `Serve Handle: Linear Pipeline <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/serve_handle_long_chain.py>`_
-     - Runs 10 node pipeline, constructed only with `ServeHandles`, that performs basic arithmetic at each node. Simulates 4 clients making 10 requests each.
+     - Runs 10 node pipeline, constructed only with `ServeHandles`, that performs basic arithmetic at each node. Simulates 4 clients making 20 requests each.
      - Head node: AWS EC2 m5.8xlarge. 0 Worker nodes.
      - * throughput_mean_tps = 21.58
        * throughput_std_tps = 0.49
        * latency_mean_ms = 46.72
        * latency_std_ms = 3.13
    * - `Deployment Graph: Linear Pipeline <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/deployment_graph_long_chain.py>`_
-     - Runs 10 node pipeline, constructed with a call graph, that performs basic arithmetic at each node. Simulates 4 clients making 10 requests each.
+     - Runs 10 node pipeline, constructed with a call graph, that performs basic arithmetic at each node. Simulates 4 clients making 20 requests each.
      - Head node: AWS EC2 m5.8xlarge. 0 Worker nodes.
      - * throughput_mean_tps = 8.43
        * throughput_std_tps = 0.63
        * latency_mean_ms = 128.18
        * latency_std_ms = 35.43
    * - `Serve Handle: Ensemble <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/serve_handle_wide_ensemble.py>`_
-     - 
-     - 
-     - 
+     - Runs 10 node ensemble, constructed only with `ServeHandles`, that performs basic arithmetic at each node. Ensemble pattern routes the input to 10 different nodes, and their outputs are combined to produce the final output. Simulates 4 clients making 20 requests each.
+     - Head node: AWS EC2 m5.8xlarge. 0 Worker nodes.
+     - * throughput_mean_tps = 14.3
+       * throughput_std_tps = 0.46
+       * latency_mean_ms = 71.8
+       * latency_std_ms = 2.35
    * - `Deployment Graph: Ensemble <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/deployment_graph_wide_ensemble.py>`_
-     - 
-     - 
-     - 
+     - Runs 10 node ensemble, constructed with a call graph, that performs basic arithmetic at each node. Ensemble pattern routes the input to 10 different nodes, and their outputs are combined to produce the final output. Simulates 4 clients making 20 requests each.
+     - Head node: AWS EC2 m5.8xlarge. 0 Worker nodes.
+     - * throughput_mean_tps = 8.75
+       * throughput_std_tps = 0.43
+       * latency_mean_ms = 126.15
+       * latency_std_ms = 18.35
 ```
 
 :::{note}
