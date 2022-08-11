@@ -16,7 +16,7 @@ Benefits:
 Drawbacks:
 
 - Doesn't test HTTP endpoints.
-- Doesn't test multi-node clusters, can't use GPUs if your local machine doesn't have them.
+- Can't use GPUs if your local machine doesn't have them.
 
 Let's see a simple example.
 
