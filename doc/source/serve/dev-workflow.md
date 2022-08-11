@@ -89,7 +89,7 @@ After you're done testing, you can shut down Ray Serve by interrupting the `serv
 
 ## Testing on a remote cluster
 
-When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  During development, you can use {ref}`Runtime Environments<runtime-environments>` to manage this in a flexible way.
+When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  During development, you can use {ref}`Runtime Environments<runtime-environments>` to manage these dependencies.
 
 See [Ray Client](ray-client-under-construction) for more information on the Ray address specified here by the `--address` parameter.
 
