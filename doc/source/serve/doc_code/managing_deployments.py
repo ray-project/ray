@@ -37,8 +37,8 @@ def func(*args):
 
 serve.run(func.bind())
 
-# Scale up to 10 replicas.
-serve.run(func.options(num_replicas=10).bind())
+# Scale up to 3 replicas.
+serve.run(func.options(num_replicas=3).bind())
 
 # Scale back down to 1 replica.
 serve.run(func.options(num_replicas=1).bind())
