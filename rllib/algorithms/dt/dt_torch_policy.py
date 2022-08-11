@@ -47,15 +47,12 @@ F = nn.functional
 
 
 class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
-    """ """
-
     def __init__(
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
         config: TrainerConfigDict,
     ):
-        """ """
         print("DT Policy Config")
         import pprint
 

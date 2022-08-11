@@ -69,6 +69,8 @@ class DTTorchModel(TorchModelV2, nn.Module):
         self.return_head = self.build_return_head()
 
         # Update view requirement
+        # NOTE: See DTTorchPolicy.action_distribution_fn for an explanation of
+        # why the ViewRequirements are like this
         self.view_requirements = {
             SampleBatch.OBS: ViewRequirement(
                 space=obs_space, shift=f"-{self.max_seq_len-1}:0"
@@ -175,7 +177,6 @@ class DTTorchModel(TorchModelV2, nn.Module):
         actions_embeds = actions_embeds + timestep_embeds
         returns_embeds = returns_embeds + timestep_embeds
 
-        # TODO(charlesjsun): check this
         # This makes the sequence look like (R_1, s_1, a_1, R_2, s_2, a_2, ...)
         stacked_inputs = torch.stack(
             (returns_embeds, obs_embeds, actions_embeds), dim=2
