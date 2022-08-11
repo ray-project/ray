@@ -5,8 +5,7 @@
 This section should help you debug and monitor your Serve applications by:
 
 * viewing the Ray dashboard
-* using Ray logging
-* integrating Ray Serve with Loki
+* using Ray logging and Loki
 * inspecting built-in Ray Serve metrics
 
 ## Ray dashboard
@@ -110,15 +109,15 @@ You can also use your own custom logger, in which case you'll need to configure 
 
 For a detailed overview of logging in Ray, see [Ray Logging](ray-logging).
 
-### Ray Serve with Loki
+### Filtering logs with Loki
 
-Here is a quick walkthrough of how to explore and filter your logs using [Loki](https://grafana.com/oss/loki/).
-Setup and configuration is very easy on Kubernetes, but in this tutorial we'll just set things up manually.
+You can explore and filter your logs using [Loki](https://grafana.com/oss/loki/).
+Setup and configuration is straightforward on Kubernetes, but as a tutorial, let's set up Loki manually.
 
-First, install Loki and Promtail using the instructions on <https://grafana.com>.
-It will be convenient to save the Loki and Promtail executables in the same directory, and to navigate to this directory in your terminal before beginning this walkthrough.
+For this walkthrough, you need both Loki and Promtail, which are both supported by [Grafana Labs](https://grafana.com). Follow the installation instructions at Grafana's website to get executables for [Loki](https://grafana.com/docs/loki/latest/installation/) and [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/).
+For convenience, save the Loki and Promtail executables in the same directory, and then navigate to this directory in your terminal.
 
-Now let's get our logs into Loki using Promtail.
+Now let's get your logs into Loki using Promtail.
 
 Save the following file as `promtail-local-config.yaml`:
 
@@ -134,17 +133,17 @@ clients:
   - url: http://localhost:3100/loki/api/v1/push
 
 scrape_configs:
-- job_name: ray
-static_configs:
-  - labels:
-    job: ray
-    __path__: /tmp/ray/session_latest/logs/serve/*.*
+  - job_name: ray
+    static_configs:
+      - labels:
+        job: ray
+        __path__: /tmp/ray/session_latest/logs/serve/*.*
 ```
 
-The relevant part for Ray is the `static_configs` field, where we have indicated the location of our log files with `__path__`.
+The relevant part for Ray Serve is the `static_configs` field, where we have indicated the location of our log files with `__path__`.
 The expression `*.*` will match all files, but not directories, which cause an error with Promtail.
 
-We will run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
+We'll run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
 
 ```shell
 wget https://raw.githubusercontent.com/grafana/loki/v2.1.0/cmd/loki/loki-local-config.yaml
@@ -164,9 +163,9 @@ Start Promtail and pass in the path to the config file we saved earlier:
 ./promtail-darwin-amd64 -config.file=promtail-local-config.yaml
 ```
 
-As above, you may need to replace `./promtail-darwin-amd64` with the appropriate filename and path.
+Once again, you may need to replace `./promtail-darwin-amd64` with your Promtail executable.
 
-Run the following Python script to deploy a basic Serve deployment with a Serve deployment logger and make some requests:
+Run the following Python script to deploy a basic Serve deployment with a Serve deployment logger and to make some requests:
 
 ```{literalinclude} doc_code/monitoring/deployment_logger.py
 :start-after: __start__
@@ -190,6 +189,8 @@ You should see something similar to the following:
 ```{image} https://raw.githubusercontent.com/ray-project/Images/master/docs/serve/loki-serve.png
 :align: center
 ```
+
+You can use Loki to filter your Ray Serve logs and gather insights quicker.
 
 ## Built-in Ray Serve metrics
 
