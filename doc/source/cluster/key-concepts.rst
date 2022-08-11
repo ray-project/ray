@@ -29,7 +29,7 @@ by your Ray cluster configuration. The head node runs the :ref:`autoscaler <clus
 
 Users can submit jobs for execution on the Ray cluster, or can interactively use the
 cluster by connecting to the head node and running `ray.init`. See
-:ref:`Clients and Jobs <cluster-clients-and-jobs>` for more information.
+:ref:`Ray Jobs <jobs-quickstart>` for more information.
 
 .. _cluster-head-node:
 
@@ -58,7 +58,7 @@ current capacity of the cluster, the autoscaler will try to increase the number 
 sit idle, the autoscaler will remove worker nodes from the cluster.
 
 It is important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics.
-To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <deployment-guide-autoscaler>` and :ref:`Kubernetes <kuberay-autoscaler-discussion>`.
+To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <ref-cluster-quick-start>` and :ref:`Kubernetes <kuberay-index>`.
 
 .. _cluster-clients-and-jobs:
 
@@ -70,4 +70,8 @@ Ray Jobs enable users to submit locally developed-and-tested applications to a
 remote Ray cluster. Ray Job Submission simplifies the experience of packaging,
 deploying, and managing a Ray application.
 
-To learn how to run workloads on a Ray Cluster, refer to the :ref:`Ray Jobs guide<ray-jobs>`.
+For interactive development, there are two other to run workloads:
+1. Directly running a script on any head or worker node.
+2. Using the Ray Client to connect remotely to the cluster.
+
+To learn how to run workloads on a Ray Cluster, refer to the :ref:`Ray Jobs guide <jobs-overview>`.

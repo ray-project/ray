@@ -55,7 +55,7 @@ Launching a cloud cluster
 
     If you have already have a list of nodes, go to :ref:`tune-distributed-local`.
 
-Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <cluster-cloud>`. Save the below cluster configuration (``tune-default.yaml``):
+Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <cluster-index>`. Save the below cluster configuration (``tune-default.yaml``):
 
 .. literalinclude:: /../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
@@ -267,7 +267,7 @@ There are a few options for restoring an experiment:
 Common Commands
 ---------------
 
-Below are some commonly used commands for submitting experiments. Please see the :ref:`Autoscaler page <cluster-cloud>` to see find more comprehensive documentation of commands.
+Below are some commonly used commands for submitting experiments. Please see the :ref:`Clusters page <cluster-index>` to see find more comprehensive documentation of commands.
 
 .. code-block:: bash
 

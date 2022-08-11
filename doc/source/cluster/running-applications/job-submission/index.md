@@ -1,11 +1,8 @@
-(ref-deployment-guide)=
+(jobs-overview)=
 
 # Ray Jobs
-:::{warning}
-This page is under construction!
-:::
 
-Once you have deployed a Ray cluster (on [VMs](ref-cluster-quick-start-vms) or [Kubernetes](kuberay-quickstart)), you are ready to run a Ray application!
+Once you have deployed a Ray cluster (on [VMs](ref-cluster-quick-start) or [Kubernetes](kuberay-quickstart)), you are ready to run a Ray application!
 
 The recommended way to run a Ray application on a Ray Cluster is to use *Ray Jobs*.
 Ray Jobs allow you to submit locally developed applications to a remote Ray Cluster for execution.

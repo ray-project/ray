@@ -27,7 +27,7 @@ $ kubectl create -k kuberay/ray-operator/config/default
 $ kubectl apply -f kuberay/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
-Now, we can run a Ray program on the head pod that uses the [autoscaler Python SDK](ref-autoscaler-sdk-under-construction) to scale the cluster to a total of 3 CPUs. The head and worker pods in our [example cluster config](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) each have a capacity of 1 CPU, and we specified a minimum of 1 worker pod. Thus, the request should trigger upscaling of one additional worker pod.
+Now, we can run a Ray program on the head pod that uses the [autoscaler Python SDK](ref-autoscaler-sdk) to scale the cluster to a total of 3 CPUs. The head and worker pods in our [example cluster config](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) each have a capacity of 1 CPU, and we specified a minimum of 1 worker pod. Thus, the request should trigger upscaling of one additional worker pod.
 
 Note that in real-life scenarios, you will want to use larger Ray pods. In fact, it is advantageous to size each Ray pod to take up an entire Kubernetes node. See the [configuration guide](kuberay-config) for more details.
 

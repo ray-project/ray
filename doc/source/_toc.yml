@@ -291,7 +291,9 @@ parts:
             - file: cluster/kubernetes/examples/ml-example.md
         - file: cluster/kubernetes/references
       - file: cluster/running-applications/index
-        title: Running Ray Applications
+        title: Applications Guide
+      - file: cluster/running-applications/job-submission/index
+
 
   - caption: References
     chapters:

@@ -1,7 +1,7 @@
 .. _ref-autoscaler-sdk:
 
-Autoscaler SDK
-==============
+Requesting Scaleup
+==================
 
 .. _ref-autoscaler-sdk-request-resources:
 
@@ -12,5 +12,3 @@ Within a Ray program, you can command the autoscaler to scale the cluster up to 
 
 .. autofunction:: ray.autoscaler.sdk.request_resources
     :noindex:
-
-TODO: cade@ remove the noindex above.

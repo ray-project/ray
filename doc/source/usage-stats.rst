@@ -23,7 +23,7 @@ What data is collected?
 -----------------------
 
 We collect non-sensitive data that helps us understand how Ray is used (e.g., which Ray libraries are used).
-**Personally identifiable data will never be collected.** Please check :ref:`UsageStatsToReport <ray-usage-stats-data-ref>` to see the data we collect.
+**Personally identifiable data will never be collected.** Please check the UsageStatsToReport class to see the data we collect.
 
 .. _usage-disable:
 
