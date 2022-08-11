@@ -215,10 +215,7 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-more-libs/ray-lightning
           - file: ray-core/examples/using-ray-with-pytorch-lightning
-          - file: ray-core/examples/dask_xgboost/dask_xgboost
-          - file: ray-core/examples/modin_xgboost/modin_xgboost
           - file: workflows/concepts
             title: Ray Workflows
             sections:
@@ -256,7 +253,7 @@ parts:
       - file: cluster/key-concepts
         title: Key Concepts
       - file: cluster/kubernetes/index
-        title: Deploying a Ray Cluster on Kubernetes
+        title: Deploying on Kubernetes
         sections:
         - file: cluster/kubernetes/getting-started
         - file: cluster/kubernetes/user-guides
@@ -272,7 +269,7 @@ parts:
             - file: cluster/kubernetes/examples/ml-example.md
         - file: cluster/kubernetes/references
       - file: cluster/vms/index
-        title: Deploying a Ray Cluster on VMs
+        title: Deploying on VMs
         sections:
         - file: cluster/vms/getting-started
         - file: cluster/vms/user-guides/index
@@ -294,7 +291,7 @@ parts:
           - file: cluster/vms/examples/ml-example
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
-        title: Running Applications on Ray Clusters
+        title: Running Ray Applications
       - file: cluster/references/index
         title: References
 
