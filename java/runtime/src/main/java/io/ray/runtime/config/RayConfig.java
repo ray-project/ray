@@ -180,14 +180,12 @@ public class RayConfig {
     }
 
     // Job code search path.
-    String codeSearchPathString = null;
     if (config.hasPath("ray.job.code-search-path")) {
-      codeSearchPathString = config.getString("ray.job.code-search-path");
+      String codeSearchPathString = config.getString("ray.job.code-search-path");
+      codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
+    } else {
+      codeSearchPath = null;
     }
-    if (StringUtils.isEmpty(codeSearchPathString)) {
-      codeSearchPathString = System.getProperty("java.class.path");
-    }
-    codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
 
     startupToken = config.getInt("ray.raylet.startup-token");
 
@@ -222,6 +220,14 @@ public class RayConfig {
       }
       if (!jarUrls.isEmpty()) {
         runtimeEnvImpl.set(RuntimeEnvName.JARS, jarUrls);
+      } else {
+        List<String> paths = Arrays.asList(System.getProperty("java.class.path").split(":"));
+        List<String> runtimeEnvJars = new ArrayList<>();
+        paths.forEach(
+            (entry) -> {
+              runtimeEnvJars.add("file://localhost" + entry);
+            });
+        runtimeEnvImpl.set(RuntimeEnvName.JARS, runtimeEnvJars);
       }
     }
 
