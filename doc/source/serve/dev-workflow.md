@@ -4,13 +4,6 @@
 
 When developing a new application, iteration speed is critical.  This page describes a sample development workflow for Ray Serve applications, optimized for iteration speed. If you're ready to go to production, you can jump to the [Production Workflow](production-workflow.md) section.
 
-## Project structure
-
-There are a few reasonable options for organizing your project structure, depending on the complexity of your application.  
-
-- You can put all of your code in a single Python file.
-- You can put your call graph in a Python file and your deployment class definitions in other files.
-
 ## Local Development using Python handles
 
 You can use `serve.run` in process to run and test your application locally, using a Python handle to send requests rather than HTTP.
@@ -42,8 +35,6 @@ class HelloDeployment:
     def __call__(self, request: starlette.requests.Request):
         return "Hello, {}!".format(request.params["name"])
 
-# Everything beyond this line could be in a different file, provided
-# HelloDeployment and double are imported.
 hello_deployment = HelloDeployment.bind()
 with InputNode() as http_request:
     hello_output = hello_deployment.bind(http_request)
