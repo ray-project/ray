@@ -162,7 +162,10 @@ As above, you may need to replace `./promtail-darwin-amd64` with the appropriate
 
 Run the following Python script to deploy a basic Serve deployment with a Serve deployment logger and make some requests:
 
-```{literalinclude} ../../../python/ray/serve/examples/doc/deployment_logger.py
+```{literalinclude} doc_code/deployment_logger.py
+:start-after: __start__
+:end-before: __end__
+:language: python
 ```
 
 Now [install and run Grafana](https://grafana.com/docs/grafana/latest/installation/) and navigate to `http://localhost:3000`, where you can log in with the default username "admin" and default password "admin".
@@ -228,7 +231,7 @@ ray start --head --metrics-export-port=8080
 
 Then run the following script:
 
-```{literalinclude} doc_code/snippet_metrics.py
+```{literalinclude} doc_code/metrics_snippet.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -252,9 +255,9 @@ which indicates that the average processing latency is just over one second, as 
 You can even define a [custom metric](application-level-metrics) to use in your deployment, and tag it with the current deployment or replica.
 Here's an example:
 
-```{literalinclude} ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
-:end-before: __custom_metrics_deployment_end__
-:start-after: __custom_metrics_deployment_start__
+```{literalinclude} doc_code/custom_metric_snippet.py
+:start-after: __start__
+:end-before: __end__
 ```
 
 And the emitted logs:
