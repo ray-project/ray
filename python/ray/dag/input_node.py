@@ -71,7 +71,10 @@ class InputNode(DAGNode):
             raise ValueError("InputNode should not take any args or kwargs.")
 
         if return_types:
+            self.gradio_visualization_enabled = True
             self.return_types = [type_to_string(type) for type in return_types]
+        else:
+            self.gradio_visualization_enabled = False
         super().__init__([], {}, {}, other_args_to_resolve=_other_args_to_resolve)
 
     def _copy_impl(
@@ -128,7 +131,7 @@ class InputNode(DAGNode):
             "access fields of dag input."
         )
         return_type = None
-        if self.return_types:
+        if self.gradio_visualization_enabled:
             return_type = self.return_types[key]
         return InputAttributeNode(self, key, "__getitem__", return_type)
 
