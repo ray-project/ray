@@ -170,6 +170,7 @@ parts:
             sections:
               - file: serve/managing-deployments
               - file: serve/handling-dependencies
+              - file: serve/scaling-and-resource-allocation
               - file: serve/http-guide
               - file: serve/handle-guide
               - file: serve/ray-air-serve-guide
@@ -179,7 +180,6 @@ parts:
               - file: serve/deploying-serve
               - file: serve/monitoring
               - file: serve/performance
-              - file: serve/autoscaling
               - file: serve/production
               - file: serve/migration
           - file: serve/architecture
