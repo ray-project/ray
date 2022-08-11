@@ -903,7 +903,7 @@ class Node:
             ]
             self.get_gcs_client().internal_kv_put(
                 b"webui:url",
-                self._webui_url.encode(),
+                self._webui_url_with_protocol.encode(),
                 True,
                 ray_constants.KV_NAMESPACE_DASHBOARD,
             )
