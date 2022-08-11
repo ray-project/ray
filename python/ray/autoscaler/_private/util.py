@@ -672,8 +672,32 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
 
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
-        line = f" {ip}: {node_type}"
+        line = f" {node_type}: RayletUnexpectedlyDied (ip: {ip})"
         failure_lines.append(line)
+    if autoscaler_summary.node_availability_summary:
+        records = sorted(
+            autoscaler_summary.node_availability_summary.node_availabilities.values(),
+            key=lambda record: record.last_checked_timestamp
+        )
+        for record in records:
+            if record.is_available:
+                continue
+            assert record.unavailable_node_information is not None
+            node_type = record.node_type
+            category = record.unavailable_node_information.category
+            attempted_time = datetime.fromtimestamp(
+                record.last_checked_timestamp
+            )
+            formatted_time = (
+                # This `:02d` funny buisness is python syntax for printing a 2
+                # digit number with a leading zero as padding if needed.
+                f"{attempted_time.hour:02d}:"
+                f"{attempted_time.minute:02d}:"
+                f"{attempted_time.second:02d}"
+            )
+            line = f" {node_type}: {category} (attempted: {formatted_time})"
+            failure_lines.append(line)
+
     failure_lines = failure_lines[: -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED : -1]
     failure_report = "Recent failures:\n"
     if failure_lines:
@@ -701,14 +725,14 @@ Usage:
 Demands:
 {demand_report}"""
 
-    node_availability_summary_str = (
-        autoscaler_summary.node_availability_summary.summary_string(
-            separator_len=len(header)
-        )
-    )
-    if node_availability_summary_str:
-        formatted_output += "\n\n" + node_availability_summary_str
-        pass
+    # node_availability_summary_str = (
+    #     autoscaler_summary.node_availability_summary.summary_string(
+    #         separator_len=len(header)
+    #     )
+    # )
+    # if node_availability_summary_str:
+    #     formatted_output += "\n\n" + node_availability_summary_str
+    #     pass
     return formatted_output
 
 
