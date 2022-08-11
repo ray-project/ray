@@ -2,26 +2,26 @@
 
 # ServeHandle: Calling Deployments from Python
 
-ServeHandle can be used to invoke your Serve deployment and deployment graphs using Python API.
+ServeHandle allows you to programmatically invoke your Serve deployments.
 
 This is particularly useful for two use cases:
 - Calling deployments dynamically within the deployment graph.
 - Iterating and testing your application in Python.
 
-To use the ServeHandle, use {mod}`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to that deployment.
+To use the ServeHandle, use {mod}`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to a deployment.
 These requests can pass ordinary args and kwargs that are passed directly to the method. This returns a Ray `ObjectRef` whose result can be waited for or retrieved using `await` or `ray.get`.
 
-Conceptually, ServeHandle is a client side load balancer. It has the ability to route requests to any replicas of a given deployment. It also performs buffering internally so it won’t overwhelm the replicas. The number of requests buffered is used to inform autoscaler to scale up the number of requests.
+Conceptually, ServeHandle is a client-side load balancer. It has the ability to route requests to any replicas of a given deployment. It also performs buffering internally to avoid overwhelming the replicas. The number of requests buffered is used to inform autoscaling.
 
 ![architecture-diagram-of-serve-handle](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/serve-handle-explainer.png)
 
 ServeHandle takes request parameters and returns a `ray.ObjectRef`. The `ray.ObjectRef` corresponds to a future object that will be fulfilled with the result object. Because of the internal buffering, the time from submitting a request to getting a `ray.ObjectRef` varies from instantaneous to indefinitely long.
 
-Because of this, we have two types of handle to make sure the buffering period is handled efficiently:
-- `RayServeDeploymentHandle` returns an `asyncio.Task` upon submission. The `asyncio.Task` can be awaited to resolve to a ray.ObjectRef. When a single request is being buffered, other requests can be processed concurrently.
-- `RayServeSyncHandle` directly returns a `ray.ObjectRef`. It blocks the current thread until the request is matched to a replica. This also matches the Ray Core Actor API.
+Because of this, we offer both synchronous and asynchronous versions of the handle:
+- `RayServeSyncHandle` directly returns a `ray.ObjectRef`. It blocks the current thread until the request is matched to a replica.
+- `RayServeDeploymentHandle` returns an `asyncio.Task` upon submission. The `asyncio.Task` can be awaited to resolve to a ray.ObjectRef. While the current request is buffered, other requests can be processed concurrently.
 
-When you call `serve.run` to deploy a deployment graph (including single node graph), the driver node’s handle is returned. The return type is a ServeSyncHandle. This is useful for interacting with the deployment graph you just created and test against it.
+`serve.run` deploys a deployment graph and returns the driver node’s handle. The return type is a `RayServeSyncHandle`. This is useful for interacting with and testing the newly created deployment graph.
 
 ```{literalinclude} ../serve/doc_code/handle_guide.py
 :start-after: __begin_sync_handle__
@@ -29,7 +29,7 @@ When you call `serve.run` to deploy a deployment graph (including single node gr
 :language: python
 ```
 
-Other than `serve.run`, RayServeDeploymentHandle is the default because the API is more performant than its blocking counterpart. For example, when implementing a dynamic dispatch node in deployment graph, the handle is asynchronous.
+In all other cases, `RayServeDeploymentHandle` is the default because the API is more performant than its blocking counterpart. For example, when implementing a dynamic dispatch node in deployment graph, the handle is asynchronous.
 
 ```{literalinclude} ../serve/doc_code/handle_guide.py
 :start-after: __begin_async_handle__
@@ -37,7 +37,7 @@ Other than `serve.run`, RayServeDeploymentHandle is the default because the API 
 :language: python
 ```
 
-You don't have to use multiple await in common case because you can directly put the result of `deployment_handle.remote()` as argument for downstream handles.
+The result of `deployment_handle.remote()` can also be passed directly as an argument to other downstream handles, without having to await on it.
 
 ```{literalinclude} ../serve/doc_code/handle_guide.py
 :start-after: __begin_async_handle_chain__
@@ -47,7 +47,7 @@ You don't have to use multiple await in common case because you can directly put
 
 ## Note about ray.ObjectRef
 
-`ray.ObjectRef` corresponds to a result of a request submission. To retrieve the result, you can use its synchronous API `ray.get(ref)` or async API `await ref`. To wait for the result to be available, you can use its synchronous API `ray.wait([ref])` or async API `await asyncio.wait([ref])`. You can mix and match them; but we recommend using the async API because it helps support high concurrency.
+`ray.ObjectRef` corresponds to the result of a request submission. To retrieve the result, you can use the synchronous Ray Core API `ray.get(ref)` or the async API `await ref`. To wait for the result to be available without retrieving it, you can use the synchronous API `ray.wait([ref])` or the async API `await asyncio.wait([ref])`. You can mix and match these calls, but we recommend using async APIs to increase concurrency.
 
 ## Calling a specific method
 
