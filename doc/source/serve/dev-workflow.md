@@ -24,7 +24,7 @@ Let's see a simple example.
 :language: python
 ```
 
-We can add the testing code below:
+We can add the code below to deploy and test Serve locally.
 
 ```{literalinclude} ../serve/doc_code/local_dev.py
 :start-after: __local_dev_handle_start__
