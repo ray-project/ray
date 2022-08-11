@@ -7,9 +7,6 @@ from ray.serve.drivers import DAGDriver
 from ray.dag.input_node import InputNode
 
 
-ray.init()
-
-
 class ModelInputData(BaseModel):
     model_input1: int
     model_input2: str
