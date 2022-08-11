@@ -59,11 +59,13 @@ serve run local_dev:HelloDeployment
 ```
 
 This command will block the terminal, and can be canceled with Ctrl-C.
+
 Now that Serve is running, we can pass in HTTP requests to the application and see the output.
 For simplicity, we'll just use the `curl` command to send requests from another terminal.
 
 ```bash
 curl -X GET http://localhost:8000/hello?name=Ray
+# Hello, Ray! Hello, Ray!
 ```
 
 
@@ -72,16 +74,21 @@ curl -X GET http://localhost:8000/hello?name=Ray
 
 When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  During development, you can use [Runtime Environments](runtime-environments.md) to manage this in a flexible way.
 
-See Ray Client (TODO: link) for more information on the Ray address specified here by the `--address` parameter.
+See [Ray Client](ray-client-under-construction) for more information on the Ray address specified here by the `--address` parameter.
+
+Let's see a simple example.
 
 ```bash
 serve run  --address=ray://<cluster-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:HelloDeployment
 ```
 
+This will connect to the remote cluster via Ray Client and run your serve application.  Here, the directory specified by `working_dir` should contain `local_dev.py`.
+
 Once this is up and running, we can send requests to the application and see the output.
 
 ```bash
 curl -X GET http://<cluster-ip-address>:8000/hello?name=Ray
+# Hello, Ray! Hello, Ray!
 ```
 
 For more complex runtime environments, you can pass in a YAML file; see [serve run](serve_cli.md#serve-run) for details.
