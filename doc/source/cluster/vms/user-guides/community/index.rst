@@ -5,7 +5,7 @@ Community Supported Cluster Managers
 
 .. note::
 
-    If you're using AWS, Azure or GCP you can use the :ref:`Ray cluster launcher <cluster-cloud>` to simplify the cluster setup process.
+    If you're using AWS, Azure or GCP you can use the :ref:`Ray cluster launcher <cluster-index>` to simplify the cluster setup process.
 
 The following is a list of community supported cluster managers.
 
