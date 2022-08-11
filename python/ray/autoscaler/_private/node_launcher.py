@@ -83,7 +83,9 @@ class BaseNodeLauncher:
             logger.exception("Launch failed")
         else:
             self.node_provider_availability_tracker.update_node_availability(
-                node_type, node_launch_start_time, None
+                node_type=node_type,
+                timestamp=node_launch_start_time,
+                node_launch_exception=None,
             )
         finally:
             self.pending.dec(node_type, count)
