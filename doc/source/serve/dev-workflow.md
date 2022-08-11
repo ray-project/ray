@@ -77,41 +77,32 @@ After you're done testing, you can shut down Ray Serve by interrupting the `serv
 
 ## Testing on a remote cluster
 
+To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-under-construction) for more information.
+
 When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  During development, you can use {ref}`Runtime Environments<runtime-environments>` to manage these dependencies.
 
-See [Ray Client](ray-client-under-construction) for more information on the Ray address specified here by the `--address` parameter.
-
-Let's see a simple example.
+Let's see a simple example. Run the following command on your local machine, with your remote cluster head node IP address substituted for `<head-node-ip-address>` in the command:
 
 ```bash
-serve run  --address=ray://<cluster-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:HelloDeployment
+serve run  --address=ray://<head-node-ip-address>:10001 --working_dir="./project/src" local_dev:HelloDeployment
 ```
 
-This will connect to the remote cluster via Ray Client and run your serve application.  Here, the directory specified by `working_dir` should contain `local_dev.py`.
+This will connect to the remote cluster via Ray Client, upload the `working_dir` directory, and run your serve application.  Here, the local directory specified by `working_dir` must contain `local_dev.py` so that it can be uploaded to the cluster and imported by Ray Serve.
 
-Once this is up and running, we can send requests to the application and see the output.
+Once this is up and running, we can send requests to the application:
 
 ```bash
-curl -X PUT http://<cluster-ip-address>:8000/?name=Ray
+curl -X PUT http://<head-node-ip-address>:8000/?name=Ray
 # Hello, Ray! Hello, Ray!
 ```
 
-For more complex runtime environments, you can specify the `runtime_env` via a YAML file; see [serve run](serve_cli.md#serve-run) for details.
-
-:::{tip}
-If you need to upload local modules that reside in a directory that's not a subdirectory of your `working_dir`, use the `"py_modules"` field of `runtime_env`; e.g. `--runtime-env-json='{"working_dir": "/dir1", "py_modules": ["/dir2/my_module"]}'`.
-:::
-
-:::{tip}
-If you're only using the `working_dir` field, you can use a simpler command:
+If your runtime environment contains fields other than `working_dir`, use the `--runtime-env-json` argument:
 
 ```bash
-serve run  --address=ray://<cluster-ip-address>:10001 --working_dir="./project/src" local_dev:HelloDeployment
+serve run  --address=ray://<head-node-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:HelloDeployment
 ```
 
-:::
-
-A common pattern is to use the root directory of your project as the `working_dir` of your runtime environment when testing on a remote cluster.
+You can also specify the `runtime_env` via a YAML file; see [serve run](serve_cli.md#serve-run) for details.
 
 ## What's Next?
 
