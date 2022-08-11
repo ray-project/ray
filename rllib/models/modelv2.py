@@ -74,12 +74,12 @@ class ModelV2:
     # TODO: (sven): Get rid of `get_initial_state` once Trajectory
     #  View API is supported across all of RLlib.
     @PublicAPI
-    def get_initial_state(self) -> List[np.ndarray]:
+    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
         """Get the initial recurrent state values for the model.
 
         Returns:
-            List of np.array objects containing the initial hidden state
-            of an RNN, if applicable.
+            List of np.array (for tf) or Tensor (for torch) objects containing the 
+            initial hidden state of an RNN, if applicable.
 
         Examples:
             >>> import numpy as np
