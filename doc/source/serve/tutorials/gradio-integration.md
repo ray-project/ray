@@ -60,7 +60,7 @@ See [Putting Ray Serve Deployment Graphs in Production](https://docs.ray.io/en/m
 
 
 ## Parallelizing models with Ray Serve
-You can run multiple models in parallel with Ray Serve by utilizing the [deployment graph](deployment-graph-e2e-tutorial) in Ray Serve.
+You can run multiple models in parallel with Ray Serve by utilizing the [deployment graph](serve-model-composition-deployment-graph) in Ray Serve.
 
 ### Original Approach
 Suppose you want to run the following program.
@@ -107,7 +107,7 @@ Lastly, we link everything together:
 ```
 
 :::{note} 
-This will bind your two text generation models (wrapped in Serve deployments) to `MyGradioServer._d1` and `MyGradioServer._d2`, forming a [deployment graph](deployment-graph-e2e-tutorial). Thus, we have built our Gradio Interface `io` such that it calls `MyGradioServer.fanout()`, which simply sends requests to your two text generation models that are deployed on Ray Serve.
+This will bind your two text generation models (wrapped in Serve deployments) to `MyGradioServer._d1` and `MyGradioServer._d2`, forming a [deployment graph](serve-model-composition-deployment-graph). Thus, we have built our Gradio Interface `io` such that it calls `MyGradioServer.fanout()`, which simply sends requests to your two text generation models that are deployed on Ray Serve.
 :::
 
 Now, you can run your scalable app, and the two text generation models will run in parallel on Ray Serve.
