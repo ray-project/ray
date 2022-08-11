@@ -60,11 +60,11 @@ void GrpcServer::Run() {
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
   // TODO(rickyyx): This suppresses the gRPC server printing "too many pings" error
-  // message. Suppressing the error should not have any more negative impact on the
-  // system. We will need to further investigate into which set of gRPC settings on
+  // message by setting up a higher threshold to allow more bad pings.
+  // We will need to further investigate into which set of gRPC settings on
   // client/server for keepalive are misconfigured:
   // https://github.com/ray-project/ray/issues/25367
-  builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PING_STRIKES, 0);
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_MAX_PING_STRIKES, 4);
 
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config
