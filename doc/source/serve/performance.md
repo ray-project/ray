@@ -2,12 +2,11 @@
 
 This section should help you:
 
-- understand the performance characteristics of Ray Serve
-- find ways to debug and tune the performance of your Serve deployment
+- understand Ray Serve's performance characteristics
+- find ways to debug and tune your Serve application's performance
 
 :::{note}
-While this section offers some tips and tricks to improve the performance of your Serve deployment,
-the [architecture doc](serve-architecture) is helpful for context, including an overview of the HTTP proxy actor and replica actors.
+This section offers some tips and tricks to improve your Ray Serve application's performance. Check out the [architecture page](serve-architecture) for helpful context, including an overview of the HTTP proxy actor and deployment replica actors.
 :::
 
 ```{contents}
@@ -34,7 +33,7 @@ to benchmark on your hardware.
 
 The performance issue you're most likely to encounter is high latency and/or low throughput for requests.
 
-If you have set up [monitoring](serve-monitoring) with Ray and Ray Serve, you will likely observe the following:
+Once you set up [monitoring](serve-monitoring) with Ray and Ray Serve, you can likely observe the following:
 
 - `serve_num_router_requests` is constant while your load increases
 - `serve_deployment_queuing_latency_ms` is spiking up as queries queue up in the background
