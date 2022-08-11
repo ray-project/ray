@@ -4,16 +4,22 @@
 
 This section should help you debug and monitor your Serve applications by:
 
-* using the Ray Dashboard
+* using the Ray dashboard
 * using Ray logging
 * using built-in Ray Serve metrics
 
-## Ray Dashboard
+## Ray dashboard
 
-A high-level way to monitor your Ray Serve application is via the Ray Dashboard.
-See the [Ray Dashboard documentation](ray-dashboard) for a detailed overview, including instructions on how to view the dashboard.
+A high-level way to monitor your Ray Serve application is via the Ray dashboard.
+See the [Ray dashboard documentation](ray-dashboard) for a detailed overview.
+You can access the Ray dashboard at port 8265 at your cluster's URI.
+For example, if you're running Ray Serve on a local Ray cluster, you can access the dashboard by going to this address in your browser:
 
-Below is an example of what the "Actors" tab of the Ray Dashboard might look like for a running Serve application:
+```
+http://localhost:8265
+```
+
+Here's what the Ray dashboard's "Actors" tab might look like for a running Serve application:
 
 ```{image} https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard-2-replicas.png
 :align: center
@@ -21,7 +27,7 @@ Below is an example of what the "Actors" tab of the Ray Dashboard might look lik
 
 Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve deployment.
 To learn about the function of the controller and proxy actors, see the [Serve Architecture page](serve-architecture).
-In this example pictured above, we have a single-node cluster with a deployment named `Translator` with `num_replicas=2`.
+In this example pictured above, we have a single-node cluster running a deployment named `Translator` with `num_replicas=2`.
 
 ## Logging
 
@@ -29,12 +35,13 @@ In this example pictured above, we have a single-node cluster with a deployment 
 For an overview of logging in Ray, see [Ray Logging](ray-logging).
 :::
 
-Ray Serve uses Python's standard `logging` facility with the logger named `"ray.serve"`.
+Ray Serve uses Python's standard `logging` module with a logger named `"ray.serve"`.
 By default, logs are emitted from actors both to `stderr` and on disk on each node at `/tmp/ray/session_latest/logs/serve/`.
 This includes both system-level logs from the Serve controller and HTTP proxy as well as access logs and custom user logs produced from within deployment replicas.
 
-In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's most convenient to keep the driver running for debugging.
-For example, let's run a basic Serve application and view the logs that are emitted.
+In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's convenient to keep the driver running while debugging.
+
+For example, let's run a basic Serve application and view the logs that it emits.
 You can run this in an interactive shell like IPython to follow along.
 
 First we call `serve.start()`:
