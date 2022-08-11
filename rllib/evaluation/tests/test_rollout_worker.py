@@ -807,7 +807,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev.sample()
         filters = ev.get_filters(flush_after=True)
         obs_f = filters[DEFAULT_POLICY_ID]
-        self.assertNotEqual(obs_f.rs.n, 0)
+        self.assertNotEqual(obs_f.running_stats.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         ev.stop()
 
@@ -824,7 +824,7 @@ class TestRolloutWorker(unittest.TestCase):
         filters2 = ev.get_filters(flush_after=False)
         obs_f = filters[DEFAULT_POLICY_ID]
         obs_f2 = filters2[DEFAULT_POLICY_ID]
-        self.assertGreaterEqual(obs_f2.rs.n, obs_f.rs.n)
+        self.assertGreaterEqual(obs_f2.running_stats.n, obs_f.running_stats.n)
         self.assertGreaterEqual(obs_f2.buffer.n, obs_f.buffer.n)
         ev.stop()
 
@@ -844,11 +844,11 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertLessEqual(obs_f.buffer.n, 20)
 
         new_obsf = obs_f.copy()
-        new_obsf.rs._n = 100
+        new_obsf.running_stats.num_pushes = 100
         ev.sync_filters({DEFAULT_POLICY_ID: new_obsf})
         filters = ev.get_filters(flush_after=False)
         obs_f = filters[DEFAULT_POLICY_ID]
-        self.assertGreaterEqual(obs_f.rs.n, 100)
+        self.assertGreaterEqual(obs_f.running_stats.n, 100)
         self.assertLessEqual(obs_f.buffer.n, 20)
         ev.stop()
 
@@ -984,7 +984,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev.sample()
         filters = ev.get_filters(flush_after=True)
         obs_f = filters[DEFAULT_POLICY_ID]
-        self.assertNotEqual(obs_f.rs.n, 0)
+        self.assertNotEqual(obs_f.running_stats.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
         return obs_f
 

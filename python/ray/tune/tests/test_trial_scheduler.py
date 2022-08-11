@@ -398,9 +398,9 @@ class HyperbandSuite(unittest.TestCase):
             sched.on_trial_add(None, t)
             i += 1
         self.assertEqual(len(sched._hyperbands[0]), 5)
-        self.assertEqual(sched._hyperbands[0][0]._n, 5)
+        self.assertEqual(sched._hyperbands[0][0].num_pushes, 5)
         self.assertEqual(sched._hyperbands[0][0]._r, 81)
-        self.assertEqual(sched._hyperbands[0][-1]._n, 81)
+        self.assertEqual(sched._hyperbands[0][-1].num_pushes, 81)
         self.assertEqual(sched._hyperbands[0][-1]._r, 1)
 
         reduction_factor = 10
@@ -416,9 +416,9 @@ class HyperbandSuite(unittest.TestCase):
             sched.on_trial_add(None, t)
             i += 1
         self.assertEqual(len(sched._hyperbands[0]), 4)
-        self.assertEqual(sched._hyperbands[0][0]._n, 4)
+        self.assertEqual(sched._hyperbands[0][0].num_pushes, 4)
         self.assertEqual(sched._hyperbands[0][0]._r, 1000)
-        self.assertEqual(sched._hyperbands[0][-1]._n, 1000)
+        self.assertEqual(sched._hyperbands[0][-1].num_pushes, 1000)
         self.assertEqual(sched._hyperbands[0][-1]._r, 1)
 
     def testConfigSameEtaSmall(self):
