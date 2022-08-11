@@ -4,14 +4,19 @@
 
 This section should help you debug and monitor your Serve applications by:
 
-* using the Ray dashboard
+* viewing the Ray dashboard
 * using Ray logging
-* using built-in Ray Serve metrics
+* integrating Ray Serve with Loki
+* inspecting built-in Ray Serve metrics
 
 ## Ray dashboard
 
-A high-level way to monitor your Ray Serve application is via the Ray dashboard.
-See the [Ray dashboard documentation](ray-dashboard) for a detailed overview.
+You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states.
+This includes details such as:
+* The number of deployment replicas currently running
+* Logs for your Serve controller, deployment replicas, and HTTP proxies
+* The Ray nodes (i.e. machines) running in your Ray cluster
+
 You can access the Ray dashboard at port 8265 at your cluster's URI.
 For example, if you're running Ray Serve on a local Ray cluster, you can access the dashboard by going to this address in your browser:
 
@@ -19,21 +24,28 @@ For example, if you're running Ray Serve on a local Ray cluster, you can access 
 http://localhost:8265
 ```
 
-Here's what the Ray dashboard's "Actors" tab might look like for a running Serve application:
+We can view important information about our application here.
+For example, we can inspect our deployment replicas by navigating to the Ray dashboard's "Actors" tab while our Serve application is running:
 
 ```{image} https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard-2-replicas.png
 :align: center
 ```
 
-Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve deployment.
-To learn about the function of the controller and proxy actors, see the [Serve Architecture page](serve-architecture).
-In this example pictured above, we have a single-node cluster running a deployment named `Translator` with `num_replicas=2`.
+In this example, there's a single-node cluster running a deployment named `Translator`. The Serve application uses four [Ray actors](actor-guide):
 
-## Logging
+* 1 Serve controller
+* 1 HTTP proxy
+* 2 `Translator` deployment replicas
 
-:::{note}
-For an overview of logging in Ray, see [Ray Logging](ray-logging).
+This page includes additional useful information like each actor's process ID (PID) and a link to each actor's logs, which includes their `logging` and print statments. You can also see whether any particular actor is alive or dead to help you debug potential cluster failures.
+
+:::{tip}
+To learn more about the Serve controller actor, the HTTP proxy actor(s), the deployment replicas, and how they all work together, check out the [Serve Architecture](serve-architecture) documentation.
 :::
+
+For a detailed overview of the Ray dashboard, see the [dashboard documentation](ray-dashboard).
+
+## Ray logging
 
 Ray Serve uses Python's standard `logging` module with a logger named `"ray.serve"`.
 By default, logs are emitted from actors both to `stderr` and on disk on each node at `/tmp/ray/session_latest/logs/serve/`.
@@ -42,23 +54,6 @@ This includes both system-level logs from the Serve controller and HTTP proxy as
 In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's convenient to keep the driver running while debugging.
 
 For example, let's run a basic Serve application and view the logs that it emits.
-You can run this in an interactive shell like IPython to follow along.
-
-First we call `serve.start()`:
-
-```python
-from ray import serve
-
-serve.start()
-```
-
-This produces a few INFO-level log messages about startup from the Serve controller.
-
-```bash
-2022-04-02 09:10:49,906 INFO services.py:1460 -- View the Ray dashboard at http://127.0.0.1:8265
-(ServeController pid=67312) INFO 2022-04-02 09:10:51,386 controller 67312 checkpoint_path.py:17 - Using RayInternalKVStore for controller checkpoint and recovery.
-(ServeController pid=67312) INFO 2022-04-02 09:10:51,492 controller 67312 http_state.py:108 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:xlehoa:SERVE_PROXY_ACTOR-node:127.0.0.1-0' on node 'node:127.0.0.1-0' listening on '127.0.0.1:8000'
-```
 
 Next, let's create a simple deployment that logs a custom log message when it's queried:
 
@@ -113,7 +108,9 @@ class Silenced:
 This will prevent the replica INFO-level logs from being written to STDOUT or to files on disk.
 You can also use your own custom logger, in which case you'll need to configure the behavior to write to STDOUT/STDERR, files on disk, or both.
 
-### Tutorial: Ray Serve with Loki
+For a detailed overview of logging in Ray, see [Ray Logging](ray-logging).
+
+### Ray Serve with Loki
 
 Here is a quick walkthrough of how to explore and filter your logs using [Loki](https://grafana.com/oss/loki/).
 Setup and configuration is very easy on Kubernetes, but in this tutorial we'll just set things up manually.
@@ -194,7 +191,7 @@ You should see something similar to the following:
 :align: center
 ```
 
-## Metrics
+## Built-in Ray Serve metrics
 
 Ray Serve exposes important system metrics like the number of successful and
 errored requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default,
