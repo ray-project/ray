@@ -239,6 +239,10 @@ Debugging APIs
 The Ray Command Line API
 ------------------------
 
+Cluster Management
+~~~~~~~~~~~~~~~~~~
+This section contains commands for managing Ray clusters.
+
 .. _ray-start-doc:
 
 .. click:: ray.scripts.scripts:start
@@ -287,6 +291,16 @@ The Ray Command Line API
    :prog: ray get_head_ip
    :show-nested:
 
+.. _ray-monitor-doc:
+
+.. click:: ray.scripts.scripts:monitor
+   :prog: ray monitor
+   :show-nested:
+
+Session
+~~~~~~~
+This section contains commands for inspecting, debugging, and configuring the current cluster.
+
 .. _ray-stack-doc:
 
 .. click:: ray.scripts.scripts:stack
@@ -311,12 +325,6 @@ The Ray Command Line API
    :prog: ray status
    :show-nested:
 
-.. _ray-monitor-doc:
-
-.. click:: ray.scripts.scripts:monitor
-   :prog: ray monitor
-   :show-nested:
-
 .. click:: ray.scripts.scripts:debug
    :prog: ray debug
    :show-nested:
@@ -332,3 +340,11 @@ The Ray Command Line API
 .. click:: ray.scripts.scripts:enable_usage_stats
    :prog: ray enable-usage-stats
    :show-nested:
+
+Job
+~~~
+CLIs to submit, stop, and monitor Ray jobs. See :ref:`Ray Job Submission API Reference <ray-job-submission-api-ref-under-construction>`.
+
+State
+~~~~~
+CLIs to access the snapshot of the cluster state. See :ref:`Ray State API Reference <state-api-ref>`.
