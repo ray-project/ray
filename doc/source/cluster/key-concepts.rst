@@ -69,7 +69,7 @@ Scripts, Clients, and Jobs
 You can run scripts directly on Ray cluster nodes, connect to remote clusters via Ray client,
 or submit a packaged application as a job to a cluster:
 
-* **Running Scripts**: You can directly run a script on any node of a Ray cluster, and that script will automatically
+* **Direct Run**: You can directly run a script on any node of a Ray cluster, and that script will automatically
   detect and connect to the cluster upon `ray.init`, just like how it works on your laptop. This method
   requires you to have remote shell access to a node of the cluster.
 
