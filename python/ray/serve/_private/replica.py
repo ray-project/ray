@@ -526,4 +526,4 @@ class RayServeReplica:
             logger.exception(f"Exception during graceful shutdown of replica: {e}")
         finally:
             if hasattr(self.callable, "__del__"):
-                del self.callable.__del__
+                del self.callable
