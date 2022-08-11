@@ -2,7 +2,7 @@
 
 # Sample Development Workflow
 
-This page describes the recommended development workflow for Ray Serve applications when iterating in development. Once you're ready to go to production, you can jump to the [Production Guide](production-guide.md) section.
+This page describes the recommended development workflow for Ray Serve applications when iterating in development. Once you're ready to go to production, you can jump to the [Production Guide](production.md) section.
 
 ## Local Development using Python handles
 
@@ -72,7 +72,7 @@ curl -X GET http://localhost:8000/hello?name=Ray
 
 ## Testing on a remote cluster
 
-When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  During development, you can use [Runtime Environments](runtime-environments.md) to manage this in a flexible way.
+When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  During development, you can use {ref}`Runtime Environments<runtime-environments>` to manage this in a flexible way.
 
 See [Ray Client](ray-client-under-construction) for more information on the Ray address specified here by the `--address` parameter.
 
@@ -119,5 +119,4 @@ A common pattern is to use the root directory of your project as the `working_di
 
 ## What's Next?
 
-Once you are ready to deploy to production, see the [Production Workflow](production-workflow.md) section.
-% TODO: fix link
+Once you are ready to deploy to production, see the [Production Guide](production.md).

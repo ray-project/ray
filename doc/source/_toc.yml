@@ -178,6 +178,7 @@ parts:
               - file: serve/monitoring
               - file: serve/performance
               - file: serve/autoscaling
+              - file: serve/dev-workflow
               - file: serve/production
               - file: serve/migration
           - file: serve/architecture
