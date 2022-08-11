@@ -104,7 +104,9 @@ class AutoscalerSummary:
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
-    node_availability_summary: NodeAvailabilitySummary = field(default_factory=lambda: NodeAvailabilitySummary({}))
+    node_availability_summary: NodeAvailabilitySummary = field(
+        default_factory=lambda: NodeAvailabilitySummary({})
+    )
 
 
 class NonTerminatedNodes:
