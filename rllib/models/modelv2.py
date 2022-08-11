@@ -78,7 +78,7 @@ class ModelV2:
         """Get the initial recurrent state values for the model.
 
         Returns:
-            List of np.array (for tf) or Tensor (for torch) objects containing the 
+            List of np.array (for tf) or Tensor (for torch) objects containing the
             initial hidden state of an RNN, if applicable.
 
         Examples:
