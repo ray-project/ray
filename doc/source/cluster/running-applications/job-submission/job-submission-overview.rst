@@ -77,7 +77,7 @@ Next, start a local Ray cluster:
 
 Note the address and port returned in the terminal---this will be where we submit job requests to, as explained further in the examples below.  If you do not see this, ensure the Ray Dashboard is installed by running :code:`pip install "ray[default]"`.
 
-At this point, the job is ready to be submitted by one of the :ref:`Ray Job APIs<ray-job-apis>`.
+At this point, the job is ready to be submitted by one of the :ref:`Ray Job APIs<ray-job-submission-api-ref>`.
 Continue on to see examples of running and interacting with this sample job. 
 
 Job Submission Architecture
