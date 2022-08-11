@@ -97,13 +97,19 @@ We run long-running benchmarks nightly. These include:
        * cluster_max_P90_latency_ms = 637.39
        * cluster_max_P99_latency_ms = 1930.0
    * - `Serve Handle: Linear Pipeline <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/serve_handle_long_chain.py>`_
-     - 
-     - 
-     - 
+     - Runs 10 node pipeline, constructed only with `ServeHandles`, that performs basic arithmetic at each node. Simulates 4 clients making 10 requests each.
+     - Head node: AWS EC2 m5.8xlarge. 0 Worker nodes.
+     - * throughput_mean_tps = 21.58
+       * throughput_std_tps = 0.49
+       * latency_mean_ms = 46.72
+       * latency_std_ms = 3.13
    * - `Deployment Graph: Linear Pipeline <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/deployment_graph_long_chain.py>`_
-     - 
-     - 
-     - 
+     - Runs 10 node pipeline, constructed with a call graph, that performs basic arithmetic at each node. Simulates 4 clients making 10 requests each.
+     - Head node: AWS EC2 m5.8xlarge. 0 Worker nodes.
+     - * throughput_mean_tps = 8.43
+       * throughput_std_tps = 0.63
+       * latency_mean_ms = 128.18
+       * latency_std_ms = 35.43
    * - `Serve Handle: Ensemble <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/serve_handle_wide_ensemble.py>`_
      - 
      - 
