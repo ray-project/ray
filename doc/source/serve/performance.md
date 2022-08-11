@@ -32,7 +32,7 @@ We run long-running benchmarks nightly:
      - Description
      - Cluster Details
      - Performance Numbers
-   * - `Single Deployment <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/single_deployment_1k_noop_replica.py>`_
+   * - `Single Deployment <https://github.com/ray-project/ray/blob/de227ac407d6cad52a4ead09571eff6b1da73a6d/release/serve_tests/workloads/single_deployment_1k_noop_replica.py>`_
      - Runs 10 minute `wrk <https://github.com/wg/wrk>`_ trial on a single no-op deployment with 1000 replicas.
      - Head node: AWS EC2 m5.8xlarge. 32 worker nodes: AWS EC2 m5.8xlarge.
      - * per_thread_latency_avg_ms = 22.41
@@ -48,7 +48,7 @@ We run long-running benchmarks nightly:
        * cluster_max_P75_latency_ms = 35.31
        * cluster_max_P90_latency_ms = 49.69
        * cluster_max_P99_latency_ms = 56.5
-   * - `Multiple Deployments <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/multi_deployment_1k_noop_replica.py>`_
+   * - `Multiple Deployments <https://github.com/ray-project/ray/blob/de227ac407d6cad52a4ead09571eff6b1da73a6d/release/serve_tests/workloads/multi_deployment_1k_noop_replica.py>`_
      - Runs 10 minute `wrk <https://github.com/wg/wrk>`_ trial on 10 deployments with 100 replicas each. Each deployment recursively sends queries to up to 5 other deployments.
      - Head node: AWS EC2 m5.8xlarge. 32 worker nodes: AWS EC2 m5.8xlarge.
      - * per_thread_latency_avg_ms = 0.0
@@ -64,7 +64,7 @@ We run long-running benchmarks nightly:
        * cluster_max_P75_latency_ms = 0.0
        * cluster_max_P90_latency_ms = 0.0
        * cluster_max_P99_latency_ms = 0.0
-   * - `Deployment Graph: Ensemble <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/deployment_graph_wide_ensemble.py>`_
+   * - `Deployment Graph: Ensemble <https://github.com/ray-project/ray/blob/f6735f90c72581baf83a9cea7cbbe3ea2f6a56d8/release/serve_tests/workloads/deployment_graph_wide_ensemble.py>`_
      - Runs 10 node ensemble, constructed with a call graph, that performs basic arithmetic at each node. Ensemble pattern routes the input to 10 different nodes, and their outputs are combined to produce the final output. Simulates 4 clients making 20 requests each.
      - Head node: AWS EC2 m5.8xlarge. 0 Worker nodes.
      - * throughput_mean_tps = 8.75
@@ -79,7 +79,7 @@ The performance numbers above come from a recent run of the nightly benchmarks.
 
 <!--- See https://github.com/ray-project/ray/pull/27711 for more context on the benchmarks. -->
 
-Check out [our benchmark workloads'](https://github.com/ray-project/ray/tree/master/release/serve_tests/workloads) source code directly to get a better sense of what they test. You can see which cluster templates each benchmark uses [here](https://github.com/ray-project/ray/blob/8eca6ae852e2d23bcf49680fef6f0384a1b63564/release/release_tests.yaml#L2328-L2576) (under the `cluster_compute` key), and you can see what type of nodes each template spins up [here](https://github.com/ray-project/ray/tree/master/release/serve_tests).
+Check out [our benchmark workloads'](https://github.com/ray-project/ray/tree/f6735f90c72581baf83a9cea7cbbe3ea2f6a56d8/release/serve_tests/workloads) source code directly to get a better sense of what they test. You can see which cluster templates each benchmark uses [here](https://github.com/ray-project/ray/blob/8eca6ae852e2d23bcf49680fef6f0384a1b63564/release/release_tests.yaml#L2328-L2576) (under the `cluster_compute` key), and you can see what type of nodes each template spins up [here](https://github.com/ray-project/ray/tree/8beb887bbed31ecea3d2813b61833b81c45712e1/release/serve_tests).
 
 You can check out our [microbenchmark instructions](https://github.com/ray-project/ray/blob/master/python/ray/serve/benchmarks/README.md)
 to benchmark Ray Serve on your hardware.
