@@ -2,7 +2,7 @@
 
 # Monitoring Ray Serve
 
-This section should help you debug and monitor your Serve applications by:
+This section helps you debug and monitor your Serve applications by:
 
 * viewing the Ray dashboard
 * using Ray logging and Loki
@@ -42,7 +42,7 @@ For a detailed overview of the Ray dashboard, see the [dashboard documentation](
 
 ## Ray logging
 
-You can use Ray logging to understand system-level behavior and to surface application-level details during runtime.
+To understand system-level behavior and to surface application-level details during runtime, you can leverage Ray logging.
 
 Ray Serve uses Python's standard `logging` module with a logger named `"ray.serve"`.
 By default, logs are emitted from actors both to `stderr` and on disk on each node at `/tmp/ray/session_latest/logs/serve/`.
@@ -60,7 +60,7 @@ First, let's create a simple deployment that logs a custom log message when it's
 :language: python
 ```
 
-We can run this deployment using the `serve run` CLI command:
+Run this deployment using the `serve run` CLI command:
 
 ```console
 $ serve run monitoring:say_hello
@@ -74,7 +74,7 @@ The new client HTTP config differs from the existing one in the following fields
 2022-08-10 22:59:00,979	SUCC scripts.py:315 -- Deployed successfully.
 ```
 
-`serve run` prints out a few log messages immediately. Note that a few of these messages start with identifiers such as
+`serve run` prints a few log messages immediately. Note that a few of these messages start with identifiers such as
 
 ```
 (ServeController pid=63881)
@@ -112,7 +112,7 @@ class Silenced:
 ```
 
 This controls which logs are written to STDOUT or files on disk.
-You can also use your own custom logger, in which case you'll need to configure the behavior to write to STDOUT/STDERR, files on disk, or both.
+In addition to the standard Python logger, Serve supports custom logging. Custom logging lets you control what messages are written to STDOUT/STDERR, files on disk, or both.
 
 For a detailed overview of logging in Ray, see [Ray Logging](ray-logging).
 
@@ -120,7 +120,7 @@ For a detailed overview of logging in Ray, see [Ray Logging](ray-logging).
 ### Filtering logs with Loki
 
 You can explore and filter your logs using [Loki](https://grafana.com/oss/loki/).
-Setup and configuration is straightforward on Kubernetes, but as a tutorial, let's set up Loki manually.
+Setup and configuration are straightforward on Kubernetes, but as a tutorial, let's set up Loki manually.
 
 For this walkthrough, you need both Loki and Promtail, which are both supported by [Grafana Labs](https://grafana.com). Follow the installation instructions at Grafana's website to get executables for [Loki](https://grafana.com/docs/loki/latest/installation/) and [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/).
 For convenience, save the Loki and Promtail executables in the same directory, and then navigate to this directory in your terminal.
@@ -181,7 +181,11 @@ Run the following Python script to deploy a basic Serve deployment with a Serve 
 :language: python
 ```
 
-Now [install and run Grafana](https://grafana.com/docs/grafana/latest/installation/) and navigate to `http://localhost:3000`, where you can log in with the default username "admin" and default password "admin".
+Now [install and run Grafana](https://grafana.com/docs/grafana/latest/installation/) and navigate to `http://localhost:3000`, where you can log in with default credentials:
+
+* Username: admin
+* Password: admin
+
 On the welcome page, click "Add your first data source" and click "Loki" to add Loki as a data source.
 
 Now click "Explore" in the left-side panel.  You are ready to run some queries!
@@ -253,7 +257,7 @@ Then run the following script:
 :language: python
 ```
 
-The requests will loop and can be canceled with `ctrl-c`. 
+The requests will loop until canceled with `ctrl-c`. 
 
 While this script is running, go to `localhost:8080` in your web browser.
 In the output there, you can search for `serve_` to locate the metrics above.
