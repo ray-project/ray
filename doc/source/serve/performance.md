@@ -22,12 +22,67 @@ We are continuously benchmarking Ray Serve. The metrics we care about are latenc
   so its scalability is bounded by Ray’s scalability. Please see Ray’s [scalability envelope](https://github.com/ray-project/ray/blob/master/release/benchmarks/README.md)
   to learn more about the maximum number of nodes and other limitations.
 
-We run long-running benchmarks nightly. You can check out [our workloads in the Ray repository](https://github.com/ray-project/ray/tree/master/release/serve_tests/workloads).
+We run long-running benchmarks nightly. These include:
 
-You can see our nightly benchmark runs [here](https://buildkite.com/ray-project/release-tests-branch/builds?branch=master). They're labeled as "Nightly tests." For example, [here's the nightly benchmark run from July 22nd, 2022](https://buildkite.com/ray-project/release-tests-branch/builds/806). You can see the results by clicking "Serve tests" and choosing a workload.
+```{eval-rst}
+.. list-table::
+   :header-rows: 1
+
+   * - Benchmark Name
+     - Workload Description
+     - Cluster Details
+     - Performance Numbers
+   * - `Single Deployment <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/single_deployment_1k_noop_replica.py>`_
+     - Runs 10 minute wrk trial on a single no-op deployment with 1000 replicas.
+     - Head node: AWS EC2 m5.8xlarge. 32 worker nodes: AWS EC2 m5.8xlarge.
+     - * per_thread_latency_avg_ms = 22.41
+       * per_thread_latency_max_ms = 1400.0
+       * per_thread_avg_tps = 55.75
+       * per_thread_max_tps = 121.0
+       * per_node_avg_tps = 553.17
+       * per_node_avg_transfer_per_sec_KB = 83.19
+       * cluster_total_thoughput = 10954456
+       * cluster_total_transfer_KB = 1647441.9199999997
+       * cluster_total_timeout_requests = 0
+       * cluster_max_P50_latency_ms = 8.84
+       * cluster_max_P75_latency_ms = 35.31
+       * cluster_max_P90_latency_ms = 49.69
+       * cluster_max_P99_latency_ms = 56.5
+   * - `Multiple Deployments <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/multi_deployment_1k_noop_replica.py>`_
+     - Runs 10 minute wrk trial on 1000 deployment with 10 replicas each. Each deployment recursively sends queries to up to 5 other deployments.
+     - 
+   * - `Autoscaling Single Deployment <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/autoscaling_single_deployment.py>`_
+     - 
+     - 
+   * - `Autoscaling Multiple Deployments <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/autoscaling_multi_deployment.py>`_
+     - 
+     -  
+   * - `Serve Handle: Linear Pipeline <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/serve_handle_long_chain.py>`_
+     - 
+     - 
+   * - `Deployment Graph: Linear Pipeline <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/deployment_graph_long_chain.py>`_
+     - 
+     - 
+   * - `Serve Handle: Ensemble <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/serve_handle_wide_ensemble.py>`_
+     - 
+     - 
+   * - `Deployment Graph: Ensemble <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/deployment_graph_wide_ensemble.py>`_
+     - 
+     - 
+```
+
+:::{note}
+The performance numbers above come from a recent run of the nightly benchmarks.
+:::
+
+[]: # 'See https://github.com/ray-project/ray/pull/27711 for more context on the benchmarks.'
+
+Check out [our benchmark workloads'](https://github.com/ray-project/ray/tree/master/release/serve_tests/workloads) source code directly to get a better sense of what they test. You can see which cluster templates each benchmark uses [here](https://github.com/ray-project/ray/blob/8eca6ae852e2d23bcf49680fef6f0384a1b63564/release/release_tests.yaml#L2328-L2576) (under the `cluster_compute` key), and you can see what type of nodes each template spins up [here](https://github.com/ray-project/ray/tree/master/release/serve_tests).
+
+
 
 You can check out our [microbenchmark instructions](https://github.com/ray-project/ray/blob/master/python/ray/serve/benchmarks/README.md)
-to benchmark on your hardware.
+to benchmark Ray Serve on your hardware.
 
 ## Debugging performance issues
 
