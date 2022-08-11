@@ -77,7 +77,7 @@ After you're done testing, you can shut down Ray Serve by interrupting the `serv
 
 ## Testing on a remote cluster
 
-To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-under-construction) for more information.
+To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-under-construction) for more information.
 
 When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  During development, you can use {ref}`Runtime Environments<runtime-environments>` to manage these dependencies.
 
