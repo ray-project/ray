@@ -130,7 +130,7 @@ class NodeProviderAvailabilityTracker:
         # A global lock to simplify thread safety handling.
         self.lock = threading.RLock()
 
-    def _unsafe_update_node_availability(
+    def _update_node_availability_requires_lock(
         self,
         node_type: str,
         timestamp: int,
@@ -180,7 +180,7 @@ class NodeProviderAvailabilityTracker:
           node_launch_exception: Details about why the node launch failed. If
             empty, the node type will be considered available."""
         with self.lock:
-            self._unsafe_update_node_availability(
+            self._update_node_availability_requires_lock(
                 node_type, timestamp, node_launch_exception
             )
 
