@@ -291,7 +291,6 @@ parts:
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
         title: Applications Guide
-      - file: cluster/running-applications/job-submission/index
 
 
   - caption: References
