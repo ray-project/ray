@@ -90,16 +90,19 @@ The performance issue you're most likely to encounter is high latency and/or low
 
 Once you set up [monitoring](serve-monitoring) with Ray and Ray Serve, these issues may appear as:
 
-- `serve_num_router_requests` staying constant while your load increases
-- `serve_deployment_processing_latency_ms` spiking up as queries queue up in the background
+* `serve_num_router_requests` staying constant while your load increases
+* `serve_deployment_processing_latency_ms` spiking up as queries queue up in the background
 
-Given these symptoms, there are several ways to fix the issue.
+There are handful of ways to address these issues:
 
-### Choosing the right hardware
+1. Make sure you are using the right hardware and resources:
+   * Are you reserving GPUs for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_gpus”: 1}`)?
+   * Are you reserving one or more cores for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_cpus”: 2}`)?
+   * Are you setting [OMP_NUM_THREADS](serve-omp-num-threads) to increase the performance of your deep learning framework?
+2. Consider using async methods in your callable. See [the section below](serve-performance-async-methods).
+3. Consider batching your requests. See [the section below](serve-performance-batching-requests).
 
-Make sure you are using the right hardware and resources.
-Are you using GPUs (`ray_actor_options={“num_gpus”: 1}`)? Are you using one or more cores (`ray_actor_options={“num_cpus”: 2}`) and setting [`OMP_NUM_THREADS`](serve-omp-num-threads) to increase the performance of your deep learning framework?
-
+(serve-performance-async-methods)=
 ### Using `async` methods
 
 Are you using `async def` in your callable? If you are using `asyncio` and
@@ -108,6 +111,7 @@ hitting the same queuing issue mentioned above, you might want to increase
 proper backpressure. You can increase the value in the deployment decorator; e.g.
 `@serve.deployment(max_concurrent_queries=1000)`.
 
+(serve-performance-batching-requests)=
 ### Batching requests
 
 If your deployment can process batches at a sublinear latency
