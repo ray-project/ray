@@ -2,7 +2,7 @@
 
 Java is one of the mainstream programming languages for production services. Ray Serve natively supports Java API for creating, updating, and managing deployments. You can create Ray Serve deployments using Java and call them via Python, or vice versa.
 
-This section should help you:
+This section helps you to:
 
 - create, query, update and configure Java deployments
 - configure resources of your Java deployments
@@ -13,7 +13,7 @@ This section should help you:
 
 ## Creating a Deployment
 
-By specifying the full name of the class, we can create and deploy a deployment of the class.
+By specifying the full name of the class as an argument to `Serve.deployment()` method, as shown in the code below, we can create and deploy our deployment of the class.
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
 :end-before: docs-create-end
@@ -21,9 +21,9 @@ By specifying the full name of the class, we can create and deploy a deployment 
 :start-after: docs-create-start
 ```
 
-## Querying a Deployment
+## Accessing a Deployment
 
-A deployed deployment can be found by its name.
+Once a deployment is deployed, you can fetch its instance by name.
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
 :end-before: docs-query-end
@@ -42,6 +42,13 @@ We can update the code and the configuration of a deployment and redeploy it. Th
 ```
 
 ## Configuring a Deployment
+
+There are a couple of deployment configuration Serve supports:
+
+- ability to scale out by increasing number of deployment replicas
+- ability to assign resources such as CPU and GPUs.
+
+The next two sections describe how to configure your deployments.
 
 ### Scaling Out
 

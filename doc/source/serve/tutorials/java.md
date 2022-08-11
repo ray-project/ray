@@ -2,7 +2,7 @@
 
 # Java Tutorial
 
-First of all, using Java Ray Serve needs the following dependency in you `pom.xml`:
+To use Java Ray Serve, you need the following dependency in your pom.xml.
 
 ```xml
 <dependency>
@@ -13,7 +13,7 @@ First of all, using Java Ray Serve needs the following dependency in you `pom.xm
 </dependency>
 ```
 
-> NOTE: After installing Ray, the Java jar of Ray Serve has been included locally. The `provided` scope could ensure the Java code using Ray Serve can be compiled and will not cause version conflicts when deployed on the cluster.
+> NOTE: After installing Ray via Python, the Java jar of Ray Serve is included locally. The `provided` scope could ensure the Java code using Ray Serve can be compiled and will not cause version conflicts when deployed on the cluster.
 
 ## Example Model
 
@@ -62,7 +62,7 @@ Next, we start the Ray Serve runtime and deploy `StrategyOnRayServe` as a deploy
 :start-after: docs-deploy-start
 ```
 
-The `Deployment.create` makes a `Deployment` object named "strategy". After executing `Deployment.deploy`, this "strategy" deployment is deployed in the instance of Ray Serve with 4 replicas, and we can access it for distributed parallel computing.
+The `Deployment.create` makes a Deployment object named "strategy." After executing `Deployment.deploy`, this "strategy" deployment is deployed in the instance of Ray Serve with four replicas, and we can access it for distributed parallel computing.
 
 ## Testing the Ray Serve Deployment
 
@@ -74,7 +74,7 @@ Now we can test the "strategy" deployment using RayServeHandle inside Ray:
 :start-after: docs-calc-start
 ```
 
-At present, the calculation of each bank's each indicator is still in series, and just sended to Ray for execution. We can make the calculation concurrent, which not only improves the calculation efficiency, but also solves the bottleneck of single machine.
+At present, the calculation of each bank's each indicator is still executed serially, and just sended to Ray for execution. We can make the calculation concurrent, which not only improves the calculation efficiency, but also solves the bottleneck of single machine.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
 :end-before: docs-parallel-calc-end
@@ -92,13 +92,13 @@ Now, we can use `StrategyCalcOnRayServe` like the example in the `main` method:
 
 ## Calling Ray Serve Deployment with HTTP
 
-Another way to call a deployment is through the HTTP request. But there are now two limitations for the Java deployments:
+Another way to test or call a deployment is through the HTTP request. But there are now two limitations for the Java deployments:
 
 - The HTTP requests can only be processed by the `call` method of the user class.
 
 - The `call` method could only have one input parameter, and the type of the input parameter and the returned value can only be `String`.
 
-If we want to call the "strategy" deployment via HTTP, the class can be rewritten like this: 
+If we want to call the "strategy" deployment via HTTP, the class can be rewritten like this:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyOnRayServe.java
 :end-before: docs-strategy-end
@@ -136,7 +136,7 @@ This code can also be rewritten to support concurrency:
 :start-after: docs-parallel-calc-start
 ```
 
-Now, the complete usage of `HttpStrategyCalcOnRayServe` is like this:
+Finally, the complete usage of `HttpStrategyCalcOnRayServe` is like this:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
 :end-before: docs-main-end
