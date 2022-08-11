@@ -27,13 +27,6 @@ class FeatureHasher(Preprocessor):
         Sparse matrices aren't supported. If you use a large ``num_features``, this
         preprocessor might behave poorly.
 
-    Args:
-        columns: The columns to apply the hashing trick to. Each column should describe
-            the frequency of a token.
-        num_features: The number of features used to represent the vocabulary. You
-            should choose a value large enough to prevent hash collisions between
-            distinct tokens.
-
     Examples:
 
         >>> import pandas as pd
@@ -62,6 +55,13 @@ class FeatureHasher(Preprocessor):
         Notice the hash collision: both ``"like"`` and ``"Python"`` correspond to index
         :math:`3`. You can avoid hash collisions like these by increasing
         ``num_features``.
+
+    Args:
+        columns: The columns to apply the hashing trick to. Each column should describe
+            the frequency of a token.
+        num_features: The number of features used to represent the vocabulary. You
+            should choose a value large enough to prevent hash collisions between
+            distinct tokens.
 
     .. seealso::
         :class:`~ray.data.preprocessors.CountVectorizer`

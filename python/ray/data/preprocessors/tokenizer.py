@@ -7,14 +7,43 @@ from ray.data.preprocessors.utils import simple_split_tokenizer
 
 
 class Tokenizer(Preprocessor):
-    """Tokenize string columns.
+    """Replace each string with a list of tokens.
 
-    Each string entry will be replaced with a list of tokens.
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> df = pd.DataFrame({"text": ["Hello, world!", "foo bar\\nbaz"]})
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+
+        The default ``tokenization_fn`` delimits strings using the space character.
+
+        >>> from ray.data.preprocessors import Tokenizer
+        >>> tokenizer = Tokenizer(columns=["text"])
+        >>> tokenizer.transform(ds).to_pandas()  # doctest: +SKIP
+                       text
+        0  [Hello,, world!]
+        1   [foo, bar\\nbaz]
+
+        If the default logic isn't adequate for your use case, you can specify a
+        custom ``tokenization_fn``.
+
+        >>> import string
+        >>> def tokenization_fn(s):
+        ...     for character in string.punctuation:
+        ...         s = s.replace(character, "")
+        ...     return s.split()
+        >>> tokenizer = Tokenizer(columns=["text"], tokenization_fn=tokenization_fn)
+        >>> tokenizer.transform(ds).to_pandas()  # doctest: +SKIP
+                      text
+        0   [Hello, world]
+        1  [foo, bar, baz]
 
     Args:
-        columns: The columns that will individually be tokenized.
-        tokenization_fn: The tokenization function to use.
-            If not specified, a simple ``string.split(" ")`` will be used.
+        columns: The columns to tokenize.
+        tokenization_fn: The function used to generate tokens. This function
+            should accept a string as input and return a list of tokens as
+            output. If unspecified, the tokenizer uses a function equivalent to
+            ``lambda s: s.split(" ")``.
     """
 
     _is_fittable = False
