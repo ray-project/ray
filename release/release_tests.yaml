@@ -1954,6 +1954,8 @@
     test_name: many_ppo
     test_suite: long_running_tests
 
+  stable: false
+
   frequency: nightly
   team: ml
   env: staging
