@@ -334,13 +334,15 @@ class TestWorkerFailure(unittest.TestCase):
 
     def test_recreate_eval_workers_parallel_to_training_w_async_req_manager(self):
         # Test the case where all eval workers fail, but we chose to recover.
-        config = PGConfig()\
+        config = (
+            PGConfig()
             .evaluation(
                 enable_async_evaluation=True,
                 evaluation_parallel_to_training=True,
                 evaluation_duration="auto",
-            )\
+            )
             .training(model={"fcnet_hiddens": [4]})
+        )
 
         self._do_test_fault_fatal_but_recreate(
             "PG",

@@ -987,9 +987,7 @@ class Algorithm(Trainable):
         self._sync_filters_if_needed(
             from_worker=self.workers.local_worker(),
             workers=self.evaluation_workers,
-            timeout_seconds=eval_cfg.get(
-                "sync_filters_on_rollout_workers_timeout_s"
-            ),
+            timeout_seconds=eval_cfg.get("sync_filters_on_rollout_workers_timeout_s"),
         )
 
         if self.config["custom_eval_function"]:
@@ -997,12 +995,9 @@ class Algorithm(Trainable):
                 "`custom_eval_function` not supported in combination "
                 "with `enable_async_evaluation=True` config setting!"
             )
-        if (
-            self.evaluation_workers is None
-            and (
-                self.workers.local_worker().input_reader is None
-                or self.config["evaluation_num_workers"] == 0
-            )
+        if self.evaluation_workers is None and (
+            self.workers.local_worker().input_reader is None
+            or self.config["evaluation_num_workers"] == 0
         ):
             raise ValueError(
                 "Local evaluation OR evaluation without input reader OR evaluation "
@@ -1062,12 +1057,9 @@ class Algorithm(Trainable):
                         # from a previous evaluation step) OR if we have already reached
                         # the configured duration (e.g. number of episodes to evaluate
                         # for).
-                        if (
-                            seq_no == self._evaluation_weights_seq_number
-                            and (
-                                i * (1 if unit == "episodes" else rollout * num_envs)
-                                < units_left_to_do
-                            )
+                        if seq_no == self._evaluation_weights_seq_number and (
+                            i * (1 if unit == "episodes" else rollout * num_envs)
+                            < units_left_to_do
                         ):
                             batches.append(batch)
                             rollout_metrics.extend(metrics)
@@ -1090,9 +1082,8 @@ class Algorithm(Trainable):
                         assert np.sum(batch[SampleBatch.DONES])
             # n timesteps per returned batch.
             else:
-                num_units_done += (
-                    _agent_steps if self._by_agent_steps else _env_steps
-                )
+                num_units_done += _agent_steps if self._by_agent_steps else _env_steps
+
             if self.reward_estimators:
                 all_batches.extend(batches)
 
@@ -2416,8 +2407,8 @@ class Algorithm(Trainable):
             self._evaluation_async_req_manager is not None
             and worker_set is getattr(self, "evaluation_workers", None)
         ):
-          self._evaluation_async_req_manager.remove_workers(removed_workers)
-          self._evaluation_async_req_manager.add_workers(new_workers)
+            self._evaluation_async_req_manager.remove_workers(removed_workers)
+            self._evaluation_async_req_manager.add_workers(new_workers)
 
         return len(new_workers)
 
@@ -2615,15 +2606,18 @@ class Algorithm(Trainable):
         Returns:
             The results dict from the evaluation call.
         """
-        eval_results = {"evaluation": {
-            "episode_reward_max": np.nan,
-            "episode_reward_min": np.nan,
-            "episode_reward_mean": np.nan,
-        }}
+        eval_results = {
+            "evaluation": {
+                "episode_reward_max": np.nan,
+                "episode_reward_min": np.nan,
+                "episode_reward_mean": np.nan,
+            }
+        }
         eval_results["evaluation"]["num_recreated_workers"] = 0
 
         eval_func_to_use = (
-            self._evaluate_async if self.config["enable_async_evaluation"]
+            self._evaluate_async
+            if self.config["enable_async_evaluation"]
             else self.evaluate
         )
 
