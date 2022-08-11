@@ -1,7 +1,7 @@
 .. _vms-autoscaling:
 
-Configuring Autoscaling on VMs
-==============================
+Configuring Autoscaling
+=======================
 
 This guide explains how to configure the Ray autoscaler using the Ray cluster launcher.
 The Ray autoscaler is a Ray cluster process that automatically scales a cluster up and down based on resource demand.
@@ -9,9 +9,13 @@ The autoscaler does this by adjusting the number of nodes in the cluster based o
 
 Note that the autoscaler only considers logical resource requests for scaling (i.e., those specified in ``@ray.remote`` and displayed in `ray status`), not physical machine utilization. If a user tries to launch an actor, task, or placement group but there are insufficient resources, the request will be queued. The autoscaler adds nodes to satisfy resource demands in this queue.
 The autoscaler also removes nodes after they become idle for some time.
-A node is considered idle if it has no active tasks or actors and no objects.
+A node is considered idle if it has no active tasks, actors, or objects.
 
-Learn more about autoscaling :ref:`here <autoscaling>`.
+.. tip::
+  **When to use Autoscaling?**
+
+  Autoscaling can reduce workload costs, but adds node launch overheads and must be configured.
+  We recommend starting with non-autoscaling clusters if you're new to Ray.
 
 Cluster Config Parameters
 -------------------------
