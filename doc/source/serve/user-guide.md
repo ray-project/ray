@@ -10,6 +10,7 @@ you will learn
 - [Configuring HTTP and Bring Your own FastAPI app](http-guide)
 - [Using HTTP Adapters](http-guide)
 - [Composing Deployments](handle-guide)
+- [Serving Ray AIR Checkpoints](ray-air-serve-guide)
 - [Serving ML Models](ml-models)
 - [Use Request Batching](batching-guide)
 - [Using Deployment Graphs](serve-model-composition-deployment-graph)
