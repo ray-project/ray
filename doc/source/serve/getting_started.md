@@ -6,7 +6,7 @@ This tutorial will walk you through the process of deploying models with Ray Ser
 
 * expose your models over HTTP using Ray Serve [deployments](serve-managing-deployments-guide)
 * test your deployments over HTTP
-* compose multiple-model machine learning pipelines with Ray Serve [deployment graphs](deployment-graph-e2e-tutorial)
+* compose multiple-model machine learning pipelines with Ray Serve [deployment graphs](serve-model-composition-guide)
 
 We'll use two models in this tutorial:
 
