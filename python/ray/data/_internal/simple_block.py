@@ -70,7 +70,6 @@ class SimpleBlockAccessor(BlockAccessor):
     def get_keys(self, key: KeyFn) -> Optional[np.ndarray]:
         assert not isinstance(key, str)
         if key is None:
-            # keys = np.array([None] * len(self._items))
             keys = None
         else:
             assert callable(key)
