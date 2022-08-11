@@ -30,6 +30,7 @@ from ray.tune.callback import Callback
 from ray.tune.result import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.widgets import Template
 
 if TYPE_CHECKING:
     from ray.tune.experiment import Trial
@@ -107,22 +108,25 @@ class SyncConfig:
                 "`pip install tabulate` for rich notebook output."
             )
 
-        return tabulate(
-            {
-                "Setting": [
-                    "Upload directory",
-                    "Sync on checkpoint",
-                    "Sync period",
-                ],
-                "Value": [
-                    self.upload_dir,
-                    self.sync_on_checkpoint,
-                    self.sync_period,
-                ],
-            },
-            tablefmt="html",
-            showindex=False,
-            headers="keys",
+        return Template("scrollableTable.html.j2").render(
+            table=tabulate(
+                {
+                    "Setting": [
+                        "Upload directory",
+                        "Sync on checkpoint",
+                        "Sync period",
+                    ],
+                    "Value": [
+                        self.upload_dir,
+                        self.sync_on_checkpoint,
+                        self.sync_period,
+                    ],
+                },
+                tablefmt="html",
+                showindex=False,
+                headers="keys",
+            ),
+            max_height="none",
         )
 
 

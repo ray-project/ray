@@ -478,14 +478,17 @@ class FailureConfig:
                 "`pip install tabulate` for rich notebook output."
             )
 
-        return tabulate(
-            {
-                "Setting": ["Max failures", "Fail fast"],
-                "Value": [self.max_failures, self.fail_fast],
-            },
-            tablefmt="html",
-            showindex=False,
-            headers="keys",
+        return Template("scrollableTable.html.j2").render(
+            table=tabulate(
+                {
+                    "Setting": ["Max failures", "Fail fast"],
+                    "Value": [self.max_failures, self.fail_fast],
+                },
+                tablefmt="html",
+                showindex=False,
+                headers="keys",
+            ),
+            max_height="none",
         )
 
 
@@ -579,26 +582,29 @@ class CheckpointConfig:
         else:
             checkpoint_at_end_repr = self.checkpoint_at_end
 
-        return tabulate(
-            {
-                "Setting": [
-                    "Number of checkpoints to keep",
-                    "Checkpoint score attribute",
-                    "Checkpoint score order",
-                    "Checkpoint frequency",
-                    "Checkpoint at end",
-                ],
-                "Value": [
-                    num_to_keep_repr,
-                    checkpoint_score_attribute_repr,
-                    self.checkpoint_score_order,
-                    self.checkpoint_frequency,
-                    checkpoint_at_end_repr,
-                ],
-            },
-            tablefmt="html",
-            showindex=False,
-            headers="keys",
+        return Template("scrollableTable.html.j2").render(
+            table=tabulate(
+                {
+                    "Setting": [
+                        "Number of checkpoints to keep",
+                        "Checkpoint score attribute",
+                        "Checkpoint score order",
+                        "Checkpoint frequency",
+                        "Checkpoint at end",
+                    ],
+                    "Value": [
+                        num_to_keep_repr,
+                        checkpoint_score_attribute_repr,
+                        self.checkpoint_score_order,
+                        self.checkpoint_frequency,
+                        checkpoint_at_end_repr,
+                    ],
+                },
+                tablefmt="html",
+                showindex=False,
+                headers="keys",
+            ),
+            max_height="none",
         )
 
     @property
@@ -726,24 +732,25 @@ class RunConfig:
         subconfigs = [Template("divider.html.j2").render()] * (2 * len(reprs) - 1)
         subconfigs[::2] = reprs
 
-        settings = tabulate(
-            {
-                "Name": self.name,
-                "Local results directory": self.local_dir,
-                "Verbosity": self.verbose,
-                "Log to file": self.log_to_file,
-            }.items(),
-            tablefmt="html",
-            headers=["Setting", "Value"],
-            showindex=False,
+        settings = Template("scrollableTable.html.j2").render(
+            table=tabulate(
+                {
+                    "Name": self.name,
+                    "Local results directory": self.local_dir,
+                    "Verbosity": self.verbose,
+                    "Log to file": self.log_to_file,
+                }.items(),
+                tablefmt="html",
+                headers=["Setting", "Value"],
+                showindex=False,
+            ),
+            max_height="300px",
         )
 
-        return Template("rendered_html_common.html.j2").render(
-            content=Template("title_data.html.j2").render(
-                title="RunConfig",
-                data=Template("run_config.html.j2").render(
-                    subconfigs=subconfigs,
-                    settings=settings,
-                ),
-            )
+        return Template("title_data.html.j2").render(
+            title="RunConfig",
+            data=Template("run_config.html.j2").render(
+                subconfigs=subconfigs,
+                settings=settings,
+            ),
         )

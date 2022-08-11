@@ -5,12 +5,16 @@ from ray.widgets import Template
 
 
 @DeveloperAPI
-def make_table_html_repr(obj: Any, title: Optional[str] = None) -> str:
+def make_table_html_repr(
+    obj: Any, title: Optional[str] = None, max_height: str = "none"
+) -> str:
     """Generate a generic html repr using a table.
 
     Args:
         obj: Object for which a repr is to be generated
         title: If present, a title for the section is included
+        max_height: Maximum height of the table; valid values
+            are given by the max-height CSS property
 
     Returns:
         HTML representation of the object
@@ -29,18 +33,24 @@ def make_table_html_repr(obj: Any, title: Optional[str] = None) -> str:
             data[k] = str(v)
 
         elif isinstance(v, dict) or hasattr(v, "__dict__"):
-            data[k] = tabulate(
-                v.items() if isinstance(v, dict) else vars(v).items(),
-                tablefmt="html",
-                showindex=False,
-                headers=["Setting", "Value"],
+            data[k] = Template("scrollableTable.html.j2").render(
+                table=tabulate(
+                    v.items() if isinstance(v, dict) else vars(v).items(),
+                    tablefmt="html",
+                    showindex=False,
+                    headers=["Setting", "Value"],
+                ),
+                max_height="none",
             )
 
-    table = tabulate(
-        data.items(),
-        tablefmt="unsafehtml",
-        showindex=False,
-        headers=["Setting", "Value"],
+    table = Template("scrollableTable.html.j2").render(
+        table=tabulate(
+            data.items(),
+            tablefmt="unsafehtml",
+            showindex=False,
+            headers=["Setting", "Value"],
+        ),
+        max_height=max_height,
     )
 
     if title:
@@ -48,4 +58,4 @@ def make_table_html_repr(obj: Any, title: Optional[str] = None) -> str:
     else:
         content = table
 
-    return Template("rendered_html_common.html.j2").render(content=content)
+    return content

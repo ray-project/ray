@@ -3601,16 +3601,31 @@ class Dataset(Generic[T]):
         else:
             return result
 
-    def _repr_html_(self) -> str:
+    def _ipython_display_(self):
+        try:
+            from ipywidgets import HTML, VBox, Layout
+        except ImportError:
+            logger.warn(
+                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
+                "enable notebook widgets."
+            )
+            return None
+
+        from IPython.display import display
+
+        title = HTML(f"<h2>{self.__class__.__name__}</h2>")
+        display(VBox([title, self._tab_repr_()], layout=Layout(width="100%")))
+
+    def _tab_repr_(self):
         try:
             from tabulate import tabulate
+            from ipywidgets import Tab, HTML
         except ImportError:
             logger.info(
-                "For rich Dataset reprs in notebooks, " "run `pip install tabulate`."
+                "For rich Dataset reprs in notebooks, run "
+                "`pip install tabulate ipywidgets`."
             )
             return ""
-
-        from ipywidgets import Tab
 
         metadata = {
             "num_blocks": self._plan.initial_num_blocks(),
@@ -3619,19 +3634,26 @@ class Dataset(Generic[T]):
 
         schema = self.schema()
         if schema is None:
-            schema_repr = "<h5>Unknown schema</h5>"
+            schema_repr = Template("rendered_html_common.html.j2").render(
+                content="<h5>Unknown schema</h5>"
+            )
         elif isinstance(schema, type):
-            schema_repr = f"<h5>Data type: {html.escape(str(schema))}</h5>"
+            schema_repr = Template("rendered_html_common.html.j2").render(
+                content=f"<h5>Data type: <code>{html.escape(str(schema))}</code></h5>"
+            )
         else:
             schema_data = {}
             for sname, stype in zip(schema.names, schema.types):
                 schema_data[sname] = getattr(stype, "__name__", str(stype))
 
-            schema_repr = tabulate(
-                tabular_data=schema_data.items(),
-                tablefmt="html",
-                showindex=False,
-                headers=["Name", "Type"],
+            schema_repr = Template("scrollableTable.html.j2").render(
+                table=tabulate(
+                    tabular_data=schema_data.items(),
+                    tablefmt="html",
+                    showindex=False,
+                    headers=["Name", "Type"],
+                ),
+                max_height="300px",
             )
 
         tab = Tab()
@@ -3639,38 +3661,22 @@ class Dataset(Generic[T]):
 
         tab.set_title(0, "Metadata")
         children.append(
-            Template("dataset.html.j2").render(
-                schema=None,
-                metadata=tabulate(
+            Template("scrollableTable.html.j2").render(
+                table=tabulate(
                     tabular_data=metadata.items(),
                     tablefmt="html",
                     showindex=False,
                     headers=["Field", "Value"],
                 ),
+                max_height="300px",
             )
         )
 
         tab.set_title(1, "Schema")
-        children.append(
-            Template("dataset.html.j2").render(
-                schema=schema_repr,
-                metadata=None,
-            )
-        )
+        children.append(schema_repr)
 
-        tab.children = children
-
-        return "foo"
-
-        # return Template("dataset.html.j2").render(
-        #     schema=schema_repr,
-        #     metadata=tabulate(
-        #         tabular_data=metadata.items(),
-        #         tablefmt="html",
-        #         showindex=False,
-        #         headers=["Field", "Value"],
-        #     ),
-        # )
+        tab.children = [HTML(child) for child in children]
+        return tab
 
     def __repr__(self) -> str:
         schema = self.schema()

@@ -391,37 +391,40 @@ class DataParallelTrainer(BaseTrainer):
         tab = Tab()
         children = []
 
-        tab.set_title(0, "Train Loop Config")
+        tab.set_title(0, "Datasets")
+        children.append(self._datasets_repr_() if self.datasets else None)
+
+        tab.set_title(1, "Dataset Config")
         children.append(
-            self._train_loop_config_repr_html_() if self._train_loop_config else None
+            HTML(self._dataset_config_repr_html_()) if self._dataset_config else None
         )
 
-        tab.set_title(1, "Backend Config")
+        tab.set_title(2, "Train Loop Config")
         children.append(
-            self._backend_config._repr_html_() if self._backend_config else None
-        )
-
-        tab.set_title(2, "Dataset Config")
-        children.append(
-            self._dataset_config_repr_html_() if self._dataset_config else None
+            HTML(self._train_loop_config_repr_html_())
+            if self._train_loop_config
+            else None
         )
 
         tab.set_title(3, "Scaling Config")
         children.append(
-            self.scaling_config._repr_html_() if self.scaling_config else None
+            HTML(self.scaling_config._repr_html_()) if self.scaling_config else None
         )
 
         tab.set_title(4, "Run Config")
-        children.append(self.run_config._repr_html_() if self.run_config else None)
+        children.append(
+            HTML(self.run_config._repr_html_()) if self.run_config else None
+        )
 
-        tab.set_title(5, "Datasets")
-        children.append(self._datasets_repr_html_() if self.datasets else None)
+        tab.set_title(5, "Backend Config")
+        children.append(
+            HTML(self._backend_config._repr_html_()) if self._backend_config else None
+        )
 
-        tab.children = [HTML(child) for child in children]
+        tab.children = children
         display(VBox([title, tab], layout=Layout(width="100%")))
 
     def _train_loop_config_repr_html_(self) -> str:
-        content = []
         if self._train_loop_config:
             table_data = {}
             for k, v in self._train_loop_config.items():
@@ -432,16 +435,20 @@ class DataParallelTrainer(BaseTrainer):
                 else:
                     table_data[k] = str(v)
 
-            content = Template("title_data.html.j2").render(
+            return Template("title_data.html.j2").render(
                 title="Train Loop Config",
-                data=tabulate(
-                    table_data.items(),
-                    headers=["Setting", "Value"],
-                    showindex=False,
-                    tablefmt="unsafehtml",
+                data=Template("scrollableTable.html.j2").render(
+                    table=tabulate(
+                        table_data.items(),
+                        headers=["Setting", "Value"],
+                        showindex=False,
+                        tablefmt="unsafehtml",
+                    ),
+                    max_height="none",
                 ),
             )
-        return Template("rendered_html_common.html.j2").render(content=content)
+        else:
+            return ""
 
     def _dataset_config_repr_html_(self) -> str:
         content = []
@@ -453,17 +460,28 @@ class DataParallelTrainer(BaseTrainer):
 
         return Template("rendered_html_common.html.j2").render(content=content)
 
-    def _datasets_repr_html_(self) -> str:
+    def _datasets_repr_(self) -> str:
+        try:
+            from ipywidgets import HTML, VBox, Layout
+        except ImportError:
+            logger.warn(
+                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
+                "enable notebook widgets."
+            )
+            return None
         content = []
         if self.datasets:
             for name, config in self.datasets.items():
                 content.append(
-                    Template("title_data.html.j2").render(
-                        title=f"DatasetConfig - <code>{name}</code>",
-                        data=config._repr_html_(),
+                    HTML(
+                        Template("title_data.html.j2").render(
+                            title=f"Dataset - <code>{name}</code>", data=None
+                        )
                     )
                 )
-        return Template("rendered_html_common.html.j2").render(content=content)
+                content.append(config._tab_repr_())
+
+        return VBox(content, layout=Layout(width="100%"))
 
 
 def _load_checkpoint(
