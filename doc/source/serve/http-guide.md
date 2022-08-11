@@ -6,9 +6,19 @@ This section should help you understand how to:
 - use customized HTTP Adapters
 - choose which feature to use for your use case
 
+## Choosing the right HTTP feature
+
+Serve offers a layered approach to expose your model with the right HTTP API.
+
+Considering your use case, you can choose the right level of abstraction:
+- If you are comfortable working with the raw request object, use [`starlette.request.Requests` API](serve-http).
+- If you want a fully fledged API server with validation and doc generation, use the [FastAPI integration](serve-fastapi-http).
+- If you just want a pre-defined HTTP schema, use the [`DAGDriver` with `http_adapter`](serve-http-adapters).
+
+
 (serve-http)=
 ## Calling Deployments via HTTP
-When you deploy a Serve application, the ingress deployment (the one passed to `serve.run`) will be exposed over HTTP.
+When you deploy a Serve application, the [ingress deployment](serve-key-concepts-ingress-deployment) (the one passed to `serve.run`) will be exposed over HTTP.
 
 ```{literalinclude} ../serve/doc_code/http_guide.py
 :start-after: __begin_starlette__
@@ -16,9 +26,9 @@ When you deploy a Serve application, the ingress deployment (the one passed to `
 :language: python
 ```
 
-Any request to the Serve HTTP server at `/` is routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code or custom headers).
+Requests to the Serve HTTP server at `/` are routed to the deployment's `__call__` method with a [Starlette Request object](https://www.starlette.io/requests/) as the sole argument. The `__call__` method can return any JSON-serializable object or a [Starlette Response object](https://www.starlette.io/responses/) (e.g., to return a custom status code or custom headers).
 
-Commonly, you just need the API to accept numpy array. You can use Serve's `DAGDriver` to simply the request parsing.
+Often for ML models, you just need the API to accept a `numpy` array. You can use Serve's `DAGDriver` to simply the request parsing.
 
 ```{literalinclude} ../serve/doc_code/http_guide.py
 :start-after: __begin_dagdriver__
@@ -27,7 +37,7 @@ Commonly, you just need the API to accept numpy array. You can use Serve's `DAGD
 ```
 
 ```{note}
-Serve provides a library of HTTP adapters help you avoid boilerplate code. The [later section](serve-http-adapters) dive deeper into how it works.
+Serve provides a library of HTTP adapters to help you avoid boilerplate code. The [later section](serve-http-adapters) dives deeper into how these works.
 ```
 
 (serve-fastapi-http)=
@@ -61,7 +71,7 @@ This is useful for scaling out an existing FastAPI app with no modifications nec
 Existing middlewares, **automatic OpenAPI documentation generation**, and other advanced FastAPI features should work as-is.
 
 ```{note}
-Serve currently do not support WebSocket endpoint. If you have a use case needing it, please [let us know](https://github.com/ray-project/ray/issues/new/choose)!
+Serve currently does not support WebSockets. If you have a use case that requires it, please [let us know](https://github.com/ray-project/ray/issues/new/choose)!
 ```
 
 (serve-http-adapters)=
@@ -190,11 +200,3 @@ Here is a list of adapters; please feel free to [contribute more](https://github
 
 ```
 
-## Choosing the right HTTP feature
-
-Serve offers a layered approach to expose your model with the right HTTP API.
-
-Considering your use case, you can choose the right level of abstraction:
-- If the built-in adapters fit your use case or you can supply your own adapter, use `DAGDriver` with `http_adapter`.
-- If you are comfortable working with the raw request object, use `starlette.request.Requests` API.
-- If you want a fully fledge API server with validation and doc generation, use the FastAPI integration.
