@@ -3,7 +3,9 @@ Ray State API
 
 .. _state-api-ref:
 
-.. tip:: APIs are pre-alpha and under active development. APIs are subject to change and not stable across versions.
+.. note:: 
+
+    APIs are at the alpha stage and under active development. APIs are subject to change and not stable across versions. This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
 State CLI
 ---------

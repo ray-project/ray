@@ -30,6 +30,7 @@ from ray.experimental.state.common import (
     ray_address_to_api_server_url,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -515,6 +516,7 @@ class StateApiClient(SubmissionClient):
         return summary_api_response["result"]["node_id_to_summary"]
 
 
+@PublicAPI(stability="alpha")
 def get_actor(
     id: str,
     address: Optional[str] = None,
@@ -545,6 +547,7 @@ def get_actor(
 
 
 # TODO(rickyyx:alpha-obs)
+@PublicAPI(stability="alpha")
 def get_job(
     id: str,
     address: Optional[str] = None,
@@ -554,6 +557,7 @@ def get_job(
     raise NotImplementedError("Get Job by id is currently not supported")
 
 
+@PublicAPI(stability="alpha")
 def get_placement_group(
     id: str,
     address: Optional[str] = None,
@@ -586,6 +590,7 @@ def get_placement_group(
     )
 
 
+@PublicAPI(stability="alpha")
 def get_node(
     id: str,
     address: Optional[str] = None,
@@ -618,6 +623,7 @@ def get_node(
     )
 
 
+@PublicAPI(stability="alpha")
 def get_worker(
     id: str,
     address: Optional[str] = None,
@@ -650,6 +656,7 @@ def get_worker(
     )
 
 
+@PublicAPI(stability="alpha")
 def get_task(
     id: str,
     address: Optional[str] = None,
@@ -682,6 +689,7 @@ def get_task(
     )
 
 
+@PublicAPI(stability="alpha")
 def get_objects(
     id: str,
     address: Optional[str] = None,
@@ -716,6 +724,7 @@ def get_objects(
     )
 
 
+@PublicAPI(stability="alpha")
 def list_actors(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -763,6 +772,7 @@ def list_actors(
     )
 
 
+@PublicAPI(stability="alpha")
 def list_placement_groups(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -807,6 +817,7 @@ def list_placement_groups(
     )
 
 
+@PublicAPI(stability="alpha")
 def list_nodes(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -851,6 +862,7 @@ def list_nodes(
     )
 
 
+@PublicAPI(stability="alpha")
 def list_jobs(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -895,6 +907,7 @@ def list_jobs(
     )
 
 
+@PublicAPI(stability="alpha")
 def list_workers(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -939,6 +952,7 @@ def list_workers(
     )
 
 
+@PublicAPI(stability="alpha")
 def list_tasks(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -983,6 +997,7 @@ def list_tasks(
     )
 
 
+@PublicAPI(stability="alpha")
 def list_objects(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1027,6 +1042,7 @@ def list_objects(
     )
 
 
+@PublicAPI(stability="alpha")
 def list_runtime_envs(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1076,6 +1092,7 @@ Log APIs
 """
 
 
+@PublicAPI(stability="alpha")
 def get_log(
     address: Optional[str] = None,
     node_id: Optional[str] = None,
@@ -1167,6 +1184,7 @@ def get_log(
             yield logs
 
 
+@PublicAPI(stability="alpha")
 def list_logs(
     address: Optional[str] = None,
     node_id: Optional[str] = None,
@@ -1230,6 +1248,7 @@ Summary APIs
 """
 
 
+@PublicAPI(stability="alpha")
 def summarize_tasks(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
@@ -1262,6 +1281,7 @@ def summarize_tasks(
     )
 
 
+@PublicAPI(stability="alpha")
 def summarize_actors(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
@@ -1294,6 +1314,7 @@ def summarize_actors(
     )
 
 
+@PublicAPI(stability="alpha")
 def summarize_objects(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
