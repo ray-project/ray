@@ -175,7 +175,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # Getting an item in a tensor column automatically does a NumPy conversion.
         return row[VALUE_COL_NAME][0]
 
-    def get_keys(self, key: KeyFn) -> np.ndarray:
+    def get_keys(self, key: KeyFn) -> Optional[np.ndarray]:
         # The key must be a str for Arrow table.
         assert isinstance(key, str)
         keys = self._table[key].to_pandas().to_numpy()

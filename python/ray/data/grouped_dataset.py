@@ -263,14 +263,14 @@ class GroupedDataset(Generic[T]):
         def get_key_boundaries(batch):
             boundaries = []
             block_accessor = BlockAccessor.for_block(batch)
-            # print("XXX accessor type in get boundaries:", type(block_accessor))
             keys = block_accessor.get_keys(self._key)
-            unique_keys = np.unique(keys)
-            print("XXX unique values:", unique_keys.size)
-            for k in unique_keys:
-                idx = np.searchsorted(keys, k, side="right")
-                assert idx > 0
-                boundaries.append(idx)
+            if keys is None:
+                return [block_accessor.num_rows()]
+            start = 0
+            while start < keys.size:
+                end = np.searchsorted(keys, keys[start], side="right")
+                boundaries.append(end)
+                start = end
             return boundaries
 
         # Returns the group boundaries.
@@ -288,11 +288,8 @@ class GroupedDataset(Generic[T]):
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def group_fn(batch):
-            print("XXX batch type:", batch)
             block_accessor = BlockAccessor.for_block(batch)
-            # print("XXX accessor type:", type(block_accessor))
             boundaries = get_key_boundaries(batch)
-            # boundaries = get_boundaries(block_accessor)
             builder = block_accessor.builder()
             start = 0
             for end in boundaries:

@@ -67,14 +67,15 @@ class SimpleBlockAccessor(BlockAccessor):
     def iter_rows(self) -> Iterator[T]:
         return iter(self._items)
 
-    def get_keys(self, key: KeyFn) -> np.ndarray:
+    def get_keys(self, key: KeyFn) -> Optional[np.ndarray]:
         assert not isinstance(key, str)
         if key is None:
-            keys = np.array([None] * len(self._items))
+            # keys = np.array([None] * len(self._items))
+            keys = None
         else:
             assert callable(key)
             keys = np.array([key(item) for item in self._items])
-        assert keys.ndim == 1
+            assert keys.ndim == 1
         return keys
 
     def slice(self, start: int, end: int, copy: bool) -> List[T]:
