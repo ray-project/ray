@@ -29,7 +29,7 @@ We run long-running benchmarks nightly:
    :header-rows: 1
 
    * - Benchmark
-     - Workload Description
+     - Description
      - Cluster Details
      - Performance Numbers
    * - `Single Deployment <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/single_deployment_1k_noop_replica.py>`_
