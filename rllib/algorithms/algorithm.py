@@ -2627,6 +2627,8 @@ class Algorithm(Trainable):
             else self.evaluate
         )
 
+        num_recreated = 0
+
         try:
             if self.config["evaluation_duration"] == "auto":
                 assert (
@@ -2657,7 +2659,6 @@ class Algorithm(Trainable):
                     "recreate_failed_workers"
                 ),
             )
-            eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         # Add number of healthy evaluation workers after this iteration.
         eval_results["evaluation"]["num_healthy_workers"] = (
@@ -2665,6 +2666,7 @@ class Algorithm(Trainable):
             if self.evaluation_workers is not None
             else 0
         )
+        eval_results["evaluation"]["num_recreated_workers"] = num_recreated
 
         return eval_results
 
