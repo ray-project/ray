@@ -1074,7 +1074,7 @@ def init(
         ray.init(address="ray://123.45.67.89:10001")
 
     More details for starting and connecting to a remote cluster can be found
-    here: https://docs.ray.io/en/master/cluster/getting-started.html
+    here: https://docs.ray.io/en/master/cluster/running-applications/job-submission/ray-client.html # noqa: E501
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
