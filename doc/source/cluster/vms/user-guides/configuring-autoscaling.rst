@@ -1,9 +1,9 @@
 .. include:: /_includes/clusters/we_are_hiring.rst
 
-.. _deployment-guide-autoscaler-under-construction:
+.. _vms-autoscaling:
 
-Configuring Autoscaling
-=======================
+Configuring Autoscaling on VMs
+==============================
 
 This guide explains how to configure the Ray autoscaler. The Ray autoscaler adjusts
 the number of nodes in the cluster based on the resources required by tasks, actors or
@@ -15,7 +15,7 @@ If a user tries to launch an actor, task, or placement group but there are insuf
 The autoscaler adds nodes to satisfy resource demands in the queue, and removes nodes when they become idle.
 
 Parameters
-==========
+----------
 
 The following are the autoscaling parameters that are specified with cluster launch. They can also be modified at runtime by
 updating the cluster config.

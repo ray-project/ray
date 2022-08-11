@@ -1,36 +1,10 @@
-(kuberay-autoscaler-discussion)=
-# Autoscaling
+(kuberay-autoscaling)=
+
+# Configuring Autoscaling with KubeRay
 This page discusses autoscaling in the context of Ray on Kubernetes.
 For details on autoscaler configuration see the {ref}`configuration guide<kuberay-autoscaling-config>`.
 
-:::{note}
-Autoscaling is supported only with Ray versions at least
-as new  as 1.11.0.
-:::
-
-(autoscaler-pro-con)=
-## Should I enable autoscaling?
-Ray Autoscaler support is optional.
-Here are some considerations to keep in mind when choosing whether to use autoscaling.
-
-### Autoscaling: Pros
-**Cope with unknown resource requirements.** If you don't know how much compute your Ray
-workload will require, autoscaling can adjust your Ray cluster to the right size.
-
-**Save on costs.** Idle compute is automatically scaled down, potentially leading to cost savings,
-especially when you are using expensive resources like GPUs.
-
-### Autoscaling: Cons
-**Less predictable when resource requirements are known.** If you already know exactly
-how much compute your workload requires, it could make sense to provision a static Ray cluster
-of the appropriate fixed size.
-
-**Longer end-to-end runtime.** Autoscaling entails provisioning compute for Ray workers
-while the Ray application is running. On the other hand, if you pre-provision a fixed
-number of Ray workers, all of the Ray workers can be started in parallel, potentially reducing your application's
-runtime.
-
-### Getting Started with Autoscaling
+## Getting Started with Autoscaling
 
 First, follow the [quickstart guide](kuberay-quickstart) to create an autoscaling cluster. The commands to create the KubeRay operator and deploy an autoscaling cluster are summarized here:
 

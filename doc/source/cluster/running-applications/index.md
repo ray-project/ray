@@ -10,6 +10,6 @@ To get started, check out the [job submissions](jobs-quickstart-under-constructi
 :maxdepth: '2'
 
 job-submission/index
-autoscaling
+autoscaling/index
 monitoring-and-observability
 ```

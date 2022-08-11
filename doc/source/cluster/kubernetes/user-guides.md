@@ -10,9 +10,7 @@ In these guides, we go into further depth on several topics related to
 deployments of Ray on Kubernetes.
 * {ref}`kuberay-k8s-setup`
 * {ref}`kuberay-config`
-* {ref}`kuberay-autoscaler-discussion`
-* {ref}`kuberay-config`
-* {ref}`kuberay-autoscaler-discussion`
+* {ref}`kuberay-autoscaling`
 * {ref}`kuberay-logging`
 * {ref}`kuberay-gpu`
 * {ref}`kuberay-vs-legacy`
