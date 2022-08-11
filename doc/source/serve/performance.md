@@ -134,8 +134,6 @@ The performance numbers above come from a recent run of the nightly benchmarks.
 
 Check out [our benchmark workloads'](https://github.com/ray-project/ray/tree/master/release/serve_tests/workloads) source code directly to get a better sense of what they test. You can see which cluster templates each benchmark uses [here](https://github.com/ray-project/ray/blob/8eca6ae852e2d23bcf49680fef6f0384a1b63564/release/release_tests.yaml#L2328-L2576) (under the `cluster_compute` key), and you can see what type of nodes each template spins up [here](https://github.com/ray-project/ray/tree/master/release/serve_tests).
 
-
-
 You can check out our [microbenchmark instructions](https://github.com/ray-project/ray/blob/master/python/ray/serve/benchmarks/README.md)
 to benchmark Ray Serve on your hardware.
 
@@ -143,10 +141,10 @@ to benchmark Ray Serve on your hardware.
 
 The performance issue you're most likely to encounter is high latency and/or low throughput for requests.
 
-Once you set up [monitoring](serve-monitoring) with Ray and Ray Serve, you can likely observe the following:
+Once you set up [monitoring](serve-monitoring) with Ray and Ray Serve, these issues may appear as:
 
-- `serve_num_router_requests` is constant while your load increases
-- `serve_deployment_processing_latency_ms` is spiking up as queries queue up in the background
+- `serve_num_router_requests` staying constant while your load increases
+- `serve_deployment_processing_latency_ms` spiking up as queries queue up in the background
 
 Given these symptoms, there are several ways to fix the issue.
 
@@ -155,7 +153,7 @@ Given these symptoms, there are several ways to fix the issue.
 Make sure you are using the right hardware and resources.
 Are you using GPUs (`ray_actor_options={“num_gpus”: 1}`)? Are you using one or more cores (`ray_actor_options={“num_cpus”: 2}`) and setting [`OMP_NUM_THREADS`](serve-omp-num-threads) to increase the performance of your deep learning framework?
 
-### `async` methods
+### Using `async` methods
 
 Are you using `async def` in your callable? If you are using `asyncio` and
 hitting the same queuing issue mentioned above, you might want to increase
@@ -163,7 +161,7 @@ hitting the same queuing issue mentioned above, you might want to increase
 proper backpressure. You can increase the value in the deployment decorator; e.g.
 `@serve.deployment(max_concurrent_queries=1000)`.
 
-### Batching
+### Batching requests
 
 If your deployment can process batches at a sublinear latency
 (meaning, for example, that it takes say 1ms to process 1 query and 5ms to process 10 of them)
