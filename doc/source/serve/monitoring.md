@@ -12,9 +12,9 @@ This section should help you debug and monitor your Serve applications by:
 
 You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states.
 This includes details such as:
-* The number of deployment replicas currently running
-* Logs for your Serve controller, deployment replicas, and HTTP proxies
-* The Ray nodes (i.e. machines) running in your Ray cluster
+* the number of deployment replicas currently running
+* logs for your Serve controller, deployment replicas, and HTTP proxies
+* the Ray nodes (i.e. machines) running in your Ray cluster
 
 You can access the Ray dashboard at port 8265 at your cluster's URI.
 For example, if you're running Ray Serve on a local Ray cluster, you can access the dashboard by going to this address in your browser:
@@ -30,13 +30,13 @@ For example, we can inspect our deployment replicas by navigating to the Ray das
 :align: center
 ```
 
-In this example, there's a single-node cluster running a deployment named `Translator`. The Serve application uses four [Ray actors](actor-guide):
+In this example, there's a single-node cluster running a deployment named `Translator`. This example Serve application uses four [Ray actors](actor-guide):
 
 * 1 Serve controller
 * 1 HTTP proxy
 * 2 `Translator` deployment replicas
 
-This page includes additional useful information like each actor's process ID (PID) and a link to each actor's logs, which includes their `logging` and print statements. You can also see whether any particular actor is alive or dead to help you debug potential cluster failures.
+This page includes additional useful information like each actor's process ID (PID) and a link to each actor's logs, which includes their `logging` and `print` statements. You can also see whether any particular actor is alive or dead to help you debug potential cluster failures. For example, the image indicates that the Serve controller is currently dead and likely undergoing recovery.
 
 :::{tip}
 To learn more about the Serve controller actor, the HTTP proxy actor(s), the deployment replicas, and how they all work together, check out the [Serve Architecture](serve-architecture) documentation.
@@ -62,7 +62,6 @@ First, let's create a simple deployment that logs a custom log message when it's
 :start-after: __start__
 :end-before: __end__
 :language: python
-:linenos: true
 ```
 
 We can run this deployment using the `serve run` CLI command:
