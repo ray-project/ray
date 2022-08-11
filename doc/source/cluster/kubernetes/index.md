@@ -80,7 +80,7 @@ The Ray docs present all the information you need to start running Ray workloads
         :text: Check API references
         :classes: btn-outline-info btn-block
 ```
-## The KubeRay project
+## About KubeRay
 
 Ray's Kubernetes support is developed at the [KubeRay GitHub repository](https://github.com/ray-project/kuberay), under the broader [Ray project](https://github.com/ray-project/). KubeRay is used by several companies to run production Ray deployments.
 

@@ -70,8 +70,9 @@ Ray Jobs enable users to submit locally developed-and-tested applications to a
 remote Ray cluster. Ray Job Submission simplifies the experience of packaging,
 deploying, and managing a Ray application.
 
-For interactive development, there are two other to run workloads:
-1. Directly running a script on any head or worker node.
-2. Using the Ray Client to connect remotely to the cluster.
+For interactive development, the following additional methods are available:
+
+* Directly running a script or notebook on any head or worker node.
+* Using the Ray Client to connect remotely to the cluster.
 
 To learn how to run workloads on a Ray Cluster, refer to the :ref:`Ray Jobs guide <jobs-overview>`.

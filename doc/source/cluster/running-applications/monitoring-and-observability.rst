@@ -1,5 +1,5 @@
-Monitoring and observability
-----------------------------
+Cluster Monitoring
+------------------
 
 Ray ships with the following observability features:
 

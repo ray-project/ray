@@ -14,17 +14,10 @@ workload on Kubernetes infrastructure.
 We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
 To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrainer documentation <train-gbdt-guide>`.
 
-```{admonition} Optional: Autoscaling
-This guide includes notes on how to deploy the XGBoost benchmark with optional Ray Autoscaler support.
-In this guide's example, we know that we need 1 Ray head and 9 Ray workers,
-so autoscaling is not strictly required. Read {ref}`this discussion<autoscaler-pro-con>` for guidance
-on whether to use autoscaling.
-```
-
 ## Kubernetes infrastructure setup
 
 If you are new to Kubernetes and you are planning to deploy Ray workloads on a managed
-Kubernetes service, we recommend taking a look at this {ref}`introductory guide<kuberay-k8s-setup>`
+Kubernetes service, we recommend taking a look at this {ref}`introductory guide <kuberay-k8s-setup>`
 first.
 
 For the workload in this guide, it is recommended to use a pool or group of Kubernetes nodes

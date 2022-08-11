@@ -1,7 +1,7 @@
 .. _ref-autoscaler-sdk:
 
-Requesting Scaleup
-==================
+Manual Cluster Scaling
+======================
 
 .. _ref-autoscaler-sdk-request-resources:
 
