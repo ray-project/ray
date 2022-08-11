@@ -195,6 +195,7 @@ html_theme_options = {
     "use_repository_button": True,
     "use_issues_button": True,
     "use_edit_page_button": True,
+    "use_fullscreen_button": False,
     "path_to_docs": "doc/source",
     "home_page_in_toc": False,
     "show_navbar_depth": 0,

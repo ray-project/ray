@@ -1,51 +1,103 @@
-/* For Algolia search box to flow-over horizontally into main content*/
-#site-navigation { overflow-y: visible; }
+/* The Algolia search box will flow-over horizontally into main content because it's position:absolute and its parents are position:inherit */
+#site-navigation {
+  overflow-y: auto;
+  position: inherit;
+}
+#site-navigation.collapse {
+  margin-left: -186px;
+}
+.topbar {
+  z-index: 1900;
+  box-shadow: 0 6px 6px -6px rgb(0 0 0 / 30%);
+}
 
 /* Center the algolia search bar*/
 #search-input {
-    text-align: center;
+  text-align: center;
 }
+
+.bd-search {
+  position: inherit;
+}
+
+.bd-search>.fa-search {
+  display: none;
+}
+
 .algolia-autocomplete {
-    width: 100%;
-    margin: auto;
+  width: 100%;
+  margin: auto;
+  position: inherit !important;
+}
+
+.algolia-autocomplete .ds-dropdown-menu {
+  position: absolute;
+  top: auto !important;
+}
+
+/* This is a redundant hidden <input> element from Algolia */
+.algolia-autocomplete>input:first-child {
+  display: none;
+}
+
+/* so that the side bar and the main content areas are scrolled independently */
+.bd-content {
+  height: 100vh;
 }
 
 /* Hide confusing "<-" back arrow in navigation for larger displays */
 @media (min-width: 768px) {
-    #navbar-toggler {
-        display: none;
-    }
+  #navbar-toggler {
+    display: none;
+  }
+  div.navbar-brand-box {
+    padding-top: 0;
+  }
+  div.navbar-brand-box a.navbar-brand img {
+    max-height: 12vh !important;
+  }
 }
 
 /* Make navigation scrollable on mobile, by making algolia not overflow */
 @media (max-width: 768px) {
-    #site-navigation {
-        overflow-y: scroll;
-    }
+  #site-navigation {
+    overflow-y: scroll;
+  }
+  #site-navigation.collapse {
+    margin-left: -186px;
+    margin-left: -275px;
+    max-width: 275px;
+  }
 
-    .algolia-autocomplete .ds-dropdown-menu{
-        min-width: 250px;
-    }
+  .algolia-autocomplete .ds-dropdown-menu {
+    min-width: 250px;
+  }
 }
 
 /* sphinx-panels overrides the content width to 1140 for large displays.*/
 @media (min-width: 1200px) {
-    .container, .container-lg, .container-md, .container-sm, .container-xl {
-        max-width: 1400px !important;
-    }
+
+  .container,
+  .container-lg,
+  .container-md,
+  .container-sm,
+  .container-xl {
+    max-width: 1400px !important;
+  }
+
 }
 
 .bottom-right-promo-banner {
-    position: fixed;
-    bottom: 100px;
-    right: 20px;
-    width: 270px;
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  width: 270px;
 }
 
 @media (max-width: 1500px) {
-    .bottom-right-promo-banner {
-        display: none;
-    }
+  .bottom-right-promo-banner {
+    display: none;
+  }
 }
 
 /*Extends the docstring signature box.*/
@@ -55,10 +107,12 @@
   word-wrap: break-word;
   padding-right: 100px;
 }
+
 /*Lists in an admonition note do not have awkward whitespace below.*/
 .rst-content .admonition-note .section ul {
   margin-bottom: 0px;
 }
+
 /*Properties become blue (classmethod, staticmethod, property)*/
 .rst-content dl dt em.property {
   color: #2980b9;
@@ -102,7 +156,7 @@ img.inline-figure {
   width: calc(100% - 20% - 2 * 1.5625em);
 }
 
-span.rst-current-version > span.fa.fa-book {
+span.rst-current-version>span.fa.fa-book {
   /* Move the book icon away from the top right
    * corner of the version flyout menu */
   margin: 10px 0px 0px 5px;
@@ -113,49 +167,51 @@ span.rst-current-version > span.fa.fa-book {
   z-index: 1200 !important;
 }
 
-dt:target, span.highlighted {
+dt:target,
+span.highlighted {
   background-color: #fbe54e;
 }
 
 /* allow scrollable images */
 .figure {
-    max-width: 100%;
-    overflow-x: auto;
+  max-width: 100%;
+  overflow-x: auto;
 }
+
 img.horizontal-scroll {
-    max-width: none;
+  max-width: none;
 }
 
 .clear-both {
-    clear: both;
-    min-height: 100px;
-    margin-top: 15px;
+  clear: both;
+  min-height: 100px;
+  margin-top: 15px;
 }
 
 .buttons-float-left {
-    width: 150px;
-    float: left;
+  width: 150px;
+  float: left;
 }
 
 .buttons-float-right {
-    width: 150px;
-    float: right;
+  width: 150px;
+  float: right;
 }
 
 /* Wrap code blocks instead of horizontal scrolling. */
 pre {
-    white-space: pre-wrap;
+  white-space: pre-wrap;
 }
 
 /* notebook formatting */
 .cell .cell_output {
-    max-height: 250px;
-    overflow-y: auto;
+  max-height: 250px;
+  overflow-y: auto;
 }
 
 /* Yellow doesn't render well on light background */
 .cell .cell_output pre .-Color-Yellow {
-    color: #785840;
+  color: #785840;
 }
 
 /* Newlines (\a) and spaces (\20) before each parameter */
@@ -165,40 +221,49 @@ pre {
 }
 
 /* custom css for outlined buttons */
-.btn-outline-info:hover span, .btn-outline-primary:hover span {
+.btn-outline-info:hover span,
+.btn-outline-primary:hover span {
   color: #fff;
 }
 
-.btn-outline-info, .btn-outline-primary{
+.btn-outline-info,
+.btn-outline-primary {
   border-color: var(--buttons-color-blue);
 }
 
-.btn-outline-info:hover, .btn-outline-primary:hover{
+.btn-outline-info:hover,
+.btn-outline-primary:hover {
   border-color: var(--buttons-color-blue);
   background-color: var(--buttons-color-blue);
 }
 
-.btn-outline-info.active:not(:disabled):not(.disabled), .btn-outline-info:not(:disabled):not(.disabled):active, .show>.btn-outline-info.dropdown-toggle {
+.btn-outline-info.active:not(:disabled):not(.disabled),
+.btn-outline-info:not(:disabled):not(.disabled):active,
+.show>.btn-outline-info.dropdown-toggle {
   border-color: var(--buttons-color-blue);
   background-color: var(--buttons-color-blue);
   color: #fff;
 }
 
-.btn-info, .btn-info:hover, .btn-info:focus {
+.btn-info,
+.btn-info:hover,
+.btn-info:focus {
   border-color: var(--buttons-color-blue);
   background-color: var(--buttons-color-blue);
 }
 
-.btn-info.active:not(:disabled):not(.disabled), .btn-info:not(:disabled):not(.disabled):active, .show>.btn-info.dropdown-toggle {
+.btn-info.active:not(:disabled):not(.disabled),
+.btn-info:not(:disabled):not(.disabled):active,
+.show>.btn-info.dropdown-toggle {
   border-color: var(--buttons-color-blue);
   background-color: var(--buttons-color-blue);
 }
 
-.btn-info:hover{
+.btn-info:hover {
   opacity: 90%;
 }
 
-.btn-info:disabled{
+.btn-info:disabled {
   border-color: var(--background-color-disabled);
   background-color: var(--background-color-disabled);
   opacity: 100%;
@@ -209,30 +274,31 @@ pre {
   box-shadow: none;
   border-color: var(--border-color-gray);
   background-color: var(--background-color-light-gray);
-  border-radius:0.25em;
+  border-radius: 0.25em;
 }
 
 /* custom css for tabs*/
-.tabbed-set>input:checked+label{
+.tabbed-set>input:checked+label {
   border-bottom: 0.125em solid;
-  color:var(--tabs-color-label-active);
+  color: var(--tabs-color-label-active);
 }
 
-.tabbed-set>label,.tabbed-set>label:hover {
+.tabbed-set>label,
+.tabbed-set>label:hover {
   border-bottom: 1px solid var(--border-color-gray);
-  color:var(--tabs-color-label-inactive);
+  color: var(--tabs-color-label-inactive);
   font-weight: 500;
 }
 
-.tabbed-label{
-  margin-bottom:0;
+.tabbed-label {
+  margin-bottom: 0;
 }
 
 /* custom css for jupyter cells */
-div.cell div.cell_input{
+div.cell div.cell_input {
   border: 1px var(--border-color-gray) solid;
   background-color: var(--background-color-light-gray);
-  border-radius:0.25em;
+  border-radius: 0.25em;
   border-left-color: var(--green);
   border-left-width: medium;
 }
@@ -243,9 +309,9 @@ table {
 }
 
 /* custom css for topic component */
-div.topic{
+div.topic {
   border: 1px solid var(--border-color-gray);
-  border-radius:0.25em;
+  border-radius: 0.25em;
 }
 
 .topic {
@@ -253,22 +319,26 @@ div.topic{
 }
 
 /* custom css for card component */
-.card{
+.card {
   border-color: var(--border-color-gray);
 }
 
-.card-footer{
+.card-footer {
   background-color: var(--background-color-light-gray);
   border-top-color: var(--border-color-gray);
 }
 
 /* custom css for section navigation component */
+.bd-toc {
+  right: 1em;
+}
 .bd-toc nav>.nav {
   border-left-color: var(--border-color-gray);
 }
 
 /* custom css for up and down arrows in colllapsable cards */
-details.dropdown .summary-up, details.dropdown .summary-down {
+details.dropdown .summary-up,
+details.dropdown .summary-down {
   top: 1em;
 }
 
@@ -285,11 +355,11 @@ textarea {
 /* custom css for footer */
 footer {
   margin-top: 1rem;
-  padding:1em 0;
+  padding: 1em 0;
   border-top-color: var(--border-color-gray);
 }
 
-.footer p{
+.footer p {
   color: var(--pst-color-text-secondary);
 }
 
@@ -302,7 +372,7 @@ footer {
   --tabs-color-overline: #e0e0e0;
   --tabs-color-underline: #e0e0e0;
   --border-color-gray: #e0e0e0;
-  --background-color-light-gray:#fafafa;
+  --background-color-light-gray: #fafafa;
   --background-color-disabled: #9E9E9E;
 }
 
