@@ -45,7 +45,7 @@
 .. autofunction:: ray.serve.batch(max_batch_size=10, batch_wait_timeout_s=0.0)
 ```
 
-## Operational APIs
+## Serve CLI and REST API
 
 Check out the [CLI](serve-cli) and [REST API](serve-rest-api) for running, debugging, inspecting, and deploying Serve applications in production:
 
