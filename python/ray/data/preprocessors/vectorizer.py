@@ -9,16 +9,96 @@ from ray.data.preprocessors.utils import simple_split_tokenizer, simple_hash
 
 
 class HashingVectorizer(Preprocessor):
-    """Tokenize and hash string columns into token hash columns.
+    """Count the frequency of tokens using the
+    `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_.
 
-    The created columns will have names in the format ``hash_{column_name}_{hash}``.
+    This preprocessors creates ``num_features`` columns named like
+    ``hash_{column_name}_{index}``. If ``num_features`` is large enough relative to
+    the size of your vocabulary, then each column approximately corresponds to the
+    frequency of a unique token.
+
+    :class:`HashingVectorizer` is memory efficient and quick to pickle. However, given a
+    transformed column, you can't know which tokens correspond to it. This might make it
+    hard to determine which tokens are important to your model.
+
+    .. note::
+
+        This preprocessor transforms each input column to a
+        `document-term matrix <https://en.wikipedia.org/wiki/Document-term_matrix>`_.
+
+        A document-term matrix is a table that describes the frequency of tokens in a
+        collection of documents. For example, the strings `"I like Python"` and `"I
+        dislike Python"` might have the document-term matrix below:
+
+        .. code-block::
+
+                    corpus_I  corpus_Python  corpus_dislike  corpus_like
+                0         1              1               1            0
+                1         1              1               0            1
+
+        To generate the matrix, you typically map each token to a unique index. For
+        example:
+
+        .. code-block::
+
+                        token  index
+                0        I      0
+                1   Python      1
+                2  dislike      2
+                3     like      3
+
+        The problem with this approach is that memory use scales linearly with the size
+        of your vocabulary. :class:`HashingVectorizer` circumvents this problem by
+        computing indices with a hash function:
+        :math:`\\texttt{index} = hash(\\texttt{token})`.
+
+    .. warning::
+        Sparse matrices aren't currently supported. If you use a large ``num_features``,
+        this preprocessor might behave poorly.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import HashingVectorizer
+        >>>
+        >>> df = pd.DataFrame({
+        ...     "corpus": [
+        ...         "Jimmy likes volleyball",
+        ...         "Bob likes volleyball too",
+        ...         "Bob also likes fruit jerky"
+        ...     ]
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>>
+        >>> vectorizer = HashingVectorizer(["corpus"], num_features=8)
+        >>> vectorizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           hash_corpus_0  hash_corpus_1  hash_corpus_2  hash_corpus_3  hash_corpus_4  hash_corpus_5  hash_corpus_6  hash_corpus_7
+        0              1              0              1              0              0              0              0              1
+        1              1              0              1              0              0              0              1              1
+        2              0              0              1              1              0              2              1              0
 
     Args:
-        columns: The columns that will individually be hashed.
-        num_features: The size of each hashed feature vector.
-        tokenization_fn: The tokenization function to use.
-            If not specified, a simple ``string.split(" ")`` will be used.
-    """
+        columns: The columns to separately tokenize and count.
+        num_features: The number of features used to represent the vocabulary. You
+            should choose a value large enough to prevent hash collisions between
+            distinct tokens.
+        tokenization_fn: The function used to generate tokens. This function
+            should accept a string as input and return a list of tokens as
+            output. If unspecified, the tokenizer uses a function equivalent to
+            ``lambda s: s.split(" ")``.
+
+    .. seealso::
+
+        :class:`CountVectorizer`
+            Another method for counting token frequencies. Unlike :class:`HashingVectorizer`,
+            :class:`CountVectorizer` creates a feature for each unique token. This
+            enables you to compute the inverse transformation.
+
+        :class:`FeatureHasher`
+            This preprocessor is similar to :class:`HashingVectorizer`, except it expects
+            a table describing token frequencies. In contrast,
+            :class:`FeatureHasher` expects a column containing documents.
+    """  # noqa: E501
 
     _is_fittable = False
 
@@ -61,19 +141,66 @@ class HashingVectorizer(Preprocessor):
 
 
 class CountVectorizer(Preprocessor):
-    """Tokenize string columns and convert into token columns.
+    """Count the frequency of tokens in a column of strings.
 
-    The created columns will have names in the format ``{column_name}_{token}``.
+    :class:`CountVectorizer` operates on columns that contain strings. For example:
 
-    Token features will be sorted by count in descending order.
+    .. code-block::
+
+                        corpus
+        0    I dislike Python
+        1       I like Python
+
+    This preprocessors creates a column named like ``{column}_{token}`` for each
+    unique token. These columns represent the frequency of token ``{token}`` in
+    column ``{column}``. For example:
+
+    .. code-block::
+
+            corpus_I  corpus_Python  corpus_dislike  corpus_like
+        0         1              1               1            0
+        1         1              1               0            1
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import CountVectorizer
+        >>>
+        >>> df = pd.DataFrame({
+        ...     "corpus": [
+        ...         "Jimmy likes volleyball",
+        ...         "Bob likes volleyball too",
+        ...         "Bob also likes fruit jerky"
+        ...     ]
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>>
+        >>> vectorizer = CountVectorizer(["corpus"])
+        >>> vectorizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           corpus_likes  corpus_volleyball  corpus_Bob  corpus_Jimmy  corpus_too  corpus_also  corpus_fruit  corpus_jerky
+        0             1                  1           0             1           0            0             0             0
+        1             1                  1           1             0           1            0             0             0
+        2             1                  0           1             0           0            1             1             1
+
+        You can limit the number of tokens in the vocabulary with ``max_features``.
+
+        >>> vectorizer = CountVectorizer(["corpus"], max_features=3)
+        >>> vectorizer.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           corpus_likes  corpus_volleyball  corpus_Bob
+        0             1                  1           0
+        1             1                  1           1
+        2             1                  0           1
 
     Args:
-        columns: The columns that will individually be tokenized.
-        tokenization_fn: The tokenization function to use.
-            If not specified, a simple ``string.split(" ")`` will be used.
-        max_features: If specified, limit the number of tokens.
-            The tokens with the largest counts will be kept.
-    """
+        columns: The columns to separately tokenize and count.
+        tokenization_fn: The function used to generate tokens. This function
+            should accept a string as input and return a list of tokens as
+            output. If unspecified, the tokenizer uses a function equivalent to
+            ``lambda s: s.split(" ")``.
+        max_features: The maximum number of tokens to encode in the transformed
+            dataset. If specified, only the most frequent tokens are encoded.
+
+    """  # noqa: E501
 
     def __init__(
         self,
