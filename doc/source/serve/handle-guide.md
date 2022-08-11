@@ -16,45 +16,26 @@ to that deployment. These requests can pass ordinary args and kwargs that are
 passed directly to the method. This returns a Ray `ObjectRef` whose result
 can be waited for or retrieved using `ray.wait` or `ray.get`.
 
-```python
-@serve.deployment
-class Deployment:
-    def method1(self, arg):
-        return f"Method1: {arg}"
-
-    def __call__(self, arg):
-        return f"__call__: {arg}"
-
-Deployment.deploy()
-
-handle = Deployment.get_handle()
-ray.get(handle.remote("hi")) # Defaults to calling the __call__ method.
-ray.get(handle.method1.remote("hi")) # Call a different method.
+```{literalinclude} ../serve/doc_code/handle_guide.py
+:start-after: __basic_example_start__
+:end-before: __basic_example_end__
+:language: python
 ```
 
 If you want to use the same deployment to serve both HTTP and ServeHandle traffic, the recommended best practice is to define an internal method that the HTTP handling logic will call:
 
-```python
-@serve.deployment(route_prefix="/api")
-class Deployment:
-    def say_hello(self, name: str):
-        return f"Hello {name}!"
-
-    def __call__(self, request):
-        return self.say_hello(request.query_params["name"])
-
-Deployment.deploy()
+```{literalinclude} ../serve/doc_code/handle_guide.py
+:start-after: __async_handle_start__
+:end-before: __async_handle_end__
+:language: python
 ```
 
 Now we can invoke the same logic from both HTTP or Python:
 
-```python
-print(requests.get("http://localhost:8000/api?name=Alice"))
-# Hello Alice!
-
-handle = Deployment.get_handle()
-print(ray.get(handle.say_hello.remote("Alice")))
-# Hello Alice!
+```{literalinclude} ../serve/doc_code/handle_guide.py
+:start-after: __async_handle_print_start__
+:end-before: __async_handle_print_end__
+:language: python
 ```
 
 (serve-sync-async-handles)=

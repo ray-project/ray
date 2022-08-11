@@ -9,7 +9,6 @@ from sklearn.ensemble import GradientBoostingClassifier
 
 from ray import serve
 
-serve.start()
 
 # Train model.
 iris_dataset = load_iris()
@@ -33,7 +32,7 @@ class BoostingModel:
 
 
 # Deploy model.
-BoostingModel.deploy(model)
+serve.run(BoostingModel.bind(model))
 
 # Query it!
 sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}

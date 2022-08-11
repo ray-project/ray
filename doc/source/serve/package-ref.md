@@ -18,14 +18,6 @@
 ```
 
 ```{eval-rst}
-.. autofunction:: ray.serve.list_deployments
-```
-
-```{eval-rst}
-.. autofunction:: ray.serve.get_deployment
-```
-
-```{eval-rst}
 .. autofunction:: ray.serve.shutdown
 ```
 

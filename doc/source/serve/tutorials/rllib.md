@@ -106,7 +106,7 @@ ppo_model = ServePPOModel.bind(checkpoint_path)
 serve.run(ppo_model)
 ```
 
-Note that the `checkpoint_path` that we passed to the `deploy()` method will be passed to
+Note that the `checkpoint_path` that we passed to the `bind()` method will be passed to
 the `__init__` method of the `ServePPOModel` class that we defined above.
 
 Now that the model is deployed, let's query it!
