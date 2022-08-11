@@ -2,74 +2,59 @@
 
 # ServeHandle: Calling Deployments from Python
 
-Ray Serve enables you to query models both from HTTP and Python. This feature
-enables seamless [model composition](serve-model-composition-guide). You can
-get a `ServeHandle` corresponding to deployment, similar how you can
-reach a deployment through HTTP via a specific route. When you issue a request
-to a deployment through `ServeHandle`, the request is load balanced across
-available replicas in the same way an HTTP request is.
+ServeHandle can be used to invoke your Serve deployment and deployment graphs using Python API.
 
-To call a Ray Serve deployment from python, use {mod}`Deployment.get_handle <ray.serve.api.Deployment>`
-to get a handle to the deployment, then use
-{mod}`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests
-to that deployment. These requests can pass ordinary args and kwargs that are
-passed directly to the method. This returns a Ray `ObjectRef` whose result
-can be waited for or retrieved using `ray.wait` or `ray.get`.
+This is particularly useful for two use cases:
+Calling deployments dynamically within the deployment graph.
+Iterating and testing your application in Python.
 
-```python
-@serve.deployment
-class Deployment:
-    def method1(self, arg):
-        return f"Method1: {arg}"
+To use the ServeHandle, use {mod}`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to that deployment.
+These requests can pass ordinary args and kwargs that are passed directly to the method. This returns a Ray `ObjectRef` whose result can be waited for or retrieved using `await` or `ray.get`.
 
-    def __call__(self, arg):
-        return f"__call__: {arg}"
+Conceptually, ServeHandle is a client side load balancer. It has the ability to route requests to any replicas of a given deployment. It also performs buffering internally so it won’t overwhelm the replicas. The number of requests buffered is used to inform autoscaler to scale up the number of requests.
 
-Deployment.deploy()
+![architecture-diagram-of-serve-handle](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/serve-handle-explainer.png)
 
-handle = Deployment.get_handle()
-ray.get(handle.remote("hi")) # Defaults to calling the __call__ method.
-ray.get(handle.method1.remote("hi")) # Call a different method.
+ServeHandle takes request parameters and returns a `ray.ObjectRef`. The `ray.ObjectRef` corresponds to a future object that will be fulfilled with the result object. Because of the internal buffering, the time from submitting a request to getting a `ray.ObjectRef` varies from instantaneous to indefinitely long.
+
+Because of this, we have two types of handle to make sure the buffering period is handled efficiently:
+- `RayServeDeploymentHandle` returns an `asyncio.Task` upon submission. The `asyncio.Task` can be awaited to resolve to a ray.ObjectRef. When a single request is being buffered, other requests can be processed concurrently.
+- `RayServeSyncHandle` directly returns a `ray.ObjectRef`. It blocks the current thread until the request is matched to a replica. This also matches the Ray Core Actor API.
+
+When you call `serve.run` to deploy a deployment graph (including single node graph), the driver node’s handle is returned. The return type is a ServeSyncHandle. This is useful for interacting with the deployment graph you just created and test against it.
+
+```{literalinclude} ../serve/doc_code/handle_guide.py
+:start-after: __begin_sync_handle__
+:end-before: __end_sync_handle__
+:language: python
 ```
 
-If you want to use the same deployment to serve both HTTP and ServeHandle traffic, the recommended best practice is to define an internal method that the HTTP handling logic will call:
+Other than `serve.run`, RayServeDeploymentHandle is the default because the API is more performant than its blocking counterpart. For example, when implementing a dynamic dispatch node in deployment graph, the handle is asynchronous.
 
-```python
-@serve.deployment(route_prefix="/api")
-class Deployment:
-    def say_hello(self, name: str):
-        return f"Hello {name}!"
-
-    def __call__(self, request):
-        return self.say_hello(request.query_params["name"])
-
-Deployment.deploy()
+```{literalinclude} ../serve/doc_code/handle_guide.py
+:start-after: __begin_async_handle__
+:end-before: __end_async_handle__
+:language: python
 ```
 
-Now we can invoke the same logic from both HTTP or Python:
+You don't have to use multiple await in common case because you can directly put the result of `deployment_handle.remote()` as argument for downstream handles.
 
-```python
-print(requests.get("http://localhost:8000/api?name=Alice"))
-# Hello Alice!
-
-handle = Deployment.get_handle()
-print(ray.get(handle.say_hello.remote("Alice")))
-# Hello Alice!
+```{literalinclude} ../serve/doc_code/handle_guide.py
+:start-after: __begin_async_handle_chain__
+:end-before: __end_async_handle_chain__
+:language: python
 ```
 
-(serve-sync-async-handles)=
+## Note about ray.ObjectRef
 
-## Sync and Async Handles
+`ray.ObjectRef` corresponds to a result of a request submission. To retrieve the result, you can use its synchronous API `ray.get(ref)` or async API `await ref`. To wait for the result to be available, you can use its synchronous API `ray.wait([ref])` or async API `await asyncio.wait([ref])`. You can mix and match them; but we recommend using the async API because it helps support high concurrency.
 
-Ray Serve offers two types of `ServeHandle`. You can use the `Deployment.get_handle(..., sync=True|False)`
-flag to toggle between them.
+## Calling a specific method
 
-- When you set `sync=True` (the default), a synchronous handle is returned.
-  Calling `handle.remote()` should return a Ray `ObjectRef`.
-- When you set `sync=False`, an asyncio based handle is returned. You need to
-  Call it with `await handle.remote()` to return a Ray ObjectRef. To use `await`,
-  you have to run `Deployment.get_handle` and `handle.remote` in Python asyncio event loop.
+In both types of ServeHandle, you can call a specific method by using the `.method_name` accessor. For example:
 
-The async handle has performance advantage because it uses asyncio directly; as compared
-to the sync handle, which talks to an asyncio event loop in a thread. To learn more about
-the reasoning behind these, checkout our [architecture documentation](serve-architecture).
+```{literalinclude} ../serve/doc_code/handle_guide.py
+:start-after: __begin_handle_method__
+:end-before: __end_handle_method__
+:language: python
+```
