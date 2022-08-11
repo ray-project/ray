@@ -58,7 +58,9 @@ You can use the `serve run` CLI command to run and test your application locally
 serve run local_dev:HelloDeployment
 ```
 
-Now that Serve is running, we can pass in HTTP requests to the application and see the output.  For simplicity, we'll just use the `curl` command to send requests from another terminal.
+This command will block the terminal, and can be canceled with Ctrl-C.
+Now that Serve is running, we can pass in HTTP requests to the application and see the output.
+For simplicity, we'll just use the `curl` command to send requests from another terminal.
 
 ```bash
 curl -X GET http://localhost:8000/hello?name=Ray
