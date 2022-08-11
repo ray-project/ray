@@ -5,8 +5,8 @@
 ServeHandle can be used to invoke your Serve deployment and deployment graphs using Python API.
 
 This is particularly useful for two use cases:
-Calling deployments dynamically within the deployment graph.
-Iterating and testing your application in Python.
+- Calling deployments dynamically within the deployment graph.
+- Iterating and testing your application in Python.
 
 To use the ServeHandle, use {mod}`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to that deployment.
 These requests can pass ordinary args and kwargs that are passed directly to the method. This returns a Ray `ObjectRef` whose result can be waited for or retrieved using `await` or `ray.get`.
