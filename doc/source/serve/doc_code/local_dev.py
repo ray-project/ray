@@ -2,7 +2,6 @@
 # Filename: local_dev.py
 import ray
 from ray import serve
-from ray.dag.input_node import InputNode
 import starlette.requests
 
 
