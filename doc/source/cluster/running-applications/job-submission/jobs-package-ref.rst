@@ -1,9 +1,9 @@
 .. _ray-job-submission-api-ref:
 
-Ray Job Submission API
-======================
+Ray Job Submission API Reference
+================================
 
-For an overview with examples see :ref:`Ray Job Submission (VM stacks)<jobs-overview>` or :ref:`Ray Job Submission (Kubernetes)<kuberay-job>`
+For an overview with examples see :ref:`Ray Job Submission<jobs-overview>`.
 
 .. _ray-job-submission-cli-ref:
 
@@ -75,5 +75,3 @@ JobInfo
 .. autoclass:: ray.job_submission.JobInfo
     :members:
     :noindex:
-
-TODO: cade@ to remove noindex entries in this file.

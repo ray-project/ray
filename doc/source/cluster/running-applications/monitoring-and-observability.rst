@@ -83,7 +83,7 @@ below.
         # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
 
         # Then, use the name of the Ray head service to run `ray status`.
-        $ kubectl exec <RayCluster name>-head-xxxxx "ray status"
+        $ kubectl exec <RayCluster name>-head-xxxxx -- ray status
 
 .. _multi-node-metrics:
 
