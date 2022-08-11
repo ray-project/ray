@@ -4,7 +4,7 @@ This page describes the recommended workflow for developing Ray Serve applicatio
 
 ## Local Development using `serve.run`
 
-You can use `serve.run` in a Python script to run and test your application locally, using a handle to send requests rather than HTTP.
+You can use `serve.run` in a Python script to run and test your application locally, using a handle to send requests programmatically rather than over HTTP.
 
 Benefits:
 
