@@ -97,10 +97,10 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
     ):
         for uri in uris:
             module_dir = self._get_local_dir_from_uri(uri)
-            if not module_dir.exists():
-                raise ValueError(
-                    f"Local directory {module_dir} for URI {uri} does "
-                    "not exist on the cluster. Something may have gone wrong while "
-                    "downloading, unpacking or installing the java jar files."
-                )
+            # if not module_dir.exists():
+            #     raise ValueError(
+            #         f"Local directory {module_dir} for URI {uri} does "
+            #         "not exist on the cluster. Something may have gone wrong while "
+            #         "downloading, unpacking or installing the java jar files."
+            #     )
             context.java_jars.append(str(module_dir))

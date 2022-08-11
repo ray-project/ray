@@ -135,7 +135,7 @@ public class RayConfig {
 
     // Namespace of this job.
     String localNamespace = config.getString("ray.job.namespace");
-    if (workerMode == WorkerType.DRIVER) {
+    if (isDriver) {
       namespace =
           StringUtils.isEmpty(localNamespace) ? UUID.randomUUID().toString() : localNamespace;
     } else {
@@ -213,21 +213,22 @@ public class RayConfig {
       final String jarsPath = "ray.job.runtime-env.jars";
       if (config.hasPath(jarsPath)) {
         jarUrls = config.getStringList(jarsPath);
+      } else {
+        jarUrls = new ArrayList<>();
       }
       runtimeEnvImpl = new RuntimeEnvImpl();
       if (!envVars.isEmpty()) {
         runtimeEnvImpl.set(RuntimeEnvName.ENV_VARS, envVars);
       }
+      if (isDriver) {
+        // Add current java class path to `java_jars` automatically.
+        String[] current_class_paths = System.getProperty("java.class.path").split(":");
+        for (String path : current_class_paths) {
+          jarUrls.add("file://localhost" + path);
+        }
+      }
       if (!jarUrls.isEmpty()) {
         runtimeEnvImpl.set(RuntimeEnvName.JARS, jarUrls);
-      } else {
-        List<String> paths = Arrays.asList(System.getProperty("java.class.path").split(":"));
-        List<String> runtimeEnvJars = new ArrayList<>();
-        paths.forEach(
-            (entry) -> {
-              runtimeEnvJars.add("file://localhost" + entry);
-            });
-        runtimeEnvImpl.set(RuntimeEnvName.JARS, runtimeEnvJars);
       }
     }
 
