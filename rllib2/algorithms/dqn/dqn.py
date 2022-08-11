@@ -4,12 +4,6 @@ class DQN(SimpleQ):
     def setup(self):
         ...
 
-        if multi_agent:
-            unit_trainer_map: Dict[PolicyID, UnitTrainer] = ...
-            self.unit_trainer = UnitTrainerDict(unit_trainer_map)
-        else:
-            self.unit_trainer = UnitTrainer(...)
-
     @override(SimpleQ)
     def training_step(self) -> ResultDict:
         """DQN training iteration function.
@@ -65,13 +59,7 @@ class DQN(SimpleQ):
             post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
             train_batch = post_fn(train_batch, self.workers, self.config)
 
-            # Learn on training batch.
-            # Use simple optimizer (only for multi-agent or tf-eager; all other
-            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-            if self.config.get("simple_optimizer"):
-                train_results = self.unit_trainer.update(train_batch)
-            else:
-                train_results = self.unit_trainer.multi_gpu_update(train_batch)
+            train_results = self.rl_trainer.update(train_batch)
 
             # Update replay buffer priorities.
             update_priorities_in_replay_buffer(
@@ -90,9 +78,9 @@ class DQN(SimpleQ):
             last_update = self._counters[LAST_TARGET_UPDATE_TS]
             if cur_ts - last_update >= self.config["target_network_update_freq"]:
                 to_update = self.workers.local_worker().get_policies_to_train()
-                self.workers.local_worker().foreach_policy_to_train(
-                    lambda p, pid: pid in to_update and p.update_target()
-                )
+                for module_id in to_update:
+                    self.rl_trainer[module_id].update(target=True)
+
                 self._counters[NUM_TARGET_UPDATES] += 1
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 

@@ -1,5 +1,6 @@
-import rllib.agents
 
+class Algorithm(...):
 
-class Algorithm(rllib.agents.Trainer):
-    pass
+    @property
+    def rl_trainer(self) -> MARLTrainer:
+        return self.workers.local_worker().rl_trainer
