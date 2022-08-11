@@ -48,3 +48,5 @@ def hello(request):
 
 serve.run(hello.bind())
 # __deploy_in_k8s_end__
+
+subprocess.check_output(["ray", "stop", "--force"])
