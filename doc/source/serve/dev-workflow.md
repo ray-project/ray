@@ -2,11 +2,11 @@
 
 # Sample Development Workflow
 
-When developing a new application, iteration speed is critical.  This page describes a sample development workflow for Ray Serve applications, optimized for iteration speed. If you're ready to go to production, you can jump to the [Production Workflow](production-workflow.md) section.
+This page describes the recommended development workflow for Ray Serve applications when iterating in development. Once you're ready to go to production, you can jump to the [Production Guide](production-guide.md) section.
 
 ## Local Development using Python handles
 
-You can use `serve.run` in process to run and test your application locally, using a Python handle to send requests rather than HTTP.
+You can use `serve.run` in a Python script to run and test your application locally, using a handle to send requests rather than HTTP.
 
 Benefits:
 
