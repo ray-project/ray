@@ -7,7 +7,7 @@ from ray import serve
 from transformers import pipeline
 
 
-@serve.deployment
+@serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 0.2, "num_gpus": 0})
 class Translator:
     def __init__(self):
         # Load model
@@ -30,6 +30,7 @@ class Translator:
 translator = Translator.bind()
 # __deployment_full_end__
 
+translator = Translator.options(ray_actor_options={}).bind()
 serve.run(translator)
 
 import requests
