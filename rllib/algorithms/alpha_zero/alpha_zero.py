@@ -105,17 +105,18 @@ class AlphaZeroConfig(AlgorithmConfig):
         self.sgd_minibatch_size = 128
         self.shuffle_sequences = True
         self.num_sgd_iter = 30
-        self.learning_starts = 1000
         self.replay_buffer_config = {
             "type": "ReplayBuffer",
             # Size of the replay buffer in batches (not timesteps!).
             "capacity_items": 1000,
-            # When to start returning samples (in batches, not timesteps!).
-            "learning_starts": 500,
             # Choosing `fragments` here makes it so that the buffer stores entire
             # batches, instead of sequences, episodes or timesteps.
             "storage_unit": "fragments",
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 1000
         self.lr_schedule = None
         self.vf_share_layers = False
         self.mcts_config = {
@@ -169,6 +170,7 @@ class AlphaZeroConfig(AlgorithmConfig):
         vf_share_layers: Optional[bool] = None,
         mcts_config: Optional[dict] = None,
         ranked_rewards: Optional[dict] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "AlphaZeroConfig":
         """Sets the training related configuration.
@@ -221,6 +223,10 @@ class AlphaZeroConfig(AlgorithmConfig):
             mcts_config: MCTS specific settings.
             ranked_rewards: Settings for the ranked reward (r2) algorithm
                 from: https://arxiv.org/pdf/1807.01672.pdf
+            num_steps_sampled_before_learning_starts: Number of timesteps to collect
+                from rollout workers before we start sampling from replay buffers for
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config["multiagent"]["count_steps_by"].
 
         Returns:
             This updated AlgorithmConfig object.
@@ -244,6 +250,10 @@ class AlphaZeroConfig(AlgorithmConfig):
             self.mcts_config = mcts_config
         if ranked_rewards is not None:
             self.ranked_rewards = ranked_rewards
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 
@@ -344,9 +354,19 @@ class AlphaZero(Algorithm):
                 self.local_replay_buffer.add(batch)
 
         if self.local_replay_buffer is not None:
-            train_batch = self.local_replay_buffer.sample(
-                self.config["train_batch_size"]
-            )
+            # Update target network every `target_network_update_freq` sample steps.
+            cur_ts = self._counters[
+                NUM_AGENT_STEPS_SAMPLED
+                if self._by_agent_steps
+                else NUM_ENV_STEPS_SAMPLED
+            ]
+
+            if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
+                train_batch = self.local_replay_buffer.sample(
+                    self.config["train_batch_size"]
+                )
+            else:
+                train_batch = None
         else:
             train_batch = concat_samples(new_sample_batches)
 

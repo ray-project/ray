@@ -84,7 +84,7 @@ class MyAlgo(Algorithm):
         super().setup(config)
         # Create local replay buffer.
         self.local_replay_buffer = MultiAgentReplayBuffer(
-            num_shards=1, learning_starts=1000, capacity_ts=50000
+            num_shards=1,  capacity_ts=50000
         )
 
     @override(Algorithm)
@@ -93,6 +93,7 @@ class MyAlgo(Algorithm):
         # into replay buffer.
         ppo_batches = []
         num_env_steps = 0
+
         # PPO batch size fixed at 200.
         while num_env_steps < 200:
             ma_batches = synchronous_parallel_sample(
@@ -112,8 +113,9 @@ class MyAlgo(Algorithm):
 
         # DQN sub-flow.
         dqn_train_results = {}
-        dqn_train_batch = self.local_replay_buffer.sample(num_items=64)
-        if dqn_train_batch is not None:
+
+        if self._counters[NUM_ENV_STEPS_SAMPLED] > 1000:
+            dqn_train_batch = self.local_replay_buffer.sample(num_items=64)
             dqn_train_results = train_one_step(self, dqn_train_batch, ["dqn_policy"])
             self._counters["agent_steps_trained_DQN"] += dqn_train_batch.agent_steps()
             print(

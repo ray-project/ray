@@ -1,5 +1,6 @@
 import logging
 from typing import Optional, Any
+import numpy as np
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deprecation_warning
@@ -51,11 +52,34 @@ def update_priorities_in_replay_buffer(
             #  policies (note: fixing this in torch_policy.py will
             #  break e.g. DDPPO!).
             td_error = info.get("td_error", info[LEARNER_STATS_KEY].get("td_error"))
+
+            policy_batch = train_batch.policy_batches[policy_id]
             # Set the get_interceptor to None in order to be able to access the numpy
             # arrays directly (instead of e.g. a torch array).
-            train_batch.policy_batches[policy_id].set_get_interceptor(None)
+            policy_batch.set_get_interceptor(None)
             # Get the replay buffer row indices that make up the `train_batch`.
-            batch_indices = train_batch.policy_batches[policy_id].get("batch_indexes")
+            batch_indices = policy_batch.get("batch_indexes")
+
+            if SampleBatch.SEQ_LENS in policy_batch:
+                # Batch_indices are represented per column, in order to update
+                # priorities, we need one index per td_error
+                _batch_indices = []
+
+                # Sequenced batches have been zero padded to max_seq_len.
+                # Depending on how batches are split during learning, not all
+                # sequences have an associated td_error (trailing ones missing).
+                if policy_batch.zero_padded:
+                    seq_lens = len(td_error) * [policy_batch.max_seq_len]
+                else:
+                    seq_lens = policy_batch[SampleBatch.SEQ_LENS][: len(td_error)]
+
+                # Go through all indices by sequence that they represent and shrink
+                # them to one index per sequences
+                sequence_sum = 0
+                for seq_len in seq_lens:
+                    _batch_indices.append(batch_indices[sequence_sum])
+                    sequence_sum += seq_len
+                batch_indices = np.array(_batch_indices)
 
             if td_error is None:
                 if log_once(
@@ -223,7 +247,6 @@ def validate_buffer_config(config: dict) -> None:
         "prioritized_replay_eps",
         "no_local_replay_buffer",
         "replay_zero_init_states",
-        "learning_starts",
         "replay_buffer_shards_colocated_with_driver",
     ]
     for k in keys_with_deprecated_positions:
@@ -246,6 +269,19 @@ def validate_buffer_config(config: dict) -> None:
             error=False,
         )
         config["replay_buffer_config"]["replay_mode"] = replay_mode
+
+    learning_starts = config.get(
+        "learning_starts",
+        config.get("replay_buffer_config", {}).get("learning_starts", DEPRECATED_VALUE),
+    )
+    if learning_starts != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['learning_starts'] or"
+            "config['replay_buffer_config']['learning_starts']",
+            help="config['num_steps_sampled_before_learning_starts']",
+            error=False,
+        )
+        config["num_steps_sampled_before_learning_starts"] = learning_starts
 
     # Can't use DEPRECATED_VALUE here because this is also a deliberate
     # value set for some algorithms

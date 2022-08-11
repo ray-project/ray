@@ -90,9 +90,11 @@ class SlateQConfig(AlgorithmConfig):
             "replay_sequence_length": 1,
             # Whether to compute priorities on workers.
             "worker_side_prioritization": False,
-            # How many steps of the model to sample before learning starts.
-            "learning_starts": 20000,
         }
+        # Number of timesteps to collect from rollout workers before we start
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        self.num_steps_sampled_before_learning_starts = 20000
 
         # Override some of AlgorithmConfig's default values with SlateQ-specific values.
         self.exploration_config = {
@@ -139,6 +141,7 @@ class SlateQConfig(AlgorithmConfig):
         rmsprop_epsilon: Optional[float] = None,
         grad_clip: Optional[float] = None,
         n_step: Optional[int] = None,
+        num_steps_sampled_before_learning_starts: Optional[int] = None,
         **kwargs,
     ) -> "SlateQConfig":
         """Sets the training related configuration.
@@ -202,6 +205,10 @@ class SlateQConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         if n_step is not None:
             self.n_step = n_step
+        if num_steps_sampled_before_learning_starts is not None:
+            self.num_steps_sampled_before_learning_starts = (
+                num_steps_sampled_before_learning_starts
+            )
 
         return self
 
