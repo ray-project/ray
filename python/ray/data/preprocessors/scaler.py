@@ -9,23 +9,64 @@ from ray.data.preprocessor import Preprocessor
 
 
 class StandardScaler(Preprocessor):
-    """Scale values within columns based on mean and standard deviation.
+    r"""Translate and scale each column by its mean and standard deviation, respectively.
 
-    For each column, each value will be transformed to ``(value-mean)/std``,
-    where ``mean`` and ``std`` are calculated from the fitted dataset.
+    The general formula is given by
+
+    .. math::
+
+        x' = \frac{x - \bar{x}}{s}
+
+    where :math:`x` is the column, :math:`x'` is the transformed column,
+    :math:`\bar{x}` is the column average, and :math:`s` is the column's sample
+    standard deviation. If :math:`s = 0` (i.e., the column is constant-valued),
+    then the transformed column will contain zeros.
+
+    .. warning::
+        :class:`StandardScaler` works best when your data is normal. If your data isn't
+        approximately normal, then the transformed features won't be meaningful.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import StandardScaler
+        >>>
+        >>> df = pd.DataFrame({"X1": [-2, 0, 2], "X2": [-3, -3, 3], "X3": [1, 1, 1]})
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
+           X1  X2  X3
+        0  -2  -3   1
+        1   0  -3   1
+        2   2   3   1
+
+        Columns are scaled separately.
+
+        >>> preprocessor = StandardScaler(columns=["X1", "X2"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+                 X1        X2  X3
+        0 -1.224745 -0.707107   1
+        1  0.000000 -0.707107   1
+        2  1.224745  1.414214   1
+
+        Constant-valued columns get filled with zeros.
+
+        >>> preprocessor = StandardScaler(columns=["X3"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2   X3
+        0  -2  -3  0.0
+        1   0  -3  0.0
+        2   2   3  0.0
 
     Args:
-        columns: The columns that will individually be scaled.
-        ddof: The delta degrees of freedom used to calculate standard deviation.
+        columns: The columns to separately scale.
     """
 
-    def __init__(self, columns: List[str], ddof=0):
+    def __init__(self, columns: List[str]):
         self.columns = columns
-        self.ddof = ddof
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         mean_aggregates = [Mean(col) for col in self.columns]
-        std_aggregates = [Std(col, ddof=self.ddof) for col in self.columns]
+        std_aggregates = [Std(col, ddof=0) for col in self.columns]
         self.stats_ = dataset.aggregate(*mean_aggregates, *std_aggregates)
         return self
 
@@ -47,23 +88,60 @@ class StandardScaler(Preprocessor):
         return df
 
     def __repr__(self):
-        return (
-            f"{self.__class__.__name__}(columns={self.columns!r}, ddof={self.ddof!r})"
-        )
+        return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
 class MinMaxScaler(Preprocessor):
-    """Scale values within columns based on min and max values.
+    r"""Scale each column by its range.
 
-    For each column, each value will be transformed to
-    ``(value - min) / (max - min)``,
-    where ``min`` and ``max`` are calculated from the fitted dataset.
+    The general formula is given by
 
-    When transforming the fitted dataset, transformed values will be in the
-    range [0, 1].
+    .. math::
+
+        x' = \frac{x - \min(x)}{\max{x} - \min{x}}
+
+    where :math:`x` is the column and :math:`x'` is the transformed column. If
+    :math:`\max{x} - \min{x} = 0` (i.e., the column is constant-valued), then the
+    transformed column will get filled with zeros.
+
+    Transformed values are always in the range :math:`[0, 1]`.
+
+    .. tip::
+        This can be used as an alternative to :py:class:`StandardScaler`.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import MinMaxScaler
+        >>>
+        >>> df = pd.DataFrame({"X1": [-2, 0, 2], "X2": [-3, -3, 3], "X3": [1, 1, 1]})   # noqa: E501
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
+           X1  X2  X3
+        0  -2  -3   1
+        1   0  -3   1
+        2   2   3   1
+
+        Columns are scaled separately.
+
+        >>> preprocessor = MinMaxScaler(columns=["X1", "X2"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+            X1   X2  X3
+        0  0.0  0.0   1
+        1  0.5  0.0   1
+        2  1.0  1.0   1
+
+        Constant-valued columns get filled with zeros.
+
+        >>> preprocessor = MinMaxScaler(columns=["X3"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2   X3
+        0  -2  -3  0.0
+        1   0  -3  0.0
+        2   2   3  0.0
 
     Args:
-        columns: The columns that will individually be scaled.
+        columns: The columns to separately scale.
     """
 
     def __init__(self, columns: List[str]):
@@ -97,16 +175,52 @@ class MinMaxScaler(Preprocessor):
 
 
 class MaxAbsScaler(Preprocessor):
-    """Scale values within columns based on the absolute max value.
+    r"""Scale each column by its absolute max value.
 
-    For each column, each value will be transformed to ``value / abs_max``,
-    where ``abs_max`` is calculated from the fitted dataset.
+    The general formula is given by
 
-    When transforming the fitted dataset, transformed values will be in the
-    range [-1, 1].
+    .. math::
+
+        x' = \frac{x}{\max{\vert x \vert}}
+
+    where :math:`x` is the column and :math:`x'` is the transformed column. If
+    :math:`\max{\vert x \vert} = 0` (i.e., the column contains all zeros), then the
+    column is unmodified.
+
+    .. tip::
+        This is the recommended way to scale sparse data. If you data isn't sparse,
+        you can use :class:`MinMaxScaler` or :class:`StandardScaler` instead.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import MaxAbsScaler
+        >>>
+        >>> df = pd.DataFrame({"X1": [-6, 3], "X2": [2, -4], "X3": [0, 0]})   # noqa: E501
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
+           X1  X2  X3
+        0  -6   2   0
+        1   3  -4   0
+
+        Columns are scaled separately.
+
+        >>> preprocessor = MaxAbsScaler(columns=["X1", "X2"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+            X1   X2  X3
+        0 -1.0  0.5   0
+        1  0.5 -1.0   0
+
+        Zero-valued columns aren't scaled.
+
+        >>> preprocessor = MaxAbsScaler(columns=["X3"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+           X1  X2   X3
+        0  -6   2  0.0
+        1   3  -4  0.0
 
     Args:
-        columns: The columns that will individually be scaled.
+        columns: The columns to separately scale.
     """
 
     def __init__(self, columns: List[str]):
@@ -138,17 +252,56 @@ class MaxAbsScaler(Preprocessor):
 
 
 class RobustScaler(Preprocessor):
-    """Scale values within columns based on their quantile range.
+    r"""Scale and translate each column using quantiles.
 
-    For each column, each value will be transformed to
-    ``(value - median) / (high_quantile - low_quantile)``,
-    where ``median`` , ``high_quantile``, and ``low_quantile``
-    are calculated from the fitted dataset.
+    The general formula is given by
+
+    .. math::
+        x' = \frac{x - \mu_{1/2}}{\mu_h - \mu_l}
+
+    where :math:`x` is the column, :math:`x'` is the transformed column,
+    :math:`\mu_{1/2}` is the column median. :math:`\mu_{h}` and :math:`\mu_{l}` are the
+    high and low quantiles, respectively. By default, :math:`\mu_{h}` is the third
+    quartile and :math:`\mu_{l}` is the first quartile.
+
+    .. tip::
+        This scaler works well when your data contains many outliers.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import ray
+        >>> from ray.data.preprocessors import RobustScaler
+        >>>
+        >>> df = pd.DataFrame({
+        ...     "X1": [1, 2, 3, 4, 5],
+        ...     "X2": [13, 5, 14, 2, 8],
+        ...     "X3": [1, 2, 2, 2, 3],
+        ... })
+        >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
+        >>> ds.to_pandas()  # doctest: +SKIP
+           X1  X2  X3
+        0   1  13   1
+        1   2   5   2
+        2   3  14   2
+        3   4   2   2
+        4   5   8   3
+
+        :class:`RobustScaler` separately scales each column.
+
+        >>> preprocessor = RobustScaler(columns=["X1", "X2"])
+        >>> preprocessor.fit_transform(ds).to_pandas()  # doctest: +SKIP
+            X1     X2  X3
+        0 -1.0  0.625   1
+        1 -0.5 -0.375   2
+        2  0.0  0.750   2
+        3  0.5 -0.750   2
+        4  1.0  0.000   3
 
     Args:
-        columns: The columns that will be scaled individually.
-        quantile_range: A tuple that defines the lower and upper quantile to scale to.
-                        Defaults to the 1st and 3rd quartiles: (0.25, 0.75).
+        columns: The columns to separately scale.
+        quantile_range: A tuple that defines the lower and upper quantiles. Values
+            must be between 0 and 1. Defaults to the 1st and 3rd quartiles:
+            ``(0.25, 0.75)``.
     """
 
     def __init__(
