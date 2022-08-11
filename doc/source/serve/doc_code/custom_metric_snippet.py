@@ -30,7 +30,7 @@ while True:
     requests.get("http://localhost:8000/")
     time.sleep(1)
 
-# __end__
+    # __end__
     break
 
 response = requests.get("http://localhost:8000/")

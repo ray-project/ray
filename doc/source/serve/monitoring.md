@@ -54,8 +54,8 @@ This produces a few INFO-level log messages about startup from the Serve control
 Next, let's create a simple deployment that logs a custom log message when it's queried:
 
 ```{literalinclude} ../serve/doc_code/monitoring.py
-:start-after: __start_monitoring__
-:end-before: __end_monitoring__
+:start-after: __start__
+:end-before: __end__
 :language: python
 :linenos: true
 ```

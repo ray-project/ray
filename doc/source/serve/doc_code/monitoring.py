@@ -1,4 +1,4 @@
-# __start_monitoring__
+# __start__
 # File name: monitoring.py
 
 from ray import serve
@@ -21,4 +21,7 @@ say_hello = SayHello.bind()
 serve.run(say_hello)
 
 requests.get("http://localhost:8000/")
-# __end_monitoring__
+# __end__
+
+response = requests.get("http://localhost:8000/")
+assert response.text == "hi"
