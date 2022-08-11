@@ -36,7 +36,7 @@ In this example, there's a single-node cluster running a deployment named `Trans
 * 1 HTTP proxy
 * 2 `Translator` deployment replicas
 
-This page includes additional useful information like each actor's process ID (PID) and a link to each actor's logs, which includes their `logging` and print statments. You can also see whether any particular actor is alive or dead to help you debug potential cluster failures.
+This page includes additional useful information like each actor's process ID (PID) and a link to each actor's logs, which includes their `logging` and print statements. You can also see whether any particular actor is alive or dead to help you debug potential cluster failures.
 
 :::{tip}
 To learn more about the Serve controller actor, the HTTP proxy actor(s), the deployment replicas, and how they all work together, check out the [Serve Architecture](serve-architecture) documentation.
@@ -210,8 +210,7 @@ You can use Loki to filter your Ray Serve logs and gather insights quicker.
 You can leverage built-in Ray Serve metrics to get a closer look at your application's performance.
 
 Ray Serve exposes important system metrics like the number of successful and
-errored requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default,
-the metrics are exposed in Prometheus format on each node.
+failed requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default, the metrics are exposed in Prometheus format on each node.
 
 The following metrics are exposed by Ray Serve:
 
