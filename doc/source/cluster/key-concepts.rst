@@ -49,14 +49,15 @@ Worker Node
 
 .. _cluster-autoscaler:
 
-Autoscaler
-----------
+Autoscaling
+-----------
 
-The *autoscaler* is a process that runs on the :ref:`head node <cluster-head-node>` (or as a sidecar container in the head pod if :ref:`using Kubernetes <kuberay-index>`).
+The *Ray autoscaler* is a process that runs on the :ref:`head node <cluster-head-node>` (or as a sidecar container in the head pod if :ref:`using Kubernetes <kuberay-index>`).
 When the resource demands of the Ray workload exceed the
 current capacity of the cluster, the autoscaler will try to increase the number of worker nodes. When worker nodes
 sit idle, the autoscaler will remove worker nodes from the cluster.
 
+It is important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics.
 To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <deployment-guide-autoscaler>` and :ref:`Kubernetes <kuberay-autoscaler-discussion>`.
 
 .. _cluster-clients-and-jobs:
@@ -66,8 +67,8 @@ To learn more about autoscaling, refer to the user guides for Ray clusters on :r
 Scripts, Clients, and Jobs
 --------------------------
 
-You can run scripts directly on Ray cluster nodes, connect to remote clusters via Ray client,
-or submit a packaged application as a job to a cluster:
+There are a few ways to get your code running on a Ray cluster. You can run scripts directly on Ray cluster nodes,
+connect to remote clusters via Ray client, or submit a packaged application as a job to a cluster:
 
 * **Direct Run**: You can directly run a script on any node of a Ray cluster, and that script will automatically
   detect and connect to the cluster upon `ray.init`, just like how it works on your laptop. This method

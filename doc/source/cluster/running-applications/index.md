@@ -1,7 +1,4 @@
 # Index
-:::{warning}
-This page is under construction!
-:::
 
 ```{toctree}
 :maxdepth: '2'
