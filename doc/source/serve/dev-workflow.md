@@ -75,7 +75,7 @@ curl -X GET http://localhost:8000/hello?name=Ray
 
 
 
-## 3. Testing on a remote cluster
+## Testing on a remote cluster
 
 When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  During development, you can use [Runtime Environments](runtime-environments.md) to manage this in a flexible way.
 
