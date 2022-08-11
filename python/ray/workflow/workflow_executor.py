@@ -13,6 +13,7 @@ from ray.workflow.common import (
     WorkflowExecutionMetadata,
     WorkflowStatus,
     TaskID,
+    WorkflowTaskReturnCode,
 )
 from ray.workflow.exceptions import WorkflowCancellationError, WorkflowExecutionError
 from ray.workflow.task_executor import get_task_executor, _BakedWorkflowInputs
@@ -242,11 +243,12 @@ class WorkflowExecutor:
         output_ref = state.pop_running_frontier(fut)
         task_id = output_ref.task_id
         try:
-            task_executed = fut.result()
-            if not task_executed:
+            task_return_code: WorkflowTaskReturnCode = fut.result()
+            if task_return_code.CHECKPOINTED:
+                state.checkpoint_map[task_id] = WorkflowRef(task_id)
+            elif task_return_code.EXIT_BEFORE_EXECUTION:
                 # Handled when processing upstream task. Just skip here.
                 return
-            state.checkpoint_map[task_id] = WorkflowRef(task_id)
             state.done_tasks.add(task_id)
             state.task_execution_metadata[task_id].finish_time = time.time()
             logger.info(

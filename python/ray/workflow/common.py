@@ -131,6 +131,19 @@ class CheckpointMode(Enum):
     SKIP = False
 
 
+@unique
+class WorkflowTaskReturnCode(int, Enum):
+    """The return code of a workflow task."""
+
+    # The task succeeds and get checkpointed.
+    CHECKPOINTED = 0
+    # The task succeeds but skips the checkpoint.
+    NOT_CHECKPOINTED = 1
+    # The task exits before starting executing the task function. This could be
+    # because the checkpointing of the upstream tasks fail.
+    EXIT_BEFORE_EXECUTION = 3
+
+
 @ray.remote
 def _hash(obj: Any) -> bytes:
     m = hashlib.sha256()

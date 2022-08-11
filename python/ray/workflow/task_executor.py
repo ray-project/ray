@@ -21,6 +21,7 @@ from ray.workflow.common import (
     WorkflowRef,
     CheckpointMode,
     get_management_actor,
+    WorkflowTaskReturnCode,
 )
 from ray.workflow.workflow_state import WorkflowExecutionState
 from ray.workflow.workflow_state_from_dag import workflow_state_from_dag
@@ -55,7 +56,7 @@ def _workflow_task_executor(
     task_id: "TaskID",
     baked_inputs: "_BakedWorkflowInputs",
     runtime_options: "WorkflowTaskRuntimeOptions",
-) -> bool:
+) -> WorkflowTaskReturnCode:
     """Executor function for workflow task.
 
     Args:
@@ -85,7 +86,7 @@ def _workflow_task_executor(
                 f"Upstream checkpoint sizes: {sizes_dict}"
             )
         except RayError:
-            return False
+            return WorkflowTaskReturnCode.EXIT_BEFORE_EXECUTION
 
         # Part 3: execute the task
         try:
@@ -118,8 +119,9 @@ def _workflow_task_executor(
                 store.save_workflow_execution_state(task_id, output)
             else:
                 store.save_task_output(task_id, output, exception=None)
+            return WorkflowTaskReturnCode.CHECKPOINTED
 
-        return True
+        return WorkflowTaskReturnCode.NOT_CHECKPOINTED
 
 
 @ray.remote
