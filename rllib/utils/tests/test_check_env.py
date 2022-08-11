@@ -62,6 +62,7 @@ class TestGymCheckEnv(unittest.TestCase):
             "observation_space": Dict({"a": Discrete(4), "b": Box(-1.0, 1.0, (1,))}),
         })
         reset = MagicMock(return_value={"a": float(0.1), "b": np.array([0.5])})
+        error = ".*The observation collected from env.reset().*"
         env.reset = reset
         with pytest.raises(ValueError, match=error):
             check_env(env)
