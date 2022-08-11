@@ -81,7 +81,7 @@ We run long-running benchmarks nightly:
        * cluster_max_P90_latency_ms = 51.07
        * cluster_max_P99_latency_ms = 56.41
    * - `Autoscaling Multiple Deployments <https://github.com/ray-project/ray/blob/master/release/serve_tests/workloads/autoscaling_multi_deployment.py>`_
-     - Runs 10 minute `wrk <https://github.com/wg/wrk>`_ trial on 10 deployments that autoscale betwee 0 and 100 replicas each. Each deployment recursively sends queries to up to 5 other deployments.
+     - Runs 10 minute `wrk <https://github.com/wg/wrk>`_ trial on 10 deployments that autoscale between 0 and 100 replicas each. Each deployment recursively sends queries to up to 5 other deployments.
      -  Head node: AWS EC2 m5.8xlarge. Autoscaling between 5 to 35 worker nodes: AWS EC2 m5.8xlarge.
      - * per_thread_latency_avg_ms = 280.69
        * per_thread_latency_max_ms = 1970.0
