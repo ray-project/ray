@@ -39,11 +39,11 @@ class AgentConnectorPipeline(ConnectorPipeline, AgentConnector):
             ret = c(ret)
         return ret
 
-    def to_config(self):
-        return AgentConnectorPipeline.__name__, [c.to_config() for c in self.connectors]
+    def to_state_dict(self):
+        return AgentConnectorPipeline.__name__, [c.to_state_dict() for c in self.connectors]
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state_dict(ctx: ConnectorContext, params: List[Any]):
         assert (
             type(params) == list
         ), "AgentConnectorPipeline takes a list of connector params."

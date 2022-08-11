@@ -5,15 +5,15 @@ from ray.rllib.connectors.connector import Connector, ConnectorPipeline
 
 class TestConnectorPipeline(unittest.TestCase):
     class Tom(Connector):
-        def to_config():
+        def to_state_dict():
             return "tom"
 
     class Bob(Connector):
-        def to_config():
+        def to_state_dict():
             return "bob"
 
     class Mary(Connector):
-        def to_config():
+        def to_state_dict():
             return "mary"
 
     class MockConnectorPipeline(ConnectorPipeline):
