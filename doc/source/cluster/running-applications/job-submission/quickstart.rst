@@ -35,7 +35,7 @@ For convenience, this guide will assume that you are using a local Ray Cluster, 
 
 This will create a Ray head node on our local machine that we can use for development purposes.
 Note the Ray Dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job.
-For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <ref-cluster-quick-start-vms>` and :ref:`Kubernetes <kuberay-quickstart>`.
+For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <vm-cluster-quick-start-vms>` and :ref:`Kubernetes <kuberay-quickstart>`.
 
 
 Submitting a Ray Job

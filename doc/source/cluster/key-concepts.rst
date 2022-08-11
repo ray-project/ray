@@ -58,7 +58,7 @@ current capacity of the cluster, the autoscaler will try to increase the number 
 sit idle, the autoscaler will remove worker nodes from the cluster.
 
 It is important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics.
-To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <ref-cluster-quick-start>` and :ref:`Kubernetes <kuberay-index>`.
+To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <vm-cluster-quick-start>` and :ref:`Kubernetes <kuberay-index>`.
 
 .. _cluster-clients-and-jobs:
 

@@ -4,7 +4,7 @@
 
 :::{note}
 To learn the basics of Ray on VMs, we recommend taking a look
-at the {ref}`introductory guide<ref-cluster-quick-start-vms>` first.
+at the {ref}`introductory guide<vm-cluster-quick-start-vms>` first.
 :::
 
 

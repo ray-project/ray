@@ -70,7 +70,7 @@ If you have a running Ray cluster (version >= 1.5), Ray Client server is likely 
 
    ray start --head
 
-To start a Ray cluster remotely, you can follow the directions in :ref:`ref-cluster-quick-start`.
+To start a Ray cluster remotely, you can follow the directions in :ref:`vm-cluster-quick-start`.
 
 If necessary, you can modify the Ray Client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` :ref:`command <ray-start-doc>`.
 
