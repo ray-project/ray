@@ -55,21 +55,26 @@ proper backpressure. You can increase the value in the deployment decorator; e.g
 
 ### Batching
 
-If your deployment can process a batch at a time at a sublinear latency
-(for example, if it takes 1ms to process 1 query and 5ms to process 10 of them)
-then batching is your best approach. Check out the [batching guide](serve-batching) to
-make your deployment accept batches (especially for GPU-based ML inference). You might want to tune `max_batch_size` and `batch_wait_timeout` in the `@serve.batch` decorator to maximize the benefits:
+If your deployment can process batches at a sublinear latency
+(meaning, for example, that it takes say 1ms to process 1 query and 5ms to process 10 of them)
+then batching is your best approach. Check out the [batching guide](serve-batching) and
+refactor your deployment to accept batches (especially for GPU-based ML inference). You might want to tune `max_batch_size` and `batch_wait_timeout` in the `@serve.batch` decorator to maximize the benefits:
 
 - `max_batch_size` specifies how big the batch should be. Generally,
   we recommend choosing the largest batch size your function can handle
-  AND the performance improvement is no longer sublinear. Take a dummy
-  example: suppose it takes 1ms to process 1 query, 5ms to process 10 queries,
+  without losing the sublinear performance improvement.
+  For example, suppose it takes 1ms to process 1 query, 5ms to process 10 queries,
   and 6ms to process 11 queries. Here you should set the batch size to to 10
   because adding more queries won’t improve the performance.
 - `batch_wait_timeout` specifies the maximum amount of time to wait before
   a batch should be processed, even if it’s not full.  It should be set according
-  to the equation `batch_wait_timeout + full batch processing time ~= expected latency`.
-  The larger `batch_wait_timeout` is, the more full the typical batch will be.
+  to the equation:
+  
+  ```
+  batch_wait_timeout + full batch processing time ~= expected latency
+  ```
+
+  The larger that `batch_wait_timeout` is, the more full the typical batch will be.
   To maximize throughput, you should set `batch_wait_timeout` as large as possible without exceeding your desired expected latency in the equation above.
 
 ### Scaling HTTP servers
@@ -81,4 +86,5 @@ This server can handle about 3k queries per second.
 If your workload exceeds this number, you might want to consider starting one
 HTTP server per Ray node to spread the load via the `location` field of [`http_options`](core-apis); e.g. `http_options={“location”: “EveryNode”})`.
 This configuration tells Serve to spawn one HTTP server per node.
-You should put an external load balancer in front of it.
+You should put an external load balancer in front of your Serve application to balance
+across multiple HTTP servers.
