@@ -28,7 +28,7 @@ We run long-running benchmarks nightly:
 .. list-table::
    :header-rows: 1
 
-   * - Benchmark Name
+   * - Benchmark
      - Workload Description
      - Cluster Details
      - Performance Numbers
