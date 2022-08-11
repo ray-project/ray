@@ -17,9 +17,9 @@ if __name__ == "__main__":
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
         "--dataset",
-        nargs='+',
+        nargs="+",
         default=["./rllib/tests/data/cartpole/large.json"],
-        help="List of paths to offline json files/zips for training."
+        help="List of paths to offline json files/zips for training.",
     )
     parser.add_argument(
         "--num-episodes-during-inference",
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     # Note that for an offline RL algorithm, we don't do training rollouts,
     # instead we have to rely on evaluation rollouts.
     stop = {
-        "evaluation/episode_reward_mean": 200.,
+        "evaluation/episode_reward_mean": 200.0,
         "training_iteration": 100,
     }
 
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     input_dict = algo.get_initial_input_dict(obs)
 
     num_episodes = 0
-    total_rewards = 0.
+    total_rewards = 0.0
 
     while num_episodes < args.num_episodes_during_inference:
         # Compute an action (`a`).
@@ -151,7 +151,7 @@ if __name__ == "__main__":
             obs = env.reset()
             input_dict = algo.get_initial_input_dict(obs)
             num_episodes += 1
-            total_rewards = 0.
+            total_rewards = 0.0
         # Episode is still ongoing -> Continue.
         else:
             input_dict = algo.get_next_input_dict(

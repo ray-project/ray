@@ -495,4 +495,3 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             for k in self.model.tower_stats
         }
         return stats_dict
-
