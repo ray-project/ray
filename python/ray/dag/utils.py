@@ -34,33 +34,13 @@ class _DAGNodeNameGenerator(object):
             node_name = node.get_deployment_name()
         elif type(node).__name__ == "DeploymentMethodNode":
             node_name = node.get_deployment_method_name()
-        else:
-            raise ValueError(
-                "get_node_name() should only be called on DAGNode instances."
-            )
-
-        if node_name not in self.name_to_suffix:
-            self.name_to_suffix[node_name] = 0
-            return node_name
-        else:
-            self.name_to_suffix[node_name] += 1
-            suffix_num = self.name_to_suffix[node_name]
-
-            return f"{node_name}_{suffix_num}"
-
-    def get_executor_node_name(self, node: DAGNode):
-        if isinstance(node, InputNode):
-            node_name = "INPUT_NODE"
-        elif isinstance(node, InputAttributeNode):
-            node_name = "INPUT_ATTRIBUTE_NODE"
         elif type(node).__name__ == "DeploymentMethodExecutorNode":
             node_name = node._deployment_method_name
         elif type(node).__name__ == "DeploymentFunctionExecutorNode":
             node_name = node._deployment_function_handle.deployment_name
         else:
             raise ValueError(
-                f"get_executor_node_name() cannot be called on {type(node).__name__} "
-                "instances."
+                "get_node_name() should only be called on DAGNode instances."
             )
 
         if node_name not in self.name_to_suffix:

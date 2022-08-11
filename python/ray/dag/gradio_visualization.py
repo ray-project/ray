@@ -15,6 +15,7 @@ import json
 
 import gradio as gr
 
+
 class GraphVisualizer:
     # maps dag nodes to unique instance of a gradio block
     node_to_block: Dict[DAGNode, Any]
@@ -99,7 +100,7 @@ class GraphVisualizer:
         uuid = node.get_stable_uuid()
 
         # getting name
-        self.names[uuid] = self.name_generator.get_executor_node_name(node)
+        self.names[uuid] = self.name_generator.get_node_name(node)
         self.uuid_to_node[uuid] = node
 
         # getting depth
