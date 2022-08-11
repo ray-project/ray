@@ -26,7 +26,7 @@ class TestSlateQ(unittest.TestCase):
         config = (
             slateq.SlateQConfig()
             .environment(env=InterestEvolutionRecSimEnv)
-            .training(replay_buffer_config={"learning_starts": 1000})
+            .training(num_steps_sampled_before_learning_starts=1000)
         )
 
         num_iterations = 1

@@ -24,7 +24,11 @@ class TestDQN(unittest.TestCase):
     def test_dqn_compilation(self):
         """Test whether DQN can be built on all frameworks."""
         num_iterations = 1
-        config = dqn.dqn.DQNConfig().rollouts(num_rollout_workers=2)
+        config = (
+            dqn.dqn.DQNConfig()
+            .rollouts(num_rollout_workers=2)
+            .training(num_steps_sampled_before_learning_starts=0)
+        )
 
         for _ in framework_iterator(config, with_eager_tracing=True):
             # Double-dueling DQN.
@@ -60,7 +64,8 @@ class TestDQN(unittest.TestCase):
             dqn.dqn.DQNConfig()
             .rollouts(num_rollout_workers=0)
             .environment(env_config={"is_slippery": False, "map_name": "4x4"})
-        )
+        ).training(num_steps_sampled_before_learning_starts=0)
+
         obs = np.array(0)
 
         # Test against all frameworks.
