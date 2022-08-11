@@ -50,7 +50,7 @@ Are you using GPUs (`ray_actor_options={“num_gpus”: 1}`)? Are you using one 
 Are you using `async def` in your callable? If you are using `asyncio` and
 hitting the same queuing issue mentioned above, you might want to increase
 `max_concurrent_queries`. Serve sets a low number (100) by default so the client gets
-proper backpressure. You can increase the value in the Deployment decorator; e.g.
+proper backpressure. You can increase the value in the deployment decorator; e.g.
 `@serve.deployment(max_concurrent_queries=1000)`.
 
 ### Batching
