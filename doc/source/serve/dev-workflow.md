@@ -79,7 +79,7 @@ This will output:
 Hello, Ray! Hello, Ray!
 ```
 
-After you're done testing, you can shut down Ray Serve with Ctrl-C:
+After you're done testing, you can shut down Ray Serve by interrupting the `serve run` command (e.g., with Ctrl-C):
 
 ```console
 ^C2022-08-11 11:47:19,829       INFO scripts.py:323 -- Got KeyboardInterrupt, shutting down...
