@@ -59,7 +59,7 @@ serve run local_dev:HelloDeployment
 
 The `serve run` command blocks the terminal and can be canceled with Ctrl-C.
 
-Now that Serve is running, we can pass in HTTP requests to the application and see the output.
+Now that Serve is running, we can send HTTP requests to the application.
 For simplicity, we'll just use the `curl` command to send requests from another terminal.
 
 ```bash
