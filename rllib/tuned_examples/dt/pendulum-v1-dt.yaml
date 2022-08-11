@@ -2,13 +2,13 @@ pendulum_dt:
     env: 'Pendulum-v1'
     run: DT
     stop:
-        # TODO: We could make this -200, but given that we have 4 cpus for our tests, we will have to settle for -300.
+        # We could make this -200, but given that we have 4 cpus for our tests, we will have to settle for -300.
         evaluation/episode_reward_mean: -300
         timesteps_total: 20000000
     config:
         input: 'dataset'
         input_config:         
-            paths: '/Users/charlesjsun/code/tmp/pendulum_expert/pendulum_expert_sac_50.json'
+            paths: 'tests/data/pendulum/pendulum_expert_sac_50eps.zip'
             format: 'json'
         num_workers: 3
         actions_in_input_normalized: True

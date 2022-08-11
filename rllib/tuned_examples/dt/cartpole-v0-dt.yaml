@@ -14,7 +14,7 @@ cartpole_dt:
         clip_actions: False
         # training
         framework: torch
-        train_batch_size: 2048
+        train_batch_size: 512
         target_return: 200
         lr: 0.01
         optimizer:

@@ -9,8 +9,8 @@ pendulum_medium_expert_dt:
         input: 'dataset'
         input_config:         
             paths: [
-                '/Users/charlesjsun/code/tmp/pendulum_expert/pendulum_expert_sac_50.json',
-                '/Users/charlesjsun/code/tmp/pendulum_medium/pendulum_medium_sac_50.json',
+                'tests/data/pendulum/pendulum_expert_sac_50eps.zip',
+                'tests/data/pendulum/pendulum_medium_sac_50eps.zip',
             ]
             format: 'json'
         num_workers: 3

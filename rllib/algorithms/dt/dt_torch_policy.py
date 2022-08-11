@@ -9,6 +9,7 @@ from typing import (
     Union,
     Optional,
     Any,
+    TYPE_CHECKING,
 )
 
 import tree
@@ -38,6 +39,9 @@ from ray.rllib.utils.typing import (
     TensorType,
     TensorStructType,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation import Episode  # noqa
 
 torch, nn = try_import_torch()
 F = nn.functional
@@ -136,11 +140,10 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
         episode: Optional["Episode"] = None,
     ) -> SampleBatch:
-        # TODO(charlesjsun): check this is only ran with one episode?
-        # TODO(charlesjsun): custom discount factor
+        """Called by offline data reader after loading in one episode.
+        Calculates returns-to-go.
+        """
         assert len(sample_batch.split_by_episode()) == 1
-
-        sample_batch[SampleBatch.REWARDS] = sample_batch[SampleBatch.REWARDS]
 
         rewards = sample_batch[SampleBatch.REWARDS].reshape(-1)
         sample_batch[SampleBatch.RETURNS_TO_GO] = discount_cumsum(rewards, 1.0)
@@ -149,7 +152,14 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
 
     @PublicAPI
     def get_initial_input_dict(self, observation: TensorStructType) -> SampleBatch:
-        """ """
+        """Get the initial input_dict to be passed into compute_single_action.
+
+        Args:
+            observation: first (unbatched) observation from env.reset()
+
+        Returns:
+            The input_dict for inference.
+        """
         observation = convert_to_numpy(observation)
         obs_shape = observation.shape
         obs_dtype = observation.dtype
@@ -196,7 +206,20 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         next_obs: TensorStructType,
         extra: Dict[str, TensorType],
     ) -> SampleBatch:
-        """ """
+        """Returns a new input_dict after stepping through the environment once.
+
+        Args:
+            input_dict: the input dict passed into compute_single_action.
+            action: the (unbatched) action taken this step.
+            reward: the (unbatched) reward from env.step
+            next_obs: the (unbatached) next observation from env.step
+            extra: the extra action out from compute_single_action.
+                In this case contains current returns to go *before* the current
+                reward is subtracted from target_return.
+
+        Returns:
+            A new input_dict to be passed into compute_single_action.
+        """
         # creates a copy of input_dict with only numpy arrays
         input_dict = tree.map_structure(convert_to_numpy, input_dict)
         # convert everything else to numpy as well
@@ -249,23 +272,55 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         state_batches: TensorType,
         **kwargs,
     ) -> Tuple[TensorType, type, List[TensorType]]:
+        """
+        Note: This method is only ran during evaluation and inference.
 
+        Args:
+            model: DTTorchModel of this policy.
+            obs_batch: input_dict (that contains a batch dimension for each value).
+                This is modified to be used by a subsequent call to
+                extra_action_out.
+            state_batches: RNN states (not used).
+            kwargs: forward compatibility (unused) kwargs.
+
+        Returns:
+            A tuple of: (
+                batched input to the action distribution clas,
+                the action distribution class,
+                updated RNN state (unused),
+            )
+        """
         # Note: this doesn't create a new SampleBatch, so changes to obs_batch persists
         obs_batch = self._lazy_tensor_dict(obs_batch)
 
         batch_size = obs_batch[SampleBatch.OBS].shape[0]
 
+        # NOTE: This is probably the most confusing part of the code, made to work with
+        # env_runner and SimpleListCollector during evaluation, and thus should
+        # be changed for the new Policy and Connector API.
+        # So I'll explain how it works.
+
         # Add current timestep (+1 because -1 is first observation)
+        # NOTE: ViewRequirement of timestep is -(max_seq_len-2):0.
+        # The wierd limits is because RLlib treats initial obs as time -1,
+        # and then 0 is (act, rew, next_obs), etc.
+        # So we only collect max_seq_len-1 from the rollout and create the current
+        # step here by adding 1.
+        # Decision transformer treats initial observation as timestep 0, giving us
+        # 0 is (obs, act, rew).
         timesteps = obs_batch[SampleBatch.T]
         new_timestep = timesteps[:, -1:] + 1
         obs_batch[SampleBatch.T] = torch.cat([timesteps, new_timestep], dim=1)
 
         # mask out any padded value at start of rollout
+        # NOTE: the other reason for doing this is that evaluation rollout front
+        # pads timesteps with -1, so using this we can find out when we need to mask
+        # out the front section of the batch.
         obs_batch[SampleBatch.ATTENTION_MASKS] = torch.where(
             obs_batch[SampleBatch.T] >= 0, 1.0, 0.0
         )
 
-        # remove out of bound -1 timesteps after attention mask is calculated
+        # Remove out-of-bound -1 timesteps after attention mask is calculated
         uncliped_timesteps = obs_batch[SampleBatch.T]
         obs_batch[SampleBatch.T] = torch.where(
             uncliped_timesteps < 0,
@@ -273,12 +328,16 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             uncliped_timesteps,
         )
 
-        # compute returns to go
+        # Computes returns-to-go.
+        # NOTE: There are two rtg calculations: updated_rtg and initial_rtg.
+        # updated_rtg takes the previous rtg value (the ViewRequirement is
+        # -(max_seq_len-1):-1), and subtracts the last reward from it.
         rtg = obs_batch[SampleBatch.RETURNS_TO_GO]
         last_rtg = rtg[:, -1]
         last_reward = obs_batch[SampleBatch.REWARDS]
         updated_rtg = last_rtg - last_reward
-
+        # initial_rtg simply is filled with target_return.
+        # These two are both only for the current timestep.
         initial_rtg = torch.full(
             (batch_size, 1),
             fill_value=self.config["target_return"],
@@ -286,6 +345,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             device=rtg.device,
         )
 
+        # Then based on weather we are currently at the first timestep or
         new_rtg = torch.where(new_timestep == 0, initial_rtg, updated_rtg[:, None])
         obs_batch[SampleBatch.RETURNS_TO_GO] = torch.cat([rtg, new_rtg], dim=1)[
             ..., None
@@ -380,6 +440,17 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         targets: TensorType,
         masks: TensorType,
     ) -> TensorType:
+        """Computes cross-entropy loss between preds and targets, subject to a mask.
+
+        Args:
+            preds: logits of shape [B1, ..., Bn, M]
+            targets: index targets for preds of shape [B1, ..., Bn]
+            masks: 0 means don't compute loss, 1 means compute loss
+                shape [B1, ..., Bn]
+
+        Returns:
+            Scalar cross entropy loss.
+        """
         losses = F.cross_entropy(
             preds.reshape(-1, preds.shape[-1]), targets.reshape(-1), reduction="none"
         )
@@ -392,6 +463,17 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         targets: TensorType,
         masks: TensorType,
     ) -> TensorType:
+        """Computes MSE loss between preds and targets, subject to a mask.
+
+        Args:
+            preds: logits of shape [B1, ..., Bn, M]
+            targets: index targets for preds of shape [B1, ..., Bn]
+            masks: 0 means don't compute loss, 1 means compute loss
+                shape [B1, ..., Bn]
+
+        Returns:
+            Scalar cross entropy loss.
+        """
         losses = F.mse_loss(preds, targets, reduction="none")
         losses = losses * masks.reshape(
             *preds.shape[0:2], *[1] * (len(preds.shape) - 2)
@@ -414,11 +496,3 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         }
         return stats_dict
 
-
-if __name__ == "__main__":
-
-    obs_space = gym.spaces.Box(np.array((-1, -1)), np.array((1, 1)))
-    act_space = gym.spaces.Box(np.array((-1, -1)), np.array((1, 1)))
-    config = AlgorithmConfig().framework(framework="torch").to_dict()
-    print(config["framework"])
-    DTTorchPolicy(obs_space, act_space, config=config)
