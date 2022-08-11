@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 from collections import Counter, defaultdict, namedtuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
@@ -104,7 +104,7 @@ class AutoscalerSummary:
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
-    node_availability_summary: NodeAvailabilitySummary = NodeAvailabilitySummary({})
+    node_availability_summary: NodeAvailabilitySummary = field(default_factory=lambda: NodeAvailabilitySummary({}))
 
 
 class NonTerminatedNodes:

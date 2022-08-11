@@ -104,8 +104,12 @@ class NodeAvailabilitySummary:
 
 class NodeProviderAvailabilityTracker:
     """A thread safe, TTL cache of node provider availability. We don't use
-    cachetools.TTLCache because we want fine grain control over when entries
-    expire (e.g. insert an entry at a previous point in time)."""
+    cachetools.TTLCache because it always sets the expiration time relative to
+    insertion time, but in our case, we want entries to expire relative to when
+    the node creation was attempted (and entries aren't necessarily added in
+    order). We want the entries to expire becase the information grows stale
+    over time.
+    """
 
     def __init__(
         self,

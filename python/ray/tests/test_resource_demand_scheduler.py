@@ -2718,8 +2718,8 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- A100: InstanceLimitExceeded (attempted: 13:03:02)
- Inferentia-Spot: InsufficientInstanceCapacity (attempted: 13:03:01)
+ A100: InstanceLimitExceeded (latest_attempt: 13:03:02)
+ Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01)
  p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
 
 Resources

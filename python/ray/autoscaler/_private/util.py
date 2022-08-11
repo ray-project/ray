@@ -693,7 +693,7 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
                 f"{attempted_time.minute:02d}:"
                 f"{attempted_time.second:02d}"
             )
-            line = f" {node_type}: {category} (attempted: {formatted_time})"
+            line = f" {node_type}: {category} (latest_attempt: {formatted_time})"
             failure_lines.append(line)
 
     failure_lines = failure_lines[: -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED : -1]
