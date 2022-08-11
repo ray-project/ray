@@ -112,7 +112,8 @@ class SimpleQConfig(AlgorithmConfig):
             "replay_sequence_length": 1,
         }
         # Number of timesteps to collect from rollout workers before we start
-        # sampling from replay buffers for learning.
+        # sampling from replay buffers for learning. Whether we count this in agent
+        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
         self.num_steps_sampled_before_learning_starts = 1000
         self.store_buffer_in_checkpoints = False
         self.lr_schedule = None
@@ -142,7 +143,7 @@ class SimpleQConfig(AlgorithmConfig):
         self.evaluation_config = {"explore": False}
 
         # `reporting()`
-        self.min_time_s_per_iteration = 1
+        self.min_time_s_per_iteration = None
         self.min_sample_timesteps_per_iteration = 1000
 
         # Deprecated.
@@ -223,7 +224,8 @@ class SimpleQConfig(AlgorithmConfig):
             grad_clip: If not None, clip gradients during optimization at this value.
             num_steps_sampled_before_learning_starts: Number of timesteps to collect
                 from rollout workers before we start sampling from replay buffers for
-                learning.
+                learning. Whether we count this in agent steps  or environment steps
+                depends on config["multiagent"]["count_steps_by"].
 
         Returns:
             This updated AlgorithmConfig object.
@@ -356,11 +358,6 @@ class SimpleQ(Algorithm):
         if cur_ts > self.config["num_steps_sampled_before_learning_starts"]:
             # Use deprecated replay() to support old replay buffers for now
             train_batch = self.local_replay_buffer.sample(batch_size)
-            # If not yet learning, early-out here and do not perform learning, weight-
-            # synching, or target net updating.
-            if train_batch is None or len(train_batch) == 0:
-                self.workers.local_worker().set_global_vars(global_vars)
-                return {}
 
             # Learn on the training batch.
             # Use simple optimizer (only for multi-agent or tf-eager; all other

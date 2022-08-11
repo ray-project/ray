@@ -383,11 +383,6 @@ class DQN(SimpleQ):
                     count_by_agent_steps=self._by_agent_steps,
                 )
 
-                # Old-style replay buffers return None if learning has not started
-                if train_batch is None or len(train_batch) == 0:
-                    self.workers.local_worker().set_global_vars(global_vars)
-                    break
-
                 # Postprocess batch before we learn on it
                 post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
                 train_batch = post_fn(train_batch, self.workers, self.config)

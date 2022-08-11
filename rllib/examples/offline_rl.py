@@ -77,6 +77,7 @@ if __name__ == "__main__":
             },
             train_batch_size=256,
             target_network_update_freq=1,
+            num_steps_sampled_before_learning_starts=256,
         )
         .reporting(min_train_timesteps_per_iteration=1000)
         .debugging(log_level="INFO")

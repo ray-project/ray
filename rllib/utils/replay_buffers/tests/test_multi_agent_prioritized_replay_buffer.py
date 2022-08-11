@@ -173,7 +173,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
             prioritized_replay_beta=self.beta,
             replay_mode="independent",
             replay_sequence_length=2,
-            tnum_shards=1,
+            num_shards=1,
         )
 
         # Insert n samples
