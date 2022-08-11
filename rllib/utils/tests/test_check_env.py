@@ -1,6 +1,7 @@
 import logging
 
 import gym
+from gym.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import pytest
 import unittest
@@ -45,12 +46,22 @@ class TestGymCheckEnv(unittest.TestCase):
         reset = MagicMock(return_value=5)
         env = RandomEnv()
         env.reset = reset
-        # check reset with out of bounds fails
+        # Check reset with out of bounds fails.
         error = ".*The observation collected from env.reset().*"
         with pytest.raises(ValueError, match=error):
             check_env(env)
-        # check reset with obs of incorrect type fails
+
+        # Check reset with obs of incorrect type fails.
         reset = MagicMock(return_value=float(0.1))
+        env.reset = reset
+        with pytest.raises(ValueError, match=error):
+            check_env(env)
+
+        # Check reset with complex obs in which one sub-space is incorrect.
+        env = RandomEnv(config={
+            "observation_space": Dict({"a": Discrete(4), "b": Box(-1.0, 1.0, (1,))}),
+        })
+        reset = MagicMock(return_value={"a": float(0.1), "b": np.array([0.5])})
         env.reset = reset
         with pytest.raises(ValueError, match=error):
             check_env(env)
