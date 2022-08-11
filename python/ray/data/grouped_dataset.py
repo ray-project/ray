@@ -273,18 +273,6 @@ class GroupedDataset(Generic[T]):
                 start = end
             return boundaries
 
-        # Returns the group boundaries.
-        def get_boundaries(block):
-            boundaries = []
-            pre = None
-            for i, item in enumerate(block.iter_rows()):
-                if pre is not None and get_key(pre) != get_key(item):
-                    boundaries.append(i)
-                pre = item
-            if block.num_rows() > 0:
-                boundaries.append(block.num_rows())
-            return boundaries
-
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
         def group_fn(batch):
@@ -295,7 +283,8 @@ class GroupedDataset(Generic[T]):
             for end in boundaries:
                 group = block_accessor.slice(start, end, False)
                 applied = fn(group)
-                builder.add_block(applied)
+                if applied is not None:
+                    builder.add_block(applied)
                 start = end
 
             rs = builder.build()
