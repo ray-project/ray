@@ -74,7 +74,7 @@ class ModelV2:
     # TODO: (sven): Get rid of `get_initial_state` once Trajectory
     #  View API is supported across all of RLlib.
     @PublicAPI
-    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
+    def get_initial_state(self) -> List[TensorType]:
         """Get the initial recurrent state values for the model.
 
         Returns:
