@@ -212,42 +212,6 @@ $ python arithmetic_client.py
 9
 ```
 
-(deployment-graph-call-graph-testing)=
-### Testing the Call Graph with the Python API
-
-All `MethodNodes` and `FunctionNodes` have an `execute` method. You can use this method to test your graph in Python, without using HTTP requests. 
-
-To test your graph,
-
-1. Call `execute` on the `MethodNode` or `FunctionNode` that you would pass into the `DAGDriver`.
-2. Pass in the input to the graph as the argument. **This argument becomes the input represented by `InputNode`**. Make sure to refactor your call graph accordingly, since it takes in this input directly, instead of an HTTP request.
-3. `execute` returns a reference to the result, so the graph can execute asynchronously. Call `ray.get` on this reference to get the final result.
-
-As an example, we can rewrite the [arithmetic call graph example](deployment-graph-arithmetic-graph) from above to use `execute`:
-
-```python
-with InputNode() as request_number:
-    add_2_output = add_2.add.bind(request_number)
-    subtract_1_output = subtract_one_fn.bind(add_2_output)
-    add_3_output = add_3.add.bind(subtract_1_output)
-
-ref = add_3_output.execute(5)
-result = ray.get(ref)
-print(result)
-```
-
-Then we can run the script directly:
-
-```
-$ python arithmetic.py
-
-9
-```
-
-:::{note}
-The `execute` method deploys your deployment code inside Ray tasks and actors instead of Ray Serve deployments. It's useful for testing because you don't need to launch entire deployments and ping them with HTTP requests, but it's not suitable for production.
-:::
-
 (deployment-graph-drivers-http-adapters)=
 ### Drivers and HTTP Adapters
 
@@ -255,22 +219,45 @@ Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call
 
 The `DAGDriver` also has an optional keyword argument: `http_adapter`. [HTTP adapters](serve-http-adapters) are functions that get run on the HTTP request before it's passed into the graph. Ray Serve provides a handful of these adapters, so you can rely on them to conveniently handle the HTTP parsing while focusing your attention on the graph itself.
 
-For instance, we can use the Ray Serve-provided `json_request` adapter to simplify our [arithmetic call graph](deployment-graph-arithmetic-graph) by eliminating the `unpack_request` function. Here's the revised call graph and driver:
+For instance, we can use the Ray Serve-provided `json_request` adapter to simplify our [arithmetic call graph](deployment-graph-arithmetic-graph) by eliminating the `unpack_request` function. You can replace lines 29 through 38 with this graph:
 
-```python
-from ray.serve.http_adapters import json_request
-
-with InputNode() as request_number:
-    add_2_output = add_2.add.bind(request_number)
-    subtract_1_output = subtract_one_fn.bind(add_2_output)
-    add_3_output = add_3.add.bind(subtract_1_output)
-
-graph = DAGDriver.bind(add_3_output, http_adapter=json_request)
+(http-adapter-arithmetic-example)=
+```{literalinclude} doc_code/model_composition/arithmetic.py
+:start-after: __adapter_graph_start__
+:end-before: __adapter_graph_end__
+:language: python
 ```
 
 Note that the `http_adapter`'s output type becomes what the `InputNode` represents. Without the `json_request` adapter, the `InputNode` represented an HTTP request. With the adapter, it now represents the number packaged inside the request's JSON body. You can work directly with that body's contents in the graph instead of first processing it.
 
 See [the guide](serve-http-adapters) on `http_adapters` to learn more.
+
+(deployment-graph-call-graph-testing)=
+### Testing the Graph with the Python API
+
+The `serve.run` function returns a handle that you can use to test your graph in Python, without using HTTP requests.
+
+To test your graph,
+
+1. Call `serve.run` on your graph and store the returned handle.
+2. Call `handle.predict.remote(input)`. **The `input` argument becomes the input represented by `InputNode`**. Make sure to refactor your call graph accordingly, since it takes in this input directly, instead of an HTTP request. You can use an [HTTP adapter](deployment-graph-drivers-http-adapters) to make sure the graph you're testing matches the one you ultimately deploy.
+3. `predict.remote` returns a reference to the result, so the graph can execute asynchronously. Call `ray.get` on this reference to get the final result.
+
+As an example, we can continue rewriting the [arithmetic graph example](http-adapter-arithmetic-example) from above to use `predict.remote`. We can add our testing code to the example:
+
+```{literalinclude} doc_code/model_composition/arithmetic.py
+:start-after: __test_graph_start__
+:end-before: __test_graph_end__
+:language: python
+```
+
+Note that the graph itself is still the same. The only change is the testing code added after it. We can run this Python script directly now to test the graph:
+
+```
+$ python arithmetic.py
+
+9
+```
 
 ### Visualizing the Graph
 
