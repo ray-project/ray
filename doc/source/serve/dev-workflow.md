@@ -1,6 +1,6 @@
 # Sample Development Workflow
 
-This page describes the recommended development workflow for Ray Serve applications when iterating in development. Once you're ready to go to production, you can jump to the [Production Guide](production.md) section.
+This page describes the recommended workflow for developing Ray Serve applications. If you're ready to go to production, jump to the [Production Guide](production.md) section.
 
 ## Local Development using `serve.run`
 
