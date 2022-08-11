@@ -16,7 +16,11 @@ import ray
 import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray._private.test_utils import same_elements
-from ray.autoscaler._private.node_provider_availability_tracker import NodeAvailabilityRecord, NodeAvailabilitySummary, UnavailableNodeInformation
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilityRecord,
+    NodeAvailabilitySummary,
+    UnavailableNodeInformation,
+)
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
@@ -2667,7 +2671,9 @@ def test_info_string_with_launch_failures():
         request_demand=[({"CPU": 16}, 100)],
         node_types=[],
     )
-    base_timestamp = datetime(year=2012, month=12, day=21, hour=13, minute=3, second=1).timestamp()
+    base_timestamp = datetime(
+        year=2012, month=12, day=21, hour=13, minute=3, second=1
+    ).timestamp()
     autoscaler_summary = AutoscalerSummary(
         active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
         pending_nodes=[
@@ -2676,26 +2682,28 @@ def test_info_string_with_launch_failures():
         ],
         pending_launches={"m4.4xlarge": 2},
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
-        node_availability_summary=NodeAvailabilitySummary(node_availabilities={
-            "A100": NodeAvailabilityRecord(
-                node_type="A100",
-                is_available=False,
-                last_checked_timestamp=base_timestamp+1,
-                unavailable_node_information=UnavailableNodeInformation(
-                    category="InstanceLimitExceeded",
-                    description=":)",
-                )
-            ),
-            "Inferentia-Spot": NodeAvailabilityRecord(
-                node_type="Inferentia-Spot",
-                is_available=False,
-                last_checked_timestamp=base_timestamp,
-                unavailable_node_information=UnavailableNodeInformation(
-                    category="InsufficientInstanceCapacity",
-                    description="mo nodes mo problems",
-                )
-            ),
-        }),
+        node_availability_summary=NodeAvailabilitySummary(
+            node_availabilities={
+                "A100": NodeAvailabilityRecord(
+                    node_type="A100",
+                    is_available=False,
+                    last_checked_timestamp=base_timestamp + 1,
+                    unavailable_node_information=UnavailableNodeInformation(
+                        category="InstanceLimitExceeded",
+                        description=":)",
+                    ),
+                ),
+                "Inferentia-Spot": NodeAvailabilityRecord(
+                    node_type="Inferentia-Spot",
+                    is_available=False,
+                    last_checked_timestamp=base_timestamp,
+                    unavailable_node_information=UnavailableNodeInformation(
+                        category="InsufficientInstanceCapacity",
+                        description="mo nodes mo problems",
+                    ),
+                ),
+            }
+        ),
     )
 
     expected = """

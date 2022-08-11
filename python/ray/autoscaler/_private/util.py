@@ -677,7 +677,7 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     if autoscaler_summary.node_availability_summary:
         records = sorted(
             autoscaler_summary.node_availability_summary.node_availabilities.values(),
-            key=lambda record: record.last_checked_timestamp
+            key=lambda record: record.last_checked_timestamp,
         )
         for record in records:
             if record.is_available:
@@ -685,9 +685,7 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
             assert record.unavailable_node_information is not None
             node_type = record.node_type
             category = record.unavailable_node_information.category
-            attempted_time = datetime.fromtimestamp(
-                record.last_checked_timestamp
-            )
+            attempted_time = datetime.fromtimestamp(record.last_checked_timestamp)
             formatted_time = (
                 # This `:02d` funny buisness is python syntax for printing a 2
                 # digit number with a leading zero as padding if needed.
