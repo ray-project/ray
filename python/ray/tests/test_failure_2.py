@@ -31,7 +31,7 @@ def test_warning_for_too_many_actors(shutdown_only):
 
     p = init_error_pubsub()
 
-    @ray.remote
+    @ray.remote(num_cpus=0)
     class Foo:
         def __init__(self):
             time.sleep(1000)
@@ -165,7 +165,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
+    with pytest.raises(ray.exceptions.ObjectFreedError):
         ray.get(object_ref)
     thread.join()
 
@@ -194,7 +194,7 @@ def test_eviction(ray_start_cluster):
     # Evict the object.
     ray._private.internal_api.free([obj])
     # ray.get throws an exception.
-    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
+    with pytest.raises(ray.exceptions.ObjectFreedError):
         ray.get(obj)
 
     @ray.remote

@@ -9,6 +9,7 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 def fmt(seconds: float) -> str:
@@ -123,10 +124,19 @@ def _get_or_create_stats_actor():
         or _stats_actor[1] != ray.get_runtime_context().job_id.hex()
     ):
         ctx = DatasetContext.get_current()
+        scheduling_strategy = ctx.scheduling_strategy
+        if not ray.util.client.ray.is_connected():
+            # Pin the stats actor to the local node
+            # so it fate-shares with the driver.
+            scheduling_strategy = NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
+
         _stats_actor[0] = _StatsActor.options(
             name="datasets_stats_actor",
             get_if_exists=True,
-            scheduling_strategy=ctx.scheduling_strategy,
+            scheduling_strategy=scheduling_strategy,
         ).remote()
         _stats_actor[1] = ray.get_runtime_context().job_id.hex()
 
@@ -420,6 +430,8 @@ class DatasetPipelineStats:
         """Return a human-readable summary of this pipeline's stats."""
         already_printed = set()
         out = ""
+        if not self.history_buffer:
+            return "No stats available: This pipeline hasn't been run yet."
         for i, stats in self.history_buffer:
             out += "== Pipeline Window {} ==\n".format(i)
             out += stats.summary_string(already_printed)

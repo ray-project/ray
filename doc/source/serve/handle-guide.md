@@ -3,7 +3,7 @@
 # ServeHandle: Calling Deployments from Python
 
 Ray Serve enables you to query models both from HTTP and Python. This feature
-enables seamless [model composition](serve-model-composition). You can
+enables seamless [model composition](serve-model-composition-guide). You can
 get a `ServeHandle` corresponding to deployment, similar how you can
 reach a deployment through HTTP via a specific route. When you issue a request
 to a deployment through `ServeHandle`, the request is load balanced across
@@ -73,9 +73,3 @@ flag to toggle between them.
 The async handle has performance advantage because it uses asyncio directly; as compared
 to the sync handle, which talks to an asyncio event loop in a thread. To learn more about
 the reasoning behind these, checkout our [architecture documentation](serve-architecture).
-
-## Integrating with existing web servers
-
-Ray Serve comes with its own HTTP server out of the box, but if you have an existing
-web application, you can still plug in Ray Serve to scale up your compute using the `ServeHandle`.
-For a tutorial with sample code, see {ref}`serve-web-server-integration-tutorial`.

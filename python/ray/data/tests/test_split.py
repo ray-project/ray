@@ -525,47 +525,63 @@ def _create_blocklist(blocks):
 
 def test_split_single_block(ray_start_regular_shared):
     block = [1, 2, 3]
-    meta = _create_meta(3)
+    metadata = _create_meta(3)
 
-    block_id, splits = ray.get(
-        ray.remote(_split_single_block).remote(234, block, meta, [])
+    results = ray.get(
+        ray.remote(_split_single_block)
+        .options(num_returns=2)
+        .remote(234, block, metadata, [])
     )
+    block_id, meta = results[0]
+    blocks = results[1:]
     assert 234 == block_id
-    assert len(splits) == 1
-    assert ray.get(splits[0][0]) == [1, 2, 3]
-    assert splits[0][1].num_rows == 3
+    assert len(blocks) == 1
+    assert blocks[0] == [1, 2, 3]
+    assert meta[0].num_rows == 3
 
-    block_id, splits = ray.get(
-        ray.remote(_split_single_block).remote(234, block, meta, [1])
+    results = ray.get(
+        ray.remote(_split_single_block)
+        .options(num_returns=3)
+        .remote(234, block, metadata, [1])
     )
+    block_id, meta = results[0]
+    blocks = results[1:]
     assert 234 == block_id
-    assert len(splits) == 2
-    assert ray.get(splits[0][0]) == [1]
-    assert splits[0][1].num_rows == 1
-    assert ray.get(splits[1][0]) == [2, 3]
-    assert splits[1][1].num_rows == 2
+    assert len(blocks) == 2
+    assert blocks[0] == [1]
+    assert meta[0].num_rows == 1
+    assert blocks[1] == [2, 3]
+    assert meta[1].num_rows == 2
 
-    block_id, splits = ray.get(
-        ray.remote(_split_single_block).remote(234, block, meta, [0, 1, 1, 3])
+    results = ray.get(
+        ray.remote(_split_single_block)
+        .options(num_returns=6)
+        .remote(234, block, metadata, [0, 1, 1, 3])
     )
+    block_id, meta = results[0]
+    blocks = results[1:]
     assert 234 == block_id
-    assert len(splits) == 5
-    assert ray.get(splits[0][0]) == []
-    assert ray.get(splits[1][0]) == [1]
-    assert ray.get(splits[2][0]) == []
-    assert ray.get(splits[3][0]) == [2, 3]
-    assert ray.get(splits[4][0]) == []
+    assert len(blocks) == 5
+    assert blocks[0] == []
+    assert blocks[1] == [1]
+    assert blocks[2] == []
+    assert blocks[3] == [2, 3]
+    assert blocks[4] == []
 
     block = []
-    meta = _create_meta(0)
+    metadata = _create_meta(0)
 
-    block_id, splits = ray.get(
-        ray.remote(_split_single_block).remote(234, block, meta, [0])
+    results = ray.get(
+        ray.remote(_split_single_block)
+        .options(num_returns=3)
+        .remote(234, block, metadata, [0])
     )
+    block_id, meta = results[0]
+    blocks = results[1:]
     assert 234 == block_id
-    assert len(splits) == 2
-    assert ray.get(splits[0][0]) == []
-    assert ray.get(splits[1][0]) == []
+    assert len(blocks) == 2
+    assert blocks[0] == []
+    assert blocks[1] == []
 
 
 def test_drop_empty_block_split():

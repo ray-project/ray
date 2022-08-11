@@ -140,7 +140,7 @@ Serving and Offline
 - `Saving experiences <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__:
    Example of how to externally generate experience batches in RLlib-compatible format.
 - `Finding a checkpoint using custom criteria <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoint_by_custom_criteria.py>`__:
-   Example of how to find a checkpoint after a `tune.run` via some custom defined criteria.
+   Example of how to find a checkpoint after a `Tuner.fit()` via some custom defined criteria.
 
 
 Multi-Agent and Hierarchical

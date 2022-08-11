@@ -33,10 +33,10 @@ def create_url_with_offset(*, url: str, offset: int, size: int) -> str:
     Example) file://path/to/file?offset=""&size=""
 
     Args:
-        url(str): url to the object stored in the external storage.
-        offset(int): Offset from the beginning of the file to
+        url: url to the object stored in the external storage.
+        offset: Offset from the beginning of the file to
             the first bytes of this object.
-        size(int): Size of the object that is stored in the url.
+        size: Size of the object that is stored in the url.
             It is used to calculate the last offset.
 
     Returns:
@@ -53,7 +53,7 @@ def parse_url_with_offset(url_with_offset: str) -> Tuple[str, int, int]:
     is stored in the external storage.
 
     Args:
-        url_with_offset(str): url created by create_url_with_offset.
+        url_with_offset: url created by create_url_with_offset.
 
     Returns:
         named tuple of base_url, offset, and size.
@@ -110,10 +110,10 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         """Fuse all given objects into a given file handle.
 
         Args:
-            f(IO): File handle to fusion all given object refs.
-            object_refs(list): Object references to fusion to a single file.
-            owner_addresses(list): Owner addresses for the provided objects.
-            url(str): url where the object ref is stored
+            f: File handle to fusion all given object refs.
+            object_refs: Object references to fusion to a single file.
+            owner_addresses: Owner addresses for the provided objects.
+            url: url where the object ref is stored
                 in the external storage.
 
         Return:
@@ -161,9 +161,9 @@ class ExternalStorage(metaclass=abc.ABCMeta):
         """Check whether or not the obtained_data_size is as expected.
 
         Args:
-             metadata_len(int): Actual metadata length of the object.
-             buffer_len(int): Actual buffer length of the object.
-             obtained_data_size(int): Data size specified in the
+             metadata_len: Actual metadata length of the object.
+             buffer_len: Actual buffer length of the object.
+             obtained_data_size: Data size specified in the
                 url_with_offset.
 
         Raises:
@@ -188,7 +188,7 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
         Args:
             object_refs: The list of the refs of the objects to be spilled.
-            owner_addresses(list): Owner addresses for the provided objects.
+            owner_addresses: Owner addresses for the provided objects.
         Returns:
             A list of internal URLs with object offset.
         """
@@ -442,9 +442,9 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     the directory.
 
     Args:
-        uri(str): Storage URI used for smart open.
-        prefix(str): Prefix of objects that are stored.
-        override_transport_params(dict): Overriding the default value of
+        uri: Storage URI used for smart open.
+        prefix: Prefix of objects that are stored.
+        override_transport_params: Overriding the default value of
             transport_params for smart-open library.
 
     Raises:

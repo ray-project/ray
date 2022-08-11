@@ -99,11 +99,11 @@ class TrialStub:
 
     @property
     def hostname(self):
-        return self.last_result["hostname"]
+        return self.last_result.get("hostname")
 
     @property
     def node_ip(self):
-        return self.last_result["node_ip"]
+        return self.last_result.get("node_ip")
 
     @property
     def dirname(self):
@@ -644,9 +644,7 @@ def load_trial_checkpoint_data(
             with open(json_path, "rt") as f:
                 checkpoint_data = json.load(f)
         else:
-            meta_path = os.path.join(
-                cp_full_dir, f"checkpoint-{checkpoint_num}.tune_metadata"
-            )
+            meta_path = os.path.join(cp_full_dir, ".tune_metadata")
             with open(meta_path, "rb") as f:
                 checkpoint_meta = pickle.load(f)
                 checkpoint_data = {"internal_iter": checkpoint_meta["iteration"]}

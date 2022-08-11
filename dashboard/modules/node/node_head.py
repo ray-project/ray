@@ -80,6 +80,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
 
     async def _update_stubs(self, change):
         if change.old:
@@ -185,10 +186,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     and self._node_update_cnt * FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS
                     < FREQUENT_UPDATE_TIMEOUT_SECONDS
                 ):
-                    logger.info("SANG-TODO a")
                     await asyncio.sleep(FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS)
                 else:
-                    logger.info("SANG-TODO b")
                     if head_node_not_registered:
                         logger.warning(
                             "Head node is not registered even after "

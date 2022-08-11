@@ -21,8 +21,7 @@ Chat with Ray Serve users and developers on our [forum](https://discuss.ray.io/)
 (rayserve-overview)=
 
 Ray Serve is a scalable model serving library for building online inference APIs.
-Serve is framework agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like [PyTorch](serve-pytorch-tutorial),
-  [Tensorflow, and Keras](serve-tensorflow-tutorial), to [Scikit-Learn](serve-sklearn-tutorial) models, to arbitrary Python business logic.
+Serve is framework agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like PyTorch, Tensorflow, and Keras, to Scikit-Learn models, to arbitrary Python business logic.
 
 Serve is particularly well suited for {ref}`serve-model-composition`, enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code.
 
@@ -174,7 +173,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     **Examples**
     ^^^
 
-    Follow the tutorials to learn how to integrate Ray Serve with :ref:`Keras and TensorFlow<serve-tensorflow-tutorial>`, :ref:`Scikit-Learn<serve-sklearn-tutorial>`, and :ref:`RLlib<serve-rllib-tutorial>`. Learn how Ray Serve also integrates with :ref:`existing web applications<serve-web-server-integration-tutorial>`
+    Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow<serve-ml-models-tutorial>`, :ref:`Scikit-Learn<serve-ml-models-tutorial>`, and :ref:`RLlib<serve-rllib-tutorial>`.
 
     +++
     .. link-button:: serve-examples

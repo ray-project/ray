@@ -13,10 +13,16 @@ Datasets
 A Dataset consists of a list of Ray object references to *blocks*.
 Each block holds a set of items in either `Arrow table format <https://arrow.apache.org/docs/python/data.html#tables>`__
 or a Python list (for non-tabular data).
-For ML use cases, Datasets also natively supports :ref:`Tensor data <datasets_tensor_support>`.
+For ML use cases, Datasets also natively supports mixing :ref:`Tensor <datasets_tensor_support>` and tabular data.
 Having multiple blocks in a dataset allows for parallel transformation and ingest.
 
-The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
+Informally, we refer to:
+
+* A Dataset with Arrow blocks as a *Tabular Dataset*,
+* A Dataset with Python list blocks as a *Simple Dataset*, and
+* A Tabular Dataset with one or more tensor-type columns as a *Tensor Dataset*.
+
+The following figure visualizes a tabular dataset with three blocks, each block holding 1000 rows each:
 
 .. image:: images/dataset-arch.svg
 

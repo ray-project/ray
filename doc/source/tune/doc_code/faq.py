@@ -281,7 +281,7 @@ if not MOCK:
         ) -> bool:
             cmd_str = self.sync_down_template.format(
                 source=remote_dir,
-                local_dir=local_dir,
+                target=local_dir,
             )
             subprocess.check_call(cmd_str, shell=True)
             return True

@@ -3,7 +3,12 @@ from abc import ABC
 from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
+from urllib.parse import urlparse
 
+import ray
+import ray._private.ray_constants as ray_constants
+import ray._private.services as services
+from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskType
 from ray.dashboard.modules.job.common import JobInfo
@@ -897,3 +902,44 @@ def resource_to_schema(resource: StateResource) -> StateSchema:
         return WorkerState
     else:
         assert False, "Unreachable"
+
+
+def ray_address_to_api_server_url(address: Optional[str]) -> str:
+    """Parse a ray cluster bootstrap address into API server URL.
+
+    When an address is provided, it will be used to query GCS for
+    API server address from GCS.
+
+    When an address is not provided, it will first try to auto-detect
+    a running ray instance, or look for local GCS process.
+
+    Args:
+        address: Ray cluster bootstrap address. Could also be `auto`.
+
+    Return:
+        API server HTTP URL.
+    """
+    address = services.canonicalize_bootstrap_address_or_die(address)
+    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    api_server_url = ray._private.utils.internal_kv_get_with_retry(
+        gcs_client,
+        ray_constants.DASHBOARD_ADDRESS,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        num_retries=20,
+    )
+
+    if api_server_url is None:
+        raise ValueError(
+            (
+                "Couldn't obtain the API server address from GCS. It is likely that "
+                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
+                "still alive."
+            )
+        )
+
+    # Add http protocol to API server URL if it doesn't
+    # already contain a protocol.
+    if not urlparse(api_server_url).scheme:
+        api_server_url = "http://" + api_server_url
+    return api_server_url.decode()

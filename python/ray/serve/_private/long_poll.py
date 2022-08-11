@@ -64,10 +64,10 @@ class LongPollClient:
     """The asynchronous long polling client.
 
     Args:
-        host_actor(ray.ActorHandle): handle to actor embedding LongPollHost.
-        key_listeners(Dict[str, AsyncCallable]): a dictionary mapping keys to
+        host_actor: handle to actor embedding LongPollHost.
+        key_listeners: a dictionary mapping keys to
           callbacks to be called on state update for the corresponding keys.
-        call_in_event_loop(AbstractEventLoop): an asyncio event loop
+        call_in_event_loop: an asyncio event loop
           to post the callback into.
     """
 
@@ -148,13 +148,14 @@ class LongPollClient:
         if isinstance(updates, (ray.exceptions.RayTaskError)):
             if isinstance(updates.as_instanceof_cause(), (asyncio.TimeoutError)):
                 logger.debug("LongPollClient polling timed out. Retrying.")
+                self._schedule_to_event_loop(self._reset)
             else:
                 # Some error happened in the controller. It could be a bug or
                 # some undesired state.
                 logger.error("LongPollHost errored\n" + updates.traceback_str)
-            # We must call this in event loop so it works in Ray Client.
-            # See https://github.com/ray-project/ray/issues/20971
-            self._schedule_to_event_loop(self._poll_next)
+                # We must call this in event loop so it works in Ray Client.
+                # See https://github.com/ray-project/ray/issues/20971
+                self._schedule_to_event_loop(self._poll_next)
             return
 
         logger.debug(

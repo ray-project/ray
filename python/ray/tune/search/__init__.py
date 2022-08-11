@@ -112,7 +112,7 @@ SEARCH_ALG_IMPORT = {
 }
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 def create_searcher(
     search_alg,
     **kwargs,

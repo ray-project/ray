@@ -43,4 +43,5 @@ cartpole-crashing-with-remote-envs-pg:
                     # not eval with crashing env.
                     p_crash: 0.0
                     p_crash_reset: 0.0
+                    crash_after_n_steps: null
                     init_time_s: 0.0
