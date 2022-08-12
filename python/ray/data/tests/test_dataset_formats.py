@@ -11,6 +11,10 @@ import pyarrow.json as pajson
 import pyarrow.parquet as pq
 import pytest
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
+from ray.data.datasource.image_folder_datasource import (
+    IMAGE_EXTENSIONS,
+    _ImageFolderDatasourceReader,
+)
 import requests
 import snappy
 from fsspec.implementations.local import LocalFileSystem
@@ -36,7 +40,10 @@ from ray.data.datasource import (
     SimpleTorchDatasource,
     WriteResult,
 )
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
+from ray.data.datasource.file_based_datasource import (
+    FileExtensionFilter,
+    _unwrap_protocol,
+)
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
     _ParquetDatasourceReader,
@@ -2950,6 +2957,49 @@ def test_image_folder_datasource_e2e(ray_start_regular_shared):
 
     predictor = BatchPredictor.from_checkpoint(checkpoint, TorchPredictor)
     predictor.predict(dataset, feature_columns=["image"])
+
+
+@pytest.mark.parametrize(
+    "image_size,image_mode,expected_size,expected_ratio",
+    [(64, "RGB", 30000, 4), (32, "L", 3500, 0.5), (256, "RGBA", 750000, 85)],
+)
+def test_image_folder_reader_estimate_data_size(
+    ray_start_regular_shared, image_size, image_mode, expected_size, expected_ratio
+):
+    root = "example://image-folders/different-sizes"
+    ds = ray.data.read_datasource(
+        ImageFolderDatasource(),
+        root=root,
+        size=(image_size, image_size),
+        mode=image_mode,
+    )
+
+    data_size = ds.size_bytes()
+    assert (
+        data_size >= expected_size and data_size <= expected_size * 1.5
+    ), "estimated data size is out of expected bound"
+    data_size = ds.fully_executed().size_bytes()
+    assert (
+        data_size >= expected_size and data_size <= expected_size * 1.5
+    ), "actual data size is out of expected bound"
+
+    reader = _ImageFolderDatasourceReader(
+        delegate=ImageFolderDatasource(),
+        paths=[root],
+        filesystem=LocalFileSystem(),
+        partition_filter=FileExtensionFilter(file_extensions=IMAGE_EXTENSIONS),
+        root=root,
+        size=(image_size, image_size),
+        mode=image_mode,
+    )
+    assert (
+        reader._encoding_ratio >= expected_ratio
+        and reader._encoding_ratio <= expected_ratio * 1.5
+    ), "encoding ratio is out of expected bound"
+    data_size = reader.estimate_inmemory_data_size()
+    assert (
+        data_size >= expected_size and data_size <= expected_size * 1.5
+    ), "estimated data size is out of expected bound"
 
 
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
