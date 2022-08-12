@@ -136,7 +136,7 @@ The `autoscalerOptions` field also provides options for configuring the autoscal
 for the autoscaler sidecar container. These overrides
 should be specified in the standard [container resource
 spec format](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#resources).
-The default values are as indicated below:
+The default values are indicated below:
 ```
 resources:
   limits:
