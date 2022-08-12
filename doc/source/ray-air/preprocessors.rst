@@ -186,8 +186,6 @@ Which preprocessor should you use?
 The type of preprocessor you use depends on what your data looks like. This section
 provides tips on handling common data formats.
 
-.. _air-encoding-categorical-data:
-
 Categorical data
 ~~~~~~~~~~~~~~~~
 
