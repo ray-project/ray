@@ -5,12 +5,14 @@ import psutil
 
 import ray
 
+
 def get_additional_bytes_to_reach_memory_usage_pct(pct: float) -> None:
     node_mem = psutil.virtual_memory()
     used = node_mem.total - node_mem.available
     bytes_needed = node_mem.total * pct - used
     assert bytes_needed > 0, "node has less memory than what is requested"
     return bytes_needed
+
 
 @ray.remote(max_retries=-1)
 def inf_retry(
@@ -26,6 +28,7 @@ def inf_retry(
     end = time.time()
     return end - start
 
+
 @ray.remote
 class Leaker:
     def __init__(self):
@@ -39,12 +42,8 @@ class Leaker:
         time.sleep(sleep_time_s / 1000)
 
 
-ray.init('auto')
+ray.init("auto")
 leaker = Leaker.remote()
 
 bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-ray.get(inf_retry.remote(allocate_bytes = bytes_to_alloc))
-
-
-
-
+ray.get(inf_retry.remote(allocate_bytes=bytes_to_alloc))

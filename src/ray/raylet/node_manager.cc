@@ -2917,9 +2917,11 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               absl::StrCat("Ray OOM killer terminating worker to prevent system OOM"),
               true /* force */);
           if (latest_worker->GetActorId().IsNil()) {
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(1, "MemoryManager.TaskEviction.Total");
+            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+                1, "MemoryManager.TaskEviction.Total");
           } else {
-            ray::stats::STATS_memory_manager_worker_eviction_total.Record(1, "MemoryManager.ActorEviction.Total");
+            ray::stats::STATS_memory_manager_worker_eviction_total.Record(
+                1, "MemoryManager.ActorEviction.Total");
           }
         }
       }
