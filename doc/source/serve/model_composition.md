@@ -11,7 +11,7 @@ This section helps you:
 (serve-model-composition-serve-handles)=
 ## Calling Deployments using ServeHandles
 
-You can call deployment methods from within other deployments using the {mod}`ServeHandle <ray.serve.handle.RayServeHandle>`. This lets you divide your application's steps (such as preprocessing, model inference, and post-processing) into independent deployments that can be independently scaled and configured.
+You can call deployment methods from within other deployments using the {mod}`ServeHandle <ray.serve.handle.RayServeSyncHandle>`. This lets you divide your application's steps (such as preprocessing, model inference, and post-processing) into independent deployments that can be independently scaled and configured.
 
 Here's an example:
 
@@ -71,6 +71,10 @@ Composition lets you break apart your application and independently scale each p
 
 With composition, you can avoid application-level bottlenecks when serving models and business logic steps that use different types and amounts of resources.
 :::
+
+```{note}
+For a deep dive in to the architecture of ServeHandle and its usage, take a look at [this user guide](serve-handle-explainer).
+```
 
 (serve-model-composition-deployment-graph)=
 ## Deployment Graph API
@@ -215,7 +219,7 @@ $ python arithmetic_client.py
 (deployment-graph-call-graph-testing)=
 ### Testing the Call Graph with the Python API
 
-All `MethodNodes` and `FunctionNodes` have an `execute` method. You can use this method to test your graph in Python, without using HTTP requests. 
+All `MethodNodes` and `FunctionNodes` have an `execute` method. You can use this method to test your graph in Python, without using HTTP requests.
 
 To test your graph,
 
