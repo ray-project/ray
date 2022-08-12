@@ -112,4 +112,5 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
         return self._replace_table[self._found[i]]
 
     def __del__(self):
-        del _instances[id(self)]
+        if id(self) in _instances:
+            del _instances[id(self)]
