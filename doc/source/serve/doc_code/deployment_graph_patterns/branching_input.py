@@ -10,10 +10,10 @@ from ray.serve.deployment_graph import InputNode
 
 @serve.deployment
 class Model:
-    def __init__(self, weight):
+    def __init__(self, weight: int):
         self.weight = weight
 
-    def forward(self, input):
+    def forward(self, input: int) -> int:
         return input + self.weight
 
 
