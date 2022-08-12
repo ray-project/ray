@@ -106,6 +106,10 @@ class _PyObjScanner(ray.cloudpickle.CloudPickler, Generic[SourceType, Transforme
     def _replace_index(self, i: int) -> SourceType:
         return self._replace_table[self._found[i]]
 
-    def __del__(self):
+    def clear(self):
+        """Clear the scanner from the _instances, which will help to make the scanner GCable faster"""
         if id(self) in _instances:
             del _instances[id(self)]
+
+    def __del__(self):
+        self.clear()

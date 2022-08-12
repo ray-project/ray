@@ -60,7 +60,7 @@ class Query:
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
 
         # Make the scanner GCable to avoid memory leak
-        del ScannerInstances[id(scanner)]
+        scanner.clear()
 
 
 class ReplicaSet:
