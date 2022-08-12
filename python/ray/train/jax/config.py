@@ -96,7 +96,7 @@ class _JaxBackend(Backend):
 
         use_tpu = (
             additional_resources_per_worker
-            and additional_resources_per_worker.get("TPU", False)
+            and additional_resources_per_worker.get("TPU", 0) > 0
         )
 
         if use_gpu:
