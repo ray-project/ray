@@ -37,18 +37,6 @@ def no_retry(allocate_bytes: int, num_chunks: int = 10, allocate_interval_s: flo
     end = time.time()
     return end - start
 
-
-@ray.remote(max_retries=1)
-def persistent_task():
-    time.sleep(10000)
-
-
-@ray.remote
-class PersistentActor:
-    def run(self):
-        time.sleep(10000)
-
-
 @ray.remote
 class Leaker:
     def __init__(self):
