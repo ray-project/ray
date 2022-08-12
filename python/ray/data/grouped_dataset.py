@@ -251,24 +251,15 @@ class GroupedDataset(Generic[T]):
         else:
             sorted_ds = self._dataset.repartition(1)
 
-        def get_key(row):
-            if isinstance(self._key, Callable):
-                return self._key(row)
-            elif isinstance(self._key, str):
-                return row[self._key]
-            else:
-                return None
-
         # Returns the group boundaries.
-        def get_key_boundaries(batch):
+        def get_key_boundaries(block_accessor):
             boundaries = []
-            block_accessor = BlockAccessor.for_block(batch)
             keys = block_accessor.get_keys(self._key)
             if keys is None:
                 return [block_accessor.num_rows()]
             start = 0
             while start < keys.size:
-                end = np.searchsorted(keys, keys[start], side="right")
+                end = start + np.searchsorted(keys[start:], keys[start], side="right")
                 boundaries.append(end)
                 start = end
             return boundaries
@@ -277,7 +268,7 @@ class GroupedDataset(Generic[T]):
         # map_batches() below.
         def group_fn(batch):
             block_accessor = BlockAccessor.for_block(batch)
-            boundaries = get_key_boundaries(batch)
+            boundaries = get_key_boundaries(block_accessor)
             builder = block_accessor.builder()
             start = 0
             for end in boundaries:
@@ -285,7 +276,6 @@ class GroupedDataset(Generic[T]):
                 applied = fn(group)
                 builder.add_block(applied)
                 start = end
-
             rs = builder.build()
             return rs
 
