@@ -17,11 +17,11 @@ When the memory monitor detects the usage is above the threshold, the raylet wil
 Configuration parameters
 ------------------------
 
-The memory monitor is disabled by default and is enabled via environment variables.
+The memory monitor is configured via environment variables.
 
-`RAY_memory_usage_threshold_fraction [default_value=0, min=0.0, max=1.0, recommended=0.9]`: The usage fraction is calculated as (node memory used / node memory available). The memory here includes the shared memory allocated for the object store.
+`RAY_memory_usage_threshold_fraction [default_value=0.95, min=0.0, max=1.0]`: The usage fraction is calculated as (node memory used / node memory available). The memory here includes the shared memory allocated for the object store.
 
-`RAY_memory_monitor_interval_ms [default_value=0, recommended=500]`: The monitor is disabled when this value is 0. This is the frequency in which the monitor computes the memory usage and notifies the raylet if the usage exceeds the threshold. Running the monitor more frequently allows it to respond faster to memory growth.
+`RAY_memory_monitor_interval_ms [default_value=200]`: The monitor is disabled when this value is 0. This is the frequency in which the monitor computes the memory usage and notifies the raylet if the usage exceeds the threshold. Running the monitor more frequently allows it to respond faster to memory growth.
 
 Detect and reduce worker evictions
 -----------------------------------
