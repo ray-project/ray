@@ -17,15 +17,77 @@ Preprocessor
 .. autoclass:: ray.data.preprocessor.Preprocessor
     :members:
 
-Built-in Preprocessors
-######################
+Generic Preprocessors
+#####################
 
-.. automodule:: ray.data.preprocessors
-    :members:
+.. autoclass:: ray.data.preprocessors.BatchMapper
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.Chain
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.Concatenator
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.SimpleImputer
     :show-inheritance:
 
 .. automethod:: ray.data.Dataset.train_test_split
     :noindex:
+
+Categorical Encoders
+####################
+
+.. autoclass:: ray.data.preprocessors.Categorizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.LabelEncoder
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.MultiHotEncoder
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.OneHotEncoder
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.OrdinalEncoder
+    :show-inheritance:
+
+Feature Scalers
+###############
+
+.. autoclass:: ray.data.preprocessors.MaxAbsScaler
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.MinMaxScaler
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.Normalizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.PowerTransformer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.RobustScaler
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.StandardScaler
+    :show-inheritance:
+
+Text Encoders
+#############
+
+.. autoclass:: ray.data.preprocessors.CountVectorizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.FeatureHasher
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.HashingVectorizer
+    :show-inheritance:
+
+.. autoclass:: ray.data.preprocessors.Tokenizer
+    :show-inheritance:
 
 .. _air-abstract-trainer-ref:
 
