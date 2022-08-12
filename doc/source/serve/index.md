@@ -137,7 +137,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     **Getting Started**
     ^^^
 
-    Start with our quick start tutorials for :ref:`deploying a single model locally<getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment<converting-to-ray-serve-deployment>` .
+    Start with our quick start tutorials for :ref:`deploying a single model locally <getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-deployment>` .
 
     +++
     .. link-button:: getting-started
@@ -150,7 +150,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     ^^^
 
     Understand the key concepts behind Ray Serve.
-    Learn about :ref:`Deployments<serve-key-concepts-deployment>`, :ref:`how to query them<serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph<serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
+    Learn about :ref:`Deployments <serve-key-concepts-deployment>`, :ref:`how to query them <serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph <serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
 
     +++
     .. link-button:: serve-key-concepts
@@ -161,8 +161,8 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
 
     **User Guides**
     ^^^
-    Learn best practices for common patterns like :doc:`managing deployments<managing-deployments>`, how to call deployments :ref:`via HTTP<serve-http>` or :ref:`from Python<serve-handle-explainer>`.
-    Learn how to serve multiple ML models with :ref:`Model Ensemble<serve-model-ensemble>`, and how to :ref:`monitor your Serve applications<serve-monitoring>`.
+    Learn best practices for common patterns like :doc:`managing deployments <managing-deployments>`, how to call deployments :ref:`via HTTP <serve-http>` or :ref:`from Python <serve-handle-explainer>`.
+    Learn how to serve multiple ML models with :ref:`Model Ensemble <serve-model-ensemble>`, and how to :ref:`monitor your Serve applications <serve-monitoring>`.
 
     +++
     .. link-button:: serve-user-guides
@@ -174,7 +174,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     **Examples**
     ^^^
 
-    Follow the tutorials to learn how to integrate Ray Serve with :ref:`Keras and TensorFlow<serve-tensorflow-tutorial>`, :ref:`Scikit-Learn<serve-sklearn-tutorial>`, and :ref:`RLlib<serve-rllib-tutorial>`. Learn how Ray Serve also integrates with :ref:`existing web applications<serve-web-server-integration-tutorial>`
+    Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow <serve-ml-models-tutorial>`, :ref:`Scikit-Learn <serve-ml-models-tutorial>`, and :ref:`RLlib <serve-rllib-tutorial>`. Learn how Ray Serve also integrates with :ref:`existing web applications <serve-web-server-integration-tutorial>`
 
     +++
     .. link-button:: serve-examples

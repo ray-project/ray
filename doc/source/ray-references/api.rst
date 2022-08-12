@@ -13,7 +13,4 @@ API References
     ../ray-air/package-ref.rst
     ../workflows/package-ref.rst
     ../ray-core/package-ref.rst
-    ../cluster/reference.rst
-    ../cluster/jobs-package-ref.rst
-    ../cluster/usage-stats-data-ref.rst
     ../ray-observability/state/ray-state-api-reference.rst

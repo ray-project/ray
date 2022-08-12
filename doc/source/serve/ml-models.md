@@ -1,4 +1,4 @@
-(serve-ml-models)=
+(serve-ml-models-tutorial)=
 # Serving ML Models
 
 This section should help you:

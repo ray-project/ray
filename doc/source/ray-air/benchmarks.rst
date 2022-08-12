@@ -45,6 +45,7 @@ For this benchmark, we configured the nodes to have reasonable disk size and thr
       - 0 GiB
       - `python data_benchmark.py --dataset-size-gb=200 --num-workers=20`
 
+.. _xgboost-benchmark:
 
 XGBoost Batch Prediction
 ------------------------
