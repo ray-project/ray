@@ -1,6 +1,5 @@
 from ray.dag.py_obj_scanner import _PyObjScanner, _instances
 import pytest
-import gc
 
 
 class Source:
@@ -56,7 +55,6 @@ def test_scanner_gc():
         scanner.replace_nodes({obj: 1 for obj in found})
         scanner.clear()
         assert id(scanner) not in _instances
-
 
     call_find_and_replace_nodes()
     assert prev_len == len(_instances)
