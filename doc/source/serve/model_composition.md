@@ -170,7 +170,7 @@ The `with` statement (known as a "context manager" in Python) initializes a spec
 
 (deployment-graph-call-graph-input-node-note)=
 :::{note}
-The `InputNode` tells Ray Serve where to send the graph input at runtime. In this example, for instance, `http_request`'s type is `InputNode`, so you can't call `request` methods like `.json()` on it directly in the context manager. However, during runtime, Ray Serve passes incoming HTTP requests directly into the same functions and methods that `http_request` is passed into, so those functions and methods can call `request` methods like `.json()` on the `request` object that gets passed in.
+The `InputNode` tells Ray Serve where to send the graph input at runtime. In this example, for instance, `http_request` is an `InputNode` object, so you can't call `request` methods like `.json()` on it directly in the context manager. However, during runtime, Ray Serve passes incoming HTTP requests directly into the same functions and methods that `http_request` is passed into, so those functions and methods can call `request` methods like `.json()` on the `request` object that gets passed in.
 :::
 
 You can use the `InputNode` to indicate which node(s) the graph input should be passed into by passing the `InputNode` into `bind` calls within the context manager. In this example, the `http_request` is passed to only one node, `unpack_request`. The output of that bind call, `request_number`, is a `FunctionNode`. `FunctionNodes` are produced when deployments containing functions are bound to arguments for that function using `bind`. `request_number` represents the output of `unpack_request` when called on incoming HTTP requests. `unpack_request`, which is defined on line 26, processes the HTTP request's JSON body and returns a number that can be passed into arithmetic operations.
@@ -189,7 +189,7 @@ To run the call graph, you need to use a driver. Drivers are deployments that pr
 deployment_graph = DAGDriver.bind(add_3_output)
 ```
 
-Generally, the `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of the graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` also deploys the rest of the graph's deployments.
+Generally, the `DAGDriver` needs to be bound to the `FunctionNode` or `MethodNode` representing the final output of a graph. This `bind` call returns a `ClassNode` that you can run in `serve.run` or `serve run`. Running this `ClassNode` also deploys the rest of the graph's deployments.
 
 :::{note}
 The `DAGDriver` can also be bound to `ClassNodes`. This is useful if you construct a deployment graph where `ClassNodes` invoke other `ClassNodes`' methods. In this case, you should pass in the "root" `ClassNode` to `DAGDriver` (i.e. the one that you would otherwise pass into `serve.run`). Check out the [Calling Deployments using ServeHandles](serve-model-composition-serve-handles) section for more info.
