@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
+    RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
@@ -762,7 +763,9 @@ class ServeControllerAvatar:
                 # restarted on other nodes in an HA cluster.
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
                     head_node_id, soft=True
-                ),
+                )
+                if RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE
+                else None,
                 namespace="serve",
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(
