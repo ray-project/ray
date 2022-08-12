@@ -522,8 +522,9 @@ class RayServeReplica:
             if hasattr(self.callable, "__del__"):
                 # Make sure to accept `async def __del__(self)` as well.
                 await sync_to_async(self.callable.__del__)()
+                setattr(self.callable, "__del__", lambda _: None)
         except Exception as e:
             logger.exception(f"Exception during graceful shutdown of replica: {e}")
         finally:
             if hasattr(self.callable, "__del__"):
-                del self.callable.__del__
+                del self.callable
