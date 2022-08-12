@@ -76,7 +76,7 @@ at least as new as 1.11.0.
 
 ### Configuration details
 Some details of Ray cluster configuration are different with KubeRay; see the next section
-for migration notes. Refer to the [Ray documentation](docs.ray.io) for comprehensive
+for migration notes. Refer to the [Ray documentation](https://docs.ray.io/en/latest/) for comprehensive
 information on KubeRay configuration.
 
 ## Migration Notes
