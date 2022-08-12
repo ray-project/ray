@@ -3,8 +3,13 @@
 This directory carries source code for the legacy Ray Operator.
 
 Using the [KubeRay operator](https://ray-project.github.io/kuberay/components/operator/)
-is the preferred way to deploy Ray on Kubernetes. Refer to the [Ray documentation](docs.ray.io)
+is the preferred way to deploy Ray on Kubernetes. Refer to the latest [Ray documentation](https://docs.ray.io/en/latest/)
 for up-to-date guides on Ray's Kubernetes support.
+
+As of Ray 2.0.0, the legacy Ray Operator is in maintenance mode.
+This operator will be deprecated and removed in a future Ray release.
+For documentation on the legacy Ray Operator,
+refer to the [Ray 1.13.0 documentation](https://docs.ray.io/en/releases-1.13.0/cluster/kubernetes.html#deploying-on-kubernetes).
 
 The rest of this page
 - Compares the KubeRay operator to the legacy Ray Operator hosted in the Ray repo.
