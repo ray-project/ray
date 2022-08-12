@@ -81,7 +81,7 @@ Then, run your Ray script using one of the following options:
 
 1. on the head node of the cluster (``python train_script.py``)
 2. via ``ray job submit`` (:ref:`docs <jobs-overview>`) from your laptop (``ray job submit -- python train.py``)
-3. via the :ref:`Ray Client <ray-client>` from your laptop.
+3. via the :ref:`Ray Client <ray-client-ref>` from your laptop.
 
 .. _pytorch-lightning-tune:
 

@@ -23,7 +23,7 @@ To get started with Ray Jobs, check out the [quickstart](jobs-quickstart) guide,
 This is suitable for any client that can communicate over HTTP to the Ray Cluster.
 If needed, Ray Jobs also provides APIs for [programmatic job submission](ray-job-sdk) and [job submission using REST](ray-job-rest-api).
 
-Finally, if you would like to run an application *interactively* and see the output in real time, you can use [Ray Client](ray-client). This tool can be useful during development.
+Finally, if you would like to run an application *interactively* and see the output in real time, you can use [Ray Client](ray-client-ref). This tool can be useful during development.
 
 ```{toctree}
 :maxdepth: '1'

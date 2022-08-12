@@ -1,4 +1,4 @@
-.. _ray-client:
+.. _ray-client-ref:
 
 Ray Client: Interactive Development
 ===================================

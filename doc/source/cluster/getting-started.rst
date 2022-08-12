@@ -1,6 +1,5 @@
 .. _cluster-index:
 
-
 Ray Clusters Overview
 =====================
 
@@ -54,6 +53,8 @@ What's next?
         :text: Get Started with Ray on Kubernetes
         :classes: btn-outline-info btn-block
 
+    ---
+
     **I want to run Ray on a cloud provider**
     ^^^
     Take a sample application designed to run on a laptop and scale it up in the
@@ -64,6 +65,5 @@ What's next?
         :type: ref
         :text: Get Started with Ray on VMs
         :classes: btn-outline-info btn-block
-    ---
 
 .. include:: /_includes/clusters/announcement_bottom.rst
