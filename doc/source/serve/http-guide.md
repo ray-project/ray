@@ -194,6 +194,8 @@ DAGDriver.bind(other_node, http_adapter=User)
 
 Here is a list of adapters; please feel free to [contribute more](https://github.com/ray-project/ray/issues/new/choose)!
 
+(serve-ndarray-schema)=
+
 ```{eval-rst}
 .. automodule:: ray.serve.http_adapters
     :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request, pandas_read_json, json_to_multi_ndarray
