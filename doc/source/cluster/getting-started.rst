@@ -66,4 +66,16 @@ What's next?
         :text: Get Started with Ray on VMs
         :classes: btn-outline-info btn-block
 
+    ---
+
+    **I want to run my application on an existing Ray cluster**
+    ^^^
+    Guide to submitting applications as Jobs to existing Ray clusters.
+
+    +++
+    .. link-button:: jobs-quickstart
+        :type: ref
+        :text: Job Submission
+        :classes: btn-outline-info btn-block
+
 .. include:: /_includes/clusters/announcement_bottom.rst

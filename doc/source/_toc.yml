@@ -298,7 +298,7 @@ parts:
   - caption: References
     chapters:
       - file: ray-references/api
-      - file: usage-stats
+      - file: cluster/usage-stats
 
   - caption: Developer Guides
     chapters:
