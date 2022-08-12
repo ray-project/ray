@@ -198,7 +198,7 @@ Ray Serve also provides key features for building production-ready machine learn
 :::
 
 We truly believe Serve is unique as it gives you end-to-end control
-over the API while delivering scalability and high performance. To achieve
+over your ML application while delivering scalability and high performance. To achieve
 Serve's feature offerings with other tools, you would need to glue together multiple
 frameworks like Tensorflow Serving and SageMaker, or even roll your own
 micro-batching component to improve throughput.
