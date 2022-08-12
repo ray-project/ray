@@ -96,7 +96,7 @@ DECLARE_stats(gcs_placement_group_count);
 DECLARE_stats(gcs_actors_count);
 
 /// Memory Manager
-DECLARE_stats(memory_manager_oom_total);
+DECLARE_stats(memory_manager_worker_eviction_total);
 
 /// The below items are legacy implementation of metrics.
 /// TODO(sang): Use DEFINE_stats instead.

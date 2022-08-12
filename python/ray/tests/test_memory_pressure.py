@@ -105,7 +105,7 @@ def test_memory_pressure_kill_worker(shutdown_only):
         has_metric_tagged_with_value,
         timeout=10,
         retry_interval_ms=100,
-        tag="MemoryManager.ActorOOM.Total",
+        tag="MemoryManager.ActorEviction.Total",
         value=1.0,
     )
 

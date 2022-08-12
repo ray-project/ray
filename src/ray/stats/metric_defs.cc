@@ -221,11 +221,11 @@ DEFINE_stats(gcs_actors_count,
              ray::stats::GAUGE);
 
 /// Memory Manager
-DEFINE_stats(memory_manager_oom_total,
-             "Total oom events broken per work type {Actor, Task}",
+DEFINE_stats(memory_manager_worker_eviction_total,
+             "Total worker eviction events broken per work type {Actor, Task}",
              ("Type"),
              (),
-             ray::stats::GAUGE);
+             ray::stats::COUNT);
 }  // namespace stats
 
 }  // namespace ray
