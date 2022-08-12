@@ -49,6 +49,10 @@ class SampleBatch(dict):
     OBS_EMBEDS = "obs_embeds"
     T = "t"
 
+    # decision transformer
+    RETURNS_TO_GO = "returns_to_go"
+    ATTENTION_MASKS = "attention_masks"
+
     # Extra action fetches keys.
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
