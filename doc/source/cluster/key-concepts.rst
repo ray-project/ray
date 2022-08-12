@@ -75,4 +75,4 @@ For interactive development, the following additional methods are available:
 * Directly running a script or notebook on any head or worker node.
 * Using the Ray Client to connect remotely to the cluster.
 
-To learn how to run workloads on a Ray Cluster, refer to the :ref:`Ray Jobs guide <jobs-overview>`.
+To learn how to run workloads on a Ray cluster, refer to the :ref:`Ray Jobs guide <jobs-overview>`.
