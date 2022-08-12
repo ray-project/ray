@@ -84,6 +84,15 @@ information on KubeRay configuration.
 Take note of the following configuration differences when switching to KubeRay
 deployment.
 
+### Delete the Old CRD!
+The legacy Ray Operator's RayCluster CRD has the fully-qualified name
+`rayclusters.cluster.ray.io`, while KubeRay's RayCluster CRD is named `rayclusters.ray.io`.
+To avoid unexpected name conflicts, be sure to delete the old CRD before using KubeRay:
+```shell
+kubectl delete crd rayclusters.cluster.ray.io
+```
+
+
 ### Autoscaling is optional
 Ray Autoscaler support is optional with KubeRay. Set `spec.enableInTreeAutoscaling:true`
 in the RayCluster CR to enable autoscaling. The KubeRay operator will then automatically
