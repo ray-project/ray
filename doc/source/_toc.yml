@@ -182,6 +182,7 @@ parts:
               - file: serve/performance
               - file: serve/dev-workflow
               - file: serve/production
+              - file: serve/managing-java-deployments
               - file: serve/migration
           - file: serve/architecture
           - file: serve/tutorials/index
