@@ -43,11 +43,8 @@ def test_scanner_gc():
         scanner = _PyObjScanner(source_type=Source)
         my_objs = [Source(), [Source(), {"key": Source()}]]
         scanner.find_nodes(my_objs)
-        gc.collect()
-        assert len(gc.get_referrers(scanner)) == 1
         scanner.clear()
-        gc.collect()
-        assert len(gc.get_referrers(scanner)) == 0
+        assert id(scanner) not in _instances
 
     call_find_nodes()
     assert prev_len == len(_instances)
@@ -57,11 +54,9 @@ def test_scanner_gc():
         my_objs = [Source(), [Source(), {"key": Source()}]]
         found = scanner.find_nodes(my_objs)
         scanner.replace_nodes({obj: 1 for obj in found})
-        gc.collect()
-        assert len(gc.get_referrers(scanner)) == 1
         scanner.clear()
-        gc.collect()
-        assert len(gc.get_referrers(scanner)) == 0
+        assert id(scanner) not in _instances
+
 
     call_find_and_replace_nodes()
     assert prev_len == len(_instances)
