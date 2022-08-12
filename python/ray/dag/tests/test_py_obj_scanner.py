@@ -34,8 +34,8 @@ def test_not_serializing_objects():
     assert replaced == [not_serializable, {"key": 1}]
 
 
-def test_scanner_gc():
-    """Test gc collect after the delete instances[id] called"""
+def test_scanner_clear():
+    """Test scanner clear to make the scanner GCable"""
     prev_len = len(_instances)
 
     def call_find_nodes():
