@@ -1017,6 +1017,7 @@ class Algorithm(Trainable):
         # Default done-function returns True, whenever num episodes
         # have been completed.
         if duration_fn is None:
+
             def duration_fn(num_units_done):
                 return duration - num_units_done
 

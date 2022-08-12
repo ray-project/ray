@@ -247,29 +247,12 @@ class TestWorkerFailure(unittest.TestCase):
                 )
             )
             result = a.train()
-            if not eval_only:
-                self.assertTrue(result["num_healthy_workers"] == 2)
-                self.assertTrue(
-                    all(
-                        ray.get(
-                            worker.apply.remote(
-                                lambda w: w.recreated_worker
-                                and w.env_context.recreated_worker
-                            )
-                        )
-                        for worker in a.workers.remote_workers()
-                    )
-                )
-            else:
-                self.assertTrue(result["num_healthy_workers"] == 1)
-                self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
+            self.assertTrue(result["num_healthy_workers"] == 1)
+            self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
             # This should also work several times.
             result = a.train()
-            if not eval_only:
-                self.assertTrue(result["num_healthy_workers"] == 2)
-            else:
-                self.assertTrue(result["num_healthy_workers"] == 1)
-                self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
+            self.assertTrue(result["num_healthy_workers"] == 1)
+            self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
             a.stop()
 
     def test_fatal(self):
