@@ -749,9 +749,9 @@ cdef execute_task(
                                     exc_info=True)
                     else:
                         logger.debug("Task failed with unretryable exception:"
-                                    " {}.".format(
-                                        core_worker.get_current_task_id()),
-                                    exc_info=True)
+                                     " {}.".format(
+                                         core_worker.get_current_task_id()),
+                                     exc_info=True)
                     raise e
                 if c_return_ids.size() == 1:
                     # If there is only one return specified, we should return
