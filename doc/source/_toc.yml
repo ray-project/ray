@@ -180,6 +180,7 @@ parts:
               - file: serve/deploying-serve
               - file: serve/monitoring
               - file: serve/performance
+              - file: serve/dev-workflow
               - file: serve/production
               - file: serve/migration
           - file: serve/architecture
