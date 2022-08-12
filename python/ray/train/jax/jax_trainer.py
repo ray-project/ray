@@ -8,7 +8,6 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
 from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
-from ray.train.jax.utils import ensure_tpu_resources_capitalized
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -88,7 +87,7 @@ class JaxTrainer(DataParallelTrainer):
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
             by the ``preprocessor`` if one is provided.
-        preprocessor: A ``ray.air.preprocessor.Preprocessor`` to preprocess the
+        preprocessor: A ``ray.data.Preprocessor`` to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
@@ -129,12 +128,10 @@ class JaxTrainer(DataParallelTrainer):
             allowed_keys=cls._scaling_config_allowed_keys,
         )
 
-        scaling_config = ensure_tpu_resources_capitalized(scaling_config)
-
         use_gpu = scaling_config.use_gpu
         use_tpu = (
             scaling_config.resources_per_worker
-            and not scaling_config.resources_per_worker.get("TPU", 0)
+            and scaling_config.resources_per_worker.get("TPU", 0) > 0
         )
 
         # cpu parallelism is not supported in jax

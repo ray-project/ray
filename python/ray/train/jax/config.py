@@ -5,18 +5,18 @@ import warnings
 import subprocess
 
 import ray
+from ray._private.ray_constants import env_integer
 from ray.train.backend import BackendConfig, Backend
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.util import PublicAPI
-from ray.train.jax.utils import str2bool
 
 logger = logging.getLogger(__name__)
 
 RAY_TPU_DEV_ENV = "RAY_TPU_DEV"
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="alpa")
 @dataclass
 class JaxConfig(BackendConfig):
     @property
@@ -118,8 +118,7 @@ class _JaxBackend(Backend):
 
         if use_tpu:
             # Get setup tasks in order to throw errors on failure.
-            # Note: os.environ.get(RAY_TPU_DEV_ENV, 'False') is a string!
-            try_remove_tpulib_lock = str2bool(os.environ.get(RAY_TPU_DEV_ENV, "False"))
+            try_remove_tpulib_lock = bool(env_integer(RAY_TPU_DEV_ENV, 0))
 
             worker_group.execute(
                 release_tpu_lock,
