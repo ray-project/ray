@@ -13,6 +13,7 @@ serve-ml-models
 batch
 rllib
 gradio-integration
+java
 ```
 
 Other Topics:

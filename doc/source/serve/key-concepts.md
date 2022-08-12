@@ -50,7 +50,7 @@ class Driver:
         refa = await self._model_a_handle.remote(request)
         refb = await self._model_b_handle.remote(request)
         return (await refa) + (await refb)
-        
+
 
 model_a = ModelA.bind()
 model_b = ModelB.bind()
@@ -61,6 +61,8 @@ driver = Driver.bind(model_a, model_b)
 # Deploys model_a, model_b, and driver.
 serve.run(driver)
 ```
+
+(serve-key-concepts-ingress-deployment)=
 
 ## Ingress Deployment (HTTP handling)
 
@@ -79,7 +81,7 @@ Here's an example:
 class MostBasicIngress:
   async def __call__(self, request: starlette.requests.Request) -> str:
       name = await request.json()["name"]
-      return f"Hello {name}" 
+      return f"Hello {name}"
 ```
 
 After binding the deployment and running `serve.run()`, it is now exposed by the HTTP server and handles requests using the specified class.
@@ -103,7 +105,7 @@ app = FastAPI()
 class MostBasicIngress:
   @app.get("/{name}")
   async def say_hi(self, name: str) -> str:
-      return f"Hello {name}" 
+      return f"Hello {name}"
 ```
 
 (serve-key-concepts-deployment-graph)=
