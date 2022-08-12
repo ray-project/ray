@@ -37,11 +37,11 @@ class DTConfig(AlgorithmConfig):
         self.target_return = None
         self.horizon = None
         self.model = {
-            "max_seq_len": 20,
+            "max_seq_len": 5,
         }
 
         self.embed_dim = 128
-        self.num_layers = 3
+        self.num_layers = 2
         self.num_heads = 1
         self.embed_pdrop = 0.1
         self.resid_pdrop = 0.1
@@ -52,7 +52,9 @@ class DTConfig(AlgorithmConfig):
         self.lr = 1e-4
         self.lr_schedule = None
         self.optimizer = {
+            # Weight decay for Adam optimizer.
             "weight_decay": 1e-4,
+            # Betas for Adam optimizer.
             "betas": (0.9, 0.95),
         }
         self.grad_clip = None
@@ -98,13 +100,30 @@ class DTConfig(AlgorithmConfig):
         === DT configs
 
         Args:
-            **kwargs: forward compatibility kwargs
+            replay_buffer_config: Replay buffer config.
+                {
+                    "capacity": How many trajectories/episodes does the buffer hold.
+                }
+            embed_dim: Dimension of the embeddings in the GPT model.
+            num_layers: Number of attention layers in the GPT model.
+            num_heads: Number of attention heads in the GPT model. Must divide
+                embed_dim evenly.
+            embed_pdrop: Dropout probability of the embedding layer of the GPT model.
+            resid_pdrop: Dropout probability of the residual layer of the GPT model.
+            attn_pdrop: Dropout probability of the attention layer of the GPT model.
+            use_obs_output: Use observation head when computing loss.
+            use_return_output: Use the return-to-go head when computing loss.
+            target_return: The target return-to-go for inference/evaluation.
+            grad_clip: If specified, clip the global norm of gradients by this amount.
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule should normally start from timestep 0.
+            **kwargs: Forward compatibility kwargs
 
         Returns:
-            This updated CRRConfig object.
+            This updated DTConfig object.
         """
-        # TODO(charlesjsun): finish doc
-
         super().training(**kwargs)
         if replay_buffer_config is not None:
             self.replay_buffer_config = replay_buffer_config
