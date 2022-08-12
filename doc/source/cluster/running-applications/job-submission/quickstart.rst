@@ -1,7 +1,4 @@
-.. warning::
-    This page is under construction!
-
-.. _jobs-quickstart-under-construction:
+.. _jobs-quickstart:
 
 =================================
 Quickstart Using the Ray Jobs CLI
@@ -10,7 +7,8 @@ Quickstart Using the Ray Jobs CLI
 In this guide, we will walk through the Ray Jobs CLIs available for submitting and interacting with a Ray Job.
 
 .. note::
-    This component is in **beta**. APIs may change before becoming stable.
+
+  The Jobs API is in beta and may change before becoming stable.
 
 Setup
 -----
@@ -35,7 +33,7 @@ For convenience, this guide will assume that you are using a local Ray Cluster, 
 
 This will create a Ray head node on our local machine that we can use for development purposes.
 Note the Ray Dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job.
-For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <ref-cluster-quick-start-vms-under-construction>` and :ref:`Kubernetes <kuberay-quickstart>`.
+For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <vm-cluster-quick-start>` and :ref:`Kubernetes <kuberay-quickstart>`.
 
 
 Submitting a Ray Job
@@ -190,7 +188,7 @@ Dependency Management
 To run a distributed application, we need to make sure that all workers run in the same environment.
 This can be challenging if multiple applications in the same Ray Cluster have different and conflicting dependencies.
 
-To avoid dependency conflicts, Ray provides a mechanism called :ref:`runtime environments<runtime-environments>`. Runtime environments allow an application to override the default environment on the Ray Cluster and run in an isolated environment, similar to virtual environments in single-node Python. Dependencies can include both files and Python packages.
+To avoid dependency conflicts, Ray provides a mechanism called :ref:`runtime environments <runtime-environments>`. Runtime environments allow an application to override the default environment on the Ray Cluster and run in an isolated environment, similar to virtual environments in single-node Python. Dependencies can include both files and Python packages.
 
 Ray Jobs provides an option to specify the runtime environment when submitting a job. On the Ray Cluster, Ray will then install the runtime environment across the workers and ensure that tasks in that job run in the same environment. To see how this works, we'll use a Python script that prints the current version of the ``requests`` module in a Ray task.
 
@@ -258,5 +256,5 @@ Now let's try it with a runtime environment that pins the version of the ``reque
     # Job 'raysubmit_vGGV4MiP9rYkYUnb' succeeded
     # ------------------------------------------
 
-The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-api-ref-under-construction>`.
-For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk-under-construction>` and :ref:`job submission using REST <ray-job-rest-api-under-construction>`.
+The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-api-ref>`.
+For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk>` and :ref:`job submission using REST <ray-job-rest-api>`.

@@ -1,11 +1,9 @@
-.. include:: /_includes/clusters/we_are_hiring.rst
-
-.. _ray-LSF-deploy-under-construction:
+.. _ray-LSF-deploy:
 
 Deploying on LSF
 ================
 
-This document describes a couple high-level steps to run ray cluster on LSF.
+This document describes a couple high-level steps to run Ray clusters on LSF.
 
 1) Obtain desired nodes from LSF scheduler using bsub directives.
 2) Obtain free ports on the desired nodes to start ray services like dashboard, GCS etc.
