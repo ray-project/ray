@@ -33,7 +33,7 @@ Once a deployment is deployed, you can fetch its instance by name.
 
 ## Updating a Deployment
 
-You can update a deployment's code and configuration and then redeploy it. The following example updates `"counter"` deployment's initial value to 2.
+You can update a deployment's code and configuration and then redeploy it. The following example updates the `"counter"` deployment's initial value to 2.
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
 :start-after: docs-update-start
