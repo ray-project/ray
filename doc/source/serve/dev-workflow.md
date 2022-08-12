@@ -79,9 +79,9 @@ After you're done testing, you can shut down Ray Serve by interrupting the `serv
 
 To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-under-construction) for more information.
 
-When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  During development, you can use {ref}`Runtime Environments<runtime-environments>` to manage these dependencies.
+When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.  
 
-Let's see a simple example. Run the following command on your local machine, with your remote cluster head node IP address substituted for `<head-node-ip-address>` in the command:
+Let's see a simple example that just packages the code. Run the following command on your local machine, with your remote cluster head node IP address substituted for `<head-node-ip-address>` in the command:
 
 ```bash
 serve run  --address=ray://<head-node-ip-address>:10001 --working_dir="./project/src" local_dev:HelloDeployment
@@ -96,7 +96,7 @@ curl -X PUT http://<head-node-ip-address>:8000/?name=Ray
 # Hello, Ray! Hello, Ray!
 ```
 
-If your runtime environment contains fields other than `working_dir`, use the `--runtime-env-json` argument:
+For more complex dependencies, including files outside the working directory, environment variables, and Python packages, you can use {ref}`Runtime Environments<runtime-environments>`. Here is an example using the --runtime-env-json argument:
 
 ```bash
 serve run  --address=ray://<head-node-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:HelloDeployment
