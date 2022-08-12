@@ -142,6 +142,8 @@ ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
         assert "warning" not in output.lower()
 
 
+# TODO(architkulkarni): Deflake and reenable this test.
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.skipif(sys.platform != "darwin", reason="Package exceeds max size.")
 def test_ray_worker_dev_flow(start_cluster):
     cluster, address = start_cluster
@@ -233,6 +235,8 @@ def test_ray_worker_dev_flow(start_cluster):
     assert ray.get(test_tune.remote()) != serve.__path__[0]
 
 
+# TODO(architkulkarni): Deflake and reenable this test.
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
@@ -325,6 +329,8 @@ def test_default_large_cache(start_cluster, option: str, source: str):
     ],
     indirect=True,
 )
+# TODO(architkulkarni): Deflake and reenable this test.
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option):
