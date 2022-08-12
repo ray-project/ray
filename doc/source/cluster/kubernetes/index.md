@@ -20,7 +20,7 @@ different Ray versions in the same Kubernetes cluster.
 ```
 
 
-Concretely you will learn how to:
+Concretely, you will learn how to:
 
 - Set up and configure Ray on a Kubernetes cluster
 - Deploy and monitor Ray applications

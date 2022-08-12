@@ -8,10 +8,6 @@ The recommended way to run a Ray application on a Ray Cluster is to use *Ray Job
 Ray Jobs allow you to submit locally developed applications to a remote Ray Cluster for execution.
 It simplifies the experience of packaging, deploying, and managing a Ray application.
 
-:::{note}
-This component is in **beta**. APIs may change before becoming stable.
-:::
-
 A Ray Job consists of:
 1. An entrypoint command, like `python my_script.py`.
 2. A [runtime environment](runtime-environments), which specifies the application's file and package dependencies.

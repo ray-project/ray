@@ -234,7 +234,7 @@ You can also optionally get a remote shell using ``ray attach`` and run commands
 
 For a full reference on the Ray Cluster CLI tools, please refer to :ref:`the cluster commands reference <cluster-commands>`.
 
-While these tools are useful for ad-hoc execution on the Ray Cluster, the recommended way to execute an application on a Ray Cluster is to use :ref:`Ray Jobs <ray-jobs>`. Check out the :ref:`quickstart guide <jobs-quickstart>` to get started!
+While these tools are useful for ad-hoc execution on the Ray Cluster, the recommended way to execute an application on a Ray Cluster is to use :ref:`Ray Jobs <jobs-quickstart>`. Check out the :ref:`quickstart guide <jobs-quickstart>` to get started!
 
 Deleting a Ray Cluster
 ----------------------

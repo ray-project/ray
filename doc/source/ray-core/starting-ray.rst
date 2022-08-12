@@ -213,7 +213,7 @@ You can connect to this Ray instance by starting a driver process on the same no
       RAY_ADDRESS=<address> ./<binary> <args>
 
 
-You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`manual-cluster` for more details. Calling ``ray.init()`` on any of the cluster machines will connect to the same Ray cluster.
+You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`on-prem` for more details. Calling ``ray.init()`` on any of the cluster machines will connect to the same Ray cluster.
 
 .. _start-ray-up:
 
