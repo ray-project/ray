@@ -55,46 +55,6 @@ class NodeAvailabilitySummary:
 
         return NodeAvailabilitySummary(node_availabilities=parsed)
 
-    def summary_string(self, separator_len: int) -> str:
-        if self:
-            formatted_lines = []
-            sorted_keys = sorted(
-                self.node_availabilities.keys(),
-                key=lambda node_type: self.node_availabilities[
-                    node_type
-                ].last_checked_timestamp,
-            )
-            for node_type in sorted_keys:
-                record = self.node_availabilities[node_type]
-                category = "Available"
-                if not record.is_available:
-                    assert record.unavailable_node_information is not None
-                    category = record.unavailable_node_information.category
-                attempted_time = datetime.datetime.fromtimestamp(
-                    record.last_checked_timestamp
-                )
-                formatted_time = (
-                    f"{attempted_time.hour}:"
-                    f"{attempted_time.minute}:"
-                    f"{attempted_time.second}"
-                )
-                formatted_line = (
-                    f" {node_type} (attempted={formatted_time}): {category}"
-                )
-                formatted_lines.append(formatted_line)
-
-            return (
-                "Launches\n"
-                + ("-" * separator_len)
-                + "\n"
-                + "Node types:\n"
-                + ("\n".join(formatted_lines))
-            )
-
-        else:
-            return ""
-        pass
-
     def __eq__(self, other: "NodeAvailabilitySummary"):
         return self.node_availabilities == other.node_availabilities
 
@@ -107,7 +67,7 @@ class NodeProviderAvailabilityTracker:
     cachetools.TTLCache because it always sets the expiration time relative to
     insertion time, but in our case, we want entries to expire relative to when
     the node creation was attempted (and entries aren't necessarily added in
-    order). We want the entries to expire becase the information grows stale
+    order). We want the entries to expire because the information grows stale
     over time.
     """
 

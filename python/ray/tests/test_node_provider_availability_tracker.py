@@ -165,55 +165,6 @@ def get_timestamp(hour: int, minute: int, second: int, microsecond: int) -> floa
     return dt.timestamp()
 
 
-def test_summary_string(tracker: NodeProviderAvailabilityTracker):
-    global cur_time
-
-    cur_time = get_timestamp(
-        hour=12,
-        minute=13,
-        second=17,
-        microsecond=1234,
-    )
-    exc = NodeLaunchException(
-        "InsufficientInstanceCapacity", "Some message about spot instances."
-    )
-    tracker.update_node_availability("spot-gpu", cur_time, exc)
-
-    cur_time = get_timestamp(
-        hour=12,
-        minute=13,
-        second=51,
-        microsecond=4123,
-    )
-    exc = NodeLaunchException(
-        "InstanceLimitExceeded", "Some message about pesky quotas."
-    )
-    tracker.update_node_availability("newer-gpu-type", cur_time, exc)
-
-    cur_time = get_timestamp(
-        hour=12,
-        minute=14,
-        second=18,
-        microsecond=1,
-    )
-    tracker.update_node_availability("on-demand-gpu", cur_time, None)
-
-    summary = tracker.summary()
-
-    summary_str = summary.summary_string(separator_len=60)
-
-    expected = """
-Launches
-------------------------------------------------------------
-Node types:
- spot-gpu (attempted=12:13:17): InsufficientInstanceCapacity
- newer-gpu-type (attempted=12:13:51): InstanceLimitExceeded
- on-demand-gpu (attempted=12:14:18): Available
-    """.strip()
-
-    assert summary_str == expected
-
-
 def test_summary_from_dict():
     orig = NodeAvailabilitySummary(
         node_availabilities={
