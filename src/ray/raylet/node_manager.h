@@ -820,6 +820,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Number of tasks that are spilled back to other nodes.
   uint64_t metrics_num_task_spilled_back_;
 
+  /// Total number of task OOM events.
+  uint64_t cumulative_task_ooms_;
+
+  /// Total number of actor OOM events.
+  uint64_t cumulative_actor_ooms_;
+
   /// Managers all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 

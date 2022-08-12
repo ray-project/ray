@@ -330,6 +330,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
+      cumulative_task_ooms_(0),
+      cumulative_actor_ooms_(0),
       next_resource_seq_no_(0),
       ray_syncer_(io_service_, self_node_id_.Binary()),
       ray_syncer_service_(ray_syncer_),
@@ -2798,6 +2800,11 @@ void NodeManager::RecordMetrics() {
   object_manager_.RecordMetrics();
   local_object_manager_.RecordMetrics();
 
+  ray::stats::STATS_memory_manager_oom_total.Record(
+      static_cast<double>(cumulative_task_ooms_), "MemoryManager.TaskOOM.Total");
+  ray::stats::STATS_memory_manager_oom_total.Record(
+      static_cast<double>(cumulative_actor_ooms_), "MemoryManager.ActorOOM.Total");
+
   uint64_t current_time = current_time_ms();
   uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
   last_metrics_recorded_at_ms_ = current_time;
@@ -2916,6 +2923,11 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
               rpc::WorkerExitType::USER_ERROR,
               absl::StrCat("Ray OOM killer terminating worker to prevent system OOM"),
               true /* force */);
+          if (latest_worker->GetActorId().IsNil()) {
+            cumulative_task_ooms_ += 1;
+          } else {
+            cumulative_actor_ooms_ += 1;
+          }
         }
       }
     }

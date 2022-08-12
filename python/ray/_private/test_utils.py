@@ -22,6 +22,7 @@ import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
 import yaml
 from grpc._channel import _InactiveRpcError
+from ray.experimental.state.state_manager import StateDataSourceClient
 
 import ray
 import ray._private.gcs_utils as gcs_utils
@@ -1385,6 +1386,39 @@ def wandb_setup_api_key_hook():
     WandbIntegrationTest.testWandbLoggerConfig
     """
     return "abcd"
+
+
+def get_node_stats(raylet, num_retry=5, timeout=2):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    for _ in range(num_retry):
+        try:
+            reply = stub.GetNodeStats(
+                node_manager_pb2.GetNodeStatsRequest(), timeout=timeout
+            )
+            break
+        except grpc.RpcError:
+            continue
+    assert reply is not None
+    return reply
+
+
+def get_log_lines(raylet, file_name, timeout=2):
+    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
+    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    gcs_aio_client = gcs_utils.GcsAioClient(
+        address=raylet_address, nums_reconnect_retry=0
+    )
+    client = StateDataSourceClient(channel, gcs_aio_client)
+
+    stream = asyncio.get_event_loop().run_until_complete(
+        client.stream_log(raylet["NodeID"], file_name, False, 200, 1, timeout)
+    )
+    lines = []
+    for logs in stream:
+        lines.extend(logs.data.decode().split("\n"))
+    return lines
 
 
 # Global counter to test different return values
