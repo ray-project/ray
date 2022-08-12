@@ -32,26 +32,7 @@ By default, logs are emitted from actors both to `stderr` and on disk on each no
 This includes both system-level logs from the Serve controller and HTTP proxy as well as access logs and custom user logs produced from within deployment replicas.
 
 In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's most convenient to keep the driver running for debugging.
-For example, let's run a basic Serve application and view the logs that are emitted.
-You can run this in an interactive shell like IPython to follow along.
-
-First we call `serve.start()`:
-
-```python
-from ray import serve
-
-serve.start()
-```
-
-This produces a few INFO-level log messages about startup from the Serve controller.
-
-```bash
-2022-04-02 09:10:49,906 INFO services.py:1460 -- View the Ray dashboard at http://127.0.0.1:8265
-(ServeController pid=67312) INFO 2022-04-02 09:10:51,386 controller 67312 checkpoint_path.py:17 - Using RayInternalKVStore for controller checkpoint and recovery.
-(ServeController pid=67312) INFO 2022-04-02 09:10:51,492 controller 67312 http_state.py:108 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:xlehoa:SERVE_PROXY_ACTOR-node:127.0.0.1-0' on node 'node:127.0.0.1-0' listening on '127.0.0.1:8000'
-```
-
-Next, let's create a simple deployment that logs a custom log message when it's queried:
+For example, let's create a simple deployment that logs a custom log message when it's queried:
 
 ```{literalinclude} ../serve/doc_code/monitoring.py
 :start-after: __start_monitoring__

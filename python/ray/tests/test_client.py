@@ -840,6 +840,19 @@ def test_large_remote_call(ray_start_regular_shared):
         assert ray.get(a.some_method.remote(large_obj))
 
 
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25554 --num-cpus 1"],
+    indirect=True,
+)
+def test_ignore_reinit(call_ray_start):
+    import ray
+
+    ctx1 = ray.init("ray://localhost:25554")
+    ctx2 = ray.init("ray://localhost:25554", ignore_reinit_error=True)
+    assert ctx1 == ctx2
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
