@@ -3,7 +3,7 @@
 Ray Job Submission API Reference
 ================================
 
-For an overview with examples see :ref:`Ray Job Submission<jobs-overview>`.
+For an overview with examples see :ref:`Ray Jobs <jobs-overview>`.
 
 .. _ray-job-submission-cli-ref:
 

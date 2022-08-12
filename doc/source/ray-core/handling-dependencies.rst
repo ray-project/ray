@@ -28,7 +28,7 @@ Concepts
 
 - **Packages**: External libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
-- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or the :ref:`Ray Client<ray-client>` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
+- **Local machine** and **Cluster**.  Usually, you may want to separate the Ray cluster compute machines/pods from the machine/pod that handles and submits the application. You can submit a Ray Job via :ref:`the Ray Job Submission mechanism <jobs-overview>`, or the :ref:`Ray Client <ray-client>` to connect to a cluster interactively. We call the machine submitting the job your *local machine*.
 
 - **Job**.  A period of execution between connecting to a cluster with ``ray.init()`` and disconnecting by calling ``ray.shutdown()`` or exiting the Ray script.
 
@@ -110,7 +110,7 @@ There are two primary scopes for which you can specify a runtime environment:
 Specifying a Runtime Environment Per-Job
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using :ref:`Ray Job submission <jobs-overview>`, or using :ref:`Ray Client<ray-client>`:
+You can specify a runtime environment for your whole job, whether running a script directly on the cluster, using :ref:`Ray Job submission <jobs-overview>`, or using :ref:`Ray Client <ray-client>`:
 
 .. literalinclude:: /ray-core/doc_code/runtime_env_example.py
    :language: python

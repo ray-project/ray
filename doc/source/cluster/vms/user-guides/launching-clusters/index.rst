@@ -1,3 +1,5 @@
+.. _launching-vm-clusters:
+
 Launching Ray Clusters
 ======================
 

@@ -22,7 +22,7 @@ If the output of a task is another task (i.e. dynamic workflows), we skips check
 Use Workflow with Ray Client
 ----------------------------
 
-Ray Workflow supports :ref:`Ray Client API<ray-client>`, so you can submit workflows to a remote
+Ray Workflow supports :ref:`Ray Client API <ray-client>`, so you can submit workflows to a remote
 Ray cluster. This requires starting the Ray cluster with the ``--storage=<storage_uri>`` option
 for specifying the workflow storage.
 

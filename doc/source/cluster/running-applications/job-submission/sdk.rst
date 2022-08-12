@@ -1,6 +1,3 @@
-.. warning::
-    This page is under construction!
-
 .. _ray-job-sdk:
 
 Python SDK

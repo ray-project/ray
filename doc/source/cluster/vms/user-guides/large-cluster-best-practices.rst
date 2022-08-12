@@ -1,3 +1,5 @@
+.. _vms-large-cluster:
+
 Best practices for deploying large clusters
 -------------------------------------------
 
