@@ -11,7 +11,7 @@ The autoscaler also removes nodes after they become idle for some time.
 A node is considered idle if it has no active tasks, actors, or objects.
 
 ```{admonition} When to use Autoscaling?
-Autoscaling can reduce workload costs, but adds node launch overheads and must be configured.
+Autoscaling can reduce workload costs, but adds node launch overheads and can be tricky to configure.
 We recommend starting with non-autoscaling clusters if you're new to Ray.
 ```
 

@@ -14,7 +14,7 @@ A node is considered idle if it has no active tasks, actors, or objects.
 .. tip::
   **When to use Autoscaling?**
 
-  Autoscaling can reduce workload costs, but adds node launch overheads and must be configured.
+  Autoscaling can reduce workload costs, but adds node launch overheads and can be tricky to configure.
   We recommend starting with non-autoscaling clusters if you're new to Ray.
 
 Cluster Config Parameters
@@ -50,7 +50,7 @@ launches are allowed. The minimum number of pending launches is 5 regardless of 
 `idle_timeout_minutes[default_value=5, min_value=0]`: The number of minutes that need to pass before an idle worker node is removed by the
 autoscaler. The smaller the value, the more aggressive downscaling will be. Worker nodes are considered idle when they hold no active tasks, actors, or referenced objects (either in-memory or spilled to disk). This parameter does not affect the head node.
 
-Autoscaler SDK
---------------
+Programmatic Scaling
+--------------------
 
-For more information on programmatic access to the autoscaler, see :ref:`Autoscaler SDK <ref-autoscaler-sdk>`.
+For more information on programmatic access to the autoscaler, see :ref:`Programmatic Cluster Scaling Guide <ref-autoscaler-sdk>`.

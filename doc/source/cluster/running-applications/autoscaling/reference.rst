@@ -1,7 +1,7 @@
 .. _ref-autoscaler-sdk:
 
-Manual Cluster Scaling
-======================
+Programmatic Cluster Scaling
+============================
 
 .. _ref-autoscaler-sdk-request-resources:
 
