@@ -167,7 +167,7 @@ and run them in Ray Serve. For example, you can run a model compiled by
 :animate: fade-in-slide-down
 
 As an open-source project, Ray Serve brings the scalability and reliability of these hosted offerings to your own infrastructure.
-You can use the Ray [cluster launcher](cluster-cloud) to deploy Ray Serve to all major public clouds, K8s, as well as on bare-metal, on-premise machines.
+You can use the Ray [cluster launcher](cluster-index) to deploy Ray Serve to all major public clouds, K8s, as well as on bare-metal, on-premise machines.
 
 Ray Serve is not a full-fledged ML Platform.
 Compared to these other offerings, Ray Serve lacks the functionality for
