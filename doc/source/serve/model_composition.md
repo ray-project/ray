@@ -72,9 +72,9 @@ Composition lets you break apart your application and independently scale each p
 With composition, you can avoid application-level bottlenecks when serving models and business logic steps that use different types and amounts of resources.
 :::
 
-```{note}
-For a deep dive in to the architecture of ServeHandle and its usage, take a look at [this user guide](serve-handle-explainer).
-```
+:::{note}
+For a deep dive into the architecture of `ServeHandle` and its usage, take a look at [this user guide](serve-handle-explainer).
+:::
 
 (serve-model-composition-deployment-graph)=
 ## Deployment Graph API
@@ -166,13 +166,14 @@ with InputNode() as http_request:
     add_3_output = add_3.add.bind(subtract_1_output)
 ```
 
-The `with` statement (known as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it represents the input of the graph. In this case, that input represents an HTTP request. In [a future section](deployment-graph-drivers-http-adapters), we'll show how you can change this input type using another Ray Serve-provided object called the driver.
+The `with` statement (known as a "context manager" in Python) initializes a special Ray Serve-provided object called an `InputNode`. This isn't a `DeploymentNode` like `ClassNodes`, `MethodNodes`, or `FunctionNodes`. Rather, it's the input of the graph. In this case, that input is an HTTP request. In a [later section](deployment-graph-drivers-http-adapters), you'll learn how to change this input using another Ray Serve-provided object called the `DAGDriver`.
 
+(deployment-graph-call-graph-input-node-note)=
 :::{note}
-`InputNode` is merely a representation of the future graph input. In this example, for instance, `http_request`'s type is `InputNode`, not an actual HTTP request. When the graph is deployed, incoming HTTP requests are passed into the same functions and methods that `http_request` is passed into.
+The `InputNode` tells Ray Serve where to send the graph input at runtime. In this example, for instance, `http_request`'s type is `InputNode`, so you can't call `request` methods like `.json()` on it directly in the context manager. However, during runtime, Ray Serve passes incoming HTTP requests directly into the same functions and methods that `http_request` is passed into, so those functions and methods can call `request` methods like `.json()` on the `request` object that gets passed in.
 :::
 
-You can use the `InputNode` to indicate which node(s) the graph input should be passed to by passing the `InputNode` into `bind` calls within the context manager. In this case, the `http_request` is passed to only one node, `unpack_request`. The output of that bind call, `request_number` is a `FunctionNode`. `FunctionNodes` are produced when deployments containing functions are bound to arguments for that function using `bind`. In this case `request_number` represents the output of `unpack_request` when called on incoming HTTP requests. `unpack_request`, which is defined on line 26, processes the HTTP request's JSON body and returns a number that can be passed into arithmetic operations.
+You can use the `InputNode` to indicate which node(s) the graph input should be passed into by passing the `InputNode` into `bind` calls within the context manager. In this example, the `http_request` is passed to only one node, `unpack_request`. The output of that bind call, `request_number`, is a `FunctionNode`. `FunctionNodes` are produced when deployments containing functions are bound to arguments for that function using `bind`. `request_number` represents the output of `unpack_request` when called on incoming HTTP requests. `unpack_request`, which is defined on line 26, processes the HTTP request's JSON body and returns a number that can be passed into arithmetic operations.
 
 :::{tip}
 If you don't want to manually unpack HTTP requests, check out this guide's section on [HTTP adapters](deployment-graph-drivers-http-adapters), which can handle unpacking for you.
@@ -232,7 +233,15 @@ For instance, you can use the Ray Serve-provided `json_request` adapter to simpl
 :language: python
 ```
 
-Note that the `http_adapter`'s output type becomes what the `InputNode` represents. Without the `json_request` adapter, the `InputNode` represented an HTTP request. With the adapter, it now represents the number packaged inside the request's JSON body. You can work directly with that body's contents in the graph instead of first processing it.
+Without an `http_adapter`, an `InputNode` [represents an HTTP request](deployment-graph-call-graph-input-node-note), and at runtime, incoming HTTP `request` objects are passed into the same functions and methods that the `InputNode` is passed into. When you set an `http_adapter`, the `InputNode` represents the `http_adapter`'s output.
+
+At runtime:
+
+1. Ray Serve sends each HTTP `request` object to the `DAGDriver`.
+2. The `DAGDriver` calls the `http_adapter` function on each request.
+3. The `DAGDriver` passes the `http_adapter` output to the same function and methods that the `InputNode` is passed into, kicking off the request's journey through the call graph.
+
+In the example above, the `InputNode` represents the number packaged inside the request's JSON body instead of the HTTP request itself. You can pass the JSON directly into the graph instead of first unpacking it from the request.
 
 See [the guide](serve-http-adapters) on `http_adapters` to learn more.
 
