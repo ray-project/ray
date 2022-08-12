@@ -1,15 +1,9 @@
-.. warning::
-    This page is under construction!
-
-.. _ray-job-sdk-under-construction:
+.. _ray-job-sdk:
 
 Python SDK
 ^^^^^^^^^^
 
-The Job Submission Python SDK is the recommended way to submit jobs programmatically. Jump to the :ref:`API Reference<ray-job-submission-sdk-ref>`, or continue reading for a quick overview.
-
-.. note::
-    This component is in **beta**. APIs may change before becoming stable.
+The Job Submission Python SDK is the recommended way to submit jobs programmatically. Jump to the :ref:`API Reference <ray-job-submission-sdk-ref>`, or continue reading for a quick overview.
 
 Setup
 -----
@@ -34,7 +28,7 @@ For convenience, this guide will assume that you are using a local Ray Cluster, 
 
 This will create a Ray head node on our local machine that we can use for development purposes.
 Note the Ray Dashboard URL that is printed when starting or connecting to a Ray Cluster; we will use this URL later to submit a Ray Job.
-For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <ref-cluster-quick-start-vms-under-construction>` and :ref:`Kubernetes <kuberay-quickstart>`.
+For more details on production deployment scenarios, check out the guides for deploying Ray on :ref:`VMs <vm-cluster-quick-start>` and :ref:`Kubernetes <kuberay-quickstart>`.
 
 Submitting a Ray Job
 --------------------
@@ -123,7 +117,7 @@ To get information about all jobs, call ``client.list_jobs()``.  This returns a 
 Dependency Management
 ---------------------
 
-Similar to the :ref:`Jobs CLI <jobs-quickstart-under-construction>`, we can also package our application's dependencies by using a Ray :ref:`runtime environment <runtime-environments>`.
+Similar to the :ref:`Jobs CLI <jobs-quickstart>`, we can also package our application's dependencies by using a Ray :ref:`runtime environment <runtime-environments>`.
 Using the Python SDK, the syntax looks something like this:
 
 .. code-block:: python
@@ -143,4 +137,4 @@ Using the Python SDK, the syntax looks something like this:
     Instead of a local directory (``"./"`` in this example), you can also specify remote URIs for your job's working directory, such as S3 buckets or Git repositories. See :ref:`remote-uris` for details.
 
 
-For full details, see the :ref:`API Reference<ray-job-submission-sdk-ref>`.
+For full details, see the :ref:`API Reference <ray-job-submission-sdk-ref>`.

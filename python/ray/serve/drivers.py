@@ -87,6 +87,7 @@ class SimpleSchemaIngress:
 @PublicAPI(stability="beta")
 @serve.deployment(route_prefix="/")
 class DAGDriver:
+    """A driver implementation that accepts HTTP requests."""
 
     MATCH_ALL_ROUTE_PREFIX = "/{path:path}"
 
@@ -95,6 +96,13 @@ class DAGDriver:
         dags: Union[RayServeDAGHandle, Dict[str, RayServeDAGHandle]],
         http_adapter: Optional[Union[str, Callable]] = None,
     ):
+        """Create a DAGDriver.
+
+        Args:
+            dags: a handle to a Ray Serve DAG or a dictionary of handles.
+            http_adapter: a callable function or import string to convert
+                HTTP requests to Ray Serve input.
+        """
         install_serve_encoders_to_fastapi()
         http_adapter = _load_http_adapter(http_adapter)
         self.app = FastAPI()
