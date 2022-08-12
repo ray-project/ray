@@ -8,15 +8,15 @@ from ray.dag.input_node import InputNode
 
 @serve.deployment
 class Model:
-    def __init__(self, weight):
+    def __init__(self, weight: int):
         self.weight = weight
 
-    def forward(self, input):
+    def forward(self, input: int) -> int:
         return input + self.weight
 
 
 @serve.deployment
-def combine(value1, value2, operation):
+def combine(value1: int, value2: int, operation: str) -> int:
     if operation == "sum":
         return sum([value1, value2])
     else:

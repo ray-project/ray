@@ -1,6 +1,8 @@
 # flake8: noqa
 
 # __import_start__
+from starlette.requests import Request
+
 import ray
 from ray import serve
 
@@ -25,7 +27,7 @@ class Translator:
 
         return translation
 
-    async def __call__(self, http_request) -> str:
+    async def __call__(self, http_request: Request) -> str:
         english_text: str = await http_request.json()
         return self.translate(english_text)
 

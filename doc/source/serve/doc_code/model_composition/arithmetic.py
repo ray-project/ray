@@ -6,6 +6,8 @@ from ray import serve
 from ray.serve.drivers import DAGDriver
 from ray.serve.deployment_graph import InputNode
 
+from starlette.requests import Request
+
 
 @serve.deployment
 class AddCls:
@@ -15,7 +17,7 @@ class AddCls:
     def add(self, number: float) -> float:
         return number + self.addend
 
-    async def unpack_request(self, http_request) -> float:
+    async def unpack_request(self, http_request: Request) -> float:
         return await http_request.json()
 
 
@@ -25,7 +27,7 @@ def subtract_one_fn(number: float) -> float:
 
 
 @serve.deployment
-async def unpack_request(http_request) -> float:
+async def unpack_request(http_request: Request) -> float:
     return await http_request.json()
 
 

@@ -1,12 +1,14 @@
 import subprocess
 
 # __deploy_in_single_file_1_start__
+from starlette.requests import Request
+
 import ray
 from ray import serve
 
 
 @serve.deployment
-def my_func(request):
+def my_func(request: Request) -> str:
     return "hello"
 
 
@@ -24,7 +26,7 @@ ray.init(address="auto", namespace="serve")
 
 
 @serve.deployment
-def my_func(request):
+def my_func(request: Request) -> str:
     return "hello"
 
 

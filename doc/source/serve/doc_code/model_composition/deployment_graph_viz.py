@@ -7,15 +7,15 @@ from ray.dag.vis_utils import _dag_to_dot
 
 @serve.deployment
 class Model:
-    def __init__(self, weight):
+    def __init__(self, weight: int):
         self.weight = weight
 
-    def forward(self, input):
+    def forward(self, input: int) -> int:
         return input + self.weight
 
 
 @serve.deployment
-def combine(output_1, output_2, kwargs_output=0):
+def combine(output_1: int, output_2: int, kwargs_output: int = 0) -> int:
     return output_1 + output_2 + kwargs_output
 
 

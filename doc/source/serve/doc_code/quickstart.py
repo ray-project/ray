@@ -1,4 +1,7 @@
 import requests
+from starlette.requests import Request
+from typing import Dict
+
 from ray import serve
 
 
@@ -9,7 +12,7 @@ class MyModelDeployment:
         # Initialize model state: could be very large neural net weights.
         self._msg = msg
 
-    def __call__(self, request):
+    def __call__(self, request: Request) -> Dict:
         return {"result": self._msg}
 
 

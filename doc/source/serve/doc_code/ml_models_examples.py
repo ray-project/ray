@@ -1,5 +1,7 @@
 from ray import serve
-from typing import List, Dict, Any
+from typing import List, Dict
+
+from starlette.requests import Request
 
 
 # __batch_example_start__
@@ -9,14 +11,14 @@ class BatchingExample:
         self.count = 0
 
     @serve.batch
-    async def handle_batch(self, requests: List[Any]) -> List[Dict]:
+    async def handle_batch(self, requests: List[Request]) -> List[Dict]:
         responses = []
         for request in requests:
             responses.append(request.json())
 
         return responses
 
-    async def __call__(self, request) -> List[Dict]:
+    async def __call__(self, request: Request) -> List[Dict]:
         return await self.handle_batch(request)
 
 

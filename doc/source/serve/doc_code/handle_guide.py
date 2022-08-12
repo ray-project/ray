@@ -1,6 +1,8 @@
 # flake8: noqa
 
 # __begin_sync_handle__
+from starlette.requests import Request
+
 import ray
 from ray import serve
 from ray.serve.handle import RayServeSyncHandle
@@ -8,7 +10,7 @@ from ray.serve.handle import RayServeSyncHandle
 
 @serve.deployment
 class Model:
-    def __call__(self):
+    def __call__(self) -> str:
         return "hello"
 
 
@@ -27,7 +29,7 @@ from ray.serve.handle import RayServeDeploymentHandle, RayServeSyncHandle
 
 @serve.deployment
 class Model:
-    def __call__(self):
+    def __call__(self) -> str:
         return "hello"
 
 
@@ -104,10 +106,10 @@ from ray.serve.handle import RayServeSyncHandle
 
 @serve.deployment
 class Deployment:
-    def method1(self, arg):
+    def method1(self, arg: str) -> str:
         return f"Method1: {arg}"
 
-    def __call__(self, arg):
+    def __call__(self, arg: str) -> str:
         return f"__call__: {arg}"
 
 

@@ -4,6 +4,8 @@ import requests
 
 # __echo_class_start__
 # File name: echo.py
+from starlette.requests import Request
+
 from ray import serve
 
 
@@ -12,7 +14,7 @@ class EchoClass:
     def __init__(self, echo_str: str):
         self.echo_str = echo_str
 
-    def __call__(self, request) -> str:
+    def __call__(self, request: Request) -> str:
         return self.echo_str
 
 
