@@ -13,7 +13,4 @@ API References
     ../rllib/package_ref/index.rst
     ../workflows/package-ref.rst
     ../ray-core/package-ref.rst
-    ../cluster-deprecated/reference.rst
-    ../cluster-deprecated/jobs-package-ref.rst
-    ../cluster-deprecated/usage-stats-data-ref.rst
     ../ray-observability/state/ray-state-api-reference.rst

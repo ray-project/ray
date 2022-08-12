@@ -4,27 +4,20 @@
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
-at the {ref}`introductory guide<kuberay-quickstart>` first.
+at the {ref}`introductory guide <kuberay-quickstart>` first.
 :::
 
 
 In this guide, we show you how to run a sample Ray machine learning
 workload on Kubernetes infrastructure.
 
-We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
+We will run Ray's {ref}`XGBoost training benchmark <xgboost-benchmark>` with a 100 gigabyte training set.
 To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrainer documentation <train-gbdt-guide>`.
-
-```{admonition} Optional: Autoscaling
-This guide includes notes on how to deploy the XGBoost benchmark with optional Ray Autoscaler support.
-In this guide's example, we know that we need 1 Ray head and 9 Ray workers,
-so autoscaling is not strictly required. Read {ref}`this discussion<autoscaler-pro-con>` for guidance
-on whether to use autoscaling.
-```
 
 ## Kubernetes infrastructure setup
 
 If you are new to Kubernetes and you are planning to deploy Ray workloads on a managed
-Kubernetes service, we recommend taking a look at this {ref}`introductory guide<kuberay-k8s-setup>`
+Kubernetes service, we recommend taking a look at this {ref}`introductory guide <kuberay-k8s-setup>`
 first.
 
 For the workload in this guide, it is recommended to use a pool or group of Kubernetes nodes
@@ -47,7 +40,7 @@ scale up to accommodate Ray worker pods. These nodes will scale back down after 
 ## Deploy the KubeRay operator
 
 Once you have set up your Kubernetes cluster, deploy the KubeRay operator.
-Refer to the {ref}`Getting Started guide<kuberay-operator-deploy>`
+Refer to the {ref}`Getting Started guide <kuberay-operator-deploy>`
 for instructions on this step.
 
 ## Deploy a Ray cluster
@@ -88,7 +81,7 @@ watch -n 1 kubectl get pod
 ```
 
 Once the Ray head pod enters `Running` state, we are ready to execute the XGBoost workload.
-We will use {ref}`Ray Job Submission<jobs-overview>` to kick off the workload.
+We will use {ref}`Ray Job Submission <jobs-overview>` to kick off the workload.
 
 ### Connect to the cluster.
 
@@ -100,7 +93,7 @@ kubectl port-forward service/raycluster-xgboost-benchmark-head-svc 8265:8265
 
 ### Submit the workload.
 
-We'll use the {ref}`Ray Job Python SDK<ray-job-sdk>` to submit the XGBoost workload.
+We'll use the {ref}`Ray Job Python SDK <ray-job-sdk>` to submit the XGBoost workload.
 
 ```{literalinclude} /cluster/doc_code/xgboost_submit.py
 :language: python
@@ -170,7 +163,7 @@ Results: {'training_time': 1338.488839321999, 'prediction_time': 403.36653568099
 ```
 
 The performance of the benchmark is sensitive to the underlying cloud infrastructure --
-you might not match {ref}`the numbers quoted in the benchmark docs<xgboost-benchmark>`.
+you might not match {ref}`the numbers quoted in the benchmark docs <xgboost-benchmark>`.
 
 #### Model parameters
 The file `model.json` in the Ray head pod contains the parameters for the trained model.
