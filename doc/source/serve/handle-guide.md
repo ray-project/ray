@@ -2,26 +2,27 @@
 
 # ServeHandle: Calling Deployments from Python
 
-ServeHandle allows you to programmatically invoke your Serve deployments.
+[ServeHandle](serve-key-concepts-query-deployment) allows you to programmatically invoke your Serve deployments.
 
-This is particularly useful for two use cases:
-- Calling deployments dynamically within the deployment graph.
-- Iterating and testing your application in Python.
+This is particularly useful for two use cases when:
+- calling deployments dynamically within the deployment graph.
+- iterating and testing your application in Python.
 
 To use the ServeHandle, use {mod}`handle.remote <ray.serve.handle.RayServeHandle.remote>` to send requests to a deployment.
-These requests can pass ordinary args and kwargs that are passed directly to the method. This returns a Ray `ObjectRef` whose result can be waited for or retrieved using `await` or `ray.get`.
+These requests can be ordinary Python args and kwargs that are passed directly to the method. This returns a Ray `ObjectRef` whose result can be waited for or retrieved using `await` or `ray.get`.
 
-Conceptually, ServeHandle is a client-side load balancer. It has the ability to route requests to any replicas of a given deployment. It also performs buffering internally to avoid overwhelming the replicas. The number of requests buffered is used to inform autoscaling.
+Conceptually, ServeHandle is a client side load balancer, routing requests to any replicas of a given deployment. Also, it performs buffering internally so it won't overwhelm the replicas.
+Using the current number of requests buffered, it informs the autoscaler to scale up the number of replicas.
 
 ![architecture-diagram-of-serve-handle](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/serve-handle-explainer.png)
 
-ServeHandle takes request parameters and returns a `ray.ObjectRef`. The `ray.ObjectRef` corresponds to a future object that will be fulfilled with the result object. Because of the internal buffering, the time from submitting a request to getting a `ray.ObjectRef` varies from instantaneous to indefinitely long.
+ServeHandle takes request parameters and returns a future object of type [`ray.ObjectRef`](objects-in-ray), whose value will be filled with the result object. Because of the internal buffering, the time from submitting a request to getting a `ray.ObjectRef` varies from instantaneous to indefinitely long.
 
-Because of this, we offer both synchronous and asynchronous versions of the handle:
+Because of this variability, we offer two types of handles to ensure the buffering period is handled efficiently. We offer synchronous and asynchronous versions of the handle:
 - `RayServeSyncHandle` directly returns a `ray.ObjectRef`. It blocks the current thread until the request is matched to a replica.
 - `RayServeDeploymentHandle` returns an `asyncio.Task` upon submission. The `asyncio.Task` can be awaited to resolve to a ray.ObjectRef. While the current request is buffered, other requests can be processed concurrently.
 
-`serve.run` deploys a deployment graph and returns the driver node’s handle. The return type is a `RayServeSyncHandle`. This is useful for interacting with and testing the newly created deployment graph.
+`serve.run` deploys a deployment graph and returns the entrypoint node’s handle (the node you passed as argument to `serve.run`). The return type is a `RayServeSyncHandle`. This is useful for interacting with and testing the newly created deployment graph.
 
 ```{literalinclude} ../serve/doc_code/handle_guide.py
 :start-after: __begin_sync_handle__
