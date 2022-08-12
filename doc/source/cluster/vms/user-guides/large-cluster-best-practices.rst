@@ -1,4 +1,4 @@
-.. include:: /_includes/clusters/we_are_hiring.rst
+.. _vms-large-cluster:
 
 Best practices for deploying large clusters
 -------------------------------------------

@@ -1,5 +1,3 @@
-.. include:: /_includes/clusters/we_are_hiring.rst
-
 Monitor Ray using Amazon CloudWatch
 ===================================
 

@@ -4,10 +4,10 @@
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
-at the {ref}`introductory guide<kuberay-quickstart>` first.
+at the {ref}`introductory guide <kuberay-quickstart>` first.
 
 If you are new to your cloud provider's Kubernetes service, we recommend
-taking a look at the documentation links collected {ref}`here<kuberay-k8s-setup>`
+taking a look at the documentation links collected {ref}`here <kuberay-k8s-setup>`
 :::
 
 This section presents example Ray workloads to try out on your Kubernetes cluster.

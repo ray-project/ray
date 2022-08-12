@@ -1,6 +1,6 @@
 .. _air-preprocessors:
 
-Using preprocessors
+Using Preprocessors
 ===================
 
 Data preprocessing is a common technique for transforming raw data into features for a machine learning model.

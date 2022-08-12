@@ -78,13 +78,13 @@ Here's an example:
   `Dask.distributed <https://distributed.dask.org/en/latest/quickstart.html>`__
   client; simply use plain Dask and its collections, and pass ``ray_dask_get``
   to ``.compute()`` calls, set the scheduler in one of the other ways detailed `here <https://docs.dask.org/en/latest/scheduling.html#configuration>`__, or use our ``enable_dask_on_ray`` configuration helper. Follow the instructions for
-  :ref:`using Ray on a cluster <using-ray-on-a-cluster>` to modify the
+  :ref:`using Ray on a cluster <cluster-index>` to modify the
   ``ray.init()`` call.
 
 Why use Dask on Ray?
 
 1. To take advantage of Ray-specific features such as the
-      :ref:`launching cloud clusters <cluster-cloud>` and
+      :ref:`launching cloud clusters <cluster-index>` and
       :ref:`shared-memory store <memory>`.
 2. If you'd like to use Dask and Ray libraries in the same application without having two different clusters.
 3. If you'd like to create data analyses using the familiar NumPy and Pandas APIs provided by Dask and execute them on a fast, fault-tolerant distributed task execution system geared towards production, like Ray.

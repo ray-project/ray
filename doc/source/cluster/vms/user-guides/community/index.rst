@@ -1,13 +1,11 @@
-.. include:: /_includes/clusters/we_are_hiring.rst
-
-.. _ref-cluster-setup-under-construction:
+.. _ref-cluster-setup:
 
 Community Supported Cluster Managers
 ====================================
 
 .. note::
 
-    If you're using AWS, Azure or GCP you can use the :ref:`Ray cluster launcher <cluster-cloud>` to simplify the cluster setup process.
+    If you're using AWS, Azure or GCP you can use the :ref:`Ray cluster launcher <cluster-index>` to simplify the cluster setup process.
 
 The following is a list of community supported cluster managers.
 
@@ -18,7 +16,7 @@ The following is a list of community supported cluster managers.
    slurm.rst
    lsf.rst
 
-.. _ref-additional-cloud-providers-under-construction:
+.. _ref-additional-cloud-providers:
 
 Using a custom cloud or cluster manager
 =======================================

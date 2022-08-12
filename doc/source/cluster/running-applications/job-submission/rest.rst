@@ -1,7 +1,4 @@
-.. warning::
-    This page is under construction!
-
-.. _ray-job-rest-api-under-construction:
+.. _ray-job-rest-api:
 
 REST API
 ^^^^^^^^

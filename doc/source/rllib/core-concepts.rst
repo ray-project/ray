@@ -302,7 +302,7 @@ In the first step, we collect trajectory data from the environment(s):
 
 Here, ``self.workers`` is a set of ``RolloutWorkers`` that are created in the ``Algorithm``'s ``setup()`` method
 (prior to calling ``training_step()``).
-This ``WorkerSet`` is covered in greater depth on the :ref:`WorkerSet documentation page<workerset-reference-docs>`.
+This ``WorkerSet`` is covered in greater depth on the :ref:`WorkerSet documentation page <workerset-reference-docs>`.
 The utilify function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
 fashion across multiple rollout workers (returns once all rollout workers are sone sampling).
 It returns one final MultiAgentBatch resulting from concatenating n smaller MultiagentBatches

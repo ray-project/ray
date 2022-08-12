@@ -13,12 +13,12 @@ ___________________________________________
 The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based container images packaged
 with Ray and certain machine learning libraries.
 For example, the image ``rayproject/ray-ml:2.0.0-gpu`` is ideal for running GPU-based ML workloads with Ray 2.0.0.
-The Ray ML images are packaged with dependencies (such as TensorFlow and PyTorch) needed to use the :ref:`Ray AI Runtime<air>`
+The Ray ML images are packaged with dependencies (such as TensorFlow and PyTorch) needed to use the :ref:`Ray AI Runtime <air>`
 and the Ray Libraries covered in these docs.
 To add custom dependencies, we recommend one, or both, of the following methods:
 
-* Building a docker image using one of the official :ref:`Ray docker images<docker-images>` as base.
-* Using :ref:`Ray Runtime environments<runtime-environments>`.
+* Building a docker image using one of the official :ref:`Ray docker images <docker-images>` as base.
+* Using :ref:`Ray Runtime environments <runtime-environments>`.
 
 
 Configuring Ray pods for GPU usage
@@ -64,7 +64,7 @@ Each of the Ray pods in the group can be scheduled on an AWS `p2.xlarge` instanc
     as demonstrated with the `minReplicas:0` and `maxReplicas:5` settings above.
     To enable autoscaling, remember also to set `enableInTreeAutoscaling:True` in your RayCluster's `spec`
     Finally, make sure your group or pool of GPU Kubernetes nodes are configured to autoscale.
-    Refer to your :ref:`cloud provider's documentation<kuberay-k8s-setup>` for details on autoscaling node pools.
+    Refer to your :ref:`cloud provider's documentation <kuberay-k8s-setup>` for details on autoscaling node pools.
 
 GPUs and Ray
 ____________
@@ -119,7 +119,7 @@ nodes will be scaled down as well.
 
 Requesting GPUs
 ~~~~~~~~~~~~~~~
-You can also make a :ref:`direct request to the autoscaler<ref-autoscaler-sdk-request-resources>` to scale up GPU resources.
+You can also make a :ref:`direct request to the autoscaler <ref-autoscaler-sdk-request-resources>` to scale up GPU resources.
 
 .. code-block:: python
 

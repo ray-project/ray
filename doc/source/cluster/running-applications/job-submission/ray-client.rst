@@ -1,9 +1,4 @@
-.. warning::
-    This page is under construction!
-
-.. include:: /_includes/clusters/we_are_hiring.rst
-
-.. _ray-client-under-construction:
+.. _ray-client-ref:
 
 Ray Client: Interactive Development
 ===================================
@@ -57,11 +52,11 @@ When to use Ray Client
 
 Ray Client should be used when you want to connect a script or an interactive shell session to a **remote** cluster.
 
-* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray Client) if you've set up a remote cluster at ``<head_node_host>`` and you want to do interactive work. This will connect your local script or shell to the cluster. See the section on :ref:`using Ray Client<how-do-you-use-the-ray-client>` for more details on setting up your cluster.
+* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray Client) if you've set up a remote cluster at ``<head_node_host>`` and you want to do interactive work. This will connect your local script or shell to the cluster. See the section on :ref:`using Ray Client <how-do-you-use-the-ray-client>` for more details on setting up your cluster.
 * Use ``ray.init("localhost:<port>")`` (non-client connection, local address) if you're developing locally or on the head node of your cluster and you have already started the cluster (i.e. ``ray start --head`` has already been run)
 * Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to automatically create a local cluster and attach directly to it OR if you are using Ray Job submission.
 
-.. _how-do-you-use-the-ray-client-under-construction:
+.. _how-do-you-use-the-ray-client:
 
 How do you use the Ray Client?
 ------------------------------
@@ -75,7 +70,7 @@ If you have a running Ray cluster (version >= 1.5), Ray Client server is likely 
 
    ray start --head
 
-To start a Ray cluster remotely, you can follow the directions in :ref:`ref-cluster-quick-start`.
+To start a Ray cluster remotely, you can follow the directions in :ref:`vm-cluster-quick-start`.
 
 If necessary, you can modify the Ray Client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` :ref:`command <ray-start-doc>`.
 

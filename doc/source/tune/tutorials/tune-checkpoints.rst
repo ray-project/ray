@@ -317,7 +317,7 @@ Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node.
-This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also
+This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-index>` and also
 requires rsync to be installed.
 
 Note that you must use the ``session.report`` API to trigger syncing

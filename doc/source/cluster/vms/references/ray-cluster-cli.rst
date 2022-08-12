@@ -1,9 +1,4 @@
-.. warning::
-    This page is under construction!
-
-.. include:: /_includes/clusters/we_are_hiring.rst
-
-.. _cluster-commands-under-construction:
+.. _cluster-commands:
 
 Cluster Launcher Commands
 =========================
@@ -160,7 +155,7 @@ run ``ray attach --help``.
     # Attach to tmux session on cluster (creates a new one if none available)
     $ ray attach cluster.yaml --tmux
 
-.. _ray-rsync-under-construction:
+.. _ray-rsync:
 
 Synchronizing files from the cluster (``ray rsync-up/down``)
 ------------------------------------------------------------
@@ -173,7 +168,7 @@ To download or upload files to the cluster head node, use ``ray rsync_down`` or
     $ ray rsync_down cluster.yaml '/path/on/cluster' '/local/path'
     $ ray rsync_up cluster.yaml '/local/path' '/path/on/cluster'
 
-.. _monitor-cluster-under-construction:
+.. _monitor-cluster:
 
 Monitoring cluster status (``ray dashboard/status``)
 -----------------------------------------------------

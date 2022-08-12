@@ -39,7 +39,7 @@ There are three broad categories of Trainers that Train offers:
 
 * Use :ref:`Ray Datasets <datasets>` with Train to load and process datasets both small and large.
 * Use :ref:`Ray Tune <tune-main>` with Train to sweep parameter grids and leverage cutting edge hyperparameter search algorithms.
-* Leverage the :ref:`Ray cluster launcher <cluster-cloud>` to launch autoscaling or spot instance clusters on any cloud.
+* Leverage the :ref:`Ray cluster launcher <cluster-index>` to launch autoscaling or spot instance clusters on any cloud.
 
 
 Quick Start
