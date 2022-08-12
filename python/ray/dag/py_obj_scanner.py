@@ -25,7 +25,7 @@ TransformedType = TypeVar("TransformedType")
 
 def delete_instance(id: int):
     if id in _instances:
-        del _instances(id)
+        del _instances[id]
 
 
 def _get_node(instance_id: int, node_index: int) -> SourceType:
