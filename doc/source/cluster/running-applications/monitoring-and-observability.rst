@@ -7,7 +7,7 @@ Ray ships with the following observability features:
 2. CLI tools such as the :ref:`Ray state APIs <state-api-overview-ref>` and :ref:`ray status <monitor-cluster>`, for checking application and cluster status.
 3. :ref:`Prometheus metrics <multi-node-metrics>` for internal and custom user-defined metrics.
 
-For more information on these tools, check out the more comprehensive :ref:`Observability guide<observability>`.
+For more information on these tools, check out the more comprehensive :ref:`Observability guide <observability>`.
 
 The rest of this page will focus on how to access these services when running a Ray Cluster.
 

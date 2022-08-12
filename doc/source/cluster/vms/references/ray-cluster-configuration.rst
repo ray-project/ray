@@ -150,7 +150,7 @@ Node types
 
 The ``available_nodes_types`` object's keys represent the names of the different node types.
 
-Deleting a node type from ``available_node_types`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all nodes of that type.
+Deleting a node type from ``available_node_types`` and updating with :ref:`ray up <ray-up-doc>` will cause the autoscaler to scale down all nodes of that type.
 In particular, changing the key of a node type object will
 result in removal of nodes corresponding to the old key; nodes with the new key name will then be
 created according to cluster configuration and Ray resource demands.
@@ -178,7 +178,7 @@ Node config
 
 Cloud-specific configuration for nodes of a given node type.
 
-Modifying the ``node_config`` and updating with :ref:`ray up<ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type;
+Modifying the ``node_config`` and updating with :ref:`ray up <ray-up-doc>` will cause the autoscaler to scale down all existing nodes of the node type;
 nodes with the newly applied ``node_config`` will then be created according to cluster configuration and Ray resource demands.
 
 .. tabbed:: AWS
@@ -375,7 +375,7 @@ Each node type is identified by a user-specified key.
 
 The key for one of the node types in :ref:`available_node_types <cluster-configuration-available-node-types>`. This node type will be used to launch the head node.
 
-If the field ``head_node_type`` is changed and an update is executed with :ref:`ray up<ray-up-doc>`, the currently running head node will
+If the field ``head_node_type`` is changed and an update is executed with :ref:`ray up <ray-up-doc>`, the currently running head node will
 be considered outdated. The user will receive a prompt asking to confirm scale-down of the outdated head node, and the cluster will restart with a new
 head node. Changing the :ref:`node_config<cluster-configuration-node-config>` of the :ref:`node_type<cluster-configuration-node-types-type>` with key ``head_node_type`` will also result in cluster restart after a user prompt.
 

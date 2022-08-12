@@ -184,7 +184,7 @@ Dependency Management
 To run a distributed application, we need to make sure that all workers run in the same environment.
 This can be challenging if multiple applications in the same Ray Cluster have different and conflicting dependencies.
 
-To avoid dependency conflicts, Ray provides a mechanism called :ref:`runtime environments<runtime-environments>`. Runtime environments allow an application to override the default environment on the Ray Cluster and run in an isolated environment, similar to virtual environments in single-node Python. Dependencies can include both files and Python packages.
+To avoid dependency conflicts, Ray provides a mechanism called :ref:`runtime environments <runtime-environments>`. Runtime environments allow an application to override the default environment on the Ray Cluster and run in an isolated environment, similar to virtual environments in single-node Python. Dependencies can include both files and Python packages.
 
 Ray Jobs provides an option to specify the runtime environment when submitting a job. On the Ray Cluster, Ray will then install the runtime environment across the workers and ensure that tasks in that job run in the same environment. To see how this works, we'll use a Python script that prints the current version of the ``requests`` module in a Ray task.
 

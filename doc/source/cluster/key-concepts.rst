@@ -25,7 +25,7 @@ The number of worker nodes may be *autoscaled* with application demand as specif
 by your Ray cluster configuration. The head node runs the :ref:`autoscaler <cluster-autoscaler>`.
 
 .. note::
-    Ray nodes are implemented as pods when :ref:`running on Kubernetes<kuberay-index>`.
+    Ray nodes are implemented as pods when :ref:`running on Kubernetes <kuberay-index>`.
 
 Users can submit jobs for execution on the Ray cluster, or can interactively use the
 cluster by connecting to the head node and running `ray.init`. See

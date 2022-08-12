@@ -53,4 +53,4 @@ autoscaler. The smaller the value, the more aggressive downscaling will be. Work
 Autoscaler SDK
 --------------
 
-For more information on programmatic access to the autoscaler, see :ref:`Autoscaler SDK<ref-autoscaler-sdk>`.
+For more information on programmatic access to the autoscaler, see :ref:`Autoscaler SDK <ref-autoscaler-sdk>`.

@@ -176,15 +176,15 @@ In any case, do make sure that all Ray images in your CR carry the same Ray vers
 Python version.
 To distribute custom code dependencies across your cluster, you can build a custom container image,
 using one of the [official Ray images](https://hub.docker.com/r/rayproject/ray>) as the base.
-See {ref}`this guide<docker-images>` to learn more about the official Ray images.
+See {ref}`this guide <docker-images>` to learn more about the official Ray images.
 For dynamic dependency management geared towards iteration and developement,
-you can also use {ref}`Runtime Environments<runtime-environments>`.
+you can also use {ref}`Runtime Environments <runtime-environments>`.
 
 (rayStartParams)=
 ## Ray Start Parameters
 The ``rayStartParams`` field of each group spec is a string-string map of arguments to the Ray
 container’s `ray start` entrypoint. For the full list of arguments, refer to
-the documentation for {ref}`ray start<ray-start-doc>`. We make special note of the following arguments:
+the documentation for {ref}`ray start <ray-start-doc>`. We make special note of the following arguments:
 
 ### block
 For most use-cases, this field should be set to "true" for all Ray pod. The container's Ray
@@ -211,7 +211,7 @@ must be supplied as **strings**.
 ### num-gpus
 This optional field specifies the number of GPUs available to the Ray container.
 In KubeRay versions since 0.3.0, the number of GPUs can be auto-detected from Ray container resource limits.
-For certain advanced use-cases, you may wish to use `num-gpus` to set an {ref}`override<kuberay-gpu-override>`.
+For certain advanced use-cases, you may wish to use `num-gpus` to set an {ref}`override <kuberay-gpu-override>`.
 Note that the values of all Ray start parameters, including `num-gpus`,
 must be supplied as **strings**.
 

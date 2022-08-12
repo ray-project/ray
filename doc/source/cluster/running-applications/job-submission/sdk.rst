@@ -3,7 +3,7 @@
 Python SDK
 ^^^^^^^^^^
 
-The Job Submission Python SDK is the recommended way to submit jobs programmatically. Jump to the :ref:`API Reference<ray-job-submission-sdk-ref>`, or continue reading for a quick overview.
+The Job Submission Python SDK is the recommended way to submit jobs programmatically. Jump to the :ref:`API Reference <ray-job-submission-sdk-ref>`, or continue reading for a quick overview.
 
 Setup
 -----
@@ -137,4 +137,4 @@ Using the Python SDK, the syntax looks something like this:
     Instead of a local directory (``"./"`` in this example), you can also specify remote URIs for your job's working directory, such as S3 buckets or Git repositories. See :ref:`remote-uris` for details.
 
 
-For full details, see the :ref:`API Reference<ray-job-submission-sdk-ref>`.
+For full details, see the :ref:`API Reference <ray-job-submission-sdk-ref>`.

@@ -15,7 +15,7 @@ Here are the guiding principles of our collection policy:
 - We will **not** collect any personally identifiable data or proprietary code/data
 - We will **not** sell data or buy data about you.
 
-You will always be able to :ref:`disable the usage stats collection<usage-disable>`.
+You will always be able to :ref:`disable the usage stats collection <usage-disable>`.
 
 For more context, please refer to this `RFC <https://github.com/ray-project/ray/issues/20857>`_.
 

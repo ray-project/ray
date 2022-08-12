@@ -84,7 +84,7 @@ We will write a simple Python application that tracks the IP addresses of the ma
 
 Save this application as ``script.py`` and execute it by running the command ``python script.py``. The application should take 10 seconds to run and output something similar to ``Counter({'127.0.0.1': 10000})``.
 
-With some small changes, we can make this application run on Ray (for more information on how to do this, refer to :ref:`the Ray Core Walkthrough<core-walkthrough>`):
+With some small changes, we can make this application run on Ray (for more information on how to do this, refer to :ref:`the Ray Core Walkthrough <core-walkthrough>`):
 
 .. code-block:: python
 
