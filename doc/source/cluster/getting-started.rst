@@ -1,36 +1,29 @@
-.. include:: /_includes/clusters/announcement.rst
-
-.. include:: /_includes/clusters/we_are_hiring.rst
-
-.. _cluster-index-under-construction:
-
+.. _cluster-index:
 
 Ray Clusters Overview
 =====================
 
-What is a Ray cluster?
-----------------------
+Ray enables seamless scaling of workloads from a laptop to a large cluster. While Ray
+works out of the box on single machines with just a call to ``ray.init``, to run Ray
+applications on multiple nodes you must first *deploy a Ray cluster*.
 
-One of Ray's strengths is the ability to leverage multiple machines for
-distributed execution. Ray is great for multiprocessing on a single machine.
-However, the real power of Ray is the ability to seamlessly scale to a cluster
-of machines.
+A Ray cluster is a set of worker nodes connected to a common :ref:`Ray head node <cluster-head-node>`.
+Ray clusters can be fixed-size, or they may :ref:`autoscale up and down <cluster-autoscaler>` according
+to the resources requested by applications running on the cluster.
 
-A Ray cluster is a set of one or more nodes that are running Ray and share the same :ref:`head node<cluster-head-node-under-construction>`.
-Ray clusters can either be a fixed-size number of nodes or :ref:`can autoscale<cluster-autoscaler-under-construction>` (i.e., automatically provision or deprovision the number of nodes in a cluster) according to the demand of the Ray workload.
+Where can I deploy Ray clusters?
+--------------------------------
 
-How can I use Ray clusters?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ray clusters are officially supported on the following technology stacks:
+Ray provides native cluster deployment support on the following technology stacks:
 
-* The :ref:`Ray cluster launcher on AWS and GCP<ref-cluster-quick-start-vms-under-construction>`. Community-supported Azure and Aliyun integrations also exist.
-* :ref:`KubeRay, the official way to run Ray on Kubernetes<kuberay-index>`.
+* On :ref:`AWS and GCP <cloud-vm-index>`. Community-supported Azure and Aliyun integrations also exist.
+* On :ref:`Kubernetes <kuberay-index>`, via the officially supported KubeRay project.
 
-Advanced users may want to :ref:`deploy Ray clusters on-premise <on-prem>`
-or onto infrastructure platforms not listed here by :ref:`providing a custom node provider <ref-cluster-setup-under-construction>`.
+Advanced users may want to :ref:`deploy Ray manually <on-prem>`
+or onto :ref:`platforms not listed here <ref-cluster-setup>`.
 
-Where to go from here?
-----------------------
+What's next?
+------------
 
 .. panels::
     :container: text-center
@@ -42,9 +35,22 @@ Where to go from here?
     Understand the key concepts and main ways of interacting with a Ray cluster.
 
     +++
-    .. link-button:: cluster-key-concepts-under-construction
+    .. link-button:: cluster-key-concepts
         :type: ref
         :text: Learn Key Concepts
+        :classes: btn-outline-info btn-block
+
+    ---
+
+    **I want to run Ray on Kubernetes**
+    ^^^
+    Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
+    Kubernetes cluster or on your laptop via KinD.
+
+    +++
+    .. link-button:: kuberay-quickstart
+        :type: ref
+        :text: Get Started with Ray on Kubernetes
         :classes: btn-outline-info btn-block
 
     ---
@@ -55,21 +61,21 @@ Where to go from here?
     cloud. Access to an AWS or GCP account is required.
 
     +++
-    .. link-button:: ref-cluster-quick-start-vms-under-construction
+    .. link-button:: vm-cluster-quick-start
         :type: ref
-        :text: Getting Started with Ray Clusters on VMs
+        :text: Get Started with Ray on VMs
         :classes: btn-outline-info btn-block
+
     ---
 
-    **I want to run Ray on Kubernetes**
+    **I want to run my application on an existing Ray cluster**
     ^^^
-    Deploy a Ray application to a Kubernetes cluster. You can run the tutorial on a
-    remote Kubernetes cluster or on your laptop via KinD.
+    Guide to submitting applications as Jobs to existing Ray clusters.
 
     +++
-    .. link-button:: kuberay-quickstart
+    .. link-button:: jobs-quickstart
         :type: ref
-        :text: Getting Started with Ray on Kubernetes
+        :text: Job Submission
         :classes: btn-outline-info btn-block
 
 .. include:: /_includes/clusters/announcement_bottom.rst

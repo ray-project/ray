@@ -20,7 +20,7 @@ and are compatible with a variety of file formats, data sources, and distributed
 Here's an overview of the integrations with other processing frameworks, file formats, and supported operations,
 as well as a glimpse at the Ray Datasets API.
 
-Check our :ref:`compatibility matrix<data-compatibility>` to see if your favorite format
+Check our :ref:`compatibility matrix <data-compatibility>` to see if your favorite format
 is already supported.
 
 .. image:: images/dataset.svg
@@ -85,7 +85,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     ^^^
 
     Understand the key concepts behind Ray Datasets.
-    Learn what :ref:`Datasets<dataset_concept>` and :ref:`Dataset Pipelines<dataset_pipeline_concept>` are
+    Learn what :ref:`Datasets <dataset_concept>` and :ref:`Dataset Pipelines <dataset_pipeline_concept>` are
     and how they get executed in Ray Datasets.
 
     +++
@@ -98,11 +98,11 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-
     **User Guides**
     ^^^
 
-    Learn how to :ref:`create datasets<creating_datasets>`, :ref:`save
-    datasets<saving_datasets>`, :ref:`transform datasets<transforming_datasets>`,
-    :ref:`access and exchange datasets<consuming_datasets>`, :ref:`pipeline
-    transformations<pipelining_datasets>`, :ref:`load and process data for ML<datasets-ml-preprocessing>`,
-    work with :ref:`tensor data<datasets_tensor_support>`, or :ref:`use pipelines<data_pipeline_usage>`.
+    Learn how to :ref:`create datasets <creating_datasets>`, :ref:`save
+    datasets <saving_datasets>`, :ref:`transform datasets <transforming_datasets>`,
+    :ref:`access and exchange datasets <consuming_datasets>`, :ref:`pipeline
+    transformations <pipelining_datasets>`, :ref:`load and process data for ML <datasets-ml-preprocessing>`,
+    work with :ref:`tensor data <datasets_tensor_support>`, or :ref:`use pipelines <data_pipeline_usage>`.
 
     +++
     .. link-button:: data_user_guide

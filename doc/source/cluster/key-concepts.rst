@@ -1,23 +1,17 @@
-.. warning::
-    This page is under construction!
-
-.. include:: /_includes/clusters/we_are_hiring.rst
-
 Key Concepts
 ============
 
-.. _cluster-key-concepts-under-construction:
+.. _cluster-key-concepts:
 
-
-This page introduces the following key concepts concerning Ray clusters:
+This page introduces key concepts for Ray clusters:
 
 .. contents::
     :local:
 
-Ray cluster
-------------
-A **Ray cluster** is comprised of a :ref:`head node<cluster-head-node-under-construction>`
-and any number of :ref:`worker nodes<cluster-worker-nodes-under-construction>`.
+Ray Cluster
+-----------
+A Ray cluster consists of a single :ref:`head node <cluster-head-node>`
+and any number of connected :ref:`worker nodes <cluster-worker-nodes>`:
 
 .. figure:: images/ray-cluster.svg
     :align: center
@@ -25,53 +19,48 @@ and any number of :ref:`worker nodes<cluster-worker-nodes-under-construction>`.
     
     *A Ray cluster with two worker nodes. Each node runs Ray helper processes to
     facilitate distributed scheduling and memory management. The head node runs
-    additional control processes, which are highlighted.*
+    additional control processes (highlighted in blue).*
 
-The number of worker nodes in a cluster may change with application demand, according
-to your Ray cluster configuration. This is known as *autoscaling*. The head node runs
-the :ref:`autoscaler<cluster-autoscaler-under-construction>`.
+The number of worker nodes may be *autoscaled* with application demand as specified
+by your Ray cluster configuration. The head node runs the :ref:`autoscaler <cluster-autoscaler>`.
 
 .. note::
-    Ray nodes are implemented as pods when :ref:`running on Kubernetes<kuberay-index>`.
+    Ray nodes are implemented as pods when :ref:`running on Kubernetes <kuberay-index>`.
 
 Users can submit jobs for execution on the Ray cluster, or can interactively use the
 cluster by connecting to the head node and running `ray.init`. See
-:ref:`Clients and Jobs<cluster-clients-and-jobs-under-construction>` for more information.
+:ref:`Ray Jobs <jobs-quickstart>` for more information.
 
-.. _cluster-worker-nodes-under-construction:
+.. _cluster-head-node:
 
-Worker nodes
-~~~~~~~~~~~~
-**Worker nodes** execute a Ray application by executing tasks and actors and storing Ray objects. Each worker node runs helper processes which
-implement distributed scheduling and :ref:`memory management<memory>`.
-
-.. _cluster-head-node-under-construction:
-
-Head node
-~~~~~~~~~
-Every Ray cluster has one node which is designated as the **head node** of the cluster.
+Head Node
+---------
+Every Ray cluster has one node which is designated as the *head node* of the cluster.
 The head node is identical to other worker nodes, except that it also runs singleton processes responsible for cluster management such as the
-:ref:`autoscaler<cluster-autoscaler-under-construction>` and the Ray driver processes
-:ref:`which run Ray jobs<cluster-clients-and-jobs-under-construction>`. Ray may schedule
+:ref:`autoscaler <cluster-autoscaler>` and the Ray driver processes
+:ref:`which run Ray jobs <cluster-clients-and-jobs>`. Ray may schedule
 tasks and actors on the head node just like any other worker node, unless configured otherwise.
 
-.. _cluster-autoscaler-under-construction:
+.. _cluster-worker-nodes:
 
-Autoscaler
-----------
+Worker Node
+------------
+*Worker nodes* do not run any head node management processes, and serve only to run user code in Ray tasks and actors. They participate in distributed scheduling, as well as the storage and distribution of Ray objects in :ref:`cluster memory <memory>`.
 
-The **autoscaler** is a process that runs on the :ref:`head node<cluster-head-node-under-construction>` (or as a sidecar container in the head pod if :ref:`using Kubernetes<kuberay-index>`).
-It is responsible for provisioning or deprovisioning :ref:`worker nodes<cluster-worker-nodes-under-construction>`
-to meet the needs of the Ray workload. In particular, if the resource demands of the Ray workload exceed the
-current capacity of the cluster, the autoscaler will attempt to add more nodes. Conversely, if
-a node is idle for long enough, the autoscaler will remove it from the cluster.
+.. _cluster-autoscaler:
 
-To learn more about the autoscaler and how to configure it, refer to the following user guides:
+Autoscaling
+-----------
 
-* :ref:`Configuring Autoscaling on VMs<deployment-guide-autoscaler-under-construction>`.
-* :ref:`Autoscaling on Kubernetes<kuberay-autoscaler-discussion>`.
+The *Ray autoscaler* is a process that runs on the :ref:`head node <cluster-head-node>` (or as a sidecar container in the head pod if :ref:`using Kubernetes <kuberay-index>`).
+When the resource demands of the Ray workload exceed the
+current capacity of the cluster, the autoscaler will try to increase the number of worker nodes. When worker nodes
+sit idle, the autoscaler will remove worker nodes from the cluster.
 
-.. _cluster-clients-and-jobs-under-construction:
+It is important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics or physical resource utilization.
+To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <cloud-vm-index>` and :ref:`Kubernetes <kuberay-index>`.
+
+.. _cluster-clients-and-jobs:
 
 Ray Jobs
 --------
@@ -81,4 +70,9 @@ Ray Jobs enable users to submit locally developed-and-tested applications to a
 remote Ray cluster. Ray Job Submission simplifies the experience of packaging,
 deploying, and managing a Ray application.
 
-To learn how to run workloads on a Ray Cluster, refer to the :ref:`Ray Jobs guide<ray-jobs-under-construction>`.
+For interactive development, the following additional methods are available:
+
+* Directly running a script or notebook on any head or worker node.
+* Using the Ray Client to connect remotely to the cluster.
+
+To learn how to run workloads on a Ray cluster, refer to the :ref:`Ray Jobs guide <jobs-overview>`.

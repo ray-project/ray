@@ -6,7 +6,7 @@ This page provides tips on how to collect logs from
 Ray clusters running on Kubernetes.
 
 :::{tip}
-Skip to {ref}`the deployment instructions<kuberay-logging-tldr>`
+Skip to {ref}`the deployment instructions <kuberay-logging-tldr>`
 for a sample configuration showing how to extract logs from a Ray pod.
 :::
 
@@ -26,7 +26,7 @@ We mention two strategies for collecting logs written to a pod's filesystem,
 patterns in the [Kubernetes documentation][KubDoc].
 
 ### Sidecar containers
-We will provide an {ref}`example<kuberay-fluentbit>` of the sidecar strategy in this guide.
+We will provide an {ref}`example <kuberay-fluentbit>` of the sidecar strategy in this guide.
 You can process logs by configuring a log-processing sidecar
 for each Ray pod. Ray containers should be configured to share the `/tmp/ray`
 directory with the logging sidecar via a volume mount.
@@ -116,7 +116,7 @@ for a single-pod RayCluster will a log-processing sidecar.
 Now, we will see how to deploy the configuration described above.
 
 Deploy the KubeRay Operator if you haven't yet.
-Refer to the {ref}`Getting Started guide<kuberay-operator-deploy>`
+Refer to the {ref}`Getting Started guide <kuberay-operator-deploy>`
 for instructions on this step.
 
 Now, run the following commands to deploy the Fluent Bit ConfigMap and a single-pod RayCluster with
