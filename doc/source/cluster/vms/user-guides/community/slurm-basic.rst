@@ -1,6 +1,6 @@
 :orphan:
 
-.. _slurm-basic-under-construction:
+.. _slurm-basic:
 
 slurm-basic.sh
 ~~~~~~~~~~~~~~

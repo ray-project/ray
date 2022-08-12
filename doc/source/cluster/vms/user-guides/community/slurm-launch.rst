@@ -1,6 +1,6 @@
 :orphan:
 
-.. _slurm-launch-under-construction:
+.. _slurm-launch:
 
 slurm-launch.py
 ~~~~~~~~~~~~~~~
