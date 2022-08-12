@@ -17,19 +17,20 @@
 namespace {
 
 /// Return true if scheduling this bundle (with resource_request) will exceed the
-/// max cpu fraction for placement groups.
+/// max cpu fraction for placement groups. This is per node.
 ///
 /// \param node_resources The resource of the current node.
-/// \param resource_request The requested resources for the current bundle.
+/// \param bundle_resource_request The requested resources for the current bundle.
 /// \param max_cpu_fraction_per_node Highest CPU fraction the bundles can take up.
-/// \param available_cpus_before_scheduling Available CPUs on this node before
-///   scheduling the curernt bundles. It is used to calculate how many CPUs are
+/// \param available_cpus_before_curernt_pg_request Available CPUs on this node before
+///   scheduling the current pg request. It is used to calculate how many CPUs are
 ///   allocated by the current bundles so far. It will help us figuring out
 ///   the total CPU allocation from the current bundles for this node.
-bool AllocationWillExceedMaxCpuFraction(const ray::NodeResources &node_resources,
-                                        const ray::ResourceRequest &resource_request,
-                                        double max_cpu_fraction_per_node,
-                                        double available_cpus_before_scheduling) {
+bool AllocationWillExceedMaxCpuFraction(
+    const ray::NodeResources &node_resources,
+    const ray::ResourceRequest &bundle_resource_request,
+    double max_cpu_fraction_per_node,
+    double available_cpus_before_curernt_pg_request) {
   if (max_cpu_fraction_per_node == 1.0) {
     // Allocation will never exceed the threshold if the fraction == 1.0.
     return false;
@@ -53,25 +54,37 @@ bool AllocationWillExceedMaxCpuFraction(const ray::NodeResources &node_resources
     max_reservable_cpus = total_cpus - 1;
   }
 
-  // Get the sum of all cpu allocations of past bundles.
-  FixedPoint cpus_for_existing_bundles(0);
+  /*
+    To calculate if allocating a new bundle will exceed the pg max_fraction,
+    we need a sum of
+
+    - CPUs used by placement groups before.
+    - CPUs that will be allocated by the current pg request.
+  */
+
+  // Get the sum of all cpu allocated by placement group on this node.
+  FixedPoint cpus_used_by_pg_before(0);
   for (const auto &resource_id : node_resources.total.ResourceIds()) {
     if (ray::GetOriginalResourceNameFromWildcardResource(resource_id.Binary()) == "CPU") {
-      cpus_for_existing_bundles += node_resources.total.Get(resource_id);
+      cpus_used_by_pg_before += node_resources.total.Get(resource_id);
     }
   }
 
-  // Total CPU allocations of current bundles ==
-  // Resources before scheduling current bundles
-  // - Resources taken by current bundles (that's scheduled so far)
-  // + the bundle for this method.
-  auto cpus_for_new_bundles = available_cpus_before_scheduling -
-                              node_resources.available.Get(cpu_id).Double() +
-                              resource_request.Get(cpu_id).Double();
+  // Get the CPUs allocated by current pg request so far.
+  // Note that when we schedule the current pg, we allocate resources
+  // temporarily meaning `node_resources.available` will contain
+  // available CPUs after allocating CPUs for the current pg request.
+  auto cpus_allocated_by_current_pg_request =
+      (available_cpus_before_curernt_pg_request -
+       node_resources.available.Get(cpu_id).Double());
 
-  auto cpus_for_existing_and_new_bundles =
-      cpus_for_existing_bundles.Double() + cpus_for_new_bundles;
-  return cpus_for_existing_and_new_bundles > max_reservable_cpus;
+  auto cpus_to_allocate_by_current_pg_request =
+      (cpus_allocated_by_current_pg_request +
+       bundle_resource_request.Get(cpu_id).Double());
+
+  auto cpus_used_by_pg_after =
+      cpus_used_by_pg_before.Double() + cpus_to_allocate_by_current_pg_request;
+  return cpus_used_by_pg_after > max_reservable_cpus;
 }
 
 }  // namespace
