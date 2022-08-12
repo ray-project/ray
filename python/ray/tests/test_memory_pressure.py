@@ -6,7 +6,6 @@ import psutil
 import pytest
 
 import ray
-import ray.experimental.state.api as state_api
 from ray._private.test_utils import get_node_stats, wait_for_condition
 
 
@@ -36,6 +35,7 @@ def no_retry(allocate_bytes: int, num_chunks: int = 10, allocate_interval_s: flo
         time.sleep(allocate_interval_s)
     end = time.time()
     return end - start
+
 
 @ray.remote
 class Leaker:
@@ -143,8 +143,6 @@ def test_memory_pressure_kill_newest_worker(shutdown_only):
     actors = ray.util.list_named_actors()
     assert len(actors) == 1
     assert "leaker1" in actors
-
-    print(state_api.list_actors())
 
 
 if __name__ == "__main__":

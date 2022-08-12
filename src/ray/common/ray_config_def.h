@@ -82,7 +82,7 @@ RAY_CONFIG(float, memory_usage_threshold_fraction, 0.85)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
-RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 100)
+RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 200)
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
