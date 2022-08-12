@@ -45,7 +45,7 @@ You can update a deployment's code and configuration and then redeploy it. The f
 
 Ray Serve lets you configure your deployments to:
 
-- scale out by increasing the number of [deployment replicas](serve-architecture#high-level-view)
+- scale out by increasing the number of [deployment replicas](serve-architecture-high-level-view)
 - assign [replica resources](serve-cpus-gpus) such as CPUs and GPUs.
 
 The next two sections describe how to configure your deployments.
