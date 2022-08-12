@@ -130,7 +130,7 @@ carries the following subfields:
 
 ### Configuring the autoscaler sidecar container
 
-The `autoscalerOptions` also provides some options for configuring the autoscaler itself. Usually, it should not be necessary to modify these options.
+The `autoscalerOptions` field also provides options for configuring the autoscaler container. Usually, it is not necessary to specify these options.
 
 **`resources`**: The `resources` subfield of `autoscalerOptions` sets optional resource overrides
 for the autoscaler sidecar container. These overrides
