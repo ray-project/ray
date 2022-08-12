@@ -16,9 +16,9 @@ This section helps you:
 By specifying the full name of the class as an argument to the `Serve.deployment()` method, as shown in the code below, you can create and deploy a deployment of the class.
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:start-after: docs-create-start
 :end-before: docs-create-end
 :language: java
-:start-after: docs-create-start
 ```
 
 ## Accessing a Deployment
@@ -26,9 +26,9 @@ By specifying the full name of the class as an argument to the `Serve.deployment
 Once a deployment is deployed, you can fetch its instance by name.
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:start-after: docs-query-start
 :end-before: docs-query-end
 :language: java
-:start-after: docs-query-start
 ```
 
 ## Updating a Deployment
@@ -36,9 +36,9 @@ Once a deployment is deployed, you can fetch its instance by name.
 You can update a deployment's code and configuration and then redeploy it. The following example updates `"counter"` deployment's initial value to 2.
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:start-after: docs-update-start
 :end-before: docs-update-end
 :language: java
-:start-after: docs-update-start
 ```
 
 ## Configuring a Deployment
@@ -55,9 +55,9 @@ The next two sections describe how to configure your deployments.
 By specifying the `numReplicas` parameter, you can change the number of deployment replicas:
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:start-after: docs-scale-start
 :end-before: docs-scale-end
 :language: java
-:start-after: docs-scale-start
 ```
 
 ### Resource Management (CPUs, GPUs)
@@ -65,9 +65,9 @@ By specifying the `numReplicas` parameter, you can change the number of deployme
 Through the `rayActorOptions` parameter, you can reserve resources for each deployment replica, such as one GPU:
 
 ```{literalinclude} ../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
+:start-after: docs-resource-start
 :end-before: docs-resource-end
 :language: java
-:start-after: docs-resource-start
 ```
 
 ## Managing a Python Deployment
