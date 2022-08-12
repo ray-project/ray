@@ -1,12 +1,12 @@
 # Managing Java Deployments
 
-Java is one of the mainstream programming languages for production services. Ray Serve offers a native Java API for creating, updating, and managing deployments. You can create Ray Serve deployments using Java and call them via Python, or vice versa.
+Java is a mainstream programming language for production services. Ray Serve offers a native Java API for creating, updating, and managing deployments. You can create Ray Serve deployments using Java and call them via Python, or vice versa.
 
 This section helps you:
 
-- create, query, update, and configure Java deployments
-- configure resources of your Java deployments
-- manage Python deployments using Java API
+- create, query, and update Java deployments
+- configure Java deployment resources
+- manage Python deployments using the Java API
 
 ```{contents}
 ```
