@@ -9,10 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.dag.py_obj_scanner import (
-    _PyObjScanner,
-    _instances as ScannerInstances,
-)
+from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
