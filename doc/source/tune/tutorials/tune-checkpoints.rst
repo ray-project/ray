@@ -194,11 +194,9 @@ Your ``my_trainable`` is either a:
 
 1. **Model with an existing Ray integration**
 
-  * XGBoost (:ref:`example <xgboost-ray-tuning>`)
   * Pytorch (:doc:`example </tune/examples/tune-pytorch-cifar>`)
   * Pytorch Lightning (:ref:`example <pytorch-lightning-tune>`)
   * Tensorflow/Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
-  * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
 
 2. **Custom training function**
 
@@ -317,7 +315,7 @@ Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node.
-This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also
+This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-index>` and also
 requires rsync to be installed.
 
 Note that you must use the ``session.report`` API to trigger syncing

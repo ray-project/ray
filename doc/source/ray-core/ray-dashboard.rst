@@ -64,7 +64,9 @@ Logical View
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/logical-view-overview.png
     :align: center
 
-The logical view lets you monitor the actors running on your Ray cluster. For each actor class defined in your program, the logical view allows you to see how many of that class are running, how many tasks they've executed, and more.
+The Jobs view lets you monitor the different jobs that ran on your Ray cluster.
+A job is a ray workload that was initiated by an entry point.
+Typically, jobs are initiated via directly calling `ray.init` or a Ray library from a python script or by using the :ref:`job submission api <jobs-overview>`.
 
 In addition, it will warn you if you have an actor that cannot be created because your cluster has insufficient resources to satisfy its requirements.
 
