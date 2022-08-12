@@ -30,6 +30,7 @@ def gen_java_deps():
             "net.java.dev.jna:jna:5.8.0",
             "org.apache.httpcomponents.client5:httpclient5:5.0.3",
             "org.apache.httpcomponents.core5:httpcore5:5.0.2",
+            "org.apache.httpcomponents.client5:httpclient5-fluent:5.0.3",
             maven.artifact(
                 group = "org.testng",
                 artifact = "testng",
