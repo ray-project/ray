@@ -28,11 +28,11 @@ class ImmutableActionsConnector(ActionConnector):
             (actions, states, fetches),
         )
 
-    def to_config(self):
+    def to_state_dict(self):
         return ImmutableActionsConnector.__name__, None
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state_dict(ctx: ConnectorContext, params: List[Any]):
         return ImmutableActionsConnector(ctx)
 
 

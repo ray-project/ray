@@ -119,11 +119,11 @@ class ViewRequirementAgentConnector(AgentConnector):
         )
         return return_data
 
-    def to_config(self):
+    def to_state_dict(self):
         return ViewRequirementAgentConnector.__name__, None
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state_dict(ctx: ConnectorContext, params: List[Any]):
         return ViewRequirementAgentConnector(ctx)
 
 

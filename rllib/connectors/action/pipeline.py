@@ -28,13 +28,13 @@ class ActionConnectorPipeline(ConnectorPipeline, ActionConnector):
             ac_data = c(ac_data)
         return ac_data
 
-    def to_config(self):
+    def to_state_dict(self):
         return ActionConnectorPipeline.__name__, [
-            c.to_config() for c in self.connectors
+            c.to_state_dict() for c in self.connectors
         ]
 
     @staticmethod
-    def from_config(ctx: ConnectorContext, params: List[Any]):
+    def from_state_dict(ctx: ConnectorContext, params: List[Any]):
         assert (
             type(params) == list
         ), "ActionConnectorPipeline takes a list of connector params."

@@ -90,7 +90,7 @@ class Connector(abc.ABC):
     Connectors may be training-aware, for example, behave slightly differently
     during training and inference.
 
-    All connectors are required to be serializable and implement to_config().
+    All connectors are required to be serializable and implement to_state_dict().
     """
 
     def __init__(self, ctx: ConnectorContext):
@@ -103,10 +103,10 @@ class Connector(abc.ABC):
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
 
-    def to_config(self) -> Tuple[str, List[Any]]:
+    def to_state_dict(self) -> Tuple[str, List[Any]]:
         """Serialize a connector into a JSON serializable Tuple.
 
-        to_config is required, so that all Connectors are serializable.
+        to_state_dict is required, so that all Connectors are serializable.
 
         Returns:
             A tuple of connector's name and its serialized states.
@@ -115,10 +115,10 @@ class Connector(abc.ABC):
         return NotImplementedError
 
     @staticmethod
-    def from_config(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
+    def from_state_dict(self, ctx: ConnectorContext, params: List[Any]) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
-        from_config is required, so that all Connectors are serializable.
+        from_state_dict is required, so that all Connectors are serializable.
 
         Args:
             ctx: Context for constructing this connector.
@@ -432,4 +432,4 @@ def get_connector(ctx: ConnectorContext, name: str, params: Tuple[Any]) -> Conne
     if not _global_registry.contains(RLLIB_CONNECTOR, name):
         raise NameError("connector not found.", name)
     cls = _global_registry.get(RLLIB_CONNECTOR, name)
-    return cls.from_config(ctx, params)
+    return cls.from_state_dict(ctx, params)
