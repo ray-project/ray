@@ -9,7 +9,10 @@ from typing import Any, Dict, List, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.dag.py_obj_scanner import (
+    _PyObjScanner,
+    delete_instance as delete_scanner_instance,
+)
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
@@ -55,6 +58,9 @@ class Query:
             resolved = await asyncio.gather(*tasks)
             replacement_table = dict(zip(tasks, resolved))
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+
+        # Trigger the GC to avoid memory leak
+        delete_scanner_instance(id(scanner))
 
 
 class ReplicaSet:
@@ -227,7 +233,7 @@ class ReplicaSet:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries, tags={"endpoint": endpoint}
         )
-        # await query.resolve_async_tasks()
+        await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(
