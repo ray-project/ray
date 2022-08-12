@@ -53,4 +53,4 @@ autoscaler. The smaller the value, the more aggressive downscaling will be. Work
 Programmatic Scaling
 --------------------
 
-For more information on programmatic access to the autoscaler, see :ref:`Programmatic Cluster Scaling Guide <ref-autoscaler-sdk>`.
+For more information on programmatic access to the autoscaler, see the :ref:`Programmatic Cluster Scaling Guide <ref-autoscaler-sdk>`.
