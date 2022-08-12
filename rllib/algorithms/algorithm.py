@@ -1000,8 +1000,10 @@ class Algorithm(Trainable):
             or self.config["evaluation_num_workers"] == 0
         ):
             raise ValueError(
-                "Local evaluation OR evaluation without input reader OR evaluation "
-                "with only a local eval worker not supported in combination "
+                "Evaluation w/o eval workers (calling Algorithm.evaluate() w/o "
+                "evaluation specifically set up) OR evaluation without input reader "
+                "OR evaluation with only a local evaluation worker "
+                "(`evaluation_num_workers=0`) not supported in combination "
                 "with `enable_async_evaluation=True` config setting!"
             )
 
