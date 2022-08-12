@@ -6,7 +6,7 @@ API References
     :caption: Ray API References
 
     ../ray-air/package-ref.rst
-    ../data/package-ref.rst
+    ../data/api/api.rst
     ../train/api.rst
     ../tune/api_docs/overview.rst
     ../serve/package-ref.rst

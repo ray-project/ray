@@ -60,7 +60,7 @@ Where to Go from Here?
 As new user of Ray Datasets, you may want to start with our :ref:`Getting Started guide<datasets_getting_started>`.
 If you've run your first examples already, you might want to dive into Ray Datasets'
 :ref:`key concepts <data_key_concepts>` or our :ref:`User Guide <data_user_guide>` instead.
-Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_api>` for their projects.
+Advanced users can refer directly to the Ray Datasets :ref:`API reference <data-api>` for their projects.
 
 .. panels::
     :container: text-center
@@ -142,7 +142,7 @@ Advanced users can refer directly to the Ray Datasets :ref:`API reference <data_
     Get more in-depth information about the Ray Datasets API.
 
     +++
-    .. link-button:: data_api
+    .. link-button:: data-api
         :type: ref
         :text: Read the API Reference
         :classes: btn-outline-info btn-block

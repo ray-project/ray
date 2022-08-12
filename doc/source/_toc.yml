@@ -60,7 +60,7 @@ parts:
               - file: data/advanced-pipelines
               - file: data/random-access
           - file: data/faq
-          - file: data/package-ref
+          - file: data/api/api
           - file: data/integrations
 
       - file: train/train
