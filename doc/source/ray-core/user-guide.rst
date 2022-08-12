@@ -12,5 +12,6 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     actors
     objects
     placement-group
+    scheduling
     handling-dependencies
     advanced-topics
