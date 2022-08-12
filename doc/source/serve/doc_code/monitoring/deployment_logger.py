@@ -1,5 +1,7 @@
-import logging
+# __start__
 from ray import serve
+
+import logging
 import requests
 
 logger = logging.getLogger("ray.serve")
@@ -21,3 +23,7 @@ serve.run(counter)
 
 for i in range(10):
     requests.get("http://127.0.0.1:8000/")
+# __end__
+
+response = requests.get("http://127.0.0.1:8000/")
+assert response.json() == {"count": 11}
