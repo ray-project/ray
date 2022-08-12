@@ -268,7 +268,7 @@ class _ImageFolderDatasourceReader(_FileBasedDatasourceReader):
 
         sampling_duration = time.perf_counter() - start_time
         if sampling_duration > 5:
-            logger.info(
+            logger.warn(
                 "Image input size estimation took "
                 f"{round(sampling_duration, 2)} seconds."
             )
