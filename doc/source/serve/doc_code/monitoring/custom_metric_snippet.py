@@ -1,4 +1,4 @@
-# __custom_metrics_deployment_start__
+# __start__
 from ray import serve
 from ray.util import metrics
 
@@ -30,4 +30,8 @@ while True:
     requests.get("http://localhost:8000/")
     time.sleep(1)
 
-# __custom_metrics_deployment_end__
+    # __end__
+    break
+
+response = requests.get("http://localhost:8000/")
+assert response.status_code == 200

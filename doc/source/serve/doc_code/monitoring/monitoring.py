@@ -1,10 +1,10 @@
-# __start_monitoring__
+# flake8: noqa
+
+# __start__
 # File name: monitoring.py
 
 from ray import serve
-
 import logging
-import requests
 
 logger = logging.getLogger("ray.serve")
 
@@ -17,8 +17,10 @@ class SayHello:
 
 
 say_hello = SayHello.bind()
+# __end__
 
-serve.run(say_hello)
+# serve.run(say_hello)
 
-requests.get("http://localhost:8000/")
-# __end_monitoring__
+# import requests
+# response = requests.get("http://localhost:8000/")
+# assert response.text == "hi"
