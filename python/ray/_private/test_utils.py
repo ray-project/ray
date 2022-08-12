@@ -1404,23 +1404,6 @@ def get_node_stats(raylet, num_retry=5, timeout=2):
     return reply
 
 
-def get_log_lines(raylet, file_name, timeout=2):
-    raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
-    channel = ray._private.utils.init_grpc_channel(raylet_address)
-    gcs_aio_client = gcs_utils.GcsAioClient(
-        address=raylet_address, nums_reconnect_retry=0
-    )
-    client = StateDataSourceClient(channel, gcs_aio_client)
-
-    stream = asyncio.get_event_loop().run_until_complete(
-        client.stream_log(raylet["NodeID"], file_name, False, 200, 1, timeout)
-    )
-    lines = []
-    for logs in stream:
-        lines.extend(logs.data.decode().split("\n"))
-    return lines
-
-
 # Global counter to test different return values
 # for external_ray_cluster_activity_hook1.
 ray_cluster_activity_hook_counter = 0
