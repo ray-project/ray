@@ -67,7 +67,7 @@ Jobs View
 
 The Jobs view lets you monitor the different jobs that ran on your Ray cluster.
 A job is a ray workload that was initiated by an entry point.
-Typically, jobs are initiated via directly calling `ray.init` or a Ray library from a python script or by using the :ref:`job submission api<jobs-overview>`.
+Typically, jobs are initiated via directly calling `ray.init` or a Ray library from a python script or by using the :ref:`job submission api <jobs-overview>`.
 
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/jobs.png

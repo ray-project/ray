@@ -66,15 +66,15 @@ You can often [parallelize](ray-core/walkthrough.rst) single machine code with l
 **Deploy large-scale workloads with**\
 **<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">Clusters**
 ^^^
-With a Ray cluster you can deploy your workloads on [AWS, GCP, Azure](cluster-deprecated/quickstart) or 
-[on premise](cluster/cloud.html#cluster-private-setup).
-You can also use [Ray Cluster Managers](cluster-deprecated/deploy) to run Ray on your existing
-[Kubernetes](cluster-deprecated/kubernetes),
-[YARN](cluster-deprecated/yarn),
-or [Slurm](cluster-deprecated/slurm) clusters.
+With a Ray cluster you can deploy your workloads on [AWS, GCP, Azure](cluster/getting-started) or 
+[on premise](cluster/vms/user-guides/launching-clusters/on-premises).
+You can also use Ray cluster managers to run Ray on your existing
+[Kubernetes](cluster/kubernetes/index),
+[YARN](cluster/vms/user-guides/community/yarn),
+or [Slurm](cluster/vms/user-guides/community/slurm) clusters.
 +++
 
-```{link-button} cluster-deprecated/quickstart
+```{link-button} cluster/getting-started
 :type: ref
 :text: Get Started
 :classes: btn-outline-info btn-block
