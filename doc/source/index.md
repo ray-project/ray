@@ -66,15 +66,15 @@ You can often [parallelize](ray-core/walkthrough.rst) single machine code with l
 **Deploy large-scale workloads with**\
 **<img src="ray-overview/images/ray_svg_logo.svg" alt="ray" width="50px">Clusters**
 ^^^
-With a Ray cluster you can deploy your workloads on [AWS, GCP, Azure](cluster/quickstart) or 
+With a Ray cluster you can deploy your workloads on [AWS, GCP, Azure](cluster-deprecated/quickstart) or 
 [on premise](cluster/cloud.html#cluster-private-setup).
-You can also use [Ray Cluster Managers](cluster/deploy) to run Ray on your existing
-[Kubernetes](cluster/kubernetes),
-[YARN](cluster/yarn),
-or [Slurm](cluster/slurm) clusters.
+You can also use [Ray Cluster Managers](cluster-deprecated/deploy) to run Ray on your existing
+[Kubernetes](cluster-deprecated/kubernetes),
+[YARN](cluster-deprecated/yarn),
+or [Slurm](cluster-deprecated/slurm) clusters.
 +++
 
-```{link-button} cluster/quickstart
+```{link-button} cluster-deprecated/quickstart
 :type: ref
 :text: Get Started
 :classes: btn-outline-info btn-block
@@ -85,7 +85,7 @@ or [Slurm](cluster/slurm) clusters.
 
 Ray is a unified framework for scaling AI and Python applications.
 Ray consists of a core distributed runtime and a toolkit of libraries (Ray AIR) for
-accelerating ML workloads:
+simplifying ML compute:
 
 <img src="images/what-is-ray-padded.svg" alt="what-is-ray">
 

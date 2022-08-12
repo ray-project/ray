@@ -16,7 +16,7 @@
 #
 #
 # This notebook includes an example workflow using
-# [XGBoost-Ray](https://docs.ray.io/en/latest/xgboost-ray.html) and
+# [XGBoost-Ray](https://github.com/ray-project/xgboost_ray) and
 # [Dask](https://docs.dask.org/en/latest/) for distributed model training,
 # hyperparameter optimization, and prediction.
 #

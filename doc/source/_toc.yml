@@ -170,26 +170,26 @@ parts:
             sections:
               - file: serve/managing-deployments
               - file: serve/handling-dependencies
+              - file: serve/scaling-and-resource-allocation
               - file: serve/http-guide
-              - file: serve/http-adapters
               - file: serve/handle-guide
+              - file: serve/ray-air-serve-guide
               - file: serve/ml-models
+              - file: serve/batching-guide
+              - file: serve/model_composition
               - file: serve/deploying-serve
               - file: serve/monitoring
               - file: serve/performance
-              - file: serve/autoscaling
-              - file: serve/deployment-graph
-                sections:
-                  - file: serve/deployment-graph/deployment-graph-e2e-tutorial
-                  - file: serve/deployment-graph/chain_nodes_same_class_different_args
-                  - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
-                  - file: serve/deployment-graph/control_flow_based_on_user_inputs
-                  - file: serve/deployment-graph/visualize_dag_during_development
-                  - file: serve/deployment-graph/http_endpoint_for_dag_graph
               - file: serve/production
               - file: serve/migration
           - file: serve/architecture
           - file: serve/tutorials/index
+            sections:
+              - file: serve/tutorials/deployment-graph-patterns
+                sections:
+                  - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
+                  - file: serve/tutorials/deployment-graph-patterns/branching_input
+                  - file: serve/tutorials/deployment-graph-patterns/conditional
           - file: serve/faq
           - file: serve/package-ref
 
@@ -215,12 +215,10 @@ parts:
         title: More Libraries
         sections:
           - file: ray-more-libs/joblib
-          - file: ray-more-libs/lightgbm-ray
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
           - file: ray-more-libs/ray-lightning
           - file: ray-core/examples/using-ray-with-pytorch-lightning
-          - file: ray-more-libs/xgboost-ray
           - file: ray-core/examples/dask_xgboost/dask_xgboost
           - file: ray-core/examples/modin_xgboost/modin_xgboost
           - file: workflows/concepts
@@ -255,92 +253,64 @@ parts:
 
   - caption: Ray Clusters
     chapters:
-      - file: cluster/index
-      - file: cluster/quickstart
+      - file: cluster/getting-started
+        title: Getting Started
       - file: cluster/key-concepts
-      - file: cluster/user-guide
-      - file: cluster/cloud
-      - file: cluster/deploy
-      - file: cluster/api
-      - file: cluster/usage-stats
-      - file: cluster/cluster_under_construction
-        title: Ray Clusters (under construction)
+        title: Key Concepts
+      - file: cluster/kubernetes/index
+        title: Deploying a Ray Cluster on Kubernetes
         sections:
-          - file: cluster/cluster_under_construction/getting-started
-            title: Getting Started
-          - file: cluster/cluster_under_construction/key-concepts
-            title: Key Concepts
-          - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/index
-            title: Ray Clusters on Kubernetes
+        - file: cluster/kubernetes/getting-started
+        - file: cluster/kubernetes/user-guides
+          sections:
+            - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
+            - file: cluster/kubernetes/user-guides/config.md
+            - file: cluster/kubernetes/user-guides/autoscaling.md
+            - file: cluster/kubernetes/user-guides/logging.md
+            - file: cluster/kubernetes/user-guides/gpu.md
+            - file: cluster/kubernetes/user-guides/kuberay-vs-legacy.md
+        - file: cluster/kubernetes/examples
+          sections:
+            - file: cluster/kubernetes/examples/ml-example.md
+        - file: cluster/kubernetes/references
+      - file: cluster/vms/index
+        title: Deploying a Ray Cluster on VMs
+        sections:
+        - file: cluster/vms/getting-started
+        - file: cluster/vms/user-guides/index
+          title: User Guides
+          sections:
+          - file: cluster/vms/user-guides/launching-clusters/index
+            title: Launching Clusters
+          - file: cluster/vms/user-guides/large-cluster-best-practices
+          - file: cluster/vms/user-guides/configuring-autoscaling
+          - file: cluster/vms/user-guides/community/index
+            title: Community-supported Cluster Managers
             sections:
-            - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/getting-started
-            - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides
-              sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/k8s-cluster-setup.md
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/config.md
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/autoscaling.md
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/logging.md
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/gpu.md
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/user-guides/kuberay-vs-legacy.md
-            - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples
-              sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/examples/ml-example.md
-            - file: cluster/cluster_under_construction/ray-clusters-on-kubernetes/references
-          - file: cluster/cluster_under_construction/ray-clusters-on-vms/index
-            title: Ray Clusters on VMs
-            sections:
-            - file: cluster/cluster_under_construction/ray-clusters-on-vms/getting-started
-            - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/index
-              title: User Guides
-              sections:
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/installing-ray
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/index
-                title: Launching Clusters
-                sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/aws
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/azure
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/gcp
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/launching-clusters/add-your-own-cloud-provider
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-ray-cluster-on-prem
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/monitoring-and-observing-ray-cluster
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/large-cluster-best-practices
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/multi-tenancy-best-practices
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/configuring-autoscaling
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/index
-                title: Community-supported Cluster Managers
-                sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/yarn
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/slurm
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/community-supported-cluster-manager/lsf
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/index
-                title: Running Jobs
-                sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-cli
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-sdk
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/job-submission-rest
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/user-guides/running-jobs/ray-client
-            - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/index
-              title: Examples
-              sections:
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/index
-                sections:
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/launching-ray-cluster
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/running-job-via-job-submission
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/scale-your-job-with-autoscaling
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/observe-your-app
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/learn-ray-cluster-basics/shutting-down-your-ray-cluster
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-development/index
-                sections:
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-development/todo
-              - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/index
-                sections:
-                  - file: cluster/cluster_under_construction/ray-clusters-on-vms/examples/setting-up-ray-cluster-for-production/todo
-            - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/index
-              sections:
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/job-submission-apis
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-cli
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/ray-cluster-configuration
-                - file: cluster/cluster_under_construction/ray-clusters-on-vms/references/autoscaler-sdk-api
+            - file: cluster/vms/user-guides/community/yarn
+            - file: cluster/vms/user-guides/community/slurm
+            - file: cluster/vms/user-guides/community/lsf
+        - file: cluster/vms/examples/index
+          title: Examples
+          sections:
+          - file: cluster/vms/examples/ml-example
+        - file: cluster/vms/references/index
+      - file: cluster/running-applications/index
+        title: Running Applications on Ray Clusters
+      - file: cluster/references/index
+        title: References
+
+      - file: cluster-deprecated/index
+        title: Deprecated Ray Clusters Docs
+        sections:
+        - file: cluster-deprecated/key-concepts
+        - file: cluster-deprecated/cloud
+        - file: cluster-deprecated/quickstart
+        - file: cluster-deprecated/usage-stats
+        - file: cluster-deprecated/user-guide
+        - file: cluster-deprecated/cluster_under_construction.md
+        - file: cluster-deprecated/deploy
+        - file: cluster-deprecated/api
 
   - caption: References
     chapters:
