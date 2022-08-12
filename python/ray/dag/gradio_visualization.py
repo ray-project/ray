@@ -12,6 +12,7 @@ from functools import partial
 from typing import Any, Dict
 from collections import defaultdict
 import json
+import logging
 
 import gradio as gr
 
@@ -20,6 +21,8 @@ from PIL import ImageFile
 import pandas as pd
 import numpy as np
 import typing
+
+logger = logging.getLogger(__file__)
 
 class GraphVisualizer:
     # maps dag nodes to unique instance of a gradio block
@@ -31,7 +34,6 @@ class GraphVisualizer:
 
     def __init__(self):
         self.name_generator = _DAGNodeNameGenerator()
-        self.count = 0
 
     def block_type(self, node):
         return_type_str = node.get_return_type()
@@ -57,6 +59,8 @@ class GraphVisualizer:
             return gr.JSON
         elif issubclass(return_type, ImageFile.ImageFile):
             return gr.Image
+
+        logger.warning("Return type is not supported in Gradio. Defaulting to gr.Textbox.")
         return gr.Textbox
 
     def update_block(self, u, *args):
