@@ -262,7 +262,7 @@ Additionally, if your model expects a tensor or ``ndarray``, create a tensor usi
     :start-after: __concatenate_start__
     :end-before: __concatenate_end__
 
-Text Data
+Text data
 ~~~~~~~~~
 
 A `document-term matrix <https://en.wikipedia.org/wiki/Document-term_matrix>`_ is a
