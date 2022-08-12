@@ -57,7 +57,7 @@ When the resource demands of the Ray workload exceed the
 current capacity of the cluster, the autoscaler will try to increase the number of worker nodes. When worker nodes
 sit idle, the autoscaler will remove worker nodes from the cluster.
 
-It is important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics.
+It is important to understand that the autoscaler only reacts to task and actor resource requests, and not application metrics or physical resource utilization.
 To learn more about autoscaling, refer to the user guides for Ray clusters on :ref:`VMs <cloud-vm-index>` and :ref:`Kubernetes <kuberay-index>`.
 
 .. _cluster-clients-and-jobs:
