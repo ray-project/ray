@@ -11,7 +11,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import (
     _PyObjScanner,
-    delete_instance as delete_scanner_instance,
+    _instances as ScannerInstances,
 )
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
@@ -60,7 +60,7 @@ class Query:
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
 
         # Make the scanner GCable to avoid memory leak
-        delete_scanner_instance(id(scanner))
+        del ScannerInstances[id(scanner)]
 
 
 class ReplicaSet:
