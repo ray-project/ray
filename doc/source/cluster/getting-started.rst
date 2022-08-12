@@ -4,7 +4,7 @@ Ray Clusters Overview
 =====================
 
 Ray enables seamless scaling of workloads from a laptop to a large cluster. While Ray
-works out of the box on single machines with just a call to `ray.init`, to run Ray
+works out of the box on single machines with just a call to ``ray.init``, to run Ray
 applications on multiple nodes you must first *deploy a Ray cluster*.
 
 A Ray cluster is a set of worker nodes connected to a common :ref:`Ray head node <cluster-head-node>`.
