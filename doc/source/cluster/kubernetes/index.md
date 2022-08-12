@@ -98,5 +98,3 @@ using KubeRay:
 ```shell
 kubectl delete crd rayclusters.cluster.ray.io
 ```
-
-```
