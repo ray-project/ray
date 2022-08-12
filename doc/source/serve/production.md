@@ -54,7 +54,7 @@ $ python3
     8
 ```
 
-Once we're finished, we can close the Python interpreter by running `quit()` and terminate the Ray cluster by typing `ctrl-C` int the terminal running `serve run`. This will tear down the deployments and then the cluster.
+Once we're finished, we can close the Python interpreter by running `quit()` and terminate the Ray cluster by typing `ctrl-C` into the terminal running `serve run`. This will tear down the deployments and then the cluster.
 
 (serve-in-production-config-file)=
 
