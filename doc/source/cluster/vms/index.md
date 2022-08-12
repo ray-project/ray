@@ -17,7 +17,7 @@ Concretely, you will learn how to:
 
 ## Learn More
 
-The Ray docs present all the information you need to start running Ray workloads on Kubernetes.
+The Ray docs present all the information you need to start running Ray workloads on VMs.
 
 ```{eval-rst}
 .. panels::
