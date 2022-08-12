@@ -61,7 +61,7 @@ dataclasses; python_version < '3.7'
 feather-format
 google-api-python-client
 google-cloud-storage
-gym-minigrid
+gym-minigrid==1.0.3
 kubernetes
 lxml
 moto[s3,server]
