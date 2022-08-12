@@ -192,7 +192,6 @@ parts:
                   - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
                   - file: serve/tutorials/deployment-graph-patterns/branching_input
                   - file: serve/tutorials/deployment-graph-patterns/conditional
-          - file: serve/faq
           - file: serve/package-ref
 
       - file: rllib/index
