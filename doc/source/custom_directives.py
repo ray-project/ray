@@ -127,8 +127,7 @@ def mock_modules():
 
 # Add doc files from external repositories to be downloaded during build here
 # (repo, ref, path to get, path to save on disk)
-EXTERNAL_MARKDOWN_FILES = [
-]
+EXTERNAL_MARKDOWN_FILES = []
 
 
 class DownloadAndPreprocessEcosystemDocs:
