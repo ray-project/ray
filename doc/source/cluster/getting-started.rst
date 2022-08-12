@@ -20,7 +20,7 @@ Ray provides native cluster deployment support on the following technology stack
 * On :ref:`Kubernetes <kuberay-index>`, via the officially supported KubeRay project.
 
 Advanced users may want to :ref:`deploy Ray manually <on-prem>`
-or onto platforms not listed here by :ref:`implementing a custom node provider <ref-cluster-setup>`.
+or onto :ref:`platforms not listed here <ref-cluster-setup>`.
 
 What's next?
 ------------
