@@ -549,7 +549,7 @@ Assuming you have stored this configuration in a file called `cluster.yaml`, you
 ray submit cluster.yaml example.py --start
 ```
 
-```{link-button} cluster-cloud
+```{link-button} cluster-index
 :type: ref
 :text: Learn more about launching Ray Clusters
 :classes: btn-outline-primary btn-block

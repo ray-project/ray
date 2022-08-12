@@ -60,7 +60,7 @@ parts:
               - file: data/advanced-pipelines
               - file: data/random-access
           - file: data/faq
-          - file: data/package-ref
+          - file: data/api/api
           - file: data/integrations
 
       - file: train/train
@@ -216,10 +216,7 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-more-libs/ray-lightning
           - file: ray-core/examples/using-ray-with-pytorch-lightning
-          - file: ray-core/examples/dask_xgboost/dask_xgboost
-          - file: ray-core/examples/modin_xgboost/modin_xgboost
           - file: workflows/concepts
             title: Ray Workflows
             sections:
@@ -257,23 +254,22 @@ parts:
       - file: cluster/key-concepts
         title: Key Concepts
       - file: cluster/kubernetes/index
-        title: Deploying a Ray Cluster on Kubernetes
+        title: Deploying on Kubernetes
         sections:
         - file: cluster/kubernetes/getting-started
         - file: cluster/kubernetes/user-guides
           sections:
             - file: cluster/kubernetes/user-guides/k8s-cluster-setup.md
             - file: cluster/kubernetes/user-guides/config.md
-            - file: cluster/kubernetes/user-guides/autoscaling.md
+            - file: cluster/kubernetes/user-guides/configuring-autoscaling.md
             - file: cluster/kubernetes/user-guides/logging.md
             - file: cluster/kubernetes/user-guides/gpu.md
-            - file: cluster/kubernetes/user-guides/kuberay-vs-legacy.md
         - file: cluster/kubernetes/examples
           sections:
             - file: cluster/kubernetes/examples/ml-example.md
         - file: cluster/kubernetes/references
       - file: cluster/vms/index
-        title: Deploying a Ray Cluster on VMs
+        title: Deploying on VMs
         sections:
         - file: cluster/vms/getting-started
         - file: cluster/vms/user-guides/index
@@ -295,25 +291,13 @@ parts:
           - file: cluster/vms/examples/ml-example
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
-        title: Running Applications on Ray Clusters
-      - file: cluster/references/index
-        title: References
+        title: Applications Guide
 
-      - file: cluster-deprecated/index
-        title: Deprecated Ray Clusters Docs
-        sections:
-        - file: cluster-deprecated/key-concepts
-        - file: cluster-deprecated/cloud
-        - file: cluster-deprecated/quickstart
-        - file: cluster-deprecated/usage-stats
-        - file: cluster-deprecated/user-guide
-        - file: cluster-deprecated/cluster_under_construction.md
-        - file: cluster-deprecated/deploy
-        - file: cluster-deprecated/api
 
   - caption: References
     chapters:
       - file: ray-references/api
+      - file: cluster/usage-stats
 
   - caption: Developer Guides
     chapters:
