@@ -90,12 +90,13 @@ the project.
 and discussion of new and upcoming features.
 
 ```{note}
-The KubeRay operator replaces the older Ray operator hosted in the [Ray repository]().
-Check the read me.
+The KubeRay operator replaces the older Ray operator hosted in the [Ray repository](https://github.com/ray-project/ray/tree/releases/2.0.0/python/ray/ray_operato://github.com/ray-project/ray/tree/releases/2.0.0/python/ray/ray_operator).
+Check the linked README for migration notes.
 
-As a quick tip, make sure to de-register the legacy Ray operator's CRD before
-using KubeRay!
+Make sure to de-register the legacy Ray operator's CRD before
+using KubeRay:
 ```shell
 kubectl delete crd rayclusters.cluster.ray.io
 ```
+
 ```
