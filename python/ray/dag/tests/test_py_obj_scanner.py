@@ -56,7 +56,7 @@ def test_scanner_gc():
         scanner = _PyObjScanner(source_type=Source)
         my_objs = [Source(), [Source(), {"key": Source()}]]
         found = scanner.find_nodes(my_objs)
-        replaced = scanner.replace_nodes({obj: 1 for obj in found})
+        scanner.replace_nodes({obj: 1 for obj in found})
         gc.collect()
         assert len(gc.get_referrers(scanner)) == 1
         scanner.clear()
