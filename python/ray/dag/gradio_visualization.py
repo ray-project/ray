@@ -15,6 +15,11 @@ import json
 
 import gradio as gr
 
+from pydoc import locate
+from PIL import ImageFile
+import pandas as pd
+import numpy as np
+import typing
 
 class GraphVisualizer:
     # maps dag nodes to unique instance of a gradio block
@@ -29,28 +34,29 @@ class GraphVisualizer:
         self.count = 0
 
     def block_type(self, node):
-        return_type = node.get_return_type()
-
-        if return_type == "<class 'int'>":
+        return_type_str = node.get_return_type()
+        if return_type_str == "typing.Tuple[int, int]":
+            return gr.Audio
+        
+        return_type = locate(return_type_str)
+        if return_type is int:
             return gr.Number
-        elif return_type == "<class 'str'>":
+        elif return_type is str:
             return gr.Textbox
-        elif return_type == "<class 'bool'>":
+        elif return_type is bool:
             return gr.Checkbox
-        elif return_type == "<class 'pandas.core.frame.DataFrame'>":
+        elif return_type is pd.DataFrame:
             return gr.Dataframe
         elif (
-            return_type == "<class 'list'>"
-            or return_type == "<class 'dict'>"
-            or return_type == "<class 'numpy.ndarray'>"
-            or return_type == "typing.List"
-            or return_type == "typing.Dict"
+            return_type is list
+            or return_type is dict
+            or return_type is np.ndarray
+            or return_type is typing.List
+            or return_type is typing.Dict
         ):
             return gr.JSON
-        elif return_type == "<class 'PIL.ImageFile.ImageFile'>":
+        elif issubclass(return_type, ImageFile.ImageFile):
             return gr.Image
-        elif return_type == "typing.Tuple[int, int]":
-            return gr.Audio
         return gr.Textbox
 
     def update_block(self, u, *args):
@@ -88,7 +94,6 @@ class GraphVisualizer:
                             label=names[node_uuid], interactive=False
                         )
 
-        # for depth in range(max_depth + 1, -1, -1):
         for depth in range(max_depth + 1):
             with gr.Row():
                 render_depth(depth)
@@ -112,9 +117,9 @@ class GraphVisualizer:
 
         return node
 
-    def submit_fn(self, *args):
-        self.dag_handle.predict.remote(args)
-        self.cache = ray.get(self.dag_handle.get_intermediate_node_object_refs.remote())
+    def submit_fn(self, dag_handle, *args):
+        dag_handle.predict.remote(args)
+        self.cache = ray.get(dag_handle.get_intermediate_node_object_refs.remote())
         return args
 
     def visualize_with_gradio(self, dag_handle):
@@ -122,10 +127,8 @@ class GraphVisualizer:
         self.input_node_to_block = {}
         self.uuid_to_node = {}
 
-        self.dag_handle = dag_handle
-
         # Load the root dag node from dag_handle
-        dag_node_json = ray.get(self.dag_handle.get_dag_node_json.remote())
+        dag_node_json = ray.get(dag_handle.get_dag_node_json.remote())
         dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
 
         self.names = {}
@@ -141,7 +144,7 @@ class GraphVisualizer:
             input_blocks = list(self.input_node_to_block.values())
             output_blocks = [self.node_to_block[u] for u in self.input_node_to_block]
             submit.click(
-                fn=self.submit_fn,
+                fn=partial(self.submit_fn, dag_handle),
                 inputs=input_blocks,
                 outputs=output_blocks,
             )
