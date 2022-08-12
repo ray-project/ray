@@ -4,7 +4,7 @@ updates:
   - package-ecosystem: "pip"
     # If we want to add more requirements here (Core, Serve, etc.), then we should
     # make additional subdirectories for each one.
-    directory: "/python/requirements/ml"
+    directory: "/python/requirements/air"
     schedule:
       # Automatic upgrade checks Saturday at 12 AM.
       # Dependabot updates can still be manually triggered via Github at any time.

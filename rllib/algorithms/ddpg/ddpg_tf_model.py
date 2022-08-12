@@ -39,7 +39,7 @@ class DDPGTFModel(TFModelV2):
         """Initialize variables of this model.
 
         Extra model kwargs:
-            actor_hiddens (list): Defines size of hidden layers for the DDPG
+            actor_hiddens: Defines size of hidden layers for the DDPG
                 policy head.
                 These will be used to postprocess the model output for the
                 purposes of computing deterministic actions.
@@ -149,9 +149,9 @@ class DDPGTFModel(TFModelV2):
         This implements Q(s, a).
 
         Args:
-            model_out (Tensor): obs embeddings from the model layers, of shape
+            model_out: obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
-            actions (Tensor): Actions to return the Q-values for.
+            actions: Actions to return the Q-values for.
                 Shape: [BATCH_SIZE, action_dim].
 
         Returns:
@@ -170,9 +170,9 @@ class DDPGTFModel(TFModelV2):
         This implements the twin Q(s, a).
 
         Args:
-            model_out (Tensor): obs embeddings from the model layers, of shape
+            model_out: obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
-            actions (Tensor): Actions to return the Q-values for.
+            actions: Actions to return the Q-values for.
                 Shape: [BATCH_SIZE, action_dim].
 
         Returns:
@@ -190,7 +190,7 @@ class DDPGTFModel(TFModelV2):
         is the action directly.
 
         Args:
-            model_out (Tensor): obs embeddings from the model layers, of shape
+            model_out: obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
 
         Returns:

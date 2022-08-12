@@ -32,9 +32,9 @@ class ConvEncoder(nn.Module):
         """Initializes Conv Encoder
 
         Args:
-            depth (int): Number of channels in the first conv layer
-            act (Any): Activation for Encoder, default ReLU
-            shape (List): Shape of observation input
+            depth: Number of channels in the first conv layer
+            act: Activation for Encoder, default ReLU
+            shape: Shape of observation input
         """
         super().__init__()
         self.act = act
@@ -86,11 +86,11 @@ class ConvDecoder(nn.Module):
         """Initializes a ConvDecoder instance.
 
         Args:
-            input_size (int): Input size, usually feature size output from
+            input_size: Input size, usually feature size output from
                 RSSM.
-            depth (int): Number of channels in the first conv layer
-            act (Any): Activation for Encoder, default ReLU
-            shape (List): Shape of observation input
+            depth: Number of channels in the first conv layer
+            act: Activation for Encoder, default ReLU
+            shape: Shape of observation input
         """
         super().__init__()
         self.act = act
@@ -143,13 +143,13 @@ class DenseDecoder(nn.Module):
         """Initializes FC network
 
         Args:
-            input_size (int): Input size to network
-            output_size (int): Output size to network
-            layers (int): Number of layers in network
-            units (int): Size of the hidden layers
-            dist (str): Output distribution, parameterized by FC output
+            input_size: Input size to network
+            output_size: Output size to network
+            layers: Number of layers in network
+            units: Size of the hidden layers
+            dist: Output distribution, parameterized by FC output
                 logits.
-            act (Any): Activation function
+            act: Activation function
         """
         super().__init__()
         self.layrs = layers
@@ -204,15 +204,15 @@ class ActionDecoder(nn.Module):
         """Initializes Policy
 
         Args:
-            input_size (int): Input size to network
-            action_size (int): Action space size
-            layers (int): Number of layers in network
-            units (int): Size of the hidden layers
-            dist (str): Output distribution, with tanh_normal implemented
-            act (Any): Activation function
-            min_std (float): Minimum std for output distribution
-            init_std (float): Intitial std
-            mean_scale (float): Augmenting mean output from FC network
+            input_size: Input size to network
+            action_size: Action space size
+            layers: Number of layers in network
+            units: Size of the hidden layers
+            dist: Output distribution, with tanh_normal implemented
+            act: Activation function
+            min_std: Minimum std for output distribution
+            init_std: Intitial std
+            mean_scale: Augmenting mean output from FC network
         """
         super().__init__()
         self.layrs = layers
@@ -280,12 +280,12 @@ class RSSM(nn.Module):
         """Initializes RSSM
 
         Args:
-            action_size (int): Action space size
-            embed_size (int): Size of ConvEncoder embedding
-            stoch (int): Size of the distributional hidden state
-            deter (int): Size of the deterministic hidden state
-            hidden (int): General size of hidden layers
-            act (Any): Activation function
+            action_size: Action space size
+            embed_size: Size of ConvEncoder embedding
+            stoch: Size of the distributional hidden state
+            deter: Size of the deterministic hidden state
+            hidden: General size of hidden layers
+            act: Activation function
         """
         super().__init__()
         self.stoch_size = stoch
@@ -316,7 +316,7 @@ class RSSM(nn.Module):
         pushed through the GRUCell.
 
         Args:
-            batch_size (int): Batch size for initial state
+            batch_size: Batch size for initial state
 
         Returns:
             List of tensors
@@ -337,8 +337,8 @@ class RSSM(nn.Module):
         intermediate states between.
 
         Args:
-            embed (TensorType): ConvEncoder embedding
-            action (TensorType): Actions
+            embed: ConvEncoder embedding
+            action: Actions
             state (List[TensorType]): Initial state before rollout
 
         Returns:
@@ -380,7 +380,7 @@ class RSSM(nn.Module):
         Similar to observe(), requires rolling out the RNN for each timestep.
 
         Args:
-            action (TensorType): Actions
+            action: Actions
             state (List[TensorType]): Starting state before rollout
 
         Returns:
@@ -408,9 +408,9 @@ class RSSM(nn.Module):
         """Runs through the posterior model and returns the posterior state
 
         Args:
-            prev_state (TensorType): The previous state
-            prev_action (TensorType): The previous action
-            embed (TensorType): Embedding from ConvEncoder
+            prev_state: The previous state
+            prev_action: The previous action
+            embed: Embedding from ConvEncoder
 
         Returns:
             Post and Prior state
@@ -432,8 +432,8 @@ class RSSM(nn.Module):
         """Runs through the prior model and returns the prior state
 
         Args:
-            prev_state (TensorType): The previous state
-            prev_action (TensorType): The previous action
+            prev_state: The previous state
+            prev_action: The previous action
 
         Returns:
             Prior state
@@ -550,6 +550,8 @@ class DreamerModel(TorchModelV2, nn.Module):
         self.state = self.dynamics.get_initial_state(1) + [
             torch.zeros(1, self.action_space.shape[0]).to(self.device)
         ]
+        # returned state should be of shape (state_dim, )
+        self.state = [s.squeeze(0) for s in self.state]
         return self.state
 
     def value_function(self) -> TensorType:

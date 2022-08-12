@@ -1,5 +1,5 @@
 diff --git a/ray-operator/config/default/kustomization.yaml b/ray-operator/config/default/kustomization.yaml
-index 7df72cd..b67c047 100644
+index 7df72cd..9db211a 100644
 --- a/ray-operator/config/default/kustomization.yaml
 +++ b/ray-operator/config/default/kustomization.yaml
 @@ -23,5 +23,5 @@ bases:
@@ -7,10 +7,10 @@ index 7df72cd..b67c047 100644
  - name: kuberay/operator
    newName: kuberay/operator
 -  newTag: nightly
-+  newTag: a46ba3f
++  newTag: 69ecfce
  
 diff --git a/ray-operator/config/manager/manager.yaml b/ray-operator/config/manager/manager.yaml
-index ef5318f..b5f32bf 100644
+index 1ddde41..274bfc9 100644
 --- a/ray-operator/config/manager/manager.yaml
 +++ b/ray-operator/config/manager/manager.yaml
 @@ -21,8 +21,8 @@ spec:
@@ -22,5 +22,6 @@ index ef5318f..b5f32bf 100644
 +        args:
 +        - --prioritize-workers-to-delete
          image: kuberay/operator
-         name: ray-manager
-         securityContext:
+         ports:
+         - name: http
+

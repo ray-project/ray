@@ -26,7 +26,7 @@ class D4RLReader(InputReader):
         import d4rl
 
         self.env = gym.make(inputs)
-        self.dataset = convert_to_batch(d4rl.qlearning_dataset(self.env))
+        self.dataset = _convert_to_batch(d4rl.qlearning_dataset(self.env))
         assert self.dataset.count >= 1
         self.counter = 0
 
@@ -39,7 +39,7 @@ class D4RLReader(InputReader):
         return self.dataset.slice(start=self.counter, end=self.counter + 1)
 
 
-def convert_to_batch(dataset: Dict) -> SampleBatchType:
+def _convert_to_batch(dataset: Dict) -> SampleBatchType:
     # Converts D4RL dataset to SampleBatch
     d = {}
     d[SampleBatch.OBS] = dataset["observations"]

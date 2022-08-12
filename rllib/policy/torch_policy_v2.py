@@ -1,24 +1,15 @@
 import copy
 import functools
-import gym
 import logging
 import math
-import numpy as np
 import os
 import threading
 import time
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, Union
+
+import gym
+import numpy as np
 import tree  # pip install dm_tree
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    Union,
-    TYPE_CHECKING,
-)
 
 import ray
 from ray.rllib.models.catalog import ModelCatalog
@@ -26,16 +17,16 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import force_list, NullContextManager
+from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
+from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import (
     DeveloperAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-    override,
     is_overridden,
+    override,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
@@ -45,12 +36,12 @@ from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     GradInfoDict,
     ModelGradients,
     ModelWeights,
-    TensorType,
     TensorStructType,
-    TrainerConfigDict,
+    TensorType,
 )
 
 if TYPE_CHECKING:
@@ -70,7 +61,7 @@ class TorchPolicyV2(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         *,
         max_seq_len: int = 20,
     ):
@@ -84,6 +75,7 @@ class TorchPolicyV2(Policy):
         """
         self.framework = config["framework"] = "torch"
 
+        self._loss_initialized = False
         super().__init__(observation_space, action_space, config)
 
         # Create model.
@@ -102,26 +94,15 @@ class TorchPolicyV2(Policy):
         #   parallelization will be done.
 
         # Get devices to build the graph on.
-        worker_idx = self.config.get("worker_index", 0)
-        if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
-            num_gpus = 0
-        elif worker_idx == 0:
-            num_gpus = config["num_gpus"]
-        else:
-            num_gpus = config["num_gpus_per_worker"]
+        num_gpus = self._get_num_gpus_for_policy()
         gpu_ids = list(range(torch.cuda.device_count()))
+        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
         # - No GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-            logger.info(
-                "TorchPolicy (worker={}) running on {}.".format(
-                    worker_idx if worker_idx > 0 else "local",
-                    "{} fake-GPUs".format(num_gpus) if config["_fake_gpus"] else "CPU",
-                )
-            )
             self.device = torch.device("cpu")
             self.devices = [self.device for _ in range(int(math.ceil(num_gpus)) or 1)]
             self.model_gpu_towers = [
@@ -139,14 +120,9 @@ class TorchPolicyV2(Policy):
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
-            logger.info(
-                "TorchPolicy (worker={}) running on {} GPU(s).".format(
-                    worker_idx if worker_idx > 0 else "local", num_gpus
-                )
-            )
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            if ray.worker._mode() == ray.worker.WORKER_MODE:
+            if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
             if len(gpu_ids) < num_gpus:
@@ -220,6 +196,9 @@ class TorchPolicyV2(Policy):
 
         self.batch_divisibility_req = self.get_batch_divisibility_req()
         self.max_seq_len = max_seq_len
+
+    def loss_initialized(self):
+        return self._loss_initialized
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
@@ -416,7 +395,7 @@ class TorchPolicyV2(Policy):
         New columns can be added to sample_batch and existing ones may be altered.
 
         Args:
-            sample_batch (SampleBatch): The SampleBatch to postprocess.
+            sample_batch: The SampleBatch to postprocess.
             other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
                 dict of AgentIDs mapping to other agents' trajectory data (from the
                 same episode). NOTE: The other agents use the same policy.
@@ -588,14 +567,14 @@ class TorchPolicyV2(Policy):
             # Action dist class and inputs are generated via custom function.
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
-                    input_dict=input_dict,
+                    obs_batch=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=False,
                     is_training=False,
                 )
+
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
@@ -700,7 +679,7 @@ class TorchPolicyV2(Policy):
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
-        return len(self._loaded_batches[buffer_index])
+        return sum(len(b) for b in self._loaded_batches[buffer_index])
 
     @override(Policy)
     @DeveloperAPI
@@ -922,7 +901,11 @@ class TorchPolicyV2(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Then the Policy's (NN) weights.
+
+        # Restore glbal timestep.
+        self.global_timestep = state["global_timestep"]
+
+        # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @override(Policy)
@@ -1013,7 +996,6 @@ class TorchPolicyV2(Policy):
         if is_overridden(self.action_sampler_fn):
             action_dist = dist_inputs = None
             actions, logp, state_out = self.action_sampler_fn(
-                self,
                 self.model,
                 obs_batch=input_dict,
                 state_batches=state_batches,
@@ -1025,9 +1007,8 @@ class TorchPolicyV2(Policy):
             self.exploration.before_compute_actions(explore=explore, timestep=timestep)
             if is_overridden(self.action_distribution_fn):
                 dist_inputs, dist_class, state_out = self.action_distribution_fn(
-                    self,
                     self.model,
-                    input_dict=input_dict,
+                    obs_batch=input_dict,
                     state_batches=state_batches,
                     seq_lens=seq_lens,
                     explore=explore,

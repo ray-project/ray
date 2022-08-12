@@ -1,7 +1,7 @@
 py_test(
  name = "test_modin",
- size = "small",
+ size = "large",
  srcs = ["test_modin.py"],
- deps = ["//:ray_lib"],
+ deps = ["//:ray_lib", "//python/ray/tests:conftest"],
  tags = ["team:core", "exclusive"],
 )

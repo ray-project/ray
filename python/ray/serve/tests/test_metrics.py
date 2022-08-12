@@ -6,7 +6,8 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve.utils import block_until_http_ready
+from ray.serve._private.utils import block_until_http_ready
+import ray.experimental.state.api as state_api
 
 
 def test_serve_metrics_for_successful_connection(serve_instance):
@@ -14,11 +15,10 @@ def test_serve_metrics_for_successful_connection(serve_instance):
     async def f(request):
         return "hello"
 
-    f.deploy()
+    handle = serve.run(f.bind())
 
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
-    handle = f.get_handle()
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])
     ray.get([handle.remote(url) for _ in range(10)])
 
@@ -102,7 +102,7 @@ def test_http_metrics(serve_instance):
             # Trigger RayActorError
             os._exit(0)
 
-    A.deploy()
+    serve.run(A.bind())
     requests.get("http://127.0.0.1:8000/A/")
     requests.get("http://127.0.0.1:8000/A/")
     try:
@@ -140,6 +140,19 @@ def test_http_metrics(serve_instance):
         wait_for_condition(verify_error_count, retry_interval_ms=1000, timeout=10)
     except RuntimeError:
         verify_error_count(do_assert=True)
+
+
+def test_actor_summary(serve_instance):
+    @serve.deployment
+    def f():
+        pass
+
+    serve.run(f.bind())
+    actors = state_api.list_actors()
+    class_names = {actor["class_name"] for actor in actors}
+    assert class_names.issuperset(
+        {"ServeController", "HTTPProxyActor", "ServeReplica:f"}
+    )
 
 
 if __name__ == "__main__":

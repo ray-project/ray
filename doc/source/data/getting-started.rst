@@ -49,6 +49,9 @@ or remote storage in desired format, using ``.write_csv()``, ``.write_json()``, 
    :start-after: __save_dataset_begin__
    :end-before: __save_dataset_end__
 
+See the :ref:`Creating Datasets <creating_datasets>` and :ref:`Saving Datasets
+<saving_datasets>` guides for more details on how to create and save datasets.
+
 
 Transforming Datasets
 ---------------------
@@ -76,8 +79,11 @@ actor pool of ``min`` to ``max`` actors to execute your transforms. This will ca
 the stateful setup at the actor creation time, which is particularly useful if the
 setup is expensive.
 
-Passing and accessing datasets
-------------------------------
+See the :ref:`Transforming Datasets guide <transforming_datasets>` for an in-depth guide
+on transforming datasets.
+
+Accessing and exchanging datasets
+---------------------------------
 
 Datasets can be passed to Ray tasks or actors and accessed with
 :meth:`.iter_batches() <ray.data.Dataset.iter_batches>` or
@@ -101,3 +107,6 @@ training actors:
    :language: python
    :start-after: __dataset_split_begin__
    :end-before: __dataset_split_end__
+
+See the :ref:`Consuming Datasets guide <consuming_datasets>` for an in-depth guide
+on accessing and exchanging datasets.

@@ -1,3 +1,4 @@
+(serve-ml-models)=
 # Serving ML Models
 
 This section should help you:
@@ -18,24 +19,10 @@ You can also have Ray Serve batch requests for performance, which is especially 
 1. Use `async def` for your request handling logic to process queries concurrently.
 2. Use the `@serve.batch` decorator to batch individual queries that come into the replica. The method/function that's decorated should handle a list of requests and return a list of the same length.
 
-```python
-@serve.deployment(route_prefix="/increment")
-class BatchingExample:
-    def __init__(self):
-        self.count = 0
-
-    @serve.batch
-    async def handle_batch(self, requests):
-        responses = []
-        for request in requests:
-            responses.append(request.json())
-
-        return responses
-
-    async def __call__(self, request):
-        return await self.handle_batch(request)
-
-BatchingExample.deploy()
+```{literalinclude} ../serve/doc_code/ml_models_examples.py
+:start-after: __batch_example_start__
+:end-before: __batch_example_end__
+:language: python
 ```
 
 Please take a look at [Batching Tutorial](serve-batch-tutorial) for a deep
@@ -47,7 +34,7 @@ dive.
 
 :::{note}
 Serve recently added an experimental API for building deployment graphs of multiple models.
-Please take a look at the [Deployment Graph API](serve-deployment-graph) and try it out!
+Please take a look at the [Deployment Graph API](serve-model-composition-deployment-graph) and try it out!
 :::
 
 Ray Serve supports composing individually scalable models into a single model
@@ -122,13 +109,13 @@ class MLflowDeployment:
         return self.model.predict(df)
 
 model_uri = "model:/my_registered_model/Production"
-MLflowDeployment.deploy(model_uri)
+serve.run(MLflowDeployment.bind(model_uri))
 ```
 
 To serve multiple different MLflow models in the same program, use the `name` option:
 
 ```python
-MLflowDeployment.options(name="my_mlflow_model_1").deploy(model_uri)
+serve.run(MLflowDeployment.options(name="my_mlflow_model_1").bind(model_uri))
 ```
 
 :::{tip}
@@ -240,12 +227,10 @@ if __name__ == '__main__':
     # directory ./mlruns
     run_id = create_and_save_model()
 
-    # Start the Ray Serve instance
-    serve.start()
     # Construct model uri to load the model from our model registry
     uri = f"runs:/{run_id}/model"
     # Deploy our model.
-    BoostingModel.deploy(uri)
+    serve.run(BoostingModel.bind(uri))
 
     # Send in a request for labels types virginica, setosa, versicolor
     sample_request_inputs = [{
@@ -294,7 +279,5 @@ tutorial is available [here](https://github.com/mlflow/mlflow/tree/master/exampl
 Ray Serve seamlessly integrates with popular Python ML libraries.
 Below are tutorials with some of these frameworks to help get you started.
 
-- [PyTorch Tutorial](serve-pytorch-tutorial)
-- [Scikit-Learn Tutorial](serve-sklearn-tutorial)
-- [Keras and Tensorflow Tutorial](serve-tensorflow-tutorial)
+- [Tensorflow, PyTorch, and Scikit-Learn Tutorials](serve-ml-models-tutorial)
 - [RLlib Tutorial](serve-rllib-tutorial)

@@ -30,9 +30,9 @@ class MixedInput(InputReader):
         """Initialize a MixedInput.
 
         Args:
-            dist (dict): dict mapping JSONReader paths or "sampler" to
+            dist: dict mapping JSONReader paths or "sampler" to
                 probabilities. The probabilities must sum to 1.0.
-            ioctx (IOContext): current IO context object.
+            ioctx: current IO context object.
         """
         if sum(dist.values()) != 1.0:
             raise ValueError("Values must sum to 1.0: {}".format(dist))

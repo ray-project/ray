@@ -16,6 +16,7 @@ You may also be interested in visiting the design patterns section for :ref:`act
     tree-of-tasks
     map-reduce
     limit-tasks
+    generators
     closure-capture
     fine-grained-tasks
     global-variables

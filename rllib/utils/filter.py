@@ -1,15 +1,21 @@
 import logging
-import numpy as np
 import threading
+
+import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.utils.numpy import SMALL_NUMBER
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import TensorStructType
 
 logger = logging.getLogger(__name__)
 
 
+# TODO(jungong) : Add Adapters to use these filters as agent connectors.
+
+
+@DeveloperAPI
 class Filter:
     """Processes input, possibly statefully."""
 
@@ -41,6 +47,7 @@ class Filter:
         return self.reset_buffer()
 
 
+@DeveloperAPI
 class NoFilter(Filter):
     is_concurrent = True
 
@@ -71,6 +78,7 @@ class NoFilter(Filter):
 
 
 # http://www.johndcook.com/blog/standard_deviation/
+@DeveloperAPI
 class RunningStat:
     def __init__(self, shape=None):
         self._n = 0
@@ -143,6 +151,7 @@ class RunningStat:
         return self._M.shape
 
 
+@DeveloperAPI
 class MeanStdFilter(Filter):
     """Keeps track of a running mean for seen states"""
 
@@ -287,6 +296,7 @@ class MeanStdFilter(Filter):
         )
 
 
+@DeveloperAPI
 class ConcurrentMeanStdFilter(MeanStdFilter):
     is_concurrent = True
 
@@ -321,6 +331,7 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
         )
 
 
+@DeveloperAPI
 def get_filter(filter_config, shape):
     # TODO(rliaw): move this into filter manager
     if filter_config == "MeanStdFilter":

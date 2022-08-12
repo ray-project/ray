@@ -14,8 +14,8 @@ class TableRow(Mapping):
     or Pandas DataFrames into per-row dicts. This class must be subclassed,
     with subclasses implementing ``__getitem__``, ``__iter__``, and ``__len__``.
 
-    Concrete subclasses include ``ray.data.impl.arrow_block.ArrowRow`` and
-    ``ray.data.impl.pandas_block.PandasRow``.
+    Concrete subclasses include ``ray.data._internal.arrow_block.ArrowRow`` and
+    ``ray.data._internal.pandas_block.PandasRow``.
     """
 
     def __init__(self, row: Any):

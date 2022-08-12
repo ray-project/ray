@@ -8,11 +8,13 @@ from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType, List, ModelConfigDict
+from ray.rllib.utils.annotations import DeveloperAPI
 
 tf1, tf, tfv = try_import_tf()
 
 
 # TODO: (sven) obsolete this class once we only support native keras models.
+@DeveloperAPI
 class FullyConnectedNetwork(TFModelV2):
     """Generic fully connected network implemented in ModelV2 API."""
 
@@ -150,6 +152,7 @@ class FullyConnectedNetwork(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
+@DeveloperAPI
 class Keras_FullyConnectedNetwork(tf.keras.Model if tf else object):
     """Generic fully connected network implemented in tf Keras."""
 

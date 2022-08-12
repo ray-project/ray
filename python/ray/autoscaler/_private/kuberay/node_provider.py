@@ -1,12 +1,15 @@
 import json
 import logging
-import requests
 from typing import Any, Dict, List, Tuple
 
+import requests
+
 from ray.autoscaler._private.constants import (
-    DISABLE_NODE_UPDATERS_KEY,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+    DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
+    WORKER_LIVENESS_CHECK_KEY,
+    WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
@@ -98,8 +101,8 @@ def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
     Loads secrets needed to access K8s resources.
 
     Returns:
-        headers (dict): Headers with K8s access token
-        verify (str): Path to certificate
+        headers: Headers with K8s access token
+        verify: Path to certificate
     """
     with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as secret:
         token = secret.read()
@@ -171,6 +174,12 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         assert (
             provider_config.get(FOREGROUND_NODE_LAUNCH_KEY, False) is True
         ), f"To use KuberayNodeProvider, must set `{FOREGROUND_NODE_LAUNCH_KEY}:True`."
+        assert (
+            provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
+        ), f"To use KuberayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
+        assert (
+            provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
+        ), f"To use KuberayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
         provider_exists = True
 
         super().__init__(provider_config, cluster_name)
@@ -198,7 +207,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Wrapper for REST GET of resource with proper headers."""
         url = url_from_resource(namespace=self.namespace, path=path)
         result = requests.get(url, headers=self.headers, verify=self.verify)
-        assert result.status_code == 200
+        if not result.status_code == 200:
+            result.raise_for_status()
         return result.json()
 
     def _get_non_terminating_pods(
@@ -243,7 +253,8 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
             headers={**self.headers, "Content-type": "application/json-patch+json"},
             verify=self.verify,
         )
-        assert result.status_code == 200
+        if not result.status_code == 200:
+            result.raise_for_status()
         return result.json()
 
     def create_node(

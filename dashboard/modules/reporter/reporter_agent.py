@@ -9,21 +9,19 @@ import sys
 import traceback
 import warnings
 
+import psutil
 
 import ray
-import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
-from ray.dashboard import k8s_utils
-import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
-from ray._private.gcs_pubsub import GcsAioPublisher
 import ray._private.services
 import ray._private.utils
-from ray.core.generated import reporter_pb2
-from ray.core.generated import reporter_pb2_grpc
-from ray.ray_constants import DEBUG_AUTOSCALING_STATUS
-from ray._private.metrics_agent import MetricsAgent, Gauge, Record
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+import ray.dashboard.utils as dashboard_utils
+from ray._private.metrics_agent import Gauge, MetricsAgent, Record
+from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray.dashboard import k8s_utils
 from ray.util.debug import log_once
-import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +33,10 @@ IN_KUBERNETES_POD = "KUBERNETES_SERVICE_HOST" in os.environ
 # disk usage defined as the result of running psutil.disk_usage("/")
 # in the Ray container.
 ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") == "1"
+# Try to determine if we're in a container.
+IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
+# Using existence of /sys/fs/cgroup as the criterion is consistent with
+# Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
 
 try:
     import gpustat.core as gpustat
@@ -154,7 +156,34 @@ METRICS_GAUGES = {
         "raylet_cpu", "CPU usage of the raylet on a node.", "percentage", ["ip", "pid"]
     ),
     "raylet_mem": Gauge(
-        "raylet_mem", "Memory usage of the raylet on a node", "mb", ["ip", "pid"]
+        "raylet_mem",
+        "RSS usage of the Raylet on the node.",
+        "MB",
+        ["ip", "pid"],
+    ),
+    "raylet_mem_uss": Gauge(
+        "raylet_mem_uss",
+        "USS usage of the Raylet on the node. Only available on Linux",
+        "MB",
+        ["ip", "pid"],
+    ),
+    "workers_cpu": Gauge(
+        "workers_cpu",
+        "Total CPU usage of all workers on a node.",
+        "percentage",
+        ["ip"],
+    ),
+    "workers_mem": Gauge(
+        "workers_mem",
+        "RSS usage of all workers on the node.",
+        "MB",
+        ["ip"],
+    ),
+    "workers_mem_uss": Gauge(
+        "workers_mem_uss",
+        "USS usage of all workers on the node. Only available on Linux",
+        "MB",
+        ["ip"],
     ),
     "cluster_active_nodes": Gauge(
         "cluster_active_nodes", "Active nodes on the cluster", "count", ["node_type"]
@@ -180,14 +209,25 @@ class ReporterAgent(
     def __init__(self, dashboard_agent):
         """Initialize the reporter object."""
         super().__init__(dashboard_agent)
-        if IN_KUBERNETES_POD:
-            # psutil does not compute this correctly when in a K8s pod.
-            # Use ray._private.utils instead.
-            cpu_count = ray._private.utils.get_num_cpus()
-            self._cpu_counts = (cpu_count, cpu_count)
-        else:
-            self._cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
 
+        if IN_KUBERNETES_POD or IN_CONTAINER:
+            # psutil does not give a meaningful logical cpu count when in a K8s pod, or
+            # in a container in general.
+            # Use ray._private.utils for this instead.
+            logical_cpu_count = ray._private.utils.get_num_cpus(
+                override_docker_cpu_warning=True
+            )
+            # (Override the docker warning to avoid dashboard log spam.)
+
+            # The dashboard expects a physical CPU count as well.
+            # This is not always meaningful in a container, but we will go ahead
+            # and give the dashboard what it wants using psutil.
+            physical_cpu_count = psutil.cpu_count(logical=False)
+        else:
+            logical_cpu_count = psutil.cpu_count()
+            physical_cpu_count = psutil.cpu_count(logical=False)
+        self._cpu_counts = (logical_cpu_count, physical_cpu_count)
+        self._gcs_aio_client = dashboard_agent.gcs_aio_client
         self._ip = dashboard_agent.ip
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
         self._hostname = socket.gethostname()
@@ -339,9 +379,10 @@ class ReporterAgent(
             return []
         else:
             workers = set(raylet_proc.children())
-            self._workers.intersection_update(workers)
-            self._workers.update(workers)
-            self._workers.discard(psutil.Process())
+            # Remove the current process (reporter agent), which is also a child of
+            # the Raylet.
+            workers.discard(psutil.Process())
+            self._workers = workers
             return [
                 w.as_dict(
                     attrs=[
@@ -351,6 +392,7 @@ class ReporterAgent(
                         "cpu_times",
                         "cmdline",
                         "memory_info",
+                        "memory_full_info",
                     ]
                 )
                 for w in self._workers
@@ -387,6 +429,7 @@ class ReporterAgent(
                     "cpu_times",
                     "cmdline",
                     "memory_info",
+                    "memory_full_info",
                 ]
             )
 
@@ -650,20 +693,69 @@ class ReporterAgent(
             raylet_pid = str(raylet_stats["pid"])
             # -- raylet CPU --
             raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
-            raylet_cpu_record = Record(
-                gauge=METRICS_GAUGES["raylet_cpu"],
-                value=raylet_cpu_usage,
-                tags={"ip": ip, "pid": raylet_pid},
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["raylet_cpu"],
+                    value=raylet_cpu_usage,
+                    tags={"ip": ip, "pid": raylet_pid},
+                )
             )
 
             # -- raylet mem --
-            raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
-            raylet_mem_record = Record(
-                gauge=METRICS_GAUGES["raylet_mem"],
-                value=raylet_mem_usage,
-                tags={"ip": ip, "pid": raylet_pid},
+            raylet_rss = float(raylet_stats["memory_info"].rss) / 1.0e6
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["raylet_mem"],
+                    value=raylet_rss,
+                    tags={"ip": ip, "pid": raylet_pid},
+                )
             )
-            records_reported.extend([raylet_cpu_record, raylet_mem_record])
+            raylet_mem_full_info = raylet_stats.get("memory_full_info")
+            if raylet_mem_full_info is not None:
+                raylet_uss = float(raylet_mem_full_info.uss) / 1.0e6
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["raylet_mem_uss"],
+                        value=raylet_uss,
+                        tags={"ip": ip, "pid": raylet_pid},
+                    )
+                )
+
+        workers_stats = stats["workers"]
+        if workers_stats:
+            total_workers_cpu_percentage = 0.0
+            total_workers_rss = 0.0
+            total_workers_uss = 0.0
+            for worker in workers_stats:
+                total_workers_cpu_percentage += float(worker["cpu_percent"]) * 100.0
+                total_workers_rss += float(worker["memory_info"].rss) / 1.0e6
+                worker_mem_full_info = worker.get("memory_full_info")
+                if worker_mem_full_info is not None:
+                    total_workers_uss += float(worker_mem_full_info.uss) / 1.0e6
+
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["workers_cpu"],
+                    value=total_workers_cpu_percentage,
+                    tags={"ip": ip},
+                )
+            )
+
+            records_reported.append(
+                Record(
+                    gauge=METRICS_GAUGES["workers_mem"],
+                    value=total_workers_rss,
+                    tags={"ip": ip},
+                )
+            )
+            if total_workers_uss > 0.0:
+                records_reported.append(
+                    Record(
+                        gauge=METRICS_GAUGES["workers_mem_uss"],
+                        value=total_workers_uss,
+                        tags={"ip": ip},
+                    )
+                )
 
         records_reported.extend(
             [
@@ -695,8 +787,10 @@ class ReporterAgent(
         """Get any changes to the log files and push updates to kv."""
         while True:
             try:
-                formatted_status_string = internal_kv._internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS
+                formatted_status_string = await self._gcs_aio_client.internal_kv_get(
+                    DEBUG_AUTOSCALING_STATUS.encode(),
+                    None,
+                    timeout=GCS_RPC_TIMEOUT_SECONDS,
                 )
 
                 stats = self._get_all_stats()
@@ -719,10 +813,7 @@ class ReporterAgent(
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
-        gcs_addr = self._dashboard_agent.gcs_address
-        assert gcs_addr is not None
-        publisher = GcsAioPublisher(address=gcs_addr)
-        await self._perform_iteration(publisher)
+        await self._perform_iteration(self._dashboard_agent.publisher)
 
     @staticmethod
     def is_minimal_module():

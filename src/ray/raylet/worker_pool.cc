@@ -16,7 +16,7 @@
 
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/filesystem.hpp>
+#include <fstream>
 
 #include "ray/common/constants.h"
 #include "ray/common/network_util.h"
@@ -40,7 +40,7 @@ namespace {
 
 // Add this prefix because the worker setup token is just a counter which is easy to
 // duplicate with other ids.
-static const std::string kWorkerSetupTokenPrefix = "worker_startup_token:";
+const std::string kWorkerSetupTokenPrefix = "worker_startup_token:";
 
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
@@ -61,7 +61,6 @@ bool RemoveWorker(
     const std::shared_ptr<ray::raylet::WorkerInterface> &worker) {
   return worker_pool.erase(worker) > 0;
 }
-
 }  // namespace
 
 namespace ray {
@@ -316,7 +315,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
 
   // Extract pointers from the worker command to pass into execvpe.
   std::vector<std::string> worker_command_args;
-  for (auto const &token : state.worker_command) {
+  for (const auto &token : state.worker_command) {
     if (token == kWorkerDynamicOptionPlaceholder) {
       worker_command_args.insert(
           worker_command_args.end(), options.begin(), options.end());
@@ -332,10 +331,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
       replaced_token.replace(node_manager_port_position,
                              strlen(kNodeManagerPortPlaceholder),
                              std::to_string(node_manager_port_));
-      worker_command_args.push_back(replaced_token);
+      worker_command_args.push_back(std::move(replaced_token));
       continue;
     }
-
     worker_command_args.push_back(token);
   }
 
@@ -362,6 +360,31 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   } else if (language == Language::CPP) {
     worker_command_args.push_back("--startup_token=" +
                                   std::to_string(worker_startup_token_counter_));
+  }
+
+  if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
+    worker_command_args.push_back("--language=" + Language_Name(language));
+    if (language == Language::CPP) {
+      worker_command_args.push_back("--ray_runtime_env_hash=" +
+                                    std::to_string(runtime_env_hash));
+    } else {
+      worker_command_args.push_back("--runtime-env-hash=" +
+                                    std::to_string(runtime_env_hash));
+    }
+    worker_command_args.push_back("--serialized-runtime-env-context=" +
+                                  serialized_runtime_env_context);
+  } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
+             worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
+    // Check that the arg really is the path to the setup worker before erasing it, to
+    // prevent breaking tests that mock out the worker command args.
+    worker_command_args.erase(worker_command_args.begin() + 1,
+                              worker_command_args.begin() + 2);
+  } else {
+    worker_command_args.push_back("--language=" + Language_Name(language));
+  }
+
+  if (ray_debugger_external) {
+    worker_command_args.push_back("--ray-debugger-external");
   }
 
   ProcessEnvironment env;
@@ -398,30 +421,6 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     }
   }
 
-  if (language == Language::PYTHON || language == Language::JAVA) {
-    if (serialized_runtime_env_context != "{}" &&
-        !serialized_runtime_env_context.empty()) {
-      worker_command_args.push_back("--language=" + Language_Name(language));
-      worker_command_args.push_back("--runtime-env-hash=" +
-                                    std::to_string(runtime_env_hash));
-
-      worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                    serialized_runtime_env_context);
-    } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
-               worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
-      // Check that the arg really is the path to the setup worker before erasing it, to
-      // prevent breaking tests that mock out the worker command args.
-      worker_command_args.erase(worker_command_args.begin() + 1,
-                                worker_command_args.begin() + 2);
-    } else if (language == Language::JAVA) {
-      worker_command_args.push_back("--language=" + Language_Name(language));
-    }
-
-    if (ray_debugger_external) {
-      worker_command_args.push_back("--ray-debugger-external");
-    }
-  }
-
   // We use setproctitle to change python worker process title,
   // causing the process's /proc/PID/environ being empty.
   // Add `SPT_NOENV` env to prevent setproctitle breaking /proc/PID/environ.
@@ -447,7 +446,9 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process with pid " << proc.GetId() << ", the token is "
                 << worker_startup_token_counter_;
-  AdjustWorkerOomScore(proc.GetId());
+  if (!IsIOWorkerType(worker_type)) {
+    AdjustWorkerOomScore(proc.GetId());
+  }
   MonitorStartingWorkerProcess(
       proc, worker_startup_token_counter_, language, worker_type);
   AddWorkerProcess(state, worker_type, proc, start, runtime_env_info);
@@ -622,7 +623,8 @@ void WorkerPool::MarkPortAsFree(int port) {
 
 static bool NeedToEagerInstallRuntimeEnv(const rpc::JobConfig &job_config) {
   if (job_config.has_runtime_env_info() &&
-      job_config.runtime_env_info().runtime_env_eager_install()) {
+      job_config.runtime_env_info().has_runtime_env_config() &&
+      job_config.runtime_env_info().runtime_env_config().eager_install()) {
     auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
     return !IsRuntimeEnvEmpty(runtime_env);
   }
@@ -1422,7 +1424,7 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
   return state->second;
 }
 
-inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
+inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) const {
   return worker_type == rpc::WorkerType::SPILL_WORKER ||
          worker_type == rpc::WorkerType::RESTORE_WORKER;
 }
@@ -1443,12 +1445,16 @@ std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasks
 }
 
 const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegisteredWorkers(
-    bool filter_dead_workers) const {
+    bool filter_dead_workers, bool filter_io_workers) const {
   std::vector<std::shared_ptr<WorkerInterface>> workers;
 
   for (const auto &entry : states_by_lang_) {
     for (const auto &worker : entry.second.registered_workers) {
       if (!worker->IsRegistered()) {
+        continue;
+      }
+
+      if (filter_io_workers && (IsIOWorkerType(worker->GetWorkerType()))) {
         continue;
       }
 

@@ -44,18 +44,18 @@ class DQNTorchModel(TorchModelV2, nn.Module):
                 branches will have this structure of Dense layers. To define
                 the NN before this A/V-split, use - as always -
                 config["model"]["fcnet_hiddens"].
-            dueling (bool): Whether to build the advantage(A)/value(V) heads
+            dueling: Whether to build the advantage(A)/value(V) heads
                 for DDQN. If True, Q-values are calculated as:
                 Q = (A - mean[A]) + V. If False, raw NN output is interpreted
                 as Q-values.
-            dueling_activation (str): The activation to use for all dueling
+            dueling_activation: The activation to use for all dueling
                 layers (A- and V-branch). One of "relu", "tanh", "linear".
-            num_atoms (int): If >1, enables distributional DQN.
-            use_noisy (bool): Use noisy layers.
-            v_min (float): Min value support for distributional DQN.
-            v_max (float): Max value support for distributional DQN.
+            num_atoms: If >1, enables distributional DQN.
+            use_noisy: Use noisy layers.
+            v_min: Min value support for distributional DQN.
+            v_max: Max value support for distributional DQN.
             sigma0 (float): Initial value of noisy layers.
-            add_layer_norm (bool): Enable layer norm (for param noise).
+            add_layer_norm: Enable layer norm (for param noise).
         """
         nn.Module.__init__(self)
         super(DQNTorchModel, self).__init__(
@@ -137,7 +137,7 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         Override this in your custom model to customize the Q output head.
 
         Args:
-            model_out (Tensor): Embedding from the model layers.
+            model_out: Embedding from the model layers.
 
         Returns:
             (action_scores, logits, dist) if num_atoms == 1, otherwise
@@ -148,7 +148,7 @@ class DQNTorchModel(TorchModelV2, nn.Module):
         if self.num_atoms > 1:
             # Distributional Q-learning uses a discrete support z
             # to represent the action value distribution
-            z = torch.range(0.0, self.num_atoms - 1, dtype=torch.float32).to(
+            z = torch.arange(0.0, self.num_atoms, dtype=torch.float32).to(
                 action_scores.device
             )
             z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)

@@ -20,7 +20,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.tf_utils import make_tf_callable
-from ray.rllib.utils.typing import TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import TensorType, AlgorithmConfigDict
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ def validate_spaces(
     policy: Policy,
     observation_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     """Validates the observation- and action spaces used for the Policy.
 

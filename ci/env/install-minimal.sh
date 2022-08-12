@@ -19,7 +19,8 @@ else
 fi
 echo "Python version is ${PYTHON_VERSION}"
 
-ROOT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")" || exit; pwd)
+
+ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")" || exit; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
 # Installs conda and python 3.7
@@ -32,5 +33,11 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 
 # Install test requirements
 python -m pip install -U \
-  pytest==5.4.3 \
+  pytest==7.0.1 \
   numpy
+
+# Train requirements.
+# TODO: make this dynamic
+if [ "${TRAIN_MINIMAL_INSTALL-}" = 1 ]; then
+    python -m pip install -U "ray[tune]"
+fi

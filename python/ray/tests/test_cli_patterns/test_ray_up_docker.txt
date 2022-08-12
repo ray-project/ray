@@ -10,7 +10,7 @@ AWS config
 
 No head node found\. Launching a new cluster\. Confirm \[y/N\]: y \[automatic, due to --yes\]
 
-Usage stats collection is enabled by default without user confirmation because this stdin is detected to be non-interactively\..+
+Usage stats collection is enabled by default without user confirmation because this terminal is detected to be non-interactive\..+
 
 Acquiring an up-to-date head node
   Launched 1 nodes \[subnet_id=subnet-.+\]
@@ -32,7 +32,7 @@ Acquiring an up-to-date head node
   \[3/7\] No worker file mounts to sync
   New status: setting-up
   \[4/7\] Running initialization commands
-  \[5/7\] Initalizing command runner
+  \[5/7\] Initializing command runner
   \[6/7\] Running setup commands
     \(0/4\) echo a
     \(1/4\) echo b

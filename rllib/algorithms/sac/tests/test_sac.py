@@ -73,13 +73,16 @@ class TestSAC(unittest.TestCase):
         ray.shutdown()
 
     def test_sac_compilation(self):
-        """Tests whether an SACTrainer can be built with all frameworks."""
+        """Tests whether SAC can be built with all frameworks."""
         config = (
             sac.SACConfig()
             .training(
                 n_step=3,
                 twin_q=True,
-                replay_buffer_config={"learning_starts": 0, "capacity": 40000},
+                replay_buffer_config={
+                    "capacity": 40000,
+                },
+                num_steps_sampled_before_learning_starts=0,
                 store_buffer_in_checkpoints=True,
                 train_batch_size=10,
             )
@@ -148,7 +151,7 @@ class TestSAC(unittest.TestCase):
                 # this is framework agnostic).
                 if fw == "tf" and env == "CartPole-v0":
                     checkpoint = trainer.save()
-                    new_trainer = sac.SACTrainer(config, env=env)
+                    new_trainer = sac.SAC(config, env=env)
                     new_trainer.restore(checkpoint)
                     # Get some data from the buffer and compare.
                     data = trainer.local_replay_buffer.replay_buffers[
@@ -172,11 +175,11 @@ class TestSAC(unittest.TestCase):
                 _deterministic_loss=True,
                 q_model_config={"fcnet_hiddens": [10]},
                 policy_model_config={"fcnet_hiddens": [10]},
-                replay_buffer_config={"learning_starts": 0},
+                num_steps_sampled_before_learning_starts=0,
             )
             .rollouts(num_rollout_workers=0)
             .reporting(
-                min_time_s_per_reporting=0,
+                min_time_s_per_iteration=0,
             )
             .environment(
                 env_config={"simplex_actions": True},
@@ -228,7 +231,7 @@ class TestSAC(unittest.TestCase):
         }
 
         env = SimpleEnv
-        batch_size = 100
+        batch_size = 64
         obs_size = (batch_size, 1)
         actions = np.random.random(size=(batch_size, 2))
 
@@ -246,7 +249,7 @@ class TestSAC(unittest.TestCase):
         for fw, sess in framework_iterator(
             config, frameworks=("tf", "torch"), session=True
         ):
-            # Generate Trainer and get its default Policy object.
+            # Generate Algorithm and get its default Policy object.
             trainer = config.build(env=env)
             policy = trainer.get_policy()
             p_sess = None
@@ -523,7 +526,10 @@ class TestSAC(unittest.TestCase):
         config = (
             sac.SACConfig()
             .training(
-                replay_buffer_config={"learning_starts": 0, "capacity": 10},
+                replay_buffer_config={
+                    "capacity": 10,
+                },
+                num_steps_sampled_before_learning_starts=0,
                 train_batch_size=5,
             )
             .rollouts(

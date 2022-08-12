@@ -1,0 +1,32 @@
+stateless-cartpole-r2d2:
+    env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
+    run: R2D2
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 1000000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        num_workers: 0
+        # R2D2 settings.
+        replay_buffer_config:
+          type: MultiAgentReplayBuffer
+          storage_unit: sequences
+          replay_burn_in: 20
+          zero_init_states: true
+        #dueling: false
+        lr: 0.0005
+        # Give some more time to explore.
+        exploration_config:
+          epsilon_timesteps: 50000
+        # Wrap with an LSTM and use a very simple base-model.
+        model:
+            fcnet_hiddens: [64]
+            fcnet_activation: linear
+            use_lstm: true
+            lstm_cell_size: 64
+            max_seq_len: 20
+
+        # Fake 2 GPUs.
+        num_gpus: 2
+        _fake_gpus: true

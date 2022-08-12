@@ -1,6 +1,7 @@
 import gym
 from typing import Dict, List, Optional, Sequence
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.utils import get_activation_fn, get_filter_config
@@ -12,6 +13,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 # TODO: (sven) obsolete this class once we only support native keras models.
+@DeveloperAPI
 class VisionNetwork(TFModelV2):
     """Generic vision network implemented in ModelV2 API.
 
@@ -264,6 +266,7 @@ class VisionNetwork(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
+@DeveloperAPI
 class Keras_VisionNetwork(tf.keras.Model if tf else object):
     """Generic vision network implemented in tf keras.
 

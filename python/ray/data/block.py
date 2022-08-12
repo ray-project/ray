@@ -1,35 +1,51 @@
-from dataclasses import dataclass
+import os
+import sys
 import time
+from dataclasses import dataclass
 from typing import (
-    TypeVar,
-    List,
+    TYPE_CHECKING,
+    Any,
+    Callable,
     Dict,
     Generic,
     Iterator,
-    Tuple,
-    Any,
-    Union,
+    List,
     Optional,
-    Callable,
-    TYPE_CHECKING,
+    Tuple,
+    TypeVar,
+    Union,
 )
 
 import numpy as np
 
+import ray
+from ray.data._internal.util import _check_pyarrow_version
+from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
+
+import psutil
+
+try:
+    import resource
+except ImportError:
+    resource = None
+
+if sys.version_info >= (3, 8):
+    from typing import Protocol
+else:
+    from typing_extensions import Protocol
+
 if TYPE_CHECKING:
     import pandas
     import pyarrow
-    from ray.data.impl.block_builder import BlockBuilder
-    from ray.data.aggregate import AggregateFn
+
     from ray.data import Dataset
+    from ray.data._internal.block_builder import BlockBuilder
+    from ray.data.aggregate import AggregateFn
 
-import ray
-from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
-from ray.data.impl.util import _check_pyarrow_version
 
-T = TypeVar("T")
-U = TypeVar("U")
+T = TypeVar("T", contravariant=True)
+U = TypeVar("U", covariant=True)
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
@@ -85,7 +101,34 @@ Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union[Block, np.ndarray]
+DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
+
+# A class type that implements __call__.
+CallableClass = type
+
+
+class _CallableClassProtocol(Protocol[T, U]):
+    def __call__(self, __arg: T) -> U:
+        ...
+
+
+# A UDF on data batches.
+BatchUDF = Union[
+    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
+    # UDF type.
+    # Callable[[DataBatch, ...], DataBatch]
+    Callable[[DataBatch], DataBatch],
+    _CallableClassProtocol,
+]
+
+# A UDF on data rows.
+RowUDF = Union[
+    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
+    # UDF type.
+    # Callable[[T, ...], U]
+    Callable[[T], U],
+    _CallableClassProtocol[T, U],
+]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
@@ -98,6 +141,8 @@ BlockPartitionMetadata = "BlockMetadata"
 # TODO(ekl) replace this with just `BlockPartition` once block splitting is on
 # by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, BlockPartition]
+
+VALID_BATCH_FORMATS = ["native", "pandas", "pyarrow", "numpy"]
 
 
 @DeveloperAPI
@@ -114,6 +159,9 @@ class BlockExecStats:
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
+        # Max memory usage. May be an overestimate since we do not
+        # differentiate from previous tasks on the same worker.
+        self.max_rss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -144,6 +192,16 @@ class _BlockExecStatsBuilder:
         stats = BlockExecStats()
         stats.wall_time_s = time.perf_counter() - self.start_time
         stats.cpu_time_s = time.process_time() - self.start_cpu
+        if resource is None:
+            # NOTE(swang): resource package is not supported on Windows. This
+            # is only the memory usage at the end of the task, not the peak
+            # memory.
+            process = psutil.Process(os.getpid())
+            stats.max_rss_bytes = int(process.memory_info().rss)
+        else:
+            stats.max_rss_bytes = int(
+                resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3
+            )
         return stats
 
 
@@ -207,6 +265,17 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
+    def take(self, indices: List[int]) -> Block:
+        """Return a new block containing the provided row indices.
+
+        Args:
+            indices: The row indices to return.
+
+        Returns:
+            A new block containing the provided row indices.
+        """
+        raise NotImplementedError
+
     def random_shuffle(self, random_seed: Optional[int]) -> Block:
         """Randomly shuffle this block."""
         raise NotImplementedError
@@ -236,6 +305,29 @@ class BlockAccessor(Generic[T]):
     def to_native(self) -> Block:
         """Return the native data format for this accessor."""
         return self.to_block()
+
+    def to_batch_format(self, batch_format: str) -> DataBatch:
+        """Convert this block into the provided batch format.
+
+        Args:
+            batch_format: The batch format to convert this block to.
+
+        Returns:
+            This block formatted as the provided batch format.
+        """
+        if batch_format == "native":
+            return self.to_native()
+        elif batch_format == "pandas":
+            return self.to_pandas()
+        elif batch_format == "pyarrow":
+            return self.to_arrow()
+        elif batch_format == "numpy":
+            return self.to_numpy()
+        else:
+            raise ValueError(
+                f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
+                f"{batch_format}"
+            )
 
     def size_bytes(self) -> int:
         """Return the approximate size in bytes of this block."""
@@ -269,8 +361,8 @@ class BlockAccessor(Generic[T]):
     @staticmethod
     def batch_to_block(batch: DataBatch) -> Block:
         """Create a block from user-facing data formats."""
-        if isinstance(batch, np.ndarray):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
+        if isinstance(batch, (np.ndarray, dict)):
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.numpy_to_block(batch)
         return batch
@@ -279,23 +371,23 @@ class BlockAccessor(Generic[T]):
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
         _check_pyarrow_version()
-        import pyarrow
         import pandas
+        import pyarrow
 
         if isinstance(block, pyarrow.Table):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor(block)
         elif isinstance(block, pandas.DataFrame):
-            from ray.data.impl.pandas_block import PandasBlockAccessor
+            from ray.data._internal.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
-            from ray.data.impl.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
-            from ray.data.impl.simple_block import SimpleBlockAccessor
+            from ray.data._internal.simple_block import SimpleBlockAccessor
 
             return SimpleBlockAccessor(block)
         else:

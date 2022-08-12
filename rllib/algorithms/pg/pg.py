@@ -1,23 +1,21 @@
 from typing import Type
 
-from ray.rllib.agents.trainer import Trainer
-from ray.rllib.agents.trainer_config import TrainerConfig
-from ray.rllib.algorithms.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict
 
 
-class PGConfig(TrainerConfig):
-    """Defines a PGTrainer configuration class from which a PGTrainer can be built.
+class PGConfig(AlgorithmConfig):
+    """Defines a configuration class from which a PG Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
         >>> config = PGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> trainer = config.build(env="CartPole-v1")
         >>> trainer.train()
 
@@ -26,8 +24,8 @@ class PGConfig(TrainerConfig):
         >>> from ray import tune
         >>> config = PGConfig()
         >>> # Print out some default values.
-        >>> print(config.lr)
-        ... 0.0004
+        >>> print(config.lr) # doctest: +SKIP
+        0.0004
         >>> # Update the config object.
         >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
         >>> # Set the config object's env.
@@ -43,11 +41,11 @@ class PGConfig(TrainerConfig):
 
     def __init__(self):
         """Initializes a PGConfig instance."""
-        super().__init__(trainer_class=PGTrainer)
+        super().__init__(algo_class=PG)
 
         # fmt: off
         # __sphinx_doc_begin__
-        # Override some of TrainerConfig's default values with PG-specific values.
+        # Override some of AlgorithmConfig's default values with PG-specific values.
         self.num_workers = 0
         self.lr = 0.0004
         self._disable_preprocessor_api = True
@@ -55,7 +53,7 @@ class PGConfig(TrainerConfig):
         # fmt: on
 
 
-class PGTrainer(Trainer):
+class PG(Algorithm):
     """Policy Gradient (PG) Trainer.
 
     Defines the distributed Trainer class for policy gradients.
@@ -71,13 +69,24 @@ class PGTrainer(Trainer):
     """
 
     @classmethod
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
+    @override(Algorithm)
+    def get_default_config(cls) -> AlgorithmConfigDict:
         return PGConfig().to_dict()
 
-    @override(Trainer)
+    @override(Algorithm)
     def get_default_policy_class(self, config) -> Type[Policy]:
-        return PGTorchPolicy if config.get("framework") == "torch" else PGTFPolicy
+        if config["framework"] == "torch":
+            from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
+
+            return PGTorchPolicy
+        elif config["framework"] == "tf":
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+
+            return PGTF1Policy
+        else:
+            from ray.rllib.algorithms.pg.pg_tf_policy import PGTF2Policy
+
+            return PGTF2Policy
 
 
 # Deprecated: Use ray.rllib.algorithms.pg.PGConfig instead!
@@ -87,7 +96,7 @@ class _deprecated_default_config(dict):
 
     @Deprecated(
         old="ray.rllib.algorithms.pg.default_config::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.pg.pg.PGConfig(...)",
+        new="ray.rllib.algorithms.pg.pg::PGConfig(...)",
         error=False,
     )
     def __getitem__(self, item):

@@ -111,7 +111,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int max_retries,
             c_bool retry_exceptions,
             const CSchedulingStrategy &scheduling_strategy,
-            c_string debugger_breakpoint)
+            c_string debugger_breakpoint,
+            c_string serialized_retry_exception_allowlist)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -291,10 +292,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectReference] &arg_refs,
             const c_vector[CObjectID] &return_ids,
             const c_string debugger_breakpoint,
+            const c_string serialized_retry_exception_allowlist,
             c_vector[shared_ptr[CRayObject]] *returns,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
-            c_bool *is_application_level_error,
+            c_bool *is_retryable_error,
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute) nogil
          ) task_execution_callback

@@ -1,15 +1,14 @@
 import unittest
 from copy import deepcopy
 from numpy import float32
-
-import ray
-from ray.tune.registry import register_env
-from ray.rllib.env import PettingZooEnv
-from ray.rllib.agents.registry import get_trainer_class
-
 from pettingzoo.butterfly import pistonball_v6
 from pettingzoo.mpe import simple_spread_v2
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
+
+import ray
+from ray.rllib.algorithms.registry import get_algorithm_class
+from ray.rllib.env import PettingZooEnv
+from ray.tune.registry import register_env
 
 
 class TestPettingZooEnv(unittest.TestCase):
@@ -27,7 +26,7 @@ class TestPettingZooEnv(unittest.TestCase):
             env = normalize_obs_v0(env)
             return env
 
-        config = deepcopy(get_trainer_class("PPO").get_default_config())
+        config = deepcopy(get_algorithm_class("PPO").get_default_config())
         config["env_config"] = {"local_ratio": 0.5}
         # Register env
         register_env("pistonball", lambda config: PettingZooEnv(env_creator(config)))
@@ -54,8 +53,9 @@ class TestPettingZooEnv(unittest.TestCase):
         config["horizon"] = 200
         # Default: False
         config["no_done_at_end"] = False
-        trainer = get_trainer_class("PPO")(env="pistonball", config=config)
-        trainer.train()
+        algo = get_algorithm_class("PPO")(env="pistonball", config=config)
+        algo.train()
+        algo.stop()
 
     def test_pettingzoo_env(self):
         register_env("simple_spread", lambda _: PettingZooEnv(simple_spread_v2.env()))
@@ -64,7 +64,7 @@ class TestPettingZooEnv(unittest.TestCase):
         action_space = env.action_space
         del env
 
-        agent_class = get_trainer_class("PPO")
+        agent_class = get_algorithm_class("PPO")
 
         config = deepcopy(agent_class.get_default_config())
 

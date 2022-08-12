@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 
 # __air_pytorch_preprocess_start__
 
@@ -28,7 +29,9 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 import ray.train as train
-from ray.ml.train.integrations.torch import TorchTrainer
+from ray.air import session
+from ray.train.torch import TorchTrainer
+from ray.air.config import ScalingConfig
 
 # Define model
 class NeuralNetwork(nn.Module):
@@ -51,7 +54,7 @@ class NeuralNetwork(nn.Module):
 
 
 def train_epoch(dataloader, model, loss_fn, optimizer):
-    size = len(dataloader.dataset) // train.world_size()
+    size = len(dataloader.dataset) // session.get_world_size()
     model.train()
     for batch, (X, y) in enumerate(dataloader):
         # Compute prediction error
@@ -69,7 +72,7 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
 
 
 def validate_epoch(dataloader, model, loss_fn):
-    size = len(dataloader.dataset) // train.world_size()
+    size = len(dataloader.dataset) // session.get_world_size()
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
@@ -93,7 +96,7 @@ def train_func(config):
     lr = config["lr"]
     epochs = config["epochs"]
 
-    worker_batch_size = batch_size // train.world_size()
+    worker_batch_size = batch_size // session.get_world_size()
 
     # Create data loaders.
     train_dataloader = DataLoader(training_data, batch_size=worker_batch_size)
@@ -112,7 +115,7 @@ def train_func(config):
     for _ in range(epochs):
         train_epoch(train_dataloader, model, loss_fn, optimizer)
         loss = validate_epoch(test_dataloader, model, loss_fn)
-        train.report(loss=loss)
+        session.report(dict(loss=loss))
 
 
 num_workers = 2
@@ -121,7 +124,7 @@ use_gpu = False
 trainer = TorchTrainer(
     train_loop_per_worker=train_func,
     train_loop_config={"lr": 1e-3, "batch_size": 64, "epochs": 4},
-    scaling_config={"num_workers": num_workers, "use_gpu": use_gpu},
+    scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
 )
 result = trainer.fit()
 print(f"Last result: {result.metrics}")
@@ -130,8 +133,8 @@ print(f"Last result: {result.metrics}")
 
 # # __air_pytorch_batchpred_start__
 # import random
-# from ray.ml.batch_predictor import BatchPredictor
-# from ray.ml.predictors.integrations.torch import TorchPredictor
+# from ray.train.batch_predictor import BatchPredictor
+# from ray.train.torch import TorchPredictor
 
 # batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
 

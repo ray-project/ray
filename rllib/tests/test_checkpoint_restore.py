@@ -4,7 +4,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
@@ -24,10 +24,11 @@ CONFIGS = {
         "explore": False,
         "observation_filter": "MeanStdFilter",
         "num_workers": 2,
-        "min_time_s_per_reporting": 1,
+        "min_time_s_per_iteration": 1,
         "optimizer": {
             "num_replay_buffer_shards": 1,
         },
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "ARS": {
         "explore": False,
@@ -38,10 +39,12 @@ CONFIGS = {
     },
     "DDPG": {
         "explore": False,
-        "min_sample_timesteps_per_reporting": 100,
+        "min_sample_timesteps_per_iteration": 100,
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "DQN": {
         "explore": False,
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "ES": {
         "explore": False,
@@ -59,9 +62,11 @@ CONFIGS = {
     },
     "SimpleQ": {
         "explore": False,
+        "num_steps_sampled_before_learning_starts": 0,
     },
     "SAC": {
         "explore": False,
+        "num_steps_sampled_before_learning_starts": 0,
     },
 }
 
@@ -76,7 +81,7 @@ def ckpt_restore_test(alg_name, tfe=False, object_store=False, replay_buffer=Fal
     for fw in framework_iterator(config, frameworks=frameworks):
         for use_object_store in [False, True] if object_store else [False]:
             print("use_object_store={}".format(use_object_store))
-            cls = get_trainer_class(alg_name)
+            cls = get_algorithm_class(alg_name)
             if "DDPG" in alg_name or "SAC" in alg_name:
                 alg1 = cls(config=config, env="Pendulum-v1")
                 alg2 = cls(config=config, env="Pendulum-v1")
@@ -145,7 +150,7 @@ def ckpt_restore_test(alg_name, tfe=False, object_store=False, replay_buffer=Fal
                     raise AssertionError(
                         "algo={} [a1={} a2={}]".format(alg_name, a1, a2)
                     )
-            # Stop both Trainers.
+            # Stop both algos.
             alg1.stop()
             alg2.stop()
 

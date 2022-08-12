@@ -15,7 +15,7 @@
 # # XGBoost-Ray with Modin
 #
 # This notebook includes an example workflow using
-# [XGBoost-Ray](https://docs.ray.io/en/latest/xgboost-ray.html) and
+# [XGBoost-Ray](https://github.com/ray-project/xgboost_ray) and
 # [Modin](https://modin.readthedocs.io/en/latest/) for distributed model
 # training and prediction.
 #
@@ -58,7 +58,7 @@ import time
 
 import modin.pandas as pd
 from modin.experimental.sklearn.model_selection import train_test_split
-from xgboost_ray import RayDMatrix, RayParams, train, predict
+from xgboost_ray import RayDMatrix, RayParams, predict, train
 
 import ray
 

@@ -39,8 +39,8 @@ NativeRayRuntime::NativeRayRuntime() {
       ProcessHelper::GetInstance().CreateGlobalStateAccessor(bootstrap_address);
 }
 
-ActorID NativeRayRuntime::GetCurrentActorID() {
-  return core::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
+const WorkerContext &NativeRayRuntime::GetWorkerContext() {
+  return core::CoreWorkerProcess::GetCoreWorker().GetWorkerContext();
 }
 
 }  // namespace internal

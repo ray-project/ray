@@ -6,25 +6,25 @@ import sys
 import tempfile
 from typing import Optional
 
-import anyscale
 import boto3
-
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.cluster_manager.cluster_manager import ClusterManager
-from ray_release.job_manager import JobManager
 from ray_release.exception import FileDownloadError, FileUploadError
 from ray_release.file_manager.file_manager import FileManager
+from ray_release.job_manager import JobManager
 from ray_release.logger import logger
 from ray_release.util import exponential_backoff_retry
 
 
 class JobFileManager(FileManager):
     def __init__(self, cluster_manager: ClusterManager):
+        import anyscale
+
         super(JobFileManager, self).__init__(cluster_manager=cluster_manager)
 
         self.sdk = self.cluster_manager.sdk
         self.s3_client = boto3.client("s3")
-        self.bucket = RELEASE_AWS_BUCKET
+        self.bucket = str(RELEASE_AWS_BUCKET)
         self.job_manager = JobManager(cluster_manager)
 
         sys.path.insert(0, f"{anyscale.ANYSCALE_RAY_DIR}/bin")

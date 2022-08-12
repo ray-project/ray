@@ -1,15 +1,17 @@
 import gym
 from gym.spaces import Discrete, MultiDiscrete
+import logging
 import numpy as np
 import tree  # pip install dm_tree
 from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
-    PartialTrainerConfigDict,
+    PartialAlgorithmConfigDict,
     SpaceStruct,
     TensorStructType,
     TensorType,
@@ -18,9 +20,11 @@ from ray.rllib.utils.typing import (
 if TYPE_CHECKING:
     from ray.rllib.policy.tf_policy import TFPolicy
 
+logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
 
+@PublicAPI
 def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     """Computes the explained variance for a pair of labels and predictions.
 
@@ -39,6 +43,7 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
+@PublicAPI
 def flatten_inputs_to_1d_tensor(
     inputs: TensorStructType,
     spaces_struct: Optional[SpaceStruct] = None,
@@ -138,6 +143,7 @@ def flatten_inputs_to_1d_tensor(
     return merged
 
 
+@PublicAPI
 def get_gpu_devices() -> List[str]:
     """Returns a list of GPU device names, e.g. ["/gpu:0", "/gpu:1"].
 
@@ -160,6 +166,7 @@ def get_gpu_devices() -> List[str]:
     return [d.name for d in devices if "GPU" in d.device_type]
 
 
+@PublicAPI
 def get_placeholder(
     *,
     space: Optional[gym.Space] = None,
@@ -218,15 +225,16 @@ def get_placeholder(
         )
 
 
+@PublicAPI
 def get_tf_eager_cls_if_necessary(
-    orig_cls: Type["TFPolicy"], config: PartialTrainerConfigDict
+    orig_cls: Type["TFPolicy"], config: PartialAlgorithmConfigDict
 ) -> Type["TFPolicy"]:
     """Returns the corresponding tf-eager class for a given TFPolicy class.
 
     Args:
         orig_cls: The original TFPolicy class to get the corresponding tf-eager
             class for.
-        config: The Trainer config dict.
+        config: The Algorithm config dict.
 
     Returns:
         The tf eager policy class corresponding to the given TFPolicy class.
@@ -242,6 +250,7 @@ def get_tf_eager_cls_if_necessary(
 
         from ray.rllib.policy.tf_policy import TFPolicy
         from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
+        from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 
         # Create eager-class (if not already one).
         if hasattr(orig_cls, "as_eager") and not issubclass(orig_cls, EagerTFPolicy):
@@ -252,15 +261,18 @@ def get_tf_eager_cls_if_necessary(
             pass
         else:
             raise ValueError(
-                "This policy does not support eager " "execution: {}".format(orig_cls)
+                "This policy does not support eager execution: {}".format(orig_cls)
             )
 
         # Now that we know, policy is an eager one, add tracing, if necessary.
-        if config.get("eager_tracing") and issubclass(cls, EagerTFPolicy):
+        if config.get("eager_tracing") and issubclass(
+            cls, (EagerTFPolicy, EagerTFPolicyV2)
+        ):
             cls = cls.with_tracing()
     return cls
 
 
+@PublicAPI
 def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     """Computes the huber loss for a given term and delta parameter.
 
@@ -285,6 +297,7 @@ def huber_loss(x: TensorType, delta: float = 1.0) -> TensorType:
     )
 
 
+@PublicAPI
 def make_tf_callable(
     session_or_none: Optional["tf1.Session"], dynamic_shape: bool = False
 ) -> Callable:
@@ -379,6 +392,7 @@ def make_tf_callable(
     return make_wrapper
 
 
+@PublicAPI
 def minimize_and_clip(
     optimizer: LocalOptimizer,
     objective: TensorType,
@@ -419,6 +433,7 @@ def minimize_and_clip(
     ]
 
 
+@PublicAPI
 def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     """Returns a one-hot tensor, given and int tensor and a space.
 
@@ -453,17 +468,20 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     if isinstance(space, Discrete):
         return tf.one_hot(x, space.n, dtype=tf.float32)
     elif isinstance(space, MultiDiscrete):
+        if isinstance(space.nvec[0], np.ndarray):
+            nvec = np.ravel(space.nvec)
+            x = tf.reshape(x, (x.shape[0], -1))
+        else:
+            nvec = space.nvec
         return tf.concat(
-            [
-                tf.one_hot(x[:, i], n, dtype=tf.float32)
-                for i, n in enumerate(space.nvec)
-            ],
+            [tf.one_hot(x[:, i], n, dtype=tf.float32) for i, n in enumerate(nvec)],
             axis=-1,
         )
     else:
         raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
+@PublicAPI
 def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorType:
     """Same as tf.reduce_mean() but ignores -inf values.
 
@@ -481,6 +499,7 @@ def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorT
     )
 
 
+@PublicAPI
 def scope_vars(
     scope: Union[str, "tf1.VariableScope"], trainable_only: bool = False
 ) -> List["tf.Variable"]:
@@ -502,6 +521,7 @@ def scope_vars(
     )
 
 
+@PublicAPI
 def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
     """Helper function useful for returning dummy logp's (0) for some actions.
 
@@ -525,3 +545,26 @@ def zero_logps_from_actions(actions: TensorStructType) -> TensorType:
     while len(logp_.shape) > 1:
         logp_ = logp_[:, 0]
     return logp_
+
+
+@DeveloperAPI
+def warn_if_infinite_kl_divergence(
+    policy: Type["TFPolicy"], mean_kl_loss: TensorType
+) -> None:
+    def print_warning():
+        logger.warning(
+            "KL divergence is non-finite, this will likely destabilize your model and"
+            " the training process. Action(s) in a specific state have near-zero"
+            " probability. This can happen naturally in deterministic environments"
+            " where the optimal policy has zero mass for a specific action. To fix this"
+            " issue, consider setting the coefficient for the KL loss term to zero or"
+            " increasing policy entropy."
+        )
+        return tf.constant(0.0)
+
+    if policy.loss_initialized():
+        tf.cond(
+            tf.math.is_inf(mean_kl_loss),
+            false_fn=lambda: tf.constant(0.0),
+            true_fn=lambda: print_warning(),
+        )

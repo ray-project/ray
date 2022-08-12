@@ -1,20 +1,20 @@
 # coding: utf-8
 import logging
 import os
+import platform
+import signal
 import sys
 import time
 
 import psutil
-import platform
 import pytest
-import signal
 
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
-    wait_for_pid_to_exit,
     wait_for_condition,
+    wait_for_pid_to_exit,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ def test_local_mode_gpus(save_gpu_ids_shutdown_only):
 
     from importlib import reload
 
-    reload(ray.worker)
+    reload(ray._private.worker)
 
     ray.init(num_gpus=3, local_mode=True)
 
@@ -219,7 +219,23 @@ print(ray.get(obj))
     wait_for_condition(lambda: not psutil.pid_exists(normal_task_pid), 10)
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Niceness is posix-only")
+def test_worker_niceness(ray_start_regular):
+    @ray.remote
+    class PIDReporter:
+        def get(self):
+            return os.getpid()
+
+    reporter = PIDReporter.remote()
+    worker_pid = ray.get(reporter.get.remote())
+    worker_proc = psutil.Process(worker_pid)
+    assert worker_proc.nice() == 15, worker_proc
+
+
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

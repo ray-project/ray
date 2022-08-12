@@ -1,33 +1,39 @@
+import json
 import logging
-from pathlib import Path
 import os
 import shutil
 import sys
-import json
-import yaml
 import tempfile
+from pathlib import Path
+import subprocess
 from typing import Optional
-
-import pytest
 from unittest.mock import patch
 
+import pytest
+from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
+import yaml
+
 import ray
-from ray.job_submission import JobSubmissionClient, JobStatus
-from ray.dashboard.modules.job.common import CURRENT_VERSION, JobInfo
-from ray.dashboard.modules.dashboard_sdk import (
-    ClusterInfo,
-    parse_cluster_info,
-)
-from ray.dashboard.tests.conftest import *  # noqa
-from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (
     chdir,
     format_web_url,
     wait_for_condition,
     wait_until_server_available,
 )
+from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
+from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.dashboard.modules.version import CURRENT_VERSION
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.tests.conftest import _ray_start
+from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
+
+# This test requires you have AWS credentials set up (any AWS credentials will
+# do, this test only accesses a public bucket).
 
 logger = logging.getLogger(__name__)
+
+DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 
 
 @pytest.fixture(scope="module")
@@ -43,22 +49,28 @@ def job_sdk_client(headers):
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
-# NOTE(architkulkarni): This test must be run first in order for the job
-# submission history of the shared Ray runtime to be empty.
 @pytest.mark.parametrize("use_sdk", [True, False])
-def test_list_jobs_empty(job_sdk_client: JobSubmissionClient, use_sdk: bool):
-    client = job_sdk_client
+def test_list_jobs_empty(headers, use_sdk: bool):
+    # Create a cluster using `ray start` instead of `ray.init` to avoid creating a job
+    subprocess.check_output(["ray", "start", "--head"])
+    address = "http://127.0.0.1:8265"
+    try:
+        with set_env_var("RAY_ADDRESS", address):
+            client = JobSubmissionClient(format_web_url(address), headers=headers)
 
-    if use_sdk:
-        assert client.list_jobs() == dict()
-    else:
-        r = client._do_request(
-            "GET",
-            "/api/jobs/",
-        )
+            if use_sdk:
+                assert client.list_jobs() == []
+            else:
+                r = client._do_request(
+                    "GET",
+                    "/api/jobs/",
+                )
 
-        assert r.status_code == 200
-        assert json.loads(r.text) == dict()
+                assert r.status_code == 200
+                assert json.loads(r.text) == []
+
+    finally:
+        subprocess.check_output(["ray", "stop", "--force"])
 
 
 @pytest.mark.parametrize("use_sdk", [True, False])
@@ -68,13 +80,17 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
     runtime_env = {"env_vars": {"TEST": "123"}}
     metadata = {"foo": "bar"}
     entrypoint = "echo hello"
-    job_id = client.submit_job(
+    submission_id = client.submit_job(
         entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+    wait_for_condition(_check_job_succeeded, client=client, job_id=submission_id)
     if use_sdk:
-        info: JobInfo = client.list_jobs()[job_id]
+        info: JobDetails = next(
+            job_info
+            for job_info in client.list_jobs()
+            if job_info.submission_id == submission_id
+        )
     else:
         r = client._do_request(
             "GET",
@@ -83,8 +99,12 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
 
         assert r.status_code == 200
         jobs_info_json = json.loads(r.text)
-        info_json = jobs_info_json[job_id]
-        info = JobInfo(**info_json)
+        info_json = next(
+            job_info
+            for job_info in jobs_info_json
+            if job_info["submission_id"] == submission_id
+        )
+        info = JobDetails(**info_json)
 
     assert info.entrypoint == entrypoint
     assert info.status == JobStatus.SUCCEEDED
@@ -92,6 +112,10 @@ def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
     assert info.end_time >= info.start_time
     assert info.runtime_env == runtime_env
     assert info.metadata == metadata
+
+    # Test get job status by job / driver id
+    status = client.get_job_status(info.submission_id)
+    assert status == JobStatus.SUCCEEDED
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
@@ -273,6 +297,50 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     assert runtime_env_option["expected_logs"] in logs
 
 
+def test_timeout(job_sdk_client):
+    client = job_sdk_client
+
+    job_id = client.submit_job(
+        entrypoint="echo hello",
+        # Assume pip packages take > 1s to download, or this test will spuriously fail.
+        runtime_env=RuntimeEnv(
+            pip={
+                "packages": ["tensorflow", "requests", "botocore", "torch"],
+                "pip_check": False,
+                "pip_version": "==22.0.2;python_version=='3.8.11'",
+            },
+            config=RuntimeEnvConfig(setup_timeout_seconds=1),
+        ),
+    )
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id, timeout=10)
+    data = client.get_job_info(job_id)
+    assert "Failed to setup runtime environment" in data.message
+    assert "Timeout" in data.message
+    assert "consider increasing `setup_timeout_seconds`" in data.message
+
+
+def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
+    run_cmd = "python per_task_runtime_env.py"
+    job_id = job_sdk_client.submit_job(
+        entrypoint=run_cmd,
+        runtime_env={"working_dir": DRIVER_SCRIPT_DIR},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=job_sdk_client, job_id=job_id)
+
+
+def test_ray_tune_basic(job_sdk_client: JobSubmissionClient):
+    run_cmd = "python ray_tune_basic.py"
+    job_id = job_sdk_client.submit_job(
+        entrypoint=run_cmd,
+        runtime_env={"working_dir": DRIVER_SCRIPT_DIR},
+    )
+    wait_for_condition(
+        _check_job_succeeded, timeout=30, client=job_sdk_client, job_id=job_id
+    )
+
+
 def test_http_bad_request(job_sdk_client):
     """
     Send bad requests to job http server and ensure right return code and
@@ -368,7 +436,7 @@ def test_job_metadata(job_sdk_client):
         'python -c"'
         "import ray;"
         "ray.init();"
-        "job_config=ray.worker.global_worker.core_worker.get_job_config();"
+        "job_config=ray._private.worker.global_worker.core_worker.get_job_config();"
         "print(dict(sorted(job_config.metadata.items())))"
         '"'
     )
@@ -423,7 +491,30 @@ def test_submit_optional_args(job_sdk_client):
         json_data={"entrypoint": "ls"},
     )
 
-    wait_for_condition(_check_job_succeeded, client=client, job_id=r.json()["job_id"])
+    wait_for_condition(
+        _check_job_succeeded, client=client, job_id=r.json()["submission_id"]
+    )
+
+
+def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
+    """Check that job_id, runtime_env, and metadata are optional."""
+    client = job_sdk_client
+
+    client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls", "job_id": "raysubmit_12345"},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_12345")
+
+    client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls", "submission_id": "raysubmit_23456"},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_23456")
 
 
 def test_missing_resources(job_sdk_client):

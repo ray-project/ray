@@ -27,6 +27,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
+#include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/gcs/store_client/observable_store_client.h"
@@ -147,7 +148,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init Pub/Sub handler
   InitPubSubHandler();
 
-  // Init RuntimeENv manager
+  // Init RuntimeEnv manager
   InitRuntimeEnvManager();
 
   // Init gcs job manager.
@@ -253,10 +254,9 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && cluster_resource_scheduler_ && cluster_task_manager_);
+  RAY_CHECK(cluster_resource_scheduler_ && cluster_task_manager_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
       main_service_,
-      gcs_table_storage_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       local_node_id_,
       cluster_task_manager_);
@@ -292,8 +292,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
               if (status.ok()) {
                 gcs_resource_manager_->UpdateResourceLoads(load.resources());
               } else {
-                RAY_LOG(ERROR) << "Failed to get the resource load: "
-                               << status.ToString();
+                RAY_LOG_EVERY_N(WARNING, 10)
+                    << "Failed to get the resource load: " << status.ToString();
               }
             });
           }
@@ -385,8 +385,6 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
-      /*get_job_config_func=*/
-      [this](const JobID &job_id) { return gcs_job_manager_->GetJobConfig(job_id); },
       [this](std::function<void(void)> fn, boost::posix_time::milliseconds delay) {
         boost::asio::deadline_timer timer(main_service_);
         timer.expires_from_now(delay);
@@ -419,7 +417,6 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
       std::make_shared<GcsPlacementGroupScheduler>(main_service_,
                                                    gcs_table_storage_,
                                                    *gcs_node_manager_,
-                                                   *gcs_resource_manager_,
                                                    *cluster_resource_scheduler_,
                                                    raylet_client_pool_,
                                                    gcs_ray_syncer_.get());
@@ -571,6 +568,16 @@ void GcsServer::InitRuntimeEnvManager() {
           }
         }
       });
+  runtime_env_handler_ = std::make_unique<RuntimeEnvHandler>(
+      main_service_,
+      *runtime_env_manager_, /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(main_service_, task, delay_ms);
+      });
+  runtime_env_service_ =
+      std::make_unique<rpc::RuntimeEnvGrpcService>(main_service_, *runtime_env_handler_);
+  // Register service.
+  rpc_server_.RegisterService(*runtime_env_service_);
 }
 
 void GcsServer::InitGcsWorkerManager() {
@@ -591,7 +598,7 @@ void GcsServer::InstallEventListeners() {
     gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->OnNodeAdd(node_id);
     gcs_actor_manager_->SchedulePendingActors();
-    gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
+    gcs_heartbeat_manager_->AddNode(*node);
     cluster_task_manager_->ScheduleAndDispatchTasks();
     if (RayConfig::instance().use_ray_syncer()) {
       rpc::Address address;
@@ -614,7 +621,8 @@ void GcsServer::InstallEventListeners() {
         gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
-        raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
+        raylet_client_pool_->Disconnect(node_id);
+        gcs_heartbeat_manager_->RemoveNode(node_id);
         if (RayConfig::instance().use_ray_syncer()) {
           ray_syncer_->Disconnect(node_id.Binary());
         } else {

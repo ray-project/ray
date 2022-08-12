@@ -2,6 +2,7 @@ from gym.spaces import Box, Discrete
 import numpy as np
 from typing import Optional, TYPE_CHECKING, Union
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -25,6 +26,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class ParameterNoise(Exploration):
     """An exploration that changes a Model's parameters.
 
@@ -348,7 +350,7 @@ class ParameterNoise(Exploration):
         Args:
             tf_sess (Optional[tf.Session]): The tf-session to use to add the
                 stored noise to the (currently noise-free) weights.
-            override (bool): If True, undo any currently applied noise first,
+            override: If True, undo any currently applied noise first,
                 then add the currently stored noise.
         """
         # Make sure we only add noise to currently noise-free weights.

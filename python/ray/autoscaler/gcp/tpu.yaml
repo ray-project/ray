@@ -39,7 +39,7 @@ available_node_types:
 provider:
     type: gcp
     region: us-central1
-    availability_zone: us-central1-f
+    availability_zone: us-central1-b
     project_id: null  # replace with your GCP project id
 
 setup_commands: []

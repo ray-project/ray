@@ -14,7 +14,7 @@ import argparse
 import os
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.offline import JsonReader, ShuffledInput, IOContext, InputReader
 from ray.tune.registry import register_input
 
@@ -49,7 +49,7 @@ class CustomJsonReader(JsonReader):
         """
         The constructor must take an IOContext to be used in the input config.
         Args:
-            ioctx (IOContext): use this to access the `input_config` arguments.
+            ioctx: use this to access the `input_config` arguments.
         """
         super().__init__(ioctx.input_config["input_files"], ioctx)
 
@@ -60,7 +60,7 @@ def input_creator(ioctx: IOContext) -> InputReader:
     config["input"] parameter.
 
     Args:
-        ioctx (IOContext): use this to access the `input_config` arguments.
+        ioctx: use this to access the `input_config` arguments.
 
     Returns:
         instance of ShuffledInput to work with some offline rl algorithms
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         "clip_actions": True,
         "twin_q": True,
         "train_batch_size": 2000,
-        "learning_starts": 0,
+        "num_steps_sampled_before_learning_starts": 0,
         "bc_iters": 100,
         "metrics_num_episodes_for_smoothing": 5,
         "evaluation_interval": 1,
@@ -113,5 +113,7 @@ if __name__ == "__main__":
         "evaluation/episode_reward_mean": -600,
     }
 
-    analysis = tune.run(args.run, config=config, stop=stop, verbose=1)
-    info = analysis.results[next(iter(analysis.results))]["info"]
+    tuner = tune.Tuner(
+        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    )
+    tuner.fit()

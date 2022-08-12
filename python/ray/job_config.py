@@ -1,32 +1,34 @@
-from typing import Any, Dict, Optional, Union
 import uuid
+from typing import Any, Dict, List, Optional, Union
 
 import ray._private.gcs_utils as gcs_utils
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI
 class JobConfig:
     """A class used to store the configurations of a job.
 
     Attributes:
-        jvm_options (str[]): The jvm options for java workers of the job.
-        code_search_path (list): A list of directories or jar files that
+        jvm_options: The jvm options for java workers of the job.
+        code_search_path: A list of directories or jar files that
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
-        runtime_env (dict): A runtime environment dictionary (see
+        runtime_env: A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
-        client_job (bool): A boolean represent the source of the job.
-        default_actor_lifetime (str): The default value of actor lifetime.
+        client_job: A boolean represent the source of the job.
+        default_actor_lifetime: The default value of actor lifetime.
     """
 
     def __init__(
         self,
-        jvm_options=None,
-        code_search_path=None,
-        runtime_env=None,
-        client_job=False,
-        metadata=None,
-        ray_namespace=None,
-        default_actor_lifetime="non_detached",
+        jvm_options: List[str] = None,
+        code_search_path: List[str] = None,
+        runtime_env: dict = None,
+        client_job: bool = False,
+        metadata: Optional[dict] = None,
+        ray_namespace: Optional[str] = None,
+        default_actor_lifetime: str = "non_detached",
     ):
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
@@ -96,7 +98,7 @@ class JobConfig:
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
-        from ray.utils import get_runtime_env_info
+        from ray._private.utils import get_runtime_env_info
 
         if self._cached_pb is None:
             pb = gcs_utils.JobConfig()
@@ -124,9 +126,8 @@ class JobConfig:
 
         return self._cached_pb
 
-    def runtime_env_has_uris(self):
-        """Whether there are uris in runtime env or not"""
-        return self._validate_runtime_env().has_uris()
+    def runtime_env_has_working_dir(self):
+        return self._validate_runtime_env().has_working_dir()
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""

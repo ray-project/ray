@@ -239,6 +239,7 @@ message TerminateResponse {
 
 message KVExistsRequest {
   bytes key = 1;
+  optional bytes namespace = 2;
 }
 
 message KVExistsResponse {
@@ -247,6 +248,7 @@ message KVExistsResponse {
 
 message KVGetRequest {
   bytes key = 1;
+  optional bytes namespace = 2;
 }
 
 message KVGetResponse {
@@ -258,6 +260,7 @@ message KVPutRequest {
   bytes key = 1;
   bytes value = 2;
   bool overwrite = 3;
+  optional bytes namespace = 4;
 }
 
 message KVPutResponse {
@@ -266,18 +269,29 @@ message KVPutResponse {
 
 message KVDelRequest {
   bytes key = 1;
+  bool del_by_prefix = 2;
+  optional bytes namespace = 3;
 }
 
 message KVDelResponse {
+  int32 deleted_num = 1;
 }
 
 message KVListRequest {
   bytes prefix = 1;
+  optional bytes namespace = 2;
 }
 
 message KVListResponse {
   repeated bytes keys = 1;
 }
+
+message ClientPinRuntimeEnvURIRequest {
+  string uri = 1;
+  int32 expiration_s = 2;
+}
+
+message ClientPinRuntimeEnvURIResponse {}
 
 message InitRequest {
   // job_config of ray.init
@@ -334,6 +348,8 @@ service RayletDriver {
   rpc ListNamedActors(ClientListNamedActorsRequest)
       returns (ClientListNamedActorsResponse) {
   }
+  rpc PinRuntimeEnvURI(ClientPinRuntimeEnvURIRequest)
+      returns (ClientPinRuntimeEnvURIResponse) {}
 }
 
 message ReleaseRequest {

@@ -2,122 +2,135 @@
 
 .. _core-walkthrough:
 
-Ray Core Walkthrough
+Getting Started
 ====================
 
-This walkthrough will overview the core concepts of Ray:
+This tutorial shows you how to estimate the value of π using a `Monte Carlo method <https://en.wikipedia.org/wiki/Monte_Carlo_method>`_
+that works by randomly sampling points within a 2x2 square.
+We can use the proportion of the points that are contained within the unit circle centered at the origin
+to estimate the ratio of the area of the circle to the area of the square.
+Given that we know the true ratio to be π/4, we can multiply our estimated ratio by 4 to approximate the value of π.
+The more points that we sample to calculate this approximation, the closer the value should be to the true value of π.
 
-1. Starting Ray
-2. Using remote functions (tasks)
-3. Using remote classes (actors)
-4. Working with Ray Objects
+.. image:: images/monte_carlo_pi.png
 
-With Ray, your code will work on a single machine and can be easily scaled to large cluster.
+We use Ray :ref:`tasks <ray-remote-functions>` to distribute the work of sampling and Ray :ref:`actors <ray-remote-classes>` to track the progress of these distributed sampling tasks.
+The code can run on your laptop and can be easily scaled to large :ref:`clusters <cluster-index>` to increase the accuracy of the estimate.
 
-Java demo code in this documentation can be found `here <https://github.com/ray-project/ray/blob/master/java/test/src/main/java/io/ray/docdemo/WalkthroughDemo.java>`__.
-
-Installation
-------------
-
-.. tabbed:: Python
-
-    To run this walkthrough, install Ray with ``pip install -U ray``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
-
-.. tabbed:: Java
-
-    To run this walkthrough, add `Ray API <https://mvnrepository.com/artifact/io.ray/ray-api>`_ and `Ray Runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`_ as dependencies. Snapshot versions can be found in `sonatype repository <https://oss.sonatype.org/#nexus-search;quick~io.ray>`_.
-
-    Note: To run your Ray Java application, you need to install Ray Python with `pip install -U ray` first. (For Ray Java snapshot versions, install nightly Ray Python wheels.) The versions of Ray Java and Ray Python must match.
-
-.. tabbed:: C++
-
-    The C++ Ray API is currently experimental with limited support and it's not supported on Windows. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
-    Run the following commands to get started:
-
-    Install ray with C++ API support and generate a bazel project with the ray command.
-
-    .. code-block:: shell
-
-      pip install "ray[cpp]"
-      mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
-
-    The project template comes with a simple example application. You can try this example out in 2 ways:
-
-    1. Run the example application directly, which will start a Ray cluster locally.
-
-    .. code-block:: shell
-
-      cd ray-template && bash run.sh
-
-    2. Connect the example application to an existing Ray cluster by specifying the RAY_ADDRESS env var.
-
-    .. code-block:: shell
-
-      ray start --head
-      RAY_ADDRESS=127.0.0.1:6379 bash run.sh
-
-    Now you can build your own Ray C++ application based on this project template.
+To get started, install Ray via ``pip install -U ray``. See :ref:`Installing Ray <installation>` for more installation options.
 
 Starting Ray
 ------------
+First, let's include all modules needed for this tutorial and start a local Ray cluster with :ref:`ray.init() <ray-init-ref>`:
 
-You can start Ray on a single machine by adding this to your code.
+.. literalinclude:: doc_code/getting_started.py
+    :language: python
+    :start-after: __starting_ray_start__
+    :end-before: __starting_ray_end__
 
 .. note::
 
-  In recent versions of Ray (>=1.5), ``ray.init()`` will automatically be called on the first use of a Ray remote API.
-
-.. tabbed:: Python
-
-    .. code-block:: python
-
-        import ray
-
-        # Start Ray. If you're connecting to an existing cluster, you would use
-        # ray.init(address=<cluster-address>) instead.
-        ray.init()
-
-        ...
-
-.. tabbed:: Java
-
-    .. code-block:: java
-
-        import io.ray.api.Ray;
-
-        public class MyRayApp {
-
-            public static void main(String[] args) {
-                // Start Ray runtime. If you're connecting to an existing cluster, you can set
-                // the `-Dray.address=<cluster-address>` java system property.
-                Ray.init();
-                ...
-            }
-        }
-
-.. tabbed:: C++
-
-    .. code-block:: c++
-
-        // Run `ray cpp --show-library-path` to find headers and libraries.
-        #include <ray/api.h>
-
-        int main(int argc, char **argv) {
-            // Start Ray runtime. If you're connecting to an existing cluster, you can set
-            // the `RAY_ADDRESS` env var.
-            ray::Init();
-            ...
-        }
+  In recent versions of Ray (>=1.5), ``ray.init()`` is automatically called on the first use of a Ray remote API.
 
 
-Ray will then be able to utilize all cores of your machine. Find out how to configure the number of cores Ray will use at :ref:`configuring-ray`.
+Defining the Progress Actor
+---------------------------
+Next, we define a Ray actor that can be called by sampling tasks to update progress.
+Ray actors are essentially stateful services that anyone with an instance (a handle) of the actor can call its methods.
 
-To start a multi-node Ray cluster, see the :ref:`cluster setup page <cluster-index>`.
+.. literalinclude:: doc_code/getting_started.py
+    :language: python
+    :start-after: __defining_actor_start__
+    :end-before: __defining_actor_end__
 
-Using Tasks, Actors, and Objects
---------------------------------
+We define a Ray actor by decorating a normal Python class with :ref:`ray.remote() <ray-remote-ref>`.
+The progress actor has ``report_progress()`` method that will be called by sampling tasks to update their progress individually
+and ``get_progress()`` method to get the overall progress.
 
-Click through below to walk through using Ray's key concepts: Tasks, Actors, and Objects.
+Defining the Sampling Task
+--------------------------
+After our actor is defined, we now define a Ray task that does the sampling up to ``num_samples`` and returns the number of samples that are inside the circle.
+Ray tasks are stateless functions. They execute asynchronously, and run in parallel.
+
+.. literalinclude:: doc_code/getting_started.py
+    :language: python
+    :start-after: __defining_task_start__
+    :end-before: __defining_task_end__
+
+To convert a normal Python function as a Ray task, we decorate the function with :ref:`ray.remote() <ray-remote-ref>`.
+The sampling task takes a progress actor handle as an input and reports progress to it.
+The above code shows an example of calling actor methods from tasks.
+
+Creating a Progress Actor
+-------------------------
+Once the actor is defined, we can create an instance of it.
+
+.. literalinclude:: doc_code/getting_started.py
+    :language: python
+    :start-after: __creating_actor_start__
+    :end-before: __creating_actor_end__
+
+To create an instance of the progress actor, simply call ``ActorClass.remote()`` method with arguments to the constructor.
+This creates and runs the actor on a remote worker process.
+The return value of ``ActorClass.remote(...)`` is an actor handle that can be used to call its methods.
+
+Executing Sampling Tasks
+------------------------
+Now the task is defined, we can execute it asynchronously.
+
+.. literalinclude:: doc_code/getting_started.py
+    :language: python
+    :start-after: __executing_task_start__
+    :end-before: __executing_task_end__
+
+We execute the sampling task by calling ``remote()`` method with arguments to the function.
+This immediately returns an ``ObjectRef`` as a future
+and then executes the function asynchronously on a remote worker process.
+
+Calling the Progress Actor
+--------------------------
+While sampling tasks are running, we can periodically query the progress by calling the actor ``get_progress()`` method.
+
+.. literalinclude:: doc_code/getting_started.py
+    :language: python
+    :start-after: __calling_actor_start__
+    :end-before: __calling_actor_end__
+
+To call an actor method, use ``actor_handle.method.remote()``.
+This invocation immediately returns an ``ObjectRef`` as a future
+and then executes the method asynchronously on the remote actor process.
+To fetch the actual returned value of ``ObjectRef``, we use the blocking :ref:`ray.get() <ray-get-ref>`.
+
+Calculating π
+-------------
+Finally, we get number of samples inside the circle from the remote sampling tasks and calculate π.
+
+.. literalinclude:: doc_code/getting_started.py
+    :language: python
+    :start-after: __calculating_pi_start__
+    :end-before: __calculating_pi_end__
+
+As we can see from the above code, besides a single ``ObjectRef``, :ref:`ray.get() <ray-get-ref>` can also take a list of ``ObjectRef`` and return a list of results.
+
+If you run this tutorial, you will see output like:
+
+.. code-block:: text
+
+ Progress: 0%
+ Progress: 15%
+ Progress: 28%
+ Progress: 40%
+ Progress: 50%
+ Progress: 60%
+ Progress: 70%
+ Progress: 80%
+ Progress: 90%
+ Progress: 100%
+ Estimated value of π is: 3.1412202
+
+Next Steps
+----------
+Check out Ray core :ref:`key concepts <core-key-concepts>` and related user guides.
 
 .. tip::
 

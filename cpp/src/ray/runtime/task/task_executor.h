@@ -67,9 +67,6 @@ class TaskExecutor {
  public:
   TaskExecutor() = default;
 
-  /// TODO(SongGuyang): support multiple tasks execution
-  std::unique_ptr<ObjectID> Execute(InvocationSpec &invocation);
-
   static void Invoke(
       const TaskSpecification &task_spec,
       std::shared_ptr<msgpack::sbuffer> actor,
@@ -86,9 +83,10 @@ class TaskExecutor {
       const std::vector<rpc::ObjectReference> &arg_refs,
       const std::vector<ObjectID> &return_ids,
       const std::string &debugger_breakpoint,
+      const std::string &serialized_retry_exception_allowlist,
       std::vector<std::shared_ptr<ray::RayObject>> *results,
       std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_application_level_error,
+      bool *is_retryable_error,
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
       const std::string name_of_concurrency_group_to_execute);
 

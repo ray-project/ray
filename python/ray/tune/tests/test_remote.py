@@ -6,8 +6,8 @@ import ray
 from ray.tune import register_trainable, run_experiments, run, choice
 from ray.tune.result import TIMESTEPS_TOTAL
 from ray.tune.experiment import Experiment
-from ray.tune.suggest.hyperopt import HyperOptSearch
-from ray.tune.trial import Trial
+from ray.tune.search.hyperopt import HyperOptSearch
+from ray.tune.experiment import Trial
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 

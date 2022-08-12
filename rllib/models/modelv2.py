@@ -74,12 +74,12 @@ class ModelV2:
     # TODO: (sven): Get rid of `get_initial_state` once Trajectory
     #  View API is supported across all of RLlib.
     @PublicAPI
-    def get_initial_state(self) -> List[np.ndarray]:
+    def get_initial_state(self) -> List[TensorType]:
         """Get the initial recurrent state values for the model.
 
         Returns:
-            List of np.array objects containing the initial hidden state
-            of an RNN, if applicable.
+            List of np.array (for tf) or Tensor (for torch) objects containing the
+            initial hidden state of an RNN, if applicable.
 
         Examples:
             >>> import numpy as np
@@ -283,8 +283,8 @@ class ModelV2:
             h5_file: The h5 file name to import weights from.
 
         Example:
-            >>> from ray.rllib.agents.ppo import PPOTrainer
-            >>> trainer = PPOTrainer(...)  # doctest: +SKIP
+            >>> from ray.rllib.algorithms.ppo import PPO
+            >>> trainer = PPO(...)  # doctest: +SKIP
             >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
             >>>     trainer.train() # doctest: +SKIP

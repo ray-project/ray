@@ -1,5 +1,6 @@
 from typing import Union
 
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
@@ -10,6 +11,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
+@PublicAPI
 class SlateEpsilonGreedy(EpsilonGreedy):
     @override(EpsilonGreedy)
     def _get_tf_exploration_action_op(

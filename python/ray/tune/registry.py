@@ -1,19 +1,18 @@
 import logging
 import uuid
 from functools import partial
-
 from types import FunctionType
-from typing import Optional, Type, Union
+from typing import Callable, Optional, Type, Union
 
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
     _internal_kv_get,
+    _internal_kv_initialized,
     _internal_kv_put,
 )
 from ray.tune.error import TuneError
-from typing import Callable
+from ray.util.annotations import DeveloperAPI
 
 TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
@@ -21,6 +20,7 @@ RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
 RLLIB_ACTION_DIST = "rllib_action_dist"
 RLLIB_INPUT = "rllib_input"
+RLLIB_CONNECTOR = "rllib_connector"
 TEST = "__test__"
 KNOWN_CATEGORIES = [
     TRAINABLE_CLASS,
@@ -29,31 +29,35 @@ KNOWN_CATEGORIES = [
     RLLIB_PREPROCESSOR,
     RLLIB_ACTION_DIST,
     RLLIB_INPUT,
+    RLLIB_CONNECTOR,
     TEST,
 ]
 
 logger = logging.getLogger(__name__)
 
 
-def has_trainable(trainable_name):
+def _has_trainable(trainable_name):
     return _global_registry.contains(TRAINABLE_CLASS, trainable_name)
 
 
+@DeveloperAPI
 def get_trainable_cls(trainable_name):
     validate_trainable(trainable_name)
     return _global_registry.get(TRAINABLE_CLASS, trainable_name)
 
 
+@DeveloperAPI
 def validate_trainable(trainable_name):
-    if not has_trainable(trainable_name):
+    if not _has_trainable(trainable_name):
         # Make sure everything rllib-related is registered.
         from ray.rllib import _register_all
 
         _register_all()
-        if not has_trainable(trainable_name):
+        if not _has_trainable(trainable_name):
             raise TuneError("Unknown trainable: " + trainable_name)
 
 
+@DeveloperAPI
 def is_function_trainable(trainable: Union[str, Callable, Type]) -> bool:
     """Check if a given trainable is a function trainable."""
     if isinstance(trainable, str):
@@ -66,6 +70,7 @@ def is_function_trainable(trainable: Union[str, Callable, Type]) -> bool:
     )
 
 
+@DeveloperAPI
 def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool = True):
     """Register a trainable function or class.
 
@@ -79,8 +84,8 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
             automatically converted into a class during registration.
     """
 
+    from ray.tune.trainable import wrap_function
     from ray.tune.trainable import Trainable
-    from ray.tune.function_runner import wrap_function
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")
@@ -96,6 +101,7 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
     _global_registry.register(TRAINABLE_CLASS, name, trainable)
 
 
+@DeveloperAPI
 def register_env(name: str, env_creator: Callable):
     """Register a custom environment for use with RLlib.
 
@@ -112,6 +118,7 @@ def register_env(name: str, env_creator: Callable):
     _global_registry.register(ENV_CREATOR, name, env_creator)
 
 
+@DeveloperAPI
 def register_input(name: str, input_creator: Callable):
     """Register a custom input api for RLlib.
 
@@ -125,15 +132,17 @@ def register_input(name: str, input_creator: Callable):
     _global_registry.register(RLLIB_INPUT, name, input_creator)
 
 
+@DeveloperAPI
 def registry_contains_input(name: str) -> bool:
     return _global_registry.contains(RLLIB_INPUT, name)
 
 
+@DeveloperAPI
 def registry_get_input(name: str) -> Callable:
     return _global_registry.get(RLLIB_INPUT, name)
 
 
-def check_serializability(key, value):
+def _check_serializability(key, value):
     _global_registry.register(TEST, key, value)
 
 
@@ -206,7 +215,7 @@ class _Registry:
 
 
 _global_registry = _Registry(prefix="global")
-ray.worker._post_init_hooks.append(_global_registry.flush_values)
+ray._private.worker._post_init_hooks.append(_global_registry.flush_values)
 
 
 class _ParameterRegistry:

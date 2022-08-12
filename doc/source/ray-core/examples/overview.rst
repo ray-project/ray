@@ -65,3 +65,21 @@ For Ray's production-grade reinforcement learning library, see `RLlib <http://do
         :type: ref
         :text: Asynchronous Advantage Actor Critic (A3C)
         :classes: btn-link btn-block stretched-link
+
+
+Basic Examples
+--------------
+
+.. panels::
+    :container: container pb-4
+    :column: col-md-4 px-2 py-2
+    :img-top-cls: pt-5 w-75 d-block mx-auto
+
+    ---
+    :img-top: /ray-overview/images/ray_svg_logo.svg
+
+    +++
+    .. link-button:: highly_parallel
+        :type: ref
+        :text: Using Ray for Highly Parallelizable Tasks
+        :classes: btn-link btn-block stretched-link

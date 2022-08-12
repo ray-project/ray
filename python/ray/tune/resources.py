@@ -6,6 +6,7 @@ from numbers import Number
 # For compatibility under py2 to consider unicode as str
 from typing import Optional
 
+from ray.util.annotations import Deprecated, DeveloperAPI
 from six import string_types
 
 from ray._private.resource_spec import NODE_ID_PREFIX
@@ -14,6 +15,7 @@ from ray.tune import TuneError
 logger = logging.getLogger(__name__)
 
 
+@Deprecated
 class Resources(
     namedtuple(
         "Resources",
@@ -225,6 +227,7 @@ class Resources(
         return resources_to_json(self)
 
 
+@DeveloperAPI
 def json_to_resources(data: Optional[str]):
     if data is None or data == "null":
         return None
@@ -257,6 +260,7 @@ def json_to_resources(data: Optional[str]):
     )
 
 
+@DeveloperAPI
 def resources_to_json(resources: Optional[Resources]):
     if resources is None:
         return None

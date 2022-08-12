@@ -99,7 +99,7 @@ class UserChoiceModel(nn.Module):
             doc: Doc embeddings of shape (batch_size, num_docs, doc embedding size).
 
         Returns:
-            score (TensorType): logits of shape (batch_size, num_docs + 1),
+            score: logits of shape (batch_size, num_docs + 1),
                 where the last dimension represents no_click.
         """
         batch_size = user.shape[0]

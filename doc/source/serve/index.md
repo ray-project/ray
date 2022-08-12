@@ -21,8 +21,7 @@ Chat with Ray Serve users and developers on our [forum](https://discuss.ray.io/)
 (rayserve-overview)=
 
 Ray Serve is a scalable model serving library for building online inference APIs.
-Serve is framework agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like [PyTorch](serve-pytorch-tutorial),
-  [Tensorflow, and Keras](serve-tensorflow-tutorial), to [Scikit-Learn](serve-sklearn-tutorial) models, to arbitrary Python business logic.
+Serve is framework agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like PyTorch, Tensorflow, and Keras, to Scikit-Learn models, to arbitrary Python business logic.
 
 Serve is particularly well suited for {ref}`serve-model-composition`, enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code.
 
@@ -124,8 +123,101 @@ Because it's built on top of Ray, you can run it anywhere Ray can: on your lapto
 
 ## Learn More
 
-Check out {ref}`getting-started` and {doc}`key-concepts`, look at the {ref}`serve-faq`,
+Check out {ref}`getting-started` and {ref}`serve-key-concepts`, look at the {ref}`serve-faq`,
 or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
+
+
+```{eval-rst}
+.. panels::
+    :container: text-center
+    :column: col-lg-6 px-2 py-2
+    :card:
+
+    **Getting Started**
+    ^^^
+
+    Start with our quick start tutorials for :ref:`deploying a single model locally<getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment<converting-to-ray-serve-deployment>` .
+
+    +++
+    .. link-button:: getting-started
+        :type: ref
+        :text: Get Started with Ray Serve
+        :classes: btn-outline-info btn-block
+    ---
+
+    **Key Concepts**
+    ^^^
+
+    Understand the key concepts behind Ray Serve.
+    Learn about :ref:`Deployments<serve-key-concepts-deployment>`, :ref:`how to query them<serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph<serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
+
+    +++
+    .. link-button:: serve-key-concepts
+        :type: ref
+        :text: Learn Key Concepts
+        :classes: btn-outline-info btn-block
+    ---
+
+    **User Guides**
+    ^^^
+    Learn best practices for common patterns like :doc:`managing deployments<managing-deployments>`, how to call deployments :ref:`via HTTP<serve-http>` or :ref:`from Python<serve-handle-explainer>`.
+    Learn how to serve multiple ML models with :ref:`Model Ensemble<serve-model-ensemble>`, and how to :ref:`monitor your Serve applications<serve-monitoring>`.
+
+    +++
+    .. link-button:: serve-user-guides
+        :type: ref
+        :text: Start Using Ray Serve
+        :classes: btn-outline-info btn-block
+    ---
+
+    **Examples**
+    ^^^
+
+    Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow<serve-ml-models-tutorial>`, :ref:`Scikit-Learn<serve-ml-models-tutorial>`, and :ref:`RLlib<serve-rllib-tutorial>`.
+
+    +++
+    .. link-button:: serve-examples
+        :type: ref
+        :text: Serve Examples
+        :classes: btn-outline-info btn-block
+    ---
+
+    **Serve FAQ**
+    ^^^
+
+    Find answers to commonly asked questions in our detailed FAQ.
+
+    +++
+    .. link-button:: serve-faq
+        :type: ref
+        :text: Ray Serve FAQ
+        :classes: btn-outline-info btn-block
+    ---
+
+    **API Reference**
+    ^^^
+
+    Get more in-depth information about the Ray Serve API.
+
+    +++
+    .. link-button:: serve-api
+        :type: ref
+        :text: Read the API Reference
+        :classes: btn-outline-info btn-block
+
+    ---
+
+    **Serve Architecture**
+    ^^^
+
+    Understand how each component in Ray Serve works.
+
+    +++
+    .. link-button:: serve-architecture
+        :type: ref
+        :text: Understand Serve Architecture
+        :classes: btn-outline-info btn-block
+```
 
 For more, see the following blog posts about Ray Serve:
 

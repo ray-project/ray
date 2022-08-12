@@ -26,7 +26,6 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
 #include "ray/core_worker/future_resolver.h"
-#include "ray/core_worker/gcs_server_address_updater.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
@@ -460,6 +459,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
+  /// \param[in] serialized_retry_exception_allowlist A serialized exception list
+  /// that serves as an allowlist of frontend-language exceptions/errors that should be
+  /// retried. Default is an empty string, which will be treated as an allow-all in the
+  /// language worker.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
@@ -468,7 +471,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       int max_retries,
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
-      const std::string &debugger_breakpoint);
+      const std::string &debugger_breakpoint,
+      const std::string &serialized_retry_exception_allowlist = "");
 
   /// Create an actor.
   ///
@@ -823,8 +827,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ObjectID AllocateDynamicReturnId();
 
  private:
-  static rpc::RuntimeEnv OverrideRuntimeEnv(
-      const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent);
+  static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -938,7 +941,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs,
-                     bool *is_application_level_error);
+                     bool *is_retryable_error);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,
@@ -1116,12 +1119,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
-  std::pair<std::string, int> gcs_server_address_ GUARDED_BY(gcs_server_address_mutex_) =
-      std::make_pair<std::string, int>("", 0);
-  /// To protect accessing the `gcs_server_address_`.
-  absl::Mutex gcs_server_address_mutex_;
-  std::unique_ptr<GcsServerAddressUpdater> gcs_server_address_updater_;
-
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
@@ -1263,7 +1260,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::unique_ptr<rpc::JobConfig> job_config_;
 
-  std::shared_ptr<rpc::RuntimeEnv> job_runtime_env_;
+  std::shared_ptr<json> job_runtime_env_;
+
+  std::shared_ptr<rpc::RuntimeEnvInfo> job_runtime_env_info_;
 
   /// Simple container for per function task counters. The counters will be
   /// keyed by the function name in task spec.

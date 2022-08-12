@@ -85,13 +85,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    bool is_application_level_error = false;
+    bool is_retryable_error = false;
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
                                 reply->mutable_borrowed_refs(),
-                                &is_application_level_error);
-    reply->set_is_application_level_error(is_application_level_error);
+                                &is_retryable_error);
+    reply->set_is_retryable_error(is_retryable_error);
 
     auto num_returns = task_spec.NumReturns();
     if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {

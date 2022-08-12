@@ -1,7 +1,7 @@
 import numpy as np
 
 import ray
-import ray.rllib.agents.ppo as ppo
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.framework import try_import_torch
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("my_torch_model", MyCustomModel)
 
     # Create the Trainer.
-    trainer = ppo.PPOTrainer(
+    algo = ppo.PPO(
         env="CartPole-v0",
         config={
             "framework": "torch",
@@ -56,6 +56,6 @@ if __name__ == "__main__":
             },
         },
     )
-    trainer.train()
+    algo.train()
 
 # __sphinx_doc_end__

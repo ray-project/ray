@@ -1,9 +1,10 @@
-import pytest
 import sys
 import time
 
+import pytest
+
 import ray
-from ray import ray_constants
+from ray._private import ray_constants
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
@@ -266,4 +267,9 @@ def test_namespace_validation(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    import os
+
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

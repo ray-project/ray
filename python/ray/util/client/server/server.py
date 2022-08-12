@@ -1,50 +1,45 @@
-import logging
-from concurrent import futures
-import gc
-import grpc
 import base64
-from collections import defaultdict
 import functools
-import math
-import queue
-import pickle
-
-import threading
-from typing import Any, List
-from typing import Dict
-from typing import Set
-from typing import Optional
-from typing import Callable
-from typing import Union
-from ray import cloudpickle
-from ray.job_config import JobConfig
-import ray
-import ray.state
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
-import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-import time
+import gc
 import inspect
 import json
+import logging
+import math
+import pickle
+import queue
+import threading
+import time
+from collections import defaultdict
+from concurrent import futures
+from typing import Any, Callable, Dict, List, Optional, Set, Union
+
+import grpc
+
+import ray
+import ray._private.state
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray import cloudpickle
+from ray._private import ray_constants
+from ray._private.client_mode_hook import disable_client_hook
+from ray._private.gcs_utils import GcsClient
+from ray._private.ray_constants import env_integer
+from ray._private.ray_logging import setup_logger
+from ray._private.services import canonicalize_bootstrap_address_or_die
+from ray._private.tls_utils import add_port_to_grpc_server
+from ray.job_config import JobConfig
 from ray.util.client.common import (
-    ClientServerHandle,
-    GRPC_OPTIONS,
     CLIENT_SERVER_MAX_THREADS,
+    GRPC_OPTIONS,
     OBJECT_TRANSFER_CHUNK_SIZE,
+    ClientServerHandle,
     ResponseCache,
 )
-from ray import ray_constants
-from ray.util.client.server.proxier import serve_proxier
-from ray.util.client.server.server_pickler import dumps_from_server
-from ray.util.client.server.server_pickler import loads_from_client
 from ray.util.client.server.dataservicer import DataServicer
 from ray.util.client.server.logservicer import LogstreamServicer
+from ray.util.client.server.proxier import serve_proxier
+from ray.util.client.server.server_pickler import dumps_from_server, loads_from_client
 from ray.util.client.server.server_stubs import current_server
-from ray.ray_constants import env_integer
-from ray._private.client_mode_hook import disable_client_hook
-from ray._private.ray_logging import setup_logger
-from ray._private.services import canonicalize_bootstrap_address
-from ray._private.tls_utils import add_port_to_grpc_server
-from ray._private.gcs_utils import GcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +98,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         """Construct a raylet service
 
         Args:
-           ray_connect_handler (Callable): Function to connect to ray cluster
+           ray_connect_handler: Function to connect to ray cluster
         """
         # Stores client_id -> (ref_id -> ObjectRef)
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(dict)
@@ -129,7 +124,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         current_job_config = None
         with disable_client_hook():
             if ray.is_initialized():
-                worker = ray.worker.global_worker
+                worker = ray._private.worker.global_worker
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
@@ -152,47 +147,84 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         job_config = job_config.get_proto_job_config()
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
-        if (
-            current_job_config
-            and set(job_config.runtime_env_info.uris)
-            != set(current_job_config.runtime_env_info.uris)
-            and len(job_config.runtime_env_info.uris) > 0
-        ):
-            return ray_client_pb2.InitResponse(
-                ok=False,
-                msg="Runtime environment doesn't match "
-                f"request one {job_config.runtime_env_info.uris} "
-                f"current one {current_job_config.runtime_env_info.uris}",
+        if current_job_config:
+            job_uris = set(job_config.runtime_env_info.uris.working_dir_uri)
+            job_uris.update(job_config.runtime_env_info.uris.py_modules_uris)
+            current_job_uris = set(
+                current_job_config.runtime_env_info.uris.working_dir_uri
             )
+            current_job_uris.update(
+                current_job_config.runtime_env_info.uris.py_modules_uris
+            )
+            if job_uris != current_job_uris and len(job_uris) > 0:
+                return ray_client_pb2.InitResponse(
+                    ok=False,
+                    msg="Runtime environment doesn't match "
+                    f"request one {job_config.runtime_env_info.uris} "
+                    f"current one {current_job_config.runtime_env_info.uris}",
+                )
         return ray_client_pb2.InitResponse(ok=True)
 
     @_use_response_cache
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
-        with disable_client_hook():
-            already_exists = ray.experimental.internal_kv._internal_kv_put(
-                request.key, request.value, overwrite=request.overwrite
-            )
+        try:
+            with disable_client_hook():
+                already_exists = ray.experimental.internal_kv._internal_kv_put(
+                    request.key,
+                    request.value,
+                    overwrite=request.overwrite,
+                    namespace=request.namespace,
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            already_exists = False
         return ray_client_pb2.KVPutResponse(already_exists=already_exists)
 
     def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
-        with disable_client_hook():
-            value = ray.experimental.internal_kv._internal_kv_get(request.key)
+        try:
+            with disable_client_hook():
+                value = ray.experimental.internal_kv._internal_kv_get(
+                    request.key, namespace=request.namespace
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            value = b""
         return ray_client_pb2.KVGetResponse(value=value)
 
     @_use_response_cache
     def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
-        with disable_client_hook():
-            ray.experimental.internal_kv._internal_kv_del(request.key)
-        return ray_client_pb2.KVDelResponse()
+        try:
+            with disable_client_hook():
+                deleted_num = ray.experimental.internal_kv._internal_kv_del(
+                    request.key,
+                    del_by_prefix=request.del_by_prefix,
+                    namespace=request.namespace,
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            deleted_num = 0
+        return ray_client_pb2.KVDelResponse(deleted_num=deleted_num)
 
     def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
-        with disable_client_hook():
-            keys = ray.experimental.internal_kv._internal_kv_list(request.prefix)
+        try:
+            with disable_client_hook():
+                keys = ray.experimental.internal_kv._internal_kv_list(
+                    request.prefix, namespace=request.namespace
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            keys = []
         return ray_client_pb2.KVListResponse(keys=keys)
 
     def KVExists(self, request, context=None) -> ray_client_pb2.KVExistsResponse:
-        with disable_client_hook():
-            exists = ray.experimental.internal_kv._internal_kv_exists(request.key)
+        try:
+            with disable_client_hook():
+                exists = ray.experimental.internal_kv._internal_kv_exists(
+                    request.key, namespace=request.namespace
+                )
+        except Exception as e:
+            return_exception_in_context(e, context)
+            exists = False
         return ray_client_pb2.KVExistsResponse(exists=exists)
 
     def ListNamedActors(
@@ -236,7 +268,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
                 )
-                ctx.runtime_env = rtc._get_runtime_env_string()
+                ctx.runtime_env = rtc.get_runtime_env_string()
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
@@ -800,7 +832,7 @@ def try_create_gcs_client(
     Try to create a gcs client based on the the command line args or by
     autodetecting a running Ray cluster.
     """
-    address = canonicalize_bootstrap_address(address)
+    address = canonicalize_bootstrap_address_or_die(address)
     return GcsClient(address=address)
 
 

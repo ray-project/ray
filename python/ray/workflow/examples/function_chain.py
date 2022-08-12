@@ -2,7 +2,6 @@ import ray
 
 from typing import Callable, List
 
-ray.workflow.init()
 """
 Chain the function to make a sequential pipeline:
    step1 -> step2 -> step3 -> ...
@@ -12,15 +11,15 @@ Chain the function to make a sequential pipeline:
 def function_chain(steps: List[Callable]) -> Callable:
     assert len(steps) != 0
 
-    @ray.workflow.step
     def chain_func(*args, **kw_argv):
+        remote_tasks = list(map(ray.remote, steps))
         # Get the first function as a start
-        wf_step = ray.workflow.step(steps[0]).step(*args, **kw_argv)
+        wf_step = remote_tasks[0].bind(*args, **kw_argv)
         for i in range(1, len(steps)):
             # Convert each function inside steps into workflow step
             # function and then use the previous output as the input
             # for them.
-            wf_step = ray.workflow.step(steps[i]).step(wf_step)
+            wf_step = remote_tasks[i].bind(wf_step)
         return wf_step
 
     return chain_func
@@ -46,18 +45,17 @@ Basically, given a list of list [L1, L2, ...], we'd like to have
 def function_compose(steps: List[List[Callable]]) -> Callable:
     assert len(steps) != 0
 
-    @ray.workflow.step
+    @ray.remote
     def finish(*args):
         return args
 
-    @ray.workflow.step
     def entry(*args, **kw_args):
         layer_0 = steps[0]
-        wf = [ray.workflow.step(f).step(*args, **kw_args) for f in layer_0]
+        wf = [ray.remote(f).bind(*args, **kw_args) for f in layer_0]
         for layer_i in steps[1:]:
-            new_wf = [ray.workflow.step(f).step(w) for f in layer_i for w in wf]
+            new_wf = [ray.remote(f).bind(w) for f in layer_i for w in wf]
             wf = new_wf
-        return finish.step(*wf)
+        return finish.bind(*wf)
 
     return entry
 
@@ -75,7 +73,13 @@ if __name__ == "__main__":
             lambda v: add(v, 4),
         ]
     )
-    assert pipeline.step(10).run(workflow_id="test") == 20
+
+    workflow_id = "__function_chain_test"
+    try:
+        ray.workflow.delete(workflow_id)
+    except Exception:
+        pass
+    assert ray.workflow.run(pipeline(10), workflow_id=workflow_id) == 20
 
     pipeline = function_compose(
         [
@@ -89,4 +93,10 @@ if __name__ == "__main__":
             ],
         ]
     )
-    assert pipeline.step(10).run(workflow_id="compose") == (14, 15, 15, 16)
+
+    workflow_id = "__function_compose_test"
+    try:
+        ray.workflow.delete(workflow_id)
+    except Exception:
+        pass
+    assert ray.workflow.run(pipeline(10), workflow_id=workflow_id) == (14, 15, 15, 16)

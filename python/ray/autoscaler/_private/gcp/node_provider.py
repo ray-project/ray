@@ -1,12 +1,11 @@
-from typing import Dict
+import logging
+import time
 from functools import wraps
 from threading import RLock
-import time
-import logging
+from typing import Dict, List, Tuple
 
 import googleapiclient
 
-from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.gcp.config import (
     bootstrap_gcp,
     construct_clients_from_provider_config,
@@ -16,15 +15,14 @@ from ray.autoscaler._private.gcp.config import (
 # The logic has been abstracted away here to allow for different GCP resources
 # (API endpoints), which can differ widely, making it impossible to use
 # the same logic for everything.
-from ray.autoscaler._private.gcp.node import (  # noqa
-    GCPResource,
-    GCPNode,
+from ray.autoscaler._private.gcp.node import GCPTPU  # noqa
+from ray.autoscaler._private.gcp.node import (
     GCPCompute,
-    GCPTPU,
+    GCPNode,
     GCPNodeType,
-    INSTANCE_NAME_MAX_LEN,
-    INSTANCE_NAME_UUID_LEN,
+    GCPResource,
 )
+from ray.autoscaler.node_provider import NodeProvider
 
 logger = logging.getLogger(__name__)
 
@@ -164,14 +162,22 @@ class GCPNodeProvider(NodeProvider):
             return ip
 
     @_retry
-    def create_node(self, base_config: dict, tags: dict, count: int) -> None:
+    def create_node(self, base_config: dict, tags: dict, count: int) -> Dict[str, dict]:
+        """Creates instances.
+
+        Returns dict mapping instance id to each create operation result for the created
+        instances.
+        """
         with self.lock:
             labels = tags  # gcp uses "labels" instead of aws "tags"
 
             node_type = get_node_type(base_config)
             resource = self.resources[node_type]
 
-            resource.create_instances(base_config, labels, count)
+            results = resource.create_instances(
+                base_config, labels, count
+            )  # type: List[Tuple[dict, str]]
+            return {instance_id: result for result, instance_id in results}
 
     @_retry
     def terminate_node(self, node_id: str):

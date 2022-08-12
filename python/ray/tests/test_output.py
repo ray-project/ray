@@ -1,17 +1,32 @@
-import subprocess
-import sys
-import pytest
+import os
 import re
 import signal
+import subprocess
+import sys
 import time
-import os
+
+import pytest
 
 import ray
-
 from ray._private.test_utils import (
-    run_string_as_driver_nonblocking,
     run_string_as_driver,
+    run_string_as_driver_nonblocking,
 )
+
+
+def test_logger_config():
+    script = """
+import ray
+
+ray.init(num_cpus=1)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "INFO worker.py:" in err_str, err_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -44,10 +59,15 @@ def _hook(env):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_runtime_env_hook():
-    script = """
+@pytest.mark.parametrize("skip_hook", [True, False])
+def test_runtime_env_hook(skip_hook):
+    ray_init_snippet = "ray.init(_skip_env_hook=True)" if skip_hook else ""
+
+    script = f"""
 import ray
 import os
+
+{ray_init_snippet}
 
 @ray.remote
 def f():
@@ -61,7 +81,26 @@ print(ray.get(f.remote()))
     )
     out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
     print(out_str)
-    assert "HOOK_VALUE" in out_str
+    if skip_hook:
+        assert "HOOK_VALUE" not in out_str
+    else:
+        assert "HOOK_VALUE" in out_str
+
+
+def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
+    monkeypatch.setenv("RAY_RUNTIME_ENV_HOOK", "ray.tests.test_output._hook")
+    cluster, address = start_cluster
+    ray.init(address)
+
+    @ray.remote
+    def f():
+        return os.environ.get("HOOK_KEY")
+
+    using_ray_client = address.startswith("ray://")
+    if using_ray_client:
+        assert ray.get(f.remote()) is None
+    else:
+        assert ray.get(f.remote()) == "HOOK_VALUE"
 
 
 def test_autoscaler_infeasible():
@@ -138,6 +177,7 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = """
 import os
@@ -260,7 +300,7 @@ ray.init(local_mode=True)
 
 # In local mode this generates an ERROR level log.
 ray._private.utils.push_error_to_driver(
-    ray.worker.global_worker, "type", "Hello there")
+    ray._private.worker.global_worker, "type", "Hello there")
     """
 
     proc = run_string_as_driver_nonblocking(script)
@@ -401,20 +441,42 @@ ray.get(b.f.remote())
     assert re.search("Actor2 pid=.*bye", out_str), out_str
 
 
-def test_output():
-    # Use subprocess to execute the __main__ below.
-    outputs = subprocess.check_output(
-        [sys.executable, __file__, "_ray_instance"], stderr=subprocess.STDOUT
-    ).decode()
-    lines = outputs.split("\n")
+def test_output_local_ray():
+    script = """
+import ray
+ray.init()
+    """
+    output = run_string_as_driver(script)
+    lines = output.strip("\n").split("\n")
     for line in lines:
         print(line)
+    lines = [line for line in lines if "The object store is using /tmp" not in line]
+    assert len(lines) == 1
+    line = lines[0]
+    print(line)
+    assert "Started a local Ray instance." in line
     if os.environ.get("RAY_MINIMAL") == "1":
-        # Without "View the Ray dashboard"
-        assert len(lines) == 1, lines
+        assert "View the dashboard" not in line
     else:
-        # With "View the Ray dashboard"
-        assert len(lines) == 2, lines
+        assert "View the dashboard" in line
+
+
+def test_output_ray_cluster(call_ray_start):
+    script = """
+import ray
+ray.init()
+    """
+    output = run_string_as_driver(script)
+    lines = output.strip("\n").split("\n")
+    for line in lines:
+        print(line)
+    assert len(lines) == 2
+    assert "Connecting to existing Ray cluster at address:" in lines[0]
+    assert "Connected to Ray cluster." in lines[1]
+    if os.environ.get("RAY_MINIMAL") == "1":
+        assert "View the dashboard" not in lines[1]
+    else:
+        assert "View the dashboard" in lines[1]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -450,7 +512,7 @@ ray.init(address="auto")
 
 run_experiments(
     {
-        "ppo": {
+        "PPO": {
             "run": "PPO",
             "env": "CartPole-v0",
             "num_samples": 10,
@@ -572,7 +634,7 @@ os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
 
 ray.init(_node_name=\"{NODE_NAME}\")
 # This will kill raylet without letting it exit gracefully.
-ray.worker._global_node.kill_raylet()
+ray._private.worker._global_node.kill_raylet()
 time.sleep(NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS)
 ray.shutdown()
     """
@@ -590,4 +652,7 @@ if __name__ == "__main__":
         ray.init(num_cpus=1, object_store_memory=(100 * MB))
         ray.shutdown()
     else:
-        sys.exit(pytest.main(["-v", __file__]))
+        if os.environ.get("PARALLEL_CI"):
+            sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+        else:
+            sys.exit(pytest.main(["-sv", __file__]))

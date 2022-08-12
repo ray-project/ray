@@ -16,7 +16,7 @@ import os
 
 # __import_tune_begin__
 from pytorch_lightning.loggers import TensorBoardLogger
-from ray import tune
+from ray import air, tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining
 from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
@@ -147,7 +147,7 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0, data_dir="~/data"):
         # If fractional GPUs passed in, convert to int.
         gpus=math.ceil(num_gpus),
         logger=TensorBoardLogger(
-            save_dir=tune.get_trial_dir(), name="", version="."),
+            save_dir=os.getcwd(), name="", version="."),
         enable_progress_bar=False,
         callbacks=[
             TuneReportCallback(
@@ -173,7 +173,7 @@ def train_mnist_tune_checkpoint(config,
         # If fractional GPUs passed in, convert to int.
         "gpus": math.ceil(num_gpus),
         "logger": TensorBoardLogger(
-            save_dir=tune.get_trial_dir(), name="", version="."),
+            save_dir=os.getcwd(), name="", version="."),
         "enable_progress_bar": False,
         "callbacks": [
             TuneReportCheckpointCallback(
@@ -221,17 +221,19 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0, data_dir="~
                                                     data_dir=data_dir)
     resources_per_trial = {"cpu": 1, "gpu": gpus_per_trial}
 
-    analysis = tune.run(train_fn_with_parameters,
-        resources_per_trial=resources_per_trial,
-        metric="loss",
-        mode="min",
-        config=config,
-        num_samples=num_samples,
-        scheduler=scheduler,
-        progress_reporter=reporter,
-        name="tune_mnist_asha")
+    tuner = tune.Tuner(tune.with_resources(train_fn_with_parameters, resources=resources_per_trial),
+        tune_config=tune.TuneConfig(metric="loss",
+        mode="min", num_samples=num_samples,
+        scheduler=scheduler,),
+        run_config=air.RunConfig(name="tune_mnist_asha", progress_reporter=reporter,),
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+        param_space=config,
+
+
+        )
+    results = tuner.fit()
+
+    print("Best hyperparameters found were: ", results.get_best_result().config)
 
 # __tune_asha_end__
 
@@ -256,25 +258,29 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0, data_dir="~/
         parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
         metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
-    analysis = tune.run(
+    tuner = tune.Tuner(
+        tune.with_resources(
         tune.with_parameters(
             train_mnist_tune_checkpoint,
             num_epochs=num_epochs,
             num_gpus=gpus_per_trial,
             data_dir=data_dir),
-        resources_per_trial={
+        resources={
             "cpu": 1,
             "gpu": gpus_per_trial
-        },
-        metric="loss",
-        mode="min",
-        config=config,
-        num_samples=num_samples,
-        scheduler=scheduler,
-        progress_reporter=reporter,
-        name="tune_mnist_pbt")
+        }),
+        tune_config=tune.TuneConfig(metric="loss",
+        mode="min", num_samples=num_samples,
+        scheduler=scheduler,),
+        run_config=air.RunConfig(name="tune_mnist_pbt", progress_reporter=reporter,),
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+        param_space=config,
+
+
+        )
+    results = tuner.fit()
+
+    print("Best hyperparameters found were: ", results.get_best_result().config)
 
 # __tune_pbt_end__
 

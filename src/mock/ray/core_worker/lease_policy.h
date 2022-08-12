@@ -30,7 +30,7 @@ class MockLocalityDataProviderInterface : public LocalityDataProviderInterface {
   MOCK_METHOD(absl::optional<LocalityData>,
               GetLocalityData,
               (const ObjectID &object_id),
-              (override));
+              (const override));
 };
 
 }  // namespace core

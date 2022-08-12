@@ -148,6 +148,11 @@ const liveNodesSelector = (state: StoreState) =>
 
 type DialogState = {
   nodeIp: string;
+  pid: number;
+} | null;
+
+type ErrorDialogState = {
+  nodeIp: string;
   pid: number | null;
 } | null;
 
@@ -169,7 +174,7 @@ const nodeInfoHeaders: HeaderInfo<nodeInfoColumnId>[] = [
 
 const NodeInfo: React.FC<{}> = () => {
   const [logDialog, setLogDialog] = useState<DialogState>(null);
-  const [errorDialog, setErrorDialog] = useState<DialogState>(null);
+  const [errorDialog, setErrorDialog] = useState<ErrorDialogState>(null);
   const [isGrouped, setIsGrouped] = useState(true);
   const [order, setOrder] = React.useState<Order>("asc");
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
@@ -217,7 +222,10 @@ const NodeInfo: React.FC<{}> = () => {
   // If a Ray node is running in a K8s pod, it marks available disk as 1 byte.
   // (See ReporterAgent._get_disk_usage() in reporter_agent.py)
   // Check if there are any nodes with realistic disk total:
-  const showDisk = nodes.filter((n) => n.disk["/"].total > 10).length !== 0;
+  const showDisk =
+    nodes.filter(
+      (n) => n !== undefined && n.disk !== undefined && n.disk["/"].total > 10,
+    ).length !== 0;
 
   const filterPredicate = (
     feature: NodeInfoFeature | HeaderInfo<nodeInfoColumnId>,

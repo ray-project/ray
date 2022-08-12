@@ -1,35 +1,36 @@
 import errno
-import gym
 import logging
 import math
-import numpy as np
 import os
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+
+import gym
+import numpy as np
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import ray
 import ray.experimental.tf_utils
-from ray.util.debug import log_once
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_AGENT_STEPS_TRAINED
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
+from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.tf_utils import get_gpu_devices
-from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
     LocalOptimizer,
     ModelGradients,
     TensorType,
-    TrainerConfigDict,
 )
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import Episode
@@ -71,7 +72,7 @@ class TFPolicy(Policy):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
         sess: "tf1.Session",
         obs_input: TensorType,
         sampled_action: TensorType,
@@ -150,26 +151,15 @@ class TFPolicy(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Get devices to build the graph on.
-        worker_idx = config.get("worker_index", 0)
-        if not config["_fake_gpus"] and ray.worker._mode() == ray.worker.LOCAL_MODE:
-            num_gpus = 0
-        elif worker_idx == 0:
-            num_gpus = config["num_gpus"]
-        else:
-            num_gpus = config["num_gpus_per_worker"]
+        num_gpus = self._get_num_gpus_for_policy()
         gpu_ids = get_gpu_devices()
+        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
         # - Fake GPU mode.
         # - num_gpus=0 (either set by user or we are in local_mode=True).
         # - no GPUs available.
         if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-            logger.info(
-                "TFPolicy (worker={}) running on {}.".format(
-                    worker_idx if worker_idx > 0 else "local",
-                    f"{num_gpus} fake-GPUs" if config["_fake_gpus"] else "CPU",
-                )
-            )
             self.devices = ["/cpu:0" for _ in range(int(math.ceil(num_gpus)) or 1)]
         # Place on one or more actual GPU(s), when:
         # - num_gpus > 0 (set by user) AND
@@ -177,15 +167,9 @@ class TFPolicy(Policy):
         # - actual GPUs available AND
         # - non-fake GPU mode.
         else:
-            logger.info(
-                "TFPolicy (worker={}) running on {} GPU(s).".format(
-                    worker_idx if worker_idx > 0 else "local", num_gpus
-                )
-            )
-
             # We are a remote worker (WORKER_MODE=1):
             # GPUs should be assigned to us by ray.
-            if ray.worker._mode() == ray.worker.WORKER_MODE:
+            if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
                 gpu_ids = ray.get_gpu_ids()
 
             if len(gpu_ids) < num_gpus:
@@ -317,7 +301,7 @@ class TFPolicy(Policy):
             # Deprecated dict input.
             input_dict["is_training"] = False
 
-        builder = TFRunBuilder(self.get_session(), "compute_actions_from_input_dict")
+        builder = _TFRunBuilder(self.get_session(), "compute_actions_from_input_dict")
         obs_batch = input_dict[SampleBatch.OBS]
         to_fetch = self._build_compute_actions(
             builder, input_dict=input_dict, explore=explore, timestep=timestep
@@ -354,7 +338,7 @@ class TFPolicy(Policy):
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
-        builder = TFRunBuilder(self.get_session(), "compute_actions")
+        builder = _TFRunBuilder(self.get_session(), "compute_actions")
 
         input_dict = {SampleBatch.OBS: obs_batch, "is_training": False}
         if state_batches:
@@ -402,7 +386,7 @@ class TFPolicy(Policy):
             explore=False, tf_sess=self.get_session()
         )
 
-        builder = TFRunBuilder(self.get_session(), "compute_log_likelihoods")
+        builder = _TFRunBuilder(self.get_session(), "compute_log_likelihoods")
 
         # Normalize actions if necessary.
         if actions_normalized is False and self.config["normalize_actions"]:
@@ -440,7 +424,7 @@ class TFPolicy(Policy):
         # Switch on is_training flag in our batch.
         postprocessed_batch.set_training(True)
 
-        builder = TFRunBuilder(self.get_session(), "learn_on_batch")
+        builder = _TFRunBuilder(self.get_session(), "learn_on_batch")
 
         # Callback handling.
         learn_stats = {}
@@ -466,7 +450,7 @@ class TFPolicy(Policy):
         assert self.loss_initialized()
         # Switch on is_training flag in our batch.
         postprocessed_batch.set_training(True)
-        builder = TFRunBuilder(self.get_session(), "compute_gradients")
+        builder = _TFRunBuilder(self.get_session(), "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
 
@@ -474,7 +458,7 @@ class TFPolicy(Policy):
     @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
         assert self.loss_initialized()
-        builder = TFRunBuilder(self.get_session(), "apply_gradients")
+        builder = _TFRunBuilder(self.get_session(), "apply_gradients")
         fetches = self._build_apply_gradients(builder, gradients)
         builder.get(fetches)
 
@@ -533,7 +517,10 @@ class TFPolicy(Policy):
                 state=state["_exploration_state"], sess=self.get_session()
             )
 
-        # Set the Policy's (NN) weights.
+        # Restore glbal timestep.
+        self.global_timestep = state["global_timestep"]
+
+        # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @override(Policy)
@@ -643,7 +630,7 @@ class TFPolicy(Policy):
         requested, an error is raised.
 
         Args:
-            name (str): The name of the placeholder to return. One of
+            name: The name of the placeholder to return. One of
                 SampleBatch.CUR_OBS|PREV_ACTION/REWARD or a valid key from
                 `self._loss_input_dict`.
 
@@ -1043,70 +1030,38 @@ class TFPolicy(Policy):
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
 
         # `input_dict` given: Simply build what's in that dict.
-        if input_dict is not None:
-            if hasattr(self, "_input_dict"):
-                for key, value in input_dict.items():
-                    if key in self._input_dict:
-                        # Handle complex/nested spaces as well.
-                        tree.map_structure(
-                            lambda k, v: builder.add_feed_dict({k: v}),
-                            self._input_dict[key],
-                            value,
-                        )
-            # For policies that inherit directly from TFPolicy.
-            else:
-                builder.add_feed_dict({self._obs_input: input_dict[SampleBatch.OBS]})
-                if SampleBatch.PREV_ACTIONS in input_dict:
-                    builder.add_feed_dict(
-                        {self._prev_action_input: input_dict[SampleBatch.PREV_ACTIONS]}
+        if hasattr(self, "_input_dict"):
+            for key, value in input_dict.items():
+                if key in self._input_dict:
+                    # Handle complex/nested spaces as well.
+                    tree.map_structure(
+                        lambda k, v: builder.add_feed_dict({k: v}),
+                        self._input_dict[key],
+                        value,
                     )
-                if SampleBatch.PREV_REWARDS in input_dict:
-                    builder.add_feed_dict(
-                        {self._prev_reward_input: input_dict[SampleBatch.PREV_REWARDS]}
-                    )
-                state_batches = []
-                i = 0
-                while "state_in_{}".format(i) in input_dict:
-                    state_batches.append(input_dict["state_in_{}".format(i)])
-                    i += 1
-                builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-
-            if "state_in_0" in input_dict and SampleBatch.SEQ_LENS not in input_dict:
-                builder.add_feed_dict(
-                    {self._seq_lens: np.ones(len(input_dict["state_in_0"]))}
-                )
-
-        # Hardcoded old way: Build fixed fields, if provided.
-        # TODO: (sven) This can be deprecated after trajectory view API flag is
-        #  removed and always True.
+        # For policies that inherit directly from TFPolicy.
         else:
-            if log_once("_build_compute_actions_input_dict"):
-                deprecation_warning(
-                    old="_build_compute_actions(.., obs_batch=.., ..)",
-                    new="_build_compute_actions(.., input_dict=..)",
-                    error=False,
+            builder.add_feed_dict({self._obs_input: input_dict[SampleBatch.OBS]})
+            if SampleBatch.PREV_ACTIONS in input_dict:
+                builder.add_feed_dict(
+                    {self._prev_action_input: input_dict[SampleBatch.PREV_ACTIONS]}
                 )
-            state_batches = state_batches or []
-            if len(self._state_inputs) != len(state_batches):
-                raise ValueError(
-                    "Must pass in RNN state batches for placeholders {}, "
-                    "got {}".format(self._state_inputs, state_batches)
+            if SampleBatch.PREV_REWARDS in input_dict:
+                builder.add_feed_dict(
+                    {self._prev_reward_input: input_dict[SampleBatch.PREV_REWARDS]}
                 )
-
-            tree.map_structure(
-                lambda k, v: builder.add_feed_dict({k: v}),
-                self._obs_input,
-                obs_batch,
-            )
-            if state_batches:
-                builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
-            if self._prev_action_input is not None and prev_action_batch is not None:
-                builder.add_feed_dict({self._prev_action_input: prev_action_batch})
-            if self._prev_reward_input is not None and prev_reward_batch is not None:
-                builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
+            state_batches = []
+            i = 0
+            while "state_in_{}".format(i) in input_dict:
+                state_batches.append(input_dict["state_in_{}".format(i)])
+                i += 1
             builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
 
-        builder.add_feed_dict({self._is_training: False})
+        if "state_in_0" in input_dict and SampleBatch.SEQ_LENS not in input_dict:
+            builder.add_feed_dict(
+                {self._seq_lens: np.ones(len(input_dict["state_in_0"]))}
+            )
+
         builder.add_feed_dict({self._is_exploring: explore})
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})
@@ -1118,7 +1073,7 @@ class TFPolicy(Policy):
             + [self.extra_compute_action_fetches()]
         )
 
-        # Perform the session call.
+        # Add the ops to fetch for the upcoming session call.
         fetches = builder.add_fetches(to_fetch)
         return fetches[0], fetches[1:-1], fetches[-1]
 
@@ -1172,8 +1127,8 @@ class TFPolicy(Policy):
         """Return a feed dict from a batch.
 
         Args:
-            train_batch (SampleBatch): batch of data to derive inputs from.
-            shuffle (bool): whether to shuffle batch sequences. Shuffle may
+            train_batch: batch of data to derive inputs from.
+            shuffle: whether to shuffle batch sequences. Shuffle may
                 be done in-place. This only makes sense if you're further
                 applying minibatch SGD after getting the outputs.
 

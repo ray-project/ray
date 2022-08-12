@@ -3,7 +3,7 @@ import pickle
 import unittest
 
 import ray
-from ray.rllib.agents.ppo import PPOTrainer
+from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
 from ray.rllib.examples.models.rnn_spy_model import RNNSpyModel
 from ray.rllib.models import ModelCatalog
@@ -176,7 +176,7 @@ class TestRNNSequencing(unittest.TestCase):
     def test_simple_optimizer_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
-        ppo = PPOTrainer(
+        ppo = PPO(
             env="counter",
             config={
                 "num_workers": 0,
@@ -244,7 +244,7 @@ class TestRNNSequencing(unittest.TestCase):
     def test_minibatch_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
-        ppo = PPOTrainer(
+        ppo = PPO(
             env="counter",
             config={
                 "shuffle_sequences": False,  # for deterministic testing

@@ -107,7 +107,7 @@ def test_environment_variables_multitenancy(shutdown_only):
                 }
             ).remote("foo2")
         )
-        is None
+        == "bar2"
     )
 
 
@@ -164,7 +164,7 @@ def test_environment_variables_complex(shutdown_only):
 
     assert ray.get(a.get.remote("a")) == "b"
     assert ray.get(a.get_task.remote("a")) == "b"
-    assert ray.get(a.nested_get.remote("a")) is None
+    assert ray.get(a.nested_get.remote("a")) == "b"
     assert ray.get(a.nested_get.remote("c")) == "e"
     assert ray.get(a.nested_get.remote("d")) == "dd"
     assert (
@@ -180,9 +180,9 @@ def test_environment_variables_complex(shutdown_only):
         == "b"
     )
 
-    assert ray.get(a.get.remote("z")) is None
-    assert ray.get(a.get_task.remote("z")) is None
-    assert ray.get(a.nested_get.remote("z")) is None
+    assert ray.get(a.get.remote("z")) == "job_z"
+    assert ray.get(a.get_task.remote("z")) == "job_z"
+    assert ray.get(a.nested_get.remote("z")) == "job_z"
     assert (
         ray.get(
             get_env.options(
@@ -193,7 +193,7 @@ def test_environment_variables_complex(shutdown_only):
                 }
             ).remote("z")
         )
-        is None
+        == "job_z"
     )
 
 
@@ -303,4 +303,7 @@ def test_environment_variables_env_caching(shutdown_only):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

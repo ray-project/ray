@@ -93,11 +93,14 @@ print("DONE")
     # actor creation races.
     out = []
     for line in out_str.split("\n"):
-        if "Ray dashboard" not in line and "The object store" not in line:
+        if "local Ray instance" not in line and "The object store" not in line:
             out.append(line)
     valid = "".join(out)
     assert valid.strip() == "DONE", out_str
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

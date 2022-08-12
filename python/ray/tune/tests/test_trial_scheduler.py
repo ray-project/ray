@@ -13,7 +13,9 @@ from unittest.mock import MagicMock
 
 import ray
 from ray import tune
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.tune import Trainable
+from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
@@ -25,11 +27,10 @@ from ray.tune.schedulers import (
     HyperBandForBOHB,
 )
 
-from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
-from ray.tune.suggest._mock import _MockSearcher
-from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial, _TuneCheckpoint
-from ray.tune.trial_executor import TrialExecutor
+from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
+from ray.tune.search._mock import _MockSearcher
+from ray.tune.search import ConcurrencyLimiter
+from ray.tune.experiment import Trial
 from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
@@ -235,10 +236,10 @@ class EarlyStoppingSuite(unittest.TestCase):
 
 
 # Only barebone impl for start/stop_trial. No internal state maintained.
-class _MockTrialExecutor(TrialExecutor):
+class _MockTrialExecutor(RayTrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
-        trial.restored_checkpoint = checkpoint_obj.value
+        trial.restored_checkpoint = checkpoint_obj.dir_or_data
         trial.status = Trial.RUNNING
         return True
 
@@ -248,8 +249,12 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=_TuneCheckpoint.PERSISTENT, result=None):
-        return _TuneCheckpoint(_TuneCheckpoint.PERSISTENT, trial.trainable_name, result)
+    def save(self, trial, type=CheckpointStorage.PERSISTENT, result=None):
+        return _TrackedCheckpoint(
+            dir_or_data=trial.trainable_name,
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics=result,
+        )
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -307,7 +312,7 @@ class _MockTrialRunner:
         return {t for t in self.trials if t.status != Trial.TERMINATED}
 
     def _pause_trial(self, trial):
-        self.trial_executor.save(trial, _TuneCheckpoint.MEMORY, None)
+        self.trial_executor.save(trial, CheckpointStorage.MEMORY, None)
         trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
@@ -344,7 +349,7 @@ class HyperbandSuite(unittest.TestCase):
         """Default statistics for HyperBand."""
         sched = HyperBandScheduler()
         res = {
-            str(s): {"n": sched._get_n0(s), "r": sched._get_r0(s)}
+            str(s): {"n": sched._get_n0(s), "r": sched._get_r0(s)}  # noqa
             for s in range(sched._s_max_1)
         }
         res["max_trials"] = sum(v["n"] for v in res.values())
@@ -728,6 +733,8 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.STOP)
         sched.choose_trial_to_run(runner)
+        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
+        self.assertEqual(runner._search_alg.searcher.on_unpause.call_count, 1)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
@@ -754,6 +761,7 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.CONTINUE)
         sched.choose_trial_to_run(runner)
+        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
@@ -785,7 +793,7 @@ class BOHBSuite(unittest.TestCase):
         )
 
     def testNonstopBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         def train(cfg, checkpoint_dir=None):
             start = 0
@@ -838,11 +846,18 @@ class _MockTrial(Trial):
         self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
-        self.restored_checkpoint = checkpoint.value
+        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
+            self.restored_checkpoint = checkpoint.dir_or_data["data"]
+        else:
+            self.restored_checkpoint = checkpoint.dir_or_data
 
     @property
     def checkpoint(self):
-        return _TuneCheckpoint(_TuneCheckpoint.MEMORY, self.trainable_name, None)
+        return _TrackedCheckpoint(
+            dir_or_data={"data": self.trainable_name},
+            storage_mode=CheckpointStorage.MEMORY,
+            metrics=None,
+        )
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):
@@ -1164,38 +1179,38 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Categorical case
         assertProduces(
-            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
+            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 8}
         )
         assertProduces(
-            lambda: explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
+            lambda: _explore({"v": 3}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {3, 4}
         )
         assertProduces(
-            lambda: explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
+            lambda: _explore({"v": 10}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x), {8, 10}
         )
         assertProduces(
-            lambda: explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
+            lambda: _explore({"v": 7}, {"v": [3, 4, 8, 10]}, 0.0, lambda x: x),
             {3, 4, 8, 10},
         )
         assertProduces(
-            lambda: explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
+            lambda: _explore({"v": 4}, {"v": [3, 4, 8, 10]}, 1.0, lambda x: x),
             {3, 4, 8, 10},
         )
 
         # Continuous case
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
             ),
             {80, 120},
         )
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 0.0, lambda x: x
             ),
             {80.0, 120.0},
         )
         assertProduces(
-            lambda: explore(
+            lambda: _explore(
                 {"v": 100.0}, {"v": lambda: random.choice([10, 100])}, 1.0, lambda x: x
             ),
             {10.0, 100.0},
@@ -1224,7 +1239,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore(
+            lambda: _explore(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -1246,7 +1261,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # Nested mutation and spec
         assertNestedProduces(
-            lambda: explore(
+            lambda: _explore(
                 {
                     "a": {"b": 4},
                     "1": {"2": {"3": 100}},
@@ -2299,7 +2314,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
 
     def testAnonymousMetricEndToEndBOHB(self):
-        from ray.tune.suggest.bohb import TuneBOHB
+        from ray.tune.search.bohb import TuneBOHB
 
         self._testAnonymousMetricEndToEnd(HyperBandForBOHB, TuneBOHB())
 

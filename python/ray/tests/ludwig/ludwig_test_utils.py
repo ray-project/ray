@@ -143,7 +143,7 @@ def random_string(length=5):
 def numerical_feature(normalization=None, **kwargs):
     feature = {
         "name": "num_" + random_string(),
-        "type": "numerical",
+        "type": "number",
         "preprocessing": {"normalization": normalization},
     }
     feature.update(kwargs)
@@ -602,6 +602,7 @@ def train_with_backend(
     model = LudwigModel(config, backend=backend)
     output_dir = None
 
+    ret = False
     try:
         _, _, output_dir = model.train(
             dataset=dataset,
@@ -624,7 +625,8 @@ def train_with_backend(
             _, eval_preds, _ = model.evaluate(dataset=dataset)
             assert backend.df_engine.compute(eval_preds) is not None
 
-        return model.model.get_weights()
+        ret = True
     finally:
         # Remove results/intermediate data saved to disk
         shutil.rmtree(output_dir, ignore_errors=True)
+    return ret

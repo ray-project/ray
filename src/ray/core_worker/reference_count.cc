@@ -112,6 +112,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
     if (outer_it != object_id_refs_.end() && !outer_it->second.owned_by_us) {
       RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id
                      << " contained_in_borrowed: " << outer_id;
+      RAY_CHECK_NE(object_id, outer_id);
       it->second.mutable_nested()->contained_in_borrowed_ids.insert(outer_id);
       outer_it->second.mutable_nested()->contains.insert(object_id);
       // The inner object ref is in use. We must report our ref to the object's
@@ -130,9 +131,18 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
 void ReferenceCounter::AddObjectRefStats(
     const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
-    rpc::CoreWorkerStats *stats) const {
+    rpc::CoreWorkerStats *stats,
+    const int64_t limit) const {
   absl::MutexLock lock(&mutex_);
+  auto total = object_id_refs_.size();
+  auto count = 0;
+
   for (const auto &ref : object_id_refs_) {
+    if (limit != -1 && count >= limit) {
+      break;
+    }
+    count += 1;
+
     auto ref_proto = stats->add_object_refs();
     ref_proto->set_object_id(ref.first.Binary());
     ref_proto->set_call_site(ref.second.call_site);
@@ -163,6 +173,12 @@ void ReferenceCounter::AddObjectRefStats(
   // Also include any unreferenced objects that are pinned in memory.
   for (const auto &entry : pinned_objects) {
     if (object_id_refs_.find(entry.first) == object_id_refs_.end()) {
+      if (limit != -1 && count >= limit) {
+        break;
+      }
+      count += 1;
+      total += 1;
+
       auto ref_proto = stats->add_object_refs();
       ref_proto->set_object_id(entry.first.Binary());
       ref_proto->set_object_size(entry.second.first);
@@ -170,6 +186,8 @@ void ReferenceCounter::AddObjectRefStats(
       ref_proto->set_pinned_in_memory(true);
     }
   }
+
+  stats->set_objects_total(total);
 }
 
 void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
@@ -509,6 +527,14 @@ bool ReferenceCounter::IsPlasmaObjectFreed(const ObjectID &object_id) const {
   return freed_objects_.find(object_id) != freed_objects_.end();
 }
 
+bool ReferenceCounter::TryMarkFreedObjectInUseAgain(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  if (object_id_refs_.count(object_id) == 0) {
+    return false;
+  }
+  return freed_objects_.erase(object_id);
+}
+
 void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &object_id : object_ids) {
@@ -713,8 +739,6 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
       if (check_node_alive_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
-        // We eagerly add the pinned location to the set of object locations.
-        AddObjectLocationInternal(it, raylet_id);
       } else {
         ReleasePlasmaObject(it);
         objects_to_recover_.push_back(object_id);
@@ -1298,7 +1322,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
 }
 
 absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
-    const ObjectID &object_id) {
+    const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   // Uses the reference table to return locality data for an object.
   auto it = object_id_refs_.find(object_id);
@@ -1325,11 +1349,16 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   //   locations.
   // - If we don't own this object, this will contain a snapshot of the object locations
   //   at future resolution time.
-  const auto &node_ids = it->second.locations;
+  auto node_ids = it->second.locations;
+  // Add location of the primary copy since the object must be there: either in memory or
+  // spilled.
+  if (it->second.pinned_at_raylet_id.has_value()) {
+    node_ids.emplace(it->second.pinned_at_raylet_id.value());
+  }
 
   // We should only reach here if we have valid locality data to return.
   absl::optional<LocalityData> locality_data(
-      {static_cast<uint64_t>(object_size), node_ids});
+      {static_cast<uint64_t>(object_size), std::move(node_ids)});
   return locality_data;
 }
 

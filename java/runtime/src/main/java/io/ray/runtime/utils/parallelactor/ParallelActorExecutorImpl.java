@@ -2,7 +2,7 @@ package io.ray.runtime.utils.parallelactor;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.Ray;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
@@ -22,7 +22,7 @@ public class ParallelActorExecutorImpl {
   public ParallelActorExecutorImpl(int parallelism, JavaFunctionDescriptor javaFunctionDescriptor)
       throws InvocationTargetException, IllegalAccessException {
 
-    functionManager = ((RayRuntimeInternal) Ray.internal()).getFunctionManager();
+    functionManager = ((AbstractRayRuntime) Ray.internal()).getFunctionManager();
     RayFunction init = functionManager.getFunction(javaFunctionDescriptor);
     Thread.currentThread().setContextClassLoader(init.classLoader);
     for (int i = 0; i < parallelism; ++i) {

@@ -1,6 +1,6 @@
 import pytest
 
-from ray.train.callbacks.results_preprocessors import (
+from ray.train._internal.results_preprocessors import (
     ExcludedKeysResultsPreprocessor,
     IndexedResultsPreprocessor,
     SequentialResultsPreprocessor,

@@ -29,7 +29,7 @@ class RepeatedValues:
             input_dict["obs"].values.lengths
 
     Attributes:
-        values (Tensor): The padded data tensor of shape [B, max_len, ..., sz],
+        values: The padded data tensor of shape [B, max_len, ..., sz],
             where B is the batch dimension, max_len is the max length of this
             list, followed by any number of sub list max lens, followed by the
             actual data size.
@@ -37,7 +37,7 @@ class RepeatedValues:
             number of valid items in each list. When the list is nested within
             other lists, there will be extra dimensions for the parent list
             max lens.
-        max_len (int): The max number of items allowed in each list.
+        max_len: The max number of items allowed in each list.
 
     TODO(ekl): support conversion to tf.RaggedTensor.
     """

@@ -9,8 +9,6 @@ import time
 from collections import deque
 from typing import Optional, Dict, Any
 
-import ray
-
 from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
@@ -67,6 +65,8 @@ class ClientRunner(CommandRunner):
             raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
+        import ray
+
         ray_address = self.cluster_manager.get_cluster_address()
         try:
             if ray.is_initialized:
@@ -77,26 +77,26 @@ class ClientRunner(CommandRunner):
             start_time = time.monotonic()
             timeout_at = start_time + timeout
             next_status = start_time + 30
-            nodes_up = len(ray.nodes())
+            nodes_up = sum(1 for node in ray.nodes() if node["Alive"])
             while nodes_up < num_nodes:
                 now = time.monotonic()
                 if now >= timeout_at:
                     raise ClusterNodesWaitTimeout(
-                        f"Only {len(ray.nodes())}/{num_nodes} are up after "
+                        f"Only {nodes_up}/{num_nodes} are up after "
                         f"{timeout} seconds."
                     )
 
                 if now >= next_status:
                     logger.info(
                         f"Waiting for nodes to come up: "
-                        f"{len(ray.nodes())}/{num_nodes} "
+                        f"{nodes_up}/{num_nodes} "
                         f"({now - start_time:.2f} seconds, "
                         f"timeout: {timeout} seconds)."
                     )
                     next_status += 30
 
                 time.sleep(1)
-                nodes_up = len(ray.nodes())
+                nodes_up = sum(1 for node in ray.nodes() if node["Alive"])
 
             ray.shutdown()
         except Exception as e:

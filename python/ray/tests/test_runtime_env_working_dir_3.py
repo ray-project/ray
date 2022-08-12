@@ -1,18 +1,18 @@
-from pathlib import Path
 import os
 import sys
-import time
 import tempfile
+import time
+from pathlib import Path
+from unittest import mock
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from unittest import mock
 
 import ray
-from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
 import ray.experimental.internal_kv as kv
+from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
+from ray._private.test_utils import chdir, check_local_files_gced, wait_for_condition
 from ray._private.utils import get_directory_size_bytes
-
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -32,6 +32,7 @@ def working_dir_and_pymodules_disable_URI_cache():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0",
+            RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR: "0",
         },
     ):
         print("URI caching disabled (cache size set to 0).")
@@ -45,9 +46,22 @@ def URI_cache_10_MB():
         {
             "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0.01",
             "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0.01",
+            RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR: "0",
         },
     ):
         print("URI cache size set to 0.01 GB.")
+        yield
+
+
+@pytest.fixture(scope="class")
+def disable_temporary_uri_pinning():
+    with mock.patch.dict(
+        os.environ,
+        {
+            RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR: "0",
+        },
+    ):
+        print("temporary URI pinning disabled.")
         yield
 
 
@@ -65,6 +79,7 @@ class TestGC:
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
+        disable_temporary_uri_pinning,
         option: str,
         source: str,
     ):
@@ -153,7 +168,11 @@ class TestGC:
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_actor_level_gc(
-        self, start_cluster, working_dir_and_pymodules_disable_URI_cache, option: str
+        self,
+        start_cluster,
+        working_dir_and_pymodules_disable_URI_cache,
+        disable_temporary_uri_pinning,
+        option: str,
     ):
         """Tests that actor-level working_dir is GC'd when the actor exits."""
         NUM_NODES = 5
@@ -216,6 +235,7 @@ class TestGC:
         self,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
+        disable_temporary_uri_pinning,
         option: str,
         source: str,
     ):
@@ -305,7 +325,9 @@ class TestGC:
         print("check_local_files_gced passed wait_for_condition block.")
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-    def test_hit_cache_size_limit(self, start_cluster, URI_cache_10_MB):
+    def test_hit_cache_size_limit(
+        self, start_cluster, URI_cache_10_MB, disable_temporary_uri_pinning
+    ):
         """Test eviction happens when we exceed a nonzero (10MB) cache size."""
         NUM_NODES = 3
         cluster, address = start_cluster
@@ -349,9 +371,7 @@ class TestGC:
 
             # Without the cache size limit, we would expect the local dir to be
             # 12 MB.  Since we do have a size limit, the first package must be
-            # GC'ed, leaving us with 4 MB.  Sleep to give time for deletion.
-            time.sleep(5)
-            print("Slept for 5 seconds.")
+            # GC'ed, leaving us with 4 MB.
 
             for idx, node in enumerate(cluster.list_all_nodes()):
                 local_dir = os.path.join(
@@ -359,7 +379,11 @@ class TestGC:
                 )
                 print("Created local_dir path.")
 
-                assert 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
+                def local_dir_size_near_4mb():
+                    return 3 < get_directory_size_bytes(local_dir) / (1024 ** 2) < 5
+
+                wait_for_condition(local_dir_size_near_4mb)
+
                 print(f"get_directory_size_bytes assertion {idx} passed.")
 
 
@@ -385,6 +409,7 @@ class TestSkipLocalGC:
         skip_local_gc,
         start_cluster,
         working_dir_and_pymodules_disable_URI_cache,
+        disable_temporary_uri_pinning,
         source,
     ):
         cluster, address = start_cluster
@@ -406,5 +431,42 @@ class TestSkipLocalGC:
         assert not check_local_files_gced(cluster)
 
 
+@pytest.mark.parametrize("expiration_s", [0, 20])
+@pytest.mark.parametrize("source", [lazy_fixture("tmp_working_dir")])
+def test_pin_runtime_env_uri(start_cluster, source, expiration_s, monkeypatch):
+    """Test that temporary GCS URI references are deleted after expiration_s."""
+    monkeypatch.setenv(RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR, str(expiration_s))
+
+    cluster, address = start_cluster
+
+    start = time.time()
+    ray.init(address, namespace="test", runtime_env={"working_dir": source})
+
+    @ray.remote
+    def f():
+        pass
+
+    # Wait for runtime env to be set up. This can be accomplished by getting
+    # the result of a task that depends on it.
+    ray.get(f.remote())
+    ray.shutdown()
+
+    # Need to re-connect to use internal_kv.
+    ray.init(address=address)
+
+    print("Starting Internal KV checks at time ", time.time() - start)
+    if expiration_s > 0:
+        assert not check_internal_kv_gced()
+        wait_for_condition(check_internal_kv_gced, timeout=2 * expiration_s)
+        assert expiration_s < time.time() - start < 2 * expiration_s
+        print("Internal KV was GC'ed at time ", time.time() - start)
+    else:
+        wait_for_condition(check_internal_kv_gced)
+        print("Internal KV was GC'ed at time ", time.time() - start)
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

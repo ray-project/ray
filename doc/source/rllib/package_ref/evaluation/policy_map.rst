@@ -9,11 +9,11 @@ The Policies are used to calculate actions for the next environment steps, losse
 model updates, and other functionalities covered by RLlib's :py:class:`~ray.rllib.policy.policy.Policy` API.
 A mapping function is used by episode objects to map AgentIDs produced by the environment to one of the PolicyIDs.
 
-It is possible to add and remove policies to/from the :py:class:`~ray.rllib.agents.trainer.Trainer`'s workers at any given time
+It is possible to add and remove policies to/from the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`'s workers at any given time
 (even within an ongoing episode) as well as to change the policy mapping function.
-See the Trainer's methods: :py:meth:`~ray.rllib.agents.trainer.Trainer.add_policy`,
-:py:meth:`~ray.rllib.agents.trainer.Trainer.remove_policy`, and
-:py:meth:`~ray.rllib.agents.trainer.Trainer.change_policy_mapping_fn` for more details.
+See the Algorithm's methods: :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.add_policy`,
+:py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.remove_policy`, and
+:py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.change_policy_mapping_fn` for more details.
 
 .. autoclass:: ray.rllib.policy.policy_map.PolicyMap
     :members:

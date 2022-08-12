@@ -41,8 +41,8 @@ import os
 
 from gym.spaces import Box, Discrete
 import ray
-from ray import tune
-from ray.rllib.agents import ppo
+from ray import air, tune
+from ray.rllib.algorithms import ppo
 from ray.rllib.examples.env.action_mask_env import ActionMaskEnv
 from ray.rllib.examples.models.action_mask_model import (
     ActionMaskModel,
@@ -147,7 +147,7 @@ if __name__ == "__main__":
             raise ValueError("This example only supports APPO and PPO.")
         ppo_config = ppo.DEFAULT_CONFIG.copy()
         ppo_config.update(config)
-        trainer = ppo.PPOTrainer(config=ppo_config, env=ActionMaskEnv)
+        trainer = ppo.PPO(config=ppo_config, env=ActionMaskEnv)
         # run manual training loop and print results after each iteration
         for _ in range(args.stop_iters):
             result = trainer.train()
@@ -178,7 +178,10 @@ if __name__ == "__main__":
 
     # run with tune for auto trainer creation, stopping, TensorBoard, etc.
     else:
-        results = tune.run(args.run, config=config, stop=stop, verbose=2)
+        tuner = tune.Tuner(
+            args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+        )
+        tuner.fit()
 
     print("Finished successfully without selecting invalid actions.")
     ray.shutdown()

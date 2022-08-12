@@ -15,19 +15,15 @@ This section should help you:
 
 ## Lifetime of a Ray Serve Instance
 
-Ray Serve instances run on top of Ray clusters and are started using {mod}`serve.start <ray.serve.start>`.
-Once {mod}`serve.start <ray.serve.start>` has been called, further API calls can be used to create and update the deployments that will be used to serve your Python code (including ML models).
+Ray Serve instances run on top of Ray clusters and are started using {mod}`serve.run <ray.serve.run>`.
+Once {mod}`serve.run <ray.serve.run>` is called, a Serve instance is created automatically.
 The Serve instance will be torn down when the script exits.
 
-When running on a long-lived Ray cluster (e.g., one started using `ray start` and connected
-to using `ray.init(address="auto", namespace="serve")`, you can also deploy a Ray Serve instance as a long-running
-service using `serve.start(detached=True)`. In this case, the Serve instance will continue to
-run on the Ray cluster even after the script that calls it exits. If you want to run another script
-to update the Serve instance, you can run another script that connects to the same Ray cluster and makes further API calls (e.g., to create, update, or delete a deployment). Note that there can only be one detached Serve instance on each Ray cluster.
+:::{note}
+All Serve actors– including the Serve controller, the HTTP proxies, and the deployment replicas– run in the `"serve"` namespace, even if the Ray driver namespace is different.
+:::
 
-All non-detached Serve instances will be started in the current namespace that was specified when connecting to the cluster. If a namespace is specified for a detached Serve instance, it will be used. Otherwise if the current namespace is anonymous, the Serve instance will be started in the `serve` namespace.
-
-If `serve.start()` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster with the same namespace that was specified when starting the instance and run `serve.start()`.
+If `serve.run()` is called again in a process in which there is already a running Serve instance, Serve will re-connect to the existing instance (regardless of whether the original instance was detached or not). To reconnect to a Serve instance that exists in the Ray cluster but not in the current process, connect to the cluster with `ray.init(address=...)` and run `serve.run()`.
 
 ## Deploying on a Single Node
 
@@ -37,46 +33,26 @@ In general, **Option 2 is recommended for most users** because it allows you to 
 
 1. Start Ray and deploy with Ray Serve all in a single Python file.
 
-```python
-import ray
-from ray import serve
-import time
-
-# This will start Ray locally and start Serve on top of it.
-serve.start()
-
-@serve.deployment
-def my_func(request):
-  return "hello"
-
-my_func.deploy()
-
-# Serve will be shut down once the script exits, so keep it alive manually.
-while True:
-    time.sleep(5)
-    print(serve.list_deployments())
+```{literalinclude} ../serve/doc_code/deploying_serve_example.py
+:start-after: __deploy_in_single_file_1_start__
+:end-before: __deploy_in_single_file_1_end__
+:language: python
 ```
 
-2. First running `ray start --head` on the machine, then connecting to the running local Ray cluster using `ray.init(address="auto", namespace="serve")` in your Serve script(s) (this is the Ray namespace, not Kubernetes namespace, and you can specify any namespace that you like). You can run multiple scripts to update your deployments over time.
+2. First running `ray start --head` on the machine, then connecting to the running local Ray cluster using `ray.init(address="auto")` in your Serve script(s). You can run multiple scripts to update your deployments over time.
 
 ```bash
 ray start --head # Start local Ray cluster.
 serve start # Start Serve on the local Ray cluster.
 ```
 
-```python
-import ray
-from ray import serve
-
-# This will connect to the running Ray cluster.
-ray.init(address="auto", namespace="serve")
-
-@serve.deployment
-def my_func(request):
-  return "hello"
-
-my_func.deploy()
+```{literalinclude} ../serve/doc_code/deploying_serve_example.py
+:start-after: __deploy_in_single_file_2_start__
+:end-before: __deploy_in_single_file_2_end__
+:language: python
 ```
+
+(deploying-serve-on-kubernetes)=
 
 ## Deploying on Kubernetes
 
@@ -86,7 +62,7 @@ In order to deploy Ray Serve on Kubernetes, we need to do the following:
 2. Expose the head node of the cluster as a [Service].
 3. Start Ray Serve on the cluster.
 
-There are multiple ways to start a Ray cluster on Kubernetes, see {ref}`ray-k8s-deploy` for more information.
+There are multiple ways to start a Ray cluster on Kubernetes, see {ref}`kuberay-index` for more information.
 Here, we will be using the [Ray Cluster Launcher](cluster-cloud) tool, which has support for Kubernetes as a backend.
 
 The cluster launcher takes in a yaml config file that describes the cluster.
@@ -164,21 +140,10 @@ $ kubectl -n ray describe service ray-head
 
 With the cluster now running, we can run a simple script to start Ray Serve and deploy a "hello world" deployment:
 
-> ```python
-> import ray
-> from ray import serve
->
-> # Connect to the running Ray cluster.
-> ray.init(address="auto", namespace="serve")
-> # Bind on 0.0.0.0 to expose the HTTP server on external IPs.
-> serve.start(detached=True, http_options={"host": "0.0.0.0"})
->
->
-> @serve.deployment(route_prefix="/hello")
-> def hello(request):
->     return "hello world"
->
-> hello.deploy()
+> ```{literalinclude} ../serve/doc_code/deploying_serve_example.py
+> :start-after: __deploy_in_k8s_start__
+> :end-before: __deploy_in_k8s_end__
+> :language: python
 > ```
 
 Save this script locally as `deploy.py` and run it on the head node using `ray submit`:
@@ -216,7 +181,7 @@ This method should take no arguments and return no result, raising an exception 
 You can also customize how frequently the health check is run and the timeout when a replica will be deemed unhealthy if it hasn't responded in the deployment options.
 
 > ```python
-> @serve.deployment(_health_check_period_s=10, _health_check_timeout_s=30)
+> @serve.deployment(health_check_period_s=10, health_check_timeout_s=30)
 > class MyDeployment:
 >     def __init__(self, db_addr: str):
 >         self._my_db_connection = connect_to_db(db_addr)
@@ -252,48 +217,18 @@ failure recovery solutions. Although Ray is not currently highly available (HA),
 the long term roadmap and being actively worked on.
 :::
 
-Ray Serve added an experimental feature to help recovering the state.
-This features enables Serve to write all your deployment configuration and code into a storage location.
+Ray Serve provides the feature to help recovering the state.
+This feature enables Serve to write all your deployment configuration and code into Global Control Store
+(GCS).
 Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state.
 
-Here is how to use it:
 
-:::{warning}
-The API is experimental and subject to change. We welcome you to test it out
-and leave us feedback through github issues or discussion forum!
-:::
+In Kubernetes environment, we recommend using KubeRay (a Kubernetes operator for Ray Serve, see {ref}`kuberay-index`) to help deploy your Serve applications with Kubernetes, and help you recover the node crash from Customized Resource.
 
-You can use both the start argument and the CLI to specify it:
-
-```python
-serve.start(_checkpoint_path=...)
-```
-
-or
-
-```shell
-serve start --checkpoint-path ...
-```
-
-The checkpoint path argument accepts the following format:
-
-- `file://local_file_path`
-- `s3://bucket/path`
-- `gs://bucket/path`
-- `custom://importable.custom_python.Class/path`
-
-While we have native support for on disk, AWS S3, and Google Cloud Storage (GCS), there is no reason we cannot support more.
-
-In Kubernetes environment, we recommend using [Persistent Volumes] to create a disk and mount it into the Ray head node.
-For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s [Persistent Volumes] API.
-Alternatively, you can also directly write to object store like S3.
-
-You can easily try to plug into your own implementation using the `custom://` path and inherit the [KVStoreBase] class.
-Feel free to open new github issues and contribute more storage backends!
+Feel free to open new GitHub issues if you hit any problems from Failure Recovery.
 
 [ingress]: https://kubernetes.io/docs/concepts/services-networking/ingress/
 [kubernetes default config]: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/example-full.yaml
-[kvstorebase]: https://github.com/ray-project/ray/blob/master/python/ray/serve/storage/kv_store_base.py
 [nodeport]: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
 [persistent volumes]: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
 [service]: https://kubernetes.io/docs/concepts/services-networking/service/

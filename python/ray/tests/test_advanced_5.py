@@ -7,11 +7,7 @@ import numpy as np
 import pytest
 
 import ray.cluster_utils
-
-from ray._private.test_utils import (
-    client_test_enabled,
-    SignalActor,
-)
+from ray._private.test_utils import SignalActor, client_test_enabled
 
 if client_test_enabled():
     from ray.util.client import ray
@@ -167,7 +163,7 @@ def test_actor_distribution_balance(ray_start_cluster_enabled, args):
     @ray.remote(memory=100 * 1024 ** 2, num_cpus=0.01, scheduling_strategy="SPREAD")
     class Foo:
         def method(self):
-            return ray.worker.global_worker.node.unique_id
+            return ray._private.worker.global_worker.node.unique_id
 
     actor_distribution = {}
     actor_list = [Foo.remote() for _ in range(actor_count)]
@@ -217,7 +213,7 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
     @ray.remote(memory=800 * 1024 ** 2, num_cpus=0.01)
     class Foo:
         def method(self):
-            return ray.worker.global_worker.node.unique_id
+            return ray._private.worker.global_worker.node.unique_id
 
     foo1 = Foo.remote()
     o1 = foo1.method.remote()
@@ -231,6 +227,10 @@ def test_worker_lease_reply_with_resources(ray_start_cluster_enabled):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

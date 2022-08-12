@@ -7,20 +7,20 @@ Supports color, bold text, italics, underlines, etc.
 (depending on TTY features)
 as well as indentation and other structured output.
 """
-from contextlib import contextmanager
-from functools import wraps
 import inspect
 import logging
 import os
 import sys
 import time
-from typing import Any, Callable, Dict, Tuple, Optional, List
+from contextlib import contextmanager
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import click
+import colorama
 
 # Import ray first to use the bundled colorama
 import ray  # noqa: F401
-import colorama
 
 if sys.platform == "win32":
     import msvcrt
@@ -167,7 +167,7 @@ def _format_msg(
     no_format: bool = None,
     _tags: Dict[str, Any] = None,
     _numbered: Tuple[str, int, int] = None,
-    **kwargs: Any
+    **kwargs: Any,
 ):
     """Formats a message for printing.
 
@@ -405,7 +405,7 @@ class _CliLogger:
         """Proxy for printing messages.
 
         Args:
-            msg (str): Message to print.
+            msg: Message to print.
             linefeed (bool):
                 If `linefeed` is `False` no linefeed is printed at the
                 end of the message.
@@ -497,7 +497,7 @@ class _CliLogger:
         """Displays a key-value pair with special formatting.
 
         Args:
-            key (str): Label that is prepended to the message.
+            key: Label that is prepended to the message.
 
         For other arguments, see `_format_msg`.
         """
@@ -576,7 +576,7 @@ class _CliLogger:
         *args: Any,
         _level_str: str = "INFO",
         end: str = None,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """Prints a message.
 
@@ -613,7 +613,7 @@ class _CliLogger:
         """Handle assertion without throwing a scary exception.
 
         Args:
-            val (bool): Value to check.
+            val: Value to check.
 
         For other arguments, see `_format_msg`.
         """
@@ -640,14 +640,14 @@ class _CliLogger:
         _abort: bool = False,
         _default: bool = False,
         _timeout_s: Optional[float] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """Display a confirmation dialog.
 
         Valid answers are "y/yes/true/1" and "n/no/false/0".
 
         Args:
-            yes (bool): If `yes` is `True` the dialog will default to "yes"
+            yes: If `yes` is `True` the dialog will default to "yes"
                         and continue without waiting for user input.
             _abort (bool):
                 If `_abort` is `True`,
@@ -772,7 +772,7 @@ class _CliLogger:
         """Prompt the user for some text input.
 
         Args:
-            msg (str): The mesage to display to the user before the prompt.
+            msg: The mesage to display to the user before the prompt.
 
         Returns:
             The string entered by the user.

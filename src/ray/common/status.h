@@ -95,6 +95,7 @@ enum class StatusCode : char {
   CreationTaskError = 16,
   NotFound = 17,
   Disconnected = 18,
+  SchedulingCancelled = 19,
   // object store status
   ObjectExists = 21,
   ObjectNotFound = 22,
@@ -108,6 +109,9 @@ enum class StatusCode : char {
   // This represents all other status codes
   // returned by grpc that are not defined above.
   GrpcUnknown = 27,
+  // Object store is both out of memory and
+  // out of disk.
+  OutOfDisk = 28,
 };
 
 #if defined(__clang__)
@@ -191,6 +195,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::Disconnected, msg);
   }
 
+  static Status SchedulingCancelled(const std::string &msg) {
+    return Status(StatusCode::SchedulingCancelled, msg);
+  }
+
   static Status ObjectExists(const std::string &msg) {
     return Status(StatusCode::ObjectExists, msg);
   }
@@ -211,6 +219,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::TransientObjectStoreFull, msg);
   }
 
+  static Status OutOfDisk(const std::string &msg) {
+    return Status(StatusCode::OutOfDisk, msg);
+  }
+
   static Status GrpcUnavailable(const std::string &msg) {
     return Status(StatusCode::GrpcUnavailable, msg);
   }
@@ -225,6 +237,7 @@ class RAY_EXPORT Status {
   bool ok() const { return (state_ == NULL); }
 
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }
+  bool IsOutOfDisk() const { return code() == StatusCode::OutOfDisk; }
   bool IsKeyError() const { return code() == StatusCode::KeyError; }
   bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsIOError() const { return code() == StatusCode::IOError; }
@@ -248,6 +261,7 @@ class RAY_EXPORT Status {
   }
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
   bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
+  bool IsSchedulingCancelled() const { return code() == StatusCode::SchedulingCancelled; }
   bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
   bool IsObjectNotFound() const { return code() == StatusCode::ObjectNotFound; }
   bool IsObjectAlreadySealed() const { return code() == StatusCode::ObjectAlreadySealed; }

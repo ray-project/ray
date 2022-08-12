@@ -100,6 +100,38 @@ class MinimalSessionManagerTest(unittest.TestCase):
         )
         self.sdk.reset()
 
+    def testClusterName(self):
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cluster_manager = self.cls(
+            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
+        )
+        self.assertRegex(cluster_manager.cluster_name, r"^test_\d+$")
+        cluster_manager = self.cls(
+            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=True, sdk=sdk
+        )
+        self.assertRegex(cluster_manager.cluster_name, r"^test-smoke-test_\d+$")
+
+    def testSetClusterEnv(self):
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cluster_manager = self.cls(
+            test_name="test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=False, sdk=sdk
+        )
+        cluster_manager.set_cluster_env({})
+        self.assertEqual(
+            cluster_manager.cluster_env["env_vars"]["RAY_USAGE_STATS_EXTRA_TAGS"],
+            "test_name=test;smoke_test=False",
+        )
+        cluster_manager = self.cls(
+            test_name="Test", project_id=UNIT_TEST_PROJECT_ID, smoke_test=True, sdk=sdk
+        )
+        cluster_manager.set_cluster_env({})
+        self.assertEqual(
+            cluster_manager.cluster_env["env_vars"]["RAY_USAGE_STATS_EXTRA_TAGS"],
+            "test_name=Test;smoke_test=True",
+        )
+
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeExisting(self):
         # Find existing compute and succeed
@@ -407,6 +439,37 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.cluster_manager.build_cluster_env(timeout=600)
         self.assertTrue(self.cluster_manager.cluster_env_build_id)
         self.assertEqual(self.cluster_manager.cluster_env_build_id, "build_succeeded")
+        self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
+        self.assertEqual(len(self.sdk.call_counter), 1)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testBuildClusterEnvSelectLastBuild(self):
+        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.cluster_manager.cluster_env_id = "correct"
+        # (Second) build succeeded
+        self.cluster_manager.cluster_env_build_id = None
+        self.sdk.reset()
+        self.sdk.returns["list_cluster_environment_builds"] = APIDict(
+            results=[
+                APIDict(
+                    id="build_succeeded",
+                    status="succeeded",
+                    created_at=0,
+                    error_message=None,
+                    config_json={},
+                ),
+                APIDict(
+                    id="build_succeeded_2",
+                    status="succeeded",
+                    created_at=1,
+                    error_message=None,
+                    config_json={},
+                ),
+            ]
+        )
+        self.cluster_manager.build_cluster_env(timeout=600)
+        self.assertTrue(self.cluster_manager.cluster_env_build_id)
+        self.assertEqual(self.cluster_manager.cluster_env_build_id, "build_succeeded_2")
         self.assertEqual(self.sdk.call_counter["list_cluster_environment_builds"], 1)
         self.assertEqual(len(self.sdk.call_counter), 1)
 

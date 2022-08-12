@@ -35,8 +35,8 @@ class SegmentTree:
         """Initializes a Segment Tree object.
 
         Args:
-            capacity (int): Total size of the array - must be a power of two.
-            operation (operation): Lambda obj, obj -> obj
+            capacity: Total size of the array - must be a power of two.
+            operation: Lambda obj, obj -> obj
                 The operation for combining elements (eg. sum, max).
                 Must be a mathematical group together with the set of
                 possible values for array elements.
@@ -70,7 +70,7 @@ class SegmentTree:
               arr[start], operation(arr[start+1], operation(... arr[end])))
 
         Args:
-            start (int): Start index to apply reduction to.
+            start: Start index to apply reduction to.
             end (Optional[int]): End index to apply reduction to (excluded).
 
         Returns:
@@ -136,8 +136,8 @@ class SegmentTree:
         Inserts/overwrites a value in/into the tree.
 
         Args:
-            idx (int): The index to insert to. Must be in [0, `self.capacity`[
-            val (float): The value to insert.
+            idx: The index to insert to. Must be in [0, `self.capacity`[
+            val: The value to insert.
         """
         assert 0 <= idx < self.capacity, f"idx={idx} capacity={self.capacity}"
 
@@ -183,7 +183,7 @@ class SumSegmentTree(SegmentTree):
         """Finds highest i, for which: sum(arr[0]+..+arr[i - i]) <= prefixsum.
 
         Args:
-            prefixsum (float): `prefixsum` upper bound in above constraint.
+            prefixsum: `prefixsum` upper bound in above constraint.
 
         Returns:
             int: Largest possible index (i) satisfying above constraint.

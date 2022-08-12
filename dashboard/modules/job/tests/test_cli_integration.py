@@ -19,12 +19,13 @@ def set_env_var(key: str, val: Optional[str] = None):
     elif key in os.environ:
         del os.environ[key]
 
-    yield
-
-    if key in os.environ:
-        del os.environ[key]
-    if old_val is not None:
-        os.environ[key] = old_val
+    try:
+        yield
+    finally:
+        if key in os.environ:
+            del os.environ[key]
+        if old_val is not None:
+            os.environ[key] = old_val
 
 
 @pytest.fixture
@@ -76,6 +77,15 @@ def _run_cmd(cmd: str, should_fail=False) -> Tuple[str, str]:
             )
 
     return p.stdout.decode("utf-8"), p.stderr.decode("utf-8")
+
+
+class TestJobSubmitHook:
+    """Tests the RAY_JOB_SUBMIT_HOOK env var."""
+
+    def test_hook(self, ray_start_stop):
+        with set_env_var("RAY_JOB_SUBMIT_HOOK", "ray._private.test_utils.job_hook"):
+            stdout, _ = _run_cmd("ray job submit -- echo hello")
+            assert "hook intercepted: echo hello" in stdout
 
 
 class TestRayAddress:
@@ -147,7 +157,7 @@ class TestJobStop:
 class TestJobList:
     def test_empty(self, ray_start_stop):
         stdout, _ = _run_cmd("ray job list")
-        assert "{}" in stdout
+        assert "[]" in stdout
 
     def test_list(self, ray_start_stop):
         _run_cmd("ray job submit --job-id='hello_id' -- echo hello")
@@ -158,7 +168,6 @@ class TestJobList:
             f"--runtime-env-json='{json.dumps(runtime_env)}' -- echo hi"
         )
         stdout, _ = _run_cmd("ray job list")
-        assert "JobInfo" in stdout
         assert "123" in stdout
         assert "hello_id" in stdout
         assert "hi_id" in stdout

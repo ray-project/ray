@@ -1,5 +1,6 @@
-from ray.autoscaler._private import constants
 from typing import List, Set, Tuple
+
+from ray.autoscaler._private import constants
 
 
 class NodeTracker:
@@ -36,9 +37,9 @@ class NodeTracker:
         Begin to track a new node.
 
         Args:
-            node_id (str): The node id.
-            ip (str): The node ip address.
-            node_type (str): The node type.
+            node_id: The node id.
+            ip: The node ip address.
+            node_type: The node type.
         """
         if node_id not in self.node_mapping:
             self._add_node_mapping(node_id, (ip, node_type))
@@ -49,7 +50,7 @@ class NodeTracker:
         as failed.
 
         Args:
-            node_id (str): The node id which failed.
+            node_id: The node id which failed.
         """
         if node_id in self.node_mapping:
             self.lru_order.remove(node_id)
@@ -62,7 +63,7 @@ class NodeTracker:
         we began to track that is not pending or alive (i.e. not failed).
 
         Args:
-            non_failed_ids (set): Nodes are failed unless they are in this set.
+            non_failed_ids: Nodes are failed unless they are in this set.
 
         Returns:
             List[Tuple[str, str]]: A list of tuples. Each tuple is the ip

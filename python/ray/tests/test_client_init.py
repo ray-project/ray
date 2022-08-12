@@ -49,8 +49,8 @@ def init_and_serve_lazy():
     cluster.wait_for_nodes(1)
     address = cluster.address
 
-    def connect(job_config=None):
-        ray.init(address=address, job_config=job_config)
+    def connect(job_config=None, **ray_init_kwargs):
+        ray.init(address=address, job_config=job_config, **ray_init_kwargs)
 
     server_handle = ray_client_server.serve("localhost:50051", connect)
     yield server_handle
@@ -230,6 +230,10 @@ def test_max_clients(init_and_serve):
 
 
 if __name__ == "__main__":
+    import os
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

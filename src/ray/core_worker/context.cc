@@ -210,12 +210,18 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
   }
 }
 
-const std::string &WorkerContext::GetCurrentSerializedRuntimeEnv() const {
+const std::shared_ptr<rpc::RuntimeEnvInfo> WorkerContext::GetCurrentRuntimeEnvInfo()
+    const {
   absl::ReaderMutexLock lock(&mutex_);
-  return runtime_env_info_.serialized_runtime_env();
+  return runtime_env_info_;
 }
 
-std::shared_ptr<const rpc::RuntimeEnv> WorkerContext::GetCurrentRuntimeEnv() const {
+const std::string &WorkerContext::GetCurrentSerializedRuntimeEnv() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return runtime_env_info_->serialized_runtime_env();
+}
+
+std::shared_ptr<json> WorkerContext::GetCurrentRuntimeEnv() const {
   absl::ReaderMutexLock lock(&mutex_);
   return runtime_env_;
 }
@@ -259,12 +265,11 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     // TODO(architkulkarni): Once workers are cached by runtime env, we should
     // only set runtime_env_ once and then RAY_CHECK that we
     // never see a new one.
-    runtime_env_info_ = task_spec.RuntimeEnvInfo();
-    if (!IsRuntimeEnvEmpty(runtime_env_info_.serialized_runtime_env())) {
-      runtime_env_.reset(new rpc::RuntimeEnv());
-      RAY_CHECK(google::protobuf::util::JsonStringToMessage(
-                    runtime_env_info_.serialized_runtime_env(), runtime_env_.get())
-                    .ok());
+    runtime_env_info_.reset(new rpc::RuntimeEnvInfo());
+    *runtime_env_info_ = task_spec.RuntimeEnvInfo();
+    if (!IsRuntimeEnvEmpty(runtime_env_info_->serialized_runtime_env())) {
+      runtime_env_.reset(new json());
+      *runtime_env_ = json::parse(runtime_env_info_->serialized_runtime_env());
     }
   }
 }

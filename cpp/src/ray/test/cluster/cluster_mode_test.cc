@@ -37,6 +37,24 @@ TEST(RayClusterModeTest, Initialized) {
   EXPECT_TRUE(!ray::IsInitialized());
 }
 
+TEST(RayClusterModeTest, DefaultActorLifetimeTest) {
+  ray::RayConfig config;
+  config.default_actor_lifetime = ray::ActorLifetime::DETACHED;
+  ray::Init(config, cmd_argc, cmd_argv);
+  ray::ActorHandle<Counter> parent_actor =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  std::string child_actor_name = "child_actor_name";
+  parent_actor.Task(&Counter::CreateChildActor).Remote(child_actor_name).Get();
+  auto child_actor_optional = ray::GetActor<Counter>(child_actor_name);
+  EXPECT_TRUE(child_actor_optional);
+  auto child_actor = *child_actor_optional;
+  EXPECT_EQ(1, *child_actor.Task(&Counter::Plus1).Remote().Get());
+  parent_actor.Kill();
+  sleep(4);
+  EXPECT_EQ(2, *child_actor.Task(&Counter::Plus1).Remote().Get());
+  ray::Shutdown();
+}
+
 struct Person {
   std::string name;
   int age;
@@ -78,6 +96,8 @@ TEST(RayClusterModeTest, FullTest) {
                                         .SetMaxRestarts(1)
                                         .SetName("named_actor")
                                         .Remote();
+  auto initialized_obj = actor.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj.Get());
   auto named_actor_obj = actor.Task(&Counter::Plus1)
                              .SetName("named_actor_task")
                              .SetResources({{"CPU", 1.0}})
@@ -218,6 +238,15 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_FALSE(Counter::IsProcessAlive(pid));
 }
 
+TEST(RayClusterModeTest, ActorHandleTest) {
+  auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto obj1 = actor1.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(1, *obj1.Get());
+  auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto obj2 = actor2.Task(&Counter::Plus1ForActor).Remote(actor1);
+  EXPECT_EQ(2, *obj2.Get());
+}
+
 TEST(RayClusterModeTest, PythonInvocationTest) {
   auto py_actor_handle =
       ray::Actor(ray::PyActorClass{"test_cross_language_invocation", "Counter"})
@@ -275,7 +304,7 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
                     .Remote();
   auto r2 = actor2.Task(&Counter::Plus1).Remote();
   std::vector<ray::ObjectRef<int>> objects{r2};
-  auto result = ray::Wait(objects, 1, 1000);
+  auto result = ray::Wait(objects, 1, 5000);
   EXPECT_EQ(result.ready.size(), 0);
   EXPECT_EQ(result.unready.size(), 1);
 
@@ -284,13 +313,18 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
 
   auto r4 = ray::Task(Return1).SetResource("CPU", 100.0).Remote();
   std::vector<ray::ObjectRef<int>> objects1{r4};
-  auto result2 = ray::Wait(objects1, 1, 1000);
+  auto result2 = ray::Wait(objects1, 1, 5000);
   EXPECT_EQ(result2.ready.size(), 0);
   EXPECT_EQ(result2.unready.size(), 1);
 }
 
 TEST(RayClusterModeTest, ExceptionTest) {
   EXPECT_THROW(ray::Task(ThrowTask).Remote().Get(), ray::internal::RayTaskException);
+  try {
+    ray::Task(ThrowTask).Remote().Get();
+  } catch (ray::internal::RayTaskException &e) {
+    EXPECT_TRUE(std::string(e.what()).find("std::logic_error") != std::string::npos);
+  }
 
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto object1 = actor1.Task(&Counter::ExceptionFunc).Remote();
@@ -423,7 +457,7 @@ TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
                     .Remote();
   auto r1 = actor1.Task(&Counter::Plus1).Remote();
   std::vector<ray::ObjectRef<int>> objects{r1};
-  auto result = ray::Wait(objects, 1, 1000);
+  auto result = ray::Wait(objects, 1, 5000);
   EXPECT_EQ(result.ready.size(), 1);
   EXPECT_EQ(result.unready.size(), 0);
   auto result_vector = ray::Get(objects);
@@ -436,7 +470,7 @@ TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
                     .Remote();
   auto r2 = actor2.Task(&Counter::Plus1).Remote();
   std::vector<ray::ObjectRef<int>> objects2{r2};
-  auto result2 = ray::Wait(objects2, 1, 1000);
+  auto result2 = ray::Wait(objects2, 1, 5000);
   EXPECT_EQ(result2.ready.size(), 0);
   EXPECT_EQ(result2.unready.size(), 1);
   ray::RemovePlacementGroup(placement_group.GetID());
@@ -452,6 +486,174 @@ TEST(RayClusterModeTest, TaskWithPlacementGroup) {
                .Remote();
   EXPECT_EQ(*r.Get(), 1);
   ray::RemovePlacementGroup(placement_group.GetID());
+}
+
+TEST(RayClusterModeTest, NamespaceTest) {
+  // Create a named actor in namespace `isolated_ns`.
+  std::string actor_name_in_isolated_ns = "named_actor_in_isolated_ns";
+  std::string isolated_ns_name = "isolated_ns";
+  ray::ActorHandle<Counter> actor =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+          .SetName(actor_name_in_isolated_ns, isolated_ns_name)
+          .Remote();
+  auto initialized_obj = actor.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj.Get());
+  // It is invisible to job default namespace.
+  auto actor_optional = ray::GetActor<Counter>(actor_name_in_isolated_ns);
+  EXPECT_TRUE(!actor_optional);
+  // It is visible to the namespace it belongs.
+  actor_optional = ray::GetActor<Counter>(actor_name_in_isolated_ns, isolated_ns_name);
+  EXPECT_TRUE(actor_optional);
+  // It is invisible to any other namespaces.
+  actor_optional = ray::GetActor<Counter>(actor_name_in_isolated_ns, "other_ns");
+  EXPECT_TRUE(!actor_optional);
+
+  // Create a named actor in job default namespace.
+  std::string actor_name_in_default_ns = "actor_name_in_default_ns";
+  actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+              .SetName(actor_name_in_default_ns)
+              .Remote();
+  initialized_obj = actor.Task(&Counter::Initialized).Remote();
+  EXPECT_TRUE(*initialized_obj.Get());
+  // It is visible to job default namespace.
+  actor_optional = ray::GetActor<Counter>(actor_name_in_default_ns);
+  EXPECT_TRUE(actor_optional);
+  // It is invisible to any other namespaces.
+  actor_optional = ray::GetActor<Counter>(actor_name_in_default_ns, isolated_ns_name);
+  EXPECT_TRUE(!actor_optional);
+  ray::Shutdown();
+}
+
+TEST(RayClusterModeTest, GetNamespaceApiTest) {
+  std::string ns = "test_get_current_namespace";
+  ray::RayConfig config;
+  config.ray_namespace = ns;
+  ray::Init(config, cmd_argc, cmd_argv);
+  // Get namespace in driver.
+  EXPECT_EQ(ray::GetNamespace(), ns);
+  // Get namespace in task.
+  auto task_ns = ray::Task(GetNamespaceInTask).Remote();
+  EXPECT_EQ(*task_ns.Get(), ns);
+  // Get namespace in actor.
+  auto actor_handle = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto actor_ns = actor_handle.Task(&Counter::GetNamespaceInActor).Remote();
+  EXPECT_EQ(*actor_ns.Get(), ns);
+  ray::Shutdown();
+}
+
+class Pip {
+ public:
+  std::vector<std::string> packages;
+  bool pip_check = false;
+  Pip() = default;
+  Pip(const std::vector<std::string> &packages, bool pip_check)
+      : packages(packages), pip_check(pip_check) {}
+};
+
+void to_json(json &j, const Pip &pip) {
+  j = json{{"packages", pip.packages}, {"pip_check", pip.pip_check}};
+};
+
+void from_json(const json &j, Pip &pip) {
+  j.at("packages").get_to(pip.packages);
+  j.at("pip_check").get_to(pip.pip_check);
+};
+
+TEST(RayClusterModeTest, RuntimeEnvApiTest) {
+  ray::RuntimeEnv runtime_env;
+  // Set pip
+  std::vector<std::string> packages = {"requests"};
+  Pip pip(packages, true);
+  runtime_env.Set("pip", pip);
+  // Set working_dir
+  std::string working_dir = "https://path/to/working_dir.zip";
+  runtime_env.Set("working_dir", working_dir);
+
+  // Serialize
+  auto serialized_runtime_env = runtime_env.Serialize();
+
+  // Deserialize
+  auto runtime_env_2 = ray::RuntimeEnv::Deserialize(serialized_runtime_env);
+  auto pip2 = runtime_env_2.Get<Pip>("pip");
+  EXPECT_EQ(pip2.packages, pip.packages);
+  EXPECT_EQ(pip2.pip_check, pip.pip_check);
+  auto working_dir2 = runtime_env_2.Get<std::string>("working_dir");
+  EXPECT_EQ(working_dir2, working_dir);
+
+  // Construct runtime env with raw json string
+  ray::RuntimeEnv runtime_env_3;
+  std::string pip_raw_json_string =
+      R"({"packages":["requests","tensorflow"],"pip_check":false})";
+  runtime_env_3.SetJsonStr("pip", pip_raw_json_string);
+  auto get_json_result = runtime_env_3.GetJsonStr("pip");
+  EXPECT_EQ(get_json_result, pip_raw_json_string);
+}
+
+TEST(RayClusterModeTest, RuntimeEnvApiExceptionTest) {
+  ray::RuntimeEnv runtime_env;
+  EXPECT_THROW(runtime_env.Get<std::string>("working_dir"),
+               ray::internal::RayRuntimeEnvException);
+  runtime_env.Set("working_dir", "https://path/to/working_dir.zip");
+  EXPECT_THROW(runtime_env.Get<Pip>("working_dir"),
+               ray::internal::RayRuntimeEnvException);
+  EXPECT_THROW(runtime_env.SetJsonStr("pip", "{123"),
+               ray::internal::RayRuntimeEnvException);
+  EXPECT_THROW(runtime_env.GetJsonStr("pip"), ray::internal::RayRuntimeEnvException);
+  EXPECT_EQ(runtime_env.Empty(), false);
+  EXPECT_EQ(runtime_env.Remove("working_dir"), true);
+  // Do nothing when removing a non-existent key.
+  EXPECT_EQ(runtime_env.Remove("pip"), false);
+  EXPECT_EQ(runtime_env.Empty(), true);
+}
+
+TEST(RayClusterModeTest, RuntimeEnvTaskLevelEnvVarsTest) {
+  ray::RayConfig config;
+  ray::Init(config, cmd_argc, cmd_argv);
+  auto r0 = ray::Task(GetEnvVar).Remote("KEY1");
+  auto get_result0 = *(ray::Get(r0));
+  EXPECT_EQ("", get_result0);
+
+  auto actor_handle = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto r1 = actor_handle.Task(&Counter::GetEnvVar).Remote("KEY1");
+  auto get_result1 = *(ray::Get(r1));
+  EXPECT_EQ("", get_result1);
+
+  ray::RuntimeEnv runtime_env;
+  std::map<std::string, std::string> env_vars{{"KEY1", "value1"}};
+  runtime_env.Set("env_vars", env_vars);
+  auto r2 = ray::Task(GetEnvVar).SetRuntimeEnv(runtime_env).Remote("KEY1");
+  auto get_result2 = *(ray::Get(r2));
+  EXPECT_EQ("value1", get_result2);
+
+  ray::RuntimeEnv runtime_env2;
+  std::map<std::string, std::string> env_vars2{{"KEY1", "value2"}};
+  runtime_env2.Set("env_vars", env_vars2);
+  auto actor_handle2 =
+      ray::Actor(RAY_FUNC(Counter::FactoryCreate)).SetRuntimeEnv(runtime_env2).Remote();
+  auto r3 = actor_handle2.Task(&Counter::GetEnvVar).Remote("KEY1");
+  auto get_result3 = *(ray::Get(r3));
+  EXPECT_EQ("value2", get_result3);
+
+  ray::Shutdown();
+}
+
+TEST(RayClusterModeTest, RuntimeEnvJobLevelEnvVarsTest) {
+  ray::RayConfig config;
+  ray::RuntimeEnv runtime_env;
+  std::map<std::string, std::string> env_vars{{"KEY1", "value1"}};
+  runtime_env.Set("env_vars", env_vars);
+  config.runtime_env = runtime_env;
+  ray::Init(config, cmd_argc, cmd_argv);
+  auto r0 = ray::Task(GetEnvVar).Remote("KEY1");
+  auto get_result0 = *(ray::Get(r0));
+  EXPECT_EQ("value1", get_result0);
+
+  auto actor_handle = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto r1 = actor_handle.Task(&Counter::GetEnvVar).Remote("KEY1");
+  auto get_result1 = *(ray::Get(r1));
+  EXPECT_EQ("value1", get_result1);
+
+  ray::Shutdown();
 }
 
 int main(int argc, char **argv) {

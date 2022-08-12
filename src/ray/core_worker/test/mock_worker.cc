@@ -49,8 +49,8 @@ class MockWorker {
     options.node_ip_address = "127.0.0.1";
     options.node_manager_port = node_manager_port;
     options.raylet_ip_address = "127.0.0.1";
-    options.task_execution_callback =
-        std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9);
+    options.task_execution_callback = std::bind(
+        &MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10);
     options.metrics_agent_port = -1;
     options.startup_token = startup_token;
     CoreWorkerProcess::Initialize(options);
@@ -67,6 +67,7 @@ class MockWorker {
                      const std::vector<rpc::ObjectReference> &arg_refs,
                      const std::vector<ObjectID> &return_ids,
                      const std::string &debugger_breakpoint,
+                     const std::string &serialized_retry_exception_allowlist,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
     const FunctionDescriptor function_descriptor = ray_function.GetFunctionDescriptor();

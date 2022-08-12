@@ -1,19 +1,19 @@
 import os
+from pathlib import Path
 from typing import Optional, Union
 
 import pandas as pd
+
+from ray.air.result import Result
 from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
-from ray.ml.checkpoint import Checkpoint
-from ray.ml.result import Result
-from ray.tune import ExperimentAnalysis
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
-from ray.tune.trial import Trial
-from ray.tune.utils.trainable import TrainableUtil
+from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ResultGrid:
     """A set of ``Result`` objects returned from a call to ``tuner.fit()``.
 
@@ -41,7 +41,10 @@ class ResultGrid:
     seen by Tune will be provided.
     """
 
-    def __init__(self, experiment_analysis: ExperimentAnalysis):
+    def __init__(
+        self,
+        experiment_analysis: ExperimentAnalysis,
+    ):
         self._experiment_analysis = experiment_analysis
 
     def get_best_result(
@@ -72,6 +75,8 @@ class ResultGrid:
                 values are disregarded and these trials are never selected as
                 the best trial.
         """
+        if len(self._experiment_analysis.trials) == 1:
+            return self._trial_to_result(self._experiment_analysis.trials[0])
         if not metric and not self._experiment_analysis.default_metric:
             raise ValueError(
                 "No metric is provided. Either pass in a `metric` arg to "
@@ -84,6 +89,7 @@ class ResultGrid:
                 "`get_best_result` or specify a mode in the "
                 "`TuneConfig` of your `Tuner`."
             )
+
         best_trial = self._experiment_analysis.get_best_trial(
             metric=metric,
             mode=mode,
@@ -149,9 +155,34 @@ class ResultGrid:
     def __len__(self) -> int:
         return len(self._experiment_analysis.trials)
 
-    def __getitem__(self, i) -> Result:
+    def __getitem__(self, i: int) -> Result:
         """Returns the i'th result in the grid."""
-        return self._trial_to_result(self._experiment_analysis.trials[i])
+        return self._trial_to_result(
+            self._experiment_analysis.trials[i],
+        )
+
+    @property
+    def errors(self):
+        """Returns the exceptions of errored trials."""
+        return [result.error for result in self if result.error]
+
+    @property
+    def num_errors(self):
+        """Returns the number of errored trials."""
+        return len(
+            [t for t in self._experiment_analysis.trials if t.status == Trial.ERROR]
+        )
+
+    @property
+    def num_terminated(self):
+        """Returns the number of terminated (but not errored) trials."""
+        return len(
+            [
+                t
+                for t in self._experiment_analysis.trials
+                if t.status == Trial.TERMINATED
+            ]
+        )
 
     @staticmethod
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
@@ -165,15 +196,22 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        if trial.checkpoint.value:
-            checkpoint_dir = TrainableUtil.find_checkpoint_dir(trial.checkpoint.value)
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
-        else:
-            checkpoint = None
+        checkpoint = trial.checkpoint.to_air_checkpoint()
+        best_checkpoints = [
+            (checkpoint.to_air_checkpoint(), checkpoint.metrics)
+            for checkpoint in trial.get_trial_checkpoints()
+        ]
 
         result = Result(
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
+            log_dir=Path(trial.logdir) if trial.logdir else None,
+            metrics_dataframe=self._experiment_analysis.trial_dataframes.get(
+                trial.logdir
+            )
+            if self._experiment_analysis
+            else None,
+            best_checkpoints=best_checkpoints,
         )
         return result

@@ -14,7 +14,7 @@ pong-deterministic-dqn:
         replay_buffer_config:
           type: MultiAgentPrioritizedReplayBuffer
           capacity: 50000
-          learning_starts: 10000
+        num_steps_sampled_before_learning_starts: 10000
         rollout_fragment_length: 4
         train_batch_size: 32
         exploration_config:
@@ -24,3 +24,6 @@ pong-deterministic-dqn:
           grayscale: True
           zero_mean: False
           dim: 42
+        # we should set compress_observations to True because few machines
+        # would be able to contain the replay buffers in memory otherwise
+        compress_observations: True

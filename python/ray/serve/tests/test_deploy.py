@@ -11,7 +11,7 @@ import ray
 from ray._private.test_utils import SignalActor
 from ray import serve
 from ray.serve.exceptions import RayServeException
-from ray.serve.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -74,11 +74,11 @@ def test_empty_decorator(serve_instance):
 
     assert func.name == "func"
     assert Class.name == "Class"
-    func.deploy()
-    Class.deploy()
+    func_handle = serve.run(func.bind())
+    assert ray.get(func_handle.remote()) == "hi"
 
-    assert ray.get(func.get_handle().remote()) == "hi"
-    assert ray.get(Class.get_handle().ping.remote()) == "pong"
+    class_handle = serve.run(Class.bind())
+    assert ray.get(class_handle.ping.remote()) == "pong"
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -126,77 +126,6 @@ def test_deploy_no_version(serve_instance, use_handle):
     val5, pid5 = call()
     assert val5 == "2"
     assert pid5 == pid4
-
-
-@pytest.mark.parametrize("use_handle", [True, False])
-def test_deploy_prev_version(serve_instance, use_handle):
-    name = "test"
-
-    @serve.deployment(name=name)
-    def v1(*args):
-        return f"1|{os.getpid()}"
-
-    def call():
-        if use_handle:
-            ret = ray.get(v1.get_handle().remote())
-        else:
-            ret = requests.get(f"http://localhost:8000/{name}").text
-
-        return ret.split("|")[0], ret.split("|")[1]
-
-    # Deploy with prev_version specified, where there is no existing deployment
-    with pytest.raises(ValueError):
-        v1.options(version="1", prev_version="0").deploy()
-
-    v1.deploy()
-    val1, pid1 = call()
-    assert val1 == "1"
-
-    @serve.deployment(name=name)
-    def v2(*args):
-        return f"2|{os.getpid()}"
-
-    # Deploying without specifying prev_version should still be possible.
-    v2.deploy()
-    val2, pid2 = call()
-    assert val2 == "2"
-    assert pid2 != pid1
-
-    v2.options(version="1").deploy()
-    val3, pid3 = call()
-    assert val3 == "2"
-    assert pid3 != pid2
-
-    @serve.deployment(name=name)
-    def v3(*args):
-        return f"3|{os.getpid()}"
-
-    # If prev_version does not match with the existing version, it should fail.
-    with pytest.raises(ValueError):
-        v3.options(version="2", prev_version="0").deploy()
-
-    # If prev_version matches with the existing version, it should succeed.
-    v3.options(version="2", prev_version="1").deploy()
-    val4, pid4 = call()
-    assert val4 == "3"
-    assert pid4 != pid3
-
-    # Specifying the version should stop updates from happening.
-    v3.options(version="2").deploy()
-    val5, pid5 = call()
-    assert val5 == "3"
-    assert pid5 == pid4
-
-    v2.options(version="3", prev_version="2").deploy()
-    val6, pid6 = call()
-    assert val6 == "2"
-    assert pid6 != pid5
-
-    # Deploying without specifying prev_version should still be possible.
-    v1.deploy()
-    val7, pid7 = call()
-    assert val7 == "1"
-    assert pid7 != pid6
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -266,12 +195,8 @@ def test_reconfigure_with_exception(serve_instance):
         def __call__(self, *args):
             return self.config
 
-    A.options(user_config="not_hi").deploy()
-    config = ray.get(A.get_handle().remote())
-    assert config == "not_hi"
-
-    with pytest.raises(RuntimeError):
-        A.options(user_config="hi").deploy()
+    with pytest.raises(ValidationError):
+        serve.run(A.options(user_config="hi").bind())
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -316,7 +241,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
         async def __call__(self, request):
             return await self.handler()
 
-    V1.deploy()
+    serve.run(V1.bind())
     ref1 = call.remote(block=False)
     val1, pid1 = ray.get(ref1)
     assert val1 == "1"
@@ -328,7 +253,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     # Redeploy new version. This should not go through until the old version
     # replica completely stops.
     V2 = V1.options(func_or_class=V2, version="2")
-    V2.deploy(_blocking=False)
+    serve.run(V2.bind(), _blocking=False)
     with pytest.raises(TimeoutError):
         client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
 
@@ -430,7 +355,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
 
         return responses, blocking
 
-    V1.deploy()
+    serve.run(V1.bind())
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
 
@@ -443,7 +368,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     # Redeploy new version. Since there is one replica blocking, only one new
     # replica should be started up.
     V2 = V1.options(func_or_class=V2, version="2")
-    V2.deploy(_blocking=False)
+    serve.run(V2.bind(), _blocking=False)
     with pytest.raises(TimeoutError):
         client._wait_for_deployment_healthy(V2.name, timeout_s=0.1)
     responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
@@ -495,7 +420,8 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
             self.config = config
 
         async def handler(self):
-            return f"{self.config}|{os.getpid()}"
+            val = self.config["test"]
+            return f"{val}|{os.getpid()}"
 
         async def __call__(self, request):
             return await self.handler()
@@ -523,13 +449,13 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
         return responses, blocking
 
-    V1.options(user_config="1").deploy()
+    V1.options(user_config={"test": "1"}).deploy()
     responses1, _ = make_nonblocking_calls({"1": 2})
     pids1 = responses1["1"]
 
     # Reconfigure should block one replica until the signal is sent. Check that
     # some requests are now blocking.
-    V1.options(user_config="2").deploy(_blocking=False)
+    V1.options(user_config={"test": "2"}).deploy(_blocking=False)
     responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
     assert list(responses2["1"])[0] in pids1
 
@@ -555,15 +481,14 @@ def test_reconfigure_with_queries(serve_instance):
             await signal.wait.remote()
             return self.state["a"]
 
-    A.options(version="1", user_config={"a": 1}).deploy()
-    handle = A.get_handle()
+    handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
     refs = []
     for _ in range(30):
         refs.append(handle.remote())
 
     @ray.remote(num_cpus=0)
     def reconfigure():
-        A.options(version="1", user_config={"a": 2}).deploy()
+        serve.run(A.options(version="1", user_config={"a": 2}).bind())
 
     reconfigure_ref = reconfigure.remote()
     signal.send.remote()
@@ -611,7 +536,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
 
         return responses
 
-    v1.deploy()
+    serve.run(v1.bind())
     responses1 = make_calls({"1": 4})
     pids1 = responses1["1"]
 
@@ -619,7 +544,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     def v2(*args):
         return f"2|{os.getpid()}"
 
-    v2.deploy()
+    serve.run(v2.bind())
     responses2 = make_calls({"2": 2})
     assert all(pid not in pids1 for pid in responses2["2"])
 
@@ -662,7 +587,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
 
         return responses
 
-    v1.deploy()
+    serve.run(v1.bind())
     responses1 = make_calls({"1": 2})
     pids1 = responses1["1"]
 
@@ -670,7 +595,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     def v2(*args):
         return f"2|{os.getpid()}"
 
-    v2.deploy()
+    serve.run(v2.bind())
     responses2 = make_calls({"2": 4})
     assert all(pid not in pids1 for pid in responses2["2"])
 
@@ -681,7 +606,7 @@ def test_deploy_handle_validation(serve_instance):
         def b(self, *args):
             return "hello"
 
-    A.deploy()
+    serve.run(A.bind())
     handle = A.get_handle()
 
     # Legacy code path
@@ -800,8 +725,7 @@ def test_init_args_with_closure(serve_instance):
         def __call__(self, inp):
             return self.func(inp)
 
-    Evaluator.deploy(lambda a: a + 1)
-    handle = Evaluator.get_handle()
+    handle = serve.run(Evaluator.bind(lambda a: a + 1))
     assert ray.get(handle.remote(41)) == 42
 
 
@@ -833,13 +757,13 @@ def test_input_validation():
     with pytest.raises(ValidationError):
         Base.options(num_replicas="hi")
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
 
         @serve.deployment(num_replicas=0)
         class ZeroNumReplicas:
             pass
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         Base.options(num_replicas=0)
 
     with pytest.raises(ValidationError):

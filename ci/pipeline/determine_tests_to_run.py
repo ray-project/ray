@@ -1,17 +1,16 @@
 # Script used for checking changes for incremental testing cases
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import argparse
 import json
 import os
-from pprint import pformat
 import re
 import subprocess
 import sys
+from pprint import pformat
 
 
+# NOTE(simon): do not add type hint here because it's ran using python2 in CI.
 def list_changed_files(commit_range):
     """Returns a list of names of files changed in the given commit range.
 
@@ -19,7 +18,7 @@ def list_changed_files(commit_range):
     occurs while running git, the script will abort.
 
     Args:
-        commit_range (string): The commit range to diff, consisting of the two
+        commit_range: The commit range to diff, consisting of the two
             commit IDs separated by \"..\"
 
     Returns:
@@ -124,7 +123,7 @@ if __name__ == "__main__":
         skip_prefix_list = ["doc/", "examples/", "dev/", "kubernetes/", "site/"]
 
         for changed_file in files:
-            if changed_file.startswith("python/ray/ml"):
+            if changed_file.startswith("python/ray/air"):
                 RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
@@ -138,10 +137,12 @@ if __name__ == "__main__":
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/train"):
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/util/ml_utils"):
+                RAY_CI_ML_AFFECTED = 1
                 RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_TUNE_AFFECTED = 1
@@ -200,6 +201,10 @@ if __name__ == "__main__":
                 RAY_CI_DOC_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
+                pass
+            elif changed_file.startswith("release/ray_release/"):
+                # Tests for release/ray_release always run, so it is unnecessary to
+                # tag affected tests.
                 pass
             elif changed_file.endswith("build-docker-images.py"):
                 RAY_CI_DOCKER_AFFECTED = 1

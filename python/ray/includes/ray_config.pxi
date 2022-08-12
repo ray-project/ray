@@ -1,6 +1,11 @@
+from libcpp.string cimport string as c_string
 from ray.includes.ray_config cimport RayConfig
 
 cdef class Config:
+    @staticmethod
+    def initialize(c_string config_list):
+        return RayConfig.instance().initialize(config_list)
+
     @staticmethod
     def ray_cookie():
         return RayConfig.instance().ray_cookie()

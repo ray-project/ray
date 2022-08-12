@@ -6,7 +6,15 @@ try:
 except ImportError:
     TUNE_INSTALLED = False
 
-# Autofilled train.report() metrics. Keys should be consistent with Tune.
+from ray.air.constants import (  # noqa: F401
+    EVALUATION_DATASET_KEY,
+    MODEL_KEY,
+    PREPROCESSOR_KEY,
+    TRAIN_DATASET_KEY,
+    WILDCARD_KEY,
+)
+
+# Autofilled session.report() metrics. Keys should be consistent with Tune.
 TIMESTAMP = "_timestamp"
 TIME_THIS_ITER_S = "_time_this_iter_s"
 TRAINING_ITERATION = "_training_iteration"
@@ -32,9 +40,6 @@ RESULT_FILE_JSON = "results.json"
 
 # Default directory where all Train logs, checkpoints, etc. will be stored.
 DEFAULT_RESULTS_DIR = Path("~/ray_results").expanduser()
-
-# File name to use for checkpoints saved with Tune.
-TUNE_CHECKPOINT_FILE_NAME = "checkpoint"
 
 # The name of the subdirectory inside the trainer run_dir to store checkpoints.
 TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
@@ -67,10 +72,10 @@ SESSION_MISUSE_LOG_ONCE_KEY = "train_warn_session_misuse"
 
 # Reserved keyword used by the ``TorchWorkerProfiler`` and
 # ``TorchTensorboardProfilerCallback`` for passing PyTorch Profiler data
-# through ``train.report()``
+# through ``session.report()``
 PYTORCH_PROFILER_KEY = "_train_torch_profiler"
 
 # Reserved keys used across all Callbacks.
-# By default these will be filtered out from ``train.report()``.
+# By default these will be filtered out from ``session.report()``.
 # See ``TrainingCallback._preprocess_results`` for more details.
 ALL_RESERVED_KEYS = {PYTORCH_PROFILER_KEY}

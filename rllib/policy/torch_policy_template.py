@@ -9,7 +9,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import ModelGradients, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, TensorType, AlgorithmConfigDict
 
 torch, _ = try_import_torch()
 
@@ -24,7 +24,7 @@ def build_torch_policy(
             Union[TensorType, List[TensorType]],
         ]
     ],
-    get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
+    get_default_config: Optional[Callable[[], AlgorithmConfigDict]] = None,
     stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[str, TensorType]]] = None,
     postprocess_fn=None,
     extra_action_out_fn: Optional[
@@ -44,22 +44,26 @@ def build_torch_policy(
     ] = None,
     extra_learn_fetches_fn: Optional[Callable[[Policy], Dict[str, TensorType]]] = None,
     optimizer_fn: Optional[
-        Callable[[Policy, TrainerConfigDict], "torch.optim.Optimizer"]
+        Callable[[Policy, AlgorithmConfigDict], "torch.optim.Optimizer"]
     ] = None,
     validate_spaces: Optional[
-        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+        Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     before_init: Optional[
-        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+        Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     before_loss_init: Optional[
-        Callable[[Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None]
+        Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None
+        ]
     ] = None,
     after_init: Optional[
-        Callable[[Policy, gym.Space, gym.Space, TrainerConfigDict], None]
+        Callable[[Policy, gym.Space, gym.Space, AlgorithmConfigDict], None]
     ] = None,
     _after_loss_init: Optional[
-        Callable[[Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], None]
+        Callable[
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], None
+        ]
     ] = None,
     action_sampler_fn: Optional[
         Callable[[TensorType, List[TensorType]], Tuple[TensorType, TensorType]]
@@ -72,12 +76,12 @@ def build_torch_policy(
     ] = None,
     make_model: Optional[
         Callable[
-            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], ModelV2
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict], ModelV2
         ]
     ] = None,
     make_model_and_action_dist: Optional[
         Callable[
-            [Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict],
+            [Policy, gym.spaces.Space, gym.spaces.Space, AlgorithmConfigDict],
             Tuple[ModelV2, Type[TorchDistributionWrapper]],
         ]
     ] = None,

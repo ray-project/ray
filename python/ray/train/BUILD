@@ -17,7 +17,7 @@ py_test(
     size = "medium",
     main = "examples/mlflow_simple_example.py",
     srcs = ["examples/mlflow_simple_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "no_main"],
     deps = [":train_lib"],
 )
 
@@ -40,16 +40,19 @@ py_test(
 )
 
 py_test(
-    name = "torch_tensorboard_profiler_example",
-    size = "small",
-    main = "examples/torch_tensorboard_profiler_example.py",
-    srcs = ["examples/torch_tensorboard_profiler_example.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
+    name = "transformers_example_gpu",
+    size = "large",
+    main = "examples/transformers/transformers_example.py",
+    srcs = ["examples/transformers/transformers_example.py"],
+    tags = ["team:ml", "exclusive", "tune", "gpu_only"],
+    deps = [":train_lib"],
+    args = ["--model_name_or_path=bert-base-cased", "--task_name=mrpc",
+    "--max_length=32", "--per_device_train_batch_size=64",
+    "--max_train_steps=2", "--start_local", "--num_workers=2", "--use_gpu"]
 )
 
 py_test(
-    name = "transformers_example",
+    name = "transformers_example_cpu",
     size = "large",
     main = "examples/transformers/transformers_example.py",
     srcs = ["examples/transformers/transformers_example.py"],
@@ -61,23 +64,13 @@ py_test(
 )
 
 py_test(
-    name = "tune_cifar_pytorch_pbt_example",
+    name = "tune_cifar_torch_pbt_example",
     size = "medium",
-    main = "examples/tune_cifar_pytorch_pbt_example.py",
-    srcs = ["examples/tune_cifar_pytorch_pbt_example.py"],
+    main = "examples/tune_cifar_torch_pbt_example.py",
+    srcs = ["examples/tune_cifar_torch_pbt_example.py"],
     tags = ["team:ml", "exclusive", "pytorch", "tune"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
-)
-
-py_test(
-    name = "tune_linear_dataset_example",
-    size = "medium",
-    main = "examples/tune_linear_dataset_example.py",
-    srcs = ["examples/tune_linear_dataset_example.py"],
-    tags = ["team:ml", "exclusive", "gpu_only", "tune"],
-    deps = [":train_lib"],
-    args = ["--smoke-test", "--use-gpu"]
 )
 
 py_test(
@@ -99,7 +92,7 @@ py_test(
     name = "pytorch_pbt_failure",
     size = "medium",
     srcs = ["tests/pytorch_pbt_failure.py"],
-    tags = ["team:ml", "exlusive"],
+    tags = ["team:ml", "exlusive", "no_main"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -113,10 +106,50 @@ py_test(
 )
 
 py_test(
+    name = "test_base_trainer",
+    size = "medium",
+    srcs = ["tests/test_base_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_batch_predictor",
+    size = "medium",
+    srcs = ["tests/test_batch_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_batchpredictor_runtime",
+    size = "medium",
+    srcs = ["tests/test_batchpredictor_runtime.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_callbacks",
     size = "medium",
     srcs = ["tests/test_callbacks.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_checkpoints",
+    size = "small",
+    srcs = ["tests/test_checkpoints.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_data_parallel_trainer",
+    size = "medium",
+    srcs = ["tests/test_data_parallel_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
 
@@ -137,6 +170,46 @@ py_test(
 )
 
 py_test(
+    name = "test_horovod_trainer",
+    size = "large",
+    srcs = ["tests/test_horovod_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", "//python/ray/air:ml_lib"]
+)
+
+py_test(
+    name = "test_huggingface_predictor",
+    size = "medium",
+    srcs = ["tests/test_huggingface_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_huggingface_trainer",
+    size = "medium",
+    srcs = ["tests/test_huggingface_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_lightgbm_predictor",
+    size = "small",
+    srcs = ["tests/test_lightgbm_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_lightgbm_trainer",
+    size = "medium",
+    srcs = ["tests/test_lightgbm_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
@@ -145,10 +218,10 @@ py_test(
 )
 
 py_test(
-    name = "test_session",
+    name = "test_predictor",
     size = "small",
-    srcs = ["tests/test_session.py"],
-    tags = ["team:ml", "exclusive"],
+    srcs = ["tests/test_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
 
@@ -161,6 +234,46 @@ py_test(
 )
 
 py_test(
+    name = "test_rl_trainer",
+    size = "medium",
+    srcs = ["tests/test_rl_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_rl_predictor",
+    size = "medium",
+    srcs = ["tests/test_rl_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_session",
+    size = "small",
+    srcs = ["tests/test_session.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_sklearn_predictor",
+    size = "small",
+    srcs = ["tests/test_sklearn_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_sklearn_trainer",
+    size = "medium",
+    srcs = ["tests/test_sklearn_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_trainer",
     size = "large",
     srcs = ["tests/test_trainer.py"],
@@ -169,8 +282,56 @@ py_test(
 )
 
 py_test(
-    name = "test_tune",
+    name = "test_tensorflow_predictor",
+    size = "small",
+    srcs = ["tests/test_tensorflow_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_tensorflow_trainer",
     size = "medium",
+    srcs = ["tests/test_tensorflow_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_tensorflow_utils",
+    size = "small",
+    srcs = ["tests/test_tensorflow_utils.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_predictor",
+    size = "small",
+    srcs = ["tests/test_torch_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_trainer",
+    size = "medium",
+    srcs = ["tests/test_torch_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_torch_utils",
+    size = "small",
+    srcs = ["tests/test_torch_utils.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_tune",
+    size = "large",
     srcs = ["tests/test_tune.py"],
     tags = ["team:ml", "exclusive", "tune"],
     deps = [":train_lib"]
@@ -184,7 +345,6 @@ py_test(
     deps = [":train_lib"]
 )
 
-
 py_test(
     name = "test_worker_group",
     size = "medium",
@@ -193,11 +353,31 @@ py_test(
     deps = [":train_lib"]
 )
 
+py_test(
+    name = "test_xgboost_predictor",
+    size = "small",
+    srcs = ["tests/test_xgboost_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
 
+py_test(
+    name = "test_xgboost_trainer",
+    size = "medium",
+    srcs = ["tests/test_xgboost_trainer.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
     name = "train_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
+    visibility = [
+        "//python/ray/air:__pkg__",
+        "//python/ray/air:__subpackages__",
+        "//python/ray/train:__pkg__",
+        "//python/ray/train:__subpackages__",
+    ],
 )

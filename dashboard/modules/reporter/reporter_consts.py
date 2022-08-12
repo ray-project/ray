@@ -1,4 +1,4 @@
-import ray.ray_constants as ray_constants
+import ray._private.ray_constants as ray_constants
 
 REPORTER_PREFIX = "RAY_REPORTER:"
 # The reporter will report its statistics this often (milliseconds).

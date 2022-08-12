@@ -22,12 +22,10 @@ namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &io_context,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     ClusterResourceManager &cluster_resource_manager,
     NodeID local_node_id,
     std::shared_ptr<ClusterTaskManager> cluster_task_manager)
     : io_context_(io_context),
-      gcs_table_storage_(gcs_table_storage),
       cluster_resource_manager_(cluster_resource_manager),
       local_node_id_(std::move(local_node_id)),
       cluster_task_manager_(std::move(cluster_task_manager)) {}
@@ -70,84 +68,6 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_RESOURCES_REQUEST];
-}
-
-void GcsResourceManager::UpdateResources(
-    const NodeID &node_id, absl::flat_hash_map<std::string, double> changed_resources) {
-  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
-
-  scheduling::NodeID scheduling_node_id(node_id.Binary());
-  if (cluster_resource_manager_.ContainsNode(scheduling_node_id)) {
-    // Update `cluster_resource_manager_`.
-    for (const auto &[name, capacity] : changed_resources) {
-      cluster_resource_manager_.UpdateResourceCapacity(
-          scheduling_node_id, scheduling::ResourceID(name), capacity);
-    }
-
-    const auto &node_resources =
-        cluster_resource_manager_.GetNodeResources(scheduling_node_id);
-    // Update gcs storage.
-    rpc::ResourceMap resource_map;
-    for (const auto &resource_id : node_resources.total.ResourceIds()) {
-      const auto &resource_value = node_resources.total.Get(resource_id);
-      const auto &resource_name = resource_id.Binary();
-      (*resource_map.mutable_items())[resource_name].set_resource_capacity(
-          resource_value.Double());
-    }
-
-    for (const auto &listener : resources_changed_listeners_) {
-      listener();
-    }
-
-    auto start = absl::GetCurrentTimeNanos();
-    auto on_done = [node_id, start](const Status &status) {
-      auto end = absl::GetCurrentTimeNanos();
-      ray::stats::STATS_gcs_new_resource_creation_latency_ms.Record(
-          absl::Nanoseconds(end - start) / absl::Milliseconds(1));
-      RAY_CHECK_OK(status);
-      RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
-    };
-
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
-  } else {
-    RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
-                   << " is not registered.";
-  }
-}
-
-void GcsResourceManager::DeleteResources(const NodeID &node_id,
-                                         std::vector<std::string> resource_names) {
-  RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
-  scheduling::NodeID scheduling_node_id(node_id.Binary());
-  if (cluster_resource_manager_.ContainsNode(scheduling_node_id)) {
-    // Update `cluster_resource_manager_`.
-    for (const auto &resource_name : resource_names) {
-      cluster_resource_manager_.DeleteResource(scheduling_node_id,
-                                               scheduling::ResourceID(resource_name));
-    }
-
-    const auto &node_resources =
-        cluster_resource_manager_.GetNodeResources(scheduling_node_id);
-    // Update gcs storage.
-    rpc::ResourceMap resource_map;
-    for (const auto &resource_id : node_resources.total.ResourceIds()) {
-      const auto &resource_name = resource_id.Binary();
-      if (std::find(resource_names.begin(), resource_names.end(), resource_name) !=
-          resource_names.end()) {
-        continue;
-      }
-      const auto &resource_value = node_resources.total.Get(resource_id);
-      (*resource_map.mutable_items())[resource_name].set_resource_capacity(
-          resource_value.Double());
-    }
-
-    auto on_done = [](const Status &status) { RAY_CHECK_OK(status); };
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeResourceTable().Put(node_id, resource_map, on_done));
-  } else {
-    RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
-  }
 }
 
 void GcsResourceManager::HandleGetAllAvailableResources(
@@ -353,10 +273,6 @@ std::string GcsResourceManager::DebugString() const {
          << counts_[CountType::GET_RESOURCES_REQUEST]
          << "\n- GetAllAvailableResources request count"
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << "\n- UpdateResources request count: "
-         << counts_[CountType::UPDATE_RESOURCES_REQUEST]
-         << "\n- DeleteResources request count: "
-         << counts_[CountType::DELETE_RESOURCES_REQUEST]
          << "\n- ReportResourceUsage request count: "
          << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
          << "\n- GetAllResourceUsage request count: "
@@ -391,11 +307,6 @@ std::string GcsResourceManager::ToString() const {
   }
   ostr << indent_0 << "}\n";
   return ostr.str();
-}
-
-const NodeResources &GcsResourceManager::GetNodeResources(
-    scheduling::NodeID node_id) const {
-  return cluster_resource_manager_.GetNodeResources(node_id);
 }
 
 }  // namespace gcs

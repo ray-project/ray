@@ -1,23 +1,25 @@
-import pytest
 import collections
 import os
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
 from ray import tune
 from ray._private.test_utils import run_string_as_driver
-from ray.tune.trial import Trial
-from ray.tune.result import AUTO_RESULT_KEYS
 from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
     ProgressReporter,
     _fair_filter_trials,
-    best_trial_str,
-    detect_reporter,
-    trial_progress_str,
-    time_passed_str,
+    _best_trial_str,
+    _detect_reporter,
+    _time_passed_str,
+    _trial_progress_str,
+    TuneReporterBase,
 )
+from ray.tune.result import AUTO_RESULT_KEYS
+from ray.tune.trial import Trial
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -68,7 +70,7 @@ Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
 END_TO_END_COMMAND = """
 import ray
 from ray import tune
-from ray.tune.trial import Location
+from ray.tune.experiment.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -76,7 +78,7 @@ from unittest.mock import patch
 def mock_get_trial_location(trial, result):
     location = _get_trial_location(trial, result)
     if location.pid:
-        return Location("123.123.123.123", "1")
+        return _Location("123.123.123.123", "1")
     return location
 
 
@@ -262,7 +264,7 @@ VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
-from ray.tune.trial import Location
+from ray.tune.experiment.trial import _Location
 from ray.tune.progress_reporter import _get_trial_location
 from unittest.mock import patch
 
@@ -270,7 +272,7 @@ from unittest.mock import patch
 def mock_get_trial_location(trial, result):
     location = _get_trial_location(trial, result)
     if location.pid:
-        return Location("123.123.123.123", "1")
+        return _Location("123.123.123.123", "1")
     return location
 
 
@@ -428,21 +430,21 @@ class ProgressReporterTest(unittest.TestCase):
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
         # One metric, two parameters
-        prog1 = trial_progress_str(
+        prog1 = _trial_progress_str(
             trials, ["metric_1"], ["a", "b"], fmt="psql", max_rows=3, force_table=True
         )
         print(prog1)
         assert prog1 == EXPECTED_RESULT_1
 
         # No metric, all parameters
-        prog2 = trial_progress_str(
+        prog2 = _trial_progress_str(
             trials, [], None, fmt="psql", max_rows=None, force_table=True
         )
         print(prog2)
         assert prog2 == EXPECTED_RESULT_2
 
         # Two metrics, one parameter, all with custom representation
-        prog3 = trial_progress_str(
+        prog3 = _trial_progress_str(
             trials,
             {"nested/sub": "NestSub", "metric_2": "Metric 2"},
             {"a": "A"},
@@ -454,7 +456,7 @@ class ProgressReporterTest(unittest.TestCase):
         assert prog3 == EXPECTED_RESULT_3
 
         # Current best trial
-        best1 = best_trial_str(trials[1], "metric_1")
+        best1 = _best_trial_str(trials[1], "metric_1")
         assert best1 == EXPECTED_BEST_1
 
     def testBestTrialStr(self):
@@ -464,11 +466,25 @@ class ProgressReporterTest(unittest.TestCase):
         trial = Trial("", config=config, stub=True)
         trial.last_result = {"metric": 1, "config": config}
 
-        result = best_trial_str(trial, "metric")
+        result = _best_trial_str(trial, "metric")
         self.assertIn("nested_value", result)
 
-        result = best_trial_str(trial, "metric", parameter_columns=["nested/conf"])
+        result = _best_trial_str(trial, "metric", parameter_columns=["nested/conf"])
         self.assertIn("nested_value", result)
+
+    def testBestTrialZero(self):
+        trial1 = Trial("", config={}, stub=True)
+        trial1.last_result = {"metric": 7, "config": {}}
+
+        trial2 = Trial("", config={}, stub=True)
+        trial2.last_result = {"metric": 0, "config": {}}
+
+        trial3 = Trial("", config={}, stub=True)
+        trial3.last_result = {"metric": 2, "config": {}}
+
+        reporter = TuneReporterBase(metric="metric", mode="min")
+        best_trial, metric = reporter._current_best_trial([trial1, trial2, trial3])
+        assert best_trial == trial2
 
     def testTimeElapsed(self):
         # Sun Feb 7 14:18:40 2016 -0800
@@ -483,12 +499,12 @@ class ProgressReporterTest(unittest.TestCase):
 
         # Local timezone output can be tricky, so we don't check the
         # day and the hour in this test.
-        output = time_passed_str(time_start, time_now)
+        output = _time_passed_str(time_start, time_now)
         self.assertIn("Current time: 2016-02-", output)
         self.assertIn(":50:02 (running for 01:31:22.00)", output)
 
         time_now += 2 * 60 * 60 * 24  # plus two days
-        output = time_passed_str(time_start, time_now)
+        output = _time_passed_str(time_start, time_now)
         self.assertIn("Current time: 2016-02-", output)
         self.assertIn(":50:02 (running for 2 days, 01:31:22.00)", output)
 
@@ -587,6 +603,14 @@ class ProgressReporterTest(unittest.TestCase):
         reporter5.report(trials, done=False)
         assert EXPECTED_SORT_RESULT_UNSORTED in reporter5._output
 
+        # Sort by metric when metric is passed using
+        # reporter.setup (called from tune.run)
+        # calling repoter.set_search_properties
+        reporter6 = TestReporter(max_progress_rows=4, sort_by_metric=True)
+        reporter6.set_search_properties(metric="metric_1", mode="max")
+        reporter6.report(trials, done=False)
+        assert EXPECTED_SORT_RESULT_DESC in reporter6._output
+
     def testEndToEndReporting(self):
         try:
             os.environ["_TEST_TUNE_TRIAL_UUID"] = "xxxxx"
@@ -595,6 +619,7 @@ class ProgressReporterTest(unittest.TestCase):
             try:
                 assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
+                assert "(raylet)" not in output, "Unexpected raylet log messages"
             except Exception:
                 print("*** BEGIN OUTPUT ***")
                 print(output)
@@ -675,12 +700,12 @@ class ProgressReporterTest(unittest.TestCase):
 
     def testReporterDetection(self):
         """Test if correct reporter is returned from ``detect_reporter()``"""
-        reporter = detect_reporter()
+        reporter = _detect_reporter()
         self.assertTrue(isinstance(reporter, CLIReporter))
         self.assertFalse(isinstance(reporter, JupyterNotebookReporter))
 
         with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
-            reporter = detect_reporter()
+            reporter = _detect_reporter()
             self.assertFalse(isinstance(reporter, CLIReporter))
             self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
 
@@ -708,7 +733,7 @@ class ProgressReporterTest(unittest.TestCase):
             t.__str__ = lambda self: self.trial_id
             trials.append(t)
 
-        progress_str = trial_progress_str(
+        progress_str = _trial_progress_str(
             trials, metric_columns=["some_metric"], force_table=True
         )
         assert any(len(row) <= 90 for row in progress_str.split("\n"))

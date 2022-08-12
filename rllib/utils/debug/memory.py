@@ -7,32 +7,36 @@ import tracemalloc
 import tree  # pip install dm_tree
 from typing import Callable, DefaultDict, List, Optional, Set
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 
 
 # A suspicious memory-allocating stack-trace that we should re-test
 # to make sure it's not a false positive.
-Suspect = namedtuple(
-    "Suspect",
-    [
-        # The stack trace of the allocation, going back n frames, depending
-        # on the tracemalloc.start(n) call.
-        "traceback",
-        # The amount of memory taken by this particular stack trace
-        # over the course of the experiment.
-        "memory_increase",
-        # The slope of the scipy linear regression (x=iteration; y=memory size).
-        "slope",
-        # The rvalue of the scipy linear regression.
-        "rvalue",
-        # The memory size history (list of all memory sizes over all iterations).
-        "hist",
-    ],
+Suspect = DeveloperAPI(
+    namedtuple(
+        "Suspect",
+        [
+            # The stack trace of the allocation, going back n frames, depending
+            # on the tracemalloc.start(n) call.
+            "traceback",
+            # The amount of memory taken by this particular stack trace
+            # over the course of the experiment.
+            "memory_increase",
+            # The slope of the scipy linear regression (x=iteration; y=memory size).
+            "slope",
+            # The rvalue of the scipy linear regression.
+            "rvalue",
+            # The memory size history (list of all memory sizes over all iterations).
+            "hist",
+        ],
+    )
 )
 
 
+@DeveloperAPI
 def check_memory_leaks(
-    trainer,
+    algorithm,
     to_check: Optional[Set[str]] = None,
     repeats: Optional[int] = None,
     max_num_trials: int = 3,
@@ -45,7 +49,7 @@ def check_memory_leaks(
     un-GC'd items to memory.
 
     Args:
-        trainer: The Trainer instance to test.
+        algorithm: The Algorithm instance to test.
         to_check: Set of strings to indentify components to test. Allowed strings
             are: "env", "policy", "model", "rollout_worker". By default, check all
             of these.
@@ -58,7 +62,7 @@ def check_memory_leaks(
         A defaultdict(list) with keys being the `to_check` strings and values being
         lists of Suspect instances that were found.
     """
-    local_worker = trainer.workers.local_worker()
+    local_worker = algorithm.workers.local_worker()
 
     # Which components should we test?
     to_check = to_check or {"env", "model", "policy", "rollout_worker"}
@@ -79,13 +83,16 @@ def check_memory_leaks(
         action_sample = action_space.sample()
 
         def code():
+            horizon = algorithm.config["horizon"] or float("inf")
+            ts = 0
             env.reset()
             while True:
                 # If masking is used, try something like this:
                 # np.random.choice(
                 #    action_space.n, p=(obs["action_mask"] / sum(obs["action_mask"])))
                 _, _, done, _ = env.step(action_sample)
-                if done:
+                ts += 1
+                if done or ts >= horizon:
                     break
 
         test = _test_some_code_for_memory_leaks(

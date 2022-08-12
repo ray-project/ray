@@ -4,16 +4,17 @@ from typing import Dict
 
 import gym
 import numpy as np
+
 import ray
 from ray.rllib.algorithms.dqn.distributional_q_tf_model import DistributionalQTFModel
-from ray.rllib.algorithms.dqn.simple_q_tf_policy import TargetNetworkMixin
+from ray.rllib.algorithms.simple_q.utils import Q_SCOPE, Q_TARGET_SCOPE
 from ray.rllib.evaluation.postprocessing import adjust_nstep
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_mixins import LearningRateSchedule
+from ray.rllib.policy.tf_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration import ParameterNoise
@@ -25,12 +26,9 @@ from ray.rllib.utils.tf_utils import (
     minimize_and_clip,
     reduce_mean_ignore_inf,
 )
-from ray.rllib.utils.typing import ModelGradients, TensorType, TrainerConfigDict
+from ray.rllib.utils.typing import AlgorithmConfigDict, ModelGradients, TensorType
 
 tf1, tf, tfv = try_import_tf()
-
-Q_SCOPE = "q_func"
-Q_TARGET_SCOPE = "target_q_func"
 
 # Importance sampling weights for prioritized replay
 PRIO_WEIGHTS = "weights"
@@ -150,15 +148,15 @@ def build_q_model(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> ModelV2:
     """Build q_model and target_model for DQN
 
     Args:
-        policy (Policy): The Policy, which will use the model for optimization.
+        policy: The Policy, which will use the model for optimization.
         obs_space (gym.spaces.Space): The policy's observation space.
         action_space (gym.spaces.Space): The policy's action space.
-        config (TrainerConfigDict):
+        config (AlgorithmConfigDict):
 
     Returns:
         ModelV2: The Model for the Policy to use.
@@ -239,9 +237,9 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
     """Constructs the loss for DQNTFPolicy.
 
     Args:
-        policy (Policy): The Policy to calculate the loss for.
+        policy: The Policy to calculate the loss for.
         model (ModelV2): The Model to calculate the loss for.
-        train_batch (SampleBatch): The training data.
+        train_batch: The training data.
 
     Returns:
         TensorType: A single loss tensor.
@@ -326,7 +324,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
 
 
 def adam_optimizer(
-    policy: Policy, config: TrainerConfigDict
+    policy: Policy, config: AlgorithmConfigDict
 ) -> "tf.keras.optimizers.Optimizer":
     if policy.config["framework"] in ["tf2", "tfe"]:
         return tf.keras.optimizers.Adam(
@@ -370,7 +368,7 @@ def setup_late_mixins(
     policy: Policy,
     obs_space: gym.spaces.Space,
     action_space: gym.spaces.Space,
-    config: TrainerConfigDict,
+    config: AlgorithmConfigDict,
 ) -> None:
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
 

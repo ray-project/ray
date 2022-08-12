@@ -61,7 +61,7 @@ class ComplexInputNetwork(TFModelV2):
                 config = {
                     "conv_filters": model_config["conv_filters"]
                     if "conv_filters" in model_config
-                    else get_filter_config(obs_space.shape),
+                    else get_filter_config(component.shape),
                     "conv_activation": model_config.get("conv_activation"),
                     "post_fcnet_hiddens": [],
                 }
@@ -79,7 +79,7 @@ class ComplexInputNetwork(TFModelV2):
                 if isinstance(component, Discrete):
                     size = component.n
                 else:
-                    size = sum(component.nvec)
+                    size = np.sum(component.nvec)
                 config = {
                     "fcnet_hiddens": model_config["fcnet_hiddens"],
                     "fcnet_activation": model_config.get("fcnet_activation"),

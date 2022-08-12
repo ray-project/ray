@@ -18,6 +18,5 @@ post_build_cmds:
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   # Upgrade the XGBoost-Ray version in post build commands, otherwise it will be cached in the Anyscale Docker image.
   - echo {{ env["TIMESTAMP"] }}
-  - pip install -U xgboost # Upgrade to latest xgboost version so cached version is not used.
-  - pip uninstall xgboost_ray -y # Uninstall first so pip does a reinstall.
-  - pip install -U --no-cache-dir git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
+  - pip install -U --force-reinstall --no-deps --no-cache-dir git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray xgboost
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

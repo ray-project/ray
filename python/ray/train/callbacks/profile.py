@@ -1,17 +1,21 @@
 import logging
 from pathlib import Path
 from typing import List, Dict, Optional, Union
+import warnings
 
 from ray.train.callbacks import TrainingCallback
-from ray.train.callbacks.logging import TrainCallbackLogdirManager
-from ray.train.callbacks.results_preprocessors import IndexedResultsPreprocessor
+from ray.train.callbacks.callback import _deprecation_msg
+from ray.train.callbacks.logging import _TrainCallbackLogdirManager
+from ray.train._internal.results_preprocessors import IndexedResultsPreprocessor
 from ray.train.constants import PYTORCH_PROFILER_KEY
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
 DRIVER_TRACE_DIR_NAME = "pytorch_profiler"
 
 
+@Deprecated
 class TorchTensorboardProfilerCallback(TrainingCallback):
     """Synchronizes PyTorch Profiler traces onto disk.
 
@@ -34,9 +38,13 @@ class TorchTensorboardProfilerCallback(TrainingCallback):
         logdir: Optional[str] = None,
         workers_to_log: Optional[Union[int, List[int]]] = None,
     ) -> None:
+        warnings.warn(
+            _deprecation_msg,
+            DeprecationWarning,
+        )
         super().__init__()
         self._logdir = logdir
-        self._logdir_manager = TrainCallbackLogdirManager(logdir=logdir)
+        self._logdir_manager = _TrainCallbackLogdirManager(logdir=logdir)
         self.results_preprocessor = IndexedResultsPreprocessor(indices=workers_to_log)
 
     def start_training(self, logdir: str, **info):

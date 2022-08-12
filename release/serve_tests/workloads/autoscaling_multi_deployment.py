@@ -51,14 +51,14 @@ from typing import Optional
 logger = logging.getLogger(__file__)
 
 # Experiment configs
-DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA = 1
+DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA = 0
 DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA = 8
 DEFAULT_SMOKE_TEST_NUM_DEPLOYMENTS = 4  # 2 replicas each
 
 # TODO:(jiaodong) We should investigate and change this back to 1k
 # for now, we won't get valid latency numbers from wrk at 1k replica
 # likely due to request timeout.
-DEFAULT_FULL_TEST_MIN_NUM_REPLICA = 1
+DEFAULT_FULL_TEST_MIN_NUM_REPLICA = 0
 DEFAULT_FULL_TEST_MAX_NUM_REPLICA = 1000
 # TODO(simon): we should change this back to 100. But due to long poll issue
 # we temporarily downscoped this test.
@@ -75,7 +75,7 @@ def setup_multi_deployment_replicas(min_replicas, max_replicas, num_deployments)
     all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": max_replicas_per_deployment,
@@ -187,7 +187,12 @@ def main(
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
-        trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
+        trial_length,
+        NUM_CONNECTIONS,
+        http_host,
+        http_port,
+        all_endpoints=all_endpoints,
+        debug=True,
     )
 
     aggregated_metrics = aggregate_all_metrics(all_metrics)

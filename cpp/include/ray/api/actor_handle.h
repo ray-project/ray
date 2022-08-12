@@ -30,6 +30,9 @@ class ActorHandle {
 
   ActorHandle(const std::string &id) { id_ = id; }
 
+  // Used to identify its type.
+  static bool IsActorHandle() { return true; }
+
   /// Get a untyped ID of the actor
   const std::string &ID() const { return id_; }
 
@@ -51,15 +54,29 @@ class ActorHandle {
 
   template <typename R>
   ray::internal::ActorTaskCaller<PyActorMethod<R>> Task(PyActorMethod<R> func) {
-    static_assert(IsXlang, "Actor function type is not match with actor class");
+    static_assert(IsXlang, "Actor function type does not match actor class");
     ray::internal::RemoteFunctionHolder remote_func_holder(
         "", func.function_name, "", ray::internal::LangType::PYTHON);
     return {ray::internal::GetRayRuntime().get(), id_, std::move(remote_func_holder)};
   }
 
-  void Kill() { ray::internal::GetRayRuntime()->KillActor(id_, true); }
+  template <typename R>
+  ray::internal::ActorTaskCaller<JavaActorMethod<R>> Task(JavaActorMethod<R> func) {
+    static_assert(IsXlang, "Actor function type does not match actor class");
+    ray::internal::RemoteFunctionHolder remote_func_holder(
+        "", func.function_name, "", ray::internal::LangType::JAVA);
+    return {ray::internal::GetRayRuntime().get(), id_, std::move(remote_func_holder)};
+  }
+
+  void Kill() { Kill(true); }
   void Kill(bool no_restart) {
     ray::internal::GetRayRuntime()->KillActor(id_, no_restart);
+  }
+
+  static ActorHandle FromBytes(const std::string &serialized_actor_handle) {
+    std::string id = ray::internal::GetRayRuntime()->DeserializeAndRegisterActorHandle(
+        serialized_actor_handle);
+    return ActorHandle(id);
   }
 
   /// Make ActorHandle serializable

@@ -12,7 +12,7 @@ def get_store_name(group_name):
     """Generate the unique name for the NCCLUniqueID store (named actor).
 
     Args:
-        group_name (str): unique user name for the store.
+        group_name: unique user name for the store.
     Return:
         str: MD5-hexlified name for the store.
     """

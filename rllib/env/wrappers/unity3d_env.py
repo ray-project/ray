@@ -7,11 +7,13 @@ from typing import Callable, Optional, Tuple
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.typing import MultiAgentDict, PolicyID, AgentID
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI
 class Unity3DEnv(MultiAgentEnv):
     """A MultiAgentEnv representing a single Unity3D game instance.
 
@@ -50,12 +52,12 @@ class Unity3DEnv(MultiAgentEnv):
                 If None, will assume a locally running Unity3D editor
                 to be used, instead.
             port (Optional[int]): Port number to connect to Unity environment.
-            seed (int): A random seed value to use for the Unity3D game.
-            no_graphics (bool): Whether to run the Unity3D simulator in
+            seed: A random seed value to use for the Unity3D game.
+            no_graphics: Whether to run the Unity3D simulator in
                 no-graphics mode. Default: False.
-            timeout_wait (int): Time (in seconds) to wait for connection from
+            timeout_wait: Time (in seconds) to wait for connection from
                 the Unity3D instance.
-            episode_horizon (int): A hard horizon to abide to. After at most
+            episode_horizon: A hard horizon to abide to. After at most
                 this many steps (per-agent episode `step()` calls), the
                 Unity3D game is reset and will start again (finishing the
                 multi-agent episode that the game represents).
@@ -120,7 +122,7 @@ class Unity3DEnv(MultiAgentEnv):
         """Performs one multi-agent step through the game.
 
         Args:
-            action_dict (dict): Multi-agent action dict with:
+            action_dict: Multi-agent action dict with:
                 keys=agent identifier consisting of
                 [MLagents behavior name, e.g. "Goalie?team=1"] + "_" +
                 [Agent index, a unique MLAgent-assigned index per single agent]

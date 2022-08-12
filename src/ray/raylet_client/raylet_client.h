@@ -186,9 +186,6 @@ class RayletClientInterface : public PinObjectsInterface,
   virtual void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) = 0;
 
-  virtual void GetGcsServerAddress(
-      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) = 0;
-
   virtual void NotifyGCSRestart(
       const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) = 0;
 
@@ -462,9 +459,6 @@ class RayletClient : public RayletClientInterface {
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;
-
-  void GetGcsServerAddress(
-      const rpc::ClientCallback<rpc::GetGcsServerAddressReply> &callback) override;
 
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 

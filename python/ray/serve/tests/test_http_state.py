@@ -3,30 +3,27 @@ from unittest.mock import patch
 import pytest
 
 from ray.serve.config import DeploymentMode, HTTPOptions
-from ray.serve.http_state import HTTPState
+from ray.serve._private.http_state import HTTPState
 
 
-@pytest.fixture
-def patch_get_namespace():
-    with patch("ray.serve.client.get_controller_namespace") as func:
-        func.return_value = "dummy_namespace"
-        yield
+def test_node_selection():
+    head_node_id = "node_id-index-head"
 
-
-def test_node_selection(patch_get_namespace):
     def _make_http_state(http_options):
         return HTTPState(
             "mock_controller_name",
             detached=True,
             config=http_options,
+            head_node_id=head_node_id,
+            gcs_client=None,
             _start_proxies_on_init=False,
         )
 
-    all_nodes = [("node_id-index-head", "node-id-1")] + [
-        (f"node_idx-worker-{i}", f"node-id-{i}") for i in range(100)
+    all_nodes = [(head_node_id, "fake-head-ip")] + [
+        (f"worker-node-id-{i}", f"fake-worker-ip-{i}") for i in range(100)
     ]
 
-    with patch("ray.serve.http_state.get_all_node_ids") as func:
+    with patch("ray.serve._private.http_state.get_all_node_ids") as func:
         func.return_value = all_nodes
 
         # Test NoServer
@@ -34,13 +31,8 @@ def test_node_selection(patch_get_namespace):
         assert state._get_target_nodes() == []
 
         # Test HeadOnly
-        with patch(
-            "ray.serve.http_state.get_current_node_resource_key"
-        ) as get_current_node:
-            get_current_node.return_value = "node-id-1"
-
-            state = _make_http_state(HTTPOptions(location=DeploymentMode.HeadOnly))
-            assert state._get_target_nodes() == all_nodes[:1]
+        state = _make_http_state(HTTPOptions(location=DeploymentMode.HeadOnly))
+        assert state._get_target_nodes() == all_nodes[:1]
 
         # Test EveryNode
         state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))

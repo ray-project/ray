@@ -50,9 +50,9 @@ from typing import Optional
 logger = logging.getLogger(__file__)
 
 # Experiment configs
-DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA = 1
+DEFAULT_SMOKE_TEST_MIN_NUM_REPLICA = 0
 DEFAULT_SMOKE_TEST_MAX_NUM_REPLICA = 4
-DEFAULT_FULL_TEST_MIN_NUM_REPLICA = 1
+DEFAULT_FULL_TEST_MIN_NUM_REPLICA = 0
 DEFAULT_FULL_TEST_MAX_NUM_REPLICA = 1000
 
 # Deployment configs
@@ -66,7 +66,7 @@ DEFAULT_FULL_TEST_TRIAL_LENGTH = "10m"
 def deploy_replicas(min_replicas, max_replicas, max_batch_size):
     @serve.deployment(
         name="echo",
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": max_replicas,

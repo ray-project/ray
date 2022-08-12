@@ -9,7 +9,7 @@ from ray.rllib.utils.metrics import (  # noqa: F401
     NUM_TARGET_UPDATES,
     APPLY_GRADS_TIMER,
     COMPUTE_GRADS_TIMER,
-    WORKER_UPDATE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER as WORKER_UPDATE_TIMER,
     GRAD_WAIT_TIMER,
     SAMPLE_TIMER,
     LEARN_ON_BATCH_TIMER,
@@ -43,5 +43,5 @@ def _get_global_vars() -> Dict:
 def _get_shared_metrics() -> MetricsContext:
     """Return shared metrics for the training workflow.
 
-    This only applies if this trainer has an execution plan."""
+    This only applies if this algorithm has an execution plan."""
     return LocalIterator.get_metrics()

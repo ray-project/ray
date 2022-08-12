@@ -1,23 +1,24 @@
-import os
 import importlib
 import inspect
 import json
 import logging
+import os
+import sys
 import warnings
 from dataclasses import dataclass
-import sys
-
 from typing import Any, Dict, Optional, Tuple
 
-from ray.ray_constants import (
+import ray.util.client_connect
+from ray._private.ray_constants import (
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
+from ray._private.worker import BaseContext
+from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
-import ray.util.client_connect
-from ray.worker import init as ray_driver_init, BaseContext
-from ray.util.annotations import Deprecated
+from ray.util.annotations import Deprecated, PublicAPI
+from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ CLIENT_DOCS_URL = "https://docs.ray.io/en/latest/cluster/ray-client.html"
 
 
 @dataclass
+@PublicAPI
 class ClientContext(BaseContext):
     """
     Basic context manager for a ClientBuilder connection.
@@ -67,10 +69,10 @@ class ClientContext(BaseContext):
             if ray.util.client.ray.is_default() or force_disconnect:
                 # This is the only client connection
                 ray.util.client_connect.disconnect()
-        elif ray.worker.global_worker.node is None:
+        elif ray._private.worker.global_worker.node is None:
             # Already disconnected.
             return
-        elif ray.worker.global_worker.node.is_head():
+        elif ray._private.worker.global_worker.node.is_head():
             logger.debug(
                 "The current Ray Cluster is scoped to this process. "
                 "Disconnecting is not possible as it will shutdown the "
@@ -80,7 +82,22 @@ class ClientContext(BaseContext):
             # This is only a driver connected to an existing cluster.
             ray.shutdown()
 
+    def _repr_html_(self):
+        if self.dashboard_url:
+            dashboard_row = Template("context_dashrow.html.j2").render(
+                dashboard_url="http://" + self.dashboard_url
+            )
+        else:
+            dashboard_row = None
 
+        return Template("context.html.j2").render(
+            python_version=self.python_version,
+            ray_version=self.ray_version,
+            dashboard_row=dashboard_row,
+        )
+
+
+@Deprecated
 class ClientBuilder:
     """
     Builder for a Ray Client connection. This class can be subclassed by
@@ -96,6 +113,7 @@ class ClientBuilder:
         # " (allow_multiple=True).
         self._allow_multiple_connections = False
         self._credentials = None
+        self._metadata = None
         # Set to False if ClientBuilder is being constructed by internal
         # methods
         self._deprecation_warn_enabled = True
@@ -115,7 +133,7 @@ class ClientBuilder:
         """
         Sets the namespace for the session.
         Args:
-            namespace (str): Namespace to use.
+            namespace: Namespace to use.
         """
         self._job_config.set_ray_namespace(namespace)
         return self
@@ -162,8 +180,9 @@ class ClientBuilder:
             job_config=self._job_config,
             _credentials=self._credentials,
             ray_init_kwargs=self._remote_init_kwargs,
+            metadata=self._metadata,
         )
-        get_dashboard_url = ray.remote(ray.worker.get_dashboard_url)
+        get_dashboard_url = ray.remote(ray._private.worker.get_dashboard_url)
         dashboard_url = ray.get(get_dashboard_url.options(num_cpus=0).remote())
         cxt = ClientContext(
             dashboard_url=dashboard_url,
@@ -211,6 +230,10 @@ class ClientBuilder:
         if "_credentials" in kwargs.keys():
             self._credentials = kwargs["_credentials"]
             del kwargs["_credentials"]
+
+        if "_metadata" in kwargs.keys():
+            self._metadata = kwargs["_metadata"]
+            del kwargs["_metadata"]
 
         if kwargs:
             expected_sig = inspect.signature(ray_driver_init)
@@ -310,19 +333,11 @@ def _split_address(address: str) -> Tuple[str, str]:
 
 def _get_builder_from_address(address: Optional[str]) -> ClientBuilder:
     if address == "local":
-        return _LocalClientBuilder(None)
+        return _LocalClientBuilder("local")
     if address is None:
-        try:
-            # NOTE: This is not placed in `Node::get_temp_dir_path`, because
-            # this file is accessed before the `Node` object is created.
-            cluster_file = os.path.join(
-                ray._private.utils.get_user_temp_dir(), "ray_current_cluster"
-            )
-            with open(cluster_file, "r") as f:
-                address = f.read().strip()
-        except FileNotFoundError:
-            # `address` won't be set and we'll create a new cluster.
-            pass
+        # NOTE: This is not placed in `Node::get_temp_dir_path`, because
+        # this file is accessed before the `Node` object is created.
+        address = ray._private.services.canonicalize_bootstrap_address(address)
         return _LocalClientBuilder(address)
     module_string, inner_address = _split_address(address)
     try:

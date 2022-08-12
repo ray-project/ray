@@ -42,9 +42,10 @@ struct CoreWorkerOptions {
       const std::vector<rpc::ObjectReference> &arg_refs,
       const std::vector<ObjectID> &return_ids,
       const std::string &debugger_breakpoint,
+      const std::string &serialized_retry_exception_allowlist,
       std::vector<std::shared_ptr<RayObject>> *results,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_application_level_error,
+      bool *is_retryable_error,
       // The following 2 parameters `defined_concurrency_groups` and
       // `name_of_concurrency_group_to_execute` are used for Python
       // asyncio actor only.

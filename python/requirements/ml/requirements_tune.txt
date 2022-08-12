@@ -11,7 +11,7 @@ freezegun==1.1.0
 gluoncv==0.10.1.post0
 gpy==1.10.0
 autorom[accept-rom-license]
-gym[atari]==0.21.0; python_version >= '3.7'
+gym>=0.21.0,<0.24.0; python_version >= '3.7'
 gym[atari]==0.19.0; python_version < '3.7'
 h5py==3.1.0
 hpbandster==0.7.4
@@ -26,6 +26,8 @@ mlflow==1.21.0
 mxnet==1.8.0.post0
 nevergrad==0.4.3.post7
 optuna==2.10.0
+# For HEBO compatibility
+pymoo==0.5.0 
 pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
 pytorch-lightning==1.5.10

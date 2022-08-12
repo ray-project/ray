@@ -8,7 +8,7 @@ import io.ray.api.exception.RayTaskException;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
@@ -21,7 +21,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
@@ -32,10 +31,9 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskExecutor.class);
 
-  protected final RayRuntimeInternal runtime;
+  protected final AbstractRayRuntime runtime;
 
-  // TODO(qwang): Use actorContext instead later.
-  private final ConcurrentHashMap<UniqueId, T> actorContextMap = new ConcurrentHashMap<>();
+  private T actorContext = null;
 
   private final ThreadLocal<RayFunction> localRayFunction = new ThreadLocal<>();
 
@@ -44,14 +42,14 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     Object currentActor = null;
   }
 
-  TaskExecutor(RayRuntimeInternal runtime) {
+  TaskExecutor(AbstractRayRuntime runtime) {
     this.runtime = runtime;
   }
 
   protected abstract T createActorContext();
 
   T getActorContext() {
-    return actorContextMap.get(runtime.getWorkerContext().getCurrentWorkerId());
+    return actorContext;
   }
 
   void setActorContext(UniqueId workerId, T actorContext) {
@@ -59,11 +57,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       // ConcurrentHashMap doesn't allow null values. So just return here.
       return;
     }
-    this.actorContextMap.put(workerId, actorContext);
-  }
-
-  protected void removeActorContext(UniqueId workerId) {
-    this.actorContextMap.remove(workerId);
+    this.actorContext = actorContext;
   }
 
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {

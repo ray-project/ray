@@ -188,7 +188,7 @@ class ReproSession:
         # Check if instance exists:
         running_instances = self.ec2_resource.instances.filter(
             Filters=[
-                {"Name": "tag:repro_name", "Values": [self.aws_instance_name]},
+                {"Name": "tag:Name", "Values": [self.aws_instance_name]},
                 {"Name": "instance-state-name", "Values": ["running"]},
             ]
         )
@@ -218,7 +218,7 @@ class ReproSession:
             TagSpecifications=[
                 {
                     "ResourceType": "instance",
-                    "Tags": [{"Key": "repro_name", "Value": self.aws_instance_name}],
+                    "Tags": [{"Key": "Name", "Value": self.aws_instance_name}],
                 }
             ],
             MinCount=1,
@@ -586,6 +586,10 @@ def main(
     commands: bool = False,
     filters: Optional[List[str]] = None,
 ):
+    if filters and not commands:
+        raise ValueError(
+            "Must specify the command flag '-c' to use filter options '-f'."
+        )
     random.seed(1235)
 
     logger = logging.getLogger("main")

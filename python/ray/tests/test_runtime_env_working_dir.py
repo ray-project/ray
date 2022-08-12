@@ -1,26 +1,26 @@
-from importlib import import_module
 import os
-from pathlib import Path
+import shutil
 import sys
 import tempfile
-import shutil
+import time
+from importlib import import_module
+from pathlib import Path
+from unittest import mock
 
 import pytest
 
 import ray
-import time
+from ray._private import gcs_utils
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.utils import get_directory_size_bytes
-from ray._private.runtime_env.working_dir import (
-    WorkingDirManager,
-    set_pythonpath_in_context,
-)
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
     upload_package_if_needed,
 )
-from unittest import mock
-
+from ray._private.runtime_env.working_dir import (
+    WorkingDirPlugin,
+    set_pythonpath_in_context,
+)
+from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -49,7 +49,9 @@ def insert_test_dir_in_pythonpath():
 @pytest.mark.asyncio
 async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     """Tests that `create` and `delete_uri` return the same size for a URI."""
-
+    gcs_aio_client = gcs_utils.GcsAioClient(
+        address=ray.worker.global_worker.gcs_client.address
+    )
     # Create an arbitrary nonempty directory to upload.
     path = Path(tmpdir)
     dir_to_upload = path / "dir_to_upload"
@@ -64,7 +66,7 @@ async def test_create_delete_size_equal(tmpdir, ray_start_regular):
     uploaded = upload_package_if_needed(uri, tmpdir, dir_to_upload)
     assert uploaded
 
-    manager = WorkingDirManager(tmpdir)
+    manager = WorkingDirPlugin(tmpdir, gcs_aio_client)
 
     created_size_bytes = await manager.create(uri, {}, RuntimeEnvContext())
     deleted_size_bytes = manager.delete_uri(uri)
@@ -574,4 +576,7 @@ def test_override_failure(shutdown_only):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

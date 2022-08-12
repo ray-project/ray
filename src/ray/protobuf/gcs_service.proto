@@ -36,8 +36,7 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
-message GetAllJobInfoRequest {
-}
+message GetAllJobInfoRequest {}
 
 message GetAllJobInfoReply {
   GcsStatus status = 1;
@@ -51,8 +50,7 @@ message ReportJobErrorReply {
   GcsStatus status = 1;
 }
 
-message GetNextJobIDRequest {
-}
+message GetNextJobIDRequest {}
 message GetNextJobIDReply {
   GcsStatus status = 1;
   int32 job_id = 2;
@@ -116,12 +114,17 @@ message ListNamedActorsReply {
 message GetAllActorInfoRequest {
   // Whether or not to filter out actors which belong to dead jobs.
   bool show_dead_jobs = 1;
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 2;
 }
 
 message GetAllActorInfoReply {
   GcsStatus status = 1;
-  // Data of actor.
+  // Data of actor.2
   repeated ActorTableData actor_table_data = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
 }
 
 // `KillActorViaGcsRequest` is sent to GCS Service to ask to kill an actor.
@@ -167,8 +170,7 @@ message RegisterNodeReply {
   GcsStatus status = 1;
 }
 
-message GetAllNodeInfoRequest {
-}
+message GetAllNodeInfoRequest {}
 
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
@@ -184,15 +186,16 @@ message ReportHeartbeatReply {
 }
 
 message CheckAliveRequest {
+  repeated string raylet_address = 1;
 }
 
 message CheckAliveReply {
   GcsStatus status = 1;
   string ray_version = 2;
+  repeated bool raylet_alive = 3;
 }
 
-message GetInternalConfigRequest {
-}
+message GetInternalConfigRequest {}
 
 message GetInternalConfigReply {
   GcsStatus status = 1;
@@ -212,8 +215,7 @@ message DeleteResourcesReply {
   GcsStatus status = 1;
 }
 
-message GetAllAvailableResourcesRequest {
-}
+message GetAllAvailableResourcesRequest {}
 
 message GetAllAvailableResourcesReply {
   GcsStatus status = 1;
@@ -244,8 +246,7 @@ message AddProfileDataReply {
   GcsStatus status = 1;
 }
 
-message GetAllProfileInfoRequest {
-}
+message GetAllProfileInfoRequest {}
 
 message GetAllProfileInfoReply {
   GcsStatus status = 1;
@@ -280,12 +281,17 @@ message GetWorkerInfoReply {
 }
 
 message GetAllWorkerInfoRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
 }
 
 message GetAllWorkerInfoReply {
   GcsStatus status = 1;
   // Data of worker
   repeated WorkerTableData worker_table_data = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
 }
 
 message AddWorkerInfoRequest {
@@ -318,6 +324,8 @@ message CreateActorReply {
   Address actor_address = 2;
   // Info about any refs that the created actor is borrowing.
   repeated ObjectReferenceCount borrowed_refs = 3;
+  // The cause of this actor's death if creation was cancelled.
+  optional ActorDeathCause death_cause = 4;
 }
 
 message RegisterActorRequest {
@@ -359,12 +367,17 @@ enum GcsServiceFailureType {
 }
 
 message GetAllPlacementGroupRequest {
+  // Maximum number of entries to return.
+  // If not specified, return the whole entries without truncation.
+  optional int64 limit = 1;
 }
 
 message GetAllPlacementGroupReply {
   GcsStatus status = 1;
   // Data of placement group
   repeated PlacementGroupTableData placement_group_table_data = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
 }
 
 message WaitPlacementGroupUntilReadyRequest {
@@ -501,6 +514,21 @@ service InternalKVGcsService {
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
 
+message PinRuntimeEnvURIRequest {
+  string uri = 1;
+  int32 expiration_s = 2;
+}
+
+message PinRuntimeEnvURIReply {
+  GcsStatus status = 1;
+}
+
+/// Handles pinning package URIs that are stored in the GCS.
+/// Future runtime_env-related RPCs should be added to this service.
+service RuntimeEnvGcsService {
+  rpc PinRuntimeEnvURI(PinRuntimeEnvURIRequest) returns (PinRuntimeEnvURIReply);
+}
+
 message GcsPublishRequest {
   /// The messages that are published.
   repeated PubMessage pub_messages = 1;
@@ -550,8 +578,7 @@ service InternalPubSubGcsService {
       returns (GcsSubscriberCommandBatchReply);
 }
 
-message GetAllResourceUsageRequest {
-}
+message GetAllResourceUsageRequest {}
 
 message GetAllResourceUsageReply {
   GcsStatus status = 1;

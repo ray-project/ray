@@ -18,10 +18,12 @@ torch, _ = try_import_torch()
 
 
 class MARWILTorchPolicy(ValueNetworkMixin, PostprocessAdvantages, TorchPolicyV2):
-    """PyTorch policy class used with MarwilTrainer."""
+    """PyTorch policy class used with Marwil."""
 
     def __init__(self, observation_space, action_space, config):
-        config = dict(ray.rllib.algorithms.marwil.marwil.DEFAULT_CONFIG, **config)
+        config = dict(
+            ray.rllib.algorithms.marwil.marwil.MARWILConfig().to_dict(), **config
+        )
 
         TorchPolicyV2.__init__(
             self,
@@ -67,27 +69,32 @@ class MARWILTorchPolicy(ValueNetworkMixin, PostprocessAdvantages, TorchPolicyV2)
             adv_squared_mean = torch.mean(torch.pow(adv, 2.0))
 
             explained_var = explained_variance(cumulative_rewards, state_values)
-            self.explained_variance = torch.mean(explained_var)
+            ev = torch.mean(explained_var)
+            model.tower_stats["explained_variance"] = ev
 
             # Policy loss.
             # Update averaged advantage norm.
             rate = self.config["moving_average_sqd_adv_norm_update_rate"]
-            self._moving_average_sqd_adv_norm.add_(
-                rate * (adv_squared_mean - self._moving_average_sqd_adv_norm)
+            self._moving_average_sqd_adv_norm = (
+                rate * (adv_squared_mean.detach() - self._moving_average_sqd_adv_norm)
+                + self._moving_average_sqd_adv_norm
             )
+            model.tower_stats[
+                "_moving_average_sqd_adv_norm"
+            ] = self._moving_average_sqd_adv_norm
             # Exponentially weighted advantages.
             exp_advs = torch.exp(
                 self.config["beta"]
                 * (adv / (1e-8 + torch.pow(self._moving_average_sqd_adv_norm, 0.5)))
             ).detach()
             # Value loss.
-            self.v_loss = 0.5 * adv_squared_mean
+            v_loss = 0.5 * adv_squared_mean
         else:
             # Policy loss (simple BC loss term).
             exp_advs = 1.0
             # Value loss.
-            self.v_loss = 0.0
-
+            v_loss = 0.0
+        model.tower_stats["v_loss"] = v_loss
         # logprob loss alone tends to push action distributions to
         # have very low entropy, resulting in worse performance for
         # unfamiliar situations.
@@ -99,23 +106,29 @@ class MARWILTorchPolicy(ValueNetworkMixin, PostprocessAdvantages, TorchPolicyV2)
         else:
             logstds = 0.0
 
-        self.p_loss = -torch.mean(exp_advs * (logprobs + logstd_coeff * logstds))
-
+        p_loss = -torch.mean(exp_advs * (logprobs + logstd_coeff * logstds))
+        model.tower_stats["p_loss"] = p_loss
         # Combine both losses.
-        self.total_loss = self.p_loss + self.config["vf_coeff"] * self.v_loss
-
-        return self.total_loss
+        self.v_loss = v_loss
+        self.p_loss = p_loss
+        total_loss = p_loss + self.config["vf_coeff"] * v_loss
+        model.tower_stats["total_loss"] = total_loss
+        return total_loss
 
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         stats = {
-            "policy_loss": self.p_loss,
-            "total_loss": self.total_loss,
+            "policy_loss": self.get_tower_stats("p_loss")[0].item(),
+            "total_loss": self.get_tower_stats("total_loss")[0].item(),
         }
         if self.config["beta"] != 0.0:
-            stats["moving_average_sqd_adv_norm"] = self._moving_average_sqd_adv_norm
-            stats["vf_explained_var"] = self.explained_variance
-            stats["vf_loss"] = self.v_loss
+            stats["moving_average_sqd_adv_norm"] = self.get_tower_stats(
+                "_moving_average_sqd_adv_norm"
+            )[0].item()
+            stats["vf_explained_var"] = self.get_tower_stats("explained_variance")[
+                0
+            ].item()
+            stats["vf_loss"] = self.get_tower_stats("v_loss")[0].item()
         return convert_to_numpy(stats)
 
     def extra_grad_process(

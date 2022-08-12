@@ -2,7 +2,7 @@
 
 Here we create a number of CartPole agents, some of which are trained with
 DQN, and some of which are trained with PPO. We periodically sync weights
-between the two trainers (note that no such syncing is needed when using just
+between the two algorithms (note that no such syncing is needed when using just
 a single training method).
 
 For a simpler example, see also: multiagent_cartpole.py
@@ -13,8 +13,13 @@ import gym
 import os
 
 import ray
-from ray.rllib.algorithms.dqn import DQNTrainer, DQNTFPolicy, DQNTorchPolicy
-from ray.rllib.agents.ppo import PPOTrainer, PPOTFPolicy, PPOTorchPolicy
+from ray.rllib.algorithms.dqn import DQN, DQNTFPolicy, DQNTorchPolicy
+from ray.rllib.algorithms.ppo import (
+    PPO,
+    PPOTF1Policy,
+    PPOTF2Policy,
+    PPOTorchPolicy,
+)
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
@@ -56,17 +61,33 @@ if __name__ == "__main__":
     obs_space = single_dummy_env.observation_space
     act_space = single_dummy_env.action_space
 
-    # You can also have multiple policies per trainer, but here we just
+    def seelct_policy(algorithm, framework):
+        if algorithm == "PPO":
+            if framework == "torch":
+                return PPOTorchPolicy
+            elif framework == "tf":
+                return PPOTF1Policy
+            else:
+                return PPOTF2Policy
+        elif algorithm == "DQN":
+            if framework == "torch":
+                return DQNTorchPolicy
+            else:
+                return DQNTFPolicy
+        else:
+            raise ValueError("Unknown algorithm: ", algorithm)
+
+    # You can also have multiple policies per algorithm, but here we just
     # show one each for PPO and DQN.
     policies = {
         "ppo_policy": (
-            PPOTorchPolicy if args.framework == "torch" else PPOTFPolicy,
+            seelct_policy("PPO", args.framework),
             obs_space,
             act_space,
             {},
         ),
         "dqn_policy": (
-            DQNTorchPolicy if args.framework == "torch" else DQNTFPolicy,
+            seelct_policy("DQN", args.framework),
             obs_space,
             act_space,
             {},
@@ -79,7 +100,7 @@ if __name__ == "__main__":
         else:
             return "dqn_policy"
 
-    ppo_trainer = PPOTrainer(
+    ppo = PPO(
         env="multi_agent_cartpole",
         config={
             "multiagent": {
@@ -101,7 +122,7 @@ if __name__ == "__main__":
         },
     )
 
-    dqn_trainer = DQNTrainer(
+    dqn = DQN(
         env="multi_agent_cartpole",
         config={
             "multiagent": {
@@ -130,12 +151,12 @@ if __name__ == "__main__":
 
         # improve the DQN policy
         print("-- DQN --")
-        result_dqn = dqn_trainer.train()
+        result_dqn = dqn.train()
         print(pretty_print(result_dqn))
 
         # improve the PPO policy
         print("-- PPO --")
-        result_ppo = ppo_trainer.train()
+        result_ppo = ppo.train()
         print(pretty_print(result_ppo))
 
         # Test passed gracefully.
@@ -148,8 +169,8 @@ if __name__ == "__main__":
             quit(0)
 
         # swap weights to synchronize
-        dqn_trainer.set_weights(ppo_trainer.get_weights(["ppo_policy"]))
-        ppo_trainer.set_weights(dqn_trainer.get_weights(["dqn_policy"]))
+        dqn.set_weights(ppo.get_weights(["ppo_policy"]))
+        ppo.set_weights(dqn.get_weights(["dqn_policy"]))
 
     # Desired reward not reached.
     if args.as_test:

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -46,7 +47,7 @@ class RuntimeEnvContext:
         os.environ.update(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
-            executable = f'"{self.py_executable}"'  # Path may contain spaces
+            executable = self.py_executable
         elif language == Language.PYTHON:
             executable = f"exec {self.py_executable}"
         elif language == Language.JAVA:
@@ -67,9 +68,21 @@ class RuntimeEnvContext:
 
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " && ".join(self.command_prefix + [exec_command])
-        logger.info(f"Exec'ing worker with command: {command_str}")
+        # TODO(SongGuyang): We add this env to command for macOS because it doesn't
+        # work for the C++ process of `os.execvp`. We should find a better way to
+        # fix it.
+        MACOS_LIBRARY_PATH_ENV_NAME = "DYLD_LIBRARY_PATH"
+        if MACOS_LIBRARY_PATH_ENV_NAME in os.environ:
+            command_str = (
+                MACOS_LIBRARY_PATH_ENV_NAME
+                + "="
+                + os.environ.get(MACOS_LIBRARY_PATH_ENV_NAME)
+                + " "
+                + command_str
+            )
+        logger.debug(f"Exec'ing worker with command: {command_str}")
         if sys.platform == "win32":
-            os.system(command_str)
+            subprocess.run([executable, *passthrough_args])
         else:
             # PyCharm will monkey patch the os.execvp at
             # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py

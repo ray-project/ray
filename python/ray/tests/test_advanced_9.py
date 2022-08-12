@@ -1,9 +1,17 @@
-import pytest
-import ray
 import sys
 
-from ray._private.test_utils import Semaphore, client_test_enabled, wait_for_condition
+import pytest
+
+import ray
+from ray._private.test_utils import (
+    Semaphore,
+    enable_external_redis,
+    client_test_enabled,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray.experimental.internal_kv import _internal_kv_list
+from ray.tests.conftest import call_ray_start
 
 
 @pytest.fixture
@@ -88,7 +96,7 @@ def get_gcs_memory_used():
 
 
 def function_entry_num(job_id):
-    from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+    from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 
     return (
         len(
@@ -143,7 +151,7 @@ def test_function_table_gc(call_ray_start):
     # It's not working on win32.
     if sys.platform != "win32":
         assert get_gcs_memory_used() > 500 * 1024 * 1024
-    job_id = ray.worker.global_worker.current_job_id.hex().encode()
+    job_id = ray._private.worker.global_worker.current_job_id.hex().encode()
     assert function_entry_num(job_id) > 0
     ray.shutdown()
 
@@ -167,7 +175,7 @@ def test_function_table_gc_actor(call_ray_start):
     # If there is a detached actor, the function won't be deleted.
     a = Actor.options(lifetime="detached", name="a").remote()
     ray.get(a.ready.remote())
-    job_id = ray.worker.global_worker.current_job_id.hex().encode()
+    job_id = ray._private.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
 
     ray.init(address="auto", namespace="b")
@@ -180,7 +188,7 @@ def test_function_table_gc_actor(call_ray_start):
     # If there is not a detached actor, it'll be deleted when the job finishes.
     a = Actor.remote()
     ray.get(a.ready.remote())
-    job_id = ray.worker.global_worker.current_job_id.hex().encode()
+    job_id = ray._private.worker.global_worker.current_job_id.hex().encode()
     ray.shutdown()
     ray.init(address="auto", namespace="c")
     wait_for_condition(lambda: function_entry_num(job_id) == 0)
@@ -203,7 +211,53 @@ def test_worker_oom_score(shutdown_only):
     assert ray.get(get_oom_score.remote()) >= 1000
 
 
+call_ray_start_2 = call_ray_start
+
+
+@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+@pytest.mark.parametrize(
+    "call_ray_start,call_ray_start_2",
+    [
+        (
+            {"env": {"RAY_external_storage_namespace": "A1"}},
+            {"env": {"RAY_external_storage_namespace": "A2"}},
+        )
+    ],
+    indirect=True,
+)
+def test_storage_isolation(external_redis, call_ray_start, call_ray_start_2):
+    script = """
+import ray
+ray.init("{address}", namespace="a")
+@ray.remote
+class A:
+    def ready(self):
+        return {val}
+    pass
+
+a = A.options(lifetime="detached", name="A").remote()
+assert ray.get(a.ready.remote()) == {val}
+assert ray.get_runtime_context().job_id.hex() == '01000000'
+    """
+    run_string_as_driver(script.format(address=call_ray_start, val=1))
+    run_string_as_driver(script.format(address=call_ray_start_2, val=2))
+
+    script = """
+import ray
+ray.init("{address}", namespace="a")
+a = ray.get_actor(name="A")
+assert ray.get(a.ready.remote()) == {val}
+assert ray.get_runtime_context().job_id.hex() == '02000000'
+"""
+    run_string_as_driver(script.format(address=call_ray_start, val=1))
+    run_string_as_driver(script.format(address=call_ray_start_2, val=2))
+
+
 if __name__ == "__main__":
     import pytest
+    import os
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

@@ -9,17 +9,17 @@ def _import_random_agent():
 
 def _import_alphazero():
     from ray.rllib.algorithms.alpha_zero.alpha_zero import (
-        AlphaZeroTrainer,
+        AlphaZero,
         DEFAULT_CONFIG,
     )
 
-    return AlphaZeroTrainer, DEFAULT_CONFIG
+    return AlphaZero, DEFAULT_CONFIG
 
 
 def _import_maddpg():
-    from ray.rllib.agents.maddpg import maddpg
+    from ray.rllib.algorithms.maddpg import maddpg
 
-    return maddpg.MADDPGTrainer, maddpg.DEFAULT_CONFIG
+    return maddpg.MADDPG, maddpg.DEFAULT_CONFIG
 
 
 CONTRIBUTED_ALGORITHMS = {

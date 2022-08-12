@@ -7,13 +7,13 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
 from pkg_resources import packaging
+import ray
 
 try:
-    import aiohttp
     import requests
 except ImportError:
-    aiohttp = None
     requests = None
+
 
 from ray._private.runtime_env.packaging import (
     create_package,
@@ -97,9 +97,9 @@ def get_job_submission_client_cluster_info(
     inserted.
 
     Args:
-        address (str): Address without the module prefix that is passed
+        address: Address without the module prefix that is passed
             to SubmissionClient.
-        create_cluster_if_needed (bool): Indicates whether the cluster
+        create_cluster_if_needed: Indicates whether the cluster
             of the address returned needs to be running. Ray doesn't
             start a cluster before interacting with jobs, but other
             implementations may do so.
@@ -126,8 +126,20 @@ def parse_cluster_info(
     headers: Optional[Dict[str, Any]] = None,
 ) -> ClusterInfo:
     if address is None:
-        logger.info(f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}.")
-        address = DEFAULT_DASHBOARD_ADDRESS
+        if (
+            ray.is_initialized()
+            and ray._private.worker.global_worker.node.address_info["webui_url"]
+            is not None
+        ):
+            address = (
+                "http://"
+                f"{ray._private.worker.global_worker.node.address_info['webui_url']}"
+            )
+        else:
+            logger.info(
+                f"No address provided, defaulting to {DEFAULT_DASHBOARD_ADDRESS}."
+            )
+            address = DEFAULT_DASHBOARD_ADDRESS
 
     module_string, inner_address = _split_address(address)
 
@@ -186,6 +198,14 @@ class SubmissionClient:
         headers: Optional[Dict[str, Any]] = None,
     ):
 
+        # Remove any trailing slashes
+        if address is not None and address.endswith("/"):
+            address = address.rstrip("/")
+            logger.debug(
+                "The submission address cannot contain trailing slashes. Removing "
+                f'them from the requested submission address of "{address}".'
+            )
+
         cluster_info = parse_cluster_info(
             address, create_cluster_if_needed, cookies, metadata, headers
         )
@@ -199,13 +219,21 @@ class SubmissionClient:
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
     ):
+        self._check_connection_and_version_with_url(min_version, version_error_message)
+
+    def _check_connection_and_version_with_url(
+        self,
+        min_version: str = "1.9",
+        version_error_message: str = None,
+        url: str = "/api/version",
+    ):
         if version_error_message is None:
             version_error_message = (
                 f"Please ensure the cluster is running Ray {min_version} or higher."
             )
 
         try:
-            r = self._do_request("GET", "/api/version")
+            r = self._do_request("GET", url)
             if r.status_code == 404:
                 raise RuntimeError(version_error_message)
             r.raise_for_status()
@@ -233,7 +261,13 @@ class SubmissionClient:
         *,
         data: Optional[bytes] = None,
         json_data: Optional[dict] = None,
+        **kwargs,
     ) -> "requests.Response":
+        """Perform the actual HTTP request
+
+        Keyword arguments other than "cookies", "headers" are forwarded to the
+        `requests.request()`.
+        """
         url = self._address + endpoint
         logger.debug(f"Sending request to {url} with json data: {json_data or {}}.")
         return requests.request(
@@ -243,6 +277,7 @@ class SubmissionClient:
             data=data,
             json=json_data,
             headers=self._headers,
+            **kwargs,
         )
 
     def _package_exists(

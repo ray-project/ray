@@ -3,6 +3,7 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict
 
+from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.typing import PolicyID
 
@@ -13,6 +14,7 @@ LEARNER_INFO = "learner"
 LEARNER_STATS_KEY = "learner_stats"
 
 
+@DeveloperAPI
 class LearnerInfoBuilder:
     def __init__(self, num_devices: int = 1):
         self.num_devices = num_devices
@@ -43,7 +45,7 @@ class LearnerInfoBuilder:
         else:
             self.results_all_towers[policy_id].append(
                 tree.map_structure_with_path(
-                    lambda p, *s: all_tower_reduce(p, *s),
+                    lambda p, *s: _all_tower_reduce(p, *s),
                     *(
                         results.pop("tower_{}".format(tower_num))
                         for tower_num in range(self.num_devices)
@@ -82,13 +84,13 @@ class LearnerInfoBuilder:
             # Reduce mean across all minibatch SGD steps (axis=0 to keep
             # all shapes as-is).
             info[policy_id] = tree.map_structure_with_path(
-                all_tower_reduce, *results_all_towers
+                _all_tower_reduce, *results_all_towers
             )
 
         return info
 
 
-def all_tower_reduce(path, *tower_data):
+def _all_tower_reduce(path, *tower_data):
     """Reduces stats across towers based on their stats-dict paths."""
     # TD-errors: Need to stay per batch item in order to be able to update
     # each item's weight in a prioritized replay buffer.

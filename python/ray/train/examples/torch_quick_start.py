@@ -1,5 +1,6 @@
 # flake8: noqa
 # fmt: off
+# isort: skip_file
 
 # __torch_setup_begin__
 import torch
@@ -49,7 +50,6 @@ def train_func():
 # __torch_distributed_begin__
 
 from ray import train
-import ray.train.torch
 
 def train_func_distributed():
     num_epochs = 3
@@ -78,15 +78,18 @@ if __name__ == "__main__":
 
     # __torch_trainer_begin__
 
-    from ray.train import Trainer
-
-    trainer = Trainer(backend="torch", num_workers=4)
+    from ray.train.torch import TorchTrainer
+    from ray.air.config import ScalingConfig
 
     # For GPU Training, set `use_gpu` to True.
-    # trainer = Trainer(backend="torch", num_workers=4, use_gpu=True)
+    use_gpu = False
 
-    trainer.start()
-    results = trainer.run(train_func_distributed)
-    trainer.shutdown()
+    trainer = TorchTrainer(
+        train_func_distributed,
+        scaling_config=ScalingConfig(
+            num_workers=4, use_gpu=use_gpu)
+    )
+
+    results = trainer.fit()
 
     # __torch_trainer_end__

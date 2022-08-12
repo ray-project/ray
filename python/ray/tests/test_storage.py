@@ -1,14 +1,15 @@
 import os
+import subprocess
 import urllib
 from pathlib import Path
+
 import pyarrow.fs
 import pytest
-import subprocess
 
 import ray
-import ray.internal.storage as storage
-from ray.tests.conftest import *  # noqa
+import ray._private.storage as storage
 from ray._private.test_utils import simulate_storage
+from ray.tests.conftest import *  # noqa
 
 
 def _custom_fs(uri):
@@ -157,7 +158,7 @@ def test_connecting_to_cluster(shutdown_only, storage_type):
         try:
             subprocess.check_call(["ray", "start", "--head", "--storage", storage_uri])
             ray.init(address="auto")
-            from ray.internal.storage import _storage_uri
+            from ray._private.storage import _storage_uri
 
             # make sure driver is using the same storage when connecting to a cluster
             assert _storage_uri == storage_uri
@@ -168,4 +169,7 @@ def test_connecting_to_cluster(shutdown_only, storage_type):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))

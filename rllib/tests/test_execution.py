@@ -5,7 +5,7 @@ import queue
 import unittest
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
+from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, STEPS_TRAINED_COUNTER
@@ -38,13 +38,13 @@ def iter_list(values):
 def make_workers(n):
     local = RolloutWorker(
         env_creator=lambda _: gym.make("CartPole-v0"),
-        policy_spec=PPOTFPolicy,
+        policy_spec=PPOTF1Policy,
         rollout_fragment_length=100,
     )
     remotes = [
         RolloutWorker.as_remote().remote(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy_spec=PPOTFPolicy,
+            policy_spec=PPOTF1Policy,
             rollout_fragment_length=100,
         )
         for _ in range(n)
@@ -112,8 +112,8 @@ class TestExecution(unittest.TestCase):
             a,
             workers,
             {
-                "min_time_s_per_reporting": 2.5,
-                "min_sample_timesteps_per_reporting": 0,
+                "min_time_s_per_iteration": 2.5,
+                "min_sample_timesteps_per_iteration": 0,
                 "metrics_num_episodes_for_smoothing": 10,
                 "metrics_episode_collection_timeout_s": 10,
                 "keep_per_episode_custom_metrics": False,
@@ -208,34 +208,27 @@ class TestExecution(unittest.TestCase):
     def test_store_to_replay_local(self):
         buf = MultiAgentReplayBuffer(
             num_shards=1,
-            learning_starts=200,
             capacity=1000,
-            replay_batch_size=100,
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=0.0001,
         )
-        assert len(buf.sample(100)) == 0
 
         workers = make_workers(0)
         a = ParallelRollouts(workers, mode="bulk_sync")
         b = a.for_each(StoreToReplayBuffer(local_buffer=buf))
 
         next(b)
-        assert len(buf.sample(100)) == 0  # learning hasn't started yet
-        next(b)
         assert buf.sample(100).count == 100
 
-        replay_op = Replay(local_buffer=buf)
+        replay_op = Replay(local_buffer=buf, num_items_to_replay=100)
         assert next(replay_op).count == 100
 
     def test_store_to_replay_actor(self):
         ReplayActor = ray.remote(num_cpus=0)(MultiAgentReplayBuffer)
         actor = ReplayActor.remote(
             num_shards=1,
-            learning_starts=200,
             capacity=1000,
-            replay_batch_size=100,
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=0.0001,
@@ -247,11 +240,9 @@ class TestExecution(unittest.TestCase):
         b = a.for_each(StoreToReplayBuffer(actors=[actor]))
 
         next(b)
-        assert len(ray.get(actor.sample.remote(100))) == 0  # learning hasn't started
-        next(b)
         assert ray.get(actor.sample.remote(100)).count == 100
 
-        replay_op = Replay(actors=[actor])
+        replay_op = Replay(actors=[actor], num_items_to_replay=100)
         assert next(replay_op).count == 100
 
 

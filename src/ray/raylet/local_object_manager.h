@@ -151,9 +151,13 @@ class LocalObjectManager {
   /// In that case, the URL is supposed to be obtained by the object directory.
   std::string GetLocalSpilledObjectURL(const ObjectID &object_id);
 
-  /// Get the current pinned object store memory usage to help node scale down decisions.
-  /// A node can only be safely drained when this function reports zero.
-  int64_t GetPinnedBytes() const;
+  /// Get the current bytes used by primary object copies. This number includes
+  /// bytes used by objects currently being spilled.
+  int64_t GetPrimaryBytes() const;
+
+  /// Returns true if we have objects spilled to the local
+  /// filesystem.
+  bool HasLocallySpilledObjects() const;
 
   std::string DebugString() const;
 

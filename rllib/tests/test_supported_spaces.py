@@ -3,7 +3,7 @@ import numpy as np
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_trainer_class
+from ray.rllib.algorithms.registry import get_algorithm_class
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.models.tf.complex_input_net import ComplexInputNetwork as ComplexNet
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNet
@@ -76,7 +76,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
         stat = "ok"
 
         try:
-            a = get_trainer_class(alg)(config=config, env=RandomEnv)
+            a = get_algorithm_class(alg)(config=config, env=RandomEnv)
         except ray.exceptions.RayActorError as e:
             if len(e.args) >= 2 and isinstance(e.args[2], UnsupportedSpaceException):
                 stat = "unsupported"
@@ -181,7 +181,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
             "DDPG",
             {
                 "exploration_config": {"ou_base_scale": 100.0},
-                "min_sample_timesteps_per_reporting": 1,
+                "min_sample_timesteps_per_iteration": 1,
                 "replay_buffer_config": {
                     "capacity": 1000,
                 },
@@ -192,7 +192,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
 
     def test_dqn(self):
         config = {
-            "min_sample_timesteps_per_reporting": 1,
+            "min_sample_timesteps_per_iteration": 1,
             "replay_buffer_config": {
                 "capacity": 1000,
             },
