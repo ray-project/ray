@@ -59,7 +59,7 @@ class Query:
             replacement_table = dict(zip(tasks, resolved))
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
 
-        # Trigger the GC to avoid memory leak
+        # Make the scanner GCable to avoid memory leak
         delete_scanner_instance(id(scanner))
 
 
