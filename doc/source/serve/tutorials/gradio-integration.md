@@ -8,7 +8,7 @@ To follow this tutorial, you will need Ray Serve and Gradio. If you haven't alre
 $ pip install "ray[serve]"
 $ pip install gradio
 ```
-For this tutorial, we will use Gradio apps that run use models: text summarization and generation models and [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access these models. **Note that you can substitute this Gradio app for any Gradio app of your own!**
+For this tutorial, we will use Gradio apps that run text summarization and generation models and use [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines) to access these models. **Note that you can substitute this Gradio app for any Gradio app of your own!**
 
 First, let's install the transformers module.
 ```console
