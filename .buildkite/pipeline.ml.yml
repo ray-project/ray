@@ -309,7 +309,7 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
 
-- label: ":steam_locomotive: :whale: Jax Train + Tune tests and examples. Python 3.7"
+- label: ":whale: Jax Train + Tune tests and examples. Python 3.7"
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT

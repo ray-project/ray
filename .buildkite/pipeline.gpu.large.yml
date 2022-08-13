@@ -18,7 +18,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=datasets_train doc/...
 
-- label: ":tv: :database: :dog: Jax Integration GPU Tests and Examples (Python 3.7)"
+- label: ":tv: :whale: Jax Integration GPU Tests and Examples (Python 3.7)"
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
