@@ -54,7 +54,7 @@ $ python3
     8
 ```
 
-Once we're finished, we can close the Python interpreter by running `quit()` and terminate the Ray cluster by typing `ctrl-C` int the terminal running `serve run`. This will tear down the deployments and then the cluster.
+Once we're finished, we can close the Python interpreter by running `quit()` and terminate the Ray cluster by typing `ctrl-C` into the terminal running `serve run`. This will tear down the deployments and then the cluster.
 
 (serve-in-production-config-file)=
 
@@ -76,10 +76,10 @@ deployments:
     - name: ...
       num_replicas: ...
       ...
-    
+
     - name:
       ...
-    
+
     ...
 ```
 
@@ -104,15 +104,15 @@ deployments:
     - name: MangoStand
       user_config:
         price: 3
-    
+
     - name: OrangeStand
       user_config:
         price: 2
-    
+
     - name: PearStand
       user_config:
         price: 4
-    
+
     - name: DAGDriver
 ```
 
@@ -283,7 +283,7 @@ $ ray start --head
 ...
 
 $ serve deploy fruit_config.yaml
-2022-06-20 17:26:31,106	SUCC scripts.py:139 -- 
+2022-06-20 17:26:31,106	SUCC scripts.py:139 --
 Sent deploy request successfully!
  * Use `serve status` to check deployments' statuses.
  * Use `serve config` to see the running app's config.
@@ -304,7 +304,7 @@ If you start Ray and deploy your deployment graph from a directory that doesn't 
 
 To make your config file location-independent, you can push your deployment graph code to [a remote repository and add that repository to your config file's `runtime_env` field](remote-uris). When Serve runs your deployment graph, it will pull the code from the remote repository rather than use a local copy. **This is a best practice** because it lets you deploy your config file from any machine in any directory and share the file with other developers, making it a more standalone artifact.
 
-As an example, we have [pushed a copy of the FruitStand deployment graph to GitHub](https://github.com/ray-project/test_dag/blob/c620251044717ace0a4c19d766d43c5099af8a77/fruit.py). You can use this config file to deploy the `FruitStand` deployment graph to your own Ray cluster even if you don't have the code locally:
+As an example, we have [pushed a copy of the FruitStand deployment graph to GitHub](https://github.com/ray-project/test_dag/blob/40d61c141b9c37853a7014b8659fc7f23c1d04f6/fruit.py). You can use this config file to deploy the `FruitStand` deployment graph to your own Ray cluster even if you don't have the code locally:
 
 ```yaml
 import_path: fruit.deployment_graph

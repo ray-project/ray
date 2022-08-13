@@ -1,14 +1,9 @@
-.. warning::
-    This page is under construction!
-
 .. include:: /_includes/clusters/announcement.rst
 
-.. include:: /_includes/clusters/we_are_hiring.rst
+.. _vm-cluster-quick-start:
 
-.. _ref-cluster-quick-start-vms-under-construction:
-
-Ray Clusters Quick Start
-========================
+Getting Started
+===============
 
 This quick start demonstrates the capabilities of the Ray cluster. Using the Ray cluster, we'll take a sample application designed to run on a laptop and scale it up in the cloud. Ray will launch clusters and scale Python with just a few commands.
 
@@ -89,7 +84,7 @@ We will write a simple Python application that tracks the IP addresses of the ma
 
 Save this application as ``script.py`` and execute it by running the command ``python script.py``. The application should take 10 seconds to run and output something similar to ``Counter({'127.0.0.1': 10000})``.
 
-With some small changes, we can make this application run on Ray (for more information on how to do this, refer to :ref:`the Ray Core Walkthrough<core-walkthrough>`):
+With some small changes, we can make this application run on Ray (for more information on how to do this, refer to :ref:`the Ray Core Walkthrough <core-walkthrough>`):
 
 .. code-block:: python
 
@@ -239,7 +234,7 @@ You can also optionally get a remote shell using ``ray attach`` and run commands
 
 For a full reference on the Ray Cluster CLI tools, please refer to :ref:`the cluster commands reference <cluster-commands>`.
 
-While these tools are useful for ad-hoc execution on the Ray Cluster, the recommended way to execute an application on a Ray Cluster is to use :ref:`Ray Jobs <ray-jobs-under-construction>`. Check out the :ref:`quickstart guide <jobs-quickstart-under-construction>` to get started!
+While these tools are useful for ad-hoc execution on the Ray Cluster, the recommended way to execute an application on a Ray Cluster is to use :ref:`Ray Jobs <jobs-quickstart>`. Check out the :ref:`quickstart guide <jobs-quickstart>` to get started!
 
 Deleting a Ray Cluster
 ----------------------

@@ -1,6 +1,4 @@
-.. include:: /_includes/clusters/we_are_hiring.rst
-
-.. _ray-yarn-deploy-under-construction:
+.. _ray-yarn-deploy:
 
 Deploying on YARN
 =================
