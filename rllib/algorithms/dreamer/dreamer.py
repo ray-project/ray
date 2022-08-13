@@ -215,14 +215,16 @@ def _postprocess_gif(gif: np.ndarray):
 
 
 class EpisodeSequenceBuffer(ReplayBuffer):
-    def __init__(self, capacity: int = 1000, replay_sequence_length: int = 50):
+    def __init__(self, capacity_items: int = 1000, replay_sequence_length: int = 50):
         """Stores episodes and samples sequences of size `replay_sequence_length`.
 
         Args:
             capacity: Maximum number of episodes this buffer can store
             replay_sequence_length: Episode chunking length in sample()
         """
-        super().__init__(capacity=capacity, storage_unit=StorageUnit.EPISODES)
+        super().__init__(
+            capacity_items=capacity_items, storage_unit=StorageUnit.EPISODES
+        )
         self.replay_sequence_length = replay_sequence_length
 
     def sample(self, num_items: int):
