@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 RAY_TPU_DEV_ENV = "RAY_TPU_DEV"
 
 
-@PublicAPI(stability="alpa")
+@PublicAPI(stability="alpha")
 @dataclass
 class JaxConfig(BackendConfig):
     @property
