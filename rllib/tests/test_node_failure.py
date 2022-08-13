@@ -43,6 +43,7 @@ class NodeFailureTests(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
+        self.cluster.shutdown()
 
     def test_fail_on_node_failure(self):
         # We do not tolerate failing workers and stop training
