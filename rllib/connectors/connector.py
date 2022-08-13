@@ -266,11 +266,11 @@ class ActionConnector(Connector):
     to user environments.
 
     An action connector transforms a single piece of policy output in
-    ActionConnectorDataType format, which is basically PolicyOutputType
-    plus env and agent IDs.
+    ActionConnectorDataType format, which is basically PolicyOutputType plus env and
+    agent IDs.
 
-    Any functions that operates directly on PolicyOutputType can be
-    easily adpated into an ActionConnector by using register_lambda_action_connector.
+    Any functions that operate directly on PolicyOutputType can be easily adapted
+    into an ActionConnector by using register_lambda_action_connector.
 
     Example:
     .. code-block:: python
