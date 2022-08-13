@@ -556,6 +556,7 @@ def get_job(
 ) -> Optional[Dict]:
     raise NotImplementedError("Get Job by id is currently not supported")
 
+
 @PublicAPI(stability="alpha")
 def get_placement_group(
     id: str,
@@ -587,6 +588,7 @@ def get_placement_group(
         GetApiOptions(timeout=timeout),
         _explain=_explain,
     )
+
 
 @PublicAPI(stability="alpha")
 def get_node(
@@ -620,6 +622,7 @@ def get_node(
         _explain=_explain,
     )
 
+
 @PublicAPI(stability="alpha")
 def get_worker(
     id: str,
@@ -652,6 +655,7 @@ def get_worker(
         _explain=_explain,
     )
 
+
 @PublicAPI(stability="alpha")
 def get_task(
     id: str,
@@ -683,6 +687,7 @@ def get_task(
         GetApiOptions(timeout=timeout),
         _explain=_explain,
     )
+
 
 @PublicAPI(stability="alpha")
 def get_objects(
@@ -717,6 +722,7 @@ def get_objects(
         GetApiOptions(timeout=timeout),
         _explain=_explain,
     )
+
 
 @PublicAPI(stability="alpha")
 def list_actors(
@@ -765,6 +771,7 @@ def list_actors(
         _explain=_explain,
     )
 
+
 @PublicAPI(stability="alpha")
 def list_placement_groups(
     address: Optional[str] = None,
@@ -808,6 +815,7 @@ def list_placement_groups(
         raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
+
 
 @PublicAPI(stability="alpha")
 def list_nodes(
@@ -853,6 +861,7 @@ def list_nodes(
         _explain=_explain,
     )
 
+
 @PublicAPI(stability="alpha")
 def list_jobs(
     address: Optional[str] = None,
@@ -896,6 +905,7 @@ def list_jobs(
         raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
+
 
 @PublicAPI(stability="alpha")
 def list_workers(
@@ -941,6 +951,7 @@ def list_workers(
         _explain=_explain,
     )
 
+
 @PublicAPI(stability="alpha")
 def list_tasks(
     address: Optional[str] = None,
@@ -985,6 +996,7 @@ def list_tasks(
         _explain=_explain,
     )
 
+
 @PublicAPI(stability="alpha")
 def list_objects(
     address: Optional[str] = None,
@@ -1028,6 +1040,7 @@ def list_objects(
         raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
+
 
 @PublicAPI(stability="alpha")
 def list_runtime_envs(
@@ -1077,6 +1090,7 @@ def list_runtime_envs(
 """
 Log APIs
 """
+
 
 @PublicAPI(stability="alpha")
 def get_log(
@@ -1169,6 +1183,7 @@ def get_log(
                 raise RayStateApiException(error_msg)
             yield logs
 
+
 @PublicAPI(stability="alpha")
 def list_logs(
     address: Optional[str] = None,
@@ -1232,6 +1247,7 @@ def list_logs(
 Summary APIs
 """
 
+
 @PublicAPI(stability="alpha")
 def summarize_tasks(
     address: Optional[str] = None,
@@ -1264,6 +1280,7 @@ def summarize_tasks(
         _explain=_explain,
     )
 
+
 @PublicAPI(stability="alpha")
 def summarize_actors(
     address: Optional[str] = None,
@@ -1295,6 +1312,7 @@ def summarize_actors(
         raise_on_missing_output=raise_on_missing_output,
         _explain=_explain,
     )
+
 
 @PublicAPI(stability="alpha")
 def summarize_objects(

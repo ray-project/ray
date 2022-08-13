@@ -266,13 +266,13 @@ def create_api_options(
 
 def test_state_api_experimental_deprecated():
     with pytest.raises(DeprecationWarning):
-        import ray.experimental.state
+        import ray.experimental.state  # noqa
     with pytest.raises(DeprecationWarning):
-        import ray.experimental.state.api
+        import ray.experimental.state.api  # noqa
     with pytest.raises(DeprecationWarning):
-        from ray.experimental.state import api
+        from ray.experimental.state import api  # noqa
     with pytest.raises(DeprecationWarning):
-        from ray.experimental.state.common import TaskState
+        from ray.experimental.state.common import TaskState  # noqa
 
 
 def test_ray_address_to_api_server_url(shutdown_only):
