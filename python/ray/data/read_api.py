@@ -565,7 +565,7 @@ def read_csv(
         >>> # Use different delimiter. The partition_filter=None is needed here
         >>> # because by default read_csv only reads .csv files.
         >>> from pyarrow import csv
-        >>> parse_options = csv.ParseOptions(delimiter="\t")
+        >>> parse_options = csv.ParseOptions(delimiter="\\t")
         >>> ray.data.read_csv(
         ...     "example://iris.tsv", parse_options=parse_options, partition_filter=None)
 
