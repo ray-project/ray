@@ -119,6 +119,11 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(k2.remote(1)) == 2
     assert ray.get(m.remote(1)) == 2
 
+    # Test that builtins can be defined as remotes.
+    n = ray.remote(len)
+
+    assert ray.get(n.remote([1, 2, 3])) == 3
+
 
 def test_redefining_remote_functions(shutdown_only):
     ray.init(num_cpus=1)

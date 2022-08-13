@@ -127,7 +127,9 @@ class FunctionActorManager:
         import io
 
         string_file = io.StringIO()
-        if sys.version_info[1] >= 7:
+        if inspect.isbuiltin(function_or_class):
+            string_file.write("builtin")
+        elif sys.version_info[1] >= 7:
             dis.dis(function_or_class, file=string_file, depth=2)
         else:
             dis.dis(function_or_class, file=string_file)

@@ -2553,7 +2553,11 @@ def _mode(worker=global_worker):
 
 
 def _make_remote(function_or_class, options):
-    if inspect.isfunction(function_or_class) or is_cython(function_or_class):
+    if (
+        inspect.isfunction(function_or_class)
+        or inspect.isbuiltin(function_or_class)
+        or is_cython(function_or_class)
+    ):
         ray_option_utils.validate_task_options(options, in_options=False)
         return ray.remote_function.RemoteFunction(
             Language.PYTHON,
