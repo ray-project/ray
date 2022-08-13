@@ -3572,6 +3572,59 @@
       wait_for_nodes:
         num_nodes: 5
 
+- name: stress_test_state_api_scale
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: stress_test_state_api_scale
+    test_suite: nightly_tests
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: stress_tests/stress_tests_app_config.yaml
+    cluster_compute: stress_tests/stress_tests_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python stress_tests/test_state_api_scale.py 
+    type: sdk_command
+    file_manager: sdk
+
+  smoke_test:
+    frequency: multi
+    cluster:
+      app_config: stress_tests/stress_tests_app_config.yaml
+      cluster_compute: stress_tests/smoke_test_compute.yaml
+
+    run:
+      timeout: 3600
+      script: python stress_tests/test_state_api_scale.py --smoke-test
+
+
+- name: shuffle_20gb_with_state_api
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: shuffle_20gb_with_state_api
+    test_suite: nightly_tests
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/shuffle_compute_single.yaml
+
+  run:
+    timeout: 1000
+    script: python stress_tests/test_state_api_with_other_tests.py 
+      nightly_tests/shuffle/shuffle_test.py --test-args="--num-partitions=100 --partition-size=200e6" 
+
+    type: sdk_command
+    file_manager: sdk
+
 - name: stress_test_many_tasks
   group: core-daily-test
   working_dir: nightly_tests
