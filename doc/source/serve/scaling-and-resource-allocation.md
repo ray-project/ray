@@ -10,7 +10,7 @@ This guide helps you to:
 
 ## Scaling horizontally with `num_replicas`
 
-Each deployment consists of one or more [replicas](serve-architecture#high-level-view).
+Each deployment consists of one or more [replicas](serve-architecture-high-level-view).
 The number of replicas is specified by the `num_replicas` field in the deployment options.
 By default, `num_replicas` is 1.
 
