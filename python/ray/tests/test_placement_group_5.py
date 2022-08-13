@@ -68,8 +68,8 @@ def test_placement_group_bin_packing_priority(
         )
 
 
-@pytest.mark.parametrize("multi_bundle", [False, True])
-@pytest.mark.parametrize("even_pack", [False, True])
+@pytest.mark.parametrize("multi_bundle", [True, False])
+@pytest.mark.parametrize("even_pack", [True, False])
 @pytest.mark.parametrize("scheduling_strategy", ["SPREAD", "STRICT_PACK", "PACK"])
 def test_placement_group_max_cpu_frac(
     ray_start_cluster, multi_bundle, even_pack, scheduling_strategy
@@ -129,20 +129,92 @@ def test_placement_group_max_cpu_frac_multiple_pgs(ray_start_cluster):
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(pg2.ready(), timeout=5)
 
+    # When you add a new node, it is finally schedulable.
     cluster.add_node(num_cpus=8)
     ray.get(pg2.ready())
 
-    """
-    Make sure when the CPU * frac < 1, we can at least
-    guarantee to have 1 CPU for pg.
-    """
-    ray.util.remove_placement_group(pg)
-    ray.util.remove_placement_group(pg2)
 
-    # We can reserve up to 0.8 CPU, but it should round up to 1, so this pg
-    # is schedulable.
-    pg = ray.util.placement_group([{"CPU": 1}], _max_cpu_fraction_per_node=0.1)
+def test_placement_group_max_cpu_frac_edge_cases(ray_start_cluster):
+    """
+    _max_cpu_fraction_per_node <= 0  ---> should raise error (always)
+    _max_cpu_fraction_per_node = 0.999 --->
+        should exclude 1 CPU (this is already the case)
+    _max_cpu_fraction_per_node = 0.001 --->
+        should exclude 3 CPUs (not currently the case, we'll exclude all 4 CPUs).
+
+    Related: https://github.com/ray-project/ray/issues/26635
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    """
+    0 or 1 is not allowed.
+    """
+    with pytest.raises(ValueError):
+        ray.util.placement_group([{"CPU": 1}], _max_cpu_fraction_per_node=0)
+
+    """
+    Make sure when _max_cpu_fraction_per_node = 0.999, 1 CPU is always excluded.
+    """
+    pg = ray.util.placement_group(
+        [{"CPU": 1} for _ in range(4)], _max_cpu_fraction_per_node=0.999
+    )
+    # Since 1 CPU is excluded, we cannot schedule this pg.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=5)
+    ray.util.remove_placement_group(pg)
+
+    # Since 1 CPU is excluded, we can schedule 1 num_cpus actor after creating
+    # CPU: 1 * 3 bundle placement groups.
+    @ray.remote(num_cpus=1)
+    class A:
+        def ready(self):
+            pass
+
+    # Try actor creation -> pg creation.
+    a = A.remote()
+    ray.get(a.ready.remote())
+    pg = ray.util.placement_group(
+        [{"CPU": 1} for _ in range(3)], _max_cpu_fraction_per_node=0.999
+    )
     ray.get(pg.ready())
+
+    ray.kill(a)
+    ray.util.remove_placement_group(pg)
+
+    # Make sure the opposite order also works. pg creation -> actor creation.
+    pg = ray.util.placement_group(
+        [{"CPU": 1} for _ in range(3)], _max_cpu_fraction_per_node=0.999
+    )
+    a = A.remote()
+    ray.get(a.ready.remote())
+    ray.get(pg.ready())
+
+    ray.kill(a)
+    ray.util.remove_placement_group(pg)
+
+    """
+    _max_cpu_fraction_per_node = 0.001 --->
+        should exclude 3 CPUs (not currently the case, we'll exclude all 4 CPUs).
+    """
+    # We can schedule up to 1 pg.
+    pg = ray.util.placement_group([{"CPU": 1}], _max_cpu_fraction_per_node=0.001)
+    ray.get(pg.ready())
+    # Cannot schedule any more PG.
+    pg2 = ray.util.placement_group([{"CPU": 1}], _max_cpu_fraction_per_node=0.001)
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg2.ready(), timeout=5)
+
+    # Since 3 CPUs are excluded, we can schedule actors.
+    actors = [A.remote() for _ in range(3)]
+    ray.get([a.ready.remote() for a in actors])
+
+    # Once pg 1 is removed, pg 2 can be created since there's 1 CPU that can be
+    # used for this pg.
+    ray.util.remove_placement_group(pg)
+    ray.get(pg2.ready())
 
 
 if __name__ == "__main__":
