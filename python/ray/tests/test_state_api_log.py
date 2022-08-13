@@ -23,10 +23,10 @@ from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import tail as tail_file
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
-from ray.experimental.state.common import GetLogOptions
-from ray.experimental.state.exception import DataSourceUnavailable
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.state.api import get_log, list_logs, list_nodes, list_workers
+from ray.state.common import GetLogOptions
+from ray.state.exception import DataSourceUnavailable
+from ray.state.state_manager import StateDataSourceClient
 
 if sys.version_info > (3, 7, 0):
     from unittest.mock import AsyncMock

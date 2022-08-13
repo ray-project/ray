@@ -12,7 +12,7 @@ from ray._private.gcs_utils import GcsClient
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskType
 from ray.dashboard.modules.job.common import JobInfo
-from ray.experimental.state.custom_types import (
+from ray.state.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
     TypePlacementGroupStatus,

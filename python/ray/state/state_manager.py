@@ -41,8 +41,8 @@ from ray.core.generated.runtime_env_agent_pb2 import (
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
-from ray.experimental.state.common import RAY_MAX_LIMIT_FROM_DATA_SOURCE
-from ray.experimental.state.exception import DataSourceUnavailable
+from ray.state.common import RAY_MAX_LIMIT_FROM_DATA_SOURCE
+from ray.state.exception import DataSourceUnavailable
 
 logger = logging.getLogger(__name__)
 

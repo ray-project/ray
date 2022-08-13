@@ -17,7 +17,7 @@ from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.utils import Change
-from ray.experimental.state.common import (
+from ray.state.common import (
     RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
     GetLogOptions,
@@ -27,9 +27,9 @@ from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
 )
-from ray.experimental.state.exception import DataSourceUnavailable
-from ray.experimental.state.state_manager import StateDataSourceClient
-from ray.experimental.state.util import convert_string_to_type
+from ray.state.exception import DataSourceUnavailable
+from ray.state.state_manager import StateDataSourceClient
+from ray.state.util import convert_string_to_type
 
 
 logger = logging.getLogger(__name__)

@@ -6,7 +6,7 @@ import os
 
 import ray
 
-from ray.experimental.state.api import (
+from ray.state.api import (
     list_actors,
     list_nodes,
     list_objects,

@@ -1,7 +1,7 @@
 """Internal Error"""
 
 
-from ray.experimental.state.common import STATE_OBS_ALPHA_FEEDBACK_MSG
+from ray.state.common import STATE_OBS_ALPHA_FEEDBACK_MSG
 
 
 class DataSourceUnavailable(Exception):

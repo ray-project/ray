@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import sys
 from dataclasses import asdict
 
-from ray.experimental.state.api import (
+from ray.state.api import (
     summarize_tasks,
     summarize_actors,
     summarize_objects,
@@ -26,16 +26,16 @@ from ray.tests.test_state_api import (
     generate_actor_data,
     generate_object_info,
 )
-from ray.experimental.state.common import (
+from ray.state.common import (
     DEFAULT_RPC_TIMEOUT,
     SummaryApiOptions,
 )
 from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply
 from ray.core.generated.gcs_pb2 import ActorTableData
 from click.testing import CliRunner
-from ray.experimental.state.state_cli import summary_state_cli_group
+from ray.state.state_cli import summary_state_cli_group
 from ray.dashboard.state_aggregator import StateAPIManager
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.state.state_manager import StateDataSourceClient
 
 
 @pytest.fixture

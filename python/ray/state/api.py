@@ -9,7 +9,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 import requests
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
-from ray.experimental.state.common import (
+from ray.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -29,7 +29,8 @@ from ray.experimental.state.common import (
     WorkerState,
     ray_address_to_api_server_url,
 )
-from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
+from ray.state.exception import RayStateApiException, ServerUnavailable
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -515,6 +516,7 @@ class StateApiClient(SubmissionClient):
         return summary_api_response["result"]["node_id_to_summary"]
 
 
+@PublicAPI(stability="alpha")
 def get_actor(
     id: str,
     address: Optional[str] = None,
@@ -545,6 +547,7 @@ def get_actor(
 
 
 # TODO(rickyyx:alpha-obs)
+@PublicAPI(stability="alpha")
 def get_job(
     id: str,
     address: Optional[str] = None,
@@ -553,7 +556,7 @@ def get_job(
 ) -> Optional[Dict]:
     raise NotImplementedError("Get Job by id is currently not supported")
 
-
+@PublicAPI(stability="alpha")
 def get_placement_group(
     id: str,
     address: Optional[str] = None,
@@ -585,7 +588,7 @@ def get_placement_group(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def get_node(
     id: str,
     address: Optional[str] = None,
@@ -617,7 +620,7 @@ def get_node(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def get_worker(
     id: str,
     address: Optional[str] = None,
@@ -649,7 +652,7 @@ def get_worker(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def get_task(
     id: str,
     address: Optional[str] = None,
@@ -681,7 +684,7 @@ def get_task(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def get_objects(
     id: str,
     address: Optional[str] = None,
@@ -715,7 +718,7 @@ def get_objects(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def list_actors(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -762,7 +765,7 @@ def list_actors(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def list_placement_groups(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -806,7 +809,7 @@ def list_placement_groups(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def list_nodes(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -850,7 +853,7 @@ def list_nodes(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def list_jobs(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -894,7 +897,7 @@ def list_jobs(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def list_workers(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -938,7 +941,7 @@ def list_workers(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def list_tasks(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -982,7 +985,7 @@ def list_tasks(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def list_objects(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1026,7 +1029,7 @@ def list_objects(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def list_runtime_envs(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1075,7 +1078,7 @@ def list_runtime_envs(
 Log APIs
 """
 
-
+@PublicAPI(stability="alpha")
 def get_log(
     address: Optional[str] = None,
     node_id: Optional[str] = None,
@@ -1093,7 +1096,7 @@ def get_log(
 
     Examples:
         >>> import ray
-        >>> from ray.experimental.state.api import get_log # doctest: +SKIP
+        >>> from ray.state.api import get_log # doctest: +SKIP
         # To connect to an existing ray instance if there is
         >>> ray.init("auto") # doctest: +SKIP
         # Node IP could be retrieved from list_nodes() or ray.nodes()
@@ -1166,7 +1169,7 @@ def get_log(
                 raise RayStateApiException(error_msg)
             yield logs
 
-
+@PublicAPI(stability="alpha")
 def list_logs(
     address: Optional[str] = None,
     node_id: Optional[str] = None,
@@ -1229,7 +1232,7 @@ def list_logs(
 Summary APIs
 """
 
-
+@PublicAPI(stability="alpha")
 def summarize_tasks(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
@@ -1261,7 +1264,7 @@ def summarize_tasks(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def summarize_actors(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
@@ -1293,7 +1296,7 @@ def summarize_actors(
         _explain=_explain,
     )
 
-
+@PublicAPI(stability="alpha")
 def summarize_objects(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,

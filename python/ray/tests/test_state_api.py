@@ -52,7 +52,7 @@ from ray.dashboard.state_aggregator import (
     StateAPIManager,
     _convert_filters_type,
 )
-from ray.experimental.state.api import (
+from ray.state.api import (
     get_actor,
     get_node,
     get_objects,
@@ -70,7 +70,7 @@ from ray.experimental.state.api import (
     summarize_tasks,
     StateApiClient,
 )
-from ray.experimental.state.common import (
+from ray.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
@@ -86,16 +86,16 @@ from ray.experimental.state.common import (
     ray_address_to_api_server_url,
     state_column,
 )
-from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
-from ray.experimental.state.state_cli import (
+from ray.state.exception import DataSourceUnavailable, RayStateApiException
+from ray.state.state_cli import (
     AvailableFormat,
     format_list_api_output,
     _parse_filter,
     summary_state_cli_group,
 )
-from ray.experimental.state.state_cli import ray_get
-from ray.experimental.state.state_cli import ray_list
-from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
+from ray.state.state_cli import ray_get
+from ray.state.state_cli import ray_list
+from ray.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
@@ -262,6 +262,17 @@ def create_api_options(
         _server_timeout_multiplier=1.0,
         detail=detail,
     )
+
+
+def test_state_api_experimental_deprecated():
+    with pytest.raises(DeprecationWarning):
+        import ray.experimental.state
+    with pytest.raises(DeprecationWarning):
+        import ray.experimental.state.api
+    with pytest.raises(DeprecationWarning):
+        from ray.experimental.state import api
+    with pytest.raises(DeprecationWarning):
+        from ray.experimental.state.common import TaskState
 
 
 def test_ray_address_to_api_server_url(shutdown_only):

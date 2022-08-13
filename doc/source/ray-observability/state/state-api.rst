@@ -53,7 +53,7 @@ Now, let's see the summarized states of tasks. If it doesn't return the output i
 
     .. code-block:: python
 
-        from ray.experimental.state.api import summarize_tasks
+        from ray.state.api import summarize_tasks
         print(summarize_tasks())
 
 .. code-block:: text
@@ -84,7 +84,7 @@ Let's list all actors.
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_actors 
+        from ray.state.api import list_actors 
         print(list_actors())
 
 .. code-block:: text
@@ -113,7 +113,7 @@ You can get the state of a single task using the get API.
 
     .. code-block:: python
 
-        from ray.experimental.state.api import get_actor
+        from ray.state.api import get_actor
         # In this case, 31405554844820381c2f0f8501000000
         print(get_actor(id=<ACTOR_ID>))
 
@@ -145,7 +145,7 @@ You can also access logs through ``ray logs`` API.
 
     .. code-block:: python
 
-        from ray.experimental.state.api import get_log
+        from ray.state.api import get_log
 
         # In this case, ACTOR_ID is 31405554844820381c2f0f8501000000
         for line in get_log(actor_id=<ACTOR_ID>):
@@ -190,7 +190,7 @@ E.g., Summarize all actors
 
     .. code-block:: python
 
-        from ray.experimental.state.api import summarize_actors
+        from ray.state.api import summarize_actors
         print(summarize_actors())
 
 E.g., Summarize all tasks  
@@ -206,7 +206,7 @@ E.g., Summarize all tasks
 
     .. code-block:: python
 
-        from ray.experimental.state.api import summarize_tasks
+        from ray.state.api import summarize_tasks
         print(summarize_tasks())
 
 E.g., Summarize all objects  
@@ -229,7 +229,7 @@ E.g., Summarize all objects
 
     .. code-block:: python
 
-        from ray.experimental.state.api import summarize_objects
+        from ray.state.api import summarize_objects
         print(summarize_objects())
 
 List
@@ -259,7 +259,7 @@ E.g., List all nodes
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_nodes() 
+        from ray.state.api import list_nodes() 
         list_nodes()
 
 E.g., List all placement groups 
@@ -275,7 +275,7 @@ E.g., List all placement groups
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_placement_groups 
+        from ray.state.api import list_placement_groups 
         list_placement_groups()
 
  
@@ -294,7 +294,7 @@ E.g., List local referenced objects created by a process
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_objects 
+        from ray.state.api import list_objects 
         list_objects(filters=[("pid", "=", <PID>), ("reference_type", "=", "LOCAL_REFERENCE")])
 
 E.g., List alive actors
@@ -310,7 +310,7 @@ E.g., List alive actors
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_actors 
+        from ray.state.api import list_actors 
         list_actors(filters=[("state", "=", "ALIVE")])
 
 E.g., List running tasks
@@ -326,7 +326,7 @@ E.g., List running tasks
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_tasks 
+        from ray.state.api import list_tasks 
         list_tasks(filters=[("scheduling_state", "=", "RUNNING")])
 
 E.g., List non-running tasks
@@ -342,7 +342,7 @@ E.g., List non-running tasks
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_tasks 
+        from ray.state.api import list_tasks 
         list_tasks(filters=[("scheduling_state", "!=", "RUNNING")])
 
 E.g., List running tasks that have a name func
@@ -358,7 +358,7 @@ E.g., List running tasks that have a name func
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_tasks 
+        from ray.state.api import list_tasks 
         list_tasks(filters=[("scheduling_state", "=", "RUNNING"), ("name", "=", "task_running_300_seconds()")])
 
 E.g., List tasks with more details
@@ -376,7 +376,7 @@ E.g., List tasks with more details
 
     .. code-block:: python
 
-        from ray.experimental.state.api import list_tasks 
+        from ray.state.api import list_tasks 
         list_tasks(detail=True)
 
 Get
@@ -395,7 +395,7 @@ E.g., Get a task info
 
     .. code-block:: python
 
-        from ray.experimental.state.api import get_task 
+        from ray.state.api import get_task 
         get_task(id=<TASK_ID>)
 
 E.g., Get a node info
@@ -411,7 +411,7 @@ E.g., Get a node info
 
     .. code-block:: python
 
-        from ray.experimental.state.api import get_node 
+        from ray.state.api import get_node 
         get_node(id=<NODE_ID>)
 
 Logs
@@ -434,7 +434,7 @@ E.g., Get all retrievable log file names from a head node
     .. code-block:: python
 
         # You could get the node id / node ip from `ray list nodes` 
-        from ray.experimental.state.api import list_logs 
+        from ray.state.api import list_logs 
         # `ray logs` by default print logs from a head node. 
         # So in order to list the same logs, you should provide the head node id. 
         # You could get the node id / node ip from `ray list nodes` 
@@ -454,7 +454,7 @@ E.g., Get a particular log file from a node
 
     .. code-block:: python
 
-        from ray.experimental.state.api import get_log 
+        from ray.state.api import get_log 
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
         for line in get_log(filename="gcs_server.out", node_id=<NODE_ID>):
@@ -474,7 +474,7 @@ E.g., Stream a log file from a node
 
     .. code-block:: python
 
-        from ray.experimental.state.api import get_log 
+        from ray.state.api import get_log 
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
         for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
@@ -494,7 +494,7 @@ E.g., Stream log from a pid
 
     .. code-block:: python
 
-        from ray.experimental.state.api import get_log 
+        from ray.state.api import get_log 
 
         # Node IP could be retrieved from list_nodes() or ray.nodes()
         # You could get the pid of the worker running the actor easily when output

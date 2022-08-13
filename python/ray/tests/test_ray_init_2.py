@@ -8,7 +8,7 @@ import pytest
 import ray
 from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL
 import ray._private.services
-from ray.experimental.state.common import ray_address_to_api_server_url
+from ray.state.common import ray_address_to_api_server_url
 from ray._private.test_utils import run_string_as_driver
 from ray.util.client.ray_client_helpers import ray_start_client_server
 

@@ -10,19 +10,19 @@ State CLI
 
 State CLI allows users to access the state of various resources (e.g., actor, task, object).
 
-.. click:: ray.experimental.state.state_cli:task_summary
+.. click:: ray.state.state_cli:task_summary
    :prog: ray summary tasks
 
-.. click:: ray.experimental.state.state_cli:actor_summary
+.. click:: ray.state.state_cli:actor_summary
    :prog: ray summary actors
 
-.. click:: ray.experimental.state.state_cli:object_summary
+.. click:: ray.state.state_cli:object_summary
    :prog: ray summary objects
 
-.. click:: ray.experimental.state.state_cli:ray_list
+.. click:: ray.state.state_cli:ray_list
    :prog: ray list
 
-.. click:: ray.experimental.state.state_cli:ray_get
+.. click:: ray.state.state_cli:ray_get
    :prog: ray get
 
 .. _ray-logs-api-doc:
@@ -43,36 +43,36 @@ State APIs are also exported as functions.
 
 Summary APIs
 ~~~~~~~~~~~~
-.. autofunction:: ray.experimental.state.api.summarize_actors
-.. autofunction:: ray.experimental.state.api.summarize_objects
-.. autofunction:: ray.experimental.state.api.summarize_tasks
+.. autofunction:: ray.state.api.summarize_actors
+.. autofunction:: ray.state.api.summarize_objects
+.. autofunction:: ray.state.api.summarize_tasks
 
 List APIs
 ~~~~~~~~~~
 
-.. autofunction:: ray.experimental.state.api.list_actors
-.. autofunction:: ray.experimental.state.api.list_placement_groups
-.. autofunction:: ray.experimental.state.api.list_nodes
-.. autofunction:: ray.experimental.state.api.list_jobs
-.. autofunction:: ray.experimental.state.api.list_workers
-.. autofunction:: ray.experimental.state.api.list_tasks
-.. autofunction:: ray.experimental.state.api.list_objects
-.. autofunction:: ray.experimental.state.api.list_runtime_envs
+.. autofunction:: ray.state.api.list_actors
+.. autofunction:: ray.state.api.list_placement_groups
+.. autofunction:: ray.state.api.list_nodes
+.. autofunction:: ray.state.api.list_jobs
+.. autofunction:: ray.state.api.list_workers
+.. autofunction:: ray.state.api.list_tasks
+.. autofunction:: ray.state.api.list_objects
+.. autofunction:: ray.state.api.list_runtime_envs
 
 Get APIs
 ~~~~~~~~~
 
-.. autofunction:: ray.experimental.state.api.get_actor
-.. autofunction:: ray.experimental.state.api.get_placement_group
-.. autofunction:: ray.experimental.state.api.get_node
-.. autofunction:: ray.experimental.state.api.get_worker
-.. autofunction:: ray.experimental.state.api.get_task
-.. autofunction:: ray.experimental.state.api.get_objects
+.. autofunction:: ray.state.api.get_actor
+.. autofunction:: ray.state.api.get_placement_group
+.. autofunction:: ray.state.api.get_node
+.. autofunction:: ray.state.api.get_worker
+.. autofunction:: ray.state.api.get_task
+.. autofunction:: ray.state.api.get_objects
 
 Log APIs
 ~~~~~~~~
-.. autofunction:: ray.experimental.state.api.list_logs
-.. autofunction:: ray.experimental.state.api.get_log
+.. autofunction:: ray.state.api.list_logs
+.. autofunction:: ray.state.api.get_log
 
 .. _state-api-schema:
 
@@ -84,7 +84,7 @@ State APIs Schema
 ActorState
 ~~~~~~~~~~
 
-.. autoclass:: ray.experimental.state.common.ActorState
+.. autoclass:: ray.state.common.ActorState
     :members:
 
 .. _state-api-schema-task:
@@ -92,7 +92,7 @@ ActorState
 TaskState
 ~~~~~~~~~
 
-.. autoclass:: ray.experimental.state.common.TaskState
+.. autoclass:: ray.state.common.TaskState
     :members:
 
 .. _state-api-schema-node:
@@ -100,7 +100,7 @@ TaskState
 NodeState
 ~~~~~~~~~
 
-.. autoclass:: ray.experimental.state.common.NodeState
+.. autoclass:: ray.state.common.NodeState
     :members:
 
 .. _state-api-schema-pg:
@@ -108,7 +108,7 @@ NodeState
 PlacementGroupState
 ~~~~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.experimental.state.common.PlacementGroupState
+.. autoclass:: ray.state.common.PlacementGroupState
     :members:
 
 .. _state-api-schema-worker:
@@ -116,7 +116,7 @@ PlacementGroupState
 WorkerState
 ~~~~~~~~~~~
 
-.. autoclass:: ray.experimental.state.common.WorkerState
+.. autoclass:: ray.state.common.WorkerState
     :members:
 
 .. _state-api-schema-obj:
@@ -124,7 +124,7 @@ WorkerState
 ObjectState
 ~~~~~~~~~~~
 
-.. autoclass:: ray.experimental.state.common.ObjectState
+.. autoclass:: ray.state.common.ObjectState
     :members:
 
 .. _state-api-schema-runtime-env:
@@ -132,7 +132,7 @@ ObjectState
 RuntimeEnvState
 ~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.experimental.state.common.RuntimeEnvState
+.. autoclass:: ray.state.common.RuntimeEnvState
     :members:
 
 .. _state-api-schema-job:
@@ -140,7 +140,7 @@ RuntimeEnvState
 JobState
 ~~~~~~~~
 
-.. autoclass:: ray.experimental.state.common.JobState
+.. autoclass:: ray.state.common.JobState
     :members:
 
 .. _state-api-schema-summary:
@@ -148,7 +148,7 @@ JobState
 StateSummary
 ~~~~~~~~~~~~
 
-.. autoclass:: ray.experimental.state.common.StateSummary
+.. autoclass:: ray.state.common.StateSummary
     :members:
 
 .. _state-api-schema-task-summary:
@@ -158,12 +158,12 @@ TaskSummary
 
 .. _state-api-schema-task-summaries:
 
-.. autoclass:: ray.experimental.state.common.TaskSummaries
+.. autoclass:: ray.state.common.TaskSummaries
     :members:
 
 .. _state-api-schema-task-summary-per-key:
 
-.. autoclass:: ray.experimental.state.common.TaskSummaryPerFuncOrClassName
+.. autoclass:: ray.state.common.TaskSummaryPerFuncOrClassName
     :members:
 
 .. _state-api-schema-actor-summary:
@@ -173,12 +173,12 @@ ActorSummary
 
 .. _state-api-schema-actor-summaries:
 
-.. autoclass:: ray.experimental.state.common.ActorSummaries
+.. autoclass:: ray.state.common.ActorSummaries
     :members:
 
 .. _state-api-schema-actor-summary-per-key:
 
-.. autoclass:: ray.experimental.state.common.ActorSummaryPerClass
+.. autoclass:: ray.state.common.ActorSummaryPerClass
     :members:
 
 .. _state-api-schema-object-summary:
@@ -188,12 +188,12 @@ ObjectSummary
 
 .. _state-api-schema-object-summaries:
 
-.. autoclass:: ray.experimental.state.common.ObjectSummaries
+.. autoclass:: ray.state.common.ObjectSummaries
     :members:
 
 .. _state-api-schema-object-summary-per-key:
 
-.. autoclass:: ray.experimental.state.common.ObjectSummaryPerKey
+.. autoclass:: ray.state.common.ObjectSummaryPerKey
     :members:
 
 State APIs Exceptions
@@ -201,5 +201,5 @@ State APIs Exceptions
 
 .. _state-api-exceptions:
 
-.. autoclass:: ray.experimental.state.exception.RayStateApiException
+.. autoclass:: ray.state.exception.RayStateApiException
     :members:

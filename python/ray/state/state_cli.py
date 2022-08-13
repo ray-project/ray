@@ -8,13 +8,13 @@ import click
 import yaml
 
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.experimental.state.api import (
+from ray.state.api import (
     StateApiClient,
     summarize_actors,
     summarize_objects,
     summarize_tasks,
 )
-from ray.experimental.state.common import (
+from ray.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     GetApiOptions,
@@ -346,7 +346,7 @@ def ray_get(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray get tasks <task-id>` is
-    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+    :ref:`ray.state.common.TaskState <state-api-schema-task>`.
 
     Usage:
 
@@ -455,7 +455,7 @@ def ray_list(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray list tasks` is
-    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+    :ref:`ray.state.common.TaskState <state-api-schema-task>`.
 
     Usage:
 
@@ -565,7 +565,7 @@ def task_summary(ctx, timeout: float, address: str):
     task function names.
 
     The output schema is
-    :ref:`ray.experimental.state.common.TaskSummaries <state-api-schema-task-summary>`.
+    :ref:`ray.state.common.TaskSummaries <state-api-schema-task-summary>`.
 
     Raises:
         :ref:`RayStateApiException <state-api-exceptions>`
@@ -595,7 +595,7 @@ def actor_summary(ctx, timeout: float, address: str):
     actor class names.
 
     The output schema is
-    :ref:`ray.experimental.state.common.ActorSummaries
+    :ref:`ray.state.common.ActorSummaries
     <state-api-schema-actor-summary>`.
 
     Raises:
@@ -645,7 +645,7 @@ def object_summary(ctx, timeout: float, address: str):
         ```
 
     The output schema is
-    :ref:`ray.experimental.state.common.ObjectSummaries
+    :ref:`ray.state.common.ObjectSummaries
     <state-api-schema-object-summary>`.
 
     Raises:

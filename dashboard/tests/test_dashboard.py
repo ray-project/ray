@@ -34,9 +34,9 @@ from ray._private.test_utils import (
 )
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
-from ray.experimental.state.api import StateApiClient
-from ray.experimental.state.common import ListApiOptions, StateResource
-from ray.experimental.state.exception import ServerUnavailable
+from ray.state.api import StateApiClient
+from ray.state.common import ListApiOptions, StateResource
+from ray.state.exception import ServerUnavailable
 from ray.experimental.internal_kv import _initialize_internal_kv
 from unittest.mock import MagicMock
 from ray.dashboard.utils import DashboardHeadModule

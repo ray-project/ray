@@ -43,11 +43,11 @@ from ray.autoscaler._private.commands import (
 )
 from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
-from ray.experimental.state.api import get_log, list_logs
-from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
+from ray.state.api import get_log, list_logs
+from ray.state.common import DEFAULT_RPC_TIMEOUT, DEFAULT_LOG_LIMIT
 from ray.util.annotations import PublicAPI
 
-from ray.experimental.state.state_cli import (
+from ray.state.state_cli import (
     ray_get,
     ray_list,
     output_with_format,

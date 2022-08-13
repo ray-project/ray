@@ -11,7 +11,7 @@ import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.utils import binary_to_hex
 from ray.core.generated.common_pb2 import TaskStatus
-from ray.experimental.state.common import (
+from ray.state.common import (
     ActorState,
     ListApiOptions,
     ListApiResponse,
@@ -33,12 +33,12 @@ from ray.experimental.state.common import (
     filter_fields,
     PredicateType,
 )
-from ray.experimental.state.state_manager import (
+from ray.state.state_manager import (
     DataSourceUnavailable,
     StateDataSourceClient,
 )
 from ray.runtime_env import RuntimeEnv
-from ray.experimental.state.util import convert_string_to_type
+from ray.state.util import convert_string_to_type
 
 logger = logging.getLogger(__name__)
 
