@@ -5,6 +5,8 @@ Ray State API
 
 .. tip:: APIs are pre-alpha and under active development. APIs are subject to change and not stable across versions.
 
+.. _state-api-cli-ref:
+
 State CLI
 ---------
 
@@ -25,7 +27,7 @@ State CLI allows users to access the state of various resources (e.g., actor, ta
 .. click:: ray.experimental.state.state_cli:ray_get
    :prog: ray get
 
-.. _ray-logs-api-doc:
+.. _ray-logs-api-cli-ref:
 
 Log CLI
 -------

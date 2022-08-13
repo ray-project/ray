@@ -297,9 +297,9 @@ This section contains commands for managing Ray clusters.
    :prog: ray monitor
    :show-nested:
 
-Session
-~~~~~~~
-This section contains commands for inspecting, debugging, and configuring the current cluster.
+Debugging applications
+~~~~~~~~~~~~~~~~~~~~~~
+This section contains commands for inspecting and debugging the current cluster.
 
 .. _ray-stack-doc:
 
@@ -329,6 +329,11 @@ This section contains commands for inspecting, debugging, and configuring the cu
    :prog: ray debug
    :show-nested:
 
+
+Usage Stats
+~~~~~~~~~~~
+This section contains commands to enable/disable :ref:`Ray usage stats <ref-usage-stats>`.
+
 .. _ray-disable-usage-stats-doc:
 
 .. click:: ray.scripts.scripts:disable_usage_stats
@@ -343,8 +348,8 @@ This section contains commands for inspecting, debugging, and configuring the cu
 
 Job
 ~~~
-CLIs to submit, stop, and monitor Ray jobs. See :ref:`Ray Job Submission API Reference <ray-job-submission-api-ref-under-construction>`.
+CLIs to submit, stop, and monitor Ray jobs. See :ref:`Ray Job Submission API Reference <ray-job-submission-cli-ref>`.
 
 State
 ~~~~~
-CLIs to access the snapshot of the cluster state. See :ref:`Ray State API Reference <state-api-ref>`.
+CLIs to access the snapshot of the cluster state. See :ref:`Ray State API Reference <state-api-cli-ref>`.
