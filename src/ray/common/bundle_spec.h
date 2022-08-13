@@ -15,6 +15,7 @@
 #pragma once
 
 #include <cstddef>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -108,6 +109,11 @@ bool IsBundleIndex(const std::string &resource,
 
 /// Return the original resource name of the placement group resource.
 std::string GetOriginalResourceName(const std::string &resource);
+
+// Return the original resource name of the placement group resource
+// if the resource is the wildcard resource (resource without a bundle id).
+// Returns "" if the resource is not a wildcard resource.
+std::string GetOriginalResourceNameFromWildcardResource(const std::string &resource);
 
 /// Generate debug information of given bundles.
 std::string GetDebugStringForBundles(

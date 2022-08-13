@@ -75,6 +75,23 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
   }
 };
 
+TEST_F(NewPlacementGroupResourceManagerTest,
+       TestGetOriginalResourceNameFromWildcardResource) {
+  ASSERT_EQ(GetOriginalResourceNameFromWildcardResource(
+                "CPU_group_0_4482dec0faaf5ead891ff1659a9501000000"),
+            "");
+  ASSERT_EQ(GetOriginalResourceNameFromWildcardResource("CPU"), "");
+  ASSERT_EQ(GetOriginalResourceNameFromWildcardResource(
+                "CPU_group_4482dec0faaf5ead891ff1659a9501000000"),
+            "CPU");
+  ASSERT_EQ(GetOriginalResourceNameFromWildcardResource(
+                "GPU_group_4482dec0faaf5ead891ff1659a9501000000"),
+            "GPU");
+  ASSERT_EQ(GetOriginalResourceNameFromWildcardResource(
+                "GPU_group_0_4482dec0faaf5ead891ff1659a9501000000"),
+            "");
+}
+
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
   // 1. create bundle spec.
   auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
