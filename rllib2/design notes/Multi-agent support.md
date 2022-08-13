@@ -244,3 +244,105 @@ config = dict(
 ```
 
 
+Default use case:
+----------------
+single agent
+
+```python
+config = dict(
+    algorithm='PPO', # sets the algorithm class (subclass of Algorithm)
+    trainer={
+        'trainer_class': 'PPORLTrainer', # a subclass of SARLTrainer
+        'trainer_configs': { #SARLTrainer Config
+            'module_class': PPORLModule
+            'module_config': ppo_config #PPOModuleConfig
+        }
+    }
+)
+```
+
+----------------
+multi agent -- simple homogenous (the deafult config can be auto-created based on the env if it is of type MultiAgentEnv)
+
+```python
+config = dict(
+    algorithm='PPO',
+    trainer={
+        'trainer_class': 'IndependentMARLTrainer', # a subclass of MARLTrainer
+        'trainer_configs': { # MARLTrainer Config
+            'base_trainer_class': 'PPORLTrainer',
+            'policy_mapping_fn': lambda agent_id: 'default',
+            'modules': {'default': {'module_class': PPORLModule, 'module_config': ppo_config}},
+            'modules_to_train': {'default'}
+            'shared_modules': {}
+        }
+    }
+)
+```
+----------------
+multi agent -- homogenous modules with different configs trained with independent trainers for each
+This will automatically create an RLModuleDict that contains all the modules and can be instantiated separately for loading the policies.
+
+```python
+config = dict(
+    algorithm='PPO',
+    trainer={
+        'trainer_class': 'IndependentMARLTrainer', # a subclass of MARLTrainer
+        'trainer_configs': { # MARLTrainer Config
+            'base_trainer_class': 'PPORLTrainer',
+            'policy_mapping_fn': lambda agent_id: 'A' if agent_id == 0 else 'B',
+            'modules': {
+                'A': {'module_class': PPORLModule, 'module_config': ppo_config_a},
+                'B': {'module_class': PPORLModule, 'module_config': ppo_config_b},
+            },
+            'modules_to_train': {'A', 'B'}
+            'shared_modules': {}
+        }
+    }
+)
+```
+
+----------------
+multi agent -- homogenous modules with sharing encoder (the perception) but different policy heads, trained with independent trainers
+
+```python
+config = dict(
+    algorithm='PPO',
+    trainer={
+        'trainer_class': 'IndependentMARLTrainer', # a subclass of MARLTrainer
+        'trainer_configs': { # MARLTrainer Config
+            'base_trainer_class': 'PPORLTrainer',
+            'policy_mapping_fn': lambda agent_id: 'A' if agent_id == 0 else 'B',
+            'modules': {
+                'A': {'module_class': PPORLModule, 'module_config': ppo_config_a},
+                'B': {'module_class': PPORLModule, 'module_config': ppo_config_b},
+            },
+            'modules_to_train': {'A', 'B'}
+            'shared_modules': {
+                'encoder': { #SharedModuleDataType
+                    'class': Encoder,
+                    'config': encoder_config,
+                    'shared_between': {'A': 'encoder', 'B': 'encoder'} # This is the default behavior if not specified. User can still override this to have custom names
+                },
+            }
+        }
+    }
+)
+```
+
+The RLModuleDict created with this config will look like this (if torch is used):
+
+```python
+RLModuleDict(
+    'A': PPOModule(
+        pi: nn.Linear(...),
+        vf: nn.Linear(...),
+        encoder: Encoder(...) # has the same memory address as the one below
+    ),
+    'B': PPOModule(
+        pi: nn.Linear(...),
+        vf: nn.Linear(...),
+        encoder: Encoder(...) # has the same memory address as above
+    ),
+)
+```
