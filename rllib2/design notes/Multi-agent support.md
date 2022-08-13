@@ -296,7 +296,7 @@ config = dict(
                 'B': {'module_class': PPORLModule, 'module_config': ppo_config_b},
             },
             'modules_to_train': {'A', 'B'}
-            'shared_modules': {}
+            'shared_submodules': {}
         }
     }
 )
