@@ -56,6 +56,9 @@ class Query:
             replacement_table = dict(zip(tasks, resolved))
             self.args, self.kwargs = scanner.replace_nodes(replacement_table)
 
+        # Make the scanner GCable to avoid memory leak
+        scanner.clear()
+
 
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
