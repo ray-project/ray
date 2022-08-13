@@ -562,6 +562,13 @@ def read_csv(
         >>> ray.data.read_csv( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
+        >>> # Use different delimiter. The partition_filter=None is needed here
+        >>> # because by default read_csv only reads .csv files.
+        >>> from pyarrow import csv
+        >>> parse_options = csv.ParseOptions(delimiter="\t")
+        >>> ray.data.read_csv(
+        ...     "example://iris.tsv", parse_options=parse_options, partition_filter=None)
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
