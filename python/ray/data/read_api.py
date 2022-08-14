@@ -567,7 +567,9 @@ def read_csv(
         >>> from pyarrow import csv
         >>> parse_options = csv.ParseOptions(delimiter="\\t")
         >>> ray.data.read_csv(
-        ...     "example://iris.tsv", parse_options=parse_options, partition_filter=None)
+        ...     "example://iris.tsv",
+        ...     parse_options=parse_options,
+        ...     partition_filter=None)
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
