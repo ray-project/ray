@@ -25,6 +25,7 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     resource_to_schema,
 )
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +334,7 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
+@PublicAPI(stability="alpha")
 def ray_get(
     resource: str,
     id: str,
@@ -439,6 +441,7 @@ def ray_get(
 )
 @timeout_option
 @address_option
+@PublicAPI(stability="alpha")
 def ray_list(
     resource: str,
     format: str,
@@ -549,6 +552,7 @@ def ray_list(
 
 @click.group("summary")
 @click.pass_context
+@PublicAPI(stability="alpha")
 def summary_state_cli_group(ctx):
     """Return the summarized information of a given resource."""
     pass
@@ -558,6 +562,7 @@ def summary_state_cli_group(ctx):
 @timeout_option
 @address_option
 @click.pass_context
+@PublicAPI(stability="alpha")
 def task_summary(ctx, timeout: float, address: str):
     """Summarize the task state of the cluster.
 
@@ -588,6 +593,7 @@ def task_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
+@PublicAPI(stability="alpha")
 def actor_summary(ctx, timeout: float, address: str):
     """Summarize the actor state of the cluster.
 
@@ -619,6 +625,7 @@ def actor_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
+@PublicAPI(stability="alpha")
 def object_summary(ctx, timeout: float, address: str):
     """Summarize the object state of the cluster.
 

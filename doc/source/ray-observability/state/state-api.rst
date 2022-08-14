@@ -9,7 +9,7 @@ Ray state APIs allow users to conveniently access the current state (snapshot) o
 
 .. note:: 
 
-    APIs are at the alpha stage and under active development. APIs are subject to change and not stable across versions. This feature requires a full installation of Ray using ``pip install "ray[default]"``.
+    APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
 Getting Started
 ---------------
