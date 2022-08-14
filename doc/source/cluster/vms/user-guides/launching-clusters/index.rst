@@ -16,3 +16,4 @@ Table of Contents
     gcp.md
     azure.md
     on-premises.md
+    ibm-gen2.md
