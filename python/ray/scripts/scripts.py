@@ -1960,7 +1960,7 @@ def local_dump(
     )
 
 
-@cli.command()
+@cli.command(hidden=True)
 @click.argument(
     "glob_filter",
     required=False,
@@ -2046,6 +2046,7 @@ def local_dump(
         "automatically from querying the GCS server."
     ),
 )
+@PublicAPI(stability="alpha")
 def ray_logs(
     glob_filter,
     node_ip: str,
