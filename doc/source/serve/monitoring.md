@@ -219,29 +219,31 @@ The following metrics are exposed by Ray Serve:
 
    * - Name
      - Description
-   * - ``serve_deployment_request_counter``
+   * - ``serve_deployment_request_counter`` [**]
      - The number of queries that have been processed in this replica.
-   * - ``serve_deployment_error_counter``
+   * - ``serve_deployment_error_counter`` [**]
      - The number of exceptions that have occurred in the deployment.
-   * - ``serve_deployment_replica_starts``
+   * - ``serve_deployment_replica_starts`` [**]
      - The number of times this replica has been restarted due to failure.
-   * - ``serve_deployment_processing_latency_ms``
+   * - ``serve_deployment_processing_latency_ms`` [**]
      - The latency for queries to be processed.
-   * - ``serve_replica_processing_queries``
+   * - ``serve_replica_processing_queries`` [**]
      - The current number of queries being processed.
-   * - ``serve_num_http_requests``
+   * - ``serve_num_http_requests`` [*]
      - The number of HTTP requests processed.
-   * - ``serve_num_http_error_requests``
+   * - ``serve_num_http_error_requests`` [*]
      - The number of non-200 HTTP responses.
-   * - ``serve_num_router_requests``
+   * - ``serve_num_router_requests`` [*]
      - The number of requests processed by the router.
-   * - ``serve_handle_request_counter``
+   * - ``serve_handle_request_counter`` [**]
      - The number of requests processed by this ServeHandle.
-   * - ``serve_deployment_queued_queries``
+   * - ``serve_deployment_queued_queries`` [*]
      - The number of queries for this deployment waiting to be assigned to a replica.
-   * - ``serve_num_deployment_http_error_requests``
+   * - ``serve_num_deployment_http_error_requests`` [*]
      - The number of non-200 HTTP responses returned by each deployment.
 ```
+[*] - only available when using HTTP calls  
+[**] - only available when using Python calls
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 

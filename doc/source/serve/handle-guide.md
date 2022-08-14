@@ -59,3 +59,10 @@ In both types of ServeHandle, you can call a specific method by using the `.meth
 :end-before: __end_handle_method__
 :language: python
 ```
+
+## Note about metrics
+
+Please note that different metrics are collected when calling Deployments
+from Python and when they are called via HTTP.
+
+See the [Ray Serve Monitoring documentation](serve-monitoring) for more details.
