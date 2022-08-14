@@ -93,7 +93,7 @@ def tune_lightning_mnist(num_workers=3, use_gpu=False):
             # https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init
             "trainer_init_config": {
                 "max_epochs": tune.grid_search([4, 10, 16]),
-            }
+            },
         },
         tune_config=TuneConfig(num_samples=6),
     )
@@ -133,6 +133,4 @@ if __name__ == "__main__":
         tune_lightning_mnist()
     else:
         ray.init(address=args.address)
-        tune_lightning_mnist(
-            num_workers=args.num_workers, use_gpu=args.use_gpu
-        )
+        tune_lightning_mnist(num_workers=args.num_workers, use_gpu=args.use_gpu)
