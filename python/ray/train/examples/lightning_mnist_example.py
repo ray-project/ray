@@ -19,8 +19,7 @@ class LitModel(pytorch_lightning.LightningModule):
         y = batch["label"]
         y_hat = self(x)
         loss = torch.nn.functional.cross_entropy(y_hat, y)
-        # TODO: should users pass `sync_dist=True` when `on_epoch=True`?
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -66,7 +65,7 @@ def get_datasets():
     return train_dataset, test_dataset
 
 
-def train_lightning_mnist(num_workers=4, use_gpu=False, epochs=4):
+def train_lightning_mnist(num_workers=4, use_gpu=False, epochs=40):
     from ray.train.lightning import LightningTrainer
     from ray.air.config import ScalingConfig
 

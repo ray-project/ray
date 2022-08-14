@@ -15,7 +15,11 @@ from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.lightning._lightning_utils import process_datasets, TrainReportLogger
+from ray.train.lightning._lightning_utils import (
+    process_datasets,
+    TrainReportCheckpointLogger,
+)
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 
 
 @PublicAPI(stability="alpha")
@@ -139,15 +143,15 @@ class LightningTrainer(TorchTrainer):
         )
 
     def _validate_trainer_init_config(self, trainer_init_config: Dict) -> None:
-        if "_lightning_module" in trainer_init_config:
-            raise ValueError(
-                "'_lightning_module' is a reserved key in `trainer_init_config`."
-            )
-        if "_lightning_module_init_config" in trainer_init_config:
-            raise ValueError(
-                "'_lightning_module_init_config' is a reserved key in "
-                "`trainer_init_config`."
-            )
+        reserved_keys = [
+            "_lightning_module",
+            "_lightning_module_init_config",
+        ]
+        for reserved_key in reserved_keys:
+            if reserved_key in trainer_init_config:
+                raise ValueError(
+                    f"'{reserved_key}' is a reserved key in `trainer_init_config`."
+                )
         if (
             "strategy" in trainer_init_config
             and trainer_init_config["strategy"] != "ddp"
@@ -155,8 +159,10 @@ class LightningTrainer(TorchTrainer):
             raise ValueError(
                 "The 'strategy' key in 'trainer_init_config' can only be " "'ddp'."
             )
+        if "devices" in trainer_init_config:
+            raise ValueError("Do not set the 'devices' key in 'trainer_init_config'.")
         if any(
-            isinstance(logger, TrainReportLogger)
+            isinstance(logger, TrainReportCheckpointLogger)
             for logger in trainer_init_config.get("logger", [])
         ):
             raise ValueError(
@@ -198,11 +204,21 @@ def _lightning_train_loop_per_worker(config):
         batch_size=lightning_module_init_config.pop("batch_size", None),
     )
 
-    # TODO: do we need to do anything for Train checkpointing?
-    config["strategy"] = "ddp"
+    # config["num_nodes"] = num_nodes
     config["devices"] = session.get_world_size()  # TODO: still correct for num_nodes>1?
-    # config["num_nodes"] = 1
-    config["logger"] = [*config.get("logger", []), TrainReportLogger()]
+    config["strategy"] = "ddp"
+    checkpoint = session.get_checkpoint()
+    if checkpoint:
+        assert isinstance(checkpoint, Checkpoint)
+        lightning_module_instance = LightningCheckpoint.from_checkpoint(
+            checkpoint
+        ).get_model(lightning_module_instance)
+    config["logger"] = [
+        *config.get("logger", []),
+        TrainReportCheckpointLogger(
+            lightning_module_instance, lightning_module_init_config
+        ),
+    ]
     trainer = pytorch_lightning.Trainer(**config)
     # TODO: disable PTL checkpointing because we checkpoint in Train?
     trainer.fit(lightning_module_instance, datamodule=datamodule)
