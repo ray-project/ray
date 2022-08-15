@@ -245,7 +245,7 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
 @PublicAPI
 @client_mode_wrap
 def get_placement_group(
-    placement_group_name: str, placement_group_id: str = None
+    placement_group_name: str = None, placement_group_id: str = None
 ) -> PlacementGroup:
     """Get a placement group object with a global name / id.
 
