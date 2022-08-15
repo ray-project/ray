@@ -26,7 +26,7 @@ The first step is to import and initialize Ray:
 Running a Task
 --------------
 
-Ray lets you run ordinary functions as remote tasks in the cluster. To do this, you decorate your function with ``@ray.remote`` to declare that you want to run this function remotely.
+Ray lets you run functions as remote tasks in the cluster. To do this, you decorate your function with ``@ray.remote`` to declare that you want to run this function remotely.
 Then, you call that function with ``.remote()`` instead of calling it normally.
 This remote call yields a future, a so-called Ray *object reference*, that you can then fetch with ``ray.get``:
 
@@ -60,7 +60,8 @@ As seen above, Ray stores task and actor call results in its :ref:`distributed o
 Next Steps
 ----------
 
-Learn more about the Ray core :ref:`key concepts <core-key-concepts>` with the following user guides:
+Ray's key primitives are simple, but can be composed together to express almost any kind of distributed computation.
+Learn more about Ray's :ref:`key concepts <core-key-concepts>` with the following user guides:
 
 .. panels::
     :container: container pb-4
