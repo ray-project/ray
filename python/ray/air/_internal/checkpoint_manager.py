@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
+from ray._private.dict import flatten_dict
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
 from ray.air._internal.util import is_nan
-from ray.tune.utils.util import flatten_dict
 from ray.util import log_once
 
 
