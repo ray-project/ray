@@ -74,6 +74,7 @@ We test out the performance across different cluster sizes and data sizes.
       - 331 s (786k rows/s)
       - `python xgboost_benchmark.py --size 100GB`
 
+.. _xgboost-benchmark:
 
 XGBoost training
 ----------------

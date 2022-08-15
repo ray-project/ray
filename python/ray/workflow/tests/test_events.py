@@ -25,12 +25,12 @@ def test_sleep(workflow_start_regular_shared):
 
 
 def test_sleep_checkpointing(workflow_start_regular_shared):
-    """Test that the workflow sleep only starts after `run` not when the step is
+    """Test that the workflow sleep only starts after `run` not when the task is
     defined."""
-    sleep_step = workflow.sleep(2)
+    sleep_task = workflow.sleep(2)
     time.sleep(2)
     start_time = time.time()
-    workflow.run(sleep_step)
+    workflow.run(sleep_task)
     end_time = time.time()
     duration = end_time - start_time
     assert 1 < duration
@@ -66,13 +66,13 @@ def test_wait_for_multiple_events(workflow_start_regular_shared):
             return "event2"
 
     @ray.remote
-    def trivial_step(arg1, arg2):
+    def trivial_task(arg1, arg2):
         return f"{arg1} {arg2}"
 
     event1_promise = workflow.wait_for_event(EventListener1)
     event2_promise = workflow.wait_for_event(EventListener2)
 
-    promise = workflow.run_async(trivial_step.bind(event1_promise, event2_promise))
+    promise = workflow.run_async(trivial_task.bind(event1_promise, event2_promise))
 
     while not (
         utils.check_global_mark("listener1") and utils.check_global_mark("listener2")
@@ -102,7 +102,7 @@ def test_event_after_arg_resolution(workflow_start_regular_shared):
         async def poll_for_event(self):
             while not utils.check_global_mark():
                 await asyncio.sleep(0.1)
-            # Give the other step time to finish.
+            # Give the other task time to finish.
             await asyncio.sleep(1)
 
     @ray.remote
