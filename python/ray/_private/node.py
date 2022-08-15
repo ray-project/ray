@@ -340,6 +340,7 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
+        self._record_stats()
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -1501,3 +1502,17 @@ class Node:
             scheme = "%s://" % parsed_url.scheme
             return parsed_url.geturl().replace(scheme, "", 1)
         return url
+
+    def _record_stats(self):
+        # Initialize the internal kv so that the metrics can be put
+        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+
+        if not ray.experimental.internal_kv._internal_kv_initialized():
+            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client)
+        assert ray.experimental.internal_kv._internal_kv_initialized()
+        if self.head:
+            # record head node stats
+            gcs_storage_type = (
+                "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
+            )
+            record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
