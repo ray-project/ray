@@ -1719,58 +1719,6 @@
 ########################
 # Golden Notebook tests
 ########################
-- name: golden_notebook_dask_xgboost_test
-  group: Golden Notebook tests
-  working_dir: golden_notebook_tests
-
-  legacy:
-    test_name: dask_xgboost_test
-    test_suite: golden_notebook_tests
-
-  frequency: nightly
-  team: ml
-  env: staging
-
-  cluster:
-    cluster_env: dask_xgboost_app_config.yaml
-    cluster_compute: compute_tpl.yaml
-
-  run:
-    timeout: 1800
-    script: python workloads/dask_xgboost_test.py --num-actors 4 --cpus-per-actor 4 --num-actors-inference 16 --cpus-per-actor-inference 1
-    type: client
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  alert: default
-
-- name: golden_notebook_modin_xgboost_test
-  group: Golden Notebook tests
-  working_dir: golden_notebook_tests
-
-  legacy:
-    test_name: modin_xgboost_test
-    test_suite: golden_notebook_tests
-
-  frequency: nightly
-  team: ml
-  env: staging
-
-  cluster:
-    cluster_env: modin_xgboost_app_config.yaml
-    cluster_compute: compute_tpl.yaml
-
-  run:
-    timeout: 1800
-    script: python workloads/modin_xgboost_test.py --num-actors 4 --cpus-per-actor 4 --num-actors-inference 16 --cpus-per-actor-inference 1
-    type: client
-
-    wait_for_nodes:
-      num_nodes: 4
-
-  alert: default
-
 - name: golden_notebook_torch_tune_serve_test
   group: Golden Notebook tests
   working_dir: golden_notebook_tests
