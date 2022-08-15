@@ -13,15 +13,10 @@ from typing import Any, Dict
 from collections import defaultdict
 import json
 import logging
-
-import gradio as gr
-
 from pydoc import locate
 from PIL import ImageFile
-import pandas as pd
-import numpy as np
-import typing
 
+import gradio as gr
 logger = logging.getLogger(__file__)
 
 class GraphVisualizer:
@@ -36,31 +31,35 @@ class GraphVisualizer:
         self.name_generator = _DAGNodeNameGenerator()
 
     def block_type(self, node):
-        return_type_str = node.get_return_type()
-        if return_type_str == "typing.Tuple[int, int]":
-            return gr.Audio
-        
-        return_type = locate(return_type_str)
-        if return_type is int:
+        return_type = node.get_return_type()
+
+        if return_type == "int":
             return gr.Number
-        elif return_type is str:
+        elif return_type == "str":
             return gr.Textbox
-        elif return_type is bool:
+        elif return_type == "bool":
             return gr.Checkbox
-        elif return_type is pd.DataFrame:
+        elif return_type == "typing.Tuple[int, int]":
+            return gr.Audio
+        elif return_type == "pandas.core.frame.DataFrame":
             return gr.Dataframe
         elif (
-            return_type is list
-            or return_type is dict
-            or return_type is np.ndarray
-            or return_type is typing.List
-            or return_type is typing.Dict
+            return_type == "list"
+            or return_type == "dict"
+            or return_type == "typing.List"
+            or return_type == "typing.Dict"
+            or return_type == "numpy.ndarray"
         ):
             return gr.JSON
-        elif issubclass(return_type, ImageFile.ImageFile):
-            return gr.Image
+        else:
+            try:
+                from PIL import ImageFile
+                if issubclass(locate(return_type), ImageFile.ImageFile):
+                    return gr.Image
+            except ModuleNotFoundError:
+                pass
 
-        logger.warning("Return type is not supported in Gradio. Defaulting to gr.Textbox.")
+        logger.warning("Return type is not valid. Defaulting to gr.Textbox.")
         return gr.Textbox
 
     def update_block(self, u, *args):
