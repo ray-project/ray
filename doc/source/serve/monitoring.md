@@ -211,6 +211,13 @@ You can leverage built-in Ray Serve metrics to get a closer look at your applica
 Ray Serve exposes important system metrics like the number of successful and
 failed requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default, the metrics are exposed in Prometheus format on each node.
 
+:::{note}
+Different metrics are collected when Deployments are called
+via Python `ServeHandle` and when they are called via HTTP.
+
+See the list of metrics below marked for each.
+:::
+
 The following metrics are exposed by Ray Serve:
 
 ```{eval-rst}
