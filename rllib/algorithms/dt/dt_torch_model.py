@@ -35,11 +35,6 @@ class DTTorchModel(TorchModelV2, nn.Module):
         )
         nn.Module.__init__(self)
 
-        print("DT Model Config")
-        import pprint
-
-        pprint.pprint(model_config)
-
         self.obs_dim = num_outputs
 
         if isinstance(action_space, Discrete):
