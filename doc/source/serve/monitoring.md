@@ -243,7 +243,7 @@ The following metrics are exposed by Ray Serve:
      - The number of non-200 HTTP responses returned by each deployment.
 ```
 [*] - only available when using HTTP calls  
-[**] - only available when using Python calls
+[**] - only available when using Python `ServeHandle` calls
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 

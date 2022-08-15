@@ -40,10 +40,12 @@ Often for ML models, you just need the API to accept a `numpy` array. You can us
 Serve provides a library of HTTP adapters to help you avoid boilerplate code. The [later section](serve-http-adapters) dives deeper into how these works.
 ```
 
-Please note that different metrics are collected when calling Deployments
-from Python and when they are called via HTTP.
+:::{note}
+Different metrics are collected when Deployments are called
+via Python `ServeHandles` and when they are called via HTTP.
 
-See the [Ray Serve Monitoring documentation](serve-monitoring) for more details.
+See the [Ray Serve monitoring documentation](serve-monitoring) for more details.
+:::
 
 
 (serve-fastapi-http)=

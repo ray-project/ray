@@ -60,9 +60,9 @@ In both types of ServeHandle, you can call a specific method by using the `.meth
 :language: python
 ```
 
-## Note about metrics
+:::{note}
+Different metrics are collected when Deployments are called
+via Python `ServeHandles` and when they are called via HTTP.
 
-Please note that different metrics are collected when calling Deployments
-from Python and when they are called via HTTP.
-
-See the [Ray Serve Monitoring documentation](serve-monitoring) for more details.
+See the [Ray Serve monitoring documentation](serve-monitoring) for more details.
+:::
