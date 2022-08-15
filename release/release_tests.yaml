@@ -3536,6 +3536,7 @@
 
   run:
     timeout: 3600
+    prepare: export RAY_MAX_LIMIT_FROM_API_SERVER=1000000000 && export RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
     script: python stress_tests/test_state_api_scale.py 
     type: sdk_command
     file_manager: sdk
@@ -3547,6 +3548,7 @@
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
     run:
+      prepare: export RAY_MAX_LIMIT_FROM_API_SERVER=1000000000 && export RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
       timeout: 3600
       script: python stress_tests/test_state_api_scale.py --smoke-test
 
@@ -3567,6 +3569,7 @@
 
   run:
     timeout: 1000
+    prepare: export RAY_MAX_LIMIT_FROM_API_SERVER=1000000000 && export RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
     script: python stress_tests/test_state_api_with_other_tests.py 
       nightly_tests/shuffle/shuffle_test.py --test-args="--num-partitions=100 --partition-size=200e6" 
 
