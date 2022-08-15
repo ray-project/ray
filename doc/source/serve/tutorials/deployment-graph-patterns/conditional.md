@@ -6,7 +6,7 @@ This [deployment graph pattern](serve-deployment-graph-patterns-overview) allows
 
 ## Code
 
-```{literalinclude} ../../doc_code/conditional.py
+```{literalinclude} ../../doc_code/deployment_graph_patterns/conditional.py
 :language: python
 :start-after: __graph_start__
 :end-before: __graph_end__
@@ -32,7 +32,7 @@ async def combine(value_refs, combine_type):
 The graph creates two `Model` nodes, with `weights` of 0 and 1. It then takes the `user_input` and unpacks it into two parts: a number and an operation.
 
 :::{note}
-`dag.execute()` can take an arbitrary number of arguments. These arguments can be unpacked by indexing into the `InputNode`. For example,
+`handle.predict.remote()` can take an arbitrary number of arguments. These arguments can be unpacked by indexing into the `InputNode`. For example,
 
 ```python
 with InputNode() as user_input:
