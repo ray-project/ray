@@ -43,7 +43,8 @@ elif res.status_code == 404:
 
 # __submit_event_end__
 
-if res.status_code == 200:
-    key, message = ray.get(obj_ref)
-    assert key == "my_event_key"
-    assert message == "my_event_message"
+assert res.status_code == 200
+key, message = ray.get(obj_ref)
+assert key == "my_event_key"
+assert message == "my_event_message"
+
