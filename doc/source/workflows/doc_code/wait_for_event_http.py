@@ -47,4 +47,3 @@ assert res.status_code == 200
 key, message = ray.get(obj_ref)
 assert key == "my_event_key"
 assert message == "my_event_message"
-
