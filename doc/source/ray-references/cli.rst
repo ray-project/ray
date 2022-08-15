@@ -157,7 +157,9 @@ State
 -----
 This section contains commands to access the :ref:`live state of Ray resources (actor, task, object, etc.) <state-api-overview-ref>`.
 
-.. tip:: APIs are pre-alpha and under active development. APIs are subject to change and not stable across versions.
+.. note:: 
+
+    APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
 State CLI allows users to access the state of various resources (e.g., actor, task, object).
 
@@ -182,10 +184,12 @@ Log
 ---
 This section contains commands to :ref:`access logs <state-api-log-doc>` from Ray clusters.
 
-.. tip:: APIs are pre-alpha and under active development. APIs are subject to change and not stable across versions.
+.. note:: 
+
+    APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
 Log CLI allows users to access the log from the cluster. 
 Note that only the logs from alive nodes are available through this API.
 
 .. click:: ray.scripts.scripts:ray_logs
-    :prog: ray logs
+   :prog: ray logs
