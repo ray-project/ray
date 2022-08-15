@@ -3,7 +3,9 @@ Ray State API
 
 .. _state-api-ref:
 
-.. tip:: APIs are pre-alpha and under active development. APIs are subject to change and not stable across versions.
+.. note:: 
+
+    APIs are :ref:`alpha <api-stability-alpha>`. This feature requires a full installation of Ray using ``pip install "ray[default]"``.
 
 State Python SDK
 -----------------
