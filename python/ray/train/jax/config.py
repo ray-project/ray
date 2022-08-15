@@ -28,7 +28,7 @@ def setup_jax_gpu_environment(master_addr_with_port: str, num_workers: int, inde
     """Set up distributed jax training information.
 
     This function should be called on each worker. Only multi-gpu instances need
-    to set up the distributed connections currently! The function will not called
+    to set up the distributed connections currently! The function won't be called
     on CPU or TPU instances.
 
     Args:
