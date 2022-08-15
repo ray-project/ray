@@ -1954,6 +1954,8 @@
     test_name: many_ppo
     test_suite: long_running_tests
 
+  stable: false
+
   frequency: nightly
   team: ml
   env: staging
@@ -2701,7 +2703,7 @@
 
   alert: default
 
-- name: rllib_learning_tests_bc
+- name: rllib_learning_tests_ppo
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2716,6 +2718,30 @@
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ppo
+    type: sdk_command
+    file_manager: job
+
+  alert: default
+
+- name: rllib_learning_tests_bc
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  legacy:
+    test_name: learning_tests
+    test_suite: rllib_tests
+
+  frequency: nightly
+  team: ml
+  env: staging
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
@@ -2739,7 +2765,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
@@ -2859,7 +2885,7 @@
 
   cluster:
     cluster_env: app_config.yaml
-    cluster_compute: 2gpus_32cpus.yaml
+    cluster_compute: 1gpu_16cpus.yaml
 
   run:
     timeout: 18000
@@ -3546,6 +3572,59 @@
       wait_for_nodes:
         num_nodes: 5
 
+- name: stress_test_state_api_scale
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: stress_test_state_api_scale
+    test_suite: nightly_tests
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: stress_tests/stress_tests_app_config.yaml
+    cluster_compute: stress_tests/stress_tests_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python stress_tests/test_state_api_scale.py 
+    type: sdk_command
+    file_manager: sdk
+
+  smoke_test:
+    frequency: multi
+    cluster:
+      app_config: stress_tests/stress_tests_app_config.yaml
+      cluster_compute: stress_tests/smoke_test_compute.yaml
+
+    run:
+      timeout: 3600
+      script: python stress_tests/test_state_api_scale.py --smoke-test
+
+
+- name: shuffle_20gb_with_state_api
+  group: core-daily-test
+  working_dir: nightly_tests
+  legacy:
+    test_name: shuffle_20gb_with_state_api
+    test_suite: nightly_tests
+  stable: false
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: shuffle/shuffle_app_config.yaml
+    cluster_compute: shuffle/shuffle_compute_single.yaml
+
+  run:
+    timeout: 1000
+    script: python stress_tests/test_state_api_with_other_tests.py 
+      nightly_tests/shuffle/shuffle_test.py --test-args="--num-partitions=100 --partition-size=200e6" 
+
+    type: sdk_command
+    file_manager: sdk
+
 - name: stress_test_many_tasks
   group: core-daily-test
   working_dir: nightly_tests
@@ -4136,6 +4215,25 @@
     type: sdk_command
     file_manager: sdk
 
+- name: pipelined_data_ingest_benchmark
+  group: core-dataset-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
+    wait_for_nodes:
+      num_nodes: 20
+
+    type: sdk_command
+    file_manager: sdk
+
 - name: pipelined_training_50_gb
   group: core-dataset-tests
   working_dir: nightly_tests/dataset
@@ -4579,5 +4677,27 @@
     script: RAY_DATASET_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 20
+    type: sdk_command
+    file_manager: sdk
+
+- name: k8s_serve_ha_test
+  group: k8s-test
+  working_dir: k8s_tests
+  legacy:
+    test_name: k8s_serve_ha_test
+    test_suite: k8s_tests
+
+  stable: false
+
+  frequency: nightly
+  team: serve
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl.yaml
+
+  run:
+    timeout: 1800
+    prepare: bash prepare.sh
+    script: python run_gcs_ft_on_k8s.py
     type: sdk_command
     file_manager: sdk

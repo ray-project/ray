@@ -13,7 +13,7 @@ from ray.tune.experiment import Trial
 from ray.util import PublicAPI
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class ResultGrid:
     """A set of ``Result`` objects returned from a call to ``tuner.fit()``.
 

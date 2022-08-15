@@ -54,7 +54,7 @@ $ python3
     8
 ```
 
-Once we're finished, we can close the Python interpreter by running `quit()` and terminate the Ray cluster by typing `ctrl-C` int the terminal running `serve run`. This will tear down the deployments and then the cluster.
+Once we're finished, we can close the Python interpreter by running `quit()` and terminate the Ray cluster by typing `ctrl-C` into the terminal running `serve run`. This will tear down the deployments and then the cluster.
 
 (serve-in-production-config-file)=
 
@@ -76,10 +76,10 @@ deployments:
     - name: ...
       num_replicas: ...
       ...
-    
+
     - name:
       ...
-    
+
     ...
 ```
 
@@ -104,15 +104,15 @@ deployments:
     - name: MangoStand
       user_config:
         price: 3
-    
+
     - name: OrangeStand
       user_config:
         price: 2
-    
+
     - name: PearStand
       user_config:
         price: 4
-    
+
     - name: DAGDriver
 ```
 
@@ -283,7 +283,7 @@ $ ray start --head
 ...
 
 $ serve deploy fruit_config.yaml
-2022-06-20 17:26:31,106	SUCC scripts.py:139 -- 
+2022-06-20 17:26:31,106	SUCC scripts.py:139 --
 Sent deploy request successfully!
  * Use `serve status` to check deployments' statuses.
  * Use `serve config` to see the running app's config.
@@ -304,7 +304,7 @@ If you start Ray and deploy your deployment graph from a directory that doesn't 
 
 To make your config file location-independent, you can push your deployment graph code to [a remote repository and add that repository to your config file's `runtime_env` field](remote-uris). When Serve runs your deployment graph, it will pull the code from the remote repository rather than use a local copy. **This is a best practice** because it lets you deploy your config file from any machine in any directory and share the file with other developers, making it a more standalone artifact.
 
-As an example, we have [pushed a copy of the FruitStand deployment graph to GitHub](https://github.com/ray-project/test_dag/blob/c620251044717ace0a4c19d766d43c5099af8a77/fruit.py). You can use this config file to deploy the `FruitStand` deployment graph to your own Ray cluster even if you don't have the code locally:
+As an example, we have [pushed a copy of the FruitStand deployment graph to GitHub](https://github.com/ray-project/test_dag/blob/40d61c141b9c37853a7014b8659fc7f23c1d04f6/fruit.py). You can use this config file to deploy the `FruitStand` deployment graph to your own Ray cluster even if you don't have the code locally:
 
 ```yaml
 import_path: fruit.deployment_graph
@@ -454,15 +454,24 @@ deployment_statuses:
   message: ''
 ```
 
-`serve status` can also be used with KubeRay, a Kubernetes operator for Ray Serve, to help deploy your Serve applications with Kubernetes. There's also work in progress to provide closer integrations between some of the features from this document, like `serve status`, with Kubernetes to provide a clearer Serve deployment story.
+`serve status` can also be used with KubeRay ({ref}`kuberay-index`), a Kubernetes operator for Ray Serve, to help deploy your Serve applications with Kubernetes. There's also work in progress to provide closer integrations between some of the features from this document, like `serve status`, with Kubernetes to provide a clearer Serve deployment story.
 
 (serve-in-production-updating)=
 
 ## Updating Your Serve Application in Production
 
-You can also update your Serve applications once they're in production. You can update the settings in your config file and redeploy it using the `serve deploy` command.
+You can update your Serve applications once they're in production by updating the settings in your config file and redeploying it using the `serve deploy` command. In the redeployed config file, you can add new deployment settings or remove old deployment settings. This is because `serve deploy` is **idempotent**, meaning your Serve application's config always matches (or honors) the latest config you deployed successfully – regardless of what config files you deployed before that.
 
-Let's use the `FruitStand` deployment graph [from an earlier section](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. [This method allows us to issue lightweight updates](managing-deployments-user-configuration) to our deployments by updating the `user_config`. These updates don't need to tear down the running deployments, meaning there's less downtime as the deployments update.
+### Lightweight Config Updates
+
+Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying `num_replicas`, `autoscaling_config`, and/or `user_config` is considered a lightweight config update, and won't tear down the replicas for that deployment.
+
+:::{note}
+Lightweight config updates are only possible for deployments that are included as entries under `deployments` in the config file. If a deployment is not included in the config file, replicas of that deployment will be torn down and brought up again each time you redeploy with `serve deploy`.
+:::
+
+#### Updating User Config
+Let's use the `FruitStand` deployment graph [from an earlier section](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. [This method allows us to issue lightweight updates](managing-deployments-user-configuration) to our deployments by updating the `user_config`.
 
 First let's deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
 
@@ -547,7 +556,14 @@ $ python
 
 The price has updated! The same request now returns `10` instead of `6`, reflecting the new price.
 
-You can update any setting in any deployment in the config file similarly. You can also add new deployment settings or remove old deployment settings from the config. This is because `serve deploy` is **idempotent**. Your Serve application's will match the one specified in the latest config you deployed– regardless of what config files you deployed before that.
+### Code Updates
+
+Similarly, you can update any other setting in any deployment in the config file. If a deployment setting other than `num_replicas`, `autoscaling_config`, or `user_config` is changed, it is considered a code update, and the deployment replicas will be restarted. Note that the following modifications are all considered "changes", and will trigger tear down of replicas:
+* changing an existing setting
+* adding an override setting that was previously not present in the config file
+* removing a setting from the config file
+
+Note also that changing `import_path` or `runtime_env` is considered a code update for all deployments, and will tear down all running deployments and restart them.
 
 :::{warning}
 Although you can update your Serve application by deploying an entirely new deployment graph using a different `import_path` and a different `runtime_env`, this is NOT recommended in production.

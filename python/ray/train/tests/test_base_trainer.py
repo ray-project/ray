@@ -183,15 +183,14 @@ def test_reserved_cpus(ray_start_4_cpus):
     )
     tune.run(trainer.as_trainable(), num_samples=4)
 
-
-# TODO(ekl/sang) this currently fails.
-#    # Check we don't deadlock with too low of a fraction either.
-#    scale_config = ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.01)
-#    trainer = DummyTrainer(
-#        train_loop,
-#        scaling_config=scale_config,
-#    )
-#    tune.run(trainer.as_trainable(), num_samples=4)
+    # TODO(ekl/sang) this currently fails.
+    # Check we don't deadlock with too low of a fraction either.
+    scale_config = ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.01)
+    trainer = DummyTrainer(
+        train_loop,
+        scaling_config=scale_config,
+    )
+    tune.run(trainer.as_trainable(), num_samples=4)
 
 
 def test_reserved_cpu_warnings(ray_start_4_cpus):
