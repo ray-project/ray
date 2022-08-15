@@ -24,7 +24,7 @@ pydantic >= 1.8
 pyyaml
 requests
 smart_open
-virtualenv
+virtualenv >= 20.0.21
 
 ## setup.py extras
 dm_tree
