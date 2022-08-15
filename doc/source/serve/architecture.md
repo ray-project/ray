@@ -14,6 +14,7 @@ This section should help you:
 :width: 600px
 ```
 
+(serve-architecture-high-level-view)=
 ## High-Level View
 
 Serve runs on Ray and utilizes [Ray actors](actor-guide).
@@ -113,7 +114,7 @@ same node which routes requests to replicas for a deployment. When a
 request is sent from one replica to another via the handle, the
 requests go through the same data path as incoming HTTP requests. This enables
 the same deployment selection and batching procedures to happen. ServeHandles are
-often used to implement [model composition](serve-model-composition).
+often used to implement [model composition](serve-model-composition-guide).
 
 ### What happens to large requests?
 

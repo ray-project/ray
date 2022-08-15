@@ -2,93 +2,103 @@
 
 # Monitoring Ray Serve
 
-This section should help you understand how to debug and monitor your Serve application.
-There are three main ways to do this:
-Using the Ray Dashboard, using Ray logging, and using built-in Ray Serve metrics.
+This section helps you debug and monitor your Serve applications by:
 
-## Ray Dashboard
+* viewing the Ray dashboard
+* using Ray logging and Loki
+* inspecting built-in Ray Serve metrics
 
-A high-level way to monitor your Ray Serve application is via the Ray Dashboard.
-See the [Ray Dashboard documentation](ray-dashboard) for a detailed overview, including instructions on how to view the dashboard.
+## Ray dashboard
 
-Below is an example of what the "Actors" tab of the Ray Dashboard might look like for a running Serve application:
+You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states.
+This includes details such as:
+* the number of deployment replicas currently running
+* logs for your Serve controller, deployment replicas, and HTTP proxies
+* the Ray nodes (i.e. machines) running in your Ray cluster.
+
+You can access the Ray dashboard at port 8265 at your cluster's URI.
+For example, if you're running Ray Serve locally, you can access the dashboard by going to `http://localhost:8265` in your browser.
+
+You can view important information about your application here.
+For example, you can inspect your deployment replicas by navigating to the Ray dashboard's "Actors" tab while your Serve application is running:
 
 ```{image} https://raw.githubusercontent.com/ray-project/Images/master/docs/dashboard/serve-dashboard-2-replicas.png
 :align: center
 ```
 
-Here you can see the Serve controller actor, an HTTP proxy actor, and all of the replicas for each Serve deployment.
-To learn about the function of the controller and proxy actors, see the [Serve Architecture page](serve-architecture).
-In this example pictured above, we have a single-node cluster with a deployment named `Translator` with `num_replicas=2`.
+In this example, there's a single-node cluster running a deployment named `Translator`. This example Serve application uses four [Ray actors](actor-guide):
 
-## Logging
+* 1 Serve controller
+* 1 HTTP proxy
+* 2 `Translator` deployment replicas
 
-:::{note}
-For an overview of logging in Ray, see [Ray Logging](ray-logging).
+This page includes additional useful information like each actor's process ID (PID) and a link to each actor's logs, which includes their `logging` and `print` statements. You can also see whether any particular actor is alive or dead to help you debug potential cluster failures. For example, the image indicates that the Serve controller is currently dead and likely undergoing recovery.
+
+:::{tip}
+To learn more about the Serve controller actor, the HTTP proxy actor(s), the deployment replicas, and how they all work together, check out the [Serve Architecture](serve-architecture) documentation.
 :::
 
-Ray Serve uses Python's standard `logging` facility with the logger named `"ray.serve"`.
+For a detailed overview of the Ray dashboard, see the [dashboard documentation](ray-dashboard).
+
+## Ray logging
+
+To understand system-level behavior and to surface application-level details during runtime, you can leverage Ray logging.
+
+Ray Serve uses Python's standard `logging` module with a logger named `"ray.serve"`.
 By default, logs are emitted from actors both to `stderr` and on disk on each node at `/tmp/ray/session_latest/logs/serve/`.
 This includes both system-level logs from the Serve controller and HTTP proxy as well as access logs and custom user logs produced from within deployment replicas.
 
-In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's most convenient to keep the driver running for debugging.
-For example, let's run a basic Serve application and view the logs that are emitted.
-You can run this in an interactive shell like IPython to follow along.
+In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's convenient to keep the driver running while debugging.
 
-First we call `serve.start()`:
+For example, let's run a basic Serve application and view the logs that it emits.
 
-```python
-from ray import serve
+First, let's create a simple deployment that logs a custom log message when it's queried:
 
-serve.start()
-```
-
-This produces a few INFO-level log messages about startup from the Serve controller.
-
-```bash
-2022-04-02 09:10:49,906 INFO services.py:1460 -- View the Ray dashboard at http://127.0.0.1:8265
-(ServeController pid=67312) INFO 2022-04-02 09:10:51,386 controller 67312 checkpoint_path.py:17 - Using RayInternalKVStore for controller checkpoint and recovery.
-(ServeController pid=67312) INFO 2022-04-02 09:10:51,492 controller 67312 http_state.py:108 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:xlehoa:SERVE_PROXY_ACTOR-node:127.0.0.1-0' on node 'node:127.0.0.1-0' listening on '127.0.0.1:8000'
-```
-
-Next, let's create a simple deployment that logs a custom log message when it's queried:
-
-```{literalinclude} ../serve/doc_code/monitoring.py
-:start-after: __start_monitoring__
-:end-before: __end_monitoring__
+```{literalinclude} doc_code/monitoring/monitoring.py
+:start-after: __start__
+:end-before: __end__
 :language: python
-:linenos: true
 ```
 
-Running this code block, we first get some log messages from the controller saying that a new replica of the deployment is being created:
+Run this deployment using the `serve run` CLI command:
 
-```bash
-$ python monitoring.py
-2022-08-02 16:16:21,498 INFO scripts.py:294 -- Deploying from import path: "monitoring:say_hello".
-2022-08-02 16:16:24,141 INFO worker.py:1481 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265.
-(ServeController pid=71139) INFO 2022-08-02 16:16:28,542 controller 71139 http_state.py:123 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-f68e29b2048526b2d6ef5ba69e2b35d44b44d12ff3c85fc6132e9381' on node 'f68e29b2048526b2d6ef5ba69e2b35d44b44d12ff3c85fc6132e9381' listening on '127.0.0.1:8000'
-(HTTPProxyActor pid=71150) INFO:     Started server process [71150]
-(ServeController pid=71139) INFO 2022-08-02 16:16:29,881 controller 71139 deployment_state.py:1232 - Adding 1 replicas to deployment 'SayHello'.
-2022-08-02 16:16:31,889 SUCC scripts.py:315 -- Deployed successfully.
+```console
+$ serve run monitoring:say_hello
+
+2022-08-10 22:58:55,963	INFO scripts.py:294 -- Deploying from import path: "monitoring:say_hello".
+2022-08-10 22:58:57,886	INFO worker.py:1481 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265.
+(ServeController pid=63881) INFO 2022-08-10 22:58:59,365 controller 63881 http_state.py:129 - Starting HTTP proxy with name 'SERVE_CONTROLLER_ACTOR:SERVE_PROXY_ACTOR-1252fc7fbbb16ca6a80c45cbb5fe4ef182030b95aa60b62604151168' on node '1252fc7fbbb16ca6a80c45cbb5fe4ef182030b95aa60b62604151168' listening on '127.0.0.1:8000'
+The new client HTTP config differs from the existing one in the following fields: ['location']. The new HTTP config is ignored.
+(ServeController pid=63881) INFO 2022-08-10 22:58:59,999 controller 63881 deployment_state.py:1232 - Adding 1 replicas to deployment 'SayHello'.
+(HTTPProxyActor pid=63883) INFO:     Started server process [63883]
+2022-08-10 22:59:00,979	SUCC scripts.py:315 -- Deployed successfully.
 ```
 
-Then when we query the deployment, we get both a default access log as well as our custom `"Hello world!"` message.
-
-```python
-import requests
-requests.get("http://localhost:8000/")
-```
+`serve run` prints a few log messages immediately. Note that a few of these messages start with identifiers such as
 
 ```
-(HTTPProxyActor pid=71150) INFO 2022-08-02 16:17:02,502 http_proxy 127.0.0.1 http_proxy.py:315 - GET / 200 3.5ms
-(ServeReplica:SayHello pid=71162) INFO 2022-08-02 16:17:02,501 SayHello SayHello#kKGBoa monitoring.py:13 - Hello world!
-(ServeReplica:SayHello pid=71162) INFO 2022-08-02 16:17:02,501 SayHello SayHello#kKGBoa replica.py:482 - HANDLE __call__ OK 0.3ms
+(ServeController pid=63881)
 ```
 
-Note that these log lines are tagged with the deployment name followed by a unique identifier for the specific replica.
-These can be parsed by a logging stack such as ELK or Loki to enable searching logs by deployment and replica.  These logs are stored at `/tmp/ray/session_latest/logs/serve/`.
+These messages are logs from Ray Serve [actors](actor-guide). They describe which actor (Serve controller, HTTP proxy, or deployment replica) created the log and what its process ID is (which is useful when distinguishing between different deployment replicas or HTTP proxies). The rest of these log messages are the actual log statements generated by the actor.
 
-To silence the replica-level logs or otherwise configure logging, configure the `"ray.serve"` logger *from inside the deployment constructor:*
+While `serve run` is running, we can query the deployment in a separate terminal window:
+
+```
+curl -X GET http://localhost:8000/
+```
+
+This causes the HTTP proxy and deployment replica to print log statements to the terminal running `serve run`:
+
+```console
+(HTTPProxyActor pid=63883) INFO 2022-08-10 23:10:08,005 http_proxy 127.0.0.1 http_proxy.py:315 - GET / 200 2.4ms
+(ServeReplica:SayHello pid=63885) INFO 2022-08-10 23:10:08,004 SayHello SayHello#JYbzqP monitoring.py:15 - Hello world!
+(ServeReplica:SayHello pid=63885) INFO 2022-08-10 23:10:08,004 SayHello SayHello#JYbzqP replica.py:482 - HANDLE __call__ OK 0.2ms
+```
+
+A copy of these logs are stored at `/tmp/ray/session_latest/logs/serve/`. You can parse these stored logs with a logging stack such as ELK or [Loki](serve-logging-loki) to search them by deployment or replica. 
+
+To silence the replica-level logs or otherwise configure logging, configure the `"ray.serve"` logger **inside the deployment constructor**:
 
 ```python
 import logging
@@ -101,18 +111,21 @@ class Silenced:
         logger.setLevel(logging.ERROR)
 ```
 
-This will prevent the replica INFO-level logs from being written to STDOUT or to files on disk.
-You can also use your own custom logger, in which case you'll need to configure the behavior to write to STDOUT/STDERR, files on disk, or both.
+This controls which logs are written to STDOUT or files on disk.
+In addition to the standard Python logger, Serve supports custom logging. Custom logging lets you control what messages are written to STDOUT/STDERR, files on disk, or both.
 
-### Tutorial: Ray Serve with Loki
+For a detailed overview of logging in Ray, see [Ray Logging](ray-logging).
 
-Here is a quick walkthrough of how to explore and filter your logs using [Loki](https://grafana.com/oss/loki/).
-Setup and configuration is very easy on Kubernetes, but in this tutorial we'll just set things up manually.
+(serve-logging-loki)=
+### Filtering logs with Loki
 
-First, install Loki and Promtail using the instructions on <https://grafana.com>.
-It will be convenient to save the Loki and Promtail executables in the same directory, and to navigate to this directory in your terminal before beginning this walkthrough.
+You can explore and filter your logs using [Loki](https://grafana.com/oss/loki/).
+Setup and configuration are straightforward on Kubernetes, but as a tutorial, let's set up Loki manually.
 
-Now let's get our logs into Loki using Promtail.
+For this walkthrough, you need both Loki and Promtail, which are both supported by [Grafana Labs](https://grafana.com). Follow the installation instructions at Grafana's website to get executables for [Loki](https://grafana.com/docs/loki/latest/installation/) and [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/).
+For convenience, save the Loki and Promtail executables in the same directory, and then navigate to this directory in your terminal.
+
+Now let's get your logs into Loki using Promtail.
 
 Save the following file as `promtail-local-config.yaml`:
 
@@ -128,17 +141,17 @@ clients:
   - url: http://localhost:3100/loki/api/v1/push
 
 scrape_configs:
-- job_name: ray
-static_configs:
-  - labels:
-    job: ray
-    __path__: /tmp/ray/session_latest/logs/serve/*.*
+  - job_name: ray
+    static_configs:
+      - labels:
+        job: ray
+        __path__: /tmp/ray/session_latest/logs/serve/*.*
 ```
 
-The relevant part for Ray is the `static_configs` field, where we have indicated the location of our log files with `__path__`.
-The expression `*.*` will match all files, but not directories, which cause an error with Promtail.
+The relevant part for Ray Serve is the `static_configs` field, where we have indicated the location of our log files with `__path__`.
+The expression `*.*` will match all files, but it won't match directories since they cause an error with Promtail.
 
-We will run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
+We'll run Loki locally.  Grab the default config file for Loki with the following command in your terminal:
 
 ```shell
 wget https://raw.githubusercontent.com/grafana/loki/v2.1.0/cmd/loki/loki-local-config.yaml
@@ -158,14 +171,21 @@ Start Promtail and pass in the path to the config file we saved earlier:
 ./promtail-darwin-amd64 -config.file=promtail-local-config.yaml
 ```
 
-As above, you may need to replace `./promtail-darwin-amd64` with the appropriate filename and path.
+Once again, you may need to replace `./promtail-darwin-amd64` with your Promtail executable.
 
-Run the following Python script to deploy a basic Serve deployment with a Serve deployment logger and make some requests:
+Run the following Python script to deploy a basic Serve deployment with a Serve deployment logger and to make some requests:
 
-```{literalinclude} ../../../python/ray/serve/examples/doc/deployment_logger.py
+```{literalinclude} doc_code/monitoring/deployment_logger.py
+:start-after: __start__
+:end-before: __end__
+:language: python
 ```
 
-Now [install and run Grafana](https://grafana.com/docs/grafana/latest/installation/) and navigate to `http://localhost:3000`, where you can log in with the default username "admin" and default password "admin".
+Now [install and run Grafana](https://grafana.com/docs/grafana/latest/installation/) and navigate to `http://localhost:3000`, where you can log in with default credentials:
+
+* Username: admin
+* Password: admin
+
 On the welcome page, click "Add your first data source" and click "Loki" to add Loki as a data source.
 
 Now click "Explore" in the left-side panel.  You are ready to run some queries!
@@ -182,11 +202,14 @@ You should see something similar to the following:
 :align: center
 ```
 
-## Metrics
+You can use Loki to filter your Ray Serve logs and gather insights quicker.
+
+## Built-in Ray Serve metrics
+
+You can leverage built-in Ray Serve metrics to get a closer look at your application's performance.
 
 Ray Serve exposes important system metrics like the number of successful and
-errored requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default,
-the metrics are exposed in Prometheus format on each node.
+failed requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default, the metrics are exposed in Prometheus format on each node.
 
 The following metrics are exposed by Ray Serve:
 
@@ -202,12 +225,8 @@ The following metrics are exposed by Ray Serve:
      - The number of exceptions that have occurred in the deployment.
    * - ``serve_deployment_replica_starts``
      - The number of times this replica has been restarted due to failure.
-   * - ``serve_deployment_queuing_latency_ms``
-     - The latency for queries in the replica's queue waiting to be processed.
    * - ``serve_deployment_processing_latency_ms``
      - The latency for queries to be processed.
-   * - ``serve_replica_queued_queries``
-     - The current number of queries queued in the deployment replicas.
    * - ``serve_replica_processing_queries``
      - The current number of queries being processed.
    * - ``serve_num_http_requests``
@@ -232,16 +251,19 @@ ray start --head --metrics-export-port=8080
 
 Then run the following script:
 
-```{literalinclude} ../../../python/ray/serve/examples/doc/snippet_metrics.py
+```{literalinclude} doc_code/monitoring/metrics_snippet.py
+:start-after: __start__
+:end-before: __end__
+:language: python
 ```
 
-The requests will loop and can be canceled with `Ctrl-C`. 
+The requests will loop until canceled with `ctrl-c`. 
 
-While this is running, in your web browser navigate to `localhost:8080`.
+While this script is running, go to `localhost:8080` in your web browser.
 In the output there, you can search for `serve_` to locate the metrics above.
-The metrics are updated once every ten seconds, and you will need to refresh the page to see the new values.
+The metrics are updated once every ten seconds, so you need to refresh the page to see new values.
 
-For example, after running the script for some time and refreshing `localhost:8080` you should be able to find metrics similar to the following:
+For example, after running the script for some time and refreshing `localhost:8080` you should find metrics similar to the following:
 
 ```
 ray_serve_deployment_processing_latency_ms_count{..., replica="sleeper#jtzqhX"} 48.0
@@ -250,15 +272,15 @@ ray_serve_deployment_processing_latency_ms_sum{..., replica="sleeper#jtzqhX"} 48
 
 which indicates that the average processing latency is just over one second, as expected.
 
-You can even define a [custom metric](application-level-metrics) to use in your deployment, and tag it with the current deployment or replica.
+You can even define a [custom metric](application-level-metrics) for your deployment and tag it with deployment or replica metadata.
 Here's an example:
 
-```{literalinclude} ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
-:end-before: __custom_metrics_deployment_end__
-:start-after: __custom_metrics_deployment_start__
+```{literalinclude} doc_code/monitoring/custom_metric_snippet.py
+:start-after: __start__
+:end-before: __end__
 ```
 
-And the emitted logs:
+The emitted logs include:
 
 ```
 # HELP ray_my_counter The number of odd-numbered requests to this deployment.
@@ -266,5 +288,4 @@ And the emitted logs:
 ray_my_counter{..., deployment="MyDeployment"} 5.0
 ```
 
-See the
-[Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+See the [Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
