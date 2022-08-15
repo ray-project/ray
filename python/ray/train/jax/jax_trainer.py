@@ -137,9 +137,9 @@ class JaxTrainer(DataParallelTrainer):
         # cpu parallelism is not supported in jax
         if not (use_gpu or use_tpu):
             logger.warning(
-                "cpu parallelism is not supported in jax. "
+                "CPU parallelism is not supported in jax. "
                 "Please use distributed GPU or TPU training instead. "
-                "Currently, the code is still running on cpu, "
+                "Currently, the code is still running on CPU, "
                 "but there is no distributed training happening."
             )
 
