@@ -127,4 +127,4 @@ secret_key     ****************YYYY         iam-role
     region                <not set>             None    None
 ```
 
-Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on ???.
+Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on accessing S3.
