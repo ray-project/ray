@@ -68,6 +68,8 @@ from ray.rllib.utils.typing import (
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
+from ray.rllib.connectors.util import get_synced_filter_connector
+from ray.rllib.connectors.connector import ConnectorContext
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
@@ -648,7 +650,19 @@ class RolloutWorker(ParallelIteratorWorker):
                 ),
                 policy.observation_space_struct,
             )
-            self.filters[policy_id] = get_filter(self.observation_filter, filter_shape)
+            if policy_config.get("enable_connectors"):
+                ctx = ConnectorContext.from_policy(policy)
+                connector = get_synced_filter_connector(
+                    ctx, self.observation_filter, filter_shape
+                )
+                policy.agent_connectors.insert_after(
+                    "ObsPreprocessorConnector", connector
+                )
+                self.filters[policy_id] = connector.filter
+            else:
+                self.filters[policy_id] = get_filter(
+                    self.observation_filter, filter_shape
+                )
 
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
@@ -1237,9 +1251,27 @@ class RolloutWorker(ParallelIteratorWorker):
         if policy_state:
             new_policy.set_state(policy_state)
 
-        self.filters[policy_id] = get_filter(
-            self.observation_filter, new_policy.observation_space.shape
-        )
+        if config.get("enable_connectors"):
+            filter_shape = tree.map_structure(
+                lambda s: (
+                    None
+                    if isinstance(s, (Discrete, MultiDiscrete))  # noqa
+                    else np.array(s.shape)
+                ),
+                new_policy.observation_space_struct,
+            )
+            ctx = ConnectorContext.from_policy(new_policy)
+            connector = get_synced_filter_connector(
+                ctx, self.observation_filter, filter_shape
+            )
+            new_policy.agent_connectors.insert_after(
+                "ObsPreprocessorConnector", connector
+            )
+            self.filters[policy_id] = connector.filter
+        else:
+            self.filters[policy_id] = get_filter(
+                self.observation_filter, new_policy.observation_space.shape
+            )
 
         self.set_policy_mapping_fn(policy_mapping_fn)
         if policies_to_train is not None:

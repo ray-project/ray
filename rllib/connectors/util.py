@@ -12,8 +12,13 @@ from ray.rllib.connectors.agent.pipeline import AgentConnectorPipeline
 from ray.rllib.connectors.agent.state_buffer import StateBufferConnector
 from ray.rllib.connectors.agent.view_requirement import ViewRequirementAgentConnector
 from ray.rllib.connectors.connector import Connector, ConnectorContext, get_connector
+from ray.rllib.connectors.agent.mean_std_filter import (
+    MeanStdObservationFilterAgentConnector,
+    ConcurrentMeanStdObservationFilterAgentConnector,
+)
+from ray.rllib.connectors.agent.synced_filter import SyncedCustomFilterAgentConnector
 from ray.rllib.utils.typing import TrainerConfigDict
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.policy.policy import Policy
@@ -99,3 +104,18 @@ def restore_connectors_for_policy(
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
     name, params = connector_config
     return get_connector(ctx, name, params)
+
+
+# We need this filter selection mechanism temporarily to remain compatible to old API
+@DeveloperAPI
+def get_synced_filter_connector(ctx: ConnectorContext, filter_config, shape):
+    if filter_config == "MeanStdFilter":
+        return MeanStdObservationFilterAgentConnector(ctx, shape, clip=None)
+    elif filter_config == "ConcurrentMeanStdFilter":
+        return ConcurrentMeanStdObservationFilterAgentConnector(ctx, shape, clip=None)
+    elif filter_config == "NoFilter":
+        return None
+    elif callable(filter_config):
+        return SyncedCustomFilterAgentConnector(ctx, filter=filter_config(shape))
+    else:
+        raise Exception("Unknown observation_filter: " + str(filter_config))

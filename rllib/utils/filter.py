@@ -107,7 +107,9 @@ class RunningStat:
         else:
             delta = x - self.mean_array
             self.mean_array[...] += delta / self.num_pushes
-            self.std_array[...] += delta * delta * (self.num_pushes - 1) / self.num_pushes
+            self.std_array[...] += (
+                delta * delta * (self.num_pushes - 1) / self.num_pushes
+            )
 
     def update(self, other):
         n1 = self.num_pushes
@@ -139,8 +141,11 @@ class RunningStat:
 
     @property
     def var(self):
-        return self.std_array / (self.num_pushes - 1) if self.num_pushes > 1 else \
-            np.square(self.mean_array)
+        return (
+            self.std_array / (self.num_pushes - 1)
+            if self.num_pushes > 1
+            else np.square(self.mean_array)
+        )
 
     @property
     def std(self):
@@ -248,7 +253,9 @@ class MeanStdFilter(Filter):
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
-        self.running_stats = tree.map_structure(lambda rs: rs.copy(), other.running_stats)
+        self.running_stats = tree.map_structure(
+            lambda rs: rs.copy(), other.running_stats
+        )
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
     def __call__(self, x: TensorStructType, update: bool = True) -> TensorStructType:
@@ -292,7 +299,12 @@ class MeanStdFilter(Filter):
 
     def __repr__(self) -> str:
         return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(
-            self.shape, self.demean, self.destd, self.clip, self.running_stats, self.buffer
+            self.shape,
+            self.demean,
+            self.destd,
+            self.clip,
+            self.running_stats,
+            self.buffer,
         )
 
 
@@ -327,7 +339,12 @@ class ConcurrentMeanStdFilter(MeanStdFilter):
 
     def __repr__(self) -> str:
         return "ConcurrentMeanStdFilter({}, {}, {}, {}, {}, {})".format(
-            self.shape, self.demean, self.destd, self.clip, self.running_stats, self.buffer
+            self.shape,
+            self.demean,
+            self.destd,
+            self.clip,
+            self.running_stats,
+            self.buffer,
         )
 
 
