@@ -15,47 +15,14 @@ Summary
 To run a distributed experiment with Tune, you need to:
 
 1. First, :ref:`start a Ray cluster <cluster-index>` if you have not already.
-2. Specify ``ray.init(address=...)`` in your script :ref:`to connect to the existing Ray cluster <using-ray-on-a-cluster>`.
-3. Run the script on the head node, or use :ref:`ray submit <ray-submit-doc>`, or use :ref:`Ray Job Submission <jobs-overview>` (in beta starting with Ray 1.12).
-
-
-.. _tune-distributed-local:
-
-Local Cluster Setup
--------------------
-
-If you already have a list of nodes, you can follow the local :ref:`private cluster setup <cluster-private-setup>`. Below is an example cluster configuration as ``tune-default.yaml``:
-
-.. literalinclude:: /../../python/ray/tune/examples/tune-local-default.yaml
-   :language: yaml
-
-``ray up`` starts Ray on the cluster of nodes.
-
-.. code-block:: bash
-
-    ray up tune-default.yaml
-
-``ray submit`` uploads ``tune_script.py`` to the cluster and runs ``python tune_script.py [args]``.
-
-.. code-block:: bash
-
-    ray submit tune-default.yaml tune_script.py -- --ray-address=localhost:6379
-
-Manual Local Cluster Setup
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you run into issues using the local cluster setup (or want to add nodes manually), you can use :ref:`the manual cluster setup <cluster-index>`. At a glance,
+2. Run the script on the head node, or use :ref:`ray submit <ray-submit-doc>`, or use :ref:`Ray Job Submission <jobs-overview>` (in beta starting with Ray 1.12).
 
 .. tune-distributed-cloud:
 
-Launching a cloud cluster
--------------------------
+Example: Tune on AWS VMs
+------------------------
 
-.. tip::
-
-    If you have already have a list of nodes, go to :ref:`tune-distributed-local`.
-
-Ray currently supports AWS and GCP. Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <cluster-cloud>`. Save the below cluster configuration (``tune-default.yaml``):
+Follow the instructions below to launch nodes on AWS (using the Deep Learning AMI). See the :ref:`cluster setup documentation <cluster-index>`. Save the below cluster configuration (``tune-default.yaml``):
 
 .. literalinclude:: /../../python/ray/tune/examples/tune-default.yaml
    :language: yaml
@@ -267,7 +234,7 @@ There are a few options for restoring an experiment:
 Common Commands
 ---------------
 
-Below are some commonly used commands for submitting experiments. Please see the :ref:`Autoscaler page <cluster-cloud>` to see find more comprehensive documentation of commands.
+Below are some commonly used commands for submitting experiments. Please see the :ref:`Clusters page <cluster-index>` to see find more comprehensive documentation of commands.
 
 .. code-block:: bash
 

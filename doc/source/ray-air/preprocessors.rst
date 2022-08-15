@@ -10,7 +10,15 @@ Ray AIR provides several common preprocessors out of the box and interfaces to d
 Overview
 --------
 
-Ray AIR exposes a ``Preprocessor`` class with four public methods for data preprocessing:
+The most common way of using a preprocessor is by passing it as an argument to the constructor of a :ref:`Trainer <air-trainers>` in conjunction with a :ref:`Ray Dataset <datasets>`.
+For example, the following code trains a model with a preprocessor that normalizes the data.
+
+.. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __trainer_start__
+    :end-before: __trainer_end__
+
+The  ``Preprocessor`` class with four public methods that can we used separately from a trainer:
 
 #. ``fit()``: Compute state information about a :class:`Dataset <ray.data.Dataset>` (e.g., the mean or standard deviation of a column)
    and save it to the ``Preprocessor``. This information is used to perform ``transform()``, and the method is typically called on a
@@ -42,7 +50,7 @@ Finally, call ``transform_batch`` on a single batch of data.
     :start-after: __preprocessor_transform_batch_start__
     :end-before: __preprocessor_transform_batch_end__
 
-Life of an AIR Preprocessor
+Life of an AIR preprocessor
 ---------------------------
 
 Now that we've gone over the basics, let's dive into how ``Preprocessor``\s fit into an end-to-end application built with AIR.
@@ -113,82 +121,216 @@ In the following example, we show the Batch Predictor flow. The same logic appli
     :start-after: __predictor_start__
     :end-before: __predictor_end__
 
-Types of Preprocessors
+Types of preprocessors
 ----------------------
 
-Basic Preprocessors
-~~~~~~~~~~~~~~~~~~~
-
-Ray AIR provides a handful of ``Preprocessor``\s out of the box, and more will be added over time. We welcome
-`Contributions <https://docs.ray.io/en/master/getting-involved.html>`__!
-
-.. tabbed:: Common APIs
-
-    #. :class:`Preprocessor <ray.data.preprocessor.Preprocessor>`
-    #. :class:`BatchMapper <ray.data.preprocessors.BatchMapper>`
-    #. :class:`Chain <ray.data.preprocessors.Chain>`
-
-.. tabbed:: Tabular
-
-    #. :class:`Categorizer <ray.data.preprocessors.Categorizer>`
-    #. :class:`Concatenator <ray.data.preprocessors.Concatenator>`
-    #. :class:`FeatureHasher <ray.data.preprocessors.FeatureHasher>`
-    #. :class:`LabelEncoder <ray.data.preprocessors.LabelEncoder>`
-    #. :class:`MaxAbsScaler <ray.data.preprocessors.MaxAbsScaler>`
-    #. :class:`MinMaxScaler <ray.data.preprocessors.MinMaxScaler>`
-    #. :class:`Normalizer <ray.data.preprocessors.Normalizer>`
-    #. :class:`OneHotEncoder <ray.data.preprocessors.OneHotEncoder>`
-    #. :class:`OrdinalEncoder <ray.data.preprocessors.OrdinalEncoder>`
-    #. :class:`PowerTransformer <ray.data.preprocessors.PowerTransformer>`
-    #. :class:`RobustScaler <ray.data.preprocessors.RobustScaler>`
-    #. :class:`SimpleImputer <ray.data.preprocessors.SimpleImputer>`
-    #. :class:`StandardScaler <ray.data.preprocessors.StandardScaler>`
-
-.. tabbed:: Text
-
-    #. :class:`CountVectorizer <ray.data.preprocessors.CountVectorizer>`
-    #. :class:`HashingVectorizer <ray.data.preprocessors.HashingVectorizer>`
-    #. :class:`Tokenizer <ray.data.preprocessors.Tokenizer>`
-
-.. tabbed:: Image
-
-    Coming soon!
-
-.. tabbed:: Utilities
-
-    #. :meth:`Dataset.train_test_split <ray.data.Dataset.train_test_split>`
-
-Chaining Preprocessors
+Built-in preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~
 
-More often than not, your preprocessing logic may contain multiple logical steps or apply different transformations to each column.
-A simple ``Chain`` ``Preprocessor`` can be used to apply individual ``Preprocessor`` operations sequentially.
+Ray AIR provides a handful of preprocessors out of the box.
+
+**Generic preprocessors**
+
+.. autosummary::
+  :nosignatures:
+
+    ray.data.preprocessors.BatchMapper
+    ray.data.preprocessors.Chain
+    ray.data.preprocessors.Concatenator
+    ray.data.preprocessor.Preprocessor
+    ray.data.preprocessors.SimpleImputer
+
+**Categorical encoders**
+
+.. autosummary::
+  :nosignatures:
+
+    ray.data.preprocessors.Categorizer
+    ray.data.preprocessors.LabelEncoder
+    ray.data.preprocessors.MultiHotEncoder
+    ray.data.preprocessors.OneHotEncoder
+    ray.data.preprocessors.OrdinalEncoder
+
+**Feature scalers**
+
+.. autosummary::
+  :nosignatures:
+
+    ray.data.preprocessors.MaxAbsScaler
+    ray.data.preprocessors.MinMaxScaler
+    ray.data.preprocessors.Normalizer
+    ray.data.preprocessors.PowerTransformer
+    ray.data.preprocessors.RobustScaler
+    ray.data.preprocessors.StandardScaler
+
+**Text encoders**
+
+.. autosummary::
+  :nosignatures:
+
+    ray.data.preprocessors.CountVectorizer
+    ray.data.preprocessors.HashingVectorizer
+    ray.data.preprocessors.Tokenizer
+    ray.data.preprocessors.FeatureHasher
+
+**Utilities**
+
+.. autosummary::
+  :nosignatures:
+
+    ray.data.Dataset.train_test_split
+
+Which preprocessor should you use?
+----------------------------------
+
+The type of preprocessor you use depends on what your data looks like. This section
+provides tips on handling common data formats.
+
+Categorical data
+~~~~~~~~~~~~~~~~
+
+Most models expect numerical inputs. To represent your categorical data in a way your
+model can understand, encode categories using one of the preprocessors described below.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Categorical Data Type
+     - Example
+     - Preprocessor
+   * - Labels
+     - ``"cat"``, ``"dog"``, ``"airplane"``
+     - :class:`~ray.data.preprocessors.LabelEncoder`
+   * - Ordered categories
+     - ``"bs"``, ``"md"``, ``"phd"``
+     - :class:`~ray.data.preprocessors.OrdinalEncoder`
+   * - Unordered categories
+     - ``"red"``, ``"green"``, ``"blue"``
+     - :class:`~ray.data.preprocessors.OneHotEncoder`
+   * - Lists of categories
+     - ``("sci-fi", "action")``, ``("action", "comedy", "animated")``
+     - :class:`~ray.data.preprocessors.MultiHotEncoder`
+
+.. note::
+    If you're using LightGBM, you don't need to encode your categorical data. Instead,
+    use :class:`~ray.data.preprocessors.Categorizer` to convert your data to
+    `pandas.CategoricalDtype`.
+
+Numerical data
+~~~~~~~~~~~~~~
+
+To ensure your models behaves properly, normalize your numerical data. Reference the
+table below to determine which preprocessor to use.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Data Property
+     - Preprocessor
+   * - Your data is approximately normal
+     - :class:`~ray.data.preprocessors.StandardScaler`
+   * - Your data is sparse
+     - :class:`~ray.data.preprocessors.MaxAbsScaler`
+   * - Your data contains many outliers
+     - :class:`~ray.data.preprocessors.RobustScaler`
+   * - Your data isn't normal, but you need it to be
+     - :class:`~ray.data.preprocessors.PowerTransformer`
+   * - You need unit-norm rows
+     - :class:`~ray.data.preprocessors.Normalizer`
+   * - You aren't sure what your data looks like
+     - :class:`~ray.data.preprocessors.MinMaxScaler`
+
+.. warning::
+    These preprocessors operate on numeric columns. If your dataset contains columns of
+    type :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype`, you may need to
+    :ref:`implement a custom preprocessor <air-custom-preprocessors>`.
+
+Additionally, if your model expects a tensor or ``ndarray``, create a tensor using
+:class:`~ray.data.preprocessors.Concatenator`.
+
+.. tip::
+  Built-in feature scalers like :class:`~ray.data.preprocessors.StandardScaler` don't
+  work on :class:`~ray.air.util.tensor_extensions.pandas.TensorDtype` columns, so apply
+  :class:`~ray.data.preprocessors.Concatenator` after feature scaling. Combine feature
+  scaling and concatenation into a single preprocessor with
+  :class:`~ray.data.preprocessors.Chain`.
+
+  .. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __concatenate_start__
+    :end-before: __concatenate_end__
+
+Text data
+~~~~~~~~~
+
+A `document-term matrix <https://en.wikipedia.org/wiki/Document-term_matrix>`_ is a
+table that describes text data, often used in natural language processing.
+
+To generate a document-term matrix from a collection of documents, use
+:class:`~ray.data.preprocessors.HashingVectorizer` or
+:class:`~ray.data.preprocessors.CountVectorizer`. If you already know the frequency of
+tokens and want to store the data in a document-term matrix, use
+:class:`~ray.data.preprocessors.FeatureHasher`.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Requirement
+     - Preprocessor
+   * - You care about memory efficiency
+     - :class:`~ray.data.preprocessors.HashingVectorizer`
+   * - You care about model interpretability
+     - :class:`~ray.data.preprocessors.CountVectorizer`
+
+
+Filling in missing values
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If your dataset contains missing values, replace them with
+:class:`~ray.data.preprocessors.SimpleImputer`.
+
+.. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __simple_imputer_start__
+    :end-before: __simple_imputer_end__
+
+
+Chaining preprocessors
+~~~~~~~~~~~~~~~~~~~~~~
+
+If you need to apply more than one preprocessor, compose them together with
+:class:`~ray.data.preprocessors.Chain`.
+
+:class:`~ray.data.preprocessors.Chain` applies ``fit`` and ``transform``
+sequentially. For example, if you construct
+``Chain(preprocessorA, preprocessorB)``, then ``preprocessorB.transform`` is applied
+to the result of ``preprocessorA.transform``.
+
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
     :start-after: __chain_start__
     :end-before: __chain_end__
 
-.. tip::
 
-    Keep in mind that the operations are sequential. For example, if you define a ``Preprocessor``
-    ``Chain([preprocessorA, preprocessorB])``, then ``preprocessorB.transform()`` is applied
-    to the result of ``preprocessorA.transform()``.
+.. _air-custom-preprocessors:
 
-Custom Preprocessors
-~~~~~~~~~~~~~~~~~~~~
+Implementing custom preprocessors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Stateless Preprocessors:** Stateless preprocessors can be implemented with the ``BatchMapper``.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __custom_stateless_start__
-    :end-before: __custom_stateless_end__
-
-**Stateful Preprocessors:** Stateful preprocessors can be implemented by extending the
-:py:class:`~ray.data.preprocessor.Preprocessor` base class.
+If you want to implement a custom preprocessor that needs to be fit, extend the
+:class:`~ray.data.preprocessor.Preprocessor` base class.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
     :start-after: __custom_stateful_start__
     :end-before: __custom_stateful_end__
+
+If your preprocessor doesn't need to be fit, construct a
+:class:`~ray.data.preprocessors.BatchMapper`.
+:class:`~ray.data.preprocessors.BatchMapper` can drop, add, or modify columns.
+
+.. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __custom_stateless_start__
+    :end-before: __custom_stateless_end__

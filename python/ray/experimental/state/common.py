@@ -3,6 +3,7 @@ from abc import ABC
 from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
+from urllib.parse import urlparse
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -40,8 +41,8 @@ RAY_MAX_LIMIT_FROM_DATA_SOURCE = env_integer(
 )  # 10k
 
 STATE_OBS_ALPHA_FEEDBACK_MSG = [
-    "\n==========ALPHA PREVIEW, FEEDBACK NEEDED ===============",
-    "State Observability APIs is currently in Alpha-Preview. ",
+    "\n==========ALPHA, FEEDBACK NEEDED ===============",
+    "State Observability APIs is currently in Alpha. ",
     "If you have any feedback, you could do so at either way as below:",
     "    1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
     "    2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
@@ -937,5 +938,8 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
             )
         )
 
-    api_server_url = f"http://{api_server_url.decode()}"
-    return api_server_url
+    # Add http protocol to API server URL if it doesn't
+    # already contain a protocol.
+    if not urlparse(api_server_url).scheme:
+        api_server_url = "http://" + api_server_url
+    return api_server_url.decode()

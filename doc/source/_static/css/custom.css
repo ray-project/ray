@@ -88,11 +88,6 @@ th.tune-colab {
   padding: 0;
 }
 
-table {
-  /* Force full width for all table */
-  width: 136% !important;
-}
-
 img.inline-figure {
   /* Override the display: block for img */
   display: inherit !important;
@@ -167,4 +162,156 @@ pre {
 .sig-param::before {
   content: "\a\20\20\20\20";
   white-space: pre;
+}
+
+/* custom css for outlined buttons */
+.btn-outline-info:hover span, .btn-outline-primary:hover span {
+  color: #fff;
+}
+
+.btn-outline-info, .btn-outline-primary{
+  border-color: var(--buttons-color-blue);
+}
+
+.btn-outline-info:hover, .btn-outline-primary:hover{
+  border-color: var(--buttons-color-blue);
+  background-color: var(--buttons-color-blue);
+}
+
+.btn-outline-info.active:not(:disabled):not(.disabled), .btn-outline-info:not(:disabled):not(.disabled):active, .show>.btn-outline-info.dropdown-toggle {
+  border-color: var(--buttons-color-blue);
+  background-color: var(--buttons-color-blue);
+  color: #fff;
+}
+
+.btn-info, .btn-info:hover, .btn-info:focus {
+  border-color: var(--buttons-color-blue);
+  background-color: var(--buttons-color-blue);
+}
+
+.btn-info.active:not(:disabled):not(.disabled), .btn-info:not(:disabled):not(.disabled):active, .show>.btn-info.dropdown-toggle {
+  border-color: var(--buttons-color-blue);
+  background-color: var(--buttons-color-blue);
+}
+
+.btn-info:hover{
+  opacity: 90%;
+}
+
+.btn-info:disabled{
+  border-color: var(--background-color-disabled);
+  background-color: var(--background-color-disabled);
+  opacity: 100%;
+}
+
+/* custom css for pre elements */
+pre {
+  box-shadow: none;
+  border-color: var(--border-color-gray);
+  background-color: var(--background-color-light-gray);
+  border-radius:0.25em;
+}
+
+/* custom css for tabs*/
+.tabbed-set>input:checked+label{
+  border-bottom: 0.125em solid;
+  color:var(--tabs-color-label-active);
+}
+
+.tabbed-set>label,.tabbed-set>label:hover {
+  border-bottom: 1px solid var(--border-color-gray);
+  color:var(--tabs-color-label-inactive);
+  font-weight: 500;
+}
+
+.tabbed-label{
+  margin-bottom:0;
+}
+
+/* custom css for jupyter cells */
+div.cell div.cell_input{
+  border: 1px var(--border-color-gray) solid;
+  background-color: var(--background-color-light-gray);
+  border-radius:0.25em;
+  border-left-color: var(--green);
+  border-left-width: medium;
+}
+
+/* custom css for table */
+table {
+  border-color: var(--border-color-gray);
+}
+
+/* custom css for topic component */
+div.topic{
+  border: 1px solid var(--border-color-gray);
+  border-radius:0.25em;
+}
+
+.topic {
+  background-color: var(--background-color-light-gray);
+}
+
+/* custom css for card component */
+.card{
+  border-color: var(--border-color-gray);
+}
+
+.card-footer{
+  background-color: var(--background-color-light-gray);
+  border-top-color: var(--border-color-gray);
+}
+
+/* custom css for section navigation component */
+.bd-toc nav>.nav {
+  border-left-color: var(--border-color-gray);
+}
+
+/* custom css for up and down arrows in colllapsable cards */
+details.dropdown .summary-up, details.dropdown .summary-down {
+  top: 1em;
+}
+
+/* custom css for shadow class */
+.shadow {
+  box-shadow: 0 0.2rem 0.5rem rgb(0 0 0 / 5%), 0 0 0.0625rem rgb(0 0 0 / 10%) !important;
+}
+
+/* custom css for text area */
+textarea {
+  border-color: var(--border-color-gray);
+}
+
+/* custom css for footer */
+footer {
+  margin-top: 1rem;
+  padding:1em 0;
+  border-top-color: var(--border-color-gray);
+}
+
+.footer p{
+  color: var(--pst-color-text-secondary);
+}
+
+/* override default colors used in the Sphnix theme */
+:root {
+  --tabs-color-label-active: #0475DE;
+  --tabs-color-label-hover: #0475DE;
+  --buttons-color-blue: #0475DE;
+  --tabs-color-label-inactive: #9E9E9E;
+  --tabs-color-overline: #e0e0e0;
+  --tabs-color-underline: #e0e0e0;
+  --border-color-gray: #e0e0e0;
+  --background-color-light-gray:#fafafa;
+  --background-color-disabled: #9E9E9E;
+}
+
+:root {
+  --pst-color-link: 4, 117, 222;
+  --pst-color-primary: 4, 117, 222;
+  --pst-color-text-secondary: #616161;
+}
+
+:root {
+  --blue: #0475DE;
 }

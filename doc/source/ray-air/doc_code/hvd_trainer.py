@@ -42,14 +42,10 @@ def train_loop_per_worker():
     )
     for epoch in range(num_epochs):
         model.train()
-        for inputs, labels in iter(
-            dataset_shard.to_torch(
-                label_column="y",
-                label_column_dtype=torch.float,
-                feature_column_dtypes=torch.float,
-                batch_size=32,
-            )
+        for batch in dataset_shard.iter_torch_batches(
+            batch_size=32, dtypes=torch.float
         ):
+            inputs, labels = torch.unsqueeze(batch["x"], 1), batch["y"]
             inputs.to(device)
             labels.to(device)
             outputs = model(inputs)

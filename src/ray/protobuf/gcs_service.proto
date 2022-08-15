@@ -36,8 +36,7 @@ message MarkJobFinishedReply {
   GcsStatus status = 1;
 }
 
-message GetAllJobInfoRequest {
-}
+message GetAllJobInfoRequest {}
 
 message GetAllJobInfoReply {
   GcsStatus status = 1;
@@ -51,8 +50,7 @@ message ReportJobErrorReply {
   GcsStatus status = 1;
 }
 
-message GetNextJobIDRequest {
-}
+message GetNextJobIDRequest {}
 message GetNextJobIDReply {
   GcsStatus status = 1;
   int32 job_id = 2;
@@ -172,8 +170,7 @@ message RegisterNodeReply {
   GcsStatus status = 1;
 }
 
-message GetAllNodeInfoRequest {
-}
+message GetAllNodeInfoRequest {}
 
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
@@ -198,8 +195,7 @@ message CheckAliveReply {
   repeated bool raylet_alive = 3;
 }
 
-message GetInternalConfigRequest {
-}
+message GetInternalConfigRequest {}
 
 message GetInternalConfigReply {
   GcsStatus status = 1;
@@ -219,8 +215,7 @@ message DeleteResourcesReply {
   GcsStatus status = 1;
 }
 
-message GetAllAvailableResourcesRequest {
-}
+message GetAllAvailableResourcesRequest {}
 
 message GetAllAvailableResourcesReply {
   GcsStatus status = 1;
@@ -251,8 +246,7 @@ message AddProfileDataReply {
   GcsStatus status = 1;
 }
 
-message GetAllProfileInfoRequest {
-}
+message GetAllProfileInfoRequest {}
 
 message GetAllProfileInfoReply {
   GcsStatus status = 1;
@@ -330,6 +324,8 @@ message CreateActorReply {
   Address actor_address = 2;
   // Info about any refs that the created actor is borrowing.
   repeated ObjectReferenceCount borrowed_refs = 3;
+  // The cause of this actor's death if creation was cancelled.
+  optional ActorDeathCause death_cause = 4;
 }
 
 message RegisterActorRequest {
@@ -582,8 +578,7 @@ service InternalPubSubGcsService {
       returns (GcsSubscriberCommandBatchReply);
 }
 
-message GetAllResourceUsageRequest {
-}
+message GetAllResourceUsageRequest {}
 
 message GetAllResourceUsageReply {
   GcsStatus status = 1;

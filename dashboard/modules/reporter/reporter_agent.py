@@ -14,9 +14,9 @@ import psutil
 import ray
 import ray._private.services
 import ray._private.utils
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
-import ray.experimental.internal_kv as internal_kv
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
@@ -227,7 +227,7 @@ class ReporterAgent(
             logical_cpu_count = psutil.cpu_count()
             physical_cpu_count = psutil.cpu_count(logical=False)
         self._cpu_counts = (logical_cpu_count, physical_cpu_count)
-
+        self._gcs_aio_client = dashboard_agent.gcs_aio_client
         self._ip = dashboard_agent.ip
         self._is_head_node = self._ip == dashboard_agent.gcs_address.split(":")[0]
         self._hostname = socket.gethostname()
@@ -787,8 +787,10 @@ class ReporterAgent(
         """Get any changes to the log files and push updates to kv."""
         while True:
             try:
-                formatted_status_string = internal_kv._internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS
+                formatted_status_string = await self._gcs_aio_client.internal_kv_get(
+                    DEBUG_AUTOSCALING_STATUS.encode(),
+                    None,
+                    timeout=GCS_RPC_TIMEOUT_SECONDS,
                 )
 
                 stats = self._get_all_stats()

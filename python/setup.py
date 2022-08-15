@@ -204,9 +204,18 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
+    if sys.version_info >= (3, 7):
+        pandas_dep = "pandas >= 1.3"
+        numpy_dep = "numpy >= 1.20"
+    else:
+        # Pandas dropped python 3.6 support in 1.2.
+        pandas_dep = "pandas >= 1.0.5"
+        # Numpy dropped python 3.6 support in 1.20.
+        numpy_dep = "numpy >= 1.19"
     setup_spec.extras = {
         "data": [
-            "pandas",
+            numpy_dep,
+            pandas_dep,
             "pyarrow >= 6.0.1, < 7.0.0",
             "fsspec",
         ],
@@ -224,13 +233,7 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1, < 0.14.0",
             "smart_open",
         ],
-        "serve": [
-            "uvicorn==0.16.0",
-            "requests",
-            "starlette",
-            "fastapi",
-            "aiorwlock",
-        ],
+        "serve": ["uvicorn==0.16.0", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
         "k8s": ["kubernetes", "urllib3"],
         "observability": [
@@ -239,12 +242,6 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0",
         ],
     }
-
-    if sys.version_info >= (3, 7):
-        # Numpy dropped python 3.6 support in 1.20.
-        setup_spec.extras["data"].append("numpy >= 1.20")
-    else:
-        setup_spec.extras["data"].append("numpy >= 1.19")
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
@@ -294,7 +291,8 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0, <= 8.0.4",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.28.1, <= 1.43.0",
+        "grpcio >= 1.28.1, <= 1.43.0; python_version < '3.10'",
+        "grpcio >= 1.42.0, <= 1.43.0; python_version >= '3.10'",
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",

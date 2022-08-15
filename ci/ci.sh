@@ -135,6 +135,7 @@ test_core() {
 prepare_docker() {
     rm "${WORKSPACE_DIR}"/python/dist/* ||:
     pushd "${WORKSPACE_DIR}/python"
+    pip install -e . --verbose
     python setup.py bdist_wheel
     tmp_dir="/tmp/prepare_docker_$RANDOM"
     mkdir -p $tmp_dir
@@ -217,7 +218,6 @@ test_python() {
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
-      --test_env=WINDIR \
       --test_output=streamed \
       -- \
       ${test_shard_selection};
