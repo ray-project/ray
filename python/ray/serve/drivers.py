@@ -126,6 +126,14 @@ class DAGDriver:
                 return await self.predict(inp)
 
     async def __call__(self, request: starlette.requests.Request):
+        if not isinstance(request, starlette.requests.Request):
+            raise RayServeException(
+                f"DAGDriver received input of type {type(request)} on "
+                "its `__call__` method but it expects an HTTP request. "
+                "You should use the `predict` method to send Python requests. "
+                "You can call `handle.predict.remote(...)` or "
+                "`handle.predict_with_route.remote(route_path, ...)`."
+            )
         # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
         # generate FastAPI on the fly, we should find a way to unify the two.
         sender = ASGIHTTPSender()
