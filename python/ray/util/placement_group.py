@@ -257,7 +257,12 @@ def get_placement_group(
     """
     if not placement_group_name:
         if placement_group_id:
-            return PlacementGroup(PlacementGroupID(hex_to_binary(placement_group_id)))
+            if ray._private.state.state.placement_group_table(placement_group_id):
+                return PlacementGroup(
+                    PlacementGroupID(hex_to_binary(placement_group_id))
+                )
+            else:
+                raise ValueError("Please supply a valid id to get_placement_group")
         raise ValueError("Please supply a non-empty value to get_placement_group")
     worker = ray._private.worker.global_worker
     worker.check_connected()
