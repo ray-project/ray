@@ -1,8 +1,12 @@
-from typing import TYPE_CHECKING, Optional, Type
+from typing import TYPE_CHECKING, Optional, Type, Union, Dict
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
-from ray.train.lightning._lightning_utils import load_checkpoint
+from ray.train.lightning._lightning_utils import (
+    load_checkpoint,
+    MODEL_PARAMS_KEY,
+    MODEL_CLS_KEY,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -23,6 +27,7 @@ class LightningCheckpoint(Checkpoint):
     def from_model(
         cls,
         model: "LightningModule",
+        model_params: Dict,
         *,
         preprocessor: Optional["Preprocessor"] = None,
     ) -> "LightningCheckpoint":
@@ -30,11 +35,12 @@ class LightningCheckpoint(Checkpoint):
         module.
 
         Args:
-            model: The Torch model to store in the checkpoint.
+            model: The LightningModule to store in the checkpoint.
+            model_params: The kwargs to be passed to ``model``'s initialization.
             preprocessor: A fitted preprocessor to be applied before inference.
 
         Returns:
-            An :py:class:`TorchCheckpoint` containing the specified model.
+            An :py:class:`LightningCheckpoint` containing the specified model.
 
         Examples:
             >>> from ray.train.lightning import LightningCheckpoint
@@ -43,14 +49,28 @@ class LightningCheckpoint(Checkpoint):
             >>> model = LightningModule()
             >>> checkpoint = LightningCheckpoint.from_model(model)
         """
-        checkpoint = cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model})
+        checkpoint = cls.from_dict(
+            {
+                PREPROCESSOR_KEY: preprocessor,
+                MODEL_KEY: model.state_dict(),
+                MODEL_PARAMS_KEY: model_params,
+                MODEL_CLS_KEY: model.__class__,
+            }
+        )
         return checkpoint
 
-    def get_model(self, model: Optional[Type["LightningModule"]] = None) -> "LightningModule":
+    def get_model(
+        self, model: Union[Type["LightningModule"], None]
+    ) -> "LightningModule":
         """Retrieve the model stored in this checkpoint.
 
+        If the checkpoint was created using
+        ``LightningCheckpoint.from_checkpoint(ckpt)`` then ``model`` can be ``None``.
+        If the checkpoint was created from the result of ``trainer.fit()`` then you
+        should pass a reference to your LightningModule subclass.
+
         Args:
-            model: The state dict will be loaded using the ``model`` class.
+            model: The class to which the state dict will be loaded.
         """
         model, _ = load_checkpoint(self, model)
         return model

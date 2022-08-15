@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional, Dict, Type, Tuple, Any
+from typing import TYPE_CHECKING, Optional, Dict, Type, Tuple, Any, Union
 from inspect import isclass
 
 import pytorch_lightning
@@ -12,6 +12,9 @@ from ray.data.preprocessor import Preprocessor
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
     import argparse
+
+MODEL_PARAMS_KEY = f"{MODEL_KEY}_params"
+MODEL_CLS_KEY = f"{MODEL_KEY}_cls"
 
 
 class TorchIterableDataset(IterableDataset):
@@ -75,16 +78,22 @@ class TrainReportCheckpointLogger(pytorch_lightning.loggers.Logger):
         checkpoint = Checkpoint.from_dict(
             {
                 MODEL_KEY: self._model.state_dict(),
-                f"{MODEL_KEY}_params": self._model_params,
+                MODEL_PARAMS_KEY: self._model_params,
             }
         )
         session.report(metrics, checkpoint=checkpoint)
 
 
 def load_checkpoint(
-    checkpoint: Checkpoint, pl_module: Type[pytorch_lightning.LightningModule]
+    checkpoint: Checkpoint,
+    pl_module: Union[Type[pytorch_lightning.LightningModule], None],
 ) -> Tuple[Any, Optional["Preprocessor"]]:
     """Load a Ray Train Checkpoint.
+
+    If the checkpoint was created using
+    ``LightningCheckpoint.from_checkpoint(ckpt)`` then ``model`` can be ``None``.
+    If the checkpoint was created from the result of ``trainer.fit()`` then you
+    should pass a reference to your LightningModule subclass.
 
     Args:
         checkpoint: The checkpoint to load the weights and
@@ -104,8 +113,18 @@ def load_checkpoint(
                 f"Checkpoint. Make sure this key exists when saving the "
                 f"checkpoint in ``LightningTrainer``."
             )
+    if pl_module is None:
+        if MODEL_CLS_KEY in checkpoint_dict:
+            pl_module = checkpoint_dict[MODEL_CLS_KEY]
+        else:
+            raise ValueError(
+                "You must pass `pl_module` to `load_checkpoint` (or `model` to "
+                f"`get_model`) if your checkpoint does not have the {MODEL_CLS_KEY} "
+                "key in the checkpoint (e.g., if the checkpoint was saved during "
+                "`trainer.fit()`)."
+            )
     if isclass(pl_module):
-        model_params = checkpoint_dict[f"{MODEL_KEY}_params"]
+        model_params = checkpoint_dict[MODEL_PARAMS_KEY]
         pl_module = pl_module(**model_params)
     pl_module.load_state_dict(checkpoint_dict[MODEL_KEY])
     return pl_module, preprocessor
