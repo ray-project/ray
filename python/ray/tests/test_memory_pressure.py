@@ -77,7 +77,7 @@ def has_metric_tagged_with_value(tag, value) -> bool:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_worker(shutdown_only):
+def test_memory_pressure_kill_actor(shutdown_only):
     memory_usage_threshold_fraction = 0.7
     memory_monitor_interval_ms = 100
     metrics_report_interval_ms = 100
@@ -106,6 +106,37 @@ def test_memory_pressure_kill_worker(shutdown_only):
         timeout=10,
         retry_interval_ms=100,
         tag="MemoryManager.ActorEviction.Total",
+        value=1.0,
+    )
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_memory_pressure_kill_task(shutdown_only):
+    memory_usage_threshold_fraction = 0.7
+    memory_monitor_interval_ms = 100
+    metrics_report_interval_ms = 100
+
+    ray.init(
+        num_cpus=1,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
+            "memory_monitor_interval_ms": memory_monitor_interval_ms,
+            "metrics_report_interval_ms": metrics_report_interval_ms,
+        },
+    )
+
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.95)
+    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+        ray.get(no_retry.remote(bytes_to_alloc))
+
+    wait_for_condition(
+        has_metric_tagged_with_value,
+        timeout=10,
+        retry_interval_ms=100,
+        tag="MemoryManager.TaskEviction.Total",
         value=1.0,
     )
 
