@@ -2,26 +2,17 @@
 
 .. _core-walkthrough:
 
+What is Ray Core?
+=================
+
+Ray Core provides a small number of core primitives (i.e., tasks, actors, objects) for building and scaling distributed applications. Below we'll walk through simple examples that show you how to turn your functions and classes easily into Ray tasks and actors, and how to work with Ray objects.
+
 Getting Started
-====================
+---------------
 
-This tutorial shows you how to estimate the value of π using a `Monte Carlo method <https://en.wikipedia.org/wiki/Monte_Carlo_method>`_
-that works by randomly sampling points within a 2x2 square.
-We can use the proportion of the points that are contained within the unit circle centered at the origin
-to estimate the ratio of the area of the circle to the area of the square.
-Given that we know the true ratio to be π/4, we can multiply our estimated ratio by 4 to approximate the value of π.
-The more points that we sample to calculate this approximation, the closer the value should be to the true value of π.
+To get started, install Ray via ``pip install -U ray``. See :ref:`Installing Ray <installation>` for more installation options. The following few sections will walk through the basics of using Ray Core.
 
-.. image:: images/monte_carlo_pi.png
-
-We use Ray :ref:`tasks <ray-remote-functions>` to distribute the work of sampling and Ray :ref:`actors <ray-remote-classes>` to track the progress of these distributed sampling tasks.
-The code can run on your laptop and can be easily scaled to large :ref:`clusters <cluster-index>` to increase the accuracy of the estimate.
-
-To get started, install Ray via ``pip install -U ray``. See :ref:`Installing Ray <installation>` for more installation options.
-
-Starting Ray
-------------
-First, let's include all modules needed for this tutorial and start a local Ray cluster with :ref:`ray.init() <ray-init-ref>`:
+The first step is to import and initialize Ray:
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
@@ -32,109 +23,44 @@ First, let's include all modules needed for this tutorial and start a local Ray 
 
   In recent versions of Ray (>=1.5), ``ray.init()`` is automatically called on the first use of a Ray remote API.
 
+Running a Task
+--------------
 
-Defining the Progress Actor
----------------------------
-Next, we define a Ray actor that can be called by sampling tasks to update progress.
-Ray actors are essentially stateful services that anyone with an instance (a handle) of the actor can call its methods.
-
-.. literalinclude:: doc_code/getting_started.py
-    :language: python
-    :start-after: __defining_actor_start__
-    :end-before: __defining_actor_end__
-
-We define a Ray actor by decorating a normal Python class with :ref:`ray.remote() <ray-remote-ref>`.
-The progress actor has ``report_progress()`` method that will be called by sampling tasks to update their progress individually
-and ``get_progress()`` method to get the overall progress.
-
-Defining the Sampling Task
---------------------------
-After our actor is defined, we now define a Ray task that does the sampling up to ``num_samples`` and returns the number of samples that are inside the circle.
-Ray tasks are stateless functions. They execute asynchronously, and run in parallel.
+Ray lets you run ordinary functions as remote tasks in the cluster. To do this, you decorate your function with ``@ray.remote`` to declare that you want to run this function remotely.
+Then, you call that function with ``.remote()`` instead of calling it normally.
+This remote call yields a future, a so-called Ray *object reference*, that you can then fetch with ``ray.get``:
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
-    :start-after: __defining_task_start__
-    :end-before: __defining_task_end__
+    :start-after: __running_task_start__
+    :end-before: __running_task_end__
 
-To convert a normal Python function as a Ray task, we decorate the function with :ref:`ray.remote() <ray-remote-ref>`.
-The sampling task takes a progress actor handle as an input and reports progress to it.
-The above code shows an example of calling actor methods from tasks.
+Calling an Actor
+----------------
 
-Creating a Progress Actor
--------------------------
-Once the actor is defined, we can create an instance of it.
-
-.. literalinclude:: doc_code/getting_started.py
-    :language: python
-    :start-after: __creating_actor_start__
-    :end-before: __creating_actor_end__
-
-To create an instance of the progress actor, simply call ``ActorClass.remote()`` method with arguments to the constructor.
-This creates and runs the actor on a remote worker process.
-The return value of ``ActorClass.remote(...)`` is an actor handle that can be used to call its methods.
-
-Executing Sampling Tasks
-------------------------
-Now the task is defined, we can execute it asynchronously.
-
-.. literalinclude:: doc_code/getting_started.py
-    :language: python
-    :start-after: __executing_task_start__
-    :end-before: __executing_task_end__
-
-We execute the sampling task by calling ``remote()`` method with arguments to the function.
-This immediately returns an ``ObjectRef`` as a future
-and then executes the function asynchronously on a remote worker process.
-
-Calling the Progress Actor
---------------------------
-While sampling tasks are running, we can periodically query the progress by calling the actor ``get_progress()`` method.
+Ray provides actors to allow you to parallelize computation across multiple actor instances. When you instantiate a class that is a Ray actor, Ray will start a remote instance of that class in the cluster. This actor can then execute remote method calls and maintain its own internal state:
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
     :start-after: __calling_actor_start__
     :end-before: __calling_actor_end__
 
-To call an actor method, use ``actor_handle.method.remote()``.
-This invocation immediately returns an ``ObjectRef`` as a future
-and then executes the method asynchronously on the remote actor process.
-To fetch the actual returned value of ``ObjectRef``, we use the blocking :ref:`ray.get() <ray-get-ref>`.
+The above covers very basic actor usage. For a more in-depth example, including using both tasks and actors together, check out :ref:`monte-carlo-pi`.
 
-Calculating π
--------------
-Finally, we get number of samples inside the circle from the remote sampling tasks and calculate π.
+Passing an Object
+-----------------
+
+As seen above, Ray stores task and actor call results in its :ref:`distributed object store <objects-in-ray>`, returning *object references* that can be later retrieved. Object references can also be created explicitly via ``ray.put``, and object references can be passed to tasks as substitutes for argument values:
 
 .. literalinclude:: doc_code/getting_started.py
     :language: python
-    :start-after: __calculating_pi_start__
-    :end-before: __calculating_pi_end__
-
-As we can see from the above code, besides a single ``ObjectRef``, :ref:`ray.get() <ray-get-ref>` can also take a list of ``ObjectRef`` and return a list of results.
-
-If you run this tutorial, you will see output like:
-
-.. code-block:: text
-
- Progress: 0%
- Progress: 15%
- Progress: 28%
- Progress: 40%
- Progress: 50%
- Progress: 60%
- Progress: 70%
- Progress: 80%
- Progress: 90%
- Progress: 100%
- Estimated value of π is: 3.1412202
+    :start-after: __passing_object_start__
+    :end-before: __passing_object_end__
 
 Next Steps
 ----------
-Check out Ray core :ref:`key concepts <core-key-concepts>` and related user guides.
 
-.. tip::
-
-    We suggest reading through the walkthrough for each section prior to browsing more deeply into the materials.
+Learn more about the Ray core :ref:`key concepts <core-key-concepts>` with the following user guides:
 
 .. panels::
     :container: container pb-4
