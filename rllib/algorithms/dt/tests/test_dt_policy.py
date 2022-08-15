@@ -1,0 +1,401 @@
+import unittest
+from typing import Dict
+
+import gym
+import numpy as np
+
+import ray
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from rllib.algorithms.dt.dt_torch_model import DTTorchModel
+from rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
+
+tf1, tf, tfv = try_import_tf()
+torch, nn = try_import_torch()
+
+
+def _assert_outputs_equal(outputs):
+    for i in range(1, len(outputs)):
+        for key in outputs[0].keys():
+            assert np.allclose(outputs[0][key], outputs[i][key])
+
+
+def _assert_outputs_not_equal(outputs):
+    for i in range(1, len(outputs)):
+        for key in outputs[0].keys():
+            assert not np.allclose(outputs[0][key], outputs[i][key])
+
+
+def _default_config():
+    """Base config to use."""
+    return {
+        "model": {
+            "max_seq_len": 4,
+        },
+        "embed_dim": 32,
+        "num_layers": 2,
+        "horizon": 10,
+        "num_heads": 2,
+        "embed_pdrop": 0.1,
+        "resid_pdrop": 0.1,
+        "attn_pdrop": 0.1,
+        "use_obs_output": False,
+        "use_return_output": False,
+        "framework": "torch",
+        "lr": 1e-3,
+        "lr_schedule": None,
+        "optimizer": {
+            "weight_decay": 1e-4,
+            "betas": [0.9, 0.99],
+        },
+        "target_return": 200.0,
+        "num_gpus": 0,
+        "_fake_gpus": None,
+    }
+
+
+def _assert_input_dict_equals(d1: Dict[str, np.ndarray], d2: Dict[str, np.ndarray]):
+    for key in d1.keys():
+        assert key in d2.keys()
+
+    for key in d2.keys():
+        assert key in d1.keys()
+
+    for key in d1.keys():
+        assert isinstance(d1[key], np.ndarray), "input_dict should only be numpy array."
+        assert isinstance(d2[key], np.ndarray), "input_dict should only be numpy array."
+        assert d1[key].shape == d2[key].shape, "input_dict are of different shape."
+        assert np.allclose(d1[key], d2[key]), "input_dict values are not equal."
+
+
+class TestDTPolicy(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def test_torch_postprocess_trajectory(self):
+        """Test postprocess_trajectory"""
+        config = _default_config()
+
+        observation_space = gym.spaces.Box(-1.0, 1.0, shape=(4,))
+        action_space = gym.spaces.Box(-1.0, 1.0, shape=(3,))
+
+        # Create policy
+        policy = DTTorchPolicy(observation_space, action_space, config)
+
+        # Generate input_dict
+        sample_batch = SampleBatch(
+            {
+                SampleBatch.REWARDS: np.array([1.0, 2.0, 1.0, 1.0]),
+                SampleBatch.EPS_ID: np.array([0, 0, 0, 0]),
+            }
+        )
+
+        # Do postprocess trajectory to calculate rtg
+        sample_batch = policy.postprocess_trajectory(sample_batch)
+
+        # Assert that rtg is correctly calculated
+        assert SampleBatch.RETURNS_TO_GO in sample_batch, (
+            "returns_to_go isn't part of the batch.")
+        assert np.allclose(
+            sample_batch[SampleBatch.RETURNS_TO_GO],
+            np.array([5.0, 4.0, 2.0, 1.0]),
+        ), "returns_to_go isn't calculated correctly."
+
+    def test_torch_input_dict(self):
+        """Test inference input_dict methods
+
+        This is a minimal version the test in test_dt.py.
+        The shapes of the input_dict might be confusing but it makes sense in
+        context of what the function is supposed to do.
+        Check action_distribution_fn for an explanation.
+        """
+        config = _default_config()
+
+        observation_space = gym.spaces.Box(-1.0, 1.0, shape=(3,))
+        action_spaces = [
+            gym.spaces.Box(-1.0, 1.0, shape=(1,)),
+            gym.spaces.Discrete(4),
+        ]
+
+        for action_space in action_spaces:
+            # Create policy
+            policy = DTTorchPolicy(observation_space, action_space, config)
+
+            # initial obs and input_dict
+            obs = np.array([0.0, 1.0, 2.0])
+            input_dict = policy.get_initial_input_dict(obs)
+
+            # Check input_dict matches what it should be
+            target_input_dict = SampleBatch(
+                {
+                    SampleBatch.OBS: np.array(
+                        [
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0],
+                            [0.0, 1.0, 2.0],
+                        ],
+                        dtype=np.float32,
+                    ),
+                    SampleBatch.ACTIONS: (
+                        np.array([[0.0], [0.0], [0.0]], dtype=np.float32)
+                        if isinstance(action_space, gym.spaces.Box)
+                        else np.array([0, 0, 0], dtype=np.int32)
+                    ),
+                    SampleBatch.RETURNS_TO_GO: np.array([0.0, 0.0, 0.0], dtype=np.float32),
+                    SampleBatch.REWARDS: np.zeros((), dtype=np.float32),
+                    SampleBatch.T: np.array([-1, -1, -1], dtype=np.int32),
+                }
+            )
+            _assert_input_dict_equals(input_dict, target_input_dict)
+
+            # Get next input_dict
+            input_dict = policy.get_next_input_dict(
+                input_dict,
+                action=(
+                    np.asarray([1.0], dtype=np.float32)
+                    if isinstance(action_space, gym.spaces.Box)
+                    else np.asarray(1, dtype=np.int32)
+                ),
+                reward=1.0,
+                next_obs=np.array([3.0, 4.0, 5.0]),
+                extra={
+                    SampleBatch.RETURNS_TO_GO: config["target_return"],
+                },
+            )
+
+            # Check input_dict matches what it should be
+            target_input_dict = SampleBatch(
+                {
+                    SampleBatch.OBS: np.array(
+                        [
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0],
+                            [0.0, 1.0, 2.0],
+                            [3.0, 4.0, 5.0],
+                        ],
+                        dtype=np.float32,
+                    ),
+                    SampleBatch.ACTIONS: (
+                        np.array([[0.0], [0.0], [1.0]], dtype=np.float32)
+                        if isinstance(action_space, gym.spaces.Box)
+                        else np.array([0, 0, 1], dtype=np.int32)
+                    ),
+                    SampleBatch.RETURNS_TO_GO: np.array([0.0, 0.0, config["target_return"]], dtype=np.float32),
+                    SampleBatch.REWARDS: np.asarray(1.0, dtype=np.float32),
+                    SampleBatch.T: np.array([-1, -1, 0], dtype=np.int32),
+                }
+            )
+            _assert_input_dict_equals(input_dict, target_input_dict)
+
+    def test_torch_action(self):
+        """Test policy's action_distribution_fn and extra_action_out methods by
+        calling compute_actions_from_input_dict which works those two methods
+        in conjunction.
+        """
+        config = _default_config()
+
+        observation_space = gym.spaces.Box(-1.0, 1.0, shape=(3,))
+        action_spaces = [
+            gym.spaces.Box(-1.0, 1.0, shape=(1,)),
+            gym.spaces.Discrete(4),
+        ]
+
+        for action_space in action_spaces:
+            # Create policy
+            policy = DTTorchPolicy(observation_space, action_space, config)
+
+            # input_dict for initial observation
+            input_dict = SampleBatch(
+                {
+                    SampleBatch.OBS: np.array(
+                        [[
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0],
+                            [0.0, 1.0, 2.0],
+                        ]],
+                        dtype=np.float32,
+                    ),
+                    SampleBatch.ACTIONS: (
+                        np.array([[[0.0], [0.0], [0.0]]], dtype=np.float32)
+                        if isinstance(action_space, gym.spaces.Box)
+                        else np.array([[0, 0, 0]], dtype=np.int32)
+                    ),
+                    SampleBatch.RETURNS_TO_GO: np.array([[0.0, 0.0, 0.0]],
+                                                        dtype=np.float32),
+                    SampleBatch.REWARDS: np.array([0.0], dtype=np.float32),
+                    SampleBatch.T: np.array([[-1, -1, -1]], dtype=np.int32),
+                }
+            )
+
+            # Run compute_actions_from_input_dict
+            actions, _, extras = policy.compute_actions_from_input_dict(
+                input_dict,
+                explore=False,
+                timestep=None,
+            )
+
+            # Check actions
+            assert actions.shape == (1, *action_space.shape), (
+                "actions has incorrect shape."
+            )
+
+            # Check extras
+            assert SampleBatch.RETURNS_TO_GO in extras, (
+                "extras should contain returns_to_go."
+            )
+            assert extras[SampleBatch.RETURNS_TO_GO].shape == (1,), (
+                "extras['returns_to_go'] has incorrect shape."
+            )
+            assert np.isclose(
+                extras[SampleBatch.RETURNS_TO_GO],
+                np.asarray([config["target_return"]], dtype=np.float32),
+            ), "extras['returns_to_go'] should contain target_return."
+
+            # input_dict for non-initial observation
+            input_dict = SampleBatch(
+                {
+                    SampleBatch.OBS: np.array(
+                        [[
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0],
+                            [0.0, 1.0, 2.0],
+                            [3.0, 4.0, 5.0],
+                        ]],
+                        dtype=np.float32,
+                    ),
+                    SampleBatch.ACTIONS: (
+                        np.array([[[0.0], [0.0], [1.0]]], dtype=np.float32)
+                        if isinstance(action_space, gym.spaces.Box)
+                        else np.array([[0, 0, 1]], dtype=np.int32)
+                    ),
+                    SampleBatch.RETURNS_TO_GO: np.array([
+                        [0.0, 0.0, config["target_return"]]
+                    ], dtype=np.float32),
+                    SampleBatch.REWARDS: np.array([10.0], dtype=np.float32),
+                    SampleBatch.T: np.array([[-1, -1, 0]], dtype=np.int32),
+                }
+            )
+
+            # Run compute_actions_from_input_dict
+            actions, _, extras = policy.compute_actions_from_input_dict(
+                input_dict,
+                explore=False,
+                timestep=None,
+            )
+
+            # Check actions
+            assert actions.shape == (1, *action_space.shape), (
+                "actions has incorrect shape."
+            )
+
+            # Check extras
+            assert SampleBatch.RETURNS_TO_GO in extras, (
+                "extras should contain returns_to_go."
+            )
+            assert extras[SampleBatch.RETURNS_TO_GO].shape == (1,), (
+                "extras['returns_to_go'] has incorrect shape."
+            )
+            assert np.isclose(
+                extras[SampleBatch.RETURNS_TO_GO],
+                np.asarray([config["target_return"] - 10.0], dtype=np.float32),
+            ), "extras['returns_to_go'] should contain target_return."
+
+    def test_loss(self):
+        """Test loss function."""
+        config = _default_config()
+        config["embed_pdrop"] = 0
+        config["resid_pdrop"] = 0
+        config["attn_pdrop"] = 0
+        config["model"]["max_seq_len"] = 4
+        config["embed_dim"] = 1
+        config["num_heads"] = 1
+        config["num_layers"] = 2
+        config["horizon"] = 10
+
+        observation_space = gym.spaces.Box(-1.0, 1.0, shape=(3,))
+        action_spaces = [
+            gym.spaces.Box(-1.0, 1.0, shape=(1,)),
+            # gym.spaces.Discrete(4),
+        ]
+
+        for action_space in action_spaces:
+            # Create policy
+            policy = DTTorchPolicy(observation_space, action_space, config)
+
+            # Run loss functions on batches with different items in the mask to make
+            # sure the masks are working and making the loss the same.
+            batch1 = SampleBatch(
+                {
+                    SampleBatch.OBS: np.array(
+                        [[
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0],
+                            [0.0, 1.0, 2.0],
+                            [3.0, 4.0, 5.0],
+                        ]],
+                        dtype=np.float32,
+                    ),
+                    SampleBatch.ACTIONS: (
+                        np.array([[[0.0], [0.0], [1.0], [0.5]]], dtype=np.float32)
+                        if isinstance(action_space, gym.spaces.Box)
+                        else np.array([[0, 0, 1, 3]], dtype=np.int32)
+                    ),
+                    SampleBatch.RETURNS_TO_GO: np.array([
+                        [[0.0], [0.0], [100.0], [90.0], [80.0]]
+                    ], dtype=np.float32),
+                    SampleBatch.T: np.array([[0, 0, 0, 1]], dtype=np.int32),
+                    SampleBatch.ATTENTION_MASKS: np.array([
+                        [0.0, 0.0, 1.0, 1.0]
+                    ], dtype=np.float32),
+                }
+            )
+
+            batch2 = SampleBatch(
+                {
+                    SampleBatch.OBS: np.array(
+                        [[
+                            [1.0, 1.0, -1.0],
+                            [1.0, 10.0, 12.0],
+                            [0.0, 1.0, 2.0],
+                            [3.0, 4.0, 5.0],
+                        ]],
+                        dtype=np.float32,
+                    ),
+                    SampleBatch.ACTIONS: (
+                        np.array([[[1.0], [-0.5], [1.0], [0.5]]], dtype=np.float32)
+                        if isinstance(action_space, gym.spaces.Box)
+                        else np.array([[2, 1, 1, 3]], dtype=np.int32)
+                    ),
+                    SampleBatch.RETURNS_TO_GO: np.array([
+                        [[200.0], [-10.0], [100.0], [90.0], [80.0]]
+                    ], dtype=np.float32),
+                    SampleBatch.T: np.array([[9, 3, 1, 1]], dtype=np.int32),
+                    SampleBatch.ATTENTION_MASKS: np.array([
+                        [0.0, 0.0, 1.0, 1.0]
+                    ], dtype=np.float32),
+                }
+            )
+
+            loss1 = policy.loss(policy.model, policy.dist_class, batch1)
+            loss2 = policy.loss(policy.model, policy.dist_class, batch2)
+
+            loss1 = loss1.detach().cpu().item()
+            loss2 = loss2.detach().cpu().item()
+
+            assert np.isclose(loss1, loss2), "Masks are not working for losses."
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

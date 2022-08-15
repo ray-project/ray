@@ -105,10 +105,22 @@ class CausalSelfAttention(nn.Module):
         # causal self-attention; Self-attend:
         # (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
-        if attention_masks is not None:
-            att = att + attention_masks
+        if attention_masks is None:
+            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
+        else:
+            att = att.masked_fill(
+                torch.logical_or(
+                    self.bias[:, :, :T, :T] == 0,
+                    attention_masks[:, :, :T, :T] < 0.5,
+                ),
+                float("-inf"),
+            )
+        # if attention_masks is not None:
+        #     att = att + attention_masks
+        # att = att.masked_fill(attention_masks[:, :, :T, :T] == 0.0, float("-inf"))
         att = F.softmax(att, dim=-1)
+        if attention_masks is not None:
+            att = torch.nan_to_num(att, nan=0.0)
         att = self.attn_dropout(att)
         y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         # re-assemble all head outputs side by side
@@ -278,8 +290,8 @@ class GPT(nn.Module):
             # for masked positions. Since we are adding it to the raw scores
             # before the softmax, this is effectively the same as removing
             # these entirely.
-            attention_masks = attention_masks.to(dtype=input_embeds.dtype)
-            attention_masks = (1.0 - attention_masks) * -1e9
+            # attention_masks = attention_masks.to(dtype=input_embeds.dtype)
+            # attention_masks = (1.0 - attention_masks) * -1e9
 
         # forward the GPT model itself
         x = self.transformer.drop(input_embeds)
