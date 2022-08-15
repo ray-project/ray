@@ -46,6 +46,13 @@ The result of `deployment_handle.remote()` can also be passed directly as an arg
 :language: python
 ```
 
+:::{note}
+Different metrics are collected when Deployments are called
+via Python `ServeHandles` and when they are called via HTTP.
+
+See the [Ray Serve monitoring documentation](serve-monitoring) for more details.
+:::
+
 ## Note about ray.ObjectRef
 
 `ray.ObjectRef` corresponds to the result of a request submission. To retrieve the result, you can use the synchronous Ray Core API `ray.get(ref)` or the async API `await ref`. To wait for the result to be available without retrieving it, you can use the synchronous API `ray.wait([ref])` or the async API `await asyncio.wait([ref])`. You can mix and match these calls, but we recommend using async APIs to increase concurrency.
@@ -59,10 +66,3 @@ In both types of ServeHandle, you can call a specific method by using the `.meth
 :end-before: __end_handle_method__
 :language: python
 ```
-
-:::{note}
-Different metrics are collected when Deployments are called
-via Python `ServeHandles` and when they are called via HTTP.
-
-See the [Ray Serve monitoring documentation](serve-monitoring) for more details.
-:::
