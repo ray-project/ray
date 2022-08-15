@@ -152,7 +152,7 @@ class JaxTrainer(DataParallelTrainer):
         # of on the extra cpu nodes, then `STRICT_SPREAD` will hang on for the resources
         if "PACK" in scaling_config.placement_strategy:
             scaling_config.placement_strategy = "SPREAD"
-            logger.info(
+            logger.warning(
                 "In JaxTrainer, the `placement_stategy` need to be `SPREAD`."
                 " Placement strategy is now changed to `SPREAD`"
             )
