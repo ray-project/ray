@@ -474,7 +474,6 @@ class AWSNodeProvider(NodeProvider):
                         "create_instances: Attempt failed with {}, retrying.", exc
                     )
 
-
         return created_nodes_dict
 
     def terminate_node(self, node_id):
