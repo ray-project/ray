@@ -247,7 +247,7 @@
     cluster_compute: compute_gpu_4x4.yaml
 
   run:
-    timeout: 3600
+    timeout: 4800
     script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 120 --num-workers 16 --cpus-per-worker 4 --batch-size 1024 --use-gpu
 
     wait_for_nodes:
@@ -263,6 +263,7 @@
       cluster_compute: compute_gpu_2x2.yaml
 
     run:
+      timeout: 3600
       script: python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 60 --num-workers 4 --cpus-per-worker 4 --batch-size 512 --use-gpu
 
       wait_for_nodes:
