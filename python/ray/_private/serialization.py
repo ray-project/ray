@@ -7,6 +7,7 @@ import ray.cloudpickle as pickle
 from ray._private import ray_constants
 from ray._private.gcs_utils import ErrorType
 from ray._raylet import (
+    ObjectRefGenerator,
     MessagePackSerializedObject,
     MessagePackSerializer,
     Pickle5SerializedObject,
