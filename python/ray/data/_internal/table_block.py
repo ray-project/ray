@@ -1,9 +1,9 @@
 import collections
-from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING, Optional
+from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
 
 import numpy as np
 
-from ray.data.block import Block, BlockAccessor, KeyFn
+from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
@@ -122,15 +122,6 @@ class TableBlockAccessor(BlockAccessor):
     @staticmethod
     def _build_tensor_row(row: TableRow) -> np.ndarray:
         raise NotImplementedError
-
-    def get_keys(self, key: KeyFn) -> Optional[np.ndarray]:
-        if key is None:
-            return None
-        # When non None, the key must be a str for table block.
-        assert isinstance(key, str)
-        keys = self._table[key].to_numpy()
-        assert keys.ndim == 1
-        return keys
 
     def to_native(self) -> Block:
         if self.is_tensor_wrapper():

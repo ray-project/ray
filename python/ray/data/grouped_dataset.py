@@ -1,4 +1,4 @@
-from typing import Any, Callable, Generic, List, Tuple, Union
+from typing import Any, Callable, Generic, List, Tuple, Union, Optional
 
 import numpy as np
 
@@ -251,10 +251,27 @@ class GroupedDataset(Generic[T]):
         else:
             sorted_ds = self._dataset.repartition(1)
 
+        def get_keys(batch, accessor) -> Optional[np.ndarray]:
+            import pandas as pd
+            import pyarrow as pa
+
+            if self._key is None:
+                return None
+            if isinstance(batch, pd.DataFrame) or isinstance(batch, pa.Table):
+                assert isinstance(self._key, str)
+                return batch[self._key].to_numpy()
+            elif isinstance(batch, List):
+                assert callable(self._key)
+                return np.array([self._key(item) for item in accessor.iter_rows()])
+            else:
+                raise ValueError(
+                    f"Unsupported batch type for map_groups: {type(batch)}"
+                )
+
         # Returns the group boundaries.
-        def get_key_boundaries(block_accessor):
+        def get_key_boundaries(batch, block_accessor):
             boundaries = []
-            keys = block_accessor.get_keys(self._key)
+            keys = get_keys(batch, block_accessor)
             if keys is None:
                 return [block_accessor.num_rows()]
             start = 0
@@ -268,7 +285,7 @@ class GroupedDataset(Generic[T]):
         # map_batches() below.
         def group_fn(batch):
             block_accessor = BlockAccessor.for_block(batch)
-            boundaries = get_key_boundaries(block_accessor)
+            boundaries = get_key_boundaries(batch, block_accessor)
             builder = block_accessor.builder()
             start = 0
             for end in boundaries:
