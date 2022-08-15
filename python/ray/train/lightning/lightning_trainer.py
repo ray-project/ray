@@ -57,6 +57,10 @@ class LightningTrainer(TorchTrainer):
             ``lightning_module.__init__`` as kwargs.
         trainer_init_config: Configurations to pass into
             ``pytorch_lightning.Trainer.__init__`` as kwargs.
+        ddp_strategy_init_config: Configurations to pass into
+            ``pytorch_lightning.strategies.DDPStrategy.__init__`` as kwargs. Most users
+            should only set this to ``{"find_unused_parameters": False}`` or leave this
+            as-is.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
@@ -82,6 +86,7 @@ class LightningTrainer(TorchTrainer):
         *,
         lightning_module_init_config: Optional[Dict] = None,
         trainer_init_config: Optional[Dict] = None,
+        ddp_strategy_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
@@ -125,10 +130,13 @@ class LightningTrainer(TorchTrainer):
 
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
         self._validate_trainer_init_config(trainer_init_config)
-        trainer_init_config["_lightning_module"] = lightning_module
-        trainer_init_config[
-            "_lightning_module_init_config"
-        ] = lightning_module_init_config
+        trainer_init_config["_lightning_module"] = lightning_module or {}
+        trainer_init_config["_lightning_module_init_config"] = (
+            lightning_module_init_config or {}
+        )
+        trainer_init_config["_ddp_strategy_init_config"] = (
+            ddp_strategy_init_config or {}
+        )
 
         super().__init__(
             train_loop_per_worker=_lightning_train_loop_per_worker,
@@ -146,6 +154,7 @@ class LightningTrainer(TorchTrainer):
         reserved_keys = [
             "_lightning_module",
             "_lightning_module_init_config",
+            "_ddp_strategy_init_config",
         ]
         for reserved_key in reserved_keys:
             if reserved_key in trainer_init_config:
@@ -206,7 +215,10 @@ def _lightning_train_loop_per_worker(config):
 
     # config["num_nodes"] = num_nodes
     config["devices"] = session.get_world_size()  # TODO: still correct for num_nodes>1?
-    config["strategy"] = "ddp"
+    ddp_strategy_init_config = config.pop("_ddp_strategy_init_config")
+    config["strategy"] = pytorch_lightning.strategies.DDPStrategy(
+        **ddp_strategy_init_config
+    )
     checkpoint = session.get_checkpoint()
     if checkpoint:
         assert isinstance(checkpoint, Checkpoint)
@@ -220,5 +232,4 @@ def _lightning_train_loop_per_worker(config):
         ),
     ]
     trainer = pytorch_lightning.Trainer(**config)
-    # TODO: disable PTL checkpointing because we checkpoint in Train?
     trainer.fit(lightning_module_instance, datamodule=datamodule)

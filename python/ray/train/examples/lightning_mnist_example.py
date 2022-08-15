@@ -80,6 +80,7 @@ def train_lightning_mnist(num_workers=4, use_gpu=False, epochs=40):
         # for valid keywords to pass to `trainer_init_config`, see
         # https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init
         trainer_init_config={"max_epochs": epochs},
+        ddp_strategy_init_config={"find_unused_parameters": False},
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
         datasets={"train": train_dataset, "test": test_dataset},
     )
