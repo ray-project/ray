@@ -1,9 +1,9 @@
 from dataclasses import dataclass
+
 import torch.nn as nn
 
-from rllib2.models.torch.pi import PiOutput, Pi
+from rllib2.models.torch.pi import Pi, PiOutput
 from rllib2.utils import NNOutput
-
 
 """Examples of TorchRLModules in RLlib --> See under algorithms"""
 
@@ -38,24 +38,26 @@ Examples:
     
 """
 
+
 @dataclass
 class RLModuleConfig(NNConfig):
     """dataclass for holding the nested configuration parameters"""
+
     action_space: Optional[rllib.env.Space] = None
     obs_space: Optional[rllib.env.Space] = None
+
 
 @dataclass
 class RLModuleOutput(NNOutput):
     """dataclass for holding the outputs of RLModule forward_train() calls"""
+
     pass
 
 
 class TorchRLModule(nn.Module, ModelIO):
-
     def __init__(self, configs=None):
         super().__init__()
         self.configs = configs
-
 
     def __call__(self, batch, *args, explore=False, inference=False, **kwargs):
         if inference:
@@ -74,8 +76,9 @@ class TorchRLModule(nn.Module, ModelIO):
 
 
 class TorchMARLModule(TorchRLModule):
-
-    def forward(self, batch: MultiAgentBatch, explore=False, **kwargs) -> PiDistributionDict:
+    def forward(
+        self, batch: MultiAgentBatch, explore=False, **kwargs
+    ) -> PiDistributionDict:
         pass
 
     def forward_train(self, batch: MultiAgentBatch, **kwargs) -> RLModuleOutput:

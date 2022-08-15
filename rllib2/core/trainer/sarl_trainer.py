@@ -1,10 +1,11 @@
-
 import abc
-from typing import Any, Dict, Type, Optional
+from typing import Any, Dict, Optional, Type
+
 from torch.optim import Optimizer
 
+from rllib2.core import RLModule, RLTrainer
+
 from ray.rllib.policy.sample_batch import SampleBatch
-from rllib2.core import RLTrainer, RLModule
 
 
 class SARLTrainer(RLTrainer):
@@ -13,7 +14,6 @@ class SARLTrainer(RLTrainer):
     def __init__(self) -> None:
         super().__init__()
         self._model: RLModule
-    
 
     @abc.abstractmethod
     def compute_loss(self, batch: SampleBatch, fwd_out) -> Dict["LossID", "TensorType"]:
@@ -35,22 +35,16 @@ class SARLTrainer(RLTrainer):
 
     @abc.abstractmethod
     def compute_grads_and_apply_if_needed(
-        self,
-        batch: BatchType, 
-        fwd_out, 
-        loss_out,
-        apply_grad: bool=True,
-        **kwargs
+        self, batch: BatchType, fwd_out, loss_out, apply_grad: bool = True, **kwargs
     ) -> Any:
         raise NotImplementedError
-    
 
     def update(
-        self, 
-        batch: SampleBatch, 
-        fwd_kwargs: Optional[Dict[str, Any]]=None, 
-        loss_kwargs: Optional[Dict[str, Any]]=None, 
-        grad_kwargs: Optional[Dict[str, Any]]=None, 
+        self,
+        batch: SampleBatch,
+        fwd_kwargs: Optional[Dict[str, Any]] = None,
+        loss_kwargs: Optional[Dict[str, Any]] = None,
+        grad_kwargs: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> Any:
         fwd_kwargs = fwd_kwargs or {}
@@ -66,4 +60,3 @@ class SARLTrainer(RLTrainer):
         )
 
         return update_out
-

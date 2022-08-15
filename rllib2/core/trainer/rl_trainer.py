@@ -2,8 +2,8 @@ import abc
 
 from rllib2.core import RLModule
 
-class RLTrainer:
 
+class RLTrainer:
     def __init__(self) -> None:
         self._model: RLModule = ...
 

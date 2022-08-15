@@ -1,14 +1,14 @@
 import copy
+from dataclasses import dataclass
 from typing import Optional
 
 import torch
 import torch.nn as nn
 from torch import TensorType
-from dataclasses import dataclass
-
-from .encoder import Encoder, WithEncoderMixin
 
 from rllib2.utils import NNOutput
+
+from .encoder import Encoder, WithEncoderMixin
 
 """
 Example:
@@ -35,6 +35,7 @@ Example:
         during evaluation? 
 """
 
+
 @dataclass
 class QFunctionOutput(NNOutput):
     value: Optional[Sequence[TensorType]] = None
@@ -53,8 +54,8 @@ class EnsembleQFunctionOutput(NNOutput):
     def q_logits(self):
         return [q.q_logit for q in self.q_outputs]
 
-    def reduce(self, mode: str = 'min', dim=0):
-        if mode == 'min':
+    def reduce(self, mode: str = "min", dim=0):
+        if mode == "min":
             return self.values.min(dim)
         raise NotImplementedError
 
@@ -84,8 +85,7 @@ class QFunction(WithEncoderMixin):
         self.encoder = encoder
 
     def forward(self, batch: SampleBatch, **kwargs) -> QFunctionOutput:
-        """ Runs Q(S,A), Q({'obs': s, 'action': a}) -> Q(s, a)
-        """
+        """Runs Q(S,A), Q({'obs': s, 'action': a}) -> Q(s, a)"""
         pass
 
     def copy(self) -> "QFunction":
@@ -97,7 +97,7 @@ class QFunction(WithEncoderMixin):
         other_params = other.named_parameters()
         for name, param in self.named_parameters():
             if name not in other_params:
-                raise ValueError('Cannot copy because of parameter name mis-match')
+                raise ValueError("Cannot copy because of parameter name mis-match")
             other_param = other_params[name]
             param.data = polyak_coef * param.data + (1 - polyak_coef) * other_param.data
 
@@ -111,8 +111,8 @@ Some examples of pre-defined RLlib standard Qfunctions
 ########### Continuous action Q-network
 #######################################################
 
-class ContinuousQFunction(QFunction):
 
+class ContinuousQFunction(QFunction):
     def __init__(self, encoder: Optional[Encoder] = None) -> None:
         super().__init__(encoder)
         self.net = nn.Linear(self.encoder.output_dim, 1)
@@ -127,8 +127,8 @@ class ContinuousQFunction(QFunction):
 ########### Discrete action Q-network (DQN on atari)
 #######################################################
 
-class DiscreteQFunction(QFunction):
 
+class DiscreteQFunction(QFunction):
     def __init__(self, encoder: Optional[Encoder] = None) -> None:
         super().__init__(encoder)
         self.net = nn.Linear(self.encoder.output_dim, action_dim)
@@ -136,7 +136,7 @@ class DiscreteQFunction(QFunction):
     def forward(self, batch: SampleBatch, **kwargs) -> QFunctionOutput:
         state = self.encoder(batch).state
         q_logits = self.net(state)
-        actions = batch['action']
+        actions = batch["action"]
         q_values = q_logits[torch.arange(len(actions)), actions]
         return QFunctionOutput(values=[q_values], q_logits=[q_logits])
 
@@ -147,8 +147,9 @@ class DiscreteQFunction(QFunction):
 
 
 class EnsembleQFunction(QFunction):
-
-    def __init__(self, encoder: Optional[Encoder] = None, q_list: List[QFunction] = ()) -> None:
+    def __init__(
+        self, encoder: Optional[Encoder] = None, q_list: List[QFunction] = ()
+    ) -> None:
         super().__init__(encoder)
         self.qs = nn.ModuleList(q_list)
 
@@ -162,4 +163,3 @@ class EnsembleQFunction(QFunction):
             q_logits.append(q_out.q_logits[0])
 
         return QFunctionOutput(values=q_values, q_logits=q_logits)
-

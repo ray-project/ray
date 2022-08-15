@@ -1,4 +1,3 @@
-
 class PiDistribution:
 
     # all sampling operations preserve the backpropagation. So if that's not intended
@@ -15,8 +14,8 @@ class PiDistribution:
     def entropy(self):
         pass
 
-class DeterministicDist(PiDistribution):
 
+class DeterministicDist(PiDistribution):
     def behavioral_sample(self, shape):
         return self.action_logtis
 
@@ -31,7 +30,6 @@ class DeterministicDist(PiDistribution):
 
 
 class SquashedDeterministicDist(DeterministicDist):
-
     def behavioral_sample(self, shape):
         return super().behavioral_sample(shape).tanh()
 
@@ -40,7 +38,6 @@ class SquashedDeterministicDist(DeterministicDist):
 
 
 class PiDistributionDict(PiDistribution):
-
     def __init__(self, dist_mapping: Mapping[str, PiDistribution]):
         self._dist_mapping = dist_mapping
 

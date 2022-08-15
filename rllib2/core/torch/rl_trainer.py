@@ -1,13 +1,12 @@
-from typing import Type, Union
-from dataclasses import dataclass
-from typing import Dict
 import abc
+from dataclasses import dataclass
+from typing import Dict, Type, Union
 
 import torch
 from torch.optim import Optimizer
 
 from rllib2.data.sample_batch import SampleBatch
-from rllib2.models.torch.torch_rl_module import TorchRLModule, RLModuleConfig
+from rllib2.models.torch.torch_rl_module import RLModuleConfig, TorchRLModule
 
 
 @dataclass
@@ -17,9 +16,7 @@ class UnitTrainerConfig:
     optimizer_config: Optional[Dict[str, Any]] = None
 
 
-
 class TorchRLTrainer:
-
     def __init__(self, module, config):
         self._config = config
 
@@ -41,6 +38,7 @@ class TorchRLTrainer:
     @property
     def optimizers(self) -> Dict[str, Optimizer]:
         return self._optimizers
+
     #
     # @property
     # def default_rl_module(self) -> Union[str, Type[TorchRLModule]]:
@@ -62,7 +60,9 @@ class TorchRLTrainer:
     #     return rl_module
 
     @abc.abstractmethod
-    def loss(self, train_batch: SampleBatch, fwd_train_dict: RLModuleOutput) -> Dict[LossID, torch.Tensor]:
+    def loss(
+        self, train_batch: SampleBatch, fwd_train_dict: RLModuleOutput
+    ) -> Dict[LossID, torch.Tensor]:
         """
         Computes the loss for each sub-module of the algorithm and returns the loss
         tensor computed for each loss that needs to get back-propagated and updated
@@ -91,7 +91,6 @@ class TorchRLTrainer:
             self._optimizers[loss_key].step()
 
 
-
 """
 TODO: for cases where we need augmenting agent's local observation for training/evaluation
 we should provide callback hooks?
@@ -103,8 +102,11 @@ Example use-case: Centralized Critic 2 -> Callback for observation augmentation 
 TODO: We should be able to have a type of TorchMARLTrainer[PPOTrainer] which basically 
 says that it's a multi-agent wrapper for the base of PPOTrainer. 
 """
+
+
 class TorchMARLTrainer:
     type: Type[TorchRLTrainer]
+
     def __init__(self, configs):
         # basically the Type class is going to get constructed for each key inside cnofigs
         self.configs = configs
@@ -116,16 +118,16 @@ class TorchMARLTrainer:
 
     def make_shared_models(self):
         """Something like QMix would go here too."""
-        ma_config = self.config['multi_agent']
-        shared_config = ma_config['shared_modules']
+        ma_config = self.config["multi_agent"]
+        shared_config = ma_config["shared_modules"]
 
-        shared_mod_infos = defaultdict({}) # mapping from policy to kwarg and value
+        shared_mod_infos = defaultdict({})  # mapping from policy to kwarg and value
         for mod_name, mod_info in shared_config.items():
-            mod_class = mod_info['class']
-            mod_config = mod_info['config']
+            mod_class = mod_info["class"]
+            mod_config = mod_info["config"]
             mod_obj = mod_class(mod_config)
 
-            for pid, kw in mod_info['shared_between'].items():
+            for pid, kw in mod_info["shared_between"].items():
                 shared_mod_infos[pid][kw] = mod_obj
 
         """
@@ -142,7 +144,7 @@ class TorchMARLTrainer:
         I don't know of any scenarios that you'd need to override this method
         """
         shared_mod_info = self.shared_modules
-        policies = self.config['multi_agent']['policies']
+        policies = self.config["multi_agent"]["policies"]
         modules = {}
         for pid, pid_info in policies.items():
             rl_mod_class, rl_mod_config = pid_info
@@ -185,7 +187,9 @@ class TorchMARLTrainer:
         pass
 
     @override
-    def loss(self, train_batch: MultiAgentBatch, all_fwd_dicts, losses) -> Dict[str, torch.Tensor]:
+    def loss(
+        self, train_batch: MultiAgentBatch, all_fwd_dicts, losses
+    ) -> Dict[str, torch.Tensor]:
         pass
 
 
@@ -198,31 +202,37 @@ class IndependantMARLTrainer(TorchMARLTrainer):
         optimizers = {}
         for pid, trainer in self.module_trainers.items():
             for optim_key, optimizer in trainer.optimizers.items():
-                optimizers[f'{pid}_{optim_key}'] = optimizer
+                optimizers[f"{pid}_{optim_key}"] = optimizer
         return optimizers
 
-    def loss(self, train_batch: MultiAgentBatch, all_fwd_dicts, losses) -> Dict[str, torch.Tensor]:
+    def loss(
+        self, train_batch: MultiAgentBatch, all_fwd_dicts, losses
+    ) -> Dict[str, torch.Tensor]:
         marl_loss_dict = {}
         for pid, loss_dict in losses.items():
             for loss_key, loss_value in loss_dict.items():
-                marl_loss_dict[f'{pid}_{loss_key}'] = loss_value
-
+                marl_loss_dict[f"{pid}_{loss_key}"] = loss_value
 
 
 class QMixMARLTrainer(TorchMARLTrainer):
-
     def make_shared_models(self):
         shared_models = super(QMixMARLTrainer, self).make_shared_models()
-        shared_models['__all__']['mixer']: nn.Module = Mixer(...)
+        shared_models["__all__"]["mixer"]: nn.Module = Mixer(...)
 
     def make_optimizers(self):
-        all_mods = nn.ModuleDict({'shared': self.shared_modules, 'modules': self.modules})
-        optimizers = {'q_loss': Adam(all_mods.parameters(), lr=self.config['lr'])}
+        all_mods = nn.ModuleDict(
+            {"shared": self.shared_modules, "modules": self.modules}
+        )
+        optimizers = {"q_loss": Adam(all_mods.parameters(), lr=self.config["lr"])}
         return optimizers
 
-    def loss(self, train_batch: MultiAgentBatch, all_fwd_dicts, losses) -> Dict[str, torch.Tensor]:
-        q_vals = self.mixer(q_vals=all_fwd_dicts['q_vals'], s_t=train_batch['__all__']['state'])
+    def loss(
+        self, train_batch: MultiAgentBatch, all_fwd_dicts, losses
+    ) -> Dict[str, torch.Tensor]:
+        q_vals = self.mixer(
+            q_vals=all_fwd_dicts["q_vals"], s_t=train_batch["__all__"]["state"]
+        )
         targets = compute_targets(...)
         q_loss = ((q_vals - targets) ** 2).mean()
-        loss = {'q_loss': q_loss}
+        loss = {"q_loss": q_loss}
         return loss

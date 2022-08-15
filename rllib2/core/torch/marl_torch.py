@@ -2,24 +2,25 @@
 from typing import Any
 
 from rllib2.core.rl_trainer import RLTrainer
+
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+
 
 class MARLTorchTrainer(RLTrainer):
     """An RL Trainer class made for multi Agent Torch Trainer
 
     This abstract class has access to all modules for all agents so that it can form any update rule it wants for all different cases of multi agent scenarios. This module does not implement any update rule and hence does not have a loss method. The loss method should be created (if needed) in the subclasses.
-    
+
     """
 
     def __init__(self) -> None:
         super().__init__()
 
-        self._config = trainer_config.to_immutable() # immutable
+        self._config = trainer_config.to_immutable()  # immutable
         self._module = self.make_module()
 
         # register optimizers
         self._optimizers: Dict[str, Optimizer] = self.make_optimizer()
-
 
     @abc.abstractmethod
     def make_optimizers(self):
@@ -31,8 +32,8 @@ class MARLTorchTrainer(RLTrainer):
 
     def make_module(self) -> RLTorchModuleDict:
         module = RLTorchModuleDict(
-            shared_modules = self._config.shared_modules,
-            modules = self._config.modules,
+            shared_modules=self._config.shared_modules,
+            modules=self._config.modules,
         )
 
         return module
@@ -40,11 +41,11 @@ class MARLTorchTrainer(RLTrainer):
 
 class IndependentMARLTorchTrainer(MARLTorchTrainer):
     """A MARLTrainer that trains each module through its own trainer's loss function.
-    
-    This trainer keeps track of a separate module and exactly one trainer for each 
-    moodule. To update the modules, it runs their corresponding trainer.update() method 
+
+    This trainer keeps track of a separate module and exactly one trainer for each
+    moodule. To update the modules, it runs their corresponding trainer.update() method
     indepenedently, and performs an update step on all the losses at the same time.
-    
+
     """
 
     def __init__(self) -> None:
@@ -60,27 +61,24 @@ class IndependentMARLTorchTrainer(MARLTorchTrainer):
             trainers[pid] = self._config.base_trainer(module=rl_module, config=config)
         return trainers
 
-    def loss(self, 
-        train_batch: MultiAgentBatch, 
-        all_fwd_dicts, 
-        losses
+    def loss(
+        self, train_batch: MultiAgentBatch, all_fwd_dicts, losses
     ) -> Dict[str, torch.Tensor]:
 
         marl_loss_dict = {}
         for module_id, loss_dict in losses.items():
             for loss_key, loss_value in loss_dict.items():
-                marl_loss_dict[f'{module_id}_{loss_key}'] = loss_value
+                marl_loss_dict[f"{module_id}_{loss_key}"] = loss_value
 
         return marl_loss_dict
-
 
     def make_optimizers(self):
         optimizers = {}
         for module_id, trainer in self.module_trainers.items():
             for optim_key, optimizer in trainer.optimizers.items():
-                optimizers[f'{module_id}_{optim_key}'] = optimizer
+                optimizers[f"{module_id}_{optim_key}"] = optimizer
         return optimizers
-    
+
     def update(self, ma_batch: MultiAgentBatch, **kwargs) -> Any:
         losses = {}
         all_fwd_dicts = {}
@@ -91,7 +89,7 @@ class IndependentMARLTorchTrainer(MARLTorchTrainer):
             # run forward train of each module on the corresponding sample batch
             fwd_dict = module.forward_train(s_batch)
 
-            # compute the loss for each module 
+            # compute the loss for each module
             loss_dict = trainer.loss(s_batch, fwd_dict)
 
             # add them to the dicts
@@ -108,24 +106,23 @@ class IndependentMARLTorchTrainer(MARLTorchTrainer):
 
 
 class QMixMARLTrainer(MARLTorchTrainer):
-
     def __init__(self) -> None:
         super().__init__()
 
     def make_optimizers(self):
-        optimizers = {'q_loss': Adam(self._module.parameters(), lr=self.config['lr'])}
+        optimizers = {"q_loss": Adam(self._module.parameters(), lr=self.config["lr"])}
         return optimizers
 
-    def loss(self, 
-        train_batch: MultiAgentBatch, 
-        all_fwd_dicts
+    def loss(
+        self, train_batch: MultiAgentBatch, all_fwd_dicts
     ) -> Dict[str, torch.Tensor]:
-        q_vals = self.mixer(q_vals=all_fwd_dicts['q_vals'], s_t=train_batch['__all__']['state'])
+        q_vals = self.mixer(
+            q_vals=all_fwd_dicts["q_vals"], s_t=train_batch["__all__"]["state"]
+        )
         targets = compute_targets(...)
         q_loss = ((q_vals - targets) ** 2).mean()
-        loss = {'q_loss': q_loss}
+        loss = {"q_loss": q_loss}
         return loss
-
 
     def update(self, ma_batch: MultiAgentBatch, **kwargs) -> Any:
         all_fwd_dicts = {}

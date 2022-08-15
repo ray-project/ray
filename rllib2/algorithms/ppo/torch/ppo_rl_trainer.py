@@ -1,14 +1,16 @@
 #######################################################
 ########### PPO
 #######################################################
-from typing import Union, Type, Optional, Dict
+from typing import Dict, Optional, Type, Union
 
 import torch
 
-from rllib2.core.torch.rl_trainer import TorchRLTrainer
 from rllib2.core.torch.rl_module import TorchRLModule
+from rllib2.core.torch.rl_trainer import TorchRLTrainer
 from rllib2.core.torch.torch_rl_module import (
-    PPOTorchRLModule, PPORLModuleConfig, PPOModuleOutput
+    PPOModuleOutput,
+    PPORLModuleConfig,
+    PPOTorchRLModule,
 )
 
 
@@ -18,15 +20,16 @@ class PPOUnitTrainerConfig(UnitTrainerConfig):
 
 
 class PPOTorchTrainer(TorchRLTrainer):
-
     def __init__(self, config: PPOUnitTrainerConfig):
         super().__init__(config)
 
     def make_optimizer(self) -> Dict[LossID, Optimizer]:
         config = self.config.optimizer_config
-        return {'total_loss': torch.optim.Adam(self.model.parameters(), lr=config.lr)}
+        return {"total_loss": torch.optim.Adam(self.model.parameters(), lr=config.lr)}
 
-    def loss(self, train_batch: SampleBatch, fwd_train_dict: PPOModuleOutput) -> Dict[LossID, torch.Tensor]:
+    def loss(
+        self, train_batch: SampleBatch, fwd_train_dict: PPOModuleOutput
+    ) -> Dict[LossID, torch.Tensor]:
 
         pi_out_cur = fwd_train_dict.pi_out_cur
         pi_out_prev = fwd_train_dict.pi_out_prev
@@ -45,12 +48,11 @@ class PPOTorchTrainer(TorchRLTrainer):
         mean_entropy = Entropy()(pi_out_cur)
         surrogate_loss = PPOClipLoss(clip_param=self.config["clip_params"])(train_batch)
 
-
         value_fn_out = 0
         mean_vf_loss = vf_loss_clipped = 0.0
         if vf:
-            value_fn_out = vf.values.reduce('min')
-            vf_loss = (value_fn_out - train_batch['vf_targets'])**2
+            value_fn_out = vf.values.reduce("min")
+            vf_loss = (value_fn_out - train_batch["vf_targets"]) ** 2
             vf_loss_clipped = torch.clamp(vf_loss, 0, self.config["vf_clip_param"])
             mean_vf_loss = reduce_mean_valid(vf_loss_clipped)
 
@@ -67,20 +69,20 @@ class PPOTorchTrainer(TorchRLTrainer):
             total_loss=total_loss,
             mean_policy_loss=-surrogate_loss,
             mean_vf_loss=mean_vf_loss,
-            vf_explained_var=explained_variance(train_batch[Postprocessing.VALUE_TARGETS], value_fn_out),
+            vf_explained_var=explained_variance(
+                train_batch[Postprocessing.VALUE_TARGETS], value_fn_out
+            ),
             mean_entropy=mean_entropy,
             mean_kl_loss=mean_kl_loss,
         )
 
-        return {'total_loss': total_loss}
-
+        return {"total_loss": total_loss}
 
     def update(self, train_batch, update_kl: bool = False):
         super().update(train_batch)
 
         if update_kl:
             self.update_kl()
-
 
     def update_kl(self):
         # Update the current KL value based on the recently measured value.
@@ -90,6 +92,3 @@ class PPOTorchTrainer(TorchRLTrainer):
             self.model.kl_coeff *= 1.5
         elif sampled_kl < 0.5 * kl_target:
             self.model.kl_coeff *= 0.5
-
-
-

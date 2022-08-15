@@ -1,6 +1,4 @@
-
 class DQN(SimpleQ):
-
     def setup(self):
         ...
 

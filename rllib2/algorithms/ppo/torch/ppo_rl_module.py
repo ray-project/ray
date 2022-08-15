@@ -4,9 +4,12 @@
 ####################################################
 
 from rllib2.core.torch.torch_rl_module import (
-    RLModuleConfig, RLModuleOutput, TorchRLModule
+    RLModuleConfig,
+    RLModuleOutput,
+    TorchRLModule,
 )
-from rllib2.models.torch.pi import PiOutput, Pi
+from rllib2.models.torch.pi import Pi, PiOutput
+
 
 # TODO: Make a decision about where explore=True / False should go?
 @dataclass
@@ -17,6 +20,7 @@ class PPORLModuleConfig(RLModuleConfig):
     vf: Optional[VFuctionConfig] = None
     kl_coeff: Optional[float] = None
 
+
 @dataclass
 class PPOModuleOutput(RLModuleOutput):
     pi_out_cur: Optional[PiOutput] = None
@@ -25,14 +29,13 @@ class PPOModuleOutput(RLModuleOutput):
 
 
 class PPOTorchRLModule(TorchRLModule):
-
     def __init__(self, config: PPORLModuleConfig):
         super().__init__(config)
 
         self.pi: Pi = model_catalog.make_pi(
             obs_space=config.obs_space,
             action_space=config.action_space,
-            pi_config=config.pi
+            pi_config=config.pi,
         )
 
         self.vf = None
@@ -40,15 +43,12 @@ class PPOTorchRLModule(TorchRLModule):
             self.vf = model_catalog.make_vf(
                 obs_space=config.obs_space,
                 action_space=config.action_space,
-                vf_config=config.vf
+                vf_config=config.vf,
             )
 
         if config.kl_coeff is not None:
-            kl_coeff = nn.Parameter(
-                torch.Tensor(config.kl_coeff),
-                requires_grad=False
-            )
-            self.register_parameter('kl_coeff', kl_coeff)
+            kl_coeff = nn.Parameter(torch.Tensor(config.kl_coeff), requires_grad=False)
+            self.register_parameter("kl_coeff", kl_coeff)
 
     def forward(self, batch: SampleBatch, explore=False, **kwargs) -> PiDistribution:
 
@@ -65,13 +65,10 @@ class PPOTorchRLModule(TorchRLModule):
     def forward_train(self, batch: SampleBatch, **kwargs) -> PPOModuleOutput:
         """Forward-pass during computing loss function"""
         pi_out_cur: PiOutput = self.pi(batch)
-        pi_out_prev = self.pi({'obs': batch[SampleBatch.ACTION_DIST_INPUTS]})
+        pi_out_prev = self.pi({"obs": batch[SampleBatch.ACTION_DIST_INPUTS]})
 
         vf = None
         if self.vf:
             vf = self.vf(batch)
 
         return PPOModuleOutput(pi_out_cur=pi_out_cur, pi_out_prev=pi_out_prev, vf=vf)
-
-
-

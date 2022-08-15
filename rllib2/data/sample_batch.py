@@ -1,4 +1,2 @@
-
-
 class SampleBatch:
     pass

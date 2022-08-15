@@ -1,14 +1,14 @@
 import copy
+from dataclasses import dataclass
 from typing import Optional
 
 import torch
 import torch.nn as nn
 from torch import TensorType
-from dataclasses import dataclass
-
-from .encoder import Encoder, WithEncoderMixin
 
 from rllib2.utils import NNOutput
+
+from .encoder import Encoder, WithEncoderMixin
 
 """
 Example:
@@ -23,12 +23,13 @@ Example:
         I can't think of any case that vf would be used during inference. 
 """
 
+
 @dataclass
 class VFunctionOutput(NNOutput):
     values: Optional[Sequence[TensorType]] = None
 
-    def reduce(self, mode: str = 'min', dim=0):
-        if mode == 'min':
+    def reduce(self, mode: str = "min", dim=0):
+        if mode == "min":
             return self.values.min(dim)
         raise NotImplementedError
 
@@ -48,8 +49,7 @@ class VFunction(WithEncoderMixin, ModelIO):
         self.encoder = encoder
 
     def forward(self, batch: SampleBatch, **kwargs) -> VFunctionOutput:
-        """ Runs V(S), V({'obs': s}) -> V(s)
-        """
+        """Runs V(S), V({'obs': s}) -> V(s)"""
         pass
 
     def copy(self) -> "VFunction":
@@ -65,8 +65,8 @@ Some examples of pre-defined RLlib standard Vfunctions
 ########### Continuous action Q-network
 #######################################################
 
-class VNet(VFunction):
 
+class VNet(VFunction):
     def __init__(self, encoder: Optional[Encoder] = None) -> None:
         super().__init__(encoder)
         self.net = nn.Linear(self.encoder.output_dim, 1)

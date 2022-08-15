@@ -2,7 +2,6 @@ from rllib2.core.algorithm import Algorithm
 
 
 class PPO(Algorithm):
-
     def setup(self, config):
         """
         RLLib already sets this up for us.
@@ -10,7 +9,6 @@ class PPO(Algorithm):
         self.callbacks = CallbackList(...)
         pass
         """
-        
 
     def training_step(self) -> TrainResults:
         """

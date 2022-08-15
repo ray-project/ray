@@ -1,20 +1,22 @@
+from dataclasses import dataclass
 from typing import Optional
 
 import torch
 import torch.nn as nn
 from torch import TensorType
-from dataclasses import dataclass
-from .pi_distribution import (
-    PiDistribution,
-    DeterministicDist,
-    SquashedDeterministicDist,
-    ...
-)
-
-from .encoder import Encoder, WithEncoderMixin
 
 from rllib2.utils import NNOutput
 
+###################################################################
+########### Goal Conditioned Normal Policy a ~ N(mu(s,g), std(s, g))
+###################################################################
+from .encoder import Encoder, WithEncoderMixin
+from .pi_distribution import (
+    DeterministicDist,
+    PiDistribution,
+    SquashedDeterministicDist,
+    ...,
+)
 
 """
 Example:
@@ -181,10 +183,6 @@ class CategoricalPi(Pi):
         pass
 
 
-###################################################################
-########### Goal Conditioned Normal Policy a ~ N(mu(s,g), std(s, g))
-###################################################################
-from .encoder import Encoder
 
 class VectorGoalObsEncoder(Encoder):
 

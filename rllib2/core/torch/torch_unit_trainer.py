@@ -1,13 +1,12 @@
-from typing import Type, Union
-from dataclasses import dataclass
-from typing import Dict
 import abc
+from dataclasses import dataclass
+from typing import Dict, Type, Union
 
 import torch
 from torch.optim import Optimizer
 
 from rllib2.data.sample_batch import SampleBatch
-from rllib2.models.torch.torch_rl_module import TorchRLModule, RLModuleConfig
+from rllib2.models.torch.torch_rl_module import RLModuleConfig, TorchRLModule
 
 """
 Some examples of pre-defined RLlib unit_trainers --> See under algorithms
@@ -22,7 +21,6 @@ class UnitTrainerConfig:
 
 
 class TorchUnitTrainer:
-
     def __init__(self, config):
         self._config = config
 
@@ -46,7 +44,7 @@ class TorchUnitTrainer:
 
     @property
     def default_rl_module(self) -> Union[str, Type[TorchRLModule]]:
-        return ''
+        return ""
 
     @abc.abstractmethod
     def make_optimizer(self) -> Dict[str, Optimizer]:
@@ -55,8 +53,8 @@ class TorchUnitTrainer:
     @abc.abstractmethod
     def _make_model(self) -> TorchRLModule:
         config = self.config
-        rl_module_class = config.get('model_class', self.default_rl_module())
-        rl_module_config = config['model_config']
+        rl_module_class = config.get("model_class", self.default_rl_module())
+        rl_module_config = config["model_config"]
 
         # import rl_module_class with rl_module_config
         # TODO
@@ -91,4 +89,3 @@ class TorchUnitTrainer:
             self._optimizers[loss_key].zero_grad()
             loss_value.backward()
             self._optimizers[loss_key].step()
-

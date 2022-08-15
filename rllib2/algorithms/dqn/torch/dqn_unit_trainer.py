@@ -1,9 +1,9 @@
-
-
-from rllib2.core.torch.torch_unit_trainer import TorchUnitTrainer, UnitTrainerConfig
 from rllib2.algorithms.dqn.torch.dqn_module import (
-    DQNTorchRLModule, DQNRLModuleConfig, DQNModuleOutput
+    DQNModuleOutput,
+    DQNRLModuleConfig,
+    DQNTorchRLModule,
 )
+from rllib2.core.torch.torch_unit_trainer import TorchUnitTrainer, UnitTrainerConfig
 
 
 class DQNUnitTrainerConfig(UnitTrainerConfig):
@@ -11,7 +11,6 @@ class DQNUnitTrainerConfig(UnitTrainerConfig):
 
 
 class DQNUnitTrainer(TorchUnitTrainer):
-
     def __init__(self, config: DQNUnitTrainerConfig):
         super().__init__(config)
 
@@ -20,8 +19,10 @@ class DQNUnitTrainer(TorchUnitTrainer):
 
     def make_optimizer(self) -> Dict[str, Optimizer]:
         config = self.config.optimizer_config
-        return {'total_loss': torch.optim.Adam(self.model.parameters(), lr=config.lr)}
+        return {"total_loss": torch.optim.Adam(self.model.parameters(), lr=config.lr)}
 
-    def loss(self, train_batch: SampleBatch, fwd_train_dict: DQNModuleOutput) -> Dict[str, torch.Tensor]:
+    def loss(
+        self, train_batch: SampleBatch, fwd_train_dict: DQNModuleOutput
+    ) -> Dict[str, torch.Tensor]:
 
-        return {'total_loss': total_loss}
+        return {"total_loss": total_loss}

@@ -1,10 +1,9 @@
-from typing import Tuple, Any
-
-from dataclasses import fields
 from collections import OrderedDict
+from dataclasses import fields
+from typing import Any, Tuple
 
-import torch
 import numpy as np
+import torch
 
 
 def is_tensor(x):
@@ -34,10 +33,14 @@ class NNOutput(OrderedDict):
         if not len(class_fields):
             raise ValueError(f"{self.__class__.__name__} has no fields.")
         if not all(field.default is None for field in class_fields[1:]):
-            raise ValueError(f"{self.__class__.__name__} should not have more than one required field.")
+            raise ValueError(
+                f"{self.__class__.__name__} should not have more than one required field."
+            )
 
         first_field = getattr(self, class_fields[0].name)
-        other_fields_are_none = all(getattr(self, field.name) is None for field in class_fields[1:])
+        other_fields_are_none = all(
+            getattr(self, field.name) is None for field in class_fields[1:]
+        )
 
         if other_fields_are_none and not is_tensor(first_field):
             if isinstance(first_field, dict):
@@ -72,16 +75,24 @@ class NNOutput(OrderedDict):
                     self[field.name] = v
 
     def __delitem__(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``__delitem__`` on a {self.__class__.__name__} instance.")
+        raise Exception(
+            f"You cannot use ``__delitem__`` on a {self.__class__.__name__} instance."
+        )
 
     def setdefault(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``setdefault`` on a {self.__class__.__name__} instance.")
+        raise Exception(
+            f"You cannot use ``setdefault`` on a {self.__class__.__name__} instance."
+        )
 
     def pop(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``pop`` on a {self.__class__.__name__} instance.")
+        raise Exception(
+            f"You cannot use ``pop`` on a {self.__class__.__name__} instance."
+        )
 
     def update(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``update`` on a {self.__class__.__name__} instance.")
+        raise Exception(
+            f"You cannot use ``update`` on a {self.__class__.__name__} instance."
+        )
 
     def __getitem__(self, k):
         if isinstance(k, str):
@@ -107,5 +118,3 @@ class NNOutput(OrderedDict):
         Convert self to a tuple containing all the attributes/keys that are not `None`.
         """
         return tuple(self[k] for k in self.keys())
-
-

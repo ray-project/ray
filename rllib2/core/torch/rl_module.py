@@ -1,22 +1,17 @@
 from calendar import c
+from dataclasses import dataclass
 from typing import Dict
 
-from ray.rllib import policy
+import torch.nn as nn
+
+from rllib2.core.torch.torch_rl_module import RLModuleOutput, TorchRLModule
+from rllib2.models.torch.pi import Pi, PiOutput
+from rllib2.models.torch.pi_distribution import PiDistributionDict
+from rllib2.utils import NNOutput
 
 from ....python.ray.rllib.policy.sample_batch import MultiAgentBatch
 from ..rl_trainer import BatchType
-
-from rllib2.core.torch.torch_rl_module import TorchRLModule, RLModuleOutput
-from rllib2.models.torch.pi_distribution import PiDistributionDict
-
-import torch.nn as nn
-
-from dataclasses import dataclass
-import torch.nn as nn
-
-from rllib2.models.torch.pi import PiOutput, Pi
-from rllib2.utils import NNOutput
-
+from ray.rllib import policy
 
 """Examples of TorchRLModules in RLlib --> See under algorithms"""
 
@@ -51,20 +46,23 @@ Examples:
     
 """
 
+
 @dataclass
 class RLModuleConfig(NNConfig):
     """dataclass for holding the nested configuration parameters"""
+
     action_space: Optional[rllib.env.Space] = None
     obs_space: Optional[rllib.env.Space] = None
+
 
 @dataclass
 class RLModuleOutput(NNOutput):
     """dataclass for holding the outputs of RLModule forward_train() calls"""
+
     pass
 
 
 class TorchRLModule(nn.Module):
-
     def __init__(self, configs=None):
         super().__init__()
         self.configs = configs
@@ -74,20 +72,13 @@ class TorchRLModule(nn.Module):
             return self.forward_inference(batch, **kwargs)
         return self.forward_train(batch, **kwargs)
 
-    def forward_inference(self, 
-        batch: BatchType, 
-        **kwargs
-    ) -> PiDistribution:
+    def forward_inference(self, batch: BatchType, **kwargs) -> PiDistribution:
         """Forward-pass during online sample collection
         Which could be either during training or evaluation based on explore parameter.
         """
         pass
 
-    def forward_train(
-        self, 
-        batch: BatchType, 
-        **kwargs
-    ) -> RLModuleOutput:
+    def forward_train(self, batch: BatchType, **kwargs) -> RLModuleOutput:
         """Forward-pass during computing loss function"""
         pass
 
@@ -103,11 +94,11 @@ class TorchRLModule(nn.Module):
 #     shared_modules: Dict[str, SharedModuleSpec] = {}
 #     modules: Dict[str, ModuleSpec] = {}
 
-class TorchMARLModule(TorchRLModule):
 
+class TorchMARLModule(TorchRLModule):
     def __init__(
-        self, 
-        configs, # multi_agent config
+        self,
+        configs,  # multi_agent config
     ):
 
         self.configs = configs
@@ -120,45 +111,37 @@ class TorchMARLModule(TorchRLModule):
         return self._modules.keys()
 
     def forward_inference(
-        self, 
-        batch: MultiAgentBatch, 
-        module_id: str = 'default',
-        **kwargs
+        self, batch: MultiAgentBatch, module_id: str = "default", **kwargs
     ) -> PiDistribution:
         """Forward-pass during online sample collection
         Which could be either during training or evaluation based on explore parameter.
         """
         self._check_module_exists(module_id)
         return self._modules[module_id].forward_inference(batch[module_id], **kwargs)
-    
+
     def forward_train(
-        self, 
-        batch: MultiAgentBatch, 
-        module_id: str = 'default',
-        **kwargs
+        self, batch: MultiAgentBatch, module_id: str = "default", **kwargs
     ) -> RLModuleOutput:
         """Forward-pass during computing loss function"""
 
         self._check_module_exists(module_id)
         return self._modules[module_id].forward_train(batch[module_id], **kwargs)
 
-
     def __getitem__(self, module_id):
         self._check_module_exists(module_id)
         return self._modules[module_id]
 
-
     def _make_shared_module_infos(self):
         config = self.configs
-        shared_config = config['shared_submodules']
+        shared_config = config["shared_submodules"]
 
-        shared_mod_infos = defaultdict({}) # mapping from module_id to kwarg and value
+        shared_mod_infos = defaultdict({})  # mapping from module_id to kwarg and value
         for mod_info in shared_config.values():
-            mod_class = mod_info['class']
-            mod_config = mod_info['config']
+            mod_class = mod_info["class"]
+            mod_config = mod_info["config"]
             mod_obj = mod_class(mod_config)
 
-            for module_id, kw in mod_info['shared_between'].items():
+            for module_id, kw in mod_info["shared_between"].items():
                 shared_mod_infos[module_id][kw] = mod_obj
 
         """
@@ -172,12 +155,12 @@ class TorchMARLModule(TorchRLModule):
 
     def _make_modules(self):
         shared_mod_info = self.shared_module_infos
-        policies = self.config['multi_agent']['modules']
+        policies = self.config["multi_agent"]["modules"]
         modules = {}
         for pid, pid_info in policies.items():
             # prepare the module parameters and class type
-            rl_mod_class = pid_info['module_class']
-            rl_mod_config = pid_info['module_config']
+            rl_mod_class = pid_info["module_class"]
+            rl_mod_config = pid_info["module_config"]
             kwargs = shared_mod_info[pid]
             rl_mod_config.update(**kwargs)
 
@@ -190,6 +173,5 @@ class TorchMARLModule(TorchRLModule):
     def _check_module_exists(self, module_id: str):
         if module_id not in self.modules:
             raise ValueError(
-                f'Module with module_id {module_id} not found in ModuleDict'
+                f"Module with module_id {module_id} not found in ModuleDict"
             )
-

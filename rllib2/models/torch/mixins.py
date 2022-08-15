@@ -14,14 +14,13 @@ class WithEncoderMixin(nn.Module):
         # The following usage is more intuitive than creating a different EncoderOutPut class
         #   state = self.encode({'obs': batch.obs})
         #   next_state = self.encode({'obs': batch.next_obs})
-        encoded_batch = kwargs.pop('encoded_batch')
+        encoded_batch = kwargs.pop("encoded_batch")
         if self.encoder and encode:
             encoded_batch = self.encoder(batch, **kwargs)
         return super().__call__(batch, encoded_batch=encoded_batch)
 
 
 class ModelIO:
-
     def save(self):
         pass
 
