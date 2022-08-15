@@ -244,14 +244,20 @@ def remove_placement_group(placement_group: PlacementGroup) -> None:
 
 @PublicAPI
 @client_mode_wrap
-def get_placement_group(placement_group_name: str) -> PlacementGroup:
-    """Get a placement group object with a global name.
+def get_placement_group(
+    placement_group_name: str, placement_group_id: str = None
+) -> PlacementGroup:
+    """Get a placement group object with a global name / id.
+
+    one of them (name / id) should be given; if both are given, name will be used.
 
     Returns:
-        None if can't find a placement group with the given name.
+        None if can't find a placement group with the given name / id.
         The placement group object otherwise.
     """
     if not placement_group_name:
+        if placement_group_id:
+            return PlacementGroup(PlacementGroupID(hex_to_binary(placement_group_id)))
         raise ValueError("Please supply a non-empty value to get_placement_group")
     worker = ray._private.worker.global_worker
     worker.check_connected()
