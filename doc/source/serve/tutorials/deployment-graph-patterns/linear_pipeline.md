@@ -6,7 +6,7 @@ This [deployment graph pattern](serve-deployment-graph-patterns-overview) is a l
 
 ## Code
 
-```{literalinclude} ../../doc_code/linear_pipeline.py
+```{literalinclude} ../../doc_code/deployment_graph_patterns/linear_pipeline.py
 :language: python
 :start-after: __graph_start__
 :end-before: __graph_end__
