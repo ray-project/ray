@@ -87,9 +87,9 @@ def make_ds(size_gb: int):
     return dataset
 
 
-def run_ingest_bulk(dataset, num_workers):
+def run_ingest_bulk(dataset, num_workers, num_cpus):
     consumers = [
-        ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
+        ConsumingActor.options(scheduling_strategy="SPREAD", num_cpus=num_cpus).remote(i)
         for i in range(num_workers)
     ]
     ds = dataset.map_batches(lambda df: df * 2)
@@ -112,9 +112,9 @@ def run_ingest_bulk(dataset, num_workers):
     # success! total time 13.813468217849731
 
 
-def run_ingest_streaming(dataset, num_workers):
+def run_ingest_streaming(dataset, num_workers, num_cpus):
     consumers = [
-        ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
+        ConsumingActor.options(scheduling_strategy="SPREAD", num_cpus=num_cpus).remote(i)
         for i in range(num_workers)
     ]
     p = (
@@ -153,14 +153,15 @@ if __name__ == "__main__":
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--dataset-size-gb", type=int, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
+    parser.add_argument("--num-cpus", type=float, default=0.5)
     args = parser.parse_args()
 
     start = time.time()
     ds = make_ds(args.dataset_size_gb)
     if args.streaming:
-        run_ingest_streaming(ds, args.num_workers)
+        run_ingest_streaming(ds, args.num_workers, args.num_cpus)
     else:
-        run_ingest_bulk(ds, args.num_workers)
+        run_ingest_bulk(ds, args.num_workers, args.num_cpus)
 
     delta = time.time() - start
     print(f"success! total time {delta}")
