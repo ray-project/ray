@@ -11,7 +11,7 @@ import ray
 from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import GetTimeoutError, RuntimeEnvSetupError
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -109,7 +109,7 @@ def test_large_file_error(shutdown_only, option: str):
         with open("test_file_2", "wb") as f:
             f.write(os.urandom(size))
 
-        with pytest.raises(ValueError):
+        with pytest.raises(RuntimeEnvSetupError):
             if option == "working_dir":
                 ray.init(runtime_env={"working_dir": "."})
             else:

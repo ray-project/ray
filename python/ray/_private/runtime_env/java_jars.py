@@ -12,6 +12,7 @@ from ray._private.runtime_env.packaging import (
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
+from ray.exceptions import RuntimeEnvSetupError
 
 default_logger = logging.getLogger(__name__)
 
@@ -49,9 +50,14 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ):
         """Download a jar URI."""
-        jar_file = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
-        )
+        try:
+            jar_file = await download_and_unpack_package(
+                uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            )
+        except Exception as e:
+            raise RuntimeEnvSetupError(
+                "Failed to download jar file: {}".format(e)
+            ) from e
         module_dir = self._get_local_dir_from_uri(uri)
         logger.debug(f"Succeeded to download jar file {jar_file} .")
         return module_dir
@@ -68,9 +74,14 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         if is_jar_uri(uri):
             module_dir = await self._download_jars(uri=uri, logger=logger)
         else:
-            module_dir = await download_and_unpack_package(
-                uri, self._resources_dir, self._gcs_aio_client, logger=logger
-            )
+            try:
+                module_dir = await download_and_unpack_package(
+                    uri, self._resources_dir, self._gcs_aio_client, logger=logger
+                )
+            except Exception as e:
+                raise RuntimeEnvSetupError(
+                    "Failed to download jar file: {}".format(e)
+                ) from e
 
         return get_directory_size_bytes(module_dir)
 
