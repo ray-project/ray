@@ -16,7 +16,7 @@ import asyncio
 import time
 import os
 
-from ray.state.api import (
+from ray.state import (
     get_log,
     list_actors,
     list_objects,

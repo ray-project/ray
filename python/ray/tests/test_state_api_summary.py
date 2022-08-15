@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import sys
 from dataclasses import asdict
 
-from ray.state.api import (
+from ray.state import (
     summarize_tasks,
     summarize_actors,
     summarize_objects,

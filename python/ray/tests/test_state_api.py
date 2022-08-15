@@ -52,7 +52,7 @@ from ray.dashboard.state_aggregator import (
     StateAPIManager,
     _convert_filters_type,
 )
-from ray.state.api import (
+from ray.state import (
     get_actor,
     get_node,
     get_objects,

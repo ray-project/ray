@@ -45,36 +45,36 @@ State APIs are also exported as functions.
 
 Summary APIs
 ~~~~~~~~~~~~
-.. autofunction:: ray.state.api.summarize_actors
-.. autofunction:: ray.state.api.summarize_objects
-.. autofunction:: ray.state.api.summarize_tasks
+.. autofunction:: ray.state.summarize_actors
+.. autofunction:: ray.state.summarize_objects
+.. autofunction:: ray.state.summarize_tasks
 
 List APIs
 ~~~~~~~~~~
 
-.. autofunction:: ray.state.api.list_actors
-.. autofunction:: ray.state.api.list_placement_groups
-.. autofunction:: ray.state.api.list_nodes
-.. autofunction:: ray.state.api.list_jobs
-.. autofunction:: ray.state.api.list_workers
-.. autofunction:: ray.state.api.list_tasks
-.. autofunction:: ray.state.api.list_objects
-.. autofunction:: ray.state.api.list_runtime_envs
+.. autofunction:: ray.state.list_actors
+.. autofunction:: ray.state.list_placement_groups
+.. autofunction:: ray.state.list_nodes
+.. autofunction:: ray.state.list_jobs
+.. autofunction:: ray.state.list_workers
+.. autofunction:: ray.state.list_tasks
+.. autofunction:: ray.state.list_objects
+.. autofunction:: ray.state.list_runtime_envs
 
 Get APIs
 ~~~~~~~~~
 
-.. autofunction:: ray.state.api.get_actor
-.. autofunction:: ray.state.api.get_placement_group
-.. autofunction:: ray.state.api.get_node
-.. autofunction:: ray.state.api.get_worker
-.. autofunction:: ray.state.api.get_task
-.. autofunction:: ray.state.api.get_objects
+.. autofunction:: ray.state.get_actor
+.. autofunction:: ray.state.get_placement_group
+.. autofunction:: ray.state.get_node
+.. autofunction:: ray.state.get_worker
+.. autofunction:: ray.state.get_task
+.. autofunction:: ray.state.get_objects
 
 Log APIs
 ~~~~~~~~
-.. autofunction:: ray.state.api.list_logs
-.. autofunction:: ray.state.api.get_log
+.. autofunction:: ray.state.list_logs
+.. autofunction:: ray.state.get_log
 
 .. _state-api-schema:
 

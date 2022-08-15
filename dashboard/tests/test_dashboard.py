@@ -34,7 +34,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
-from ray.state.api import StateApiClient
+from ray.state import StateApiClient
 from ray.state.common import ListApiOptions, StateResource
 from ray.state.exception import ServerUnavailable
 from ray.experimental.internal_kv import _initialize_internal_kv

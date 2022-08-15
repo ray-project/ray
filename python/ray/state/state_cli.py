@@ -8,7 +8,7 @@ import click
 import yaml
 
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.state.api import (
+from ray.state import (
     StateApiClient,
     summarize_actors,
     summarize_objects,

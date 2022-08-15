@@ -7,7 +7,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import block_until_http_ready
-import ray.state.api as state_api
+import ray.state as state_api
 
 
 def test_serve_metrics_for_successful_connection(serve_instance):
