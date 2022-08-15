@@ -8,7 +8,7 @@ python:
     - tblib
     # Need to have in pip_packages so it is installed on the driver.
     - git+https://github.com/ray-project/ray_lightning#ray_lightning
-    - torch==1.9.0
+    - torch==1.11.0
   conda_packages: []
 
 post_build_cmds:
