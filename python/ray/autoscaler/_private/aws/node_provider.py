@@ -449,6 +449,9 @@ class AWSNodeProvider(NodeProvider):
                         )
                 break
             except botocore.exceptions.ClientError as exc:
+                # Launch failure may be due to instance type availability in
+                # the given AZ
+                subnet_idx += 1
                 if attempt == max_tries:
                     try:
                         exc = NodeLaunchException(
@@ -471,9 +474,6 @@ class AWSNodeProvider(NodeProvider):
                         "create_instances: Attempt failed with {}, retrying.", exc
                     )
 
-                # Launch failure may be due to instance type availability in
-                # the given AZ
-                subnet_idx += 1
 
         return created_nodes_dict
 
