@@ -41,8 +41,6 @@ def _default_config():
         "embed_pdrop": 0.1,
         "resid_pdrop": 0.1,
         "attn_pdrop": 0.1,
-        "use_obs_output": False,
-        "use_return_output": False,
         "framework": "torch",
         "lr": 1e-3,
         "lr_schedule": None,
@@ -101,8 +99,9 @@ class TestDTPolicy(unittest.TestCase):
         sample_batch = policy.postprocess_trajectory(sample_batch)
 
         # Assert that rtg is correctly calculated
-        assert SampleBatch.RETURNS_TO_GO in sample_batch, (
-            "returns_to_go isn't part of the batch.")
+        assert (
+            SampleBatch.RETURNS_TO_GO in sample_batch
+        ), "returns_to_go isn't part of the batch."
         assert np.allclose(
             sample_batch[SampleBatch.RETURNS_TO_GO],
             np.array([5.0, 4.0, 2.0, 1.0]),
@@ -149,7 +148,9 @@ class TestDTPolicy(unittest.TestCase):
                         if isinstance(action_space, gym.spaces.Box)
                         else np.array([0, 0, 0], dtype=np.int32)
                     ),
-                    SampleBatch.RETURNS_TO_GO: np.array([0.0, 0.0, 0.0], dtype=np.float32),
+                    SampleBatch.RETURNS_TO_GO: np.array(
+                        [0.0, 0.0, 0.0], dtype=np.float32
+                    ),
                     SampleBatch.REWARDS: np.zeros((), dtype=np.float32),
                     SampleBatch.T: np.array([-1, -1, -1], dtype=np.int32),
                 }
@@ -188,7 +189,9 @@ class TestDTPolicy(unittest.TestCase):
                         if isinstance(action_space, gym.spaces.Box)
                         else np.array([0, 0, 1], dtype=np.int32)
                     ),
-                    SampleBatch.RETURNS_TO_GO: np.array([0.0, 0.0, config["target_return"]], dtype=np.float32),
+                    SampleBatch.RETURNS_TO_GO: np.array(
+                        [0.0, 0.0, config["target_return"]], dtype=np.float32
+                    ),
                     SampleBatch.REWARDS: np.asarray(1.0, dtype=np.float32),
                     SampleBatch.T: np.array([-1, -1, 0], dtype=np.int32),
                 }
@@ -216,12 +219,14 @@ class TestDTPolicy(unittest.TestCase):
             input_dict = SampleBatch(
                 {
                     SampleBatch.OBS: np.array(
-                        [[
-                            [0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0],
-                            [0.0, 1.0, 2.0],
-                        ]],
+                        [
+                            [
+                                [0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0],
+                                [0.0, 1.0, 2.0],
+                            ]
+                        ],
                         dtype=np.float32,
                     ),
                     SampleBatch.ACTIONS: (
@@ -229,8 +234,9 @@ class TestDTPolicy(unittest.TestCase):
                         if isinstance(action_space, gym.spaces.Box)
                         else np.array([[0, 0, 0]], dtype=np.int32)
                     ),
-                    SampleBatch.RETURNS_TO_GO: np.array([[0.0, 0.0, 0.0]],
-                                                        dtype=np.float32),
+                    SampleBatch.RETURNS_TO_GO: np.array(
+                        [[0.0, 0.0, 0.0]], dtype=np.float32
+                    ),
                     SampleBatch.REWARDS: np.array([0.0], dtype=np.float32),
                     SampleBatch.T: np.array([[-1, -1, -1]], dtype=np.int32),
                 }
@@ -244,17 +250,18 @@ class TestDTPolicy(unittest.TestCase):
             )
 
             # Check actions
-            assert actions.shape == (1, *action_space.shape), (
-                "actions has incorrect shape."
-            )
+            assert actions.shape == (
+                1,
+                *action_space.shape,
+            ), "actions has incorrect shape."
 
             # Check extras
-            assert SampleBatch.RETURNS_TO_GO in extras, (
-                "extras should contain returns_to_go."
-            )
-            assert extras[SampleBatch.RETURNS_TO_GO].shape == (1,), (
-                "extras['returns_to_go'] has incorrect shape."
-            )
+            assert (
+                SampleBatch.RETURNS_TO_GO in extras
+            ), "extras should contain returns_to_go."
+            assert extras[SampleBatch.RETURNS_TO_GO].shape == (
+                1,
+            ), "extras['returns_to_go'] has incorrect shape."
             assert np.isclose(
                 extras[SampleBatch.RETURNS_TO_GO],
                 np.asarray([config["target_return"]], dtype=np.float32),
@@ -264,12 +271,14 @@ class TestDTPolicy(unittest.TestCase):
             input_dict = SampleBatch(
                 {
                     SampleBatch.OBS: np.array(
-                        [[
-                            [0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0],
-                            [0.0, 1.0, 2.0],
-                            [3.0, 4.0, 5.0],
-                        ]],
+                        [
+                            [
+                                [0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0],
+                                [0.0, 1.0, 2.0],
+                                [3.0, 4.0, 5.0],
+                            ]
+                        ],
                         dtype=np.float32,
                     ),
                     SampleBatch.ACTIONS: (
@@ -277,9 +286,9 @@ class TestDTPolicy(unittest.TestCase):
                         if isinstance(action_space, gym.spaces.Box)
                         else np.array([[0, 0, 1]], dtype=np.int32)
                     ),
-                    SampleBatch.RETURNS_TO_GO: np.array([
-                        [0.0, 0.0, config["target_return"]]
-                    ], dtype=np.float32),
+                    SampleBatch.RETURNS_TO_GO: np.array(
+                        [[0.0, 0.0, config["target_return"]]], dtype=np.float32
+                    ),
                     SampleBatch.REWARDS: np.array([10.0], dtype=np.float32),
                     SampleBatch.T: np.array([[-1, -1, 0]], dtype=np.int32),
                 }
@@ -293,17 +302,18 @@ class TestDTPolicy(unittest.TestCase):
             )
 
             # Check actions
-            assert actions.shape == (1, *action_space.shape), (
-                "actions has incorrect shape."
-            )
+            assert actions.shape == (
+                1,
+                *action_space.shape,
+            ), "actions has incorrect shape."
 
             # Check extras
-            assert SampleBatch.RETURNS_TO_GO in extras, (
-                "extras should contain returns_to_go."
-            )
-            assert extras[SampleBatch.RETURNS_TO_GO].shape == (1,), (
-                "extras['returns_to_go'] has incorrect shape."
-            )
+            assert (
+                SampleBatch.RETURNS_TO_GO in extras
+            ), "extras should contain returns_to_go."
+            assert extras[SampleBatch.RETURNS_TO_GO].shape == (
+                1,
+            ), "extras['returns_to_go'] has incorrect shape."
             assert np.isclose(
                 extras[SampleBatch.RETURNS_TO_GO],
                 np.asarray([config["target_return"] - 10.0], dtype=np.float32),
@@ -315,16 +325,11 @@ class TestDTPolicy(unittest.TestCase):
         config["embed_pdrop"] = 0
         config["resid_pdrop"] = 0
         config["attn_pdrop"] = 0
-        config["model"]["max_seq_len"] = 4
-        config["embed_dim"] = 1
-        config["num_heads"] = 1
-        config["num_layers"] = 2
-        config["horizon"] = 10
 
         observation_space = gym.spaces.Box(-1.0, 1.0, shape=(3,))
         action_spaces = [
             gym.spaces.Box(-1.0, 1.0, shape=(1,)),
-            # gym.spaces.Discrete(4),
+            gym.spaces.Discrete(4),
         ]
 
         for action_space in action_spaces:
@@ -336,52 +341,56 @@ class TestDTPolicy(unittest.TestCase):
             batch1 = SampleBatch(
                 {
                     SampleBatch.OBS: np.array(
-                        [[
-                            [0.0, 0.0, 0.0],
-                            [0.0, 0.0, 0.0],
-                            [0.0, 1.0, 2.0],
-                            [3.0, 4.0, 5.0],
-                        ]],
+                        [
+                            [
+                                [0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0],
+                                [0.0, 1.0, 2.0],
+                                [3.0, 4.0, 5.0],
+                            ]
+                        ],
                         dtype=np.float32,
                     ),
                     SampleBatch.ACTIONS: (
                         np.array([[[0.0], [0.0], [1.0], [0.5]]], dtype=np.float32)
                         if isinstance(action_space, gym.spaces.Box)
-                        else np.array([[0, 0, 1, 3]], dtype=np.int32)
+                        else np.array([[0, 0, 1, 3]], dtype=np.int64)
                     ),
-                    SampleBatch.RETURNS_TO_GO: np.array([
-                        [[0.0], [0.0], [100.0], [90.0], [80.0]]
-                    ], dtype=np.float32),
+                    SampleBatch.RETURNS_TO_GO: np.array(
+                        [[[0.0], [0.0], [100.0], [90.0], [80.0]]], dtype=np.float32
+                    ),
                     SampleBatch.T: np.array([[0, 0, 0, 1]], dtype=np.int32),
-                    SampleBatch.ATTENTION_MASKS: np.array([
-                        [0.0, 0.0, 1.0, 1.0]
-                    ], dtype=np.float32),
+                    SampleBatch.ATTENTION_MASKS: np.array(
+                        [[0.0, 0.0, 1.0, 1.0]], dtype=np.float32
+                    ),
                 }
             )
 
             batch2 = SampleBatch(
                 {
                     SampleBatch.OBS: np.array(
-                        [[
-                            [1.0, 1.0, -1.0],
-                            [1.0, 10.0, 12.0],
-                            [0.0, 1.0, 2.0],
-                            [3.0, 4.0, 5.0],
-                        ]],
+                        [
+                            [
+                                [1.0, 1.0, -1.0],
+                                [1.0, 10.0, 12.0],
+                                [0.0, 1.0, 2.0],
+                                [3.0, 4.0, 5.0],
+                            ]
+                        ],
                         dtype=np.float32,
                     ),
                     SampleBatch.ACTIONS: (
                         np.array([[[1.0], [-0.5], [1.0], [0.5]]], dtype=np.float32)
                         if isinstance(action_space, gym.spaces.Box)
-                        else np.array([[2, 1, 1, 3]], dtype=np.int32)
+                        else np.array([[2, 1, 1, 3]], dtype=np.int64)
                     ),
-                    SampleBatch.RETURNS_TO_GO: np.array([
-                        [[200.0], [-10.0], [100.0], [90.0], [80.0]]
-                    ], dtype=np.float32),
-                    SampleBatch.T: np.array([[9, 3, 1, 1]], dtype=np.int32),
-                    SampleBatch.ATTENTION_MASKS: np.array([
-                        [0.0, 0.0, 1.0, 1.0]
-                    ], dtype=np.float32),
+                    SampleBatch.RETURNS_TO_GO: np.array(
+                        [[[200.0], [-10.0], [100.0], [90.0], [80.0]]], dtype=np.float32
+                    ),
+                    SampleBatch.T: np.array([[9, 3, 0, 1]], dtype=np.int32),
+                    SampleBatch.ATTENTION_MASKS: np.array(
+                        [[0.0, 0.0, 1.0, 1.0]], dtype=np.float32
+                    ),
                 }
             )
 
@@ -392,6 +401,42 @@ class TestDTPolicy(unittest.TestCase):
             loss2 = loss2.detach().cpu().item()
 
             assert np.isclose(loss1, loss2), "Masks are not working for losses."
+
+            # Run loss on a widely different batch and make sure the loss is different.
+            batch3 = SampleBatch(
+                {
+                    SampleBatch.OBS: np.array(
+                        [
+                            [
+                                [1.0, 1.0, -20.0],
+                                [0.1, 10.0, 12.0],
+                                [0.0, 1.0, 2.0],
+                                [3.0, 40.0, 5.0],
+                            ]
+                        ],
+                        dtype=np.float32,
+                    ),
+                    SampleBatch.ACTIONS: (
+                        np.array([[[2.0], [-1.5], [0.2], [0.1]]], dtype=np.float32)
+                        if isinstance(action_space, gym.spaces.Box)
+                        else np.array([[1, 3, 0, 2]], dtype=np.int64)
+                    ),
+                    SampleBatch.RETURNS_TO_GO: np.array(
+                        [[[90.0], [80.0], [70.0], [60.0], [50.0]]], dtype=np.float32
+                    ),
+                    SampleBatch.T: np.array([[3, 4, 5, 6]], dtype=np.int32),
+                    SampleBatch.ATTENTION_MASKS: np.array(
+                        [[1.0, 1.0, 1.0, 1.0]], dtype=np.float32
+                    ),
+                }
+            )
+
+            loss3 = policy.loss(policy.model, policy.dist_class, batch3)
+            loss3 = loss3.detach().cpu().item()
+
+            assert not np.isclose(
+                loss1, loss3
+            ), "Widely different inputs are giving the same loss value."
 
 
 if __name__ == "__main__":

@@ -921,6 +921,13 @@ py_test(
     srcs = ["algorithms/dt/tests/test_dt_model.py"]
 )
 
+py_test(
+    name = "test_dt_policy",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_dt_policy.py"]
+)
+
 # ES
 py_test(
     name = "test_es",
