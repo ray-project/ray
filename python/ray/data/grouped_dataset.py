@@ -1,7 +1,5 @@
 from typing import Any, Callable, Generic, List, Tuple, Union, Optional
 
-import numpy as np
-
 from ray.data._internal import sort
 from ray.data._internal.compute import CallableClass, ComputeStrategy
 from ray.data._internal.plan import AllToAllStage
@@ -251,6 +249,10 @@ class GroupedDataset(Generic[T]):
         else:
             sorted_ds = self._dataset.repartition(1)
 
+        import numpy as np
+
+        # Returns the keys of the batch in numpy array.
+        # Returns None if the self._key is None.
         def get_keys(batch, accessor) -> Optional[np.ndarray]:
             import pandas as pd
             import pyarrow as pa
@@ -269,11 +271,11 @@ class GroupedDataset(Generic[T]):
                 )
 
         # Returns the group boundaries.
-        def get_key_boundaries(batch, block_accessor):
+        def get_key_boundaries(batch, accessor):
             boundaries = []
-            keys = get_keys(batch, block_accessor)
+            keys = get_keys(batch, accessor)
             if keys is None:
-                return [block_accessor.num_rows()]
+                return [accessor.num_rows()]
             start = 0
             while start < keys.size:
                 end = start + np.searchsorted(keys[start:], keys[start], side="right")
