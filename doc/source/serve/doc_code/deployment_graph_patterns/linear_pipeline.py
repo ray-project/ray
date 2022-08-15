@@ -3,6 +3,8 @@
 
 import ray
 from ray import serve
+from ray.serve.drivers import DAGDriver
+from ray.serve.http_adapters import json_request
 from ray.serve.deployment_graph import InputNode
 
 
@@ -24,9 +26,11 @@ with InputNode() as graph_input:
     for i in range(1, len(nodes)):
         outputs[i] = nodes[i].forward.bind(outputs[i - 1])
 
-last_output_node = outputs[-1]
+graph = DAGDriver.bind(outputs[-1], http_adapter=json_request)
 
-sum = ray.get(last_output_node.execute(0))
+handle = serve.run(graph)
+
+sum = ray.get(handle.predict.remote(1))
 print(sum)
 # __graph_end__
 
