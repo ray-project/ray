@@ -6,14 +6,20 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
 Ray DAG
 -------
 
-Normally, Ray tasks are executed eagerly. Ray DAG provides a way to build the
-DAG without execution, and Ray Workflow is based on Ray DAGs.
+Ray tasks are executed immediately. However, Ray DAG allows you to separate the
+workflow specification from its execution. You define the workflow first simply
+by replacing all ``.remote(...)`` with ``.bind(...)``, and then run the workflow
+using ``workflow.run(...)``. Ray DAGs can be composed arbitrarily like normal
+Ray tasks.
+
 
 It is simple to build a Ray DAG: just replace all ``.remote(...)`` with
 ``.bind(...)`` in a Ray application. Ray DAGs can be composed arbitrarily
 like normal Ray tasks.
 
-Here is a single three-node DAG:
+Here is a single three-node DAG (note the use of ``.bind(...)`` instead of
+``.remote(...)``). The Ray DAG will not be executed until further actions are
+taken on it.
 
 .. code-block:: python
 
@@ -39,9 +45,6 @@ Here is a single three-node DAG:
     preprocessed_data = preprocessing.bind(data)
     output = aggregate.bind(preprocessed_data)
 
-    # Plot the DAG
-    ray.dag.vis_utils.plot(output, "output.jpg")
-
 
 Here this figure visualizes the DAG we created:
 
@@ -50,7 +53,8 @@ Here this figure visualizes the DAG we created:
    :align: center
 
 
-The Ray DAG will not be executed until further actions are taken on it.
+The DAG can be plotted by ``ray.dag.vis_utils.plot(output, "output.jpg")``
+    
 
 Your first workflow
 -------------------
@@ -73,7 +77,9 @@ A single line is all you need to run the workflow DAG:
 
 Each node in the original DAG becomes a workflow task. Workflow tasks behave
 similarly to Ray tasks. They are executed in a parallel and distributed way.
-
+Besides, checkpoints will be added between two tasks automatically which allows
+the code to be able to resume from the place where it failed. Now you can run
+fault-tolerant Ray without needing external workflow systems.
 
 Setting workflow options
 ------------------------
