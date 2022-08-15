@@ -4195,7 +4195,7 @@
 
   run:
     timeout: 300
-    script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
+    script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming --num-cpus=1
     wait_for_nodes:
       num_nodes: 20
 
