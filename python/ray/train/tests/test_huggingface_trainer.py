@@ -166,20 +166,6 @@ def test_validation(ray_start_4_cpus):
     with pytest.raises(RayTaskError):
         trainer.fit().error
 
-    # save_strategy set to "steps" should raise an exception
-    trainer = HuggingFaceTrainer(
-        trainer_init_config={"epochs": 1, "save_strategy": "steps"}, **trainer_conf
-    )
-    with pytest.raises(RayTaskError):
-        trainer.fit().error
-
-    # logging_strategy set to "steps" should raise an exception
-    trainer = HuggingFaceTrainer(
-        trainer_init_config={"epochs": 1, "logging_strategy": "steps"}, **trainer_conf
-    )
-    with pytest.raises(RayTaskError):
-        trainer.fit().error
-
 
 if __name__ == "__main__":
     import sys

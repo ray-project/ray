@@ -433,15 +433,32 @@ def _huggingface_train_loop_per_worker(config):
             "If that happens, specify `hub_token` in `TrainingArguments`."
         )
 
-    if (
-        trainer.args.evaluation_strategy in ("steps", IntervalStrategy.STEPS)
-        or trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS)
-        or trainer.args.logging_strategy in ("steps", IntervalStrategy.STEPS)
-    ):
+    if trainer.args.evaluation_strategy in ("steps", IntervalStrategy.STEPS):
         raise ValueError(
             "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported."
+            "or `save_strategy` is not yet supported.\n"
+            f"Got `evaluation_strategy={trainer.args.evaluation_strategy}`."
         )
+
+    # HF defaults to steps, we need to override
+    if trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS):
+        warnings.warn(
+            "'steps' value for `evaluation_strategy`, `logging_strategy` "
+            "or `save_strategy` is not yet supported.\n"
+            f"Got `save_strategy={trainer.args.save_strategy}`, setting "
+            "to 'epoch' automatically."
+        )
+        trainer.args.save_strategy = IntervalStrategy.EPOCH
+
+    # HF defaults to steps, we need to override
+    if trainer.args.logging_strategy in ("steps", IntervalStrategy.STEPS):
+        warnings.warn(
+            "'steps' value for `evaluation_strategy`, `logging_strategy` "
+            "or `save_strategy` is not yet supported.\n"
+            f"Got `logging_strategy={trainer.args.logging_strategy}`, setting "
+            "to 'epoch' automatically."
+        )
+        trainer.args.logging_strategy = IntervalStrategy.EPOCH
 
     if trainer.args.load_best_model_at_end:
         raise ValueError(
