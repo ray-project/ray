@@ -880,7 +880,7 @@ def get_resource_ids():
     return global_worker.core_worker.resource_ids()
 
 
-@Deprecated(message="Use ray.init()['webui_url'] instead.")
+@Deprecated(message="Use ray.init().address_info['webui_url'] instead.")
 def get_dashboard_url():
     """Get the URL to access the Ray dashboard.
 
