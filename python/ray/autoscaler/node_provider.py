@@ -125,7 +125,11 @@ class NodeProvider:
 
         Optionally returns a mapping from created node ids to node metadata.
 
-        Optionally may throw a ray.autoscaler.node_launch_exception.NodeLaunchException.
+        Optionally may throw a
+        ray.autoscaler.node_launch_exception.NodeLaunchException which the
+        autoscaler may use to provide additional functionality such as
+        observability.
+
         """
         raise NotImplementedError
 

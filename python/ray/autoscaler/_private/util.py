@@ -687,7 +687,7 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
             category = record.unavailable_node_information.category
             attempted_time = datetime.fromtimestamp(record.last_checked_timestamp)
             formatted_time = (
-                # This `:02d` funny buisiness is python syntax for printing a 2
+                # This `:02d` funny business is python syntax for printing a 2
                 # digit number with a leading zero as padding if needed.
                 f"{attempted_time.hour:02d}:"
                 f"{attempted_time.minute:02d}:"
