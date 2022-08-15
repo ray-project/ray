@@ -11,6 +11,7 @@ import transformers
 import transformers.modeling_utils
 import transformers.trainer
 import transformers.training_args
+from transformers.trainer_utils import IntervalStrategy
 from torch.utils.data import Dataset as TorchDataset
 
 from ray.air import session
@@ -433,13 +434,25 @@ def _huggingface_train_loop_per_worker(config):
         )
 
     if (
-        trainer.args.evaluation_strategy == "steps"
-        or trainer.args.save_strategy == "steps"
-        or trainer.args.logging_strategy == "steps"
+        trainer.args.evaluation_strategy in ("steps", IntervalStrategy.STEPS)
+        or trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS)
+        or trainer.args.logging_strategy in ("steps", IntervalStrategy.STEPS)
     ):
         raise ValueError(
             "'steps' value for `evaluation_strategy`, `logging_strategy` "
             "or `save_strategy` is not yet supported."
+        )
+
+    if trainer.args.load_best_model_at_end:
+        raise ValueError(
+            "As Ray AIR replaces Hugging Face checkpointing, "
+            "`load_best_model_at_end` must be set to False.\n"
+            "You can obtain the AIR Checkpoint with "
+            "`Result.checkpoint` returned by the `fit()` method "
+            "of this Trainer, and the model itself by calling "
+            "`Checkpoint.get_model()`.\n"
+            "You can configure the checkpointing by setting "
+            "`run_config.checkpoint_config`."
         )
 
     trainer = wrap_transformers_trainer(trainer)
