@@ -7,7 +7,7 @@
 
 This tutorial will give you a quick tour of Ray's features.
 To get started, we'll start by installing Ray.
-Most of the examples in this guide are based on Python, but we'll also show you how to user Ray Core in Java.
+Most of the examples in this guide are based on Python, but we'll also show you how to use Ray Core in Java.
 
 ````{panels}
 :container: text-center
