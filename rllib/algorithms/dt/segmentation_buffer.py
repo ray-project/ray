@@ -80,6 +80,7 @@ class SegmentationBuffer:
         episode[SampleBatch.T] = np.arange(ep_len, dtype=np.int32)
         episode[SampleBatch.ATTENTION_MASKS] = np.ones(ep_len, dtype=np.float32)
 
+        # Add to the buffer.
         if len(self._buffer) < self.capacity:
             self._buffer.append(episode)
         else:
