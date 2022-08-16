@@ -34,12 +34,19 @@ class DTConfig(AlgorithmConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # DT-specific settings.
+        # Required settings during training and evaluation:
+        # Initial return to go used as target during rollout.
         self.target_return = None
+        # Rollout horizon/maximum episode length.
         self.horizon = None
+
+        # Model settings:
         self.model = {
+            # Transformer (GPT) context length.
             "max_seq_len": 5,
         }
 
+        # Transformer (GPT) settings:
         self.embed_dim = 128
         self.num_layers = 2
         self.num_heads = 1
@@ -47,6 +54,7 @@ class DTConfig(AlgorithmConfig):
         self.resid_pdrop = 0.1
         self.attn_pdrop = 0.1
 
+        # Optimization settings:
         self.lr = 1e-4
         self.lr_schedule = None
         self.optimizer = {
@@ -58,16 +66,16 @@ class DTConfig(AlgorithmConfig):
         self.grad_clip = None
 
         self.replay_buffer_config = {
+            # How many trajectories/episodes does the segmentation buffer hold.
+            # Increase for more data shuffling but increased memory usage.
+            "capacity": 20,
             # Do not change the type of replay buffer.
             "type": MultiAgentSegmentationBuffer,
-            # How many trajectories/episodes does the buffer hold.
-            "capacity": 20,
         }
-
         # __sphinx_doc_end__
         # fmt: on
 
-        # overriding the trainer config default
+        # Overwriting the trainer config default
         # If data ingestion/sample_time is slow, increase this
         self.num_workers = 0
         self.min_time_s_per_iteration = 10.0
