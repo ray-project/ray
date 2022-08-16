@@ -284,7 +284,11 @@ Here is one example:
 Durability guarantees
 ---------------------
 
-Workflow tasks provide *exactly-once* execution semantics. What this means is that once the result of a workflow task is logged to durable storage, Ray guarantees the task will never be re-executed. A task that receives the output of another workflow task can be assured that its inputs tasks will never be re-executed.
+Workflow tasks provide *exactly-once* execution semantics. What this means is
+that **once the result of a workflow task is logged to durable storage, Ray
+guarantees the task will never be re-executed**. A task that receives the output
+of another workflow task can be assured that its inputs tasks will never be
+re-executed.
 
 Failure model
 ~~~~~~~~~~~~~
@@ -327,47 +331,44 @@ Note that tasks that have side effects still need to be idempotent. This is beca
 Dynamic workflows
 -----------------
 
-Additional tasks can be dynamically created and inserted into the workflow DAG during execution.
-
-This is achieved by returning a continuation of a DAG.
-
-In our context, a continuation is a tail function call returned by a function. For example:
+Workflow tasks can be dynamically created in the runtime. In theory, Ray DAG is
+static which means a DAG node can't be returned in a DAG node. For example, the
+following code is invalid:
 
 .. code-block:: python
 
+    @ray.remote
     def bar(): ...
 
-    def foo_1():
-        # Here we say 'foo_1()' returns a continuation.
-        # The continuation is made of 'bar()'
-        return bar()
+    @ray.remote
+    def foo():
+        return bar.bind() # This is invalid since Ray DAG is static
 
-    def foo_2():
-        # This is NOT a continuation because we do not return it.
-        bar()
+    ray.get(foo.bind().execute()) # This will error
 
-    def foo_3():
-        # This is NOT a continuation because it is not a function call.
-        return 42
-
-Continuations can be used to implement something more complex, for example, recursions:
+Workflow introduces a utility function called ``workflow.continuation`` which
+makes Ray DAG node can return a DAG in the runtime:
 
 .. code-block:: python
 
-    def factorial(n: int) -> int:
-        if n == 1:
-            return 1
-        else:
-            return multiply(n, factorial(n - 1))
+    @ray.remote
+    def bar():
+        return 10
 
-    def multiply(a: int, b: int) -> int:
-        return a * b
+    @ray.remote
+    def foo():
+        # This will return a DAG to be executed
+        # after this function is finished.
+        return workflow.continuation(bar.bind())
 
-    assert factorial(10) == 3628800
+    assert ray.get(foo.bind().execute()) == 10
+    assert workflow.run(foo.bind()) == 10
 
-The continuation feature enables nesting, looping, and recursion within workflows.
 
-The following example shows how to implement the recursive ``factorial`` program using dynamically generated tasks:
+The dynamic workflow enables nesting, looping, and recursion within workflows.
+
+The following example shows how to implement the recursive ``factorial`` program
+using dynamically workflow: 
 
 .. code-block:: python
 
@@ -385,9 +386,14 @@ The following example shows how to implement the recursive ``factorial`` program
         return a * b
 
     assert workflow.run(factorial.bind(10)) == 3628800
+    # You can also execute the code with Ray DAG engine.
+    assert ray.get(factorial.bind(10).execute()) == 3628800
 
-The key behavior to note is that when a task returns a continuation instead of a concrete value,
-that continuation will be substituted for the task's return.
+
+The key behavior to note is that when a task returns a DAG wrapped by
+``workflow.continuation`` instead of a concrete value, that wrapped DAG will be
+substituted for the task's return. 
+
 To better understand dynamic workflows, let's look at a more realistic example of booking a trip:
 
 .. code-block:: python
@@ -415,7 +421,11 @@ To better understand dynamic workflows, let's look at a more realistic example o
 
     receipt: Receipt = workflow.run(book_trip.bind("OAK", "SAN", ["6/12", "7/5"]))
 
-Here the workflow initially just consists of the ``book_trip`` task. Once executed, ``book_trip`` generates tasks to book flights and hotels in parallel, which feeds into a task to decide whether to cancel the trip or finalize it. The DAG can be visualized as follows (note the dynamically generated nested workflows within ``book_trip``):
+Here the workflow initially just consists of the ``book_trip`` task. Once
+executed, ``book_trip`` generates tasks to book flights and hotels in parallel,
+which feeds into a task to decide whether to cancel the trip or finalize it. The
+DAG can be visualized as follows (note the dynamically generated nested
+workflows within ``book_trip``): 
 
 .. image:: trip.png
    :width: 500px
