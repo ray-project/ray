@@ -82,21 +82,27 @@ class DAGNode(DAGNodeBase):
         """
         return self._stable_uuid
 
-    async def get_graph_object_refs_from_last_execute(self):
+    async def get_object_ref_from_last_execute(self, node_uuid: str):
         """
-        Returns a dict of that maps a DAGNode's uuid to the return value of calling
-        _execute_impl() on that DAGNode
+        Gets the return value of calling _execute_impl() on the input DAGNode.
+        Meant to be
+        * called after execute() has been called
+        * called on method and function nodes (i.e. the input parameter should be a
+          stable UUID for a method or function node)
+
+        Args:
+            node_uuid: stable uuid of a method or function DAGNode.
+
+        Returns:
+            Object ref for task submitted to the input DAGNode.
         """
         import asyncio
 
-        cache = {}
-        for k, v in self.cache_from_last_execute.items():
-            if isinstance(v, asyncio.Task):
-                cache[k] = await v
-            else:
-                cache[k] = v
-
-        return cache
+        value = self.cache_from_last_execute[node_uuid]
+        if isinstance(value, asyncio.Task):
+            return await value
+        else:
+            return value
 
     def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""

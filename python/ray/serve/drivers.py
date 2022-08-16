@@ -8,6 +8,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import starlette
 from fastapi import Body, Depends, FastAPI
+import time
 
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
@@ -152,16 +153,25 @@ class DAGDriver:
             raise RayServeException(f"{route_path} does not exist in dags routes")
         return await (await self.dags[route_path].remote(*args, **kwargs))
 
-    async def get_intermediate_node_object_refs(self):
+    async def get_object_ref_for_node(self, node_uuid: str):
         """
-        Gets the object ref values of all function and method nodes in the dag.
-        Should only be called after a call to self.predict() has been made.
+        Gets the object ref for the task submitted to the node passed in as input.
+        Meant to be
+        * called after predict() has been called
+        * called on method and function nodes (i.e. the input parameter should be a
+          stable UUID for a method or function node)
+
+        Args:
+            node_uuid: stable uuid of a method or function DAGNode.
+
+        Returns:
+            Object ref for task submitted to the input DAGNode.
         """
         dag_handle = self.dags[self.MATCH_ALL_ROUTE_PREFIX]
         root_dag_node = dag_handle.dag_node
 
         if root_dag_node is not None:
-            return await root_dag_node.get_graph_object_refs_from_last_execute()
+            return await root_dag_node.get_object_ref_from_last_execute(node_uuid)
 
     async def get_dag_node_json(self):
         """Returns the json serialized root dag node"""
