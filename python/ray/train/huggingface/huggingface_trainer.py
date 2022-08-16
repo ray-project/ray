@@ -440,6 +440,14 @@ def _huggingface_train_loop_per_worker(config):
             f"Got `evaluation_strategy={trainer.args.evaluation_strategy}`."
         )
 
+    # For the two arguments below, HF defaults to STEPS. Unfortunately,
+    # there doesn't seem to be a way to differentiate between
+    # user-set and default values for those arguments, so we can only
+    # assume that they were set by default and print a warning.
+    # Alternatively, we can force users to set EPOCH themselves,
+    # but that wouldn't make for nice UX if the first thing they see
+    # with their code is an exception.
+
     # HF defaults to steps, we need to override
     if trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS):
         warnings.warn(
