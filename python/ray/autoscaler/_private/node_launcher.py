@@ -58,7 +58,7 @@ class BaseNodeLauncher:
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
 
-    def launch_node(self, config: Dict[str, Any], count: int, node_type: Optional[str]):
+    def launch_node(self, config: Dict[str, Any], count: int, node_type: str):
         self.log("Got {} nodes to launch.".format(count))
         node_launch_start_time = time.time()
         try:
@@ -66,11 +66,6 @@ class BaseNodeLauncher:
         except Exception:
             self.prom_metrics.node_launch_exceptions.inc()
             self.prom_metrics.failed_create_nodes.inc(count)
-            self.event_summarizer.add(
-                "Failed to launch {} nodes of type " + str(node_type) + ".",
-                quantity=count,
-                aggregate=operator.add,
-            )
             # Log traceback from failed node creation only once per minute
             # to avoid spamming driver logs with tracebacks.
             self.event_summarizer.add_once_per_interval(
@@ -92,7 +87,7 @@ class BaseNodeLauncher:
             self.prom_metrics.pending_nodes.set(self.pending.value)
 
     def _launch_node(
-        self, config: Dict[str, Any], count: int, node_type: Optional[str]
+        self, config: Dict[str, Any], count: int, node_type: str
     ):
         if self.node_types:
             assert node_type, node_type
@@ -132,14 +127,20 @@ class BaseNodeLauncher:
             self.node_provider_availability_tracker.update_node_availability(
                 node_type, launch_start_time, node_launch_exception
             )
-            # Do some special handling if we have a structured error.
-            self.log(
-                f"Failed to launch {node_type}: "
+            error_msg = (f"Failed to launch {node_type}: "
                 f"({node_launch_exception.category}):"
-                f"{node_launch_exception.description}"
+                f"{node_launch_exception.description}")
+            # Do some special handling if we have a structured error.
+            self.event_summarizer.add(
+                error_msg,
+                quantity=count,
+                aggregate=operator.add,
             )
+            self.log(error_msg)
             # Reraise to trigger the more general exception handling code.
             raise node_launch_exception.source_exception
+        except Exception:
+            raise
         launch_time = time.time() - launch_start_time
         for _ in range(count):
             # Note: when launching multiple nodes we observe the time it

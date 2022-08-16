@@ -1330,7 +1330,7 @@ class StandardAutoscaler:
         )
         return True
 
-    def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
+    def launch_new_node(self, count: int, node_type: str) -> None:
         logger.info("StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.event_summarizer.add(
             "Adding {} nodes of type " + str(node_type) + ".",
