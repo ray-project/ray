@@ -118,4 +118,4 @@ When resuming interrupted workflows that were running and pending with ``workflo
 
 .. note::
 
-  We currently do not guarantee that resumed pending workflows are running in the same order as they originally did.
+  Workflows does not guarantee that resumed workflows are run in the same order .

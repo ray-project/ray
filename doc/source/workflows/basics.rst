@@ -1,25 +1,17 @@
-Workflow Basics
+Getting Started
 ===============
 
-If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <core-walkthrough>`.
+.. note::
+  Workflows is a library that provides strong durability for Ray task graphs.
+  If you’re brand new to Ray, we recommend starting with the :ref:`core walkthrough <core-walkthrough>` instead.
 
-Ray DAG
--------
+Your first workflow
+-------------------
 
-Ray tasks are executed immediately. However, Ray DAG allows you to separate the
-workflow specification from its execution. You define the workflow first simply
-by replacing all ``.remote(...)`` with ``.bind(...)``, and then run the workflow
-using ``workflow.run(...)``. Ray DAGs can be composed arbitrarily like normal
-Ray tasks.
-
-
-It is simple to build a Ray DAG: just replace all ``.remote(...)`` with
-``.bind(...)`` in a Ray application. Ray DAGs can be composed arbitrarily
-like normal Ray tasks.
-
+Let's start by defining a simple workflow DAG, which we'll use for the below example.
 Here is a single three-node DAG (note the use of ``.bind(...)`` instead of
-``.remote(...)``). The Ray DAG will not be executed until further actions are
-taken on it.
+``.remote(...)``). The DAG will not be executed until further actions are
+taken on it:
 
 .. code-block:: python
 
@@ -46,20 +38,13 @@ taken on it.
     output = aggregate.bind(preprocessed_data)
 
 
-Here this figure visualizes the DAG we created:
+We can plot this DAG by using ``ray.dag.vis_utils.plot(output, "output.jpg")``:
 
 .. image:: basic.png
    :width: 500px
    :align: center
 
-
-The DAG can be plotted by ``ray.dag.vis_utils.plot(output, "output.jpg")``
-    
-
-Your first workflow
--------------------
-
-A single line is all you need to run the workflow DAG:
+Next, let's execute the DAG we defined and inspect the result:
 
 .. code-block:: python
 
@@ -75,18 +60,17 @@ A single line is all you need to run the workflow DAG:
     print(ray.get(output_ref))
 
 
-Each node in the original DAG becomes a workflow task. Workflow tasks behave
-similarly to Ray tasks. They are executed in a parallel and distributed way.
-Besides, checkpoints will be added between two tasks automatically which allows
-the code to be able to resume from the place where it failed. Now you can run
-fault-tolerant Ray without needing external workflow systems.
+Each node in the original DAG becomes a workflow task. You can think of workflow
+tasks as wrappers around Ray tasks that insert *checkpointing logic* to
+ensure intermediate results are durably persisted. This enables workflow DAGs to
+always resume from the last successful task on failure.
 
 Setting workflow options
 ------------------------
 
 You can directly set Ray options to a workflow task just like a normal
-Ray remote function. To set workflow-specific options, you can use ``workflow.options``
-either as a decorator or as an option feeding dictionary:
+Ray remote function. To set workflow-specific options, use ``workflow.options``
+either as a decorator or as kwargs to ``<task>.options``:
 
 .. code-block:: python
 
@@ -105,7 +89,7 @@ either as a decorator or as an option feeding dictionary:
 Retrieving results
 ------------------
 
-To retrieve a workflow result, you can assign ``workflow_id`` when running a workflow:
+To retrieve a workflow result, assign ``workflow_id`` when running a workflow:
 
 .. code-block:: python
 
@@ -132,9 +116,9 @@ To retrieve a workflow result, you can assign ``workflow_id`` when running a wor
     assert workflow.run(ret, workflow_id="add_example") == 30
 
 The workflow results can be retrieved with
-``workflow.get_output(workflow_id)``. If a workflow is not given
-``workflow_id``, a random string is set as the ``workflow_id``. To confirm
-``workflow_id`` in the situation, call ``ray.workflow.list_all()``.
+``workflow.get_output(workflow_id)``. If a workflow is not given a
+``workflow_id``, a random string is set as the ``workflow_id``. To list all
+workflow ids, call ``ray.workflow.list_all()``.
 
 .. code-block:: python
 
@@ -147,10 +131,8 @@ We can retrieve the results for individual workflow tasks too with *named tasks*
  2) via decorator ``@workflow.options(name="task_name")``
 
 If tasks are not given ``task_name``, the function name of the steps is set as the ``task_name``.
-The ID of the task would be the same as the name. If there are multiple tasks with the same name, a suffix with a counter ``_n`` will be added automatically.
-
-The suffix with a counter ``_n`` is a sequential number (1,2,3,...) of the tasks to be executed.
-(Note that the first task does not have the suffix.)
+The ID of the task would be the same as the name. If there are multiple tasks with the same name,
+a suffix with a counter ``_n`` will be added.
 
 Once a task is given a name, the result of the task will be retrievable via ``workflow.get_output(workflow_id, task_id="task_name")``.
 If the task with the given ``task_id`` hasn't been executed before the workflow completes, an exception will be thrown. Here are some examples:
@@ -182,43 +164,6 @@ If the task with the given ``task_id`` hasn't been executed before the workflow 
     assert ray.get(outer) == 4
     assert ray.get(result_ref) == 4
 
-For example,
-(Note that before trying the following, install Ray Serve and PyArrow ``pip install "ray[serve]" pyarrow``.)
-
-.. code-block:: python
-
-    import ray
-    from ray import workflow
-
-    workflow_id = "_test_task_id_generation"
-    try:
-        # cleanup previous workflows
-        workflow.delete(workflow_id)
-    except workflow.WorkflowNotFoundError:
-        pass
-
-    @ray.remote
-    def simple(x):
-        return x + 1
-
-    x = simple.options(**workflow.options(name="step")).bind(-1)
-    n = 20
-    for i in range(1, n):
-        x = simple.options(**workflow.options(name="step")).bind(x)
-
-    ret = workflow.run_async(x, workflow_id=workflow_id)
-    outputs = [workflow.get_output_async(workflow_id, task_id="step")]
-    for i in range(1, n):
-        outputs.append(workflow.get_output_async(workflow_id, task_id=f"step_{i}"))
-    assert ray.get(ret) == n - 1
-    assert ray.get(outputs) == list(range(n))
-
-    ray.workflow.list_all() == [(workflow_id, workflow.WorkflowStatus.SUCCESSFUL)]
-
-By default, each task will be given a name generated by the library, ``<MODULE_NAME>.<FUNC_NAME>``. In the example above, ``step`` is given as the task name for function ``simple``.
-
-When the task name duplicates, we append ``_n`` to the name by the order of execution as its task ID. So the initial task gets the ID ``step``, the second one gets ``step_1``, and this goes on for all later tasks.
-
 Error handling
 --------------
 
@@ -245,7 +190,7 @@ so they should be used inside the Ray remote decorator. Here is how you could us
     faulty_function.options(max_retries=3, retry_exceptions=False,
                             **workflow.options(catch_exceptions=False))
 
-.. note::  By default ``retry_exceptions`` is ``False``,  ``max_retries`` is ``3``.
+.. note::  By default ``retry_exceptions`` is ``False``, and ``max_retries`` is ``3``.
 
 Here is one example:
 

@@ -1,49 +1,15 @@
-.. _workflows:
+Key Concepts
+------------
 
-Ray Workflows: Durable Ray Task Graphs
-======================================================================
+.. note::
+  Workflows is a library that provides strong durability for Ray task graphs.
+  If you’re brand new to Ray, we recommend starting with the :ref:`core walkthrough <core-walkthrough>` instead.
 
-.. warning::
-
-  Ray Workflows is available as **alpha** in Ray 2.0+. Expect rough corners and
-  for its APIs and storage format to change. Please file feature requests and
-  bug reports on GitHub Issues or join the discussion on the
-  `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
-
-Ray Workflows implements high-performance, *durable* application workflows using
-Ray tasks as the underlying execution engine. It enables task-based Ray jobs
-to seamlessly resume execution even in the case of entire-cluster failure.
-
-Why Ray Workflows?
-------------------
-
-**Flexibility:** Combine the flexibility of Ray's dynamic task graphs with
-strong durability guarantees. Branch or loop conditionally based on runtime
-data. Use Ray distributed libraries seamlessly within workflow tasks.
-
-**Performance:** Ray Workflows offers sub-second overheads for task launch and
-supports workflows with hundreds of thousands of tasks. Take advantage of the
-Ray object store to pass distributed datasets between tasks with zero-copy
-overhead.
-
-You might find that Ray Workflows is *lower level* compared to engines such as
-`AirFlow <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__
-(which can also run on Ray). This is because Ray Workflows focuses more on core
-durability primitives as opposed to tools and integrations.
-
-Concepts
---------
-Ray Workflows provides the *durable task* primitive, which can be used as a
-substitute for Ray's non-durable task API.
-
-Ray DAG
+DAG API
 ~~~~~~~
 
-If you’re new to Ray, we recommend starting with the
-:ref:`walkthrough <core-walkthrough>`.
-
 Normally, Ray tasks are executed eagerly.
-In order to provide durability, Ray Workflows uses the lazy :ref:`Ray DAG API <ray-dag-guide>`_
+In order to provide durability, Ray Workflows uses the lazy :ref:`Ray DAG API <ray-dag-guide>`
 to separate the definition and execution of task DAGs.
 
 Switching from Ray tasks to the DAG API is simple: just replace all calls to ``.remote(...)``
@@ -69,7 +35,7 @@ DAG nodes. Instead, the DAG needs to be *executed* in order to compute a result.
     dag = add.bind(100, one.bind())
 
 
-Workflows
+Workflow Execution
 ~~~~~~~~~
 
 To execute a DAG with workflows, use `workflow.run`:
