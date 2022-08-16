@@ -13,7 +13,7 @@ class AsyncRequestsManager:
 
     Args:
         workers: A list of ray remote workers to operate on. These workers must have an
-            `apply` method which takes a function and a list of arguments to that
+            ``apply`` method which takes a function and a list of arguments to that
             function.
         max_remote_requests_in_flight_per_worker: The maximum number of remote
             requests that can be in flight per actor. Any requests made to the pool
