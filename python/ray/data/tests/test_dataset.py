@@ -3995,7 +3995,7 @@ def test_groupby_map_groups_perf(ray_start_regular_shared):
     ds.groupby("A").map_groups(lambda df: df)
     end = time.perf_counter()
     # On a t3.2xlarge instance, it ran in about 5 seconds, so expecting it has to
-    # finish within 10x of that time, unless something went wrong.
+    # finish within about 10x of that time, unless something went wrong.
     assert end - start < 60
 
 
