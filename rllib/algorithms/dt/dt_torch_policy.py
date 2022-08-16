@@ -482,46 +482,36 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         # get the attention masks for masked-loss
         masks = train_batch[SampleBatch.ATTENTION_MASKS]
 
-        losses = []
-
-        # action losses
-        if isinstance(self.action_space, Discrete):
-            action_loss = self._masked_cross_entropy_loss(
-                preds[SampleBatch.ACTIONS], targets[SampleBatch.ACTIONS], masks
-            )
-        elif isinstance(self.action_space, Box):
-            action_loss = self._masked_mse_loss(
-                preds[SampleBatch.ACTIONS], targets[SampleBatch.ACTIONS], masks
-            )
-        else:
-            raise NotImplementedError
-        losses.append(action_loss)
-        self.log("action_loss", action_loss)
-
-        # obs losses
-        # TODO: currently this is always False
-        if preds.get(SampleBatch.OBS) is not None:
-            obs_loss = self._masked_mse_loss(
-                preds[SampleBatch.OBS], targets[SampleBatch.OBS], masks
-            )
-            losses.append(obs_loss)
-            self.log("obs_loss", obs_loss)
-
-        # return to go losses
-        # TODO: currently this is always False
-        if preds.get(SampleBatch.RETURNS_TO_GO) is not None:
-            rtg_loss = self._masked_mse_loss(
-                preds[SampleBatch.RETURNS_TO_GO],
-                targets[SampleBatch.RETURNS_TO_GO],
-                masks,
-            )
-            losses.append(rtg_loss)
-            self.log("rtg_loss", rtg_loss)
+        # compute loss
+        loss = self._masked_loss(preds, targets, masks)
 
         self.log("cur_lr", torch.tensor(self.cur_lr))
 
-        loss = sum(losses)
         return loss
+
+    def _masked_loss(self, preds, targets, masks):
+        losses = []
+        for key in targets:
+            assert (
+                key in preds
+            ), "for target {key} there is no prediction from the output of the model"
+            loss_coef = self.config.get(f"loss_coef_{key}", 1.0)
+            if self._is_discrete(key):
+                loss = loss_coef * self._masked_cross_entropy_loss(
+                    preds[key], targets[key], masks
+                )
+            else:
+                loss = loss_coef * self._masked_mse_loss(
+                    preds[key], targets[key], masks
+                )
+
+            losses.append(loss)
+            self.log(f"{key}_loss", loss)
+
+        return sum(losses)
+
+    def _is_discrete(self, key):
+        return key == SampleBatch.ACTIONS and isinstance(self.action_space, Discrete)
 
     def _masked_cross_entropy_loss(
         self,
