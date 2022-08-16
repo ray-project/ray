@@ -17,7 +17,7 @@ where they failed without recomputing.
 
 
 Why Ray Workflows?
------------------
+------------------
 
 **Flexibility:** Combine the flexibility of Ray's dynamic task graphs with
 strong durability guarantees. Branch or loop conditionally based on runtime
