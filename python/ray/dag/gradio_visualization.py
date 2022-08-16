@@ -6,7 +6,7 @@ from ray.dag import (
 from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
 from ray.serve._private.json_serde import dagnode_from_json
 from ray.dag.utils import _DAGNodeNameGenerator
-from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.handle import RayServeHandle
 
 from functools import partial
 from typing import Any, Dict, Tuple
@@ -17,7 +17,11 @@ import time
 import gradio as gr
 
 
-async def _submit_fn(handle: RayServeDAGHandle, node_uuid: str):
+async def _get_result(handle: RayServeHandle, node_uuid: str):
+    """
+    Returns the output of running the deployment on the DAGNode with uuid `node_uuid`
+    """
+
     timeout_s = 20
     start = time.time()
     while time.time() - start < timeout_s:
@@ -40,9 +44,13 @@ class GraphVisualizer:
         # maps InputAttributeNodes to unique instance of interactive gradio block
         self.input_index_to_block: Dict[int, Any] = {}
 
-        self.count = 0
-
     def _make_blocks(self):
+        """
+        Instantiates Gradio blocks for each graph node registered in self.depths.
+        Nodes of depth 0 will be rendered in the top row, depth 1 in the second row,
+        and so forth.
+        """
+
         levels = {}
         for uuid in self.depths:
             levels.setdefault(self.depths[uuid], []).append(uuid)
@@ -69,6 +77,11 @@ class GraphVisualizer:
         name_generator: _DAGNodeNameGenerator,
         nodes_to_exclude: Tuple,
     ):
+        """
+        Gets the name and depth of each graph node. Depth of each node is determined
+        by the longest distance between that node and any InputAttributeNode. Nodes of
+        any type in `nodes_to_exclude` will be skipped.
+        """
         uuid = node.get_stable_uuid()
         for child_node in node._get_all_child_nodes():
             if not isinstance(child_node, nodes_to_exclude):
@@ -81,7 +94,16 @@ class GraphVisualizer:
             self.uuid_to_node[uuid] = node
         return node
 
-    def visualize_with_gradio(self, handle):
+    def visualize_with_gradio(self, handle: RayServeHandle):
+        """
+        Launches a Gradio UI that allows interactive request dispatch and displays
+        the evaluated outputs of each node in a deployment graph in real time.
+
+        Args:
+            handle: the handle to a deployment graph to be visualized with Gradio.
+            Should be returned by a call to serve.run()
+        """
+
         self._reset_state()
 
         # Load the root dag node from handle
@@ -106,6 +128,6 @@ class GraphVisualizer:
                 outputs=[],
             )
             for node_uuid, block in self.node_to_block.items():
-                submit.click(partial(_submit_fn, handle, node_uuid), [], block)
+                submit.click(partial(_get_result, handle, node_uuid), [], block)
 
         demo.launch()

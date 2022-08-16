@@ -2,10 +2,8 @@ import pytest
 
 from ray.dag.gradio_visualization import GraphVisualizer
 
-# from ray.serve.drivers import DAGDriver
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.dag import (
-    # DAGNode,
     InputNode,
     ClassNode,
 )
@@ -14,6 +12,11 @@ from ray import serve
 
 @pytest.mark.asyncio
 async def test_execute_cached_object_ref():
+    """
+    Tests DAGNode.get_object_ref_from_last_execute() correclty returns object refs
+    to the submitted tasks after DAGNode.execute() is run.
+    """
+
     @serve.deployment
     def f():
         return 1
@@ -41,6 +44,11 @@ async def test_execute_cached_object_ref():
 
 
 def test_get_depth_and_name():
+    """
+    Tests that GraphVisualizer._get_depth_and_name, when passed into
+    DAGNode.apply_recursive, correctly retrieves the names and depths of each node.
+    """
+
     @serve.deployment
     def f(_, x=0):
         return x
