@@ -30,7 +30,7 @@ class Stopper(abc.ABC):
 
         tuner = Tuner(
             Trainable,
-            tune_config=tune.TunConfig(num_samples=200),
+            tune_config=tune.TuneConfig(num_samples=200),
             run_config=air.RunConfig(stop=TimeStopper())
         )
         tuner.fit()
