@@ -89,7 +89,12 @@ public class RayServeWrappedReplica implements RayServeReplica {
           deploymentWrapper.getConfig());
 
       // Instantiate the object defined by deploymentDef.
-      Class deploymentClass = Class.forName(deploymentWrapper.getDeploymentDef());
+      Class deploymentClass =
+          Class.forName(
+              deploymentWrapper.getDeploymentDef(),
+              true,
+              Optional.ofNullable(Thread.currentThread().getContextClassLoader())
+                  .orElse(getClass().getClassLoader()));
       Object callable =
           ReflectUtil.getConstructor(deploymentClass, deploymentWrapper.getInitArgs())
               .newInstance(deploymentWrapper.getInitArgs());

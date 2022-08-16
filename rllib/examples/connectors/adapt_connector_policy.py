@@ -5,6 +5,7 @@ and adapt/use it with a different version of the environment.
 import argparse
 import gym
 import numpy as np
+from pathlib import Path
 from typing import Dict
 
 from ray.rllib.utils.policy import (
@@ -23,9 +24,11 @@ from ray.rllib.utils.typing import (
 
 
 parser = argparse.ArgumentParser()
+# A policy checkpoint that works with this example script can be found at:
+# rllib/tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022
 parser.add_argument(
     "--checkpoint_file",
-    help="Path to an RLlib checkpoint file.",
+    help="Path to an RLlib checkpoint file, relative to //ray/rllib/ folder.",
 )
 parser.add_argument(
     "--policy_id",
@@ -88,13 +91,21 @@ V1ToV2ActionConnector = register_lambda_action_connector(
 )
 
 
-def run():
+def run(checkpoint_path):
     # Restore policy.
-    policies = load_policies_from_checkpoint(args.checkpoint_file, [args.policy_id])
+    policies = load_policies_from_checkpoint(checkpoint_path, [args.policy_id])
     policy = policies[args.policy_id]
 
     # Adapt policy trained for standard CartPole to the new env.
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
+
+    # When this policy was trained, it relied on FlattenDataAgentConnector
+    # to add a batch dimension to single observations.
+    # This is not necessary anymore, so we first remove the previously used
+    # FlattenDataAgentConnector.
+    policy.agent_connectors.remove("FlattenDataAgentConnector")
+
+    # We then add the two adapter connectors.
     policy.agent_connectors.prepend(V2ToV1ObsAgentConnector(ctx))
     policy.action_connectors.append(V1ToV2ActionConnector(ctx))
 
@@ -119,4 +130,7 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    checkpoint_path = str(
+        Path(__file__).parent.parent.parent.absolute().joinpath(args.checkpoint_file)
+    )
+    run(checkpoint_path)

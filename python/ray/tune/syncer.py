@@ -30,6 +30,7 @@ from ray.tune.callback import Callback
 from ray.tune.result import NODE_IP
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.widgets import Template
 
 if TYPE_CHECKING:
     from ray.tune.experiment import Trial
@@ -93,6 +94,41 @@ class SyncConfig:
     sync_on_checkpoint: bool = True
     sync_period: int = DEFAULT_SYNC_PERIOD
 
+    def _repr_html_(self) -> str:
+        """Generate an HTML representation of the SyncConfig.
+
+        Note that self.syncer is omitted here; seems to have some overlap
+        with existing configuration settings here in the SyncConfig class.
+        """
+        try:
+            from tabulate import tabulate
+        except ImportError:
+            return (
+                "Tabulate isn't installed. Run "
+                "`pip install tabulate` for rich notebook output."
+            )
+
+        return Template("scrollableTable.html.j2").render(
+            table=tabulate(
+                {
+                    "Setting": [
+                        "Upload directory",
+                        "Sync on checkpoint",
+                        "Sync period",
+                    ],
+                    "Value": [
+                        self.upload_dir,
+                        self.sync_on_checkpoint,
+                        self.sync_period,
+                    ],
+                },
+                tablefmt="html",
+                showindex=False,
+                headers="keys",
+            ),
+            max_height="none",
+        )
+
 
 class _BackgroundProcess:
     def __init__(self, fn: Callable):
@@ -146,8 +182,8 @@ class Syncer(abc.ABC):
     This class handles data transfer for two cases:
 
     1. Synchronizing data from the driver to external storage. This affects
-      experiment-level checkpoints and trial-level checkpoints if no cloud storage
-      is used.
+       experiment-level checkpoints and trial-level checkpoints if no cloud storage
+       is used.
     2. Synchronizing data from remote trainables to external storage.
 
     Synchronizing tasks are usually asynchronous and can be awaited using ``wait()``.
@@ -307,6 +343,9 @@ class Syncer(abc.ABC):
 
     def close(self):
         pass
+
+    def _repr_html_(self) -> str:
+        return
 
 
 class _BackgroundSyncer(Syncer):
