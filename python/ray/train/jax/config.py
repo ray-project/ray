@@ -65,6 +65,14 @@ def release_tpu_lock(try_remove_tpulib_lock: bool = False):
         # until those processes are terminated and release the TPU.
         # The following command should end all these processes.
         # see more details: https://github.com/google/jax/issues/10192
+
+        logger.debug(
+            "Try to remove the tpulib lock file. "
+            "the command is `lsof -w /dev/accel0` "
+            "and `rm -f /tmp/tpulib_lockfile`. One can "
+            "find more details in "
+            "https://github.com/google/jax/issues/10192."
+        )
         subprocess.run(
             "sudo lsof -w /dev/accel0", shell=True
         )  # kill all processes using the TPUs
