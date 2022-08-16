@@ -64,13 +64,10 @@ class SegmentationBuffer:
         ep_len = episode.env_steps()
 
         if ep_len > self.max_ep_len:
-            logger.warning(
+            raise ValueError(
                 f"The maximum rollout length is {self.max_ep_len} but we tried to add a"
-                f"rollout of {episode.env_steps()} steps to the SegmentationBuffer. "
-                f"This could be due to incorrect data in the dataset (need fixing), "
-                f"or random shuffling that caused a duplicate rollout (no need to fix)."
+                f"rollout of {episode.env_steps()} steps to the SegmentationBuffer."
             )
-            episode = episode[: self.max_ep_len]
 
         # compute returns to go
         rewards = episode[SampleBatch.REWARDS].reshape(-1)

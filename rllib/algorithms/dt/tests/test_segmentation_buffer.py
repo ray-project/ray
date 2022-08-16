@@ -180,6 +180,11 @@ class TestSegmentationBuffer(unittest.TestCase):
                     break
             assert found, "new_batch not added to buffer."
 
+            # test that adding too long an episode errors
+            long_batch = _generate_episode_batch(max_ep_len + 1, 123)
+            with self.assertRaises(ValueError):
+                buffer.add(long_batch)
+
     def test_sample_basic(self):
         """Test sampling from a segmentation buffer."""
         for buffer_cls in (SegmentationBuffer, MultiAgentSegmentationBuffer):
