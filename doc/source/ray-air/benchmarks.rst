@@ -184,7 +184,7 @@ Ray Train's distributed TorchTrainer.
 We demonstrate that the performance is similar (within 2.5\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
 
-The reported times are for the raw training times. There is a unreported constant setup
+The reported times are for the raw training times. There is an unreported constant setup
 overhead of a few seconds for both methods that is negligible for longer training runs.
 
 - `Pytorch comparison training script`_
@@ -219,8 +219,11 @@ Tensorflow Training Parity
 This task checks the performance parity between native Tensorflow Distributed and
 Ray Train's distributed TensorflowTrainer.
 
-We demonstrate that the performance is similar (within 10\%) between the two frameworks.
+We demonstrate that the performance is similar (within 1\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
+
+The reported times are for the raw training times. There is an unreported constant setup
+overhead of a few seconds for both methods that is negligible for longer training runs.
 
 .. note:: The batch size and number of epochs is different for the GPU benchmark, resulting in a longer runtime.
 
@@ -236,15 +239,15 @@ Performance may vary greatly across different model, hardware, and cluster confi
       - **Command**
     * - 4 m5.2xlarge nodes (4 workers)
       - FashionMNIST
-      - 90.61 s (vs 81.26 s Tensorflow)
+      - 78.81 s (vs 79.67 s Tensorflow)
       - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8`
     * - 4 m5.2xlarge nodes (16 workers)
       - FashionMNIST
-      - 75.34 s (vs 69.51 s Tensorflow)
+      - 64.57 s (vs 67.45 s Tensorflow)
       - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2`
     * - 4 g4dn.12xlarge node (16 workers)
       - FashionMNIST
-      - 495.85 s (vs 479.28 s Tensorflow)
+      - 465.16 s (vs 461.74 s Tensorflow)
       - `python workloads/tensorflow_benchmark.py run --num-runs 3 --num-epochs 200 --num-workers 16 --cpus-per-worker 4 --batch-size 64 --use-gpu`
 
 
