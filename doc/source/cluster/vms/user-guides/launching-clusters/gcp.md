@@ -69,7 +69,7 @@ available_node_types:
     node_config:
       ...
     serviceAccounts:
-    - email: ray-autoscaler-sa-v1@anyscale-dev.iam.gserviceaccount.com
+    - email: ray-autoscaler-sa-v1@<YOUR_PROJECT_ID>.iam.gserviceaccount.com
         scopes:
         - https://www.googleapis.com/auth/cloud-platform
 ```
