@@ -1,6 +1,15 @@
 package io.ray.serve.replica;
 
+import java.io.IOException;
+import java.util.Map;
+import java.util.Optional;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.common.base.Preconditions;
+
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
@@ -16,12 +25,6 @@ import io.ray.serve.metrics.RayServeMetrics;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
-import java.io.IOException;
-import java.util.Map;
-import java.util.Optional;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /** Replica class wrapping the provided class. Note that Java function is not supported now. */
 public class RayServeWrappedReplica implements RayServeReplica {
@@ -89,7 +92,12 @@ public class RayServeWrappedReplica implements RayServeReplica {
           deploymentWrapper.getConfig());
 
       // Instantiate the object defined by deploymentDef.
-      Class deploymentClass = Class.forName(deploymentWrapper.getDeploymentDef());
+      Class deploymentClass =
+          Class.forName(
+              deploymentWrapper.getDeploymentDef(),
+              true,
+              Optional.ofNullable(Thread.currentThread().getContextClassLoader())
+                  .orElse(getClass().getClassLoader()));
       Object callable =
           ReflectUtil.getConstructor(deploymentClass, deploymentWrapper.getInitArgs())
               .newInstance(deploymentWrapper.getInitArgs());
