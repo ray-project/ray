@@ -636,6 +636,11 @@ void GcsPlacementGroupScheduler::CommitBundleResources(
   auto node_bundle_resources_map = ToNodeBundleResourcesMap(bundle_locations);
   for (const auto &[node_id, node_bundle_resources] : node_bundle_resources_map) {
     for (const auto &[resource_id, capacity] : node_bundle_resources.ToMap()) {
+      // A placement group's wildcard resource has to be the sum of all related bundles.
+      // Even though `ToNodeBundleResourcesMap` has already considered this,
+      // it misses the scenario in which single (or subset of) bundle is rescheduled.
+      // When commiting this single bundle, its wildcard resource would wrongly overwrite
+      // the existing value, unless using the following additive operation.
       if (IsPlacementGroupWildcardResource(resource_id.Binary())) {
         auto new_capacity =
             capacity +
@@ -711,7 +716,7 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
     }
   }
 
-  // This bundle is eligible for returning.
+  // This bundle is not ready for returning.
   if (bundle_resource_ids.empty()) {
     return false;
   }

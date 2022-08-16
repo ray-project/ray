@@ -437,7 +437,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Try to release bundle resource to cluster resource manager.
   ///
   /// \param bundle The node to which the bundle is scheduled and the bundle's
-  /// specification. \return True if the bundle is succesfully released. False otherwise.
+  /// specification.
+  /// \return True if the bundle is succesfully released. False otherwise.
   bool TryReleasingBundleResources(
       const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
 
