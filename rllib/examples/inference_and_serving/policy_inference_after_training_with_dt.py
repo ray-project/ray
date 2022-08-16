@@ -106,7 +106,7 @@ if __name__ == "__main__":
             horizon=max_ep_len,
         )
         .reporting(
-            min_time_s_per_iteration=10,
+            min_train_timesteps_per_iteration=5000,
         )
         .resources(
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
