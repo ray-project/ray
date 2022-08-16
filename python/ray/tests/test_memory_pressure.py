@@ -160,13 +160,13 @@ def test_memory_pressure_kill_newest_worker(shutdown_only):
     )
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction - 0.1)
-    
+
     actor_ref = Leaker.options(name="actor").remote()
     ray.get(actor_ref.allocate.remote(bytes_to_alloc))
-    
+
     with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
       ray.get(no_retry.remote(allocate_bytes = bytes_to_alloc))
-    
+
     actors = ray.util.list_named_actors()
     assert len(actors) == 1
     assert "actor" in actors
