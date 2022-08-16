@@ -4,7 +4,7 @@ import operator
 import threading
 import time
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
