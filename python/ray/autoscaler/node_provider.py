@@ -124,6 +124,12 @@ class NodeProvider:
         """Creates a number of nodes within the namespace.
 
         Optionally returns a mapping from created node ids to node metadata.
+
+        Optionally may throw a
+        ray.autoscaler.node_launch_exception.NodeLaunchException which the
+        autoscaler may use to provide additional functionality such as
+        observability.
+
         """
         raise NotImplementedError
 
@@ -139,6 +145,8 @@ class NodeProvider:
         This is the method actually called by the autoscaler. Prefer to
         implement this when possible directly, otherwise it delegates to the
         create_node() implementation.
+
+        Optionally may throw a ray.autoscaler.node_launch_exception.NodeLaunchException.
         """
         return self.create_node(node_config, tags, count)
 
