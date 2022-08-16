@@ -10,8 +10,7 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class LightningCheckpoint(Checkpoint):
-    """A :py:class:`~ray.air.checkpoint.Checkpoint` with Lightning-specific
-    functionality.
+    """A ``ray.air.checkpoint.Checkpoint`` with Lightning-specific functionality.
 
     Create this from a generic :py:class:`~ray.air.checkpoint.Checkpoint` by calling
     ``LightningCheckpoint.from_checkpoint(ckpt)``.
