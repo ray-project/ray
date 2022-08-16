@@ -86,9 +86,7 @@ class BaseNodeLauncher:
             self.pending.dec(node_type, count)
             self.prom_metrics.pending_nodes.set(self.pending.value)
 
-    def _launch_node(
-        self, config: Dict[str, Any], count: int, node_type: str
-    ):
+    def _launch_node(self, config: Dict[str, Any], count: int, node_type: str):
         if self.node_types:
             assert node_type, node_type
 
@@ -127,9 +125,11 @@ class BaseNodeLauncher:
             self.node_provider_availability_tracker.update_node_availability(
                 node_type, launch_start_time, node_launch_exception
             )
-            error_msg = (f"Failed to launch {node_type}: "
+            error_msg = (
+                f"Failed to launch {node_type}: "
                 f"({node_launch_exception.category}):"
-                f"{node_launch_exception.description}")
+                f"{node_launch_exception.description}"
+            )
             # Do some special handling if we have a structured error.
             self.event_summarizer.add(
                 error_msg,
