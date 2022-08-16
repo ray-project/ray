@@ -130,16 +130,22 @@ class BaseNodeLauncher:
                 f"({node_launch_exception.category}):"
                 f"{node_launch_exception.description}"
             )
-            # Do some special handling if we have a structured error.
             self.event_summarizer.add(
                 error_msg,
                 quantity=count,
                 aggregate=operator.add,
             )
             self.log(error_msg)
+            # Do some special handling if we have a structured error.
             # Reraise to trigger the more general exception handling code.
             raise node_launch_exception.source_exception
         except Exception:
+            error_msg = "Failed to launch {} nodes of type " + str(node_type) + "."
+            self.event_summarizer.add(error_msg
+                ,
+                quantity=count,
+                aggregate=operator.add,
+            )
             raise
         launch_time = time.time() - launch_start_time
         for _ in range(count):
