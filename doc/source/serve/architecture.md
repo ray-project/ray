@@ -14,6 +14,7 @@ This section should help you:
 :width: 600px
 ```
 
+(serve-architecture-high-level-view)=
 ## High-Level View
 
 Serve runs on Ray and utilizes [Ray actors](actor-guide).

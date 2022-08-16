@@ -71,7 +71,7 @@ Multi-node Distributed Training
 
 Using the same examples above, you can run distributed training on a multi-node cluster with just a couple simple steps.
 
-First, use Ray's :ref:`Cluster Launcher <ref-cluster-quick-start>` to start a Ray cluster:
+First, use Ray's :ref:`Cluster Launcher <vm-cluster-quick-start>` to start a Ray cluster:
 
 .. code-block:: bash
 
@@ -81,14 +81,14 @@ Then, run your Ray script using one of the following options:
 
 1. on the head node of the cluster (``python train_script.py``)
 2. via ``ray job submit`` (:ref:`docs <jobs-overview>`) from your laptop (``ray job submit -- python train.py``)
-3. via the :ref:`Ray Client<ray-client>` from your laptop.
+3. via the :ref:`Ray Client <ray-client-ref>` from your laptop.
 
 .. _pytorch-lightning-tune:
 
 Distributed Hyperparameter Optimization with Ray Tune
 -----------------------------------------------------
 
-You can also use :ref:`Ray Tune<tune-main>` with Pytorch Lightning to tune the hyperparameters of your model.
+You can also use :ref:`Ray Tune <tune-main>` with Pytorch Lightning to tune the hyperparameters of your model.
 With this integration, you can run multiple training runs in parallel, with each run having a different set of hyperparameters
 for your Pytorch Lightning model.
 
@@ -151,7 +151,7 @@ And if you want to add periodic checkpointing as well, you can use the ``TuneRep
         on="validation_end")
 
 
-Check out the :ref:`Pytorch Lightning with Ray Tune tutorial<tune-pytorch-lightning-ref>` for a full example on how you can use these callbacks and run a tuning experiment for your Pytorch Lightning model.
+Check out the :ref:`Pytorch Lightning with Ray Tune tutorial <tune-pytorch-lightning-ref>` for a full example on how you can use these callbacks and run a tuning experiment for your Pytorch Lightning model.
 
 
 Hyperparameter Tuning with distributed training

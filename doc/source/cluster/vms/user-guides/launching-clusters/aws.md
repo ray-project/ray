@@ -67,6 +67,8 @@ If you want to learn more about the Ray cluster launcher, see this blog post for
 
 ## AWS Configurations
 
+(aws-cluster-efs)=
+
 ### Using Amazon EFS
 
 To utilize Amazon EFS in the Ray cluster, you will need to install some additional utilities and mount the EFS in `setup_commands`. Note that these instructions only work if you are using the Ray cluster launcher on AWS.
@@ -91,6 +93,8 @@ setup_commands:
         sudo mount -t efs {{FileSystemId}}:/ efs;
         sudo chmod 777 efs;
 ```
+
+(aws-cluster-s3)=
 
 ### Accessing S3
 
@@ -123,4 +127,4 @@ secret_key     ****************YYYY         iam-role
     region                <not set>             None    None
 ```
 
-Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on ???.
+Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on accessing S3.

@@ -8,8 +8,6 @@
 
 :::{tip}
 [Get in touch with us](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU) if you're using or considering using Ray Serve.
-
-Chat with Ray Serve users and developers on our [forum](https://discuss.ray.io/).
 :::
 
 ```{image} logo.svg
@@ -27,29 +25,34 @@ Serve is particularly well suited for {ref}`serve-model-composition`, enabling y
 
 Serve is built on top of Ray, so it easily scales to many machines and offers flexible scheduling support such as fractional GPUs so you can share resources and serve many machine learning models at low cost.
 
-:::{tabbed} Installation
+## Quickstart
 
 Install Ray Serve and its dependencies:
 
 ```bash
 pip install "ray[serve]"
 ```
-:::
-
-:::{tabbed} Quickstart
-
-To run this example, install the following: ``pip install ray["serve"]``
 
 In this quick-start example we will define a simple "hello world" deployment, deploy it behind HTTP locally, and query it.
 
 ```{literalinclude} doc_code/quickstart.py
 :language: python
 ```
+
+:::{tabbed} More examples
+For more examples, select from the tabs.
+:::
+
+:::{tabbed} Model composition
+
+In this example, we demonstrate how you can use Serve's model composition API to express a complex computation graph and deploy it as a Serve application.
+
+```{literalinclude} doc_code/quickstart_graph.py
+:language: python
+```
 :::
 
 :::{tabbed} FastAPI integration
-
-To run this example, install the following: ``pip install ray["serve"]``
 
 In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to make use of more advanced HTTP functionality.
 
@@ -58,9 +61,9 @@ In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) int
 ```
 :::
 
-:::{tabbed} Serving a Hugging Face NLP model
+:::{tabbed} Hugging Face model
 
-To run this example, install the following: ``pip install ray["serve"] transformers``
+To run this example, install the following: ``pip install transformers``
 
 In this example we will serve a pre-trained [Hugging Face transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
 The model we'll use is a sentiment analysis model: it will take a text string as input and return if the text was "POSITIVE" or "NEGATIVE."
@@ -121,9 +124,88 @@ Because it's built on top of Ray, you can run it anywhere Ray can: on your lapto
 
 :::
 
+
+## How can Serve help me as a...
+
+:::{dropdown} Data scientist
+:animate: fade-in-slide-down
+
+Serve makes it easy to go from a laptop to a cluster. You can test your models (and your entire deployment graph) on your local machine before deploying it to production on a cluster. You don't need to know heavyweight Kubernetes concepts or cloud configurations to use Serve.
+
+:::
+
+:::{dropdown} ML engineer
+:animate: fade-in-slide-down
+
+Serve helps you scale out your deployment and runs them reliably and efficiently to save costs. With Serve's first-class model composition API, you can combine models together with business logic and build end-to-end user-facing applications. Additionally, Serve runs natively on Kubernetes with minimal operation overhead.
+:::
+
+:::{dropdown} ML platform engineer
+:animate: fade-in-slide-down
+
+Serve specializes in scalable and reliable ML model serving. As such, it can be an important plug-and-play component of your ML platform stack.
+Serve supports arbitrary Python code and therefore integrates well with the MLOps ecosystem. You can use it with model optimizers (ONNX, TVM), model monitoring systems (Seldon Alibi, Arize), model registries (MLFlow, Weights and Biases), machine learning frameworks (XGBoost, Scikit-learn), data app UIs (Gradio, Streamlit), and Web API frameworks (FastAPI, gRPC).
+
+:::
+
+
+## How does Serve compare to ...
+
+:::{dropdown} TFServing, TorchServe, ONNXRuntime
+:animate: fade-in-slide-down
+
+Ray Serve is *framework agnostic*, so you can use it alongside any other Python framework or library.
+We believe data scientists should not be bound to a particular machine learning framework.
+They should be empowered to use the best tool available for the job.
+
+Compared to these framework-specific solutions, Ray Serve doesn't perform any model-specific optimizations to make your ML model run faster. However, you can still optimize the models yourself
+and run them in Ray Serve. For example, you can run a model compiled by
+[PyTorch JIT](https://pytorch.org/docs/stable/jit.html) or [ONNXRuntime](https://onnxruntime.ai/).
+:::
+
+:::{dropdown} AWS SageMaker, Azure ML, Google Vertex AI
+:animate: fade-in-slide-down
+
+As an open-source project, Ray Serve brings the scalability and reliability of these hosted offerings to your own infrastructure.
+You can use the Ray [cluster launcher](cluster-index) to deploy Ray Serve to all major public clouds, K8s, as well as on bare-metal, on-premise machines.
+
+Ray Serve is not a full-fledged ML Platform.
+Compared to these other offerings, Ray Serve lacks the functionality for
+managing the lifecycle of your models, visualizing their performance, etc. Ray
+Serve primarily focuses on model serving and providing the primitives for you to
+build your own ML platform on top.
+
+If you are looking for end-to-end ML pipeline framework that can handle everything from data processing to serving, check out [Ray AI Runtime](air).
+:::
+
+:::{dropdown} Seldon, KServe, Cortex
+:animate: fade-in-slide-down
+
+You can develop Ray Serve on your laptop, deploy it on a dev box, and scale it out
+to multiple machines or a Kubernetes cluster, all with minimal or no changes to code. It's a lot
+easier to get started with when you don't need to provision and manage a K8s cluster.
+When it's time to deploy, you can use our [Kubernetes Operator](kuberay-quickstart)
+to transparently deploy your Ray Serve application to K8s.
+:::
+
+:::{dropdown} BentoML, Comet.ml, MLflow
+:animate: fade-in-slide-down
+
+Many of these tools are focused on serving and scaling models independently.
+In contrast, Ray Serve is framework-agnostic and focuses on model composition.
+As such, Ray Serve works with any model packaging and registry format.
+Ray Serve also provides key features for building production-ready machine learning applications, including best-in-class autoscaling and naturally integrating with business logic.
+:::
+
+We truly believe Serve is unique as it gives you end-to-end control
+over your ML application while delivering scalability and high performance. To achieve
+Serve's feature offerings with other tools, you would need to glue together multiple
+frameworks like Tensorflow Serving and SageMaker, or even roll your own
+micro-batching component to improve throughput.
+
 ## Learn More
 
-Check out {ref}`getting-started` and {ref}`serve-key-concepts`, look at the {ref}`serve-faq`,
+Check out {ref}`getting-started` and {ref}`serve-key-concepts`,
 or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
 
 
@@ -136,7 +218,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     **Getting Started**
     ^^^
 
-    Start with our quick start tutorials for :ref:`deploying a single model locally<getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment<converting-to-ray-serve-deployment>` .
+    Start with our quick start tutorials for :ref:`deploying a single model locally <getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-deployment>` .
 
     +++
     .. link-button:: getting-started
@@ -149,7 +231,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     ^^^
 
     Understand the key concepts behind Ray Serve.
-    Learn about :ref:`Deployments<serve-key-concepts-deployment>`, :ref:`how to query them<serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph<serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
+    Learn about :ref:`Deployments <serve-key-concepts-deployment>`, :ref:`how to query them <serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph <serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
 
     +++
     .. link-button:: serve-key-concepts
@@ -160,8 +242,8 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
 
     **User Guides**
     ^^^
-    Learn best practices for common patterns like :doc:`managing deployments<managing-deployments>`, how to call deployments :ref:`via HTTP<serve-http>` or :ref:`from Python<serve-handle-explainer>`.
-    Learn how to serve multiple ML models with :ref:`Model Ensemble<serve-model-ensemble>`, and how to :ref:`monitor your Serve applications<serve-monitoring>`.
+    Learn best practices for common patterns like :doc:`managing deployments <managing-deployments>`, how to call deployments :ref:`via HTTP <serve-http>` or :ref:`from Python <serve-handle-explainer>`.
+    Learn how to serve multiple ML models with :ref:`Model Ensemble <serve-model-ensemble>`, and how to :ref:`monitor your Serve applications <serve-monitoring>`.
 
     +++
     .. link-button:: serve-user-guides
@@ -173,24 +255,12 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
     **Examples**
     ^^^
 
-    Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow<serve-ml-models-tutorial>`, :ref:`Scikit-Learn<serve-ml-models-tutorial>`, and :ref:`RLlib<serve-rllib-tutorial>`.
+    Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow <serve-ml-models-tutorial>`, :ref:`Scikit-Learn <serve-ml-models-tutorial>`, and :ref:`RLlib <serve-rllib-tutorial>`.
 
     +++
     .. link-button:: serve-examples
         :type: ref
         :text: Serve Examples
-        :classes: btn-outline-info btn-block
-    ---
-
-    **Serve FAQ**
-    ^^^
-
-    Find answers to commonly asked questions in our detailed FAQ.
-
-    +++
-    .. link-button:: serve-faq
-        :type: ref
-        :text: Ray Serve FAQ
         :classes: btn-outline-info btn-block
     ---
 
