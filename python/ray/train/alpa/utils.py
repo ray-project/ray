@@ -40,8 +40,7 @@ def get_bundle2ip(pg=None):
     # dictionary: bundle_group to node_ip
     dict_bg2ip = {}
 
-    ray_state = try_import_ray_state()
-    resources_list = ray_state.state._available_resources_per_node().values()
+    resources_list = ray._private.state.state._available_resources_per_node().values()
 
     for resource in resources_list:
         resource_name_list = resource.keys()
