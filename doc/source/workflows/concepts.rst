@@ -33,8 +33,8 @@ durability primitives as opposed to tools and integrations.
 
 Concepts
 --------
-Ray Workflows provides the *durable task* primitive, which can be used instead of
-Ray's non-durable tasks.
+Ray Workflows provides the *durable task* primitive, which can be used as a
+substitute for Ray's non-durable task API.
 
 Ray DAG
 ~~~~~~~
@@ -43,15 +43,15 @@ If you’re new to Ray, we recommend starting with the
 :ref:`walkthrough <core-walkthrough>`.
 
 Normally, Ray tasks are executed eagerly.
-Ray DAG provides a way to build the DAG without execution, and Ray Workflows is
-based on Ray DAGs.
+In order to provide durability, Ray Workflows uses the lazy :ref:`Ray DAG API <ray-dag-guide>`_
+to separate the definition and execution of task DAGs.
 
-It is simple to build a Ray DAG: you just replace all ``.remote(...)`` with
-``.bind(...)`` in a Ray application. Ray DAGs can be composed in arbitrarily
-like normal Ray tasks.
+Switching from Ray tasks to the DAG API is simple: just replace all calls to ``.remote(...)``
+(which return object references), to calls to ``.bind(...)`` (which return DAG nodes).
+Ray DAG nodes can otherwise be composed like normal Ray tasks.
 
-Unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on
-DAGs. And instead, you need an engine to execute the DAGs.
+However, unlike Ray tasks, you are not allowed to call ``ray.get()`` or ``ray.wait()`` on
+DAG nodes. Instead, the DAG needs to be *executed* in order to compute a result.
 
 .. code-block:: python
     :caption: Composing functions together into a DAG:
@@ -72,10 +72,10 @@ DAGs. And instead, you need an engine to execute the DAGs.
 Workflows
 ~~~~~~~~~
 
-It takes a single line of code to run a workflow DAG:
+To execute a DAG with workflows, use `workflow.run`:
 
 .. code-block:: python
-    :caption: Run a workflow DAG:
+    :caption: Executing a DAG with Ray Workflows.
 
     from ray import workflow
 
@@ -96,7 +96,7 @@ they finish successfully and the results are persisted by the workflow engine,
 they will never be run again.
 
 .. code-block:: python
-    :caption: Retrieve the output:
+    :caption: Getting the result of a workflow.
 
     # configure the storage with "ray.init" or "ray start --head --storage=<STORAGE_URI>"
     # A default temporary storage is used by by the workflow if starting without
@@ -110,8 +110,8 @@ they will never be run again.
 
 Objects
 ~~~~~~~
-Large data objects can be stored in the Ray object store. References to these
-objects can be passed into and returned from tasks. Objects are checkpointed
+Workflows integrates seamlessly with Ray objects, by allowing Ray object
+references to be passed into and returned from tasks. Objects are checkpointed
 when initially returned from a task. After checkpointing, the object can be
 shared among any number of workflow tasks at memory-speed via the Ray object
 store.
@@ -138,12 +138,12 @@ store.
 
     assert workflow.run(concat.bind(words.bind())) == "hello world"
 
-Dynamic Workflow
-~~~~~~~~~~~~~~~~
+Dynamic Workflows
+~~~~~~~~~~~~~~~~~
 Workflows can generate new tasks at runtime. This is achieved by returning a
 continuation of a DAG. A continuation is something returned by a function and
 executed after it returns. The continuation feature enables nesting, looping,
-and recursion within workflows.
+and recursion within workflows:
 
 .. code-block:: python
     :caption: The Fibonacci recursive workflow:
