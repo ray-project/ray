@@ -1570,7 +1570,22 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_get_actors(shutdown_only):
+@pytest.mark.parametrize(
+    "override_url",
+    [
+        None,
+        "https://external_dashboard_url",
+        "https://external_dashboard_url/path1/?query_param1=val1&query_param2=val2",
+        "new_external_dashboard_url",
+    ],
+)
+def test_list_get_actors(shutdown_only, override_url):
+    orig_external_dashboard_url = os.environ.get(
+        ray_constants.RAY_OVERRIDE_DASHBOARD_URL
+    )
+    if override_url:
+        os.environ[ray_constants.RAY_OVERRIDE_DASHBOARD_URL] = override_url
+
     ray.init()
 
     @ray.remote
@@ -1598,6 +1613,11 @@ def test_list_get_actors(shutdown_only):
 
     wait_for_condition(verify)
     print(list_actors())
+
+    if orig_external_dashboard_url:
+        os.environ[
+            ray_constants.RAY_OVERRIDE_DASHBOARD_URL
+        ] = orig_external_dashboard_url
 
 
 @pytest.mark.skipif(

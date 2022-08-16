@@ -13,18 +13,6 @@ from ray._private.test_utils import run_string_as_driver
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
-@pytest.fixture
-def set_override_dashboard_url(request):
-    orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
-    override_url = getattr(request, "param", "https://external_dashboard_url")
-    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = override_url
-
-    yield
-
-    if orig_external_dashboard_url:
-        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
-
-
 def test_ray_init_context(shutdown_only):
     ctx = ray.init()
     assert ray.is_initialized()

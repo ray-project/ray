@@ -901,14 +901,16 @@ def get_dashboard_url():
         return _global_node.webui_url
 
 
-def _remove_protocol_from_url(url: str) -> str:
+def _remove_protocol_from_url(url: Optional[str]) -> str:
     """
     Helper function to remove protocol from URL if it exists.
     """
+    if not url:
+        return url
     parsed_url = urllib.parse.urlparse(url)
     if parsed_url.scheme:
         # Construct URL without protocol
-        scheme = "%s://" % parsed_url.scheme
+        scheme = f"{parsed_url.scheme}://"
         return parsed_url.geturl().replace(scheme, "", 1)
     return url
 
