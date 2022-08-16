@@ -88,7 +88,9 @@ class TestDT(unittest.TestCase):
                 num_rollout_workers=0,
                 horizon=200,
             )
-            .reporting(min_time_s_per_iteration=1)
+            .reporting(
+                min_train_timesteps_per_iteration=10,
+            )
         )
 
         num_iterations = 4
