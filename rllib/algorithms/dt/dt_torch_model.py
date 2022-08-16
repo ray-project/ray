@@ -140,26 +140,29 @@ class DTTorchModel(TorchModelV2, nn.Module):
         """Computes the output of a forward pass of the decision transformer.
 
         Args:
-            model_out: output observation tensor from the base model, [B x T x obs_dim]
+            model_out: output observation tensor from the base model, [B, T, obs_dim].
             input_dict: a SampleBatch containing
-                RETURNS_TO_GO: [B x T x 1] of returns to go values
-                ACTIONS: [B x T x action_dim] of actions
-                T: [B x T x 1] of timesteps
-                ATTENTION_MASKS: [B x T] of attention masks
+                RETURNS_TO_GO: [B, T (or T + 1), 1] of returns to go values.
+                ACTIONS: [B, T, action_dim] of actions.
+                T: [B, T] of timesteps.
+                ATTENTION_MASKS: [B, T] of attention masks.
 
         Returns:
             A dictionary with keys and values:
-                ACTIONS: [B x T x action_dim] of predicted actions
-                if model_config["use_obs_output"]
-                    OBS: [B x T x obs_dim] of predicted observations
-                if model_config["use_return_output"]
-                    RETURNS_to_GO: [B x T x 1] of predicted returns to go
+                ACTIONS: [B, T, action_dim] of predicted actions.
+                if model_config["use_obs_output"].
+                    OBS: [B, T, obs_dim] of predicted observations.
+                if model_config["use_return_output"].
+                    RETURNS_to_GO: [B, T, 1] of predicted returns to go.
         """
         B, T, *_ = model_out.shape
 
         obs_embeds = self.obs_encoder(model_out)
         actions_embeds = self.action_encoder(input_dict[SampleBatch.ACTIONS])
         # Note: rtg might have an extra element at the end for targets
+        # During training rtg will have T + 1 for its time dimension to get the
+        # rtg regression target. During evaluation/inference rtg will have T for
+        # its time dimension as we don't need to call get_targets.
         returns_embeds = self.return_encoder(
             input_dict[SampleBatch.RETURNS_TO_GO][:, :T, :]
         )
@@ -198,7 +201,24 @@ class DTTorchModel(TorchModelV2, nn.Module):
     def get_targets(
         self, model_out: TensorType, input_dict: SampleBatch
     ) -> Dict[str, TensorType]:
-        """Compute the target predictions for a given input_dict."""
+        """Compute the target predictions for a given input_dict.
+
+        Args:
+            model_out: output observation tensor from the base model, [B, T, obs_dim].
+            input_dict: a SampleBatch containing
+                RETURNS_TO_GO: [B, T + 1, 1] of returns to go values.
+                ACTIONS: [B, T, action_dim] of actions.
+                T: [B, T] of timesteps.
+                ATTENTION_MASKS: [B, T] of attention masks.
+
+        Returns:
+            A dictionary with keys and values:
+                ACTIONS: [B, T, action_dim] of target actions.
+                if model_config["use_obs_output"]
+                    OBS: [B, T, obs_dim] of target observations.
+                if model_config["use_return_output"]
+                    RETURNS_to_GO: [B, T, 1] of target returns to go.
+        """
         targets = {SampleBatch.ACTIONS: input_dict[SampleBatch.ACTIONS].detach()}
         if self.model_config["use_obs_output"]:
             targets[SampleBatch.OBS] = model_out.detach()
