@@ -253,7 +253,7 @@ class GroupedDataset(Generic[T]):
 
         # Returns the keys of the batch in numpy array.
         # Returns None if the self._key is None.
-        def get_keys(batch, accessor) -> Optional[np.ndarray]:
+        def get_keys(batch) -> Optional[np.ndarray]:
             import pandas as pd
             import pyarrow as pa
 
@@ -264,18 +264,16 @@ class GroupedDataset(Generic[T]):
                 return batch[self._key].to_numpy()
             elif isinstance(batch, List):
                 assert callable(self._key)
-                return np.array([self._key(item) for item in accessor.iter_rows()])
+                return np.array([self._key(item) for item in batch])
             else:
                 raise ValueError(
                     f"Unsupported batch type for map_groups: {type(batch)}"
                 )
 
         # Returns the group boundaries.
-        def get_key_boundaries(batch, accessor):
+        def get_key_boundaries(batch):
             boundaries = []
-            keys = get_keys(batch, accessor)
-            if keys is None:
-                return [accessor.num_rows()]
+            keys = get_keys(batch)
             start = 0
             while start < keys.size:
                 end = start + np.searchsorted(keys[start:], keys[start], side="right")
@@ -287,7 +285,10 @@ class GroupedDataset(Generic[T]):
         # map_batches() below.
         def group_fn(batch):
             block_accessor = BlockAccessor.for_block(batch)
-            boundaries = get_key_boundaries(batch, block_accessor)
+            if self._key:
+                boundaries = get_key_boundaries(batch)
+            else:
+                boundaries = [block_accessor.num_rows()]
             builder = block_accessor.builder()
             start = 0
             for end in boundaries:
