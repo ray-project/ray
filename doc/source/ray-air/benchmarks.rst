@@ -196,11 +196,11 @@ Performance may vary greatly across different model, hardware, and cluster confi
       - **Command**
     * - 4 m5.2xlarge nodes (4 workers)
       - FashionMNIST
-      - 201.17 s (vs 195.90 s Pytorch)
+      - 196.64 s (vs 194.90 s Pytorch)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 4 --cpus-per-worker 8`
     * - 4 m5.2xlarge nodes (16 workers)
       - FashionMNIST
-      - 447.14 s (vs 461.75 s Pytorch)
+      - 430.88 s (vs 475.97 s Pytorch)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2`
     * - 4 g4dn.12xlarge node (16 workers)
       - FashionMNIST
