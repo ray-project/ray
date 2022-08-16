@@ -96,9 +96,7 @@ class TestDTPolicy(unittest.TestCase):
         sample_batch = policy.postprocess_trajectory(sample_batch)
 
         # Assert that dones is correctly set
-        assert (
-            SampleBatch.DONES in sample_batch
-        ), "`dones` isn't part of the batch."
+        assert SampleBatch.DONES in sample_batch, "`dones` isn't part of the batch."
         assert np.allclose(
             sample_batch[SampleBatch.DONES],
             np.array([False, False, False, True]),
