@@ -5,12 +5,12 @@ Ray Workflows: Durable Ray Task Graphs
 
 .. warning::
 
-  Ray Workflow is available as **alpha** in Ray 2.0+. Expect rough corners and
+  Ray Workflows is available as **alpha** in Ray 2.0+. Expect rough corners and
   for its APIs and storage format to change. Please file feature requests and
   bug reports on GitHub Issues or join the discussion on the
   `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
-Ray Workflow provides high-performance, *durable* application workflows using
+Ray Workflows provides high-performance, *durable* application workflows using
 Ray tasks as the underlying execution engine. It's supposed to be used to
 orchestrate Ray apps so that the failed Ray jobs can resume from the place
 where they failed without recomputing.
@@ -34,7 +34,7 @@ of workflows as code is upgraded over time.
 
 You might find that Ray Workflows is *lower level* compared to engines such as
 `AirFlow <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__
-(which can also run on Ray). This is because Ray Workflow focuses more on core
+(which can also run on Ray). This is because Ray Workflows focuses more on core
 workflow primitives as opposed to tools and integrations.
 
 Concepts
@@ -49,7 +49,7 @@ If you’re new to Ray, we recommend starting with the
 :ref:`walkthrough <core-walkthrough>`.
 
 Normally, Ray tasks are executed eagerly.
-Ray DAG provides a way to build the DAG without execution, and Ray Workflow is
+Ray DAG provides a way to build the DAG without execution, and Ray Workflows is
 based on Ray DAGs.
 
 It is simple to build a Ray DAG: you just replace all ``.remote(...)`` with

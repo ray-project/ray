@@ -78,7 +78,7 @@ Bulk workflow management APIs
 Recurring workflows
 -------------------
 
-Ray Workflow currently has no built-in job scheduler. You can however easily use
+Ray Workflows currently has no built-in job scheduler. You can however easily use
 any external job scheduler to interact with your Ray cluster
 (via :ref:`job submission <jobs-overview>` or :ref:`client connection
 <ray-client-ref>`)
@@ -86,7 +86,7 @@ to trigger workflow runs.
 
 Storage Configuration
 ---------------------
-Ray Workflow supports two types of storage backends out of the box:
+Ray Workflows supports two types of storage backends out of the box:
 
 *  Local file system: the data is stored locally. This is only for single node
    testing. It needs to be an NFS to work with multi-node clusters. To use local
@@ -101,7 +101,7 @@ If left unspecified, ``/tmp/ray/workflow_data`` will be used for temporary stora
 
 Concurrency Control
 -------------------
-Ray Workflow supports concurrency control. You can support the maximum running
+Ray Workflows supports concurrency control. You can support the maximum running
 workflows and maximum pending workflows via ``workflow.init()`` before executing
 any workflow. ``workflow.init()`` again with a different configuration would
 raise an error except ``None`` is given. 

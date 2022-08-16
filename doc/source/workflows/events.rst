@@ -1,13 +1,10 @@
-Events (experimental)
-=====================
-
-.. note::
-   Events in Ray workflow is an experimental feature right now.
+Events
+======
 
 Introduction
 ------------
 
-To allow an event to trigger a workflow, Ray Workflow supports pluggable event systems. Using the event framework provides a few properties.
+To allow an event to trigger a workflow, Ray Workflows supports pluggable event systems. Using the event framework provides a few properties.
 
 1. Waits for events efficiently (without requiring a running workflow task while waiting).
 2. Supports exactly-once event delivery semantics while providing fault tolerance.
