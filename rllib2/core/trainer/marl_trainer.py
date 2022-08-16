@@ -2,6 +2,7 @@
 from typing import Any
 
 from rllib2.core.trainer.rl_trainer import RLTrainer
+
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 
 
@@ -23,9 +24,7 @@ class MARLTrainer(RLTrainer):
 
     @abc.abstractmethod
     def compute_loss(
-        self, 
-        batch: MultiAgentBatch, 
-        fwd_out
+        self, batch: MultiAgentBatch, fwd_out
     ) -> Dict["LossID", "TensorType"]:
         """
         To be overriden by specific algorithms. Each specific algorithm will also override the optimizer construction that conforms to these losses.
@@ -47,12 +46,7 @@ class MARLTrainer(RLTrainer):
 
     @abc.abstractmethod
     def compute_grads_and_apply_if_needed(
-        self, 
-        batch: BatchType, 
-        fwd_out, 
-        loss_out, 
-        apply_grad: bool = True, 
-        **kwargs
+        self, batch: BatchType, fwd_out, loss_out, apply_grad: bool = True, **kwargs
     ) -> Any:
         """To be overriden by specific framwork mixins."""
         raise NotImplementedError
@@ -85,7 +79,6 @@ class MARLTrainer(RLTrainer):
             loss_out = trainer.compute_loss(s_batch, fwd_out, **loss_kwargs)
             loss_out_dict[module_id] = loss_out
 
-
         loss_out_total = self.compute_loss(
             batch, fwd_out_dict, loss_out_dict, **loss_kwargs
         )
@@ -95,7 +88,6 @@ class MARLTrainer(RLTrainer):
         )
 
         return update_out
-
 
     def _make_module(self) -> MARLModule:
         module = MARLModule(
