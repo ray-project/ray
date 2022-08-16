@@ -8,7 +8,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import starlette
 from fastapi import Body, Depends, FastAPI
-import time
 
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle

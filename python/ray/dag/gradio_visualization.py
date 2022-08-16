@@ -17,6 +17,16 @@ import time
 import gradio as gr
 
 
+async def _submit_fn(handle, node_uuid):
+    timeout_s = 20
+    start = time.time()
+    while time.time() - start < timeout_s:
+        ref = await handle.get_object_ref_for_node.remote(node_uuid)
+        if ref is not None:
+            return await ref
+    raise TimeoutError(f"Root DAG node isn't loaded after {timeout_s}s.")
+
+
 class GraphVisualizer:
     # maps dag nodes to unique instance of a gradio block
     node_to_block: Dict[DAGNode, Any]
@@ -73,33 +83,24 @@ class GraphVisualizer:
 
         return node
 
-    def visualize_with_gradio(self, dag_handle):
+    def visualize_with_gradio(self, handle):
         self.reset_state()
 
-        # Load the root dag node from dag_handle
-        dag_node_json = ray.get(dag_handle.get_dag_node_json.remote())
+        # Load the root dag node from handle
+        dag_node_json = ray.get(handle.get_dag_node_json.remote())
         dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
         dag.apply_recursive(lambda node: self.get_depth_and_name(node))
 
         with gr.Blocks() as demo:
             self.make_blocks()
 
-            async def submit_fn(node_uuid):
-                timeout_s = 20
-                start = time.time()
-                while time.time() - start < timeout_s:
-                    ref = await dag_handle.get_object_ref_for_node.remote(node_uuid)
-                    if ref is not None:
-                        return await ref
-                raise TimeoutError(f"Root DAG node isn't loaded after {timeout_s}s.")
-
             submit = gr.Button("Submit")
             submit.click(
-                fn=lambda *args: dag_handle.predict.remote(args),
+                fn=lambda *args: handle.predict.remote(args),
                 inputs=list(self.input_node_to_block.values()),
                 outputs=[],
             )
             for node, block in self.node_to_block.items():
-                submit.click(fn=partial(submit_fn, node), inputs=[], outputs=block)
+                submit.click(partial(_submit_fn, handle, node), [], block)
 
         demo.launch()
