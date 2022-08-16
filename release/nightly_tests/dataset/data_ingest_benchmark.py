@@ -13,7 +13,7 @@ import pandas as pd
 GiB = 1024 * 1024 * 1024
 
 
-@ray.remote(num_cpus=0.5)
+@ray.remote
 class ConsumingActor:
     def __init__(self, rank):
         self._rank = rank

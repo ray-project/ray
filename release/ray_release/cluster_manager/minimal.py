@@ -43,6 +43,7 @@ class MinimalClusterManager(ClusterManager):
                 paging_token = result.metadata.next_paging_token
 
                 for res in result.results:
+                    print(res.__dict__)
                     if res.name == self.cluster_env_name:
                         self.cluster_env_id = res.id
                         logger.info(

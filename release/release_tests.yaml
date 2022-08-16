@@ -171,7 +171,7 @@
     script: python workloads/data_benchmark.py --dataset-size-gb=200 --num-workers=20
 
     wait_for_nodes:
-      num_nodes: 20
+      num_nodes: 2
 
     type: sdk_command
     file_manager: job
@@ -4226,7 +4226,7 @@
     cluster_compute: data_ingest_benchmark_compute.yaml
 
   run:
-    timeout: 300
+    timeout: 900
     script: python data_ingest_benchmark.py --dataset-size-gb=200 --num-workers=20 --streaming
     wait_for_nodes:
       num_nodes: 20
