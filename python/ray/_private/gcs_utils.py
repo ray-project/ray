@@ -80,8 +80,9 @@ _GRPC_OPTIONS = [
     *ray_constants.GLOBAL_GRPC_OPTIONS,
     ("grpc.max_send_message_length", _MAX_MESSAGE_LENGTH),
     ("grpc.max_receive_message_length", _MAX_MESSAGE_LENGTH),
-    ("grpc.keepalive_time_ms", _GRPC_KEEPALIVE_TIME_MS),
-    ("grpc.keepalive_timeout_ms", _GRPC_KEEPALIVE_TIMEOUT_MS),
+    # FIXME(rickyx): let's see what happens....
+    # ("grpc.keepalive_time_ms", _GRPC_KEEPALIVE_TIME_MS),
+    # ("grpc.keepalive_timeout_ms", _GRPC_KEEPALIVE_TIMEOUT_MS),
 ]
 
 
