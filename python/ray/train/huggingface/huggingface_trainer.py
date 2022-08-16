@@ -208,6 +208,8 @@ class HuggingFaceTrainer(TorchTrainer):
                 args = transformers.TrainingArguments(
                     output_dir=f"{model_checkpoint}-wikitext2",
                     evaluation_strategy="epoch",
+                    save_strategy="epoch",
+                    logging_strategy="epoch",
                     learning_rate=2e-5,
                     weight_decay=0.01,
                 )
