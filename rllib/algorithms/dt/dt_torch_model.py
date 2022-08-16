@@ -136,6 +136,7 @@ class DTTorchModel(TorchModelV2, nn.Module):
         self,
         model_out: TensorType,
         input_dict: SampleBatch,
+        return_attentions: bool = False,
     ) -> Dict[str, TensorType]:
         """Computes the output of a forward pass of the decision transformer.
 
@@ -146,10 +147,14 @@ class DTTorchModel(TorchModelV2, nn.Module):
                 ACTIONS: [B, T, action_dim] of actions.
                 T: [B, T] of timesteps.
                 ATTENTION_MASKS: [B, T] of attention masks.
+            return_attentions: Whether to return the attention tensors from the
+                transformer or not.
 
         Returns:
             A dictionary with keys and values:
                 ACTIONS: [B, T, action_dim] of predicted actions.
+                if return_attentions:
+                    "attentions": List of attentions tensors from the transformer.
                 if model_config["use_obs_output"].
                     OBS: [B, T, obs_dim] of predicted observations.
                 if model_config["use_return_output"].
@@ -184,11 +189,18 @@ class DTTorchModel(TorchModelV2, nn.Module):
 
         # forward the transformer model
         output_embeds = self.transformer(
-            stacked_inputs, attention_masks=stacked_attention_masks
+            stacked_inputs,
+            attention_masks=stacked_attention_masks,
+            return_attentions=return_attentions,
         )
 
+        outputs = {}
+        if return_attentions:
+            output_embeds, attentions = output_embeds
+            outputs["attentions"] = attentions
+
         # compute output heads
-        outputs = {SampleBatch.ACTIONS: self.action_head(output_embeds[:, 1::3, :])}
+        outputs[SampleBatch.ACTIONS] = self.action_head(output_embeds[:, 1::3, :])
         if self.model_config["use_obs_output"]:
             outputs[SampleBatch.OBS] = self.obs_head(output_embeds[:, 0::3, :])
         if self.model_config["use_return_output"]:

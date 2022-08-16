@@ -230,6 +230,69 @@ class TestDTModel(unittest.TestCase):
                 input_dict[SampleBatch.RETURNS_TO_GO][:, 1:, :],
             )
 
+    def test_causal_masking(self):
+        """Test that the transformer model' causal masking works."""
+        model_config = {
+            "embed_dim": 16,
+            "num_layers": 2,
+            "max_seq_len": 4,
+            "max_ep_len": 10,
+            "num_heads": 2,
+            "embed_pdrop": 0,
+            "resid_pdrop": 0,
+            "attn_pdrop": 0,
+            "use_obs_output": True,
+            "use_return_output": True,
+        }
+
+        observation_space = gym.spaces.Box(-1.0, 1.0, shape=(4,))
+        action_space = gym.spaces.Box(-1.0, 1.0, shape=(2,))
+        B = 2
+        T = model_config["max_seq_len"]
+
+        # Generate input dict.
+        input_dict = _generate_input_dict(B, T, observation_space, action_space)
+
+        # make model and forward with attention
+        model = DTTorchModel(
+            observation_space,
+            action_space,
+            4,
+            model_config,
+            "model",
+        )
+        model_out, _ = model(input_dict)
+        preds = model.get_prediction(model_out, input_dict, return_attentions=True)
+        preds = convert_to_numpy(preds)
+
+        # test properties of attentions
+        attentions = preds["attentions"]
+        self.assertEqual(
+            len(attentions),
+            model_config["num_layers"],
+            "there should as many attention tensors as layers.",
+        )
+
+        # used to select the causal padded element of each attention tensor
+        select_mask = np.triu(np.ones((3 * T, 3 * T), dtype=np.bool), k=1)
+        select_mask = np.tile(select_mask, (B, model_config["num_heads"], 1, 1))
+
+        for attention in attentions:
+            # check shape
+            self.assertEqual(
+                attention.shape, (B, model_config["num_heads"], T * 3, T * 3)
+            )
+            # check the upper triangular masking
+            assert np.allclose(
+                attention[select_mask], 0.0
+            ), "masked elements should be zero."
+            # check that the non-masked elements have non 0 scores
+            # Note: it is very unlikely that randomly initialized weights will make
+            # one of the scores be 0, as these scores are probabilities.
+            assert not np.any(
+                np.isclose(attention[np.logical_not(select_mask)], 0.0)
+            ), "non masked elements should be nonzero."
+
 
 if __name__ == "__main__":
     import pytest

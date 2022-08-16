@@ -116,7 +116,7 @@ class CausalSelfAttention(nn.Module):
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))
-        return y
+        return y, att
 
 
 class Block(nn.Module):
@@ -140,9 +140,10 @@ class Block(nn.Module):
         self.mlpf = lambda x: m.dropout(m.c_proj(m.act(m.c_fc(x))))
 
     def forward(self, x, attention_masks=None):
-        x = x + self.attn(self.ln_1(x), attention_masks=attention_masks)
+        x_att, att = self.attn(self.ln_1(x), attention_masks=attention_masks)
+        x = x + x_att
         x = x + self.mlpf(self.ln_2(x))
-        return x
+        return x, att
 
 
 @DeveloperAPI
@@ -248,7 +249,7 @@ class GPT(nn.Module):
             torch.nn.init.zeros_(module.bias)
             torch.nn.init.ones_(module.weight)
 
-    def forward(self, input_embeds, attention_masks=None):
+    def forward(self, input_embeds, attention_masks=None, return_attentions=False):
         """
         input_embeds: [batch_size x seq_len x n_embed]
         attention_masks: [batch_size x seq_len], 0 don't attend, 1 attend
@@ -282,8 +283,14 @@ class GPT(nn.Module):
 
         # forward the GPT model itself
         x = self.transformer.drop(input_embeds)
+
+        atts = []
         for block in self.transformer.h:
-            x = block(x, attention_masks=attention_masks)
+            x, att = block(x, attention_masks=attention_masks)
+            atts.append(att)
         x = self.transformer.ln_f(x)
 
-        return x
+        if return_attentions:
+            return x, atts
+        else:
+            return x
