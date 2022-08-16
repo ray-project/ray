@@ -53,7 +53,7 @@ class SegmentationBuffer:
         Args:
             batch: SampleBatch of full episodes.
         """
-        episodes = batch.split_by_episode()
+        episodes = batch.split_by_episode(key=SampleBatch.DONES)
         for episode in episodes:
             self._add_single_episode(episode)
 

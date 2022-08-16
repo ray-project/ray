@@ -22,23 +22,24 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-def _generate_episode_batch(max_ep_len, eps_id, obs_dim=8, act_dim=3):
+def _generate_episode_batch(ep_len, eps_id, obs_dim=8, act_dim=3):
     """Generate a batch containing one episode."""
     # These values are not actually correct as usual. But using eps_id
     # as the values allow us to identify them in the tests.
     batch = SampleBatch(
         {
-            SampleBatch.OBS: np.full((max_ep_len, obs_dim), eps_id, dtype=np.float32),
+            SampleBatch.OBS: np.full((ep_len, obs_dim), eps_id, dtype=np.float32),
             SampleBatch.ACTIONS: np.full(
-                (max_ep_len, act_dim), eps_id + 100, dtype=np.float32
+                (ep_len, act_dim), eps_id + 100, dtype=np.float32
             ),
-            SampleBatch.REWARDS: np.ones((max_ep_len,), dtype=np.float32),
+            SampleBatch.REWARDS: np.ones((ep_len,), dtype=np.float32),
             SampleBatch.RETURNS_TO_GO: np.arange(
-                max_ep_len, -1, -1, dtype=np.float32
-            ).reshape((max_ep_len + 1, 1)),
-            SampleBatch.EPS_ID: np.full((max_ep_len,), eps_id, dtype=np.int32),
-            SampleBatch.T: np.arange(max_ep_len, dtype=np.int32),
-            SampleBatch.ATTENTION_MASKS: np.ones(max_ep_len, dtype=np.float32),
+                ep_len, -1, -1, dtype=np.float32
+            ).reshape((ep_len + 1, 1)),
+            SampleBatch.EPS_ID: np.full((ep_len,), eps_id, dtype=np.int32),
+            SampleBatch.T: np.arange(ep_len, dtype=np.int32),
+            SampleBatch.ATTENTION_MASKS: np.ones(ep_len, dtype=np.float32),
+            SampleBatch.DONES: np.array([False] * (ep_len - 1) + [True]),
         }
     )
     return batch
