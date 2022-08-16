@@ -3,6 +3,7 @@ import itertools
 import logging
 import os
 import time
+import html
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -92,6 +93,7 @@ from ray.data.random_access_dataset import RandomAccessDataset
 from ray.data.row import TableRow
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.widgets import Template
 
 if TYPE_CHECKING:
     import dask
@@ -3598,6 +3600,83 @@ class Dataset(Generic[T]):
                 return list(result.values())[0]
         else:
             return result
+
+    def _ipython_display_(self):
+        try:
+            from ipywidgets import HTML, VBox, Layout
+        except ImportError:
+            logger.warn(
+                "'ipywidgets' isn't installed. Run `pip install ipywidgets` to "
+                "enable notebook widgets."
+            )
+            return None
+
+        from IPython.display import display
+
+        title = HTML(f"<h2>{self.__class__.__name__}</h2>")
+        display(VBox([title, self._tab_repr_()], layout=Layout(width="100%")))
+
+    def _tab_repr_(self):
+        try:
+            from tabulate import tabulate
+            from ipywidgets import Tab, HTML
+        except ImportError:
+            logger.info(
+                "For rich Dataset reprs in notebooks, run "
+                "`pip install tabulate ipywidgets`."
+            )
+            return ""
+
+        metadata = {
+            "num_blocks": self._plan.initial_num_blocks(),
+            "num_rows": self._meta_count(),
+        }
+
+        schema = self.schema()
+        if schema is None:
+            schema_repr = Template("rendered_html_common.html.j2").render(
+                content="<h5>Unknown schema</h5>"
+            )
+        elif isinstance(schema, type):
+            schema_repr = Template("rendered_html_common.html.j2").render(
+                content=f"<h5>Data type: <code>{html.escape(str(schema))}</code></h5>"
+            )
+        else:
+            schema_data = {}
+            for sname, stype in zip(schema.names, schema.types):
+                schema_data[sname] = getattr(stype, "__name__", str(stype))
+
+            schema_repr = Template("scrollableTable.html.j2").render(
+                table=tabulate(
+                    tabular_data=schema_data.items(),
+                    tablefmt="html",
+                    showindex=False,
+                    headers=["Name", "Type"],
+                ),
+                max_height="300px",
+            )
+
+        tab = Tab()
+        children = []
+
+        tab.set_title(0, "Metadata")
+        children.append(
+            Template("scrollableTable.html.j2").render(
+                table=tabulate(
+                    tabular_data=metadata.items(),
+                    tablefmt="html",
+                    showindex=False,
+                    headers=["Field", "Value"],
+                ),
+                max_height="300px",
+            )
+        )
+
+        tab.set_title(1, "Schema")
+        children.append(schema_repr)
+
+        tab.children = [HTML(child) for child in children]
+        return tab
 
     def __repr__(self) -> str:
         schema = self.schema()

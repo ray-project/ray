@@ -4,6 +4,7 @@ import glob
 import io
 import logging
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -194,10 +195,9 @@ ray_files += [
     for filename in filenames
 ]
 
-# Files for ray.init html template.
+# html templates for notebook integration
 ray_files += [
-    "ray/widgets/templates/context_dashrow.html.j2",
-    "ray/widgets/templates/context.html.j2",
+    p.as_posix() for p in pathlib.Path("ray/widgets/templates/").glob("*.html.j2")
 ]
 
 # If you're adding dependencies for ray extras, please
