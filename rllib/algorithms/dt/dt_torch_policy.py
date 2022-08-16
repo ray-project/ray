@@ -30,13 +30,14 @@ from ray.rllib.policy.torch_mixins import LearningRateSchedule
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import (
     TrainerConfigDict,
     TensorType,
     TensorStructType,
+    TensorShape,
 )
 
 if TYPE_CHECKING:
@@ -236,6 +237,18 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             (action, reward, next_obs, extra)
         )
 
+        # check dimensions
+        assert input_dict[SampleBatch.OBS].shape == (
+            self.max_seq_len,
+            *self.observation_space.shape,
+        )
+        assert input_dict[SampleBatch.ACTIONS].shape == (
+            self.max_seq_len - 1,
+            *self.action_space.shape,
+        )
+        assert input_dict[SampleBatch.RETURNS_TO_GO].shape == (self.max_seq_len - 1,)
+        assert input_dict[SampleBatch.T].shape == (self.max_seq_len - 1,)
+
         # Shift observations
         input_dict[SampleBatch.OBS] = np.concatenate(
             [
@@ -278,6 +291,34 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
 
         return input_dict
 
+    @DeveloperAPI
+    def get_initial_rtg_tensor(
+        self,
+        shape: TensorShape,
+        dtype: Optional[Type] = torch.float32,
+        device: Optional["torch.device"] = None,
+    ):
+        """Returns a initial/target returns-to-go tensor of the given shape.
+
+        Args:
+            shape: Shape of the rtg tensor.
+            dtype: Type of the data in the tensor. Defaults to torch.float32.
+            device: The device this tensor should be on. Defaults to self.device.
+        """
+        if device is None:
+            device = self.device
+        if dtype is None:
+            device = torch.float32
+
+        assert self.config["target_return"] is not None, "Must specify target_return."
+        initial_rtg = torch.full(
+            shape,
+            fill_value=self.config["target_return"],
+            dtype=dtype,
+            device=device,
+        )
+        return initial_rtg
+
     @override(TorchPolicyV2)
     def action_distribution_fn(
         self,
@@ -307,7 +348,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
 
         Returns:
             A tuple of: (
-                batched input to the action distribution clas,
+                batched input to the action distribution class,
                 the action distribution class,
                 updated RNN state (unused),
             )
@@ -360,11 +401,8 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         updated_rtg = last_rtg - last_reward
         # initial_rtg simply is filled with target_return.
         # These two are both only for the current timestep.
-        initial_rtg = torch.full(
-            (batch_size, 1),
-            fill_value=self.config["target_return"],
-            dtype=rtg.dtype,
-            device=rtg.device,
+        initial_rtg = self.get_initial_rtg_tensor(
+            (batch_size, 1), dtype=rtg.dtype, device=rtg.device
         )
 
         # Then based on whether we are currently at the first timestep or not
