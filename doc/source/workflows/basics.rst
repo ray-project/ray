@@ -77,7 +77,7 @@ either as a decorator or as kwargs to ``<task>.options``:
     import ray
     from ray import workflow
 
-    @workflow.options(checkpoint=False)
+    @workflow.options(max_retries=5)
     @ray.remote(num_cpus=2, num_gpus=3)
     def read_data(num: int):
         return [i for i in range(num)]
@@ -86,8 +86,8 @@ either as a decorator or as kwargs to ``<task>.options``:
         num_cpus=1, num_gpus=1, **workflow.options(checkpoint=True))
 
 
-Retrieving results
-------------------
+Retrieving Workflow Results
+---------------------------
 
 To retrieve a workflow result, assign ``workflow_id`` when running a workflow:
 
@@ -124,6 +124,9 @@ workflow ids, call ``ray.workflow.list_all()``.
 
     assert workflow.get_output("add_example") == 30
     # "workflow.get_output_async" is an asynchronous version
+
+Sub-Task Results
+~~~~~~~~~~~~~~~~
 
 We can retrieve the results for individual workflow tasks too with *named tasks*. A task can be named in two ways:
 
