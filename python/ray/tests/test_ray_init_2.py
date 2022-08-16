@@ -103,33 +103,35 @@ def test_env_var_no_override():
         "new_external_dashboard_url",
     ],
 )
-def test_hosted_external_dashboard_url(override_url, shutdown_only):
+def test_hosted_external_dashboard_url(override_url, shutdown_only, monkeypatch):
     """
     Test setting external dashboard URL through environment variable.
     """
-    orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
-    if override_url:
-        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = override_url
+    with monkeypatch.context() as m:
+        if override_url:
+            m.setenv(
+                RAY_OVERRIDE_DASHBOARD_URL,
+                override_url,
+            )
 
-    expected_localhost_url = "127.0.0.1:8265"
-    if not override_url:
-        # No external dashboard url
-        expected_dashboard_url = "127.0.0.1:8265"
-    elif "://" in override_url:
-        # External dashboard url with https protocol included
-        expected_dashboard_url = override_url[override_url.index("://") + 3 :]
-    else:
-        # External dashboard url with no protocol
-        expected_dashboard_url = override_url
+        expected_localhost_url = "127.0.0.1:8265"
+        if not override_url:
+            # No external dashboard url
+            expected_dashboard_url = "127.0.0.1:8265"
+        elif "://" in override_url:
+            # External dashboard url with https protocol included
+            expected_dashboard_url = override_url[override_url.index("://") + 3 :]
+        else:
+            # External dashboard url with no protocol
+            expected_dashboard_url = override_url
 
-    info = ray.init(dashboard_port=8265)
-    assert info.dashboard_url == expected_dashboard_url
-    assert info.address_info["webui_url"] == expected_dashboard_url
-    assert ray._private.worker._global_node.webui_url == expected_localhost_url
-    assert ray_address_to_api_server_url("auto") == "http://" + expected_localhost_url
-
-    if orig_external_dashboard_url:
-        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
+        info = ray.init(dashboard_port=8265)
+        assert info.dashboard_url == expected_dashboard_url
+        assert info.address_info["webui_url"] == expected_dashboard_url
+        assert ray._private.worker._global_node.webui_url == expected_localhost_url
+        assert (
+            ray_address_to_api_server_url("auto") == "http://" + expected_localhost_url
+        )
 
 
 @pytest.mark.parametrize(

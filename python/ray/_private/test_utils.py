@@ -49,20 +49,15 @@ except (ImportError, ModuleNotFoundError):
 
 
 @pytest.fixture
-def set_override_dashboard_url(request):
-    orig_external_dashboard_url = os.environ.get(
-        ray_constants.RAY_OVERRIDE_DASHBOARD_URL
-    )
+def set_override_dashboard_url(monkeypatch, request):
     override_url = getattr(request, "param", "https://external_dashboard_url")
-    if override_url:
-        os.environ[ray_constants.RAY_OVERRIDE_DASHBOARD_URL] = override_url
-
-    yield
-
-    if orig_external_dashboard_url:
-        os.environ[
-            ray_constants.RAY_OVERRIDE_DASHBOARD_URL
-        ] = orig_external_dashboard_url
+    with monkeypatch.context() as m:
+        if override_url:
+            m.setenv(
+                ray_constants.RAY_OVERRIDE_DASHBOARD_URL,
+                override_url,
+            )
+        yield
 
 
 class RayTestTimeoutException(Exception):

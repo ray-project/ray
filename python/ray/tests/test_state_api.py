@@ -1,6 +1,5 @@
 import time
 import json
-import os
 import sys
 from dataclasses import dataclass
 from typing import List, Tuple
@@ -1580,45 +1579,41 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         "new_external_dashboard_url",
     ],
 )
-def test_list_get_actors(shutdown_only, override_url):
-    orig_external_dashboard_url = os.environ.get(
-        ray_constants.RAY_OVERRIDE_DASHBOARD_URL
-    )
-    if override_url:
-        os.environ[ray_constants.RAY_OVERRIDE_DASHBOARD_URL] = override_url
+def test_list_get_actors(shutdown_only, override_url, monkeypatch):
+    with monkeypatch.context() as m:
+        if override_url:
+            m.setenv(
+                ray_constants.RAY_OVERRIDE_DASHBOARD_URL,
+                override_url,
+            )
 
-    ray.init()
+        ray.init()
 
-    @ray.remote
-    class A:
-        pass
+        @ray.remote
+        class A:
+            pass
 
-    a = A.remote()  # noqa
+        a = A.remote()  # noqa
 
-    def verify():
-        # Test list
-        actors = list_actors()
-        assert len(actors) == 1
-        assert actors[0]["state"] == "ALIVE"
-        assert is_hex(actors[0]["actor_id"])
-        assert a._actor_id.hex() == actors[0]["actor_id"]
+        def verify():
+            # Test list
+            actors = list_actors()
+            assert len(actors) == 1
+            assert actors[0]["state"] == "ALIVE"
+            assert is_hex(actors[0]["actor_id"])
+            assert a._actor_id.hex() == actors[0]["actor_id"]
 
-        # Test get
-        actors = list_actors(detail=True)
-        for actor in actors:
-            get_actor_data = get_actor(actor["actor_id"])
-            assert get_actor_data is not None
-            assert get_actor_data == actor
+            # Test get
+            actors = list_actors(detail=True)
+            for actor in actors:
+                get_actor_data = get_actor(actor["actor_id"])
+                assert get_actor_data is not None
+                assert get_actor_data == actor
 
-        return True
+            return True
 
-    wait_for_condition(verify)
-    print(list_actors())
-
-    if orig_external_dashboard_url:
-        os.environ[
-            ray_constants.RAY_OVERRIDE_DASHBOARD_URL
-        ] = orig_external_dashboard_url
+        wait_for_condition(verify)
+        print(list_actors())
 
 
 @pytest.mark.skipif(
@@ -2692,7 +2687,7 @@ def test_get_id_not_found(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os  # noqa: F811
+    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

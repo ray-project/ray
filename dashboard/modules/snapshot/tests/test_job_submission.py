@@ -10,9 +10,8 @@ import pytest
 import requests
 
 import ray
-from ray._private.test_utils import (  # noqa: F401
+from ray._private.test_utils import (
     format_web_url,
-    set_override_dashboard_url,
     wait_for_condition,
     wait_until_server_available,
 )
@@ -47,7 +46,7 @@ def _get_snapshot(address: str):
     indirect=True,
 )
 def test_successful_job_status(
-    set_override_dashboard_url,  # noqa: F811
+    set_override_dashboard_url,
     ray_start_with_dashboard,
     disable_aiohttp_cache,
     enable_test_module,
