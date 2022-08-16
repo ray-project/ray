@@ -2,14 +2,14 @@ import ray
 from ray.dag import (
     DAGNode,
     InputNode,
-    InputAttributeNode,
 )
 from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
 from ray.serve._private.json_serde import dagnode_from_json
 from ray.dag.utils import _DAGNodeNameGenerator
+from ray.serve.deployment_graph import RayServeDAGHandle
 
 from functools import partial
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 from collections import defaultdict
 import json
 import time
@@ -17,7 +17,7 @@ import time
 import gradio as gr
 
 
-async def _submit_fn(handle, node_uuid):
+async def _submit_fn(handle: RayServeDAGHandle, node_uuid: str):
     timeout_s = 20
     start = time.time()
     while time.time() - start < timeout_s:
@@ -28,79 +28,84 @@ async def _submit_fn(handle, node_uuid):
 
 
 class GraphVisualizer:
-    # maps dag nodes to unique instance of a gradio block
-    node_to_block: Dict[DAGNode, Any]
-    # maps InputAttributeNodes to unique instance of interactive gradio block
-    input_node_to_block: Dict[DAGNode, Any]
-    # maps an uuid to instance of DAGNode
-    uuid_to_node: Dict[str, DAGNode]
-
     def __init__(self):
-        self.name_generator = _DAGNodeNameGenerator()
+        self._reset_state()
 
-    def reset_state(self):
-        self.node_to_block = {}
-        self.input_node_to_block = {}
-        self.uuid_to_node = {}
-        self.names = {}
-        self.depths = defaultdict(lambda: 0)
+    def _reset_state(self):
+        self.names: Dict[str, str] = {}
+        self.depths: Dict[str, str] = defaultdict(lambda: 0)
+        self.uuid_to_node: Dict[str, DAGNode] = {}
+        # maps dag node uuid to unique instance of a gradio block
+        self.node_to_block: Dict[str, Any] = {}
+        # maps InputAttributeNodes to unique instance of interactive gradio block
+        self.input_index_to_block: Dict[int, Any] = {}
 
-    def make_blocks(self):
-        max_depth = max(set(self.depths.values()))
+        self.count = 0
 
-        def render_level(level):
-            for node_uuid, v in self.depths.items():
-                if v != level:
-                    continue
+    def _make_blocks(self):
+        levels = {}
+        for uuid in self.depths:
+            levels.setdefault(self.depths[uuid], []).append(uuid)
 
-                node = self.uuid_to_node[node_uuid]
-                if isinstance(node, InputAttributeNode):
-                    self.input_node_to_block[node_uuid] = gr.Number(
-                        label=self.names[node_uuid]
-                    )
-                else:
-                    self.node_to_block[node_uuid] = gr.Number(
-                        label=self.names[node_uuid], interactive=False
-                    )
+        with gr.Row():
+            for uuid in levels[0]:
+                key = self.uuid_to_node[uuid]._key
+                if key not in self.input_index_to_block:
+                    self.input_index_to_block[key] = gr.Number(label=self.names[uuid])
 
-        for level in range(max_depth + 1):
+        def render_level(n):
+            for uuid in levels[n]:
+                self.node_to_block[uuid] = gr.Number(
+                    label=self.names[uuid], interactive=False
+                )
+
+        for level in range(1, max(levels.keys()) + 1):
             with gr.Row():
                 render_level(level)
 
-    def get_depth_and_name(self, node: DAGNode):
-        if isinstance(node, (InputNode, DeploymentExecutorNode)):
-            return node
-
+    def _get_depth_and_name(
+        self,
+        node: DAGNode,
+        name_generator: _DAGNodeNameGenerator,
+        nodes_to_exclude: Tuple,
+    ):
         uuid = node.get_stable_uuid()
-        self.uuid_to_node[uuid] = node
-        self.names[uuid] = self.name_generator.get_node_name(node)
-
         for child_node in node._get_all_child_nodes():
-            if not isinstance(child_node, (InputNode, DeploymentExecutorNode)):
+            if not isinstance(child_node, nodes_to_exclude):
                 self.depths[uuid] = max(
                     self.depths[uuid], self.depths[child_node.get_stable_uuid()] + 1
                 )
 
+        if not isinstance(node, nodes_to_exclude):
+            self.names[uuid] = name_generator.get_node_name(node)
+            self.uuid_to_node[uuid] = node
         return node
 
     def visualize_with_gradio(self, handle):
-        self.reset_state()
+        self._reset_state()
 
         # Load the root dag node from handle
         dag_node_json = ray.get(handle.get_dag_node_json.remote())
         dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
-        dag.apply_recursive(lambda node: self.get_depth_and_name(node))
+
+        # Get name and level for each node in dag
+        name_generator = _DAGNodeNameGenerator()
+        dag.apply_recursive(
+            lambda node: self._get_depth_and_name(
+                node, name_generator, (InputNode, DeploymentExecutorNode)
+            )
+        )
 
         with gr.Blocks() as demo:
-            self.make_blocks()
+            self._make_blocks()
 
             submit = gr.Button("Submit")
             submit.click(
                 fn=lambda *args: handle.predict.remote(args),
-                inputs=list(self.input_node_to_block.values()),
+                inputs=list(self.input_index_to_block.values()),
                 outputs=[],
             )
-            for node, block in self.node_to_block.items():
-                submit.click(partial(_submit_fn, handle, node), [], block)
+            for node_uuid, block in self.node_to_block.items():
+                submit.click(partial(_submit_fn, handle, node_uuid), [], block)
 
         demo.launch()
