@@ -1,5 +1,6 @@
 import time
 import json
+import os
 import sys
 from dataclasses import dataclass
 from typing import List, Tuple
@@ -2691,7 +2692,7 @@ def test_get_id_not_found(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
+    import os  # noqa: F811
     import sys
 
     if os.environ.get("PARALLEL_CI"):
