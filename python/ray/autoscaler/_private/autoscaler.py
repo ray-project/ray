@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 from collections import Counter, defaultdict, namedtuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
@@ -35,6 +35,10 @@ from ray.autoscaler._private.local.node_provider import (
     record_local_head_state_if_needed,
 )
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher, NodeLauncher
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+    NodeProviderAvailabilityTracker,
+)
 from ray.autoscaler._private.node_tracker import NodeTracker
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import _get_node_provider
@@ -100,6 +104,9 @@ class AutoscalerSummary:
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
+    node_availability_summary: NodeAvailabilitySummary = field(
+        default_factory=lambda: NodeAvailabilitySummary({})
+    )
 
 
 class NonTerminatedNodes:
@@ -208,6 +215,7 @@ class StandardAutoscaler:
         else:
             self.config_reader = config_reader
 
+        self.node_provider_availability_tracker = NodeProviderAvailabilityTracker()
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
         # Keep this before self.reset (self.provider needs to be created
@@ -295,9 +303,10 @@ class StandardAutoscaler:
             self.foreground_node_launcher = BaseNodeLauncher(
                 provider=self.provider,
                 pending=self.pending_launches,
+                event_summarizer=self.event_summarizer,
+                node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagree how to format this.
                 node_types=self.available_node_types,
                 prom_metrics=self.prom_metrics,
-                event_summarizer=self.event_summarizer,
             )
         else:
             self.launch_queue = queue.Queue()
@@ -308,9 +317,10 @@ class StandardAutoscaler:
                     queue=self.launch_queue,
                     index=i,
                     pending=self.pending_launches,
+                    event_summarizer=self.event_summarizer,
+                    node_provider_availability_tracker=self.node_provider_availability_tracker,  # noqa: E501 Flake and black disagreee how to format this.
                     node_types=self.available_node_types,
                     prom_metrics=self.prom_metrics,
-                    event_summarizer=self.event_summarizer,
                 )
                 node_launcher.daemon = True
                 node_launcher.start()
@@ -1424,6 +1434,7 @@ class StandardAutoscaler:
             pending_nodes=pending_nodes,
             pending_launches=pending_launches,
             failed_nodes=failed_nodes,
+            node_availability_summary=self.node_provider_availability_tracker.summary(),
         )
 
     def info_string(self):
