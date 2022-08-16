@@ -936,4 +936,5 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
                 "still alive."
             )
         )
-    return api_server_url.decode()
+    api_server_url = f"http://{api_server_url.decode()}"
+    return api_server_url
