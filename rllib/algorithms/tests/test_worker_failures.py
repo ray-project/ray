@@ -216,6 +216,45 @@ class TestWorkerFailure(unittest.TestCase):
             self.assertRaises(Exception, lambda: a.train())
             a.stop()
 
+    def _do_test_fault_fatal_but_recreate(self, alg, config):
+        register_env("fault_env", lambda c: FaultInjectEnv(c))
+        agent_cls = get_algorithm_class(alg)
+
+        # Test raises real error when out of workers.
+        config["num_workers"] = 1
+        config["evaluation_num_workers"] = 1
+        config["evaluation_interval"] = 1
+        config["evaluation_config"] = {
+            "recreate_failed_workers": True,
+            # Make eval worker (index 1) fail.
+            "env_config": {
+                "bad_indices": [1],
+            },
+        }
+
+        for _ in framework_iterator(config, frameworks=("tf", "tf2", "torch")):
+            a = agent_cls(config=config, env="fault_env")
+            # Expect this to go well and all faulty workers are recovered.
+            self.assertTrue(
+                not any(
+                    ray.get(
+                        worker.apply.remote(
+                            lambda w: w.recreated_worker
+                            or w.env_context.recreated_worker
+                        )
+                    )
+                    for worker in a.workers.remote_workers()
+                )
+            )
+            result = a.train()
+            self.assertTrue(result["num_healthy_workers"] == 1)
+            self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
+            # This should also work several times.
+            result = a.train()
+            self.assertTrue(result["num_healthy_workers"] == 1)
+            self.assertTrue(result["evaluation"]["num_healthy_workers"] == 1)
+            a.stop()
+
     def test_fatal(self):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_fault_fatal("PG", {"optimizer": {}})
@@ -269,6 +308,20 @@ class TestWorkerFailure(unittest.TestCase):
             config={"model": {"fcnet_hiddens": [4]}},
             fail_eval=True,
         )
+
+    def test_recreate_eval_workers_parallel_to_training_w_async_req_manager(self):
+        # Test the case where all eval workers fail, but we chose to recover.
+        config = (
+            PGConfig()
+            .evaluation(
+                enable_async_evaluation=True,
+                evaluation_parallel_to_training=True,
+                evaluation_duration="auto",
+            )
+            .training(model={"fcnet_hiddens": [4]})
+        )
+
+        self._do_test_fault_fatal_but_recreate("PG", config=config.to_dict())
 
     def test_eval_workers_failing_fatal(self):
         # Test the case where all eval workers fail (w/o recovery).
