@@ -80,7 +80,7 @@ class AsyncRequestsManager:
 
         Args:
             remote_fn: The remote function to call. The function must have a signature
-                of: [RolloutWorker, *args, **kwargs] and return Any.
+                of: [RolloutWorker, args, kwargs] and return Any.
             actor: The actor to call the remote function on.
             fn_args: The arguments to pass to the remote function.
             fn_kwargs: The keyword arguments to pass to the remote function.
@@ -145,7 +145,7 @@ class AsyncRequestsManager:
 
         Args:
             remote_fn: The remote function to call. The function must have a signature
-                of: [RolloutWorker, *args, **kwargs] and return Any.
+                of: [RolloutWorker, args, kwargs] and return Any.
             fn_args: The arguments to pass to the remote function.
             fn_kwargs: The keyword arguments to pass to the remote function.
 
