@@ -27,6 +27,7 @@ args = parser.parse_args()
 
 assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 
+
 def run(checkpoint_path):
     # __sphinx_doc_begin__
     # Restore policy.

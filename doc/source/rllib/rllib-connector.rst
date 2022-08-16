@@ -2,37 +2,41 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-Connectors
-==========
+Connectors (Alpha)
+==================
 
-Connector is a framework (currently in alpha status), introduced to solve a few common pain points related to the durabilty and
-deployment of RLlib's policy checkpoints.
+Connector are components that handle transformations on inputs and outputs of a given RL policy, with the goal of improving
+the durabilty and maintainability of RLlib's policy checkpoints.
 
-At the core of many RLlib algorithms are user environments and a decision making policy (usually a neural network).
-They interact with each other to produce training samples that can be used to improve the policy.
+RLlib algorithms usually require one or more *user environments* and *policies* (usually a neural network).
 
 Data observed from the environments usually go through multiple steps of preprocessing before they reach
-the policy, while the output of the policy also gets transformed multiple times before they are used to advanced
+the policy, while the output of the policy also gets transformed multiple times before they are used to train
 specific agents in the environments.
 
 With connectors, users of RLlib will be able to:
 
-- Restore and deploy individual RLlib policies without having to restore training related logics of RLlib's Algorithms.
+- Restore and deploy individual RLlib policies without having to restore training related logic of RLlib Algorithms.
 - Ensure policies are more durable than the algorithms they get trained with.
 - Allow policies to be adapted to work with different versions of an environment.
-- Run inference with RLlib polcies without worrying about the exact trajectory view requriements, or in the case of a recurrent policy, the state inputs.
+- Run inference with RLlib polcies without worrying about the exact trajectory view requriements or state inputs.
 
 Connectors can be enabled by setting ``enable_connectors`` parameter to ``True``.
 
-Agent, Action, Lambda, and Pipeline Connectors
-------------------------------------------------------
+Key Concepts
+------------
 
 .. image:: images/connector-diagram.svg
     :align: center
 
-We have two types of connectors. The first is the ``agent connector``, which is used to transofrm observed data from environments to the policy. The second is the ``action connector``, which is used to transform the action data from the policy to actions.
+We have two classes of connectors. The first is an ``AgentConnector``, which is used to transform observed data from environments to the policy.
+The second is an ``ActionConnector``, which is used to transform the action data from the policy to actions.
 
-``Agent connectors`` handle the job of transforming environment observation data into a format that is understood by
+
+AgentConnector
+~~~~~~~~~~~~~~
+
+``AgentConnectors`` handle the job of transforming environment observation data into a format that is understood by
 the policy (e.g., flattening complex nested observations into a flat tensor). The high level APIs are:
 
 .. code-block:: python
@@ -52,7 +56,7 @@ the policy (e.g., flattening complex nested observations into a flat tensor). Th
         def on_policy_output(self, output: ActionConnectorDataType):
             ...
 
-One thing to note about AgentConnector's API is that it works on a list of observation data.
+AgentConnector operates on a list of observation data.
 The list is constructed by grouping together observations from agents that are mapped to a same policy.
 
 This setup is useful for certain multi-agent use cases where individual observations may need to be
@@ -63,14 +67,16 @@ to the policy from individual agent observations.
 For convenience, if an ``AgentConnector`` does not operate on the full list of agent data, it can be
 implemented by simply overriding the ``transform`` API.
 
-Agent connectors also provide a way for recording the output of the policy at the current time step
-(prior to transformation via action connectors) to be later used for inference in the next time step.
-This is shown as the dashed arrow in the above diagram and is done through the ``on_policy_output`` API call.
-This is useful for recurrent policies, where the state output of the policy at the current time step
-needs to be fed in as the input for the next time step.
-Other use-cases include using attention networks and auto-regressive models as policies.
+AgentConnectors also provide a way for recording the output of the policy at the current time step
+(prior to transformation via ActionConnectors) to be later used for inference in the next time step.
+This is done through the ``on_policy_output`` API call and is useful when your policy is a
+recurrent network, attention network, or auto-regressive model.
 
-``Action connector`` has a simpler API, which operates on individual actions:
+
+ActionConnector
+~~~~~~~~~~~~~~~
+
+``ActionConnector`` has a simpler API, which operates on individual actions:
 
 .. code-block:: python
 
@@ -81,14 +87,67 @@ Other use-cases include using attention networks and auto-regressive models as p
         def transform(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
             ...
 
-In this case, ``__call__`` and ``transofrm`` are equivalent. Users may choose to override either
+In this case, ``__call__`` and ``transform`` are equivalent. Users may choose to override either
 API to implement an ActionConnector.
 
-``Lambda connector`` helps turn simple transformation functions into agent or action
-connectors without having users worry about the high level list or non-list APIs.
-``Lambda connector`` has seprate agent and action versions, for example:
+Common Data Types
+-----------------
 
-.. tabbed:: Agent Lambda Connector
+AgentConnectorDataType
+~~~~~~~~~~~~~~~~~~~~~~
+
+Per-agent observation data that goes through an ``AgentConnector`` is in the format of ``AgentConnectorDataType``.
+
+.. literalinclude:: ../../../rllib/utils/typing.py
+   :language: python
+   :start-after: __sphinx_doc_begin_agent_connector_data_type__
+   :end-before: __sphinx_doc_end_agent_connector_data_type__
+
+AgentConnectorsOutput
+~~~~~~~~~~~~~~~~~~~~~
+
+The output from RLlib's default agent connector pipeline is in ``AgentConnectorsOutput`` format.
+
+.. literalinclude:: ../../../rllib/utils/typing.py
+   :language: python
+   :start-after: __sphinx_doc_begin_agent_connector_output__
+   :end-before: __sphinx_doc_end_agent_connector_output__
+
+Note that if ``AgentConnector._is_training`` is False, the ``for_training`` field of ``AgentConnectorsOutput``
+will not be populated. This is for more efficient inference.
+
+.. note::
+    There is a plan to consolidate training episode building into agent connectors, in which case there will
+    not be a need to output the ``for_training`` data piece.
+
+ActionConnectorDataType
+~~~~~~~~~~~~~~~~~~~~~~~
+
+``ActionConnectorDataType`` is the data type ``ActionConnector`` deals with.
+It is basically env and agent IDs plus ``PolicyOutputType``.
+
+.. literalinclude:: ../../../rllib/utils/typing.py
+   :language: python
+   :start-after: __sphinx_doc_begin_action_connector_output__
+   :end-before: __sphinx_doc_end_action_connector_output__
+
+Before, users of RLlib policies would have to come up with the right observation and state inputs
+before they can call a policy. With agent connectors, this task is taken care of automatically.
+
+.. literalinclude:: ../../../rllib/utils/typing.py
+   :language: python
+   :start-after: __sphinx_doc_begin_policy_output_type__
+   :end-before: __sphinx_doc_end_policy_output_type__
+
+
+Advanced Connectors
+-------------------
+
+Lambda Connectors helps turn simple transformation functions into agent or action
+connectors without having users worry about the high level list or non-list APIs.
+Lambda Connectors has separate agent and action versions, for example:
+
+.. tabbed:: Lambda Agent Connector
 
     .. code-block:: python
 
@@ -102,7 +161,7 @@ connectors without having users worry about the high level list or non-list APIs
             "FilterInfosColumnAgentConnector", filter
         )
 
-.. tabbed:: Action Lambda Connector
+.. tabbed:: Lambda Action Connector
 
     .. code-block:: python
 
@@ -113,7 +172,7 @@ connectors without having users worry about the high level list or non-list APIs
             lambda actions, states, fetches: 2 * actions, states, fetches
         )
 
-And lastly, mutiple connectors can be composed into a ``ConnectorPipeline``, which handles
+Mutiple connectors can be composed into a ``ConnectorPipeline``, which handles
 proper running of all children connectors in sequence and provides basic operations to modify and update the composition of connectors.
 
 ``ConnectorPipeline`` also has agent and action versions:
@@ -145,59 +204,6 @@ proper running of all children connectors in sequence and provides basic operati
         # For demonstration purpose, we will drop the last ImmutableActionsConnector here.
         pipeline.remove("ImmutableActionsConnector")
 
-
-Common Data Types
------------------
-
-Per-agent observation data that goes through agent connectors is in the format of ``AgentConnectorDataType``.
-
-.. literalinclude:: ../../../rllib/utils/typing.py
-   :language: python
-   :start-after: __sphinx_doc_begin_agent_connector_data_type__
-   :end-before: __sphinx_doc_end_agent_connector_data_type__
-
-It is essentially a tuple of env and agent IDs (identifying the source agent of the data),
-plus the actual payload that can be in any format. With RLlib's default sampler, the payload
-is a dictionary of arbitrary data columns (obs, rewards, dones, etc).
-
-The final output from RLlib's default agent connector pipeline is in ``AgentConnectorsOutput`` format.
-
-.. literalinclude:: ../../../rllib/utils/typing.py
-   :language: python
-   :start-after: __sphinx_doc_begin_agent_connector_output__
-   :end-before: __sphinx_doc_end_agent_connector_output__
-
-
-``AgentConnectorsOutput`` contains a pair of data fields.
-``for_training`` is the raw input dictionary that sampler can use to build episodes and training batches,
-while ``for_action`` is a SampleBatch that can be immediately used for querying the policy for next action.
-
-This branching happens in ViewRequirementAgentConnector today.
-Note that if ``AgentConnector._is_training`` is False, the ``for_training`` field of ``AgentConnectorsOutput``
-will not be populated. This is for more efficient inference.
-
-Note, there is a plan to consolidate training episode building into agent connectors, in which case there will
-not be a need to output the ``for_training`` data piece.
-
-``ActionConnectorDataType`` is the data type ``ActionConnector`` deals with.
-It is basically env and agent IDs plus ``PolicyOutputType``.
-
-.. literalinclude:: ../../../rllib/utils/typing.py
-   :language: python
-   :start-after: __sphinx_doc_begin_action_connector_output__
-   :end-before: __sphinx_doc_end_action_connector_output__
-
-``PolicyOutputType`` should look familiar if you have been using the forward pass of an RLlib policy.
-It is composed of the action output, the internal state output, and additional data fetches.
-
-Normally, users of RLlib policies would have to come up with the right observation and state inputs
-before they can call a policy. With agent connectors, this task is taken care of automatically.
-
-
-.. literalinclude:: ../../../rllib/utils/typing.py
-   :language: python
-   :start-after: __sphinx_doc_begin_policy_output_type__
-   :end-before: __sphinx_doc_end_policy_output_type__
 
 
 Policy Checkpoint
