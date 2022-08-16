@@ -76,17 +76,15 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         model_config = self.config["model"]
         # TODO: make these better with better AlgorithmConfig options.
         model_config.update(
-            dict(
-                embed_dim=self.config["embed_dim"],
-                max_ep_len=self.config["horizon"],
-                num_layers=self.config["num_layers"],
-                num_heads=self.config["num_heads"],
-                embed_pdrop=self.config["embed_pdrop"],
-                resid_pdrop=self.config["resid_pdrop"],
-                attn_pdrop=self.config["attn_pdrop"],
-                use_obs_output=False,
-                use_return_output=False,
-            )
+            embed_dim=self.config["embed_dim"],
+            max_ep_len=self.config["horizon"],
+            num_layers=self.config["num_layers"],
+            num_heads=self.config["num_heads"],
+            embed_pdrop=self.config["embed_pdrop"],
+            resid_pdrop=self.config["resid_pdrop"],
+            attn_pdrop=self.config["attn_pdrop"],
+            use_obs_output=False,
+            use_return_output=False,
         )
 
         num_outputs = int(np.product(self.observation_space.shape))
