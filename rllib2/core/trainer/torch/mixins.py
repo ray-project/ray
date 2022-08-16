@@ -30,3 +30,4 @@ class TorchTrainer:
 
             if apply_grad:
                 self._optimizers[loss_key].step()
+

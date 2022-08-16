@@ -10,7 +10,7 @@ from rllib2.models.torch.pi_distribution import PiDistributionDict
 from rllib2.utils import NNOutput
 
 from ....python.ray.rllib.policy.sample_batch import MultiAgentBatch
-from ..rl_trainer import BatchType
+from ..trainer.rl_trainer import BatchType
 from ray.rllib import policy
 
 """Examples of TorchRLModules in RLlib --> See under algorithms"""
