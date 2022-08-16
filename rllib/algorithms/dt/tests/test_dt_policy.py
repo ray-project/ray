@@ -7,7 +7,7 @@ import numpy as np
 import ray
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
+from ray.rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
