@@ -10,11 +10,15 @@ This section should help you:
 
 The recommended way to deploy Ray Serve is on Kubernetes, providing the best of both worlds: the user experience and scalable compute of Ray Serve and operational benefits of Kubernetes.
 This also allows you to integrate with existing applications that may be running on Kubernetes.
-The recommended practice when running on Kubernetes is to use the [RayService] custom resource (CR) that's provided as part of [KubeRay]. The RayService CR automatically handles important production requirements such as health checking, status reporting, failure recovery, and upgrades.
+The recommended practice when running on Kubernetes is to use the [RayService] controller that's provided as part of [KubeRay]. The RayService controller automatically handles important production requirements such as health checking, status reporting, failure recovery, and upgrades.
 
 A [RayService] CR encapsulates a multi-node Ray Cluster and a Serve application that runs on top of it into a single Kubernetes manifest.
 Deploying, upgrading, and getting the status of the application can be done using standard `kubectl` commands.
 This section walks through how to deploy, monitor, and upgrade the [`FruitStand` example](serve-in-production-example) on Kubernetes.
+
+:::{warning}
+Although it's actively developed and maintained, [KubeRay] is still considered alpha, or experimental, so some APIs may be subject to change.
+:::
 
 ## Installing the KubeRay operator
 
@@ -54,6 +58,12 @@ The controller also creates a Kubernetes Service that can be used to route traff
 Let's see this in action by deploying the [`FruitStand` example](serve-in-production-example).
 The Serve config for the example is embedded into [this example `RayService` CR](https://github.com/ray-project/kuberay/blob/release-0.3/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml).
 To follow along, save this CR locally in a file named `ray_v1alpha1_rayservice.yaml`:
+
+:::{note}
+The example `RayService` uses very small resource requests because it's only for demonstration.
+In production, you'll want to provide more resources to the cluster.
+Learn more about how to configure KubeRay clusters [here](kuberay-config).
+:::
 
 ```console
 $ curl -o ray_v1alpha1_rayservice.yaml https://raw.githubusercontent.com/ray-project/kuberay/release-0.3/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml
