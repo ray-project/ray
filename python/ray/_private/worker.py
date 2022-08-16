@@ -1496,7 +1496,7 @@ def init(
         dashboard_url = _global_node.webui_url
     # Add http protocol to dashboard URL if it doesn't
     # already contain a protocol.
-    if not urlparse(dashboard_url).scheme:
+    if dashboard_url and not urlparse(dashboard_url).scheme:
         dashboard_url = "http://" + dashboard_url
 
     # We logged the address before attempting the connection, so we don't need
