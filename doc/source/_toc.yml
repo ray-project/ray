@@ -177,11 +177,15 @@ parts:
               - file: serve/ml-models
               - file: serve/batching-guide
               - file: serve/model_composition
-              - file: serve/deploying-serve
-              - file: serve/monitoring
               - file: serve/performance
               - file: serve/dev-workflow
-              - file: serve/production
+              - file: serve/production-guide/index
+                sections:
+                  - file: serve/production-guide/config
+                  - file: serve/production-guide/rest-api
+                  - file: serve/production-guide/kubernetes
+                  - file: serve/production-guide/monitoring
+                  - file: serve/production-guide/failures
               - file: serve/managing-java-deployments
               - file: serve/migration
           - file: serve/architecture
