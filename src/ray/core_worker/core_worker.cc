@@ -2276,12 +2276,6 @@ Status CoreWorker::ExecuteTask(TaskSpecification &task_spec,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute);
 
-  ObjectIDIndexType num_returns = worker_context_.GetNextPutIndex();
-  RAY_LOG(INFO) << "num put returns " << num_returns << " num returns prev" << task_spec.NumReturns();
-  if (task_spec.NumReturns() + 1 != num_returns) {
-    task_spec.GetMutableMessage().set_num_returns(num_returns - 1);
-  }
-
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
   // the caller. This will notify the caller of any IDs that we (or a nested
@@ -2357,6 +2351,14 @@ ObjectID CoreWorker::AllocateDynamicReturnId() {
   const auto return_id = ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
+
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = current_tasks_.find(task_spec->TaskId());
+    RAY_CHECK(it != current_tasks_.end());
+    it->second.GetMutableMessage().set_num_returns(task_spec->NumReturns() + 1);
+  }
+
   return return_id;
 }
 
