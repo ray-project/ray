@@ -13,18 +13,6 @@ tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
-def _assert_outputs_equal(outputs):
-    for i in range(1, len(outputs)):
-        for key in outputs[0].keys():
-            assert np.allclose(outputs[0][key], outputs[i][key])
-
-
-def _assert_outputs_not_equal(outputs):
-    for i in range(1, len(outputs)):
-        for key in outputs[0].keys():
-            assert not np.allclose(outputs[0][key], outputs[i][key])
-
-
 def _default_config():
     """Base config to use."""
     return {
@@ -405,8 +393,8 @@ class TestDTPolicy(unittest.TestCase):
                             [
                                 [1.0, 1.0, -20.0],
                                 [0.1, 10.0, 12.0],
-                                [0.0, 1.0, 2.0],
-                                [3.0, 40.0, 5.0],
+                                [1.4, 12.0, -9.0],
+                                [6.0, 40.0, -2.0],
                             ]
                         ],
                         dtype=np.float32,
