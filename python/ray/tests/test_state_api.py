@@ -1570,9 +1570,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_get_actors(
-    shutdown_only,
-):
+def test_list_get_actors(shutdown_only):
     ray.init()
 
     @ray.remote
