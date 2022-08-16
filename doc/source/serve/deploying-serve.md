@@ -167,6 +167,8 @@ Now we can try querying the service by sending an HTTP request to the service fr
 In order to expose the Ray Serve deployment externally, we would need to deploy the Service we created here behind an [Ingress] or a [NodePort].
 Please refer to the Kubernetes documentation for more information.
 
+(serve-health-checking)=
+
 ## Health Checking
 
 By default, each actor making up a Serve deployment is health checked and restarted on failure.
