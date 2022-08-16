@@ -81,6 +81,7 @@ class BackendExecutor:
         if self._max_failures < 0:
             self._max_failures = float("inf")
         self._num_failures = 0
+        self._last_failure = None
         self._initialization_hook = None
         self._placement_group = None
 
@@ -474,10 +475,11 @@ class BackendExecutor:
         Returns:
             The resolved objects represented by the passed in ObjectRefs.
         """
-        success = check_for_failure(remote_values)
+        success, exception = check_for_failure(remote_values)
         if success:
             return ray.get(remote_values)
         else:
+            self._last_failure = exception
             self._increment_failures()
             logger.warning(
                 "Failure identified during training. Restarting all workers and "
@@ -527,7 +529,7 @@ class BackendExecutor:
                 "attempts. You can change the number of max "
                 "failure attempts by setting the "
                 "`max_retries` arg in your `Trainer`."
-            ) from None
+            ) from self._last_failure
 
     def get_worker_group(self):
         return self.worker_group

@@ -364,6 +364,8 @@ class TrialRunner:
                     "fail_fast must be one of {bool, RAISE}. " f"Got {self._fail_fast}."
                 )
 
+        self._print_trial_errors = False
+
         self._server = None
         self._server_port = server_port
         if server_port is not None:
@@ -974,10 +976,12 @@ class TrialRunner:
     def _on_executor_error(self, trial, e: Union[RayTaskError, TuneError]):
         error_msg = f"Trial {trial}: Error processing event."
         if self._fail_fast == TrialRunner.RAISE:
-            logger.error(error_msg, exc_info=e)
+            if self._print_trial_errors:
+                logger.error(error_msg, exc_info=e)
             raise e
         else:
-            logger.exception(error_msg, exc_info=e)
+            if self._print_trial_errors:
+                logger.exception(error_msg, exc_info=e)
             self._process_trial_failure(trial, exc=e)
 
     def get_trial(self, tid):
