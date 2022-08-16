@@ -181,8 +181,11 @@ Pytorch Training Parity
 This task checks the performance parity between native Pytorch Distributed and
 Ray Train's distributed TorchTrainer.
 
-We demonstrate that the performance is similar (within 10\%) between the two frameworks.
+We demonstrate that the performance is similar (within 2.5\%) between the two frameworks.
 Performance may vary greatly across different model, hardware, and cluster configurations.
+
+The reported times are for the raw training times. There is a unreported constant setup
+overhead of a few seconds for both methods that is negligible for longer training runs.
 
 - `Pytorch comparison training script`_
 - `Pytorch comparison CPU cluster configuration`_
@@ -204,7 +207,7 @@ Performance may vary greatly across different model, hardware, and cluster confi
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 2`
     * - 4 g4dn.12xlarge node (16 workers)
       - FashionMNIST
-      - 236.61 s (vs 220.97 s Pytorch)
+      - 149.80 s (vs 146.46 s Pytorch)
       - `python workloads/torch_benchmark.py run --num-runs 3 --num-epochs 20 --num-workers 16 --cpus-per-worker 4 --use-gpu`
 
 
