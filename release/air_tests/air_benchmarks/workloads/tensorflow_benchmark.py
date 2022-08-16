@@ -64,7 +64,7 @@ def train_func(use_ray: bool, config: dict):
             metrics=["accuracy"],
         )
 
-    if use_ray and local_rank == 0:
+    if use_ray:
         from ray.air.callbacks.keras import Callback as TrainCheckpointReportCallback
 
         class CustomReportCallback(TrainCheckpointReportCallback):
