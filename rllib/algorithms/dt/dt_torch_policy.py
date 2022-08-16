@@ -16,7 +16,6 @@ import tree
 from gym.spaces import Discrete, Box
 
 from ray.rllib.algorithms.dt.dt_torch_model import DTTorchModel
-from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.mingpt import configure_gpt_optimizer
@@ -131,13 +130,11 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         episode: Optional["Episode"] = None,
     ) -> SampleBatch:
         """Called by offline data reader after loading in one episode.
-        Calculates returns-to-go.
+        Adds a done flag at the end of trajectory so that SegmentationBuffer can
+        split using the done flag to avoid duplicate trajectories.
         """
-        assert len(sample_batch.split_by_episode()) == 1
-
-        rewards = sample_batch[SampleBatch.REWARDS].reshape(-1)
-        sample_batch[SampleBatch.RETURNS_TO_GO] = discount_cumsum(rewards, 1.0)
-
+        ep_len = sample_batch.env_steps()
+        sample_batch[SampleBatch.DONES] = np.array([False] * (ep_len - 1) + [True])
         return sample_batch
 
     @PublicAPI

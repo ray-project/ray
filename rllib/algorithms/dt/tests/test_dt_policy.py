@@ -84,7 +84,7 @@ class TestDTPolicy(unittest.TestCase):
         # Create policy
         policy = DTTorchPolicy(observation_space, action_space, config)
 
-        # Generate input_dict
+        # Generate input_dict with some data
         sample_batch = SampleBatch(
             {
                 SampleBatch.REWARDS: np.array([1.0, 2.0, 1.0, 1.0]),
@@ -95,14 +95,14 @@ class TestDTPolicy(unittest.TestCase):
         # Do postprocess trajectory to calculate rtg
         sample_batch = policy.postprocess_trajectory(sample_batch)
 
-        # Assert that rtg is correctly calculated
+        # Assert that dones is correctly set
         assert (
-            SampleBatch.RETURNS_TO_GO in sample_batch
-        ), "returns_to_go isn't part of the batch."
+            SampleBatch.DONES in sample_batch
+        ), "`dones` isn't part of the batch."
         assert np.allclose(
-            sample_batch[SampleBatch.RETURNS_TO_GO],
-            np.array([5.0, 4.0, 2.0, 1.0]),
-        ), "returns_to_go isn't calculated correctly."
+            sample_batch[SampleBatch.DONES],
+            np.array([False, False, False, True]),
+        ), "`dones` isn't set correctly."
 
     def test_torch_input_dict(self):
         """Test inference input_dict methods
