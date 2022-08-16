@@ -9,7 +9,6 @@ import numpy as np
 import ray
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.dt import DTConfig
-from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_train_results
 
@@ -41,17 +40,15 @@ class TestDT(unittest.TestCase):
         ray.shutdown()
 
     def test_dt_compilation(self):
-        """Test whether a CRR algorithm can be built with all supported frameworks."""
+        """Test whether a DT algorithm can be built with all supported frameworks."""
 
         rllib_dir = Path(__file__).parent.parent.parent.parent
-        print("rllib dir={}".format(rllib_dir))
         data_file = os.path.join(rllib_dir, "tests/data/pendulum/large.json")
-        print("data_file={} exists={}".format(data_file, os.path.isfile(data_file)))
 
-        def input_reading_fn(ioctx):
-            return JsonReader(ioctx.config["input_config"]["paths"], ioctx)
-
-        input_config = {"paths": data_file}
+        input_config = {
+            "paths": data_file,
+            "format": "json",
+        }
 
         config = (
             DTConfig()
@@ -62,13 +59,12 @@ class TestDT(unittest.TestCase):
             )
             .framework("torch")
             .offline_data(
-                input_=input_reading_fn,
+                input_="dataset",
                 input_config=input_config,
                 actions_in_input_normalized=True,
             )
             .training(
                 train_batch_size=200,
-                target_return=-120,
                 replay_buffer_config={
                     "capacity": 8,
                 },
@@ -80,6 +76,7 @@ class TestDT(unittest.TestCase):
                 embed_dim=64,
             )
             .evaluation(
+                target_return=-120,
                 evaluation_interval=2,
                 evaluation_num_workers=0,
                 evaluation_duration=10,
@@ -147,7 +144,6 @@ class TestDT(unittest.TestCase):
             .framework("torch")
             .training(
                 train_batch_size=200,
-                target_return=-120,
                 replay_buffer_config={
                     "capacity": 8,
                 },
@@ -157,6 +153,9 @@ class TestDT(unittest.TestCase):
                 num_layers=1,
                 num_heads=1,
                 embed_dim=64,
+            )
+            .evaluation(
+                target_return=-120,
             )
             .rollouts(
                 num_rollout_workers=0,

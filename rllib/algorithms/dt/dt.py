@@ -95,7 +95,6 @@ class DTConfig(AlgorithmConfig):
         embed_pdrop: Optional[float] = None,
         resid_pdrop: Optional[float] = None,
         attn_pdrop: Optional[float] = None,
-        target_return: Optional[float] = None,
         grad_clip: Optional[float] = None,
         lr_schedule: Optional[List[List[Union[int, float]]]] = None,
         **kwargs,
@@ -115,7 +114,6 @@ class DTConfig(AlgorithmConfig):
             embed_pdrop: Dropout probability of the embedding layer of the GPT model.
             resid_pdrop: Dropout probability of the residual layer of the GPT model.
             attn_pdrop: Dropout probability of the attention layer of the GPT model.
-            target_return: The target return-to-go for inference/evaluation.
             grad_clip: If specified, clip the global norm of gradients by this amount.
             lr_schedule: Learning rate schedule. In the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
@@ -141,12 +139,32 @@ class DTConfig(AlgorithmConfig):
             self.resid_pdrop = resid_pdrop
         if attn_pdrop is not None:
             self.attn_pdrop = attn_pdrop
-        if target_return is not None:
-            self.target_return = target_return
         if grad_clip is not None:
             self.grad_clip = grad_clip
         if lr_schedule is not None:
             self.lr_schedule = lr_schedule
+
+        return self
+
+    def evaluation(
+        self,
+        *,
+        target_return: Optional[float] = None,
+        **kwargs,
+    ) -> "DTConfig":
+        """
+        === DT configs
+
+        Args:
+            target_return: The target return-to-go for inference/evaluation.
+            **kwargs: Forward compatibility kwargs
+
+        Returns:
+            This updated DTConfig object.
+        """
+        super().evaluation(**kwargs)
+        if target_return is not None:
+            self.target_return = target_return
 
         return self
 

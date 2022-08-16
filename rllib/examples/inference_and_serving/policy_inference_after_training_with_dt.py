@@ -3,6 +3,8 @@ Example showing how you can use your trained Decision Transformer (DT) policy fo
 inference (computing actions) in an environment.
 """
 import argparse
+from pathlib import Path
+
 import gym
 import os
 
@@ -16,9 +18,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(
-        "--dataset",
+        "--input-files",
         nargs="+",
-        default=["./rllib/tests/data/cartpole/large.json"],
+        default=[
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "../../tests/data/cartpole/large.json",
+            )
+        ],
         help="List of paths to offline json files/zips for training.",
     )
     parser.add_argument(
@@ -32,8 +39,17 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    # Get the actual path of the datasets
-    dataset_paths = [os.path.realpath(path) for path in args.dataset]
+    # Bazel makes it hard to find files specified in `args` (and `data`).
+    # Look for them here.
+    input_files = []
+    for input_file in args.input_files:
+        if not os.path.exists(input_file):
+            # This script runs in the ray/rllib/examples/inference_and_serving dir.
+            rllib_dir = Path(__file__).parent.parent.parent
+            input_dir = rllib_dir.absolute().joinpath(input_file)
+            input_files.append(str(input_dir))
+        else:
+            input_files.append(input_file)
 
     # Get max_ep_len
     env = gym.make("CartPole-v0")
@@ -53,7 +69,7 @@ if __name__ == "__main__":
             input_="dataset",
             input_config={
                 "format": "json",
-                "paths": dataset_paths,
+                "paths": input_files,
             },
             actions_in_input_normalized=True,
         )
@@ -64,7 +80,6 @@ if __name__ == "__main__":
                 "betas": [0.9, 0.999],
             },
             train_batch_size=512,
-            target_return=200.0,
             replay_buffer_config={
                 "capacity": 20,
             },
@@ -77,6 +92,7 @@ if __name__ == "__main__":
         )
         # Need to do evaluation rollouts for stopping condition.
         .evaluation(
+            target_return=200.0,
             evaluation_interval=1,
             evaluation_num_workers=1,
             evaluation_duration=10,

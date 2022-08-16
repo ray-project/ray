@@ -3177,6 +3177,16 @@ py_test(
 )
 
 py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_dt_torch",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_dt.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_dt.py"],
+    data = ["tests/data/cartpole/large.json"],
+    args = ["--input-files=tests/data/cartpole/large.json"]
+)
+
+py_test(
     name = "examples/inference_and_serving/policy_inference_after_training_with_lstm_tf",
     main = "examples/inference_and_serving/policy_inference_after_training_with_lstm.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_P"],
