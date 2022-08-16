@@ -8,7 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from rllib.algorithms.dt.dt_torch_model import DTTorchModel
+from ray.rllib.algorithms.dt.dt_torch_model import DTTorchModel
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
