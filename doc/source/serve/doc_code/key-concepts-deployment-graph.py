@@ -5,7 +5,7 @@ from ray.serve.drivers import DAGDriver
 
 
 @serve.deployment
-def preprocess(inp: int):
+def preprocess(inp: int) -> int:
     return inp + 1
 
 
@@ -14,7 +14,7 @@ class Model:
     def __init__(self, increment: int):
         self.increment = increment
 
-    def predict(self, inp: int):
+    def predict(self, inp: int) -> int:
         return inp + self.increment
 
 

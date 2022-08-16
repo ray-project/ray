@@ -183,15 +183,18 @@ def test_reserved_cpus(ray_start_4_cpus):
     )
     tune.run(trainer.as_trainable(), num_samples=4)
 
-
-# TODO(ekl/sang) this currently fails.
-#    # Check we don't deadlock with too low of a fraction either.
-#    scale_config = ScalingConfig(num_workers=1, _max_cpu_fraction_per_node=0.01)
-#    trainer = DummyTrainer(
-#        train_loop,
-#        scaling_config=scale_config,
-#    )
-#    tune.run(trainer.as_trainable(), num_samples=4)
+    # Needs to request 0 CPU for the trainer otherwise the pg
+    # will require {CPU: 1} * 2 resources, which means
+    # _max_cpu_fraction_per_node == 0.01 cannot schedule it
+    # (because this only allows to have 1 CPU for pg per node).
+    scale_config = ScalingConfig(
+        num_workers=1, _max_cpu_fraction_per_node=0.01, trainer_resources={"CPU": 0}
+    )
+    trainer = DummyTrainer(
+        train_loop,
+        scaling_config=scale_config,
+    )
+    tune.run(trainer.as_trainable(), num_samples=4)
 
 
 def test_reserved_cpu_warnings(ray_start_4_cpus):

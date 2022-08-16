@@ -186,63 +186,6 @@ Which preprocessor should you use?
 The type of preprocessor you use depends on what your data looks like. This section
 provides tips on handling common data formats.
 
-General-purpose preprocessors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-There are many general-purpose preprocessors you can employ to transform
-your data. For example, you can chain preprocessors, fill in missing values, or
-implement custom preprocessors.
-
-Chaining preprocessors
-^^^^^^^^^^^^^^^^^^^^^^
-
-If you need to apply more than one preprocessor, compose them together with
-:class:`~ray.data.preprocessors.Chain`.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __chain_start__
-    :end-before: __chain_end__
-
-.. tip::
-    :class:`~ray.data.preprocessors.Chain` applies ``fit`` and ``transform``
-    sequentially. For example, if you construct
-    ``Chain(preprocessorA, preprocessorB)``, then ``preprocessorB.transform`` is applied
-    to the result of ``preprocessorA.transform``.
-
-Filling in missing values
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If your dataset contains missing values, replace them with
-:class:`~ray.data.preprocessors.SimpleImputer`.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __simple_imputer_start__
-    :end-before: __simple_imputer_end__
-
-.. _air-custom-preprocessors:
-
-Implementing custom preprocessors
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If you want to implement a custom preprocessor that needs to be fit, extend the
-:class:`~ray.data.preprocessor.Preprocessor` base class.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __custom_stateful_start__
-    :end-before: __custom_stateful_end__
-
-If your preprocessor doesn't need to be fit, construct a
-:class:`~ray.data.preprocessors.BatchMapper`.
-:class:`~ray.data.preprocessors.BatchMapper` can drop, add, or modify columns.
-
-.. literalinclude:: doc_code/preprocessors.py
-    :language: python
-    :start-after: __custom_stateless_start__
-    :end-before: __custom_stateless_end__
-
 Categorical data
 ~~~~~~~~~~~~~~~~
 
@@ -317,15 +260,15 @@ Additionally, if your model expects a tensor or ``ndarray``, create a tensor usi
     :start-after: __concatenate_start__
     :end-before: __concatenate_end__
 
-Text Data
+Text data
 ~~~~~~~~~
 
 A `document-term matrix <https://en.wikipedia.org/wiki/Document-term_matrix>`_ is a
-table that describes text data. It's useful for natural language processing.
+table that describes text data, often used in natural language processing.
 
 To generate a document-term matrix from a collection of documents, use
 :class:`~ray.data.preprocessors.HashingVectorizer` or
-:class:`~ray.data.preprocessors.CountVectorizer`. If already know the frequency of
+:class:`~ray.data.preprocessors.CountVectorizer`. If you already know the frequency of
 tokens and want to store the data in a document-term matrix, use
 :class:`~ray.data.preprocessors.FeatureHasher`.
 
@@ -338,3 +281,56 @@ tokens and want to store the data in a document-term matrix, use
      - :class:`~ray.data.preprocessors.HashingVectorizer`
    * - You care about model interpretability
      - :class:`~ray.data.preprocessors.CountVectorizer`
+
+
+Filling in missing values
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If your dataset contains missing values, replace them with
+:class:`~ray.data.preprocessors.SimpleImputer`.
+
+.. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __simple_imputer_start__
+    :end-before: __simple_imputer_end__
+
+
+Chaining preprocessors
+~~~~~~~~~~~~~~~~~~~~~~
+
+If you need to apply more than one preprocessor, compose them together with
+:class:`~ray.data.preprocessors.Chain`.
+
+:class:`~ray.data.preprocessors.Chain` applies ``fit`` and ``transform``
+sequentially. For example, if you construct
+``Chain(preprocessorA, preprocessorB)``, then ``preprocessorB.transform`` is applied
+to the result of ``preprocessorA.transform``.
+
+
+.. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __chain_start__
+    :end-before: __chain_end__
+
+
+.. _air-custom-preprocessors:
+
+Implementing custom preprocessors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you want to implement a custom preprocessor that needs to be fit, extend the
+:class:`~ray.data.preprocessor.Preprocessor` base class.
+
+.. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __custom_stateful_start__
+    :end-before: __custom_stateful_end__
+
+If your preprocessor doesn't need to be fit, construct a
+:class:`~ray.data.preprocessors.BatchMapper`.
+:class:`~ray.data.preprocessors.BatchMapper` can drop, add, or modify columns.
+
+.. literalinclude:: doc_code/preprocessors.py
+    :language: python
+    :start-after: __custom_stateless_start__
+    :end-before: __custom_stateless_end__
