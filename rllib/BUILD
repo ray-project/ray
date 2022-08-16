@@ -906,6 +906,14 @@ py_test(
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
 
+# DT
+py_test(
+    name = "test_segmentation_buffer",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_segmentation_buffer.py"]
+)
+
 # ES
 py_test(
     name = "test_es",
