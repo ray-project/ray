@@ -46,7 +46,6 @@ def train_function(train_dataset, eval_dataset=None, **config):
     training_args = TrainingArguments(
         f"{model_checkpoint}-wikitext2",
         evaluation_strategy=config.pop("evaluation_strategy", "epoch"),
-        logging_strategy="epoch",
         num_train_epochs=config.get("epochs", 3),
         learning_rate=2e-5,
         weight_decay=0.01,
