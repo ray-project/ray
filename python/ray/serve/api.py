@@ -294,7 +294,7 @@ def deployment(
     Args:
         name (Optional[str]): Globally-unique name identifying this deployment.
             If not provided, the name of the class or function will be used.
-        version (Optional[str]): Version of the deployment. This is used to
+        version [DEPRECATED] (Optional[str]): Version of the deployment. This is used to
             indicate a code change for the deployment; when it is re-deployed
             with a version change, a rolling update of the replicas will be
             performed. If not provided, every deployment will be treated as a
@@ -330,13 +330,13 @@ def deployment(
 
     Example:
     >>> from ray import serve
-    >>> @serve.deployment(name="deployment1", version="v1") # doctest: +SKIP
+    >>> @serve.deployment(name="deployment1") # doctest: +SKIP
     ... class MyDeployment: # doctest: +SKIP
     ...     pass # doctest: +SKIP
 
-    >>> MyDeployment.deploy(*init_args) # doctest: +SKIP
+    >>> MyDeployment.bind(*init_args) # doctest: +SKIP
     >>> MyDeployment.options( # doctest: +SKIP
-    ...     num_replicas=2, init_args=init_args).deploy()
+    ...     num_replicas=2, init_args=init_args).bind()
 
     Returns:
         Deployment
@@ -452,7 +452,8 @@ def run(
             to execute the serve DAG.
     """
     client = _private_api.serve_start(
-        detached=True, http_options={"host": host, "port": port}
+        detached=True,
+        http_options={"host": host, "port": port, "location": "EveryNode"},
     )
 
     # Record after Ray has been started.
@@ -520,13 +521,20 @@ def build(target: Union[ClassNode, FunctionNode]) -> Application:
     Serve application consisting of one or more deployments. This is intended
     to be used for production scenarios and deployed via the Serve REST API or
     CLI, so there are some restrictions placed on the deployments:
-        1) All of the deployments must be importable. That is, they cannot be
-           defined in __main__ or inline defined. The deployments will be
-           imported in production using the same import path they were here.
-        2) All arguments bound to the deployment must be JSON-serializable.
+    1) All of the deployments must be importable. That is, they cannot be
+    defined in __main__ or inline defined. The deployments will be
+    imported in production using the same import path they were here.
+    2) All arguments bound to the deployment must be JSON-serializable.
 
     The returned Application object can be exported to a dictionary or YAML
     config.
+
+    Args:
+        target (Union[ClassNode, FunctionNode]): A ClassNode or FunctionNode
+            that acts as the top level node of the DAG.
+
+    Returns:
+        The static built Serve application
     """
     if in_interactive_shell():
         raise RuntimeError(

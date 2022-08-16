@@ -12,7 +12,7 @@ from fastapi import Body, Depends, FastAPI
 from ray._private.utils import import_attr
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.http_util import ASGIHTTPSender
-from ray.serve.handle import RayServeLazySyncHandle
+from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.exceptions import RayServeException
 from ray import serve
 
@@ -87,6 +87,7 @@ class SimpleSchemaIngress:
 @PublicAPI(stability="beta")
 @serve.deployment(route_prefix="/")
 class DAGDriver:
+    """A driver implementation that accepts HTTP requests."""
 
     MATCH_ALL_ROUTE_PREFIX = "/{path:path}"
 
@@ -95,26 +96,35 @@ class DAGDriver:
         dags: Union[RayServeDAGHandle, Dict[str, RayServeDAGHandle]],
         http_adapter: Optional[Union[str, Callable]] = None,
     ):
+        """Create a DAGDriver.
+
+        Args:
+            dags: a handle to a Ray Serve DAG or a dictionary of handles.
+            http_adapter: a callable function or import string to convert
+                HTTP requests to Ray Serve input.
+        """
         install_serve_encoders_to_fastapi()
         http_adapter = _load_http_adapter(http_adapter)
         self.app = FastAPI()
 
         if isinstance(dags, dict):
             self.dags = dags
-            for route, handle in dags.items():
+            for route in dags.keys():
 
-                def endpoint_create(handle):
+                def endpoint_create(route):
                     @self.app.get(f"{route}")
                     @self.app.post(f"{route}")
                     async def handle_request(inp=Depends(http_adapter)):
-                        return await handle.remote(inp)
+                        return await self.predict_with_route(
+                            route, inp  # noqa: B023 function redefinition
+                        )
 
                 # bind current handle with endpoint creation function
-                endpoint_create_func = functools.partial(endpoint_create, handle)
+                endpoint_create_func = functools.partial(endpoint_create, route)
                 endpoint_create_func()
 
         else:
-            assert isinstance(dags, (RayServeDAGHandle, RayServeLazySyncHandle))
+            assert isinstance(dags, (RayServeDAGHandle, RayServeDeploymentHandle))
             self.dags = {self.MATCH_ALL_ROUTE_PREFIX: dags}
 
             # Single dag case, we will receive all prefix route
@@ -132,10 +142,12 @@ class DAGDriver:
 
     async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
-        return await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
+        return await (
+            await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
+        )
 
     async def predict_with_route(self, route_path, *args, **kwargs):
         """Perform inference directly without HTTP for multi dags."""
         if route_path not in self.dags:
             raise RayServeException(f"{route_path} does not exist in dags routes")
-        return await self.dags[route_path].remote(*args, **kwargs)
+        return await (await self.dags[route_path].remote(*args, **kwargs))
