@@ -15,6 +15,7 @@ cartpole_dt:
         # training
         framework: torch
         train_batch_size: 512
+        min_train_timesteps_per_iteration: 5000
         target_return: 200
         lr: 0.01
         optimizer:

@@ -20,6 +20,7 @@ pendulum_medium_expert_dt:
         # training
         framework: torch
         train_batch_size: 512
+        min_train_timesteps_per_iteration: 5000
         target_return: -120.0
         lr: 0.0
         lr_schedule: [[0, 0.0], [100000, 0.01]]
