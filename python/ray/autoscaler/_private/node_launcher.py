@@ -6,8 +6,12 @@ import time
 import traceback
 from typing import Any, Dict, Optional
 
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeProviderAvailabilityTracker,
+)
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import hash_launch_conf
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.tags import (
     NODE_KIND_WORKER,
     STATUS_UNINITIALIZED,
@@ -39,6 +43,7 @@ class BaseNodeLauncher:
         provider,
         pending,
         event_summarizer,
+        node_provider_availability_tracker: NodeProviderAvailabilityTracker,
         prom_metrics=None,
         node_types=None,
         index=None,
@@ -46,14 +51,16 @@ class BaseNodeLauncher:
         **kwargs,
     ):
         self.pending = pending
+        self.event_summarizer = event_summarizer
+        self.node_provider_availability_tracker = node_provider_availability_tracker
         self.prom_metrics = prom_metrics or AutoscalerPrometheusMetrics()
         self.provider = provider
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
-        self.event_summarizer = event_summarizer
 
     def launch_node(self, config: Dict[str, Any], count: int, node_type: Optional[str]):
         self.log("Got {} nodes to launch.".format(count))
+        node_launch_start_time = time.time()
         try:
             self._launch_node(config, count, node_type)
         except Exception:
@@ -74,6 +81,12 @@ class BaseNodeLauncher:
                 interval_s=60,
             )
             logger.exception("Launch failed")
+        else:
+            self.node_provider_availability_tracker.update_node_availability(
+                node_type=node_type,
+                timestamp=node_launch_start_time,
+                node_launch_exception=None,
+            )
         finally:
             self.pending.dec(node_type, count)
             self.prom_metrics.pending_nodes.set(self.pending.value)
@@ -111,9 +124,22 @@ class BaseNodeLauncher:
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
         launch_start_time = time.time()
-        self.provider.create_node_with_resources(
-            node_config, node_tags, count, resources
-        )
+        try:
+            self.provider.create_node_with_resources(
+                node_config, node_tags, count, resources
+            )
+        except NodeLaunchException as node_launch_exception:
+            self.node_provider_availability_tracker.update_node_availability(
+                node_type, launch_start_time, node_launch_exception
+            )
+            # Do some special handling if we have a structured error.
+            self.log(
+                f"Failed to launch {node_type}: "
+                f"({node_launch_exception.category}):"
+                f"{node_launch_exception.description}"
+            )
+            # Reraise to trigger the more general exception handling code.
+            raise node_launch_exception.source_exception
         launch_time = time.time() - launch_start_time
         for _ in range(count):
             # Note: when launching multiple nodes we observe the time it
@@ -140,6 +166,7 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
         queue,
         pending,
         event_summarizer,
+        node_provider_availability_tracker,
         prom_metrics=None,
         node_types=None,
         index=None,
@@ -152,6 +179,7 @@ class NodeLauncher(BaseNodeLauncher, threading.Thread):
             provider=provider,
             pending=pending,
             event_summarizer=event_summarizer,
+            node_provider_availability_tracker=node_provider_availability_tracker,
             prom_metrics=prom_metrics,
             node_types=node_types,
             index=index,
