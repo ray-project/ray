@@ -55,10 +55,7 @@ Broadly speaking, it is more efficient to use a few large Ray pods than many sma
 
 We recommend taking a look at the [config file][ConfigLink] applied in the following command.
 ```shell
-# Starting from the parent directory of cloned Ray master,
-pushd ray/doc/source/cluster/kubernetes/configs/
-kubectl apply -f xgboost-benchmark.yaml
-popd
+kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/xgboost-benchmark.yaml
 ```
 
 A Ray head pod and 9 Ray worker pods will be created.
@@ -66,7 +63,8 @@ A Ray head pod and 9 Ray worker pods will be created.
 
 ```{admonition} Optional: Deploying an autoscaling Ray cluster
 If you've set up an autoscaling node group or pool, you may wish to deploy
-an autoscaling cluster by applying the config `xgboost-benchmark-autoscaler.yaml`.
+an autoscaling cluster by applying the config `xgboost-benchmark-autoscaler.yaml`
+in the same directory as the yaml applied in the last command.
 One Ray head pod will be created. Once the workload starts, the Ray autoscaler will trigger
 creation of Ray worker pods. Kubernetes autoscaling will then create nodes to place the Ray pods.
 ```
@@ -103,10 +101,10 @@ To submit the workload, run the above Python script.
 The script is available in the Ray repository.
 
 ```shell
-# From the parent directory of cloned Ray master.
-pushd ray/doc/source/cluster/doc_code/
+# Download the above script.
+curl https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/doc_code/xgboost_submit.py -o xgboost_submit.py
+# Run the script.
 python xgboost_submit.py
-popd
 ```
 
 ### Observe progress.
@@ -185,5 +183,4 @@ If you're on a public cloud, don't forget to clean up the underlying
 node group and/or Kubernetes cluster.
 
 <!-- TODO: Fix this -->
-<!-- [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/291bba69fb90ee5e8401540ef55b7b74dd13f5c5/doc/source/cluster/ray-clusters-on-kubernetes/configs/xgboost-benchmark-autoscaler.yaml -->
-[ConfigLink]: https://github.com/ray-project/ray/tree/master/doc/source/cluster/
+[ConfigLink]: https://github.com/ray-project/ray/blob/releases/2.0.0/doc/source/cluster/kubernetes/configs/xgboost-benchmark.yaml
