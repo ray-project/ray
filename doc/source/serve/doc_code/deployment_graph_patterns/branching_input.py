@@ -3,15 +3,17 @@
 
 import ray
 from ray import serve
+from ray.serve.drivers import DAGDriver
+from ray.serve.http_adapters import json_request
 from ray.serve.deployment_graph import InputNode
 
 
 @serve.deployment
 class Model:
-    def __init__(self, weight):
+    def __init__(self, weight: int):
         self.weight = weight
 
-    def forward(self, input):
+    def forward(self, input: int) -> int:
         return input + self.weight
 
 
@@ -28,7 +30,11 @@ with InputNode() as user_input:
     output2 = model2.forward.bind(user_input)
     combine_output = combine.bind([output1, output2])
 
-sum = ray.get(combine_output.execute(1))
+graph = DAGDriver.bind(combine_output, http_adapter=json_request)
+
+handle = serve.run(graph)
+
+sum = ray.get(handle.predict.remote(1))
 print(sum)
 # __graph_end__
 
