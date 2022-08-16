@@ -56,11 +56,16 @@ class LightningTrainer(TorchTrainer):
         lightning_module_init_config: Configurations to pass into
             ``lightning_module.__init__`` as kwargs.
         trainer_init_config: Configurations to pass into
-            ``pytorch_lightning.Trainer.__init__`` as kwargs.
+            ``pytorch_lightning.Trainer.__init__`` as kwargs. For valid arguments to
+            pass, see
+            https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init.
         ddp_strategy_init_config: Configurations to pass into
             ``pytorch_lightning.strategies.DDPStrategy.__init__`` as kwargs. Most users
             should only set this to ``{"find_unused_parameters": False}`` or leave this
-            as-is.
+            as-is. For valid arguments to pass, see
+            https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.strategies.DDPStrategy.html#pytorch_lightning.strategies.DDPStrategy
+            and
+            https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html#torch.nn.parallel.DistributedDataParallel.
         torch_config: Configuration for setting up the PyTorch backend. If set to
             None, use the default configuration. This replaces the ``backend_config``
             arg of ``DataParallelTrainer``. Same as in ``TorchTrainer``.
@@ -130,7 +135,7 @@ class LightningTrainer(TorchTrainer):
 
         trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
         self._validate_trainer_init_config(trainer_init_config)
-        trainer_init_config["_lightning_module"] = lightning_module or {}
+        trainer_init_config["_lightning_module"] = lightning_module
         trainer_init_config["_lightning_module_init_config"] = (
             lightning_module_init_config or {}
         )

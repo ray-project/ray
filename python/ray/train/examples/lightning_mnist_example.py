@@ -32,9 +32,6 @@ class LitModel(pytorch_lightning.LightningModule):
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
-    # don't set `train_dataloader`, `val_data_loader`,
-    # `test_dataloader`, or `predict_dataloader` hooks here.
-
 
 def get_datasets():
     import ray.data
@@ -71,14 +68,11 @@ def train_lightning_mnist(num_workers=4, use_gpu=False, epochs=40):
 
     train_dataset, test_dataset = get_datasets()
 
-    # don't set `trainer_init_config["devices"]`
     trainer = LightningTrainer(
         LitModel,
         lightning_module_init_config={
             "learning_rate": 0.02
         },  # arguments that will be passed to `LitModel.__init__`
-        # for valid keywords to pass to `trainer_init_config`, see
-        # https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#init
         trainer_init_config={"max_epochs": epochs},
         ddp_strategy_init_config={"find_unused_parameters": False},
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
