@@ -291,7 +291,7 @@ def run(
 
         # Todo: Vanilla runs are sometimes failing. We just retry here, but we should
         # get to the bottom of it.
-        time_vanilla = time_local_vanilla, loss_vanilla = 0.0
+        time_vanilla = time_local_vanilla = loss_vanilla = 0.0
         for i in range(3):
             try:
                 time_vanilla, time_local_vanilla, loss_vanilla = train_tf_vanilla(
