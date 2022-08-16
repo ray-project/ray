@@ -34,6 +34,9 @@ def _default_config():
             "betas": [0.9, 0.99],
         },
         "target_return": 200.0,
+        "loss_coef_actions": 1.0,
+        "loss_coef_obs": 0,
+        "loss_coef_returns_to_go": 0,
         "num_gpus": 0,
         "_fake_gpus": None,
     }
@@ -420,6 +423,81 @@ class TestDTPolicy(unittest.TestCase):
             assert not np.isclose(
                 loss1, loss3
             ), "Widely different inputs are giving the same loss value."
+
+    def test_loss_coef(self):
+        """Test the loss_coef_{key} config options."""
+
+        config = _default_config()
+        config["embed_pdrop"] = 0
+        config["resid_pdrop"] = 0
+        config["attn_pdrop"] = 0
+        # set initial action coef to 0
+        config["loss_coef_actions"] = 0
+
+        observation_space = gym.spaces.Box(-1.0, 1.0, shape=(3,))
+        action_spaces = [
+            gym.spaces.Box(-1.0, 1.0, shape=(1,)),
+            gym.spaces.Discrete(4),
+        ]
+
+        for action_space in action_spaces:
+            batch = SampleBatch(
+                {
+                    SampleBatch.OBS: np.array(
+                        [
+                            [
+                                [0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0],
+                                [0.0, 1.0, 2.0],
+                                [3.0, 4.0, 5.0],
+                            ]
+                        ],
+                        dtype=np.float32,
+                    ),
+                    SampleBatch.ACTIONS: (
+                        np.array([[[0.0], [0.0], [1.0], [0.5]]], dtype=np.float32)
+                        if isinstance(action_space, gym.spaces.Box)
+                        else np.array([[0, 0, 1, 3]], dtype=np.int64)
+                    ),
+                    SampleBatch.RETURNS_TO_GO: np.array(
+                        [[[0.0], [0.0], [100.0], [90.0], [80.0]]], dtype=np.float32
+                    ),
+                    SampleBatch.T: np.array([[0, 0, 0, 1]], dtype=np.int32),
+                    SampleBatch.ATTENTION_MASKS: np.array(
+                        [[0.0, 0.0, 1.0, 1.0]], dtype=np.float32
+                    ),
+                }
+            )
+
+            keys = [SampleBatch.ACTIONS, SampleBatch.OBS, SampleBatch.RETURNS_TO_GO]
+            for key in keys:
+                # create policy and run loss with different coefs
+                # create policy 1 with coef = 1
+                config1 = config.copy()
+                config1[f"loss_coef_{key}"] = 1.0
+                policy1 = DTTorchPolicy(observation_space, action_space, config1)
+
+                loss1 = policy1.loss(policy1.model, policy1.dist_class, batch)
+                loss1 = loss1.detach().cpu().item()
+
+                # create policy 2 with coef = 10
+                config2 = config.copy()
+                config2[f"loss_coef_{key}"] = 10.0
+                policy2 = DTTorchPolicy(observation_space, action_space, config2)
+                # copy the weights over so they output the same loss without scaling
+                policy2.set_state(policy1.get_state())
+                policy2.set_weights(policy1.get_weights())
+
+                loss2 = policy2.loss(policy2.model, policy2.dist_class, batch)
+                loss2 = loss2.detach().cpu().item()
+
+                # compare loss, should be factor of 10 difference
+                self.assertAlmostEqual(
+                    loss2 / loss1,
+                    10.0,
+                    places=3,
+                    msg="the two losses should be different to a factor of 10.",
+                )
 
 
 if __name__ == "__main__":

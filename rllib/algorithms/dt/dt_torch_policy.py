@@ -24,7 +24,6 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
     TorchDeterministic,
 )
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.torch_mixins import LearningRateSchedule
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -83,8 +82,8 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             embed_pdrop=self.config["embed_pdrop"],
             resid_pdrop=self.config["resid_pdrop"],
             attn_pdrop=self.config["attn_pdrop"],
-            use_obs_output=False,
-            use_return_output=False,
+            use_obs_output=self.config.get("loss_coef_obs", 0) > 0,
+            use_return_output=self.config.get("loss_coef_returns_to_go", 0) > 0,
         )
 
         num_outputs = int(np.product(self.observation_space.shape))
