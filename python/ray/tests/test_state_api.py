@@ -1570,16 +1570,53 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
+def test_list_get_actors(
+    shutdown_only,
+):
+    ray.init()
+
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()  # noqa
+
+    def verify():
+        # Test list
+        actors = list_actors()
+        assert len(actors) == 1
+        assert actors[0]["state"] == "ALIVE"
+        assert is_hex(actors[0]["actor_id"])
+        assert a._actor_id.hex() == actors[0]["actor_id"]
+
+        # Test get
+        actors = list_actors(detail=True)
+        for actor in actors:
+            get_actor_data = get_actor(actor["actor_id"])
+            assert get_actor_data is not None
+            assert get_actor_data == actor
+
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors())
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows",
+)
 @pytest.mark.parametrize(
     "override_url",
     [
-        None,
         "https://external_dashboard_url",
         "https://external_dashboard_url/path1/?query_param1=val1&query_param2=val2",
         "new_external_dashboard_url",
     ],
 )
-def test_list_get_actors(shutdown_only, override_url, monkeypatch):
+def test_state_api_with_external_dashboard_override(
+    shutdown_only, override_url, monkeypatch
+):
     with monkeypatch.context() as m:
         if override_url:
             m.setenv(
