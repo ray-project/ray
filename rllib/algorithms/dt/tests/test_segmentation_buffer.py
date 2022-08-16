@@ -45,8 +45,10 @@ def _assert_sample_batch_equals(original: SampleBatch, sample: SampleBatch):
         assert key in sample.keys()
         original_val = original[key]
         sample_val = sample[key]
-        assert original_val.shape == sample_val.shape
-        assert np.allclose(original_val, sample_val)
+        assert (
+            original_val.shape == sample_val.shape
+        ), f"Key {key} have different shapes."
+        assert np.allclose(original_val, sample_val), f"Key {key} are different."
 
 
 def _assert_sample_batch_keys(batch: SampleBatch):
@@ -62,7 +64,9 @@ def _assert_sample_batch_not_equal(b1: SampleBatch, b2: SampleBatch):
     """Assert that the two batches are not equal."""
     for key in b1.keys() & b2.keys():
         if b1[key].shape == b2[key].shape:
-            assert not np.allclose(b1[key], b2[key])
+            assert not np.allclose(
+                b1[key], b2[key]
+            ), f"Key {key} contain the same value when they should not."
 
 
 def _assert_is_segment(segment: SampleBatch, episode: SampleBatch):
@@ -139,7 +143,10 @@ class TestSegmentationBuffer(unittest.TestCase):
             # add to buffer and check that only last one is kept (due to replacement)
             buffer.add(batch)
 
-            assert len(_get_internal_buffer(buffer)) == 1
+            assert len(_get_internal_buffer(buffer)) == 1, (
+                "The internal buffer should only contain one SampleBatch since"
+                " the capacity is 1."
+            )
             _assert_sample_batch_equals(
                 episode_batches[-1], _get_internal_buffer(buffer)[0]
             )

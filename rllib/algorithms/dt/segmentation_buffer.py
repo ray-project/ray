@@ -1,6 +1,7 @@
 import logging
 from collections import defaultdict
 from typing import List
+import random
 
 import numpy as np
 
@@ -85,37 +86,41 @@ class SegmentationBuffer:
         # TODO: sample proportional to episode length
         # Sample a random episode from the buffer and then sample a random
         # segment from that episode.
-        buffer_ind = np.random.randint(0, len(self._buffer))
+        buffer_ind = random.randint(0, len(self._buffer) - 1)
+
         episode = self._buffer[buffer_ind]
         ep_len = episode[SampleBatch.OBS].shape[0]
-        # This offset accounts for either the normal case when max_seq_len is shorter
-        # than the episode length, but also occasionally an episode will be shorter
-        # than the context length (max_seq_len).
-        offset = min(self.max_seq_len, ep_len)
-        # We allow si to be negative (for now) because we want segments that only
-        # contains the first few transitions (and padd the rest),
-        # for example [0, 0, 0, 0, 0, 0, R0, s0, a0].
-        si = np.random.randint(-offset + 1, ep_len - offset + 1)
-        ei = si + offset
-        # but for actual segmenting we don't want starting index to be negative.
-        si = max(si, 0)
 
+        # ei (end index) is exclusive
+        ei = random.randint(1, ep_len)
+        # si (start index) is inclusive
+        si = max(ei - self.max_seq_len, 0)
+
+        # Slice segments from obs, actions, and rtgs
         obs = episode[SampleBatch.OBS][si:ei]
         actions = episode[SampleBatch.ACTIONS][si:ei]
-        # Note that returns-to-go needs an extra elem as the target for the last action.
+        # Note that returns-to-go needs an extra elem as the rtg target for the last
+        # action token passed into the transformer.
         returns_to_go = episode[SampleBatch.RETURNS_TO_GO][si : ei + 1].reshape(-1, 1)
 
+        # The actual length of this segment. Note that this can be shorter than
+        # max_seq_len if ep_len < max_seq_len or ei < max_seq_len (this is intended
+        # so that it can train on transitions from the front of the episode
+        # to emulate how it will be during evaluation).
         length = obs.shape[0]
+
+        # Generate timesteps and attention masks
         timesteps = np.arange(si, si + length, dtype=np.int32)
         masks = np.ones(length, dtype=returns_to_go.dtype)
 
-        # Back pad returns-to-go with 0 if at end of rollout.
+        # Back pad returns-to-go with 0 if at end of the episode.
         if returns_to_go.shape[0] == length:
             returns_to_go = np.concatenate(
                 [returns_to_go, np.zeros((1, 1), dtype=returns_to_go.dtype)], axis=0
             )
 
-        # Front-pad if at beginning of rollout.
+        # Front-pad if we're at the beginning of the episode and we need more tokens
+        # to pass into the transformer.
         pad_length = self.max_seq_len - length
         if pad_length > 0:
             obs = np.concatenate(
