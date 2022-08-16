@@ -764,7 +764,7 @@ cdef execute_task(
                                         core_worker.get_current_task_id()),
                                     exc_info=True)
                     raise e
-                if c_return_ids.size() == 1:
+                if c_return_ids.size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
                     # all return values as a single object.
                     outputs = (outputs,)
