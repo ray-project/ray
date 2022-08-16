@@ -464,8 +464,6 @@ if __name__ == "__main__":
             disable_metrics_collection=args.disable_metrics_collection,
             agent_id=args.agent_id,
         )
-        if os.environ.get("_RAY_AGENT_FAILING"):
-            raise Exception("Failure injection failure.")
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(agent.run())
