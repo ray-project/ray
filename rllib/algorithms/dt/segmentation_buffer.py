@@ -5,10 +5,23 @@ import random
 
 import numpy as np
 
+from ray.rllib.evaluation.postprocessing import discount_cumsum
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples, MultiAgentBatch
 from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
+
+
+def front_pad_with_zero(arr: np.ndarray, max_seq_len: int):
+    """Pad arr on the front/left with 0 up to max_seq_len."""
+    length = arr.shape[0]
+    pad_length = max_seq_len - length
+    if pad_length > 0:
+        return np.concatenate(
+            [np.zeros((pad_length, *arr.shape[1:]), dtype=arr.dtype), arr], axis=0
+        )
+    else:
+        return arr
 
 
 class SegmentationBuffer:
@@ -42,13 +55,15 @@ class SegmentationBuffer:
         """
         episodes = batch.split_by_episode()
         for episode in episodes:
-            self._add_single(episode)
+            self._add_single_episode(episode)
 
-    def _add_single(self, episode: SampleBatch):
+    def _add_single_episode(self, episode: SampleBatch):
         # Truncate if episode too long.
         # Note: sometimes this happens if the dataset shuffles such that the
         # same episode is concatenated together twice (which is okay).
-        if episode.env_steps() > self.max_ep_len:
+        ep_len = episode.env_steps()
+
+        if ep_len > self.max_ep_len:
             logger.warning(
                 f"The maximum rollout length is {self.max_ep_len} but we tried to add a"
                 f"rollout of {episode.env_steps()} steps to the SegmentationBuffer. "
@@ -57,11 +72,22 @@ class SegmentationBuffer:
             )
             episode = episode[: self.max_ep_len]
 
+        # compute returns to go
+        rewards = episode[SampleBatch.REWARDS].reshape(-1)
+        rtg = discount_cumsum(rewards, 1.0)
+        # rtg needs to be one longer than the rest for return targets during training.
+        rtg = np.concatenate([rtg, np.zeros((1,), dtype=np.float32)], axis=0)
+        episode[SampleBatch.RETURNS_TO_GO] = rtg[:, None]
+
+        # Add timesteps and masks
+        episode[SampleBatch.T] = np.arange(ep_len, dtype=np.int32)
+        episode[SampleBatch.ATTENTION_MASKS] = np.ones(ep_len, dtype=np.float32)
+
         if len(self._buffer) < self.capacity:
             self._buffer.append(episode)
         else:
-            # TODO: replace proportional to episode length
-            replace_ind = np.random.randint(0, self.capacity)
+            # TODO: add config for sampling and eviction policies.
+            replace_ind = random.randint(0, self.capacity - 1)
             self._buffer[replace_ind] = episode
 
     def sample(self, batch_size: int) -> SampleBatch:
@@ -96,53 +122,23 @@ class SegmentationBuffer:
         # si (start index) is inclusive
         si = max(ei - self.max_seq_len, 0)
 
-        # Slice segments from obs, actions, and rtgs
+        # Slice segments from obs, actions, timesteps, and rtgs
         obs = episode[SampleBatch.OBS][si:ei]
         actions = episode[SampleBatch.ACTIONS][si:ei]
+        timesteps = episode[SampleBatch.T][si:ei]
+        masks = episode[SampleBatch.ATTENTION_MASKS][si:ei]
         # Note that returns-to-go needs an extra elem as the rtg target for the last
         # action token passed into the transformer.
-        returns_to_go = episode[SampleBatch.RETURNS_TO_GO][si : ei + 1].reshape(-1, 1)
-
-        # The actual length of this segment. Note that this can be shorter than
-        # max_seq_len if ep_len < max_seq_len or ei < max_seq_len (this is intended
-        # so that it can train on transitions from the front of the episode
-        # to emulate how it will be during evaluation).
-        length = obs.shape[0]
-
-        # Generate timesteps and attention masks
-        timesteps = np.arange(si, si + length, dtype=np.int32)
-        masks = np.ones(length, dtype=returns_to_go.dtype)
-
-        # Back pad returns-to-go with 0 if at end of the episode.
-        if returns_to_go.shape[0] == length:
-            returns_to_go = np.concatenate(
-                [returns_to_go, np.zeros((1, 1), dtype=returns_to_go.dtype)], axis=0
-            )
+        returns_to_go = episode[SampleBatch.RETURNS_TO_GO][si : ei + 1]
 
         # Front-pad if we're at the beginning of the episode and we need more tokens
-        # to pass into the transformer.
-        pad_length = self.max_seq_len - length
-        if pad_length > 0:
-            obs = np.concatenate(
-                [np.zeros((pad_length, *obs.shape[1:]), dtype=obs.dtype), obs], axis=0
-            )
-            actions = np.concatenate(
-                [
-                    np.zeros((pad_length, *actions.shape[1:]), dtype=actions.dtype),
-                    actions,
-                ],
-                axis=0,
-            )
-            returns_to_go = np.concatenate(
-                [np.zeros((pad_length, 1), dtype=returns_to_go.dtype), returns_to_go],
-                axis=0,
-            )
-            timesteps = np.concatenate(
-                [np.zeros(pad_length, dtype=timesteps.dtype), timesteps], axis=0
-            )
-            masks = np.concatenate(
-                [np.zeros(pad_length, dtype=masks.dtype), masks], axis=0
-            )
+        # to pass into the transformer. Or if the episode length is shorter
+        # than max_seq_len.
+        obs = front_pad_with_zero(obs, self.max_seq_len)
+        actions = front_pad_with_zero(actions, self.max_seq_len)
+        returns_to_go = front_pad_with_zero(returns_to_go, self.max_seq_len + 1)
+        timesteps = front_pad_with_zero(timesteps, self.max_seq_len)
+        masks = front_pad_with_zero(masks, self.max_seq_len)
 
         assert obs.shape[0] == self.max_seq_len
         assert actions.shape[0] == self.max_seq_len
@@ -151,7 +147,7 @@ class SegmentationBuffer:
         assert returns_to_go.shape[0] == self.max_seq_len + 1
 
         return SampleBatch(
-            **{
+            {
                 SampleBatch.OBS: obs[None],
                 SampleBatch.ACTIONS: actions[None],
                 SampleBatch.RETURNS_TO_GO: returns_to_go[None],

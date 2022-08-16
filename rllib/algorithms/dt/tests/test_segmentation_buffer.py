@@ -14,6 +14,7 @@ from ray.rllib.policy.sample_batch import (
     concat_samples,
     DEFAULT_POLICY_ID,
 )
+from ray.rllib.utils import test_utils
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import PolicyID
 
@@ -23,32 +24,24 @@ torch, _ = try_import_torch()
 
 def _generate_episode_batch(max_ep_len, eps_id, obs_dim=8, act_dim=3):
     """Generate a batch containing one episode."""
+    # These values are not actually correct as usual. But using eps_id
+    # as the values allow us to identify them in the tests.
     batch = SampleBatch(
         {
             SampleBatch.OBS: np.full((max_ep_len, obs_dim), eps_id, dtype=np.float32),
             SampleBatch.ACTIONS: np.full(
                 (max_ep_len, act_dim), eps_id + 100, dtype=np.float32
             ),
-            SampleBatch.RETURNS_TO_GO: np.full(
-                (max_ep_len,), eps_id + 200, dtype=np.float32
-            ),
+            SampleBatch.REWARDS: np.ones((max_ep_len,), dtype=np.float32),
+            SampleBatch.RETURNS_TO_GO: np.arange(
+                max_ep_len, -1, -1, dtype=np.float32
+            ).reshape((max_ep_len + 1, 1)),
             SampleBatch.EPS_ID: np.full((max_ep_len,), eps_id, dtype=np.int32),
             SampleBatch.T: np.arange(max_ep_len, dtype=np.int32),
+            SampleBatch.ATTENTION_MASKS: np.ones(max_ep_len, dtype=np.float32),
         }
     )
     return batch
-
-
-def _assert_sample_batch_equals(original: SampleBatch, sample: SampleBatch):
-    """Assert that the sampled batch is the same as the original."""
-    for key in original.keys():
-        assert key in sample.keys()
-        original_val = original[key]
-        sample_val = sample[key]
-        assert (
-            original_val.shape == sample_val.shape
-        ), f"Key {key} have different shapes."
-        assert np.allclose(original_val, sample_val), f"Key {key} are different."
 
 
 def _assert_sample_batch_keys(batch: SampleBatch):
@@ -82,7 +75,7 @@ def _assert_is_segment(segment: SampleBatch, episode: SampleBatch):
         segment[SampleBatch.ACTIONS][masks], episode_segment[SampleBatch.ACTIONS]
     )
     assert np.allclose(
-        segment[SampleBatch.RETURNS_TO_GO][:seq_len].reshape(-1)[masks],
+        segment[SampleBatch.RETURNS_TO_GO][:seq_len][masks],
         episode_segment[SampleBatch.RETURNS_TO_GO],
     )
 
@@ -143,20 +136,18 @@ class TestSegmentationBuffer(unittest.TestCase):
             # add to buffer and check that only last one is kept (due to replacement)
             buffer.add(batch)
 
-            assert len(_get_internal_buffer(buffer)) == 1, (
+            self.assertEqual(
+                len(_get_internal_buffer(buffer)),
+                1,
                 "The internal buffer should only contain one SampleBatch since"
-                " the capacity is 1."
+                " the capacity is 1.",
             )
-            _assert_sample_batch_equals(
-                episode_batches[-1], _get_internal_buffer(buffer)[0]
-            )
+            test_utils.check(episode_batches[-1], _get_internal_buffer(buffer)[0])
 
             # add again
             buffer.add(episode_batches[0])
 
-            _assert_sample_batch_equals(
-                episode_batches[0], _get_internal_buffer(buffer)[0]
-            )
+            test_utils.check(episode_batches[0], _get_internal_buffer(buffer)[0])
 
             # make buffer of enough capacity
             capacity = len(episode_batches)
@@ -164,20 +155,26 @@ class TestSegmentationBuffer(unittest.TestCase):
 
             # add to buffer and make sure all are in
             buffer.add(batch)
-            assert len(_get_internal_buffer(buffer)) == len(episode_batches)
+            self.assertEqual(
+                len(_get_internal_buffer(buffer)),
+                len(episode_batches),
+                "internal buffer doesn't have the right number of episodes.",
+            )
             for i in range(len(episode_batches)):
-                _assert_sample_batch_equals(
-                    episode_batches[i], _get_internal_buffer(buffer)[i]
-                )
+                test_utils.check(episode_batches[i], _get_internal_buffer(buffer)[i])
 
             # add another one and make sure it replaced one of them
             new_batch = _generate_episode_batch(max_ep_len, 12345)
             buffer.add(new_batch)
-            assert len(_get_internal_buffer(buffer)) == len(episode_batches)
+            self.assertEqual(
+                len(_get_internal_buffer(buffer)),
+                len(episode_batches),
+                "internal buffer doesn't have the right number of episodes.",
+            )
             found = False
             for episode_batch in _get_internal_buffer(buffer):
                 if episode_batch[SampleBatch.EPS_ID][0] == 12345:
-                    _assert_sample_batch_equals(episode_batch, new_batch)
+                    test_utils.check(episode_batch, new_batch)
                     found = True
                     break
             assert found, "new_batch not added to buffer."
@@ -209,15 +206,24 @@ class TestSegmentationBuffer(unittest.TestCase):
                 _assert_sample_batch_keys(batch)
 
                 # check the shapes
-                assert batch[SampleBatch.OBS].shape == (bs, max_seq_len, obs_dim)
-                assert batch[SampleBatch.ACTIONS].shape == (bs, max_seq_len, act_dim)
-                assert batch[SampleBatch.RETURNS_TO_GO].shape == (
-                    bs,
-                    max_seq_len + 1,
-                    1,
+                self.assertEquals(
+                    batch[SampleBatch.OBS].shape, (bs, max_seq_len, obs_dim)
                 )
-                assert batch[SampleBatch.T].shape == (bs, max_seq_len)
-                assert batch[SampleBatch.ATTENTION_MASKS].shape == (bs, max_seq_len)
+                self.assertEquals(
+                    batch[SampleBatch.ACTIONS].shape, (bs, max_seq_len, act_dim)
+                )
+                self.assertEquals(
+                    batch[SampleBatch.RETURNS_TO_GO].shape,
+                    (
+                        bs,
+                        max_seq_len + 1,
+                        1,
+                    ),
+                )
+                self.assertEquals(batch[SampleBatch.T].shape, (bs, max_seq_len))
+                self.assertEquals(
+                    batch[SampleBatch.ATTENTION_MASKS].shape, (bs, max_seq_len)
+                )
 
     def test_sample_content(self):
         """Test that the content of the sampling are valid."""
@@ -279,7 +285,38 @@ class TestSegmentationBuffer(unittest.TestCase):
                 eps_id = int(batch[SampleBatch.OBS][i, -1, 0])
                 eps_ids.add(eps_id)
 
-            assert len(eps_ids) > 1
+            self.assertGreater(
+                len(eps_ids), 1, "buffer.sample is always returning the same episode."
+            )
+
+    def test_padding(self):
+        """Test that sample will front pad segments."""
+        for buffer_cls in (SegmentationBuffer, MultiAgentSegmentationBuffer):
+            max_seq_len = 10
+            max_ep_len = 100
+            capacity = 1
+            obs_dim = 3
+            act_dim = 2
+
+            buffer = buffer_cls(capacity, max_seq_len, max_ep_len)
+
+            for ep_len in range(1, max_seq_len):
+                # generate batch with episode lengths that are shorter than
+                # max_seq_len to test padding.
+                batch = _generate_episode_batch(ep_len, 123, obs_dim, act_dim)
+                buffer.add(batch)
+
+                samples = _as_sample_batch(buffer.sample(50))
+                for i in range(50):
+                    # calculate number of pads based on the attention mask.
+                    num_pad = int(
+                        ep_len - samples[SampleBatch.ATTENTION_MASKS][i].sum()
+                    )
+                    for key in samples.keys():
+                        # make sure padding are added.
+                        assert np.allclose(
+                            samples[key][i, :num_pad], 0.0
+                        ), "samples were not padded correctly."
 
     def test_multi_agent(self):
         max_seq_len = 5
@@ -335,7 +372,7 @@ class TestSegmentationBuffer(unittest.TestCase):
         for policy_id, buffer in ma_buffer.buffers.items():
             assert policy_id in policy_ids
             for i in range(10):
-                _assert_sample_batch_equals(
+                test_utils.check(
                     batches_mapping[policy_id][i], _get_internal_buffer(buffer)[i]
                 )
 
@@ -352,10 +389,12 @@ class TestSegmentationBuffer(unittest.TestCase):
                 _assert_sample_batch_keys(batch)
 
                 for i in range(100):
-                    # obs generated by _generate_episode_batch contains eps_id
-                    # use -1 because there might be front padding
+                    # Obs generated by _generate_episode_batch contains eps_id.
+                    # Use -1 index because there might be front padding
                     eps_id = int(batch[SampleBatch.OBS][i, -1, 0])
-                    assert eps_id_start <= eps_id < eps_id_end
+                    assert (
+                        eps_id_start <= eps_id < eps_id_end
+                    ), "batch within multi agent batch has the wrong agent's episode."
 
         # sample twice and make sure they are not equal (probability equal almost zero)
         ma_sample1 = ma_buffer.sample(200)
