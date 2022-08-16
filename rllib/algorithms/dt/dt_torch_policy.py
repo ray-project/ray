@@ -31,6 +31,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import (
     TrainerConfigDict,
@@ -315,22 +316,25 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         return initial_rtg
 
     @override(TorchPolicyV2)
-    def action_distribution_fn(
+    @DeveloperAPI
+    def compute_actions(
         self,
-        model: ModelV2,
-        *,
-        obs_batch: SampleBatch,
-        state_batches: TensorType,
+        *args,
         **kwargs,
-    ) -> Tuple[TensorType, type, List[TensorType]]:
-        """
-        Note: This method is only ran during evaluation and inference.
+    ) -> Tuple[TensorStructType, List[TensorType], Dict[str, TensorType]]:
+        raise ValueError("Please use compute_actions_from_input_dict instead.")
 
+    @override(TorchPolicyV2)
+    def compute_actions_from_input_dict(
+        self,
+        input_dict: SampleBatch,
+        explore: bool = None,
+        timestep: Optional[int] = None,
+        **kwargs,
+    ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+        """
         Args:
-            model: DTTorchModel of this policy.
-            obs_batch: input_dict (that contains a batch dimension for each value).
-                This is modified to be used by a subsequent call to
-                extra_action_out.
+            input_dict: input_dict (that contains a batch dimension for each value).
                 Keys and shapes: {
                     OBS: [batch_size, max_seq_len, obs_dim],
                     ACTIONS: [batch_size, max_seq_len - 1, act_dim],
@@ -338,20 +342,28 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
                     REWARDS: [batch_size],
                     TIMESTEPS: [batch_size, max_seq_len - 1],
                 }
-            state_batches: RNN states (not used).
-            kwargs: forward compatibility (unused) kwargs.
-
+            explore: unused.
+            timestep: unused.
         Returns:
-            A tuple of: (
-                batched input to the action distribution class,
-                the action distribution class,
-                updated RNN state (unused),
-            )
+            A tuple consisting of a) actions, b) state_out, c) extra_fetches.
         """
-        # Note: this doesn't create a new SampleBatch, so changes to obs_batch persists
-        obs_batch = self._lazy_tensor_dict(obs_batch)
+        with torch.no_grad():
+            # Pass lazy (torch) tensor dict to Model as `input_dict`.
+            input_dict = input_dict.copy()
+            input_dict = self._lazy_tensor_dict(input_dict)
+            input_dict.set_training(True)
 
-        batch_size = obs_batch[SampleBatch.OBS].shape[0]
+            actions, state_out, extra_fetches = self._compute_action_helper(input_dict)
+            return actions, state_out, extra_fetches
+
+    # TODO: figure out what this with_lock does and why it's only on the helper method.
+    @with_lock
+    @override(TorchPolicyV2)
+    def _compute_action_helper(self, input_dict):
+        # Switch to eval mode.
+        self.model.eval()
+
+        batch_size = input_dict[SampleBatch.OBS].shape[0]
 
         # NOTE: This is probably the most confusing part of the code, made to work with
         # env_runner and SimpleListCollector during evaluation, and thus should
@@ -366,21 +378,21 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         # step here by adding 1.
         # Decision transformer treats initial observation as timestep 0, giving us
         # 0 is (obs, act, rew).
-        timesteps = obs_batch[SampleBatch.T]
+        timesteps = input_dict[SampleBatch.T]
         new_timestep = timesteps[:, -1:] + 1
-        obs_batch[SampleBatch.T] = torch.cat([timesteps, new_timestep], dim=1)
+        input_dict[SampleBatch.T] = torch.cat([timesteps, new_timestep], dim=1)
 
         # mask out any padded value at start of rollout
         # NOTE: the other reason for doing this is that evaluation rollout front
         # pads timesteps with -1, so using this we can find out when we need to mask
         # out the front section of the batch.
-        obs_batch[SampleBatch.ATTENTION_MASKS] = torch.where(
-            obs_batch[SampleBatch.T] >= 0, 1.0, 0.0
+        input_dict[SampleBatch.ATTENTION_MASKS] = torch.where(
+            input_dict[SampleBatch.T] >= 0, 1.0, 0.0
         )
 
         # Remove out-of-bound -1 timesteps after attention mask is calculated
-        uncliped_timesteps = obs_batch[SampleBatch.T]
-        obs_batch[SampleBatch.T] = torch.where(
+        uncliped_timesteps = input_dict[SampleBatch.T]
+        input_dict[SampleBatch.T] = torch.where(
             uncliped_timesteps < 0,
             torch.zeros_like(uncliped_timesteps),
             uncliped_timesteps,
@@ -390,9 +402,9 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         # NOTE: There are two rtg calculations: updated_rtg and initial_rtg.
         # updated_rtg takes the previous rtg value (the ViewRequirement is
         # -(max_seq_len-1):-1), and subtracts the last reward from it.
-        rtg = obs_batch[SampleBatch.RETURNS_TO_GO]
+        rtg = input_dict[SampleBatch.RETURNS_TO_GO]
         last_rtg = rtg[:, -1]
-        last_reward = obs_batch[SampleBatch.REWARDS]
+        last_reward = input_dict[SampleBatch.REWARDS]
         updated_rtg = last_rtg - last_reward
         # initial_rtg simply is filled with target_return.
         # These two are both only for the current timestep.
@@ -404,48 +416,42 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         # we use the initial_rtg or updated_rtg.
         new_rtg = torch.where(new_timestep == 0, initial_rtg, updated_rtg[:, None])
         # Append the new_rtg to the batch.
-        obs_batch[SampleBatch.RETURNS_TO_GO] = torch.cat([rtg, new_rtg], dim=1)[
+        input_dict[SampleBatch.RETURNS_TO_GO] = torch.cat([rtg, new_rtg], dim=1)[
             ..., None
         ]
-        # NOTE: now go read the method extra_action_out.
 
         # Pad current action (is not actually attended to and used during inference)
-        actions = obs_batch[SampleBatch.ACTIONS]
+        past_actions = input_dict[SampleBatch.ACTIONS]
         action_pad = torch.zeros(
-            (batch_size, 1, *actions.shape[2:]),
-            dtype=actions.dtype,
-            device=actions.device,
+            (batch_size, 1, *past_actions.shape[2:]),
+            dtype=past_actions.dtype,
+            device=past_actions.device,
         )
-        obs_batch[SampleBatch.ACTIONS] = torch.cat([actions, action_pad], dim=1)
+        input_dict[SampleBatch.ACTIONS] = torch.cat([past_actions, action_pad], dim=1)
 
         # Run inference on model
-        model_out, _ = model(obs_batch)  # noop, just returns obs.
-        preds = self.model.get_prediction(model_out, obs_batch)
-        pred_action = preds[SampleBatch.ACTIONS][:, -1]
+        model_out, _ = self.model(input_dict)  # noop, just returns obs.
+        preds = self.model.get_prediction(model_out, input_dict)
+        dist_inputs = preds[SampleBatch.ACTIONS][:, -1]
 
-        return pred_action, self.dist_class, []
+        # Get the actions from the action_dist.
+        action_dist = self.dist_class(dist_inputs, self.model)
+        actions = action_dist.deterministic_sample()
 
-    @override(TorchPolicyV2)
-    def extra_action_out(
-        self,
-        input_dict: Dict[str, TensorType],
-        state_batches: List[TensorType],
-        model: TorchModelV2,
-        action_dist: TorchDistributionWrapper,
-    ) -> Dict[str, TensorType]:
-        # NOTE: this function is only and always called after action_distribution_fn
-        # as long as they're being called by TorchPolicyV2._compute_action_helper
-        # which is called by PolicyV2.compute_actions_from_input_dict.
-        # Since action_distribution_fn modifies input_dict, input_dict now contains
-        # the updated RETURNS_TO_GO. We extract it and outputs it as extra_action_out.
         # This is used by env_runner and is actually how it adds custom keys to
         # SimpleListCollector and allows ViewRequirements to work.
         # This is also used in user inference in get_next_input_dict, which takes
         # this output as one of the input.
-        return {
-            # rtg still has the leftover extra 3rd dimension for inference
-            SampleBatch.RETURNS_TO_GO: input_dict[SampleBatch.RETURNS_TO_GO][:, -1, 0],
+        extra_fetches = {
+            # new_rtg still has the leftover extra 3rd dimension for inference
+            SampleBatch.RETURNS_TO_GO: new_rtg.squeeze(-1),
+            SampleBatch.ACTION_DIST_INPUTS: dist_inputs,
         }
+
+        # Update our global timestep by the batch size.
+        self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
+
+        return convert_to_numpy((actions, [], extra_fetches))
 
     @override(TorchPolicyV2)
     def loss(
