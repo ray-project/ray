@@ -282,6 +282,14 @@ class TestSampleBatch(unittest.TestCase):
         eps_split = [b["a"] for b in s.split_by_episode()]
         check(true_split, eps_split)
 
+        # Check that splitting by EPS_ID works correctly when explicitly specified
+        eps_split = [b["a"] for b in s.split_by_episode(key="eps_id")]
+        check(true_split, eps_split)
+
+        # Check that splitting by DONES works correctly when explicitly specified
+        eps_split = [b["a"] for b in s.split_by_episode(key="dones")]
+        check(true_split, eps_split)
+
         # Check that splitting by DONES works correctly
         del s["eps_id"]
         dones_split = [b["a"] for b in s.split_by_episode()]
