@@ -141,8 +141,8 @@ class BaseNodeLauncher:
             raise node_launch_exception.source_exception
         except Exception:
             error_msg = "Failed to launch {} nodes of type " + str(node_type) + "."
-            self.event_summarizer.add(error_msg
-                ,
+            self.event_summarizer.add(
+                error_msg,
                 quantity=count,
                 aggregate=operator.add,
             )
