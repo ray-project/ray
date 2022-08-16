@@ -154,9 +154,18 @@ def construct_train_func(
         raise ValueError(err_msg)
     elif num_params == 1:
         config = {} if config is None else config
-        return lambda: wrapped_train_func(config)
+
+        def train_fn():
+            __start_tb = True  # noqa: F841
+            return wrapped_train_func(config)
+
     else:  # num_params == 0
-        return wrapped_train_func
+
+        def train_fn():
+            __start_tb = True  # noqa: F841
+            return wrapped_train_func()
+
+    return train_fn
 
 
 class Singleton(abc.ABCMeta):

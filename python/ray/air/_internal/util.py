@@ -17,3 +17,15 @@ def is_nan(value):
 
 def is_nan_or_inf(value):
     return is_nan(value) or np.isinf(value)
+
+
+def shorten_tb(tb, attr: str):
+    orig_tb = tb
+    while tb:
+        print("CURRENT GLOBALS", tb.tb_frame.f_locals.keys(), "??", attr)
+
+        if tb.tb_frame.f_locals.get(attr):
+            return tb
+        tb = tb.tb_next
+
+    return orig_tb

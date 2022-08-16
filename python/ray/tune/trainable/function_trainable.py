@@ -290,12 +290,12 @@ class _RunnerThread(threading.Thread):
         except StopIteration:
             logger.debug(
                 (
-                    "Thread runner raised StopIteration. Interperting it as a "
+                    "Thread runner raised StopIteration. Interpreting it as a "
                     "signal to terminate the thread without error."
                 )
             )
         except Exception as e:
-            logger.exception("Runner Thread raised error.")
+            logger.error(f"Runner Thread raised error: {e}")
             try:
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely

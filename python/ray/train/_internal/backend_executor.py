@@ -529,7 +529,7 @@ class BackendExecutor:
                 "attempts. You can change the number of max "
                 "failure attempts by setting the "
                 "`max_retries` arg in your `Trainer`."
-            ) from self._last_failure
+            ).with_traceback(None) from self._last_failure
 
     def get_worker_group(self):
         return self.worker_group
