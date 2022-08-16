@@ -259,7 +259,7 @@ class TagKey(Enum):
     # The total number of running serve deployments as a string.
     SERVE_NUM_DEPLOYMENTS = auto()
 
-    # The GCS backed by a redis cluster.
+    # The GCS storage type, which could be memory or redis
     GCS_STORAGE = auto()
 
 
