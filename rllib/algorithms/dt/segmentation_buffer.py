@@ -58,9 +58,6 @@ class SegmentationBuffer:
             self._add_single_episode(episode)
 
     def _add_single_episode(self, episode: SampleBatch):
-        # Truncate if episode too long.
-        # Note: sometimes this happens if the dataset shuffles such that the
-        # same episode is concatenated together twice (which is okay).
         ep_len = episode.env_steps()
 
         if ep_len > self.max_ep_len:

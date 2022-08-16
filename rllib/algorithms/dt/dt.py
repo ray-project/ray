@@ -64,6 +64,11 @@ class DTConfig(AlgorithmConfig):
             "betas": (0.9, 0.95),
         }
         self.grad_clip = None
+        # Coefficients on the loss for each of the heads.
+        # By default, only use the actions outputs for training.
+        self.loss_coef_actions = 1
+        self.loss_coef_obs = 0
+        self.loss_coef_returns_to_go = 0
 
         self.replay_buffer_config = {
             # How many trajectories/episodes does the segmentation buffer hold.
@@ -96,6 +101,9 @@ class DTConfig(AlgorithmConfig):
         resid_pdrop: Optional[float] = None,
         attn_pdrop: Optional[float] = None,
         grad_clip: Optional[float] = None,
+        loss_coef_actions: Optional[float] = None,
+        loss_coef_obs: Optional[float] = None,
+        loss_coef_returns_to_go: Optional[float] = None,
         lr_schedule: Optional[List[List[Union[int, float]]]] = None,
         **kwargs,
     ) -> "DTConfig":
@@ -119,6 +127,13 @@ class DTConfig(AlgorithmConfig):
                 [[timestep, lr-value], [timestep, lr-value], ...]
                 Intermediary timesteps will be assigned to interpolated learning rate
                 values. A schedule should normally start from timestep 0.
+            loss_coef_actions: Coefficients on the loss for the actions output.
+                Default to 1.
+            loss_coef_obs: Coefficients on the loss for the obs output. Default to 0.
+                Set to a value greater than 0 to regress on the obs output.
+            loss_coef_returns_to_go: Coefficients on the loss for the returns_to_go
+                output. Default to 0. Set to a value greater than 0 to regress on the
+                returns_to_go output.
             **kwargs: Forward compatibility kwargs
 
         Returns:
@@ -143,6 +158,12 @@ class DTConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         if lr_schedule is not None:
             self.lr_schedule = lr_schedule
+        if loss_coef_actions is not None:
+            self.loss_coef_actions = loss_coef_actions
+        if loss_coef_obs is not None:
+            self.loss_coef_obs = loss_coef_obs
+        if loss_coef_returns_to_go is not None:
+            self.loss_coef_returns_to_go = loss_coef_returns_to_go
 
         return self
 
