@@ -82,9 +82,31 @@ class DAGNode(DAGNodeBase):
         """
         return self._stable_uuid
 
+    async def get_graph_object_refs_from_last_execute(self):
+        """
+        Returns a dict of that maps a DAGNode's uuid to the return value of calling
+        _execute_impl() on that DAGNode
+        """
+        import asyncio
+
+        cache = {}
+        for k, v in self.cache_from_last_execute.items():
+            if isinstance(v, asyncio.Task):
+                cache[k] = await v
+            else:
+                cache[k] = v
+
+        return cache
+
     def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor."""
-        return self.apply_recursive(lambda node: node._execute_impl(*args, **kwargs))
+
+        def fn(node):
+            return node._execute_impl(*args, **kwargs)
+
+        result = self.apply_recursive(fn)
+        self.cache_from_last_execute = fn.cache
+        return result
 
     def _get_toplevel_child_nodes(self) -> List["DAGNode"]:
         """Return the list of nodes specified as top-level args.
@@ -206,7 +228,9 @@ class DAGNode(DAGNodeBase):
                         raise AssertionError(
                             "Each DAG should only have one unique InputNode."
                         )
-                return self.cache[node._stable_uuid]
+                result = self.cache[node._stable_uuid]
+                self.fn.cache = self.cache
+                return result
 
         if not type(fn).__name__ == "_CachingFn":
             fn = _CachingFn(fn)

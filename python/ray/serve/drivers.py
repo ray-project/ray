@@ -151,3 +151,18 @@ class DAGDriver:
         if route_path not in self.dags:
             raise RayServeException(f"{route_path} does not exist in dags routes")
         return await (await self.dags[route_path].remote(*args, **kwargs))
+
+    async def get_intermediate_node_object_refs(self):
+        """
+        Gets the object ref values of all function and method nodes in the dag.
+        Should only be called after a call to self.predict() has been made.
+        """
+        dag_handle = self.dags[self.MATCH_ALL_ROUTE_PREFIX]
+        root_dag_node = dag_handle.dag_node
+
+        if root_dag_node is not None:
+            return await root_dag_node.get_graph_object_refs_from_last_execute()
+
+    async def get_dag_node_json(self):
+        """Returns the json serialized root dag node"""
+        return self.dags[self.MATCH_ALL_ROUTE_PREFIX].dag_node_json

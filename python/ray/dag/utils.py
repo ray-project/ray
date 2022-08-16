@@ -34,6 +34,10 @@ class _DAGNodeNameGenerator(object):
             node_name = node.get_deployment_name()
         elif type(node).__name__ == "DeploymentMethodNode":
             node_name = node.get_deployment_method_name()
+        elif type(node).__name__ == "DeploymentMethodExecutorNode":
+            node_name = node._deployment_method_name
+        elif type(node).__name__ == "DeploymentFunctionExecutorNode":
+            node_name = node._deployment_function_handle.deployment_name
         else:
             raise ValueError(
                 "get_node_name() should only be called on DAGNode instances."
