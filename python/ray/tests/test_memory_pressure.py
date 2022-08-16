@@ -25,7 +25,7 @@ def inf_retry(
 
 
 @ray.remote(max_retries=0)
-def no_retry(allocate_bytes: int, num_chunks: int = 10, allocate_interval_s: float = 0):
+def no_retry(allocate_bytes: int, num_chunks: int = 10, allocate_interval_s: float = 0, post_allocate_sleep_s: float = 0):
     start = time.time()
     chunks = []
     # divide by 8 as each element in the array occupies 8 bytes
@@ -34,6 +34,7 @@ def no_retry(allocate_bytes: int, num_chunks: int = 10, allocate_interval_s: flo
         chunks.append([0] * ceil(bytes_per_chunk))
         time.sleep(allocate_interval_s)
     end = time.time()
+    time.sleep(post_allocate_sleep_s)
     return end - start
 
 
@@ -158,18 +159,44 @@ def test_memory_pressure_kill_newest_worker(shutdown_only):
         },
     )
 
-    leaker1 = Leaker.options(name="leaker1").remote()
-    leaker2 = Leaker.options(name="leaker2").remote()
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction - 0.1)
+    
+    actor_ref = Leaker.options(name="actor").remote()
+    ray.get(actor_ref.allocate.remote(bytes_to_alloc))
+    
+    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+      ray.get(no_retry.remote(allocate_bytes = bytes_to_alloc))
+    
+    actors = ray.util.list_named_actors()
+    assert len(actors) == 1
+    assert "actor" in actors
 
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.55)
-    ray.get(leaker1.allocate.remote(bytes_to_alloc, 0))
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_memory_pressure_kill_task_if_actor_submitted_task_first(shutdown_only):
+    memory_usage_threshold_fraction = 0.7
+    memory_monitor_interval_ms = 100
 
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.65)
-    ray.get(leaker2.allocate.remote(bytes_to_alloc, 0))
+    ray.init(
+        num_cpus=1,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
+            "memory_monitor_interval_ms": memory_monitor_interval_ms,
+        },
+    )
 
-    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.8)
-    with pytest.raises(ray.exceptions.RayActorError) as _:
-        ray.get(leaker2.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+    actor_ref = Leaker.options(name="leaker1").remote()
+    ray.get(actor_ref.allocate.remote(10))
+
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction - 0.1)
+    task_ref = no_retry.remote(allocate_bytes = bytes_to_alloc, allocate_interval_s = 0, post_allocate_sleep_s = 1000)
+
+    ray.get(actor_ref.allocate.remote(bytes_to_alloc))
+    with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
+      ray.get(task_ref)
 
     actors = ray.util.list_named_actors()
     assert len(actors) == 1

@@ -2906,10 +2906,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           }
         }
         if (latest_worker != nullptr) {
-          RAY_LOG(INFO) << "Killing worker with the newest started task "
+          RAY_LOG(ERROR) << "Killing worker with the newest started task "
                         << "to free up memory. "
-                        << "worker pid: " << latest_worker->GetProcess().GetId()
-                        << "task: " << latest_worker->GetAssignedTaskId();
+                        << "Worker pid: " << latest_worker->GetProcess().GetId()
+                        << " task: " << latest_worker->GetAssignedTaskId();
           high_memory_eviction_target_ = latest_worker;
           DestroyWorker(
               latest_worker,

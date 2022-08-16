@@ -78,7 +78,7 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 
 /// Threshold when the node is beyond the memory capacity.
 /// Ranging from [0, 1]
-RAY_CONFIG(float, memory_usage_threshold_fraction, 0.95)
+RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
