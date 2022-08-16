@@ -10,11 +10,9 @@ Ray Workflows: Durable Ray Task Graphs
   bug reports on GitHub Issues or join the discussion on the
   `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
-Ray Workflows provides high-performance, *durable* application workflows using
-Ray tasks as the underlying execution engine. It's supposed to be used to
-orchestrate Ray apps so that the failed Ray jobs can resume from the place
-where they failed without recomputing.
-
+Ray Workflows implements high-performance, *durable* application workflows using
+Ray tasks as the underlying execution engine. It enables task-based Ray jobs
+to seamlessly resume execution even in the case of entire-cluster failure.
 
 Why Ray Workflows?
 ------------------
@@ -28,18 +26,14 @@ supports workflows with hundreds of thousands of tasks. Take advantage of the
 Ray object store to pass distributed datasets between tasks with zero-copy
 overhead.
 
-**Dependency management:** Ray Workflows leverages Ray's runtime environment
-feature to snapshot the code dependencies of a workflow. This enables management
-of workflows as code is upgraded over time.
-
 You might find that Ray Workflows is *lower level* compared to engines such as
 `AirFlow <https://www.astronomer.io/blog/airflow-ray-data-science-story>`__
 (which can also run on Ray). This is because Ray Workflows focuses more on core
-workflow primitives as opposed to tools and integrations.
+durability primitives as opposed to tools and integrations.
 
 Concepts
 --------
-Ray Workflows provides the durable *task* primitives, which are analogous to
+Ray Workflows provides the *durable task* primitive, which can be used instead of
 Ray's non-durable tasks.
 
 Ray DAG
