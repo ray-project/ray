@@ -59,9 +59,9 @@ void GrpcServer::Run() {
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
 
-  // TODO(rickyx): allowing consecutive keepalive pings from clients <= 1min (55secs)
+  // TODO(rickyx): allowing consecutive keepalive pings from clients <= 1min
   builder.AddChannelArgument(GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS,
-                             55000);
+                             60000);
 
   if (RayConfig::instance().USE_TLS()) {
     // Create credentials from locations specified in config
