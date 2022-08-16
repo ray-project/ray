@@ -20,6 +20,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
+import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.version import CURRENT_VERSION
@@ -34,6 +35,13 @@ from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
+
+
+@pytest.fixture(scope="module", params=["true", "false"])
+def enable_head_rayletless(request):
+    os.environ["ENABLE_HEAD_RAYLETLESS"] = request.param
+    yield
+    os.environ.pop("ENABLE_HEAD_RAYLETLESS", None)
 
 
 @pytest.fixture(scope="module")
@@ -278,7 +286,9 @@ ray.get(f.remote())
         assert False, f"Unrecognized option: {request.param}."
 
 
-def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
+def test_submit_job(
+    enable_head_rayletless, job_sdk_client, runtime_env_option, monkeypatch
+):
     # This flag allows for local testing of runtime env conda functionality
     # without needing a built Ray wheel.  Rather than insert the link to the
     # wheel into the conda spec, it links to the current Python site.

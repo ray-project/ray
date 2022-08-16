@@ -1,3 +1,5 @@
+import asyncio
+from collections import OrderedDict
 import dataclasses
 import json
 import logging
@@ -10,8 +12,10 @@ from aiohttp.web import Request, Response
 
 import ray
 from ray._private import ray_constants
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.datacenter import DataSource
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
@@ -38,6 +42,7 @@ from ray.dashboard.modules.version import (
     VersionResponse,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
+from ray.dashboard.modules.job.sdk import JobAgentSubmission
 from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
@@ -53,6 +58,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._job_manager = None
         self._gcs_job_info_stub = None
 
+        self._disable_ray_init = dashboard_consts.ENABLE_HEAD_RAYLETLESS
+        self._agents = OrderedDict()
+        self._agent_job_clients_pool = dict()
+
     async def _parse_and_validate_request(
         self, req: Request, request_type: dataclass
     ) -> Any:
@@ -67,6 +76,37 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
+
+    async def _choice_agent_to_submit_job(self) -> JobAgentSubmission:
+        # the number of agents which has an available HTTP port.
+        while (
+            sum(map(lambda agent_ports: agent_ports[0] > 0, DataSource.agents.values()))
+            == 0
+        ):
+            await asyncio.sleep(dashboard_consts.WAIT_RAYLET_START_INTERVAL_SECONDS)
+        # delete dead agents.
+        for dead_node in set(self._agents) - set(DataSource.agents):
+            self._agents.pop(dead_node)
+        for node_id, (http_port, _) in DataSource.agents.items():
+            if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
+                break
+            if node_id in self._agents or http_port <= 0:
+                continue
+            node_ip = DataSource.node_id_to_ip[node_id]
+            agent_http_address = f"http://{node_ip}:{http_port}"
+
+            if node_id not in self._agent_job_clients_pool:
+                self._agent_job_clients_pool[node_id] = JobAgentSubmission(agent_http_address)
+
+            self._agents[node_id] = self._agent_job_clients_pool[node_id]
+            # move agent to the front of the queue.
+            self._agents.move_to_end(node_id, last=False)
+
+        # FIFO
+        node_id, job_agent_client = self._agents.popitem(last=False)
+        self._agents[node_id] = job_agent_client
+
+        return job_agent_client
 
     async def find_job_by_ids(self, job_or_submission_id: str) -> Optional[JobDetails]:
         """
@@ -177,14 +217,28 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         request_submission_id = submit_request.submission_id or submit_request.job_id
 
         try:
-            submission_id = await self._job_manager.submit_job(
-                entrypoint=submit_request.entrypoint,
-                submission_id=request_submission_id,
-                runtime_env=submit_request.runtime_env,
-                metadata=submit_request.metadata,
-            )
+            if dashboard_consts.ENABLE_HEAD_RAYLETLESS:
+                job_agent_client = await asyncio.wait_for(
+                    self._choice_agent_to_submit_job(),
+                    dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
+                )
+                resp = job_agent_client.submit_job_internal(
+                    entrypoint=submit_request.entrypoint,
+                    submission_id=request_submission_id,
+                    runtime_env=submit_request.runtime_env,
+                    metadata=submit_request.metadata,
+                )
+            else:
+                submission_id = await self._job_manager.submit_job(
+                    entrypoint=submit_request.entrypoint,
+                    submission_id=request_submission_id,
+                    runtime_env=submit_request.runtime_env,
+                    metadata=submit_request.metadata,
+                )
 
-            resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
+                resp = JobSubmitResponse(
+                    job_id=submission_id, submission_id=submission_id
+                )
         except (TypeError, ValueError):
             return Response(
                 text=traceback.format_exc(),
@@ -219,8 +273,15 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         try:
-            stopped = self._job_manager.stop_job(job.submission_id)
-            resp = JobStopResponse(stopped=stopped)
+            if dashboard_consts.ENABLE_HEAD_RAYLETLESS:
+                job_agent_client = await asyncio.wait_for(
+                    self._choice_agent_to_submit_job(),
+                    dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
+                )
+                resp = job_agent_client.stop_job_internal(job.submission_id)
+            else:
+                stopped = self._job_manager.stop_job(job.submission_id)
+                resp = JobStopResponse(stopped=stopped)
         except Exception:
             return Response(
                 text=traceback.format_exc(),

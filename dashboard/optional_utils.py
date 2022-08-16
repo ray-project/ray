@@ -256,6 +256,9 @@ def init_ray_and_catch_exceptions() -> Callable:
     def decorator_factory(f: Callable) -> Callable:
         @functools.wraps(f)
         async def decorator(self, *args, **kwargs):
+            if hasattr(self, "_disable_ray_init") and self._disable_ray_init:
+                logger.info(f"[{self}] disable ray init!")
+                return await f(self, *args, **kwargs)
             try:
                 if not ray.is_initialized():
                     try:

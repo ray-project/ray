@@ -357,3 +357,171 @@ class JobSubmissionClient(SubmissionClient):
                     break
                 elif msg.type == aiohttp.WSMsgType.ERROR:
                     pass
+
+
+class JobAgentSubmission(SubmissionClient):
+    """A local client for submitting and interacting with jobs on a specific node
+    in the remote cluster.
+
+    Submits requests over HTTP to the job agent on the specific node using the REST API.
+    """
+
+    def __init__(
+        self,
+        address: Optional[str] = None,
+        cookies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize a JobSubmissionClient and check the connection to the cluster.
+
+        Args:
+            address: The IP address and port of the specific agent.
+            cookies: Cookies to use when sending requests to the HTTP job server.
+            metadata: Arbitrary metadata to store along with all jobs.  New metadata
+                specified per job will be merged with the global metadata provided here
+                via a simple dict update.
+            headers: Headers to use when sending requests to the job agent, used
+                for cases like authentication to a remote cluster.
+        """
+        super().__init__(
+            address=address,
+            create_cluster_if_needed=False,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers,
+        )
+
+    def submit_job_internal(
+        self,
+        *,
+        entrypoint: str,
+        job_id: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, str]] = None,
+        submission_id: Optional[str] = None,
+    ) -> JobSubmitResponse:
+        """Submit job and return JobSubmitResponse"""
+        if job_id:
+            logger.warning(
+                "job_id kwarg is deprecated. Please use submission_id instead."
+            )
+
+        runtime_env = runtime_env or {}
+        metadata = metadata or {}
+        metadata.update(self._default_metadata)
+
+        self._upload_working_dir_if_needed(runtime_env)
+        self._upload_py_modules_if_needed(runtime_env)
+
+        # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
+        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
+        submission_id = submission_id or job_id
+
+        req = JobSubmitRequest(
+            entrypoint=entrypoint,
+            submission_id=submission_id,
+            runtime_env=runtime_env,
+            metadata=metadata,
+        )
+
+        logger.debug(f"Submitting job with submission_id={submission_id}.")
+        r = self._do_request(
+            "POST", "/api/job_agent/jobs/", json_data=dataclasses.asdict(req)
+        )
+
+        if r.status_code == 200:
+            return JobSubmitResponse(**r.json())
+        else:
+            self._raise_error(r)
+
+    @PublicAPI(stability="beta")
+    def submit_job(
+        self,
+        *,
+        entrypoint: str,
+        job_id: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, str]] = None,
+        submission_id: Optional[str] = None,
+    ) -> str:
+        """Submit and execute a job asynchronously.
+
+        When a job is submitted, it runs once to completion or failure. Retries or
+        different runs with different parameters should be handled by the
+        submitter. Jobs are bound to the lifetime of a Ray cluster, so if the
+        cluster goes down, all running jobs on that cluster will be terminated.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> client.submit_job( # doctest: +SKIP
+            ...     entrypoint="python script.py",
+            ...     runtime_env={
+            ...         "working_dir": "./",
+            ...         "pip": ["requests==2.26.0"]
+            ...     }
+            ... )  # doctest: +SKIP
+            'raysubmit_4LamXRuQpYdSMg7J'
+
+        Args:
+            entrypoint: The shell command to run for this job.
+            submission_id: A unique ID for this job.
+            runtime_env: The runtime environment to install and run this job in.
+            metadata: Arbitrary data to store along with this job.
+            job_id: DEPRECATED. This has been renamed to submission_id
+
+        Returns:
+            The submission ID of the submitted job.  If not specified,
+            this is a randomly generated unique ID.
+
+        Raises:
+            RuntimeError: If the request to the job server fails, or if the specified
+            submission_id has already been used by a job on this cluster.
+        """
+        return self.submit_job_internal(
+            entrypoint=entrypoint,
+            job_id=job_id,
+            runtime_env=runtime_env,
+            metadata=metadata,
+            submission_id=submission_id,
+        ).submission_id
+
+    def stop_job_internal(
+        self,
+        job_id: str,
+    ) -> JobStopResponse:
+        logger.debug(f"Stopping job with job_id={job_id}.")
+        r = self._do_request("POST", f"/api/job_agent/jobs/{job_id}/stop")
+
+        if r.status_code == 200:
+            return JobStopResponse(**r.json())
+        else:
+            self._raise_error(r)
+
+    @PublicAPI(stability="beta")
+    def stop_job(
+        self,
+        job_id: str,
+    ) -> bool:
+        """Request a job to exit asynchronously.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> sub_id = client.submit_job(entrypoint="sleep 10") # doctest: +SKIP
+            >>> client.stop_job(sub_id) # doctest: +SKIP
+            True
+
+        Args:
+            job_id: The job ID or submission ID for the job to be stopped.
+
+        Returns:
+            True if the job was running, otherwise False.
+
+        Raises:
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
+        """
+        return self.stop_job_internal(job_id).stopped
