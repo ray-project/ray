@@ -241,6 +241,7 @@ parts:
       - file: ray-core/examples/overview
         title: "Examples"
         sections:
+          - file: ray-core/examples/monte_carlo_pi
           - file: ray-core/examples/plot_example-a3c
           - file: ray-core/examples/plot_example-lm
           - file: ray-core/examples/plot_hyperparameter
