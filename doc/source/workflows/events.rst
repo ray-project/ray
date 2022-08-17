@@ -1,11 +1,7 @@
-
 Events
 ======
 
-Introduction
-------------
-
-In order to allow an event to trigger a workflow, Ray Workflow supports pluggable event systems. Using the event framework provides a few properties.
+To allow an event to trigger a workflow, Ray Workflows supports pluggable event systems. Using the event framework provides a few properties.
 
 1. Waits for events efficiently (without requiring a running workflow task while waiting).
 2. Supports exactly-once event delivery semantics while providing fault tolerance.
@@ -16,7 +12,7 @@ Like other workflow tasks, events support fault tolerance via checkpointing. Whe
 Using events
 ------------
 
-Workflow events are a special type of workflow task. They "finish" when the event occurs. ``workflow.wait_for_event(EventListenerType)`` can be used to create an event task.
+Workflow events are a special type of workflow task. They "finish" when the event occurs. `workflow.wait_for_event(EventListenerType)` can be used to create an event task.
 
 
 .. code-block:: python
@@ -35,7 +31,7 @@ Workflow events are a special type of workflow task. They "finish" when the even
     def gather(*args):
         return args
 
-    # Gather will run after 60 seconds, when both event1 and event2 are done.
+    # Gather will run after 60 seconds when both event1 and event2 are done.
     workflow.run(gather.bind(event1_task, event2_task))
 
 
@@ -89,7 +85,7 @@ Custom event listeners can be written by subclassing the EventListener interface
 
     class EventListener:
         def __init__(self):
-            """Optional constructor. Only the constructor with now arguments will be
+            """Optional constructor. Only the constructor with no arguments will be
               called."""
             pass
 
@@ -111,11 +107,11 @@ The `listener.poll_for_events()` coroutine should finish when the event is done.
             await asyncio.sleep(timestamp - time.time())
 
 
-The `event_checkpointed` routine can be overridden to support systems with exactly once delivery semantics which typically follow a pattern of:
+The `event_checkpointed` routine can be overridden to support systems with exactly-once delivery semantics which typically follows a pattern of:
 
-1. Wait for event.
-2. Process event.
-3. Commit event.
+1. Wait for an event.
+2. Process the event.
+3. Commit the event.
 
 After the workflow finishes checkpointing the event, the event listener will be invoked and can free the event. For example, to guarantee that events are consumed from a `kafkaesque<https://docs.confluent.io/clients-confluent-kafka-python/current/overview.html#synchronous-commits>`  queue:
 
