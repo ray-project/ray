@@ -77,6 +77,10 @@ GRPC_OPTIONS = [
     ("grpc.http2.max_ping_strikes", 0),
 ]
 
+if os.getenv("RAY_CLIENT_SERVER_MAX_CONNECTIONS") is not None:
+    client_server_max_connections = int(os.getenv("RAY_CLIENT_SERVER_MAX_CONNECTIONS"))
+    GRPC_OPTIONS.append(("grpc.max_concurrent_streams", client_server_max_connections))
+
 CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
 # Large objects are chunked into 64 MiB messages
