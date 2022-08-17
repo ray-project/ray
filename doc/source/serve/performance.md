@@ -84,6 +84,51 @@ Check out [our benchmark workloads'](https://github.com/ray-project/ray/tree/f67
 You can check out our [microbenchmark instructions](https://github.com/ray-project/ray/blob/master/python/ray/serve/benchmarks/README.md)
 to benchmark Ray Serve on your hardware.
 
+(serve-performance-batching-requests)=
+
+## Request Batching
+
+Serve offers a request batching feature that can improve your service throughput without sacrificing latency. This is possible because ML models can utilize efficient vectorized computation to process a batch of request at a time. Batching is also necessary when your model is expensive to use and you want to maximize the utilization of hardware.
+
+Machine Learning (ML) frameworks such as Tensorflow, PyTorch, and Scikit-Learn support evaluating multiple samples at the same time.
+Ray Serve allows you to take advantage of this feature via dynamic request batching.
+When a request arrives, Serve puts the request in a queue. This queue buffers the requests to form a batch. The deployment picks up the batch and evaluates it. After the evaluation, the resulting batch will be split up, and each response is returned individually.
+
+### Enable batching for your deployment
+You can enable batching by using the {mod}`ray.serve.batch` decorator. Let's take a look at a simple example by modifying the `MyModel` class to accept a batch.
+```{literalinclude} doc_code/batching_guide.py
+---
+start-after: __single_sample_begin__
+end-before: __single_sample_end__
+---
+```
+
+The batching decorators expect you to make the following changes in your method signature:
+- The method is declared as an async method because the decorator batches in asyncio event loop.
+- The method accepts a list of its original input types as input. For example, `arg1: int, arg2: str` should be changed to `arg1: List[int], arg2: List[str]`.
+- The method returns a list. The length of the return list and the input list must be of equal lengths for the decorator to split the output evenly and return a corresponding response back to its respective request.
+
+```{literalinclude} doc_code/batching_guide.py
+---
+start-after: __batch_begin__
+end-before: __batch_end__
+emphasize-lines: 6-9
+---
+```
+
+You can supply two optional parameters to the decorators.
+- `batch_wait_timeout_s` controls how long Serve should wait for a batch once the first request arrives.
+- `max_batch_size` controls the size of the batch.
+Once the first request arrives, the batching decorator will wait for a full batch (up to `max_batch_size`) until `batch_wait_timeout_s` is reached. If the timeout is reached, the batch will be sent to the model regardless the batch size.
+
+### Tips for fine-tuning batching parameters
+
+`max_batch_size` ideally should be a power of 2 (2, 4, 8, 16, ...) because CPUs and GPUs are both optimized for data of these shapes. Large batch sizes incur a high memory cost as well as latency penalty for the first few requests.
+
+`batch_wait_timeout_s` should be set considering the end to end latency SLO (Service Level Objective). For example, if your latency target is 150ms, and the model takes 100ms to evaluate the batch, the `batch_wait_timeout_s` should be set to a value much lower than 150ms - 100ms = 50ms.
+
+When using batching in a Serve Deployment Graph, the relationship between an upstream node and a downstream node might affect the performance as well. Consider a chain of two models where first model sets `max_batch_size=8` and second model sets `max_batch_size=6`. In this scenario, when the first model finishes a full batch of 8, the second model will finish one batch of 6 and then to fill the next batch, which will initially only be partially filled with 8 - 6 = 2 requests, incurring latency costs. The batch size of downstream models should ideally be multiples or divisors of the upstream models to ensure the batches play well together.
+
 ## Debugging performance issues
 
 The performance issue you're most likely to encounter is high latency and/or low throughput for requests.
@@ -110,28 +155,3 @@ hitting the same queuing issue mentioned above, you might want to increase
 `max_concurrent_queries`. Serve sets a low number (100) by default so the client gets
 proper backpressure. You can increase the value in the deployment decorator; e.g.
 `@serve.deployment(max_concurrent_queries=1000)`.
-
-(serve-performance-batching-requests)=
-### Batching requests
-
-If your deployment can process batches at a sublinear latency
-(meaning, for example, that it takes say 1ms to process 1 query and 5ms to process 10 of them)
-then batching is your best approach. Check out the [batching guide](serve-batching) and
-refactor your deployment to accept batches (especially for GPU-based ML inference). You might want to tune `max_batch_size` and `batch_wait_timeout` in the `@serve.batch` decorator to maximize the benefits:
-
-- `max_batch_size` specifies how big the batch should be. Generally,
-  we recommend choosing the largest batch size your function can handle
-  without losing the sublinear performance improvement.
-  For example, suppose it takes 1ms to process 1 query, 5ms to process 10 queries,
-  and 6ms to process 11 queries. Here you should set the batch size to 10
-  because adding more queries won’t improve the performance.
-- `batch_wait_timeout` specifies the maximum amount of time to wait before
-  a batch should be processed, even if it’s not full.  It should be set according
-  to the equation:
-  
-  ```
-  batch_wait_timeout + full batch processing time ~= expected latency
-  ```
-
-  The larger that `batch_wait_timeout` is, the more full the typical batch will be.
-  To maximize throughput, you should set `batch_wait_timeout` as large as possible without exceeding your desired expected latency in the equation above.

@@ -1,4 +1,8 @@
-# Managing Java Deployments
+# Experimental Java API
+
+:::{warning}
+Java API support is an experimental feature and subject to change.
+:::
 
 Java is a mainstream programming language for production services. Ray Serve offers a native Java API for creating, updating, and managing deployments. You can create Ray Serve deployments using Java and call them via Python, or vice versa.
 

@@ -94,7 +94,7 @@ class ServePPOModel:
 
 :::{tip}
 Although we used a single input and `Algorithm.compute_single_action(...)` here, you
-can process a batch of input using Ray Serve's [batching](serve-batching) feature
+can process a batch of input using Ray Serve's [batching](serve-performance-batching-requests) feature
 and use `Algorithm.compute_actions(...)` to process a batch of inputs.
 :::
 

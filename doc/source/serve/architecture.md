@@ -1,11 +1,10 @@
 (serve-architecture)=
 
-# Serve Architecture
+# Architecture
 
-This section should help you:
-
-- Get an overview of how each component in Serve works
-- Understand the different types of actors that make up a Serve instance
+In this section, we explore Serve's key architectural concepts and components. It will offer insight and overview into:
+- the role of each component in Serve and how they work
+- the different types of actors that make up a Serve application
 
 % Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
 
@@ -32,11 +31,11 @@ There are three kinds of actors that are created to make up a Serve instance:
 - **Replicas**: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
   replica processes individual requests from the HTTP proxy (these may be batched
-  by the replica using `@serve.batch`, see the [batching](serve-batching) docs).
+  by the replica using `@serve.batch`, see the [batching](serve-performance-batching-requests) docs).
 
 ## Lifetime of a Request
 
-When an HTTP request is sent to the HTTP proxy, the following things happen:
+When an HTTP request is sent to the HTTP proxy, the following happens:
 
 1. The HTTP request is received and parsed.
 2. The correct deployment associated with the HTTP URL path is looked up. The
@@ -114,7 +113,7 @@ same node which routes requests to replicas for a deployment. When a
 request is sent from one replica to another via the handle, the
 requests go through the same data path as incoming HTTP requests. This enables
 the same deployment selection and batching procedures to happen. ServeHandles are
-often used to implement [model composition](serve-model-composition-guide).
+often used to implement [model composition](serve-model-composition).
 
 ### What happens to large requests?
 
