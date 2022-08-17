@@ -60,13 +60,48 @@ class BaseNodeLauncher:
 
     def launch_node(self, config: Dict[str, Any], count: int, node_type: str):
         self.log("Got {} nodes to launch.".format(count))
+        self._launch_node(config, count, node_type)
+        self.pending.dec(node_type, count)
+        self.prom_metrics.pending_nodes.set(self.pending.value)
+
+    def _launch_node(self, config: Dict[str, Any], count: int, node_type: str):
+        if self.node_types:
+            assert node_type, node_type
+
+        # The `worker_nodes` field is deprecated in favor of per-node-type
+        # node_configs. We allow it for backwards-compatibility.
+        launch_config = copy.deepcopy(config.get("worker_nodes", {}))
+        if node_type:
+            launch_config.update(
+                config["available_node_types"][node_type]["node_config"]
+            )
+        resources = copy.deepcopy(
+            config["available_node_types"][node_type]["resources"]
+        )
+        launch_hash = hash_launch_conf(launch_config, config["auth"])
+        node_config = copy.deepcopy(config.get("worker_nodes", {}))
+        node_tags = {
+            TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
+            TAG_RAY_LAUNCH_CONFIG: launch_hash,
+        }
+        # A custom node type is specified; set the tag in this case, and also
+        # merge the configs. We merge the configs instead of overriding, so
+        # that the bootstrapped per-cloud properties are preserved.
+        # TODO(ekl) this logic is duplicated in commands.py (keep in sync)
+        if node_type:
+            node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
+            node_config.update(launch_config)
+
         node_launch_start_time = time.time()
 
         error_msg = None
         full_exception = None
-
         try:
-            self._launch_node(config, count, node_type)
+            self.provider.create_node_with_resources(
+                node_config, node_tags, count, resources
+            )
         except NodeLaunchException as node_launch_exception:
             self.node_provider_availability_tracker.update_node_availability(
                 node_type, int(node_launch_start_time), node_launch_exception
@@ -100,16 +135,8 @@ class BaseNodeLauncher:
                 timestamp=int(node_launch_start_time),
                 node_launch_exception=None,
             )
-        finally:
-            self.pending.dec(node_type, count)
-            self.prom_metrics.pending_nodes.set(self.pending.value)
 
         if error_msg is not None:
-            # self.event_summarizer.add_once_per_interval(
-            #     message=error_msg,
-            #     key=f"launch-failed-{node_type}",
-            #     interval_s=60,
-            # )
             self.event_summarizer.add(
                 error_msg,
                 quantity=count,
@@ -128,39 +155,6 @@ class BaseNodeLauncher:
 
         if full_exception is not None:
             self.log(full_exception)
-
-    def _launch_node(self, config: Dict[str, Any], count: int, node_type: str):
-        if self.node_types:
-            assert node_type, node_type
-
-        # The `worker_nodes` field is deprecated in favor of per-node-type
-        # node_configs. We allow it for backwards-compatibility.
-        launch_config = copy.deepcopy(config.get("worker_nodes", {}))
-        if node_type:
-            launch_config.update(
-                config["available_node_types"][node_type]["node_config"]
-            )
-        resources = copy.deepcopy(
-            config["available_node_types"][node_type]["resources"]
-        )
-        launch_hash = hash_launch_conf(launch_config, config["auth"])
-        node_config = copy.deepcopy(config.get("worker_nodes", {}))
-        node_tags = {
-            TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
-            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-            TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
-            TAG_RAY_LAUNCH_CONFIG: launch_hash,
-        }
-        # A custom node type is specified; set the tag in this case, and also
-        # merge the configs. We merge the configs instead of overriding, so
-        # that the bootstrapped per-cloud properties are preserved.
-        # TODO(ekl) this logic is duplicated in commands.py (keep in sync)
-        if node_type:
-            node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
-            node_config.update(launch_config)
-        self.provider.create_node_with_resources(
-            node_config, node_tags, count, resources
-        )
 
     def log(self, statement):
         # launcher_class is "BaseNodeLauncher", or "NodeLauncher" if called
