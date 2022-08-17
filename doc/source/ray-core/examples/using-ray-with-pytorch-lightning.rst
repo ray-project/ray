@@ -1,3 +1,5 @@
+.. _ray-lightning:
+
 Using Ray with Pytorch Lightning
 ================================
 
