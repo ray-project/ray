@@ -176,6 +176,18 @@ def _setup_redis(request):
 
 
 @pytest.fixture
+def set_override_dashboard_url(monkeypatch, request):
+    override_url = getattr(request, "param", "https://external_dashboard_url")
+    with monkeypatch.context() as m:
+        if override_url:
+            m.setenv(
+                ray_constants.RAY_OVERRIDE_DASHBOARD_URL,
+                override_url,
+            )
+        yield
+
+
+@pytest.fixture
 def maybe_external_redis(request):
     if enable_external_redis():
         with _setup_redis(request):
