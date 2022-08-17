@@ -285,7 +285,11 @@ class SubmissionClient:
         package_uri: str,
     ) -> bool:
         protocol, package_name = uri_to_http_components(package_uri)
-        r = self._do_request("GET", f"/api/packages/{protocol}/{package_name}")
+        if hasattr(self, "_is_agent_client") and self._is_agent_client:
+            endpoint = f"/api/job_agent/packages/{protocol}/{package_name}"
+        else:
+            endpoint = f"/api/packages/{protocol}/{package_name}"
+        r = self._do_request("GET", endpoint)
 
         if r.status_code == 200:
             logger.debug(f"Package {package_uri} already exists.")
@@ -318,9 +322,14 @@ class SubmissionClient:
                     excludes=excludes,
                 )
             try:
+                if hasattr(self, "_is_agent_client") and self._is_agent_client:
+                    endpoint = f"/api/job_agent/packages/{protocol}/{package_name}"
+                else:
+                    endpoint = f"/api/packages/{protocol}/{package_name}"
+                logger.info(f"hejialing test {endpoint} {type(self)}")
                 r = self._do_request(
                     "PUT",
-                    f"/api/packages/{protocol}/{package_name}",
+                    endpoint,
                     data=package_file.read_bytes(),
                 )
                 if r.status_code != 200:
@@ -381,3 +390,37 @@ class SubmissionClient:
             return r.json().get("version")
         else:
             self._raise_error(r)
+
+
+class AgentSubmissionClient(SubmissionClient):
+    def __init__(
+        self,
+        address: str,
+        *,
+        head_address: Optional[str] = None,
+        create_cluster_if_needed: bool = False,
+        cookies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
+    ):
+
+        # Remove any trailing slashes
+        if address is not None and address.endswith("/"):
+            address = address.rstrip("/")
+            logger.debug(
+                "The submission address cannot contain trailing slashes. Removing "
+                f'them from the requested submission address of "{address}".'
+            )
+
+        cluster_info = parse_cluster_info(
+            head_address, create_cluster_if_needed, cookies, metadata, headers
+        )
+        self._address = address
+        self._head_address = cluster_info.address
+        self._cookies = cluster_info.cookies
+        self._default_metadata = cluster_info.metadata or {}
+        # Headers used for all requests sent to job server, optional and only
+        # needed for cases like authentication to remote cluster.
+        self._headers = cluster_info.headers
+
+        self._is_agent_client = True

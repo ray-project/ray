@@ -26,23 +26,20 @@ from ray.dashboard.modules.job.common import (
     http_uri_components_to_uri,
     JobStatus,
     JobSubmitRequest,
-    JobSubmitResponse,
-    JobStopResponse,
-    JobLogsResponse,
     validate_request_type,
     JOB_ID_METADATA_KEY,
 )
 from ray.dashboard.modules.job.pydantic_models import (
     DriverInfo,
-    JobDetails,
     JobType,
+    JobDetails,
 )
 from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
-from ray.dashboard.modules.job.sdk import JobAgentSubmission
+from ray.dashboard.modules.job.sdk import JobAgentSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
@@ -57,6 +54,9 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
         self._dashboard_head = dashboard_head
         self._job_manager = None
         self._gcs_job_info_stub = None
+        self._head_address = (
+            f"http://{self._dashboard_head.http_host}:{self._dashboard_head.http_port}"
+        )
 
         self._agents = OrderedDict()
         self._agent_job_clients_pool = dict()
@@ -76,7 +76,7 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
-    async def _choice_agent_to_submit_job(self) -> JobAgentSubmission:
+    async def _choice_agent_to_submit_job(self) -> JobAgentSubmissionClient:
         # the number of agents which has an available HTTP port.
         while (
             sum(map(lambda agent_ports: agent_ports[0] > 0, DataSource.agents.values()))
@@ -97,8 +97,9 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
             agent_http_address = f"http://{node_ip}:{http_port}"
 
             if node_id not in self._agent_job_clients_pool:
-                self._agent_job_clients_pool[node_id] = JobAgentSubmission(
-                    agent_http_address
+                self._agent_job_clients_pool[node_id] = JobAgentSubmissionClient(
+                    agent_http_address,
+                    head_address=self._head_address,
                 )
 
             self._agents[node_id] = self._agent_job_clients_pool[node_id]
@@ -113,7 +114,7 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
 
     async def _get_agent_client_by_ip_address(
         self, ip_address
-    ) -> Optional[JobAgentSubmission]:
+    ) -> Optional[JobAgentSubmissionClient]:
         # There can be multiple raylet processes on a node, return any one of them
         for dead_node in set(self._agent_job_clients_pool) - set(DataSource.agents):
             self._agent_job_clients_pool.pop(dead_node)
@@ -126,8 +127,9 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
                 continue
             agent_http_address = f"http://{ip_address}:{http_port}"
             if node_id not in self._agent_job_clients_pool:
-                self._agent_job_clients_pool[node_id] = JobAgentSubmission(
-                    agent_http_address
+                self._agent_job_clients_pool[node_id] = JobAgentSubmissionClient(
+                    agent_http_address,
+                    head_address=self._head_address,
                 )
             return self._agent_job_clients_pool[node_id]
 
@@ -180,15 +182,12 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
             # We need to get the address of the supervisor-actor/driver
             # from any agent.
             tmp_job_agent_client = await self._choice_agent_to_submit_job()
-            driver_ip_address = (
-                tmp_job_agent_client
-                .get_driver_location_internal(job.submission_id)
-                .ip_address
-            )
+            driver_ip_address = tmp_job_agent_client.get_driver_location_internal(
+                job.submission_id
+            ).ip_address
         else:
             driver_ip_address = job.driver_info.node_ip_address
         return driver_ip_address
-
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
@@ -262,6 +261,7 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
                 self._choice_agent_to_submit_job(),
                 dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
             )
+            logger.info(f"hejialing test: {job_agent_client._address}")
             resp = job_agent_client.submit_job_internal(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,

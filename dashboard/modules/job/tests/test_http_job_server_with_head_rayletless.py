@@ -21,7 +21,6 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
@@ -73,51 +72,6 @@ def test_list_jobs_empty(headers, use_sdk: bool):
 
     finally:
         subprocess.check_output(["ray", "stop", "--force"])
-
-
-# @pytest.mark.parametrize("use_sdk", [True, False])
-# def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
-#     client = job_sdk_client
-
-#     runtime_env = {"env_vars": {"TEST": "123"}}
-#     metadata = {"foo": "bar"}
-#     entrypoint = "echo hello"
-#     submission_id = client.submit_job(
-#         entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata
-#     )
-
-#     wait_for_condition(_check_job_succeeded, client=client, job_id=submission_id)
-#     if use_sdk:
-#         info: JobDetails = next(
-#             job_info
-#             for job_info in client.list_jobs()
-#             if job_info.submission_id == submission_id
-#         )
-#     else:
-#         r = client._do_request(
-#             "GET",
-#             "/api/jobs/",
-#         )
-
-#         assert r.status_code == 200
-#         jobs_info_json = json.loads(r.text)
-#         info_json = next(
-#             job_info
-#             for job_info in jobs_info_json
-#             if job_info["submission_id"] == submission_id
-#         )
-#         info = JobDetails(**info_json)
-
-#     assert info.entrypoint == entrypoint
-#     assert info.status == JobStatus.SUCCEEDED
-#     assert info.message is not None
-#     assert info.end_time >= info.start_time
-#     assert info.runtime_env == runtime_env
-#     assert info.metadata == metadata
-
-#     # Test get job status by job / driver id
-#     status = client.get_job_status(info.submission_id)
-#     assert status == JobStatus.SUCCEEDED
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
@@ -299,346 +253,317 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     assert runtime_env_option["expected_logs"] in logs
 
 
-# def test_timeout(job_sdk_client):
-#     client = job_sdk_client
-
-#     job_id = client.submit_job(
-#         entrypoint="echo hello",
-#         # Assume pip packages take > 1s to download, or this test will spuriously fail.
-#         runtime_env=RuntimeEnv(
-#             pip={
-#                 "packages": ["tensorflow", "requests", "botocore", "torch"],
-#                 "pip_check": False,
-#                 "pip_version": "==22.0.2;python_version=='3.8.11'",
-#             },
-#             config=RuntimeEnvConfig(setup_timeout_seconds=1),
-#         ),
-#     )
-
-#     wait_for_condition(_check_job_failed, client=client, job_id=job_id, timeout=10)
-#     data = client.get_job_info(job_id)
-#     assert "Failed to setup runtime environment" in data.message
-#     assert "Timeout" in data.message
-#     assert "consider increasing `setup_timeout_seconds`" in data.message
-
-
-# def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
-#     run_cmd = "python per_task_runtime_env.py"
-#     job_id = job_sdk_client.submit_job(
-#         entrypoint=run_cmd,
-#         runtime_env={"working_dir": DRIVER_SCRIPT_DIR},
-#     )
-
-#     wait_for_condition(_check_job_succeeded, client=job_sdk_client, job_id=job_id)
-
-
-# def test_ray_tune_basic(job_sdk_client: JobSubmissionClient):
-#     run_cmd = "python ray_tune_basic.py"
-#     job_id = job_sdk_client.submit_job(
-#         entrypoint=run_cmd,
-#         runtime_env={"working_dir": DRIVER_SCRIPT_DIR},
-#     )
-#     wait_for_condition(
-#         _check_job_succeeded, timeout=30, client=job_sdk_client, job_id=job_id
-#     )
-
-
-# def test_http_bad_request(job_sdk_client):
-#     """
-#     Send bad requests to job http server and ensure right return code and
-#     error message is returned via http.
-#     """
-#     client = job_sdk_client
-
-#     # 400 - HTTPBadRequest
-#     r = client._do_request(
-#         "POST",
-#         "/api/jobs/",
-#         json_data={"key": "baaaad request"},
-#     )
-
-#     assert r.status_code == 400
-#     assert "TypeError: __init__() got an unexpected keyword argument" in r.text
-
-
-# def test_invalid_runtime_env(job_sdk_client):
-#     client = job_sdk_client
-#     with pytest.raises(ValueError, match="Only .zip files supported"):
-#         client.submit_job(
-#             entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
-#         )
-
-
-# def test_runtime_env_setup_failure(job_sdk_client):
-#     client = job_sdk_client
-#     job_id = client.submit_job(
-#         entrypoint="echo hello", runtime_env={"working_dir": "s3://does_not_exist.zip"}
-#     )
-
-#     wait_for_condition(_check_job_failed, client=client, job_id=job_id)
-#     data = client.get_job_info(job_id)
-#     assert "Failed to setup runtime environment" in data.message
-
-
-# def test_submit_job_with_exception_in_driver(job_sdk_client):
-#     """
-#     Submit a job that's expected to throw exception while executing.
-#     """
-#     client = job_sdk_client
-
-#     with tempfile.TemporaryDirectory() as tmp_dir:
-#         path = Path(tmp_dir)
-#         driver_script = """
-# print('Hello !')
-# raise RuntimeError('Intentionally failed.')
-#         """
-#         test_script_file = path / "test_script.py"
-#         with open(test_script_file, "w+") as file:
-#             file.write(driver_script)
-
-#         job_id = client.submit_job(
-#             entrypoint="python test_script.py", runtime_env={"working_dir": tmp_dir}
-#         )
-
-#         wait_for_condition(_check_job_failed, client=client, job_id=job_id)
-#         logs = client.get_job_logs(job_id)
-#         assert "Hello !" in logs
-#         assert "RuntimeError: Intentionally failed." in logs
-
-
-# def test_stop_long_running_job(job_sdk_client):
-#     """
-#     Submit a job that runs for a while and stop it in the middle.
-#     """
-#     client = job_sdk_client
+def test_timeout(job_sdk_client):
+    client = job_sdk_client
+
+    job_id = client.submit_job(
+        entrypoint="echo hello",
+        # Assume pip packages take > 1s to download, or this test will spuriously fail.
+        runtime_env=RuntimeEnv(
+            pip={
+                "packages": ["tensorflow", "requests", "botocore", "torch"],
+                "pip_check": False,
+                "pip_version": "==22.0.2;python_version=='3.8.11'",
+            },
+            config=RuntimeEnvConfig(setup_timeout_seconds=1),
+        ),
+    )
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id, timeout=10)
+    data = client.get_job_info(job_id)
+    assert "Failed to setup runtime environment" in data.message
+    assert "Timeout" in data.message
+    assert "consider increasing `setup_timeout_seconds`" in data.message
+
+
+def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
+    run_cmd = "python per_task_runtime_env.py"
+    job_id = job_sdk_client.submit_job(
+        entrypoint=run_cmd,
+        runtime_env={"working_dir": DRIVER_SCRIPT_DIR},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=job_sdk_client, job_id=job_id)
+
+
+def test_ray_tune_basic(job_sdk_client: JobSubmissionClient):
+    run_cmd = "python ray_tune_basic.py"
+    job_id = job_sdk_client.submit_job(
+        entrypoint=run_cmd,
+        runtime_env={"working_dir": DRIVER_SCRIPT_DIR},
+    )
+    wait_for_condition(
+        _check_job_succeeded, timeout=30, client=job_sdk_client, job_id=job_id
+    )
+
+
+def test_http_bad_request(job_sdk_client):
+    """
+    Send bad requests to job http server and ensure right return code and
+    error message is returned via http.
+    """
+    client = job_sdk_client
+
+    # 400 - HTTPBadRequest
+    r = client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"key": "baaaad request"},
+    )
+
+    assert r.status_code == 400
+    assert "TypeError: __init__() got an unexpected keyword argument" in r.text
+
+
+def test_invalid_runtime_env(job_sdk_client):
+    client = job_sdk_client
+    with pytest.raises(ValueError, match="Only .zip files supported"):
+        client.submit_job(
+            entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"}
+        )
+
+
+def test_runtime_env_setup_failure(job_sdk_client):
+    client = job_sdk_client
+    job_id = client.submit_job(
+        entrypoint="echo hello", runtime_env={"working_dir": "s3://does_not_exist.zip"}
+    )
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id)
+    data = client.get_job_info(job_id)
+    assert "Failed to setup runtime environment" in data.message
+
+
+def test_submit_job_with_exception_in_driver(job_sdk_client):
+    """
+    Submit a job that's expected to throw exception while executing.
+    """
+    client = job_sdk_client
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        driver_script = """
+print('Hello !')
+raise RuntimeError('Intentionally failed.')
+        """
+        test_script_file = path / "test_script.py"
+        with open(test_script_file, "w+") as file:
+            file.write(driver_script)
+
+        job_id = client.submit_job(
+            entrypoint="python test_script.py", runtime_env={"working_dir": tmp_dir}
+        )
+
+        wait_for_condition(_check_job_failed, client=client, job_id=job_id)
+        logs = client.get_job_logs(job_id)
+        assert "Hello !" in logs
+        assert "RuntimeError: Intentionally failed." in logs
+
+
+def test_stop_long_running_job(job_sdk_client):
+    """
+    Submit a job that runs for a while and stop it in the middle.
+    """
+    client = job_sdk_client
 
-#     with tempfile.TemporaryDirectory() as tmp_dir:
-#         path = Path(tmp_dir)
-#         driver_script = """
-# print('Hello !')
-# import time
-# time.sleep(300) # This should never finish
-# raise RuntimeError('Intentionally failed.')
-#         """
-#         test_script_file = path / "test_script.py"
-#         with open(test_script_file, "w+") as file:
-#             file.write(driver_script)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        driver_script = """
+print('Hello !')
+import time
+time.sleep(300) # This should never finish
+raise RuntimeError('Intentionally failed.')
+        """
+        test_script_file = path / "test_script.py"
+        with open(test_script_file, "w+") as file:
+            file.write(driver_script)
 
-#         job_id = client.submit_job(
-#             entrypoint="python test_script.py", runtime_env={"working_dir": tmp_dir}
-#         )
-#         assert client.stop_job(job_id) is True
-#         wait_for_condition(_check_job_stopped, client=client, job_id=job_id)
-
+        job_id = client.submit_job(
+            entrypoint="python test_script.py", runtime_env={"working_dir": tmp_dir}
+        )
+        assert client.stop_job(job_id) is True
+        wait_for_condition(_check_job_stopped, client=client, job_id=job_id)
+
 
-# def test_job_metadata(job_sdk_client):
-#     client = job_sdk_client
+def test_job_metadata(job_sdk_client):
+    client = job_sdk_client
 
-#     print_metadata_cmd = (
-#         'python -c"'
-#         "import ray;"
-#         "ray.init();"
-#         "job_config=ray._private.worker.global_worker.core_worker.get_job_config();"
-#         "print(dict(sorted(job_config.metadata.items())))"
-#         '"'
-#     )
+    print_metadata_cmd = (
+        'python -c"'
+        "import ray;"
+        "ray.init();"
+        "job_config=ray._private.worker.global_worker.core_worker.get_job_config();"
+        "print(dict(sorted(job_config.metadata.items())))"
+        '"'
+    )
 
-#     job_id = client.submit_job(
-#         entrypoint=print_metadata_cmd, metadata={"key1": "val1", "key2": "val2"}
-#     )
+    job_id = client.submit_job(
+        entrypoint=print_metadata_cmd, metadata={"key1": "val1", "key2": "val2"}
+    )
 
-#     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
-#     assert (
-#         str(
-#             {
-#                 "job_name": job_id,
-#                 "job_submission_id": job_id,
-#                 "key1": "val1",
-#                 "key2": "val2",
-#             }
-#         )
-#         in client.get_job_logs(job_id)
-#     )
-
-
-# def test_pass_job_id(job_sdk_client):
-#     client = job_sdk_client
-
-#     job_id = "my_custom_id"
-#     returned_id = client.submit_job(entrypoint="echo hello", job_id=job_id)
-
-#     assert returned_id == job_id
-#     wait_for_condition(_check_job_succeeded, client=client, job_id=returned_id)
-
-#     # Test that a duplicate job_id is rejected.
-#     with pytest.raises(Exception, match=f"{job_id} already exists"):
-#         returned_id = client.submit_job(entrypoint="echo hello", job_id=job_id)
-
-
-# def test_nonexistent_job(job_sdk_client):
-#     client = job_sdk_client
-
-#     with pytest.raises(RuntimeError, match="nonexistent_job does not exist"):
-#         client.get_job_status("nonexistent_job")
-
-
-# def test_submit_optional_args(job_sdk_client):
-#     """Check that job_id, runtime_env, and metadata are optional."""
-#     client = job_sdk_client
-
-#     r = client._do_request(
-#         "POST",
-#         "/api/jobs/",
-#         json_data={"entrypoint": "ls"},
-#     )
-
-#     wait_for_condition(
-#         _check_job_succeeded, client=client, job_id=r.json()["submission_id"]
-#     )
-
-
-# def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
-#     """Check that job_id, runtime_env, and metadata are optional."""
-#     client = job_sdk_client
-
-#     client._do_request(
-#         "POST",
-#         "/api/jobs/",
-#         json_data={"entrypoint": "ls", "job_id": "raysubmit_12345"},
-#     )
-
-#     wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_12345")
-
-#     client._do_request(
-#         "POST",
-#         "/api/jobs/",
-#         json_data={"entrypoint": "ls", "submission_id": "raysubmit_23456"},
-#     )
-
-#     wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_23456")
-
-
-# def test_missing_resources(job_sdk_client):
-#     """Check that 404s are raised for resources that don't exist."""
-#     client = job_sdk_client
-
-#     conditions = [
-#         ("GET", "/api/jobs/fake_job_id"),
-#         ("GET", "/api/jobs/fake_job_id/logs"),
-#         ("POST", "/api/jobs/fake_job_id/stop"),
-#         ("GET", "/api/packages/fake_package_uri"),
-#     ]
-
-#     for method, route in conditions:
-#         assert client._do_request(method, route).status_code == 404
-
-
-# def test_version_endpoint(job_sdk_client):
-#     client = job_sdk_client
-
-#     r = client._do_request("GET", "/api/version")
-#     assert r.status_code == 200
-#     assert r.json() == {
-#         "version": CURRENT_VERSION,
-#         "ray_version": ray.__version__,
-#         "ray_commit": ray.__commit__,
-#     }
-
-
-# def test_request_headers(job_sdk_client):
-#     client = job_sdk_client
-
-#     with patch("requests.request") as mock_request:
-#         _ = client._do_request(
-#             "POST",
-#             "/api/jobs/",
-#             json_data={"entrypoint": "ls"},
-#         )
-#         mock_request.assert_called_with(
-#             "POST",
-#             "http://127.0.0.1:8265/api/jobs/",
-#             cookies=None,
-#             data=None,
-#             json={"entrypoint": "ls"},
-#             headers={"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"},
-#         )
-
-
-# @pytest.mark.parametrize("scheme", ["http", "https", "fake_module"])
-# @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "fake.dns.name"])
-# @pytest.mark.parametrize("port", [None, 8265, 10000])
-# def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
-#     address = f"{scheme}://{host}"
-#     if port is not None:
-#         address += f":{port}"
-
-#     if scheme in {"http", "https"}:
-#         assert parse_cluster_info(address, False) == ClusterInfo(
-#             address=address,
-#             cookies=None,
-#             metadata=None,
-#             headers=None,
-#         )
-#     else:
-#         with pytest.raises(RuntimeError):
-#             parse_cluster_info(address, False)
-
-
-# @pytest.mark.asyncio
-# async def test_tail_job_logs(job_sdk_client):
-#     client = job_sdk_client
-#     with tempfile.TemporaryDirectory() as tmp_dir:
-#         path = Path(tmp_dir)
-#         driver_script = """
-# import time
-# for i in range(100):
-#     print("Hello", i)
-#     time.sleep(0.1)
-# """
-#         test_script_file = path / "test_script.py"
-#         with open(test_script_file, "w+") as f:
-#             f.write(driver_script)
-
-#         job_id = client.submit_job(
-#             entrypoint="python test_script.py", runtime_env={"working_dir": tmp_dir}
-#         )
-
-#         i = 0
-#         async for lines in client.tail_job_logs(job_id):
-#             print(lines, end="")
-#             for line in lines.strip().split("\n"):
-#                 assert line.split(" ") == ["Hello", str(i)]
-#                 i += 1
-
-#         wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
-
-
-# def _hook(env):
-#     with open(env["env_vars"]["TEMPPATH"], "w+") as f:
-#         f.write(env["env_vars"]["TOKEN"])
-#     return env
-
-
-# def test_jobs_env_hook(job_sdk_client: JobSubmissionClient):
-#     client = job_sdk_client
-
-#     _, path = tempfile.mkstemp()
-#     runtime_env = {"env_vars": {"TEMPPATH": path, "TOKEN": "Ray rocks!"}}
-#     run_job_script = """
-# import os
-# import ray
-# os.environ["RAY_RUNTIME_ENV_HOOK"] =\
-#     "ray.dashboard.modules.job.tests.test_http_job_server._hook"
-# ray.init(address="auto")
-# """
-#     entrypoint = f"python -c '{run_job_script}'"
-#     job_id = client.submit_job(entrypoint=entrypoint, runtime_env=runtime_env)
-
-#     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
-
-#     with open(path) as f:
-#         assert f.read().strip() == "Ray rocks!"
+    assert (
+        str(
+            {
+                "job_name": job_id,
+                "job_submission_id": job_id,
+                "key1": "val1",
+                "key2": "val2",
+            }
+        )
+        in client.get_job_logs(job_id)
+    )
+
+
+def test_pass_job_id(job_sdk_client):
+    client = job_sdk_client
+
+    job_id = "my_custom_id"
+    returned_id = client.submit_job(entrypoint="echo hello", job_id=job_id)
+
+    assert returned_id == job_id
+    wait_for_condition(_check_job_succeeded, client=client, job_id=returned_id)
+
+    # Test that a duplicate job_id is rejected.
+    with pytest.raises(Exception, match=f"{job_id} already exists"):
+        returned_id = client.submit_job(entrypoint="echo hello", job_id=job_id)
+
+
+def test_nonexistent_job(job_sdk_client):
+    client = job_sdk_client
+
+    with pytest.raises(RuntimeError, match="nonexistent_job does not exist"):
+        client.get_job_status("nonexistent_job")
+
+
+def test_submit_optional_args(job_sdk_client):
+    """Check that job_id, runtime_env, and metadata are optional."""
+    client = job_sdk_client
+
+    r = client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls"},
+    )
+
+    wait_for_condition(
+        _check_job_succeeded, client=client, job_id=r.json()["submission_id"]
+    )
+
+
+def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
+    """Check that job_id, runtime_env, and metadata are optional."""
+    client = job_sdk_client
+
+    client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls", "job_id": "raysubmit_12345"},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_12345")
+
+    client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"entrypoint": "ls", "submission_id": "raysubmit_23456"},
+    )
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_23456")
+
+
+def test_missing_resources(job_sdk_client):
+    """Check that 404s are raised for resources that don't exist."""
+    client = job_sdk_client
+
+    conditions = [
+        ("GET", "/api/jobs/fake_job_id"),
+        ("GET", "/api/jobs/fake_job_id/logs"),
+        ("POST", "/api/jobs/fake_job_id/stop"),
+        ("GET", "/api/packages/fake_package_uri"),
+    ]
+
+    for method, route in conditions:
+        assert client._do_request(method, route).status_code == 404
+
+
+def test_version_endpoint(job_sdk_client):
+    client = job_sdk_client
+
+    r = client._do_request("GET", "/api/version")
+    assert r.status_code == 200
+    assert r.json() == {
+        "version": CURRENT_VERSION,
+        "ray_version": ray.__version__,
+        "ray_commit": ray.__commit__,
+    }
+
+
+def test_request_headers(job_sdk_client):
+    client = job_sdk_client
+
+    with patch("requests.request") as mock_request:
+        _ = client._do_request(
+            "POST",
+            "/api/jobs/",
+            json_data={"entrypoint": "ls"},
+        )
+        mock_request.assert_called_with(
+            "POST",
+            "http://127.0.0.1:8265/api/jobs/",
+            cookies=None,
+            data=None,
+            json={"entrypoint": "ls"},
+            headers={"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"},
+        )
+
+
+@pytest.mark.parametrize("scheme", ["http", "https", "fake_module"])
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "fake.dns.name"])
+@pytest.mark.parametrize("port", [None, 8265, 10000])
+def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
+    address = f"{scheme}://{host}"
+    if port is not None:
+        address += f":{port}"
+
+    if scheme in {"http", "https"}:
+        assert parse_cluster_info(address, False) == ClusterInfo(
+            address=address,
+            cookies=None,
+            metadata=None,
+            headers=None,
+        )
+    else:
+        with pytest.raises(RuntimeError):
+            parse_cluster_info(address, False)
+
+
+def _hook(env):
+    with open(env["env_vars"]["TEMPPATH"], "w+") as f:
+        f.write(env["env_vars"]["TOKEN"])
+    return env
+
+
+def test_jobs_env_hook(job_sdk_client: JobSubmissionClient):
+    client = job_sdk_client
+
+    _, path = tempfile.mkstemp()
+    runtime_env = {"env_vars": {"TEMPPATH": path, "TOKEN": "Ray rocks!"}}
+    run_job_script = """
+import os
+import ray
+os.environ["RAY_RUNTIME_ENV_HOOK"] =\
+    "ray.dashboard.modules.job.tests.test_http_job_server._hook"
+ray.init(address="auto")
+"""
+    entrypoint = f"python -c '{run_job_script}'"
+    job_id = client.submit_job(entrypoint=entrypoint, runtime_env=runtime_env)
+
+    wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
+
+    with open(path) as f:
+        assert f.read().strip() == "Ray rocks!"
 
 
 if __name__ == "__main__":

@@ -4,30 +4,27 @@ import dataclasses
 import json
 import logging
 import traceback
-from typing import Any, Tuple, Dict, Optional
+from typing import Any
 
 import ray
-from ray._private import ray_constants, gcs_utils
-from ray.core.generated import gcs_service_pb2
+from ray._private import gcs_utils
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
-    JobStatus,
+    http_uri_components_to_uri,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
     JobLogsResponse,
     JobDriverLocationResponse,
     validate_request_type,
-    JOB_ID_METADATA_KEY,
-)
-from ray.dashboard.modules.job.pydantic_models import (
-    DriverInfo,
-    JobDetails,
-    JobType,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
-from ray.runtime_env import RuntimeEnv
+from ray._private.runtime_env.packaging import (
+    package_exists,
+    pin_runtime_env_uri,
+    upload_package_to_gcs,
+)
 
 
 routes = optional_utils.ClassMethodRouteTable
@@ -53,6 +50,47 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
+
+    @routes.get("/api/job_agent/packages/{protocol}/{package_name}")
+    async def get_package(self, req: Request) -> Response:
+        package_uri = http_uri_components_to_uri(
+            protocol=req.match_info["protocol"],
+            package_name=req.match_info["package_name"],
+        )
+
+        logger.debug(f"Adding temporary reference to package {package_uri}.")
+        try:
+            pin_runtime_env_uri(package_uri)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+        if not package_exists(package_uri):
+            return Response(
+                text=f"Package {package_uri} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+
+        return Response()
+
+    @routes.put("/api/job_agent/packages/{protocol}/{package_name}")
+    async def upload_package(self, req: Request) -> Response:
+        package_uri = http_uri_components_to_uri(
+            protocol=req.match_info["protocol"],
+            package_name=req.match_info["package_name"],
+        )
+        logger.info(f"Uploading package {package_uri} to the GCS.")
+        try:
+            upload_package_to_gcs(package_uri, await req.read())
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
+        return Response(status=aiohttp.web.HTTPOk.status_code)
 
     @routes.post("/api/job_agent/jobs/")
     @optional_utils.init_ray_and_catch_exceptions()
@@ -95,7 +133,9 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
 
-        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job_or_submission_id))
+        resp = JobLogsResponse(
+            logs=self._job_manager.get_job_logs(job_or_submission_id)
+        )
         return Response(
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
@@ -125,7 +165,9 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
 
         try:
             # the address of supervisor actor is same as driver.
-            supervisor_actor = self._job_manager._get_actor_for_job(job_or_submission_id)
+            supervisor_actor = self._job_manager._get_actor_for_job(
+                job_or_submission_id
+            )
             actor_info = gcs_utils.ActorTableData.FromString(
                 ray._private.state.state.global_state_accessor.get_actor_info(
                     supervisor_actor._actor_id

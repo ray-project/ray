@@ -520,7 +520,7 @@ class JobManager:
         try:
             resources = None
             if not dashboard_consts.ENABLE_HEAD_RAYLETLESS:
-                resources={
+                resources = {
                     self._get_current_node_resource_key(): 0.001,
                 }
             supervisor = self._supervisor_actor_cls.options(

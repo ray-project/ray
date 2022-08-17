@@ -22,7 +22,7 @@ from ray.dashboard.modules.job.common import (
     JobDriverLocationResponse,
 )
 
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient, AgentSubmissionClient
 
 from ray.runtime_env import RuntimeEnv
 
@@ -360,7 +360,7 @@ class JobSubmissionClient(SubmissionClient):
                     pass
 
 
-class JobAgentSubmission(SubmissionClient):
+class JobAgentSubmissionClient(AgentSubmissionClient):
     """A local client for submitting and interacting with jobs on a specific node
     in the remote cluster.
 
@@ -369,7 +369,9 @@ class JobAgentSubmission(SubmissionClient):
 
     def __init__(
         self,
-        address: Optional[str] = None,
+        address: str,
+        *,
+        head_address: Optional[str] = None,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
@@ -411,9 +413,6 @@ class JobAgentSubmission(SubmissionClient):
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
-
-        self._upload_working_dir_if_needed(runtime_env)
-        self._upload_py_modules_if_needed(runtime_env)
 
         # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
         runtime_env = RuntimeEnv(**runtime_env).to_dict()
@@ -481,6 +480,10 @@ class JobAgentSubmission(SubmissionClient):
             RuntimeError: If the request to the job server fails, or if the specified
             submission_id has already been used by a job on this cluster.
         """
+        runtime_env = runtime_env or {}
+        self._upload_working_dir_if_needed(runtime_env)
+        self._upload_py_modules_if_needed(runtime_env)
+
         return self.submit_job_internal(
             entrypoint=entrypoint,
             job_id=job_id,

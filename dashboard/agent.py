@@ -14,7 +14,6 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-from ray.dashboard.modules.job.job_agent import JobAgent
 from ray._private.gcs_pubsub import GcsAioPublisher, GcsPublisher
 from ray._private.gcs_utils import GcsAioClient, GcsClient
 from ray._private.ray_logging import setup_component_logger
@@ -155,9 +154,6 @@ class DashboardAgent:
             dashboard_utils.DashboardAgentModule
         )
         for cls in agent_cls_list:
-            if not dashboard_consts.ENABLE_HEAD_RAYLETLESS and cls is JobAgent:
-                logger.info("Skip Loading JobAgent.")
-                continue
             logger.info(
                 "Loading %s: %s", dashboard_utils.DashboardAgentModule.__name__, cls
             )

@@ -16,7 +16,7 @@ from ray.dashboard.modules.dashboard_sdk import (
     DEFAULT_DASHBOARD_ADDRESS,
     parse_cluster_info,
 )
-from ray.dashboard.modules.job.sdk import JobSubmissionClient
+from ray.dashboard.modules.job.sdk import JobSubmissionClient, JobAgentSubmissionClient
 from ray.tests.conftest import _ray_start
 import ray.experimental.internal_kv as kv
 
@@ -113,6 +113,58 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
         address = ctx.address_info["webui_url"]
         assert wait_until_server_available(address)
         client = JobSubmissionClient(format_web_url(address), headers=headers)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir)
+
+            hello_file = path / "hi.txt"
+            with hello_file.open(mode="w") as f:
+                f.write("hi\n")
+
+            start = time.time()
+
+            client.submit_job(
+                entrypoint="echo hi", runtime_env={"working_dir": tmp_dir}
+            )
+
+            # Give time for deletion to occur if expiration_s is 0.
+            time.sleep(2)
+            # Need to connect to Ray to check internal_kv.
+            # ray.init(address="auto")
+
+            print("Starting Internal KV checks at time ", time.time() - start)
+            if expiration_s > 0:
+                assert not check_internal_kv_gced()
+                wait_for_condition(check_internal_kv_gced, timeout=2 * expiration_s)
+                assert expiration_s < time.time() - start < 2 * expiration_s
+                print("Internal KV was GC'ed at time ", time.time() - start)
+            else:
+                wait_for_condition(check_internal_kv_gced)
+                print("Internal KV was GC'ed at time ", time.time() - start)
+
+
+@pytest.mark.parametrize("expiration_s", [0, 10])
+def test_temporary_uri_reference_with_head_rayletless(monkeypatch, expiration_s):
+    """Test that temporary GCS URI references are deleted after expiration_s."""
+    monkeypatch.setenv(
+        "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S", str(expiration_s)
+    )
+    monkeypatch.setenv("ENABLE_HEAD_RAYLETLESS", "true")
+    # We can't use a fixture with a shared Ray runtime because we need to set the
+    # expiration_s env var before Ray starts.
+    with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
+        headers = {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
+        node_ip_address = ctx.address_info["node_ip_address"]
+        agent_http_port = ctx.address_info["dashboard_agent_listen_port"]
+        agent_http_address = f"{node_ip_address}:{agent_http_port}"
+        assert wait_until_server_available(agent_http_address)
+        head_address = ctx.address_info["webui_url"]
+        assert wait_until_server_available(head_address)
+        client = JobAgentSubmissionClient(
+            format_web_url(agent_http_address),
+            head_address=format_web_url(head_address),
+            headers=headers,
+        )
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             path = Path(tmp_dir)
 
