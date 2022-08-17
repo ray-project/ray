@@ -242,7 +242,7 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
 
     **User Guides**
     ^^^
-    Learn best practices for common patterns like :ref:`scaling and resource allocation <scaling-and-resource-allocation>` and :ref:`model composition <serve-model-composition>`.
+    Learn best practices for common patterns like :ref:`scaling and resource allocation <serve-scaling-and-resource-allocation>` and :ref:`model composition <serve-model-composition>`.
     Learn how to :ref:`develop Serve applications locally <serve-dev-workflow>` and :ref:`go to production <serve-in-production>`.
 
     +++

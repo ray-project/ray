@@ -1,4 +1,4 @@
-(scaling-and-resource-allocation)=
+(serve-scaling-and-resource-allocation)=
 
 # Scaling and Resource Allocation
 
