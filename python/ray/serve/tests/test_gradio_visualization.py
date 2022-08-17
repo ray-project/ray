@@ -1,12 +1,9 @@
 import pytest
+from collections import defaultdict
 
 from ray.dag.gradio_visualization import GraphVisualizer
 
-from ray.dag.utils import _DAGNodeNameGenerator
-from ray.dag import (
-    InputNode,
-    ClassNode,
-)
+from ray.dag import InputNode
 from ray import serve
 
 
@@ -43,10 +40,10 @@ async def test_execute_cached_object_ref():
     )
 
 
-def test_get_depth_and_name():
+def test_fetch_depths():
     """
-    Tests that GraphVisualizer._get_depth_and_name, when passed into
-    DAGNode.apply_recursive, correctly retrieves the names and depths of each node.
+    Tests that GraphVisualizer._fetch_depths, when passed into
+    DAGNode.apply_recursive, correctly retrieves the depths of each node.
     """
 
     @serve.deployment
@@ -59,21 +56,13 @@ def test_get_depth_and_name():
         dag = f.bind(f_node, input_node)
 
     visualizer = GraphVisualizer()
-    name_generator = _DAGNodeNameGenerator()
-    dag.apply_recursive(
-        lambda node: visualizer._get_depth_and_name(
-            node, name_generator, (InputNode, ClassNode)
-        )
-    )
+    depths = defaultdict(lambda: 0)
+    dag.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
 
     assert (
-        visualizer.names[f_node.get_stable_uuid()]
-        != visualizer.names[dag.get_stable_uuid()]
-    )
-    assert (
-        visualizer.depths[input_node.get_stable_uuid()] == 0
-        and visualizer.depths[f_node.get_stable_uuid()] == 1
-        and visualizer.depths[dag.get_stable_uuid()] == 2
+        depths[input_node.get_stable_uuid()] == 1
+        and depths[f_node.get_stable_uuid()] == 2
+        and depths[dag.get_stable_uuid()] == 3
     )
 
 

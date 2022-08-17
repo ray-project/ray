@@ -9,7 +9,7 @@ from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve.handle import RayServeHandle
 
 from functools import partial
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 from collections import defaultdict
 import json
 import time
@@ -17,34 +17,19 @@ import time
 import gradio as gr
 
 
-async def _get_result(handle: RayServeHandle, node_uuid: str):
-    """
-    Returns the output of running the deployment on the DAGNode with uuid `node_uuid`
-    """
-
-    timeout_s = 20
-    start = time.time()
-    while time.time() - start < timeout_s:
-        ref = await handle.get_object_ref_for_node.remote(node_uuid)
-        if ref is not None:
-            return await ref
-    raise TimeoutError(f"Root DAG node isn't loaded after {timeout_s}s.")
-
-
 class GraphVisualizer:
     def __init__(self):
         self._reset_state()
 
     def _reset_state(self):
-        self.names: Dict[str, str] = {}
-        self.depths: Dict[str, str] = defaultdict(lambda: 0)
+        # maps dag node uuid to a DAGNode instance with that uuid
         self.uuid_to_node: Dict[str, DAGNode] = {}
         # maps dag node uuid to unique instance of a gradio block
         self.node_to_block: Dict[str, Any] = {}
         # maps InputAttributeNodes to unique instance of interactive gradio block
         self.input_index_to_block: Dict[int, Any] = {}
 
-    def _make_blocks(self):
+    def _make_blocks(self, depths):
         """
         Instantiates Gradio blocks for each graph node registered in self.depths.
         Nodes of depth 0 will be rendered in the top row, depth 1 in the second row,
@@ -52,47 +37,56 @@ class GraphVisualizer:
         """
 
         levels = {}
-        for uuid in self.depths:
-            levels.setdefault(self.depths[uuid], []).append(uuid)
+        for uuid in depths:
+            if not isinstance(
+                self.uuid_to_node[uuid], (InputNode, DeploymentExecutorNode)
+            ):
+                levels.setdefault(depths[uuid], []).append(uuid)
 
-        with gr.Row():
-            for uuid in levels[0]:
-                key = self.uuid_to_node[uuid]._key
-                if key not in self.input_index_to_block:
-                    self.input_index_to_block[key] = gr.Number(label=self.names[uuid])
+        name_generator = _DAGNodeNameGenerator()
 
         def render_level(n):
             for uuid in levels[n]:
-                self.node_to_block[uuid] = gr.Number(
-                    label=self.names[uuid], interactive=False
-                )
+                node = self.uuid_to_node[uuid]
+                name = name_generator.get_node_name(node)
 
-        for level in range(1, max(levels.keys()) + 1):
+                # InputAttributNodes should have level 1
+                if n == 1:
+                    key = node._key
+                    if key not in self.input_index_to_block:
+                        self.input_index_to_block[key] = gr.Number(label=name)
+                else:
+                    self.node_to_block[uuid] = gr.Number(label=name, interactive=False)
+
+        for level in sorted(levels.keys()):
             with gr.Row():
                 render_level(level)
 
-    def _get_depth_and_name(
-        self,
-        node: DAGNode,
-        name_generator: _DAGNodeNameGenerator,
-        nodes_to_exclude: Tuple,
-    ):
+    def _fetch_depths(self, node: DAGNode, depths: Dict[str, int]):
         """
-        Gets the name and depth of each graph node. Depth of each node is determined
-        by the longest distance between that node and any InputAttributeNode. Nodes of
-        any type in `nodes_to_exclude` will be skipped.
+        Gets the depth of each graph node, which is determined by the longest distance
+        between that node and any InputAttributeNode. The single InputNode in the graph
+        will have depth 0, and all InputAttributeNodes will have depth 1.
         """
         uuid = node.get_stable_uuid()
         for child_node in node._get_all_child_nodes():
-            if not isinstance(child_node, nodes_to_exclude):
-                self.depths[uuid] = max(
-                    self.depths[uuid], self.depths[child_node.get_stable_uuid()] + 1
-                )
+            depths[uuid] = max(depths[uuid], depths[child_node.get_stable_uuid()] + 1)
 
-        if not isinstance(node, nodes_to_exclude):
-            self.names[uuid] = name_generator.get_node_name(node)
-            self.uuid_to_node[uuid] = node
+        self.uuid_to_node[uuid] = node
         return node
+
+    async def _get_result(self, node_uuid: str):
+        """
+        Returns the output of running the deployment on DAGNode with uuid `node_uuid`
+        """
+
+        timeout_s = 20
+        start = time.time()
+        while time.time() - start < timeout_s:
+            ref = await self.handle.get_object_ref_for_node.remote(node_uuid)
+            if ref is not None:
+                return await ref
+        raise TimeoutError(f"Fetching node output timed out after {timeout_s}s.")
 
     def visualize_with_gradio(self, handle: RayServeHandle):
         """
@@ -105,29 +99,33 @@ class GraphVisualizer:
         """
 
         self._reset_state()
+        self.handle = handle
 
         # Load the root dag node from handle
         dag_node_json = ray.get(handle.get_dag_node_json.remote())
         dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
 
         # Get name and level for each node in dag
-        name_generator = _DAGNodeNameGenerator()
-        dag.apply_recursive(
-            lambda node: self._get_depth_and_name(
-                node, name_generator, (InputNode, DeploymentExecutorNode)
-            )
-        )
+        depths = defaultdict(lambda: 0)
+        dag.apply_recursive(lambda node: self._fetch_depths(node, depths))
+
+        # Wraps _get_result because functools.partial doesn't work with asynchronous
+        # class methods: https://stackoverflow.com/q/67020609/11162437
+        async def get_result_wrapper(node_uuid):
+            return await self._get_result(node_uuid)
 
         with gr.Blocks() as demo:
-            self._make_blocks()
+            self._make_blocks(depths)
 
             submit = gr.Button("Submit")
+            # Add event listener that sends the request to the deployment graph
             submit.click(
-                fn=lambda *args: handle.predict.remote(args),
+                fn=lambda *args: self.handle.predict.remote(args),
                 inputs=list(self.input_index_to_block.values()),
                 outputs=[],
             )
+            # Add event listeners that resolve object refs for each of the nodes
             for node_uuid, block in self.node_to_block.items():
-                submit.click(partial(_get_result, handle, node_uuid), [], block)
+                submit.click(partial(get_result_wrapper, node_uuid), [], block)
 
         demo.launch()
