@@ -13,7 +13,7 @@ The `RayService` controller enables fault-tolerant deployments of
 If your Ray Serve application enters an unhealthy state, the RayService controller will create a new Ray Cluster.
 Once the new cluster is ready, Ray Serve traffic will be re-routed to the new Ray cluster.
 
-See the [KubeRay docs on RayServices][KubeServe] for details.
+See the guide [Kubernetes-based RayServe deployment][KubeServe] for details.
 
 ## GCS Fault Tolerance
 
