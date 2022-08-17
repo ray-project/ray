@@ -63,8 +63,7 @@ A Ray head pod and 9 Ray worker pods will be created.
 
 ```{admonition} Optional: Deploying an autoscaling Ray cluster
 If you've set up an autoscaling node group or pool, you may wish to deploy
-an autoscaling cluster by applying the config `xgboost-benchmark-autoscaler.yaml`
-in the same directory as the yaml applied in the last command.
+an autoscaling cluster by applying the config [xgboost-benchmark-autoscaler.yaml][ConfigLinkAutoscaling].
 One Ray head pod will be created. Once the workload starts, the Ray autoscaler will trigger
 creation of Ray worker pods. Kubernetes autoscaling will then create nodes to place the Ray pods.
 ```
@@ -182,5 +181,6 @@ kubectl delete raycluster raycluster-xgboost-benchmark
 If you're on a public cloud, don't forget to clean up the underlying
 node group and/or Kubernetes cluster.
 
-[ConfigLink]: https://github.com/ray-project/ray/blob/releases/2.0.0/doc/source/cluster/kubernetes/configs/xgboost-benchmark.yaml
+[ConfigLink]:https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/xgboost-benchmark.yaml
+[ConfigLinkAutoscaling]: https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/xgboost-benchmark-autoscaler.yaml
 [XGBSubmit]: https://github.com/ray-project/ray/blob/releases/2.0.0/doc/source/cluster/doc_code/xgboost_submit.py
