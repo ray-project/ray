@@ -1332,11 +1332,6 @@ class StandardAutoscaler:
 
     def launch_new_node(self, count: int, node_type: str) -> None:
         logger.info("StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        self.event_summarizer.add(
-            "Adding {} node(s) of type " + str(node_type) + ".",
-            quantity=count,
-            aggregate=operator.add,
-        )
         self.pending_launches.inc(node_type, count)
         self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)

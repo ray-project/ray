@@ -1,5 +1,6 @@
 import copy
 import logging
+import operator
 import threading
 import time
 import traceback
@@ -77,7 +78,7 @@ class BaseNodeLauncher:
                 )
 
             error_msg = (
-                f"Failed to launch {node_type}. "
+                f"Failed to launch {count} node(s) of type {node_type}. "
                 f"({node_launch_exception.category}): "
                 f"{node_launch_exception.description}"
             )
@@ -112,6 +113,13 @@ class BaseNodeLauncher:
             self.log(error_msg)
             self.prom_metrics.node_launch_exceptions.inc()
             self.prom_metrics.failed_create_nodes.inc(count)
+        else:
+            self.log("Launching {} nodes, type {}.".format(count, node_type))
+            self.event_summarizer.add(
+                "Adding {} node(s) of type " + str(node_type) + ".",
+                quantity=count,
+                aggregate=operator.add,
+            )
 
         if full_exception is not None:
             self.log(full_exception)
@@ -131,7 +139,6 @@ class BaseNodeLauncher:
             config["available_node_types"][node_type]["resources"]
         )
         launch_hash = hash_launch_conf(launch_config, config["auth"])
-        self.log("Launching {} nodes, type {}.".format(count, node_type))
         node_config = copy.deepcopy(config.get("worker_nodes", {}))
         node_tags = {
             TAG_RAY_NODE_NAME: "ray-{}-worker".format(config["cluster_name"]),
