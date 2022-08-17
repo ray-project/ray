@@ -257,8 +257,7 @@ Deployment graphs are useful since they let you deploy each part of your machine
 ## Next Steps
 
 - Dive into the {doc}`key-concepts` to get a deeper understanding of Ray Serve.
-- Learn more about how to deploy your Ray Serve application to a multi-node cluster: {ref}`serve-deploy-tutorial`.
-- See the guide on [putting Ray Serve in production](serve-in-production) to learn more about how to manage your deployments.
+- Learn more about how to deploy your Ray Serve application to production: {ref}`serve-in-production`.
 - Check more in-depth tutorials for popular machine learning frameworks: {doc}`tutorials/index`.
 
 ```{rubric} Footnotes
