@@ -31,7 +31,7 @@ class GraphVisualizer:
 
     def _make_blocks(self, depths):
         """
-        Instantiates Gradio blocks for each graph node registered in self.depths.
+        Instantiates Gradio blocks for each graph node registered in depths.
         Nodes of depth 0 will be rendered in the top row, depth 1 in the second row,
         and so forth.
         """
@@ -88,7 +88,7 @@ class GraphVisualizer:
                 return await ref
         raise TimeoutError(f"Fetching node output timed out after {timeout_s}s.")
 
-    def visualize_with_gradio(self, handle: RayServeHandle):
+    def visualize_with_gradio(self, handle: RayServeHandle, _launch: bool = False):
         """
         Launches a Gradio UI that allows interactive request dispatch and displays
         the evaluated outputs of each node in a deployment graph in real time.
@@ -102,7 +102,7 @@ class GraphVisualizer:
         self.handle = handle
 
         # Load the root dag node from handle
-        dag_node_json = ray.get(handle.get_dag_node_json.remote())
+        dag_node_json = ray.get(self.handle.get_dag_node_json.remote())
         dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
 
         # Get name and level for each node in dag
@@ -128,4 +128,5 @@ class GraphVisualizer:
             for node_uuid, block in self.node_to_block.items():
                 submit.click(partial(get_result_wrapper, node_uuid), [], block)
 
-        demo.launch()
+        if _launch:
+            demo.launch()

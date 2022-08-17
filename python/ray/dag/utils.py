@@ -34,6 +34,8 @@ class _DAGNodeNameGenerator(object):
             node_name = node.get_deployment_name()
         elif type(node).__name__ == "DeploymentMethodNode":
             node_name = node.get_deployment_method_name()
+        elif type(node).__name__ == "DeploymentExecutorNode":
+            node_name = node._deployment_handle.deployment_name
         elif type(node).__name__ == "DeploymentMethodExecutorNode":
             node_name = node._deployment_method_name
         elif type(node).__name__ == "DeploymentFunctionExecutorNode":
