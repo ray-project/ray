@@ -1,7 +1,7 @@
 .. _air-api-ref:
 
-API Reference
-=============
+AIR API Reference
+=================
 
 .. contents::
     :local:
