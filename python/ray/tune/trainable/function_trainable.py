@@ -296,7 +296,7 @@ class _RunnerThread(threading.Thread):
                 )
             )
         except Exception as e:
-            logger.error(f"Runner Thread raised error: {e}")
+            logger.error("Runner Thread raised error")
             try:
                 # report the error but avoid indefinite blocking which would
                 # prevent the exception from being propagated in the unlikely

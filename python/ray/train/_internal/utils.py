@@ -18,9 +18,9 @@ from typing import (
 )
 
 import ray
-from ray.air._internal.util import find_free_port
+from ray.air._internal.util import find_free_port, shorten_tb
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayTaskError
+from ray.exceptions import RayActorError
 from ray.types import ObjectRef
 
 
@@ -53,10 +53,16 @@ def check_for_failure(
             # successfully.
             try:
                 ray.get(object_ref)
-            except (RayActorError, RayTaskError) as exc:
+            except RayActorError as exc:
                 failed_actor_rank = remote_values.index(object_ref)
                 logger.info(f"Worker {failed_actor_rank} has failed.")
                 return False, exc
+            except Exception as exc:
+                # Other (e.g. training) errors should be directly raised
+                _ray_start_tb = True  # noqa: F841
+                raise exc.with_traceback(
+                    shorten_tb(exc.__traceback__, attr="_ray_start_tb")
+                )
 
     return True, None
 
