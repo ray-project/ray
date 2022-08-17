@@ -46,7 +46,11 @@ def _get_snapshot(address: str):
     indirect=True,
 )
 def test_successful_job_status(
-    set_override_dashboard_url, ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
+    set_override_dashboard_url,
+    ray_start_with_dashboard,
+    disable_aiohttp_cache,
+    enable_test_module,
+    address_suffix,
 ):
     address = ray._private.worker._global_node.webui_url
     assert wait_until_server_available(address)

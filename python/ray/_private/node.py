@@ -193,7 +193,7 @@ class Node:
         if head:
             self._webui_url = None
         else:
-            self._webui_url = ray._private.services.get_webui_url_from_internal_kv(
+            self._webui_url = ray._private.services.get_webui_url_from_internal_kv()
 
         self._init_temp()
 
