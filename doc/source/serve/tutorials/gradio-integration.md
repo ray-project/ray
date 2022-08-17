@@ -56,7 +56,7 @@ $ serve run demo:app
 Now you can access your Gradio app at `http://localhost:8000`! This is what it should look like:
 ![Gradio Result](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_result.png)
 
-See [Putting Ray Serve Deployment Graphs in Production](https://docs.ray.io/en/master/serve/production.html#id1) for more information on how to deploy your app in production.
+See the [Production Guide](serve-in-production) for more information on how to deploy your app in production.
 
 
 ## Parallelizing models with Ray Serve
@@ -120,4 +120,4 @@ $ serve run demo:app
 Access your Gradio app at `http://localhost:8000`, and you should see the following interactive interface:
 ![Gradio Result](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/gradio_result_parallel.png)
 
-See [Putting Ray Serve Deployment Graphs in Production](https://docs.ray.io/en/master/serve/production.html#id1) for more information on how to deploy your app in production.
+See the [Production Guide](serve-in-production) for more information on how to deploy your app in production.
