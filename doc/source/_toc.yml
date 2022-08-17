@@ -177,11 +177,15 @@ parts:
               - file: serve/ml-models
               - file: serve/batching-guide
               - file: serve/model_composition
-              - file: serve/deploying-serve
-              - file: serve/monitoring
               - file: serve/performance
               - file: serve/dev-workflow
-              - file: serve/production
+              - file: serve/production-guide/index
+                sections:
+                  - file: serve/production-guide/config
+                  - file: serve/production-guide/rest-api
+                  - file: serve/production-guide/kubernetes
+                  - file: serve/production-guide/monitoring
+                  - file: serve/production-guide/failures
               - file: serve/managing-java-deployments
               - file: serve/migration
           - file: serve/architecture
@@ -219,9 +223,10 @@ parts:
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
           - file: ray-core/examples/using-ray-with-pytorch-lightning
-          - file: workflows/concepts
-            title: Ray Workflows
+          - file: workflows/index
+            title: Ray Workflows (Alpha)
             sections:
+              - file: workflows/key-concepts
               - file: workflows/basics
               - file: workflows/management
               - file: workflows/metadata
@@ -241,6 +246,7 @@ parts:
       - file: ray-core/examples/overview
         title: "Examples"
         sections:
+          - file: ray-core/examples/monte_carlo_pi
           - file: ray-core/examples/plot_example-a3c
           - file: ray-core/examples/plot_example-lm
           - file: ray-core/examples/plot_hyperparameter

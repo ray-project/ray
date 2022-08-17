@@ -1960,7 +1960,7 @@ def local_dump(
     )
 
 
-@cli.command(hidden=True)
+@cli.command(name="logs")
 @click.argument(
     "glob_filter",
     required=False,
@@ -2564,7 +2564,6 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-add_command_alias(ray_logs, name="logs", hidden=False)
 cli.add_command(ray_list, name="list")
 cli.add_command(ray_get, name="get")
 add_command_alias(summary_state_cli_group, name="summary", hidden=False)
