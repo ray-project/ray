@@ -168,28 +168,29 @@ parts:
           - file: serve/key-concepts
           - file: serve/user-guide
             sections:
-              - file: serve/managing-deployments
-              - file: serve/handling-dependencies
               - file: serve/http-guide
-              - file: serve/http-adapters
-              - file: serve/handle-guide
-              - file: serve/ml-models
-              - file: serve/deploying-serve
-              - file: serve/monitoring
-              - file: serve/performance
-              - file: serve/autoscaling
-              - file: serve/deployment-graph
+              - file: serve/scaling-and-resource-allocation
+              - file: serve/model_composition
+              - file: serve/dev-workflow
+              - file: serve/production-guide/index
                 sections:
-                  - file: serve/deployment-graph/deployment-graph-e2e-tutorial
-                  - file: serve/deployment-graph/chain_nodes_same_class_different_args
-                  - file: serve/deployment-graph/combine_two_nodes_with_passing_input_parallel
-                  - file: serve/deployment-graph/control_flow_based_on_user_inputs
-                  - file: serve/deployment-graph/visualize_dag_during_development
-                  - file: serve/deployment-graph/http_endpoint_for_dag_graph
-              - file: serve/production
+                  - file: serve/production-guide/config
+                  - file: serve/production-guide/rest-api
+                  - file: serve/production-guide/kubernetes
+                  - file: serve/production-guide/monitoring
+                  - file: serve/production-guide/failures
+              - file: serve/performance
+              - file: serve/handling-dependencies
+              - file: serve/managing-java-deployments
+              - file: serve/migration
           - file: serve/architecture
           - file: serve/tutorials/index
-          - file: serve/faq
+            sections:
+              - file: serve/tutorials/deployment-graph-patterns
+                sections:
+                  - file: serve/tutorials/deployment-graph-patterns/linear_pipeline
+                  - file: serve/tutorials/deployment-graph-patterns/branching_input
+                  - file: serve/tutorials/deployment-graph-patterns/conditional
           - file: serve/package-ref
 
       - file: rllib/index
@@ -294,6 +295,7 @@ parts:
         - file: cluster/vms/references/index
       - file: cluster/running-applications/index
         title: Applications Guide
+
 
   - caption: References
     chapters:
