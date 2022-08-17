@@ -1390,7 +1390,9 @@ class AutoscalingTest(unittest.TestCase):
         self.waitFor(expected_message_logged)
 
     def testSummarizerFailedCreateStructuredError(self):
-        """Checks that event summarizer reports failed node creation with additional details when the node provider thorws a NodeLaunchException."""
+        """Checks that event summarizer reports failed node creation with
+        additional details when the node provider thorws a
+        NodeLaunchException."""
         config = copy.deepcopy(SMALL_CLUSTER)
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -1421,7 +1423,9 @@ class AutoscalingTest(unittest.TestCase):
         self.waitFor(expected_message_logged)
 
     def testSummarizerFailedCreateStructuredErrorNoUnderlyingException(self):
-        """Checks that event summarizer reports failed node creation with additional details when the node provider thorws a NodeLaunchException."""
+        """Checks that event summarizer reports failed node creation with
+        additional details when the node provider thorws a
+        NodeLaunchException."""
         config = copy.deepcopy(SMALL_CLUSTER)
         config_path = self.write_config(config)
         self.provider = MockProvider()
@@ -1443,7 +1447,8 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         # Expect the next message in the logs.
-        msg = "Failed to launch 2 node(s) of type ray-legacy-worker-node-type. (didn't work): never did."
+        msg = ( "Failed to launch 2 node(s) of type ray-legacy-worker-node-type. "
+        "(didn't work): never did." )
 
         def expected_message_logged():
             print(autoscaler.event_summarizer.summary())
