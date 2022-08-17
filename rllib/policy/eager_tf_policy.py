@@ -46,14 +46,20 @@ def _convert_to_tf(x, dtype=None):
 
     if x is not None:
         d = dtype
-        return tree.map_structure(
-            lambda f: _convert_to_tf(f, d)
-            if isinstance(f, RepeatedValues)
-            else tf.convert_to_tensor(f, d)
-            if f is not None and not tf.is_tensor(f)
-            else f,
-            x,
-        )
+
+        def _c(f):
+            if isinstance(f, RepeatedValues):
+                return _convert_to_tf(f, d)
+            elif f is not None and not tf.is_tensor(f):
+                # Object type (e.g. info dicts in train batch): leave as-is.
+                if f.dtype == object:
+                    return f
+                else:
+                    return tf.convert_to_tensor(f, d)
+            else:
+                return f
+
+        return tree.map_structure(_c, x)
 
     return x
 
