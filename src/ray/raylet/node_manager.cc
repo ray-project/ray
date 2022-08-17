@@ -2925,7 +2925,9 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           }
           RAY_LOG_EVERY_N_OR(ERROR, 10, INFO)
               << "Killing worker with the latest task assigned time "
-              << "to free up memory. Task to be killed:"
+              << "to free up memory. Find details of workers killed via `ray list "
+                 "workers "
+                 "--detail`. Task to be killed:"
               << latest_worker->GetAssignedTaskId() << ". Top 10 worker details:\n"
               << top_n_latest_workers_info.str();
           high_memory_eviction_target_ = latest_worker;

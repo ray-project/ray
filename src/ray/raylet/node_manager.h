@@ -836,9 +836,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
-
-  /// The time point when the class was created.
-  std::chrono::time_point<std::chrono::steady_clock> start_time_point_;
 };
 
 }  // namespace raylet

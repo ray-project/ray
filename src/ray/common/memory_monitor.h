@@ -45,8 +45,8 @@ class MemoryMonitor {
   ~MemoryMonitor();
 
  public:
-  /// Returns the used memory in bytes for the process
   /// \param process_id the process id
+  /// \return the used memory in bytes for the process
   int64_t GetProcessMemoryBytes(int64_t process_id);
 
  private:
@@ -60,23 +60,23 @@ class MemoryMonitor {
   static constexpr uint32_t kLogIntervalMs = 5000;
   static constexpr int64_t kNull = -1;
 
-  /// Returns true if the memory usage of this node is above the threshold.
+  /// \return true if the memory usage of this node is above the threshold.
   bool IsUsageAboveThreshold();
 
-  /// Returns the used and total memory in bytes.
+  /// \return the used and total memory in bytes.
   std::tuple<int64_t, int64_t> GetMemoryBytes();
 
-  /// Returns the used and total memory in bytes from Cgroup.
+  /// \return the used and total memory in bytes from Cgroup.
   std::tuple<int64_t, int64_t> GetCGroupMemoryBytes();
 
-  /// Returns the used and total memory in bytes for linux OS.
+  /// \return the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
 
-  /// Returns the used memory in bytes from the given smap file.
   /// \param smap_path file path to the smap file
+  /// \return the used memory in bytes from the given smap file.
   static int64_t GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path);
 
-  /// Returns the smaller of the two integers, kNull if both are kNull,
+  /// \return the smaller of the two integers, kNull if both are kNull,
   /// or one of the values if the other is kNull.
   static int64_t NullableMin(int64_t left, int64_t right);
 

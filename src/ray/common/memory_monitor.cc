@@ -221,7 +221,11 @@ int64_t MemoryMonitor::GetLinuxProcessMemoryBytesFromSmap(const std::string smap
     }
   }
 
-  RAY_CHECK_GT(uss, 0);
+  if (uss == 0) {
+    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs)
+        << "Got zero used memory for smap file " << smap_path;
+    return kNull;
+  }
   return uss;
 }
 
