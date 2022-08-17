@@ -43,5 +43,5 @@ If you wish, you may configure the Ray cluster to be deleted when the job finish
 See the [KubeRay docs on RayJobs][KubeJob] for details.
 
 [KubeServe]: https://ray-project.github.io/kuberay/guidance/rayservice/
-[KubeFT]: https://ray-project.github.io/kuberay/guidance/gcs-ha/
+[KubeFT]: https://ray-project.github.io/kuberay/guidance/gcs-ft/
 [KubeJob]: https://ray-project.github.io/kuberay/guidance/rayjob/
