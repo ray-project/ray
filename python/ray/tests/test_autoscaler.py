@@ -1414,8 +1414,10 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         # Expect the next message in the logs.
-        msg = "Failed to launch 2 node(s) of type ray-legacy-worker-node-type. "
-        "(didn't work): never did."
+        msg = (
+            "Failed to launch 2 node(s) of type ray-legacy-worker-node-type. "
+            "(didn't work): never did."
+        )
 
         def expected_message_logged():
             print(autoscaler.event_summarizer.summary())
