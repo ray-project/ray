@@ -1,3 +1,4 @@
+import os
 import socket
 from contextlib import closing
 
@@ -20,6 +21,11 @@ def is_nan_or_inf(value):
 
 
 def shorten_tb(tb, attr: str):
+    should_not_shorten = bool(int(os.environ.get("RAY_AIR_FULL_TRACEBACKS", "0")))
+
+    if should_not_shorten:
+        return tb
+
     orig_tb = tb
     while tb:
         if tb.tb_frame.f_locals.get(attr):
