@@ -11,15 +11,8 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 In this guide, we show you how to run a sample Ray machine learning
 workload on Kubernetes infrastructure.
 
-We will run Ray's {ref}`XGBoost training benchmark<xgboost-benchmark>` with a 100 gigabyte training set.
+We will run Ray's {ref}`XGBoost training benchmark <xgboost-benchmark>` with a 100 gigabyte training set.
 To learn more about using Ray's XGBoostTrainer, check out {ref}`the XGBoostTrainer documentation <train-gbdt-guide>`.
-
-```{admonition} Optional: Autoscaling
-This guide includes notes on how to deploy the XGBoost benchmark with optional Ray Autoscaler support.
-In this guide's example, we know that we need 1 Ray head and 9 Ray workers,
-so autoscaling is not strictly required. Read {ref}`this discussion<autoscaler-pro-con>` for guidance
-on whether to use autoscaling.
-```
 
 ## Kubernetes infrastructure setup
 
