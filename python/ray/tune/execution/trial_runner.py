@@ -365,7 +365,7 @@ class TrialRunner:
                 )
 
         self._print_trial_errors = bool(
-            int(os.environ.get("TUNE_PRINT_ALL_TRIAL_ERRORS", "0"))
+            int(os.environ.get("TUNE_PRINT_ALL_TRIAL_ERRORS", "1"))
         )
 
         self._server = None

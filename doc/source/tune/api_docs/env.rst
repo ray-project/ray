@@ -58,7 +58,7 @@ These are the environment variables Ray Tune currently considers:
   placement groups are manually destroyed. Reconcilation doesn't take much time, but it can add up when
   running a large number of short trials. Defaults to every ``5`` (seconds).
 * **TUNE_PRINT_ALL_TRIAL_ERRORS**: If ``1``, will print all trial errors as they come up. Otherwise, errors
-  will be saved as text files to the trial directory. Default to ``0``.
+  will only be saved as text files to the trial directory and not printed. Defaults to ``1``.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
