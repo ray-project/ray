@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Tuple
 
 from ray.util.annotations import DeveloperAPI
 
@@ -13,9 +13,16 @@ class NodeLaunchException(Exception):
         self,
         category: str,
         description: str,
-        source_exception: Optional[Exception] = None,
+            src_exc_info: Tuple["type", "value", "traceback"], # The
+                                                                         # tuple
+                                                                         # outputted
+                                                                         # by
+                                                                         # sys.exc_info()
+                                                                         # during
+                                                                         # an
+                                                                         # exception.
     ):
         super().__init__(f"Node Launch Exception ({category}): {description}")
         self.category = category
         self.description = description
-        self.source_exception = source_exception
+        self.src_exc_info = src_exc_info

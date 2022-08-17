@@ -61,30 +61,58 @@ class BaseNodeLauncher:
     def launch_node(self, config: Dict[str, Any], count: int, node_type: str):
         self.log("Got {} nodes to launch.".format(count))
         node_launch_start_time = time.time()
+
+        error_msg = None
+        full_exception = None
+
         try:
             self._launch_node(config, count, node_type)
-        except Exception:
-            self.prom_metrics.node_launch_exceptions.inc()
-            self.prom_metrics.failed_create_nodes.inc(count)
-            # Log traceback from failed node creation only once per minute
-            # to avoid spamming driver logs with tracebacks.
-            self.event_summarizer.add_once_per_interval(
-                message="Node creation failed. See the traceback below."
-                " See autoscaler logs for further details.\n"
-                f"{traceback.format_exc()}",
-                key="Failed to create node.",
-                interval_s=60,
+        except NodeLaunchException as node_launch_exception:
+            self.node_provider_availability_tracker.update_node_availability(
+                node_type, int(node_launch_start_time), node_launch_exception
             )
-            logger.exception("Launch failed")
+
+            full_exception = traceback.format_exc(*node_launch_exception.src_exc_info)
+            self.log(full_exception)
+
+            error_msg = (
+                f"Failed to launch {node_type}: "
+                f"({node_launch_exception.category}):"
+                f"{node_launch_exception.description}"
+            )
+        except Exception:
+            error_msg = f"Failed to launch {count} node(s) of type {node_type}."
+            full_exception = traceback.format_exc()
         else:
+            # Record some metrics/observability information when a node is launched.
+            launch_time = time.time() - node_launch_start_time
+            for _ in range(count):
+                # Note: when launching multiple nodes we observe the time it
+                # took all nodes to launch for each node. For example, if 4
+                # nodes were created in 25 seconds, we would observe the 25
+                # second create time 4 times.
+                self.prom_metrics.worker_create_node_time.observe(launch_time)
+            self.prom_metrics.started_nodes.inc(count)
             self.node_provider_availability_tracker.update_node_availability(
                 node_type=node_type,
-                timestamp=node_launch_start_time,
+                timestamp=int(node_launch_start_time),
                 node_launch_exception=None,
             )
         finally:
             self.pending.dec(node_type, count)
             self.prom_metrics.pending_nodes.set(self.pending.value)
+
+        if error_msg is not None:
+            assert full_exception is not None
+            self.event_summarizer.add_once_per_interval(
+                message=error_msg,
+                key=f"launch-failed-{node_type}",
+                interval_s=60,
+            )
+            self.log(error_msg)
+            self.log(full_exception)
+            self.prom_metrics.node_launch_exceptions.inc()
+            self.prom_metrics.failed_create_nodes.inc(count)
 
     def _launch_node(self, config: Dict[str, Any], count: int, node_type: str):
         if self.node_types:
@@ -116,45 +144,9 @@ class BaseNodeLauncher:
         if node_type:
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
-        launch_start_time = time.time()
-        try:
-            self.provider.create_node_with_resources(
-                node_config, node_tags, count, resources
-            )
-        except NodeLaunchException as node_launch_exception:
-            self.node_provider_availability_tracker.update_node_availability(
-                node_type, launch_start_time, node_launch_exception
-            )
-            error_msg = (
-                f"Failed to launch {node_type}: "
-                f"({node_launch_exception.category}):"
-                f"{node_launch_exception.description}"
-            )
-            self.event_summarizer.add(
-                error_msg,
-                quantity=count,
-                aggregate=operator.add,
-            )
-            self.log(error_msg)
-            # Do some special handling if we have a structured error.
-            # Reraise to trigger the more general exception handling code.
-            raise node_launch_exception.source_exception
-        except Exception:
-            error_msg = "Failed to launch {} nodes of type " + str(node_type) + "."
-            self.event_summarizer.add(
-                error_msg,
-                quantity=count,
-                aggregate=operator.add,
-            )
-            raise
-        launch_time = time.time() - launch_start_time
-        for _ in range(count):
-            # Note: when launching multiple nodes we observe the time it
-            # took all nodes to launch for each node. For example, if 4
-            # nodes were created in 25 seconds, we would observe the 25
-            # second create time 4 times.
-            self.prom_metrics.worker_create_node_time.observe(launch_time)
-        self.prom_metrics.started_nodes.inc(count)
+        self.provider.create_node_with_resources(
+            node_config, node_tags, count, resources
+        )
 
     def log(self, statement):
         # launcher_class is "BaseNodeLauncher", or "NodeLauncher" if called
