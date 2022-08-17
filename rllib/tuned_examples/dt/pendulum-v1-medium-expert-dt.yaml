@@ -1,0 +1,49 @@
+pendulum_medium_expert_dt:
+    env: 'Pendulum-v1'
+    run: DT
+    stop:
+        # We could make this higher, but given that we have 4 cpus for our tests, we will have to settle for -350.
+        evaluation/episode_reward_mean: -350
+        timesteps_total: 20000000
+    config:
+        input: 'dataset'
+        input_config:         
+            paths: [
+                'tests/data/pendulum/pendulum_expert_sac_50eps.zip',
+                'tests/data/pendulum/pendulum_medium_sac_50eps.zip',
+            ]
+            format: 'json'
+        num_workers: 3
+        actions_in_input_normalized: True
+        clip_actions: True
+        normalize_actions: True
+        # training
+        framework: torch
+        train_batch_size: 512
+        min_train_timesteps_per_iteration: 5000
+        target_return: -120.0
+        lr: 0.0
+        lr_schedule: [[0, 0.0], [100000, 0.01]]
+        grad_clip: 1.0
+        optimizer:
+            weight_decay: 0.1
+            betas: [0.9, 0.999]
+        replay_buffer_config:
+            capacity: 20
+        # model
+        model:
+            max_seq_len: 3
+        num_layers: 1
+        num_heads: 1
+        embed_dim: 64
+        # rollout
+        horizon: 200
+        # evaluation
+        evaluation_config:
+            explore: False
+            input: sampler
+        evaluation_duration: 10
+        evaluation_duration_unit: episodes
+        evaluation_interval: 1
+        evaluation_num_workers: 1
+        evaluation_parallel_to_training: True

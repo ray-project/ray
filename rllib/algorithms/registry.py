@@ -108,6 +108,12 @@ def _import_dreamer():
     return dreamer.Dreamer, dreamer.DreamerConfig().to_dict()
 
 
+def _import_dt():
+    import ray.rllib.algorithms.dt as dt
+
+    return dt.DT, dt.DTConfig().to_dict()
+
+
 def _import_es():
     import ray.rllib.algorithms.es as es
 
@@ -215,6 +221,7 @@ ALGORITHMS = {
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
     "Dreamer": _import_dreamer,
+    "DT": _import_dt,
     "IMPALA": _import_impala,
     "APPO": _import_appo,
     "AlphaStar": _import_alpha_star,
@@ -309,6 +316,7 @@ POLICIES = {
     "DQNTFPolicy": "dqn.dqn_tf_policy",
     "DQNTorchPolicy": "dqn.dqn_torch_policy",
     "DreamerTorchPolicy": "dreamer.dreamer_torch_policy",
+    "DTTorchPolicy": "dt.dt_torch_policy",
     "ESTFPolicy": "es.es_tf_policy",
     "ESTorchPolicy": "es.es_torch_policy",
     "ImpalaTF1Policy": "impala.impala_tf_policy",
