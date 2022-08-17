@@ -3,7 +3,6 @@ from abc import ABC
 from dataclasses import dataclass, field, fields
 from enum import Enum, unique
 from typing import Dict, List, Optional, Set, Tuple, Union
-from urllib.parse import urlparse
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -938,8 +937,5 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
             )
         )
 
-    # Add http protocol to API server URL if it doesn't
-    # already contain a protocol.
-    if not urlparse(api_server_url).scheme:
-        api_server_url = "http://" + api_server_url
-    return api_server_url.decode()
+    api_server_url = f"http://{api_server_url.decode()}"
+    return api_server_url

@@ -16,8 +16,6 @@ from ray._private.gcs_utils import GcsClient, GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
 
-from urllib.parse import urlparse
-
 try:
     from grpc import aio as aiogrpc
 except ImportError:
