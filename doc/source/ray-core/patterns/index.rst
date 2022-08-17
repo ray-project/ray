@@ -9,3 +9,4 @@ This section is a collection of common design patterns and anti-patterns for wri
     :maxdepth: 1
 
     generators
+    too-fine-grained-tasks

@@ -17,7 +17,6 @@ You may also be interested in visiting the design patterns section for :ref:`act
     map-reduce
     limit-tasks
     closure-capture
-    fine-grained-tasks
     global-variables
     ray-get-loop
     submission-order
