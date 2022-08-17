@@ -20,7 +20,6 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
-import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.version import CURRENT_VERSION

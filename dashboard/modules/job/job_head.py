@@ -87,6 +87,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # delete dead agents.
         for dead_node in set(self._agents) - set(DataSource.agents):
             self._agents.pop(dead_node)
+        for dead_node in set(self._agent_job_clients_pool) - set(DataSource.agents):
+            self._agent_job_clients_pool.pop(dead_node)
         for node_id, (http_port, _) in DataSource.agents.items():
             if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
                 break
@@ -96,7 +98,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             agent_http_address = f"http://{node_ip}:{http_port}"
 
             if node_id not in self._agent_job_clients_pool:
-                self._agent_job_clients_pool[node_id] = JobAgentSubmission(agent_http_address)
+                self._agent_job_clients_pool[node_id] = JobAgentSubmission(
+                    agent_http_address
+                )
 
             self._agents[node_id] = self._agent_job_clients_pool[node_id]
             # move agent to the front of the queue.
@@ -107,6 +111,28 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._agents[node_id] = job_agent_client
 
         return job_agent_client
+
+    async def _get_agent_client_by_ip_address(
+        self, ip_address
+    ) -> Optional[JobAgentSubmission]:
+        # There can be multiple raylet processes on a node, return any one of them
+        for dead_node in set(self._agent_job_clients_pool) - set(DataSource.agents):
+            self._agent_job_clients_pool.pop(dead_node)
+
+        for node_info in DataSource.nodes.values():
+            node_id = node_info["nodeId"]
+            ip = node_info["nodeManagerAddress"]
+            http_port = DataSource.agents[node_id][0]
+            if http_port <= 0 or ip != ip_address:
+                continue
+            agent_http_address = f"http://{ip_address}:{http_port}"
+            if node_id not in self._agent_job_clients_pool:
+                self._agent_job_clients_pool[node_id] = JobAgentSubmission(
+                    agent_http_address
+                )
+            return self._agent_job_clients_pool[node_id]
+
+        return None
 
     async def find_job_by_ids(self, job_or_submission_id: str) -> Optional[JobDetails]:
         """
@@ -408,6 +434,17 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text="Can only get logs of submission type jobs",
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
+
+        if dashboard_consts.ENABLE_HEAD_RAYLETLESS:
+            driver_ip_address = job.driver_info.node_ip_address
+            job_agent_client = self._get_agent_client_by_ip_address(driver_ip_address)
+            if job_agent_client is None:
+                return Response(
+                    text="The node where the driver is located does not have an agent"
+                    " process with an available http port",
+                    status=aiohttp.web.HTTPInternalServerError.status_code,
+                )
+            return
 
         resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job.submission_id))
         return Response(
