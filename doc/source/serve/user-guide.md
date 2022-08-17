@@ -3,18 +3,11 @@
 
 If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick Start](getting_started).
 
-This user guide will help you navigate the Ray Serve project and show you how achieve several tasks.  For instance
-you will learn:
-
-- [Handling Dependencies](handling-dependencies)
+This user guide will help you navigate the Ray Serve project and show you how to achieve several key tasks:
+- [HTTP Handling](http-guide)
 - [Scaling and Resource Allocation](scaling-and-resource-allocation)
-- [Configuring HTTP and Bring Your own FastAPI app](http-guide)
-- [Using HTTP Adapters](http-guide)
-- [Composing Deployments](handle-guide)
-- [Serving Ray AIR Checkpoints](ray-air-serve-guide)
-- [Serving ML Models](ml-models)
-- [Use Request Batching](batching-guide)
-- [Using Deployment Graphs](serve-model-composition-deployment-graph)
+- [Model Composition](serve-model-composition)
+- [Development Workflow](dev-workflow)
 - [Production Guide](serve-in-production)
-- [Monitoring Ray Serve](serve-monitoring)
 - [Performance Tuning](performance)
+- [Handling Dependencies](handling-dependencies)

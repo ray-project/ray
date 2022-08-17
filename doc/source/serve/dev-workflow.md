@@ -1,6 +1,6 @@
 (serve-dev-workflow)=
 
-# Sample Development Workflow
+# Development Workflow
 
 This page describes the recommended workflow for developing Ray Serve applications. If you're ready to go to production, jump to the [Production Guide](serve-in-production) section.
 
