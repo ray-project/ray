@@ -9,7 +9,6 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.util.client import ray as client_ray
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
@@ -115,8 +114,10 @@ class _StatsActor:
             self.last_time[stats_uuid] - self.start_time[stats_uuid],
         )
 
+
 # Actor handle, job id, client id the actor was created for.
 _stats_actor = [None, None, None]
+
 
 def _get_or_create_stats_actor():
     # Whether the context changed:
@@ -138,7 +139,6 @@ def _get_or_create_stats_actor():
         or context_changed
     ):
         ctx = DatasetContext.get_current()
-        scheduling_strategy = ctx.scheduling_strategy
         _stats_actor[0] = _StatsActor.options(
             name="datasets_stats_actor",
             get_if_exists=True,
@@ -151,6 +151,7 @@ def _get_or_create_stats_actor():
         # Clear the actor handle after Ray reinits since it's no longer valid.
         def clear_actor():
             _stats_actor = [None, None, None]
+
         ray.worker._post_init_hooks.append(clear_actor)
 
     return _stats_actor[0]
