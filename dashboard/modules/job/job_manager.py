@@ -17,6 +17,7 @@ from ray._private.gcs_utils import GcsAioClient
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
+import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
@@ -517,15 +518,18 @@ class JobManager:
         # returns immediately and we can catch errors with the actor starting
         # up.
         try:
+            resources = None
+            if not dashboard_consts.ENABLE_HEAD_RAYLETLESS:
+                resources={
+                    self._get_current_node_resource_key(): 0.001,
+                },
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
                 num_cpus=0,
                 # Currently we assume JobManager is created by dashboard server
                 # running on headnode, same for job supervisor actors scheduled
-                resources={
-                    self._get_current_node_resource_key(): 0.001,
-                },
+                resources=resources,
                 runtime_env=self._get_supervisor_runtime_env(runtime_env),
             ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
             supervisor.run.remote(_start_signal_actor=_start_signal_actor)
