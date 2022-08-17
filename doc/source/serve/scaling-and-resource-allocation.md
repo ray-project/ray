@@ -1,3 +1,5 @@
+(scaling-and-resource-allocation)=
+
 # Scaling and Resource Allocation
 
 This guide helps you to:

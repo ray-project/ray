@@ -1,4 +1,4 @@
-# HTTP API
+# HTTP Handling
 
 This section should help you understand how to:
 - send HTTP requests to Serve deployments

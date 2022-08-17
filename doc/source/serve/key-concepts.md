@@ -13,7 +13,7 @@ The number of replicas can be scaled up or down (or even autoscaled) to match th
 
 To define a deployment, use the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator on a Python class (or function for simple use cases).
 Then, `bind` the deployment with optional arguments to the constructor (see below).
-Finally, deploy the resulting "bound deployment" using `serve.run` (or the equivalent `serve run` CLI command).
+Finally, deploy the resulting "bound deployment" using `serve.run` (or the equivalent `serve run` CLI command, see [Development Workflow](serve-dev-workflow) for details).
 
 ```python
 @serve.deployment
@@ -121,7 +121,7 @@ Here's a simple example combining a preprocess function and model.
 
 ## What's Next?
 Now that you have learned about the key concepts, you can dive into our [User Guides](user-guide) for more details about:
-- [Creating, updating, and deleting deployments](managing-deployments)
-- [Configuring HTTP ingress and integrating with FastAPI](http-guide)
-- [Composing deployments using ServeHandle](handle-guide)
-- [Building deployment graphs](serve-model-composition-deployment-graph)
+- [scaling and allocating resources](scaling-and-resource-allocation)
+- [configuring HTTP logic and integrating with FastAPI](http-guide)
+- [the recommended development workflow for Serve applications](dev-workflow)
+- [composing deployments to perform model composition](model_composition)

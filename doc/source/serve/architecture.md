@@ -1,6 +1,6 @@
 (serve-architecture)=
 
-# Serve Architecture
+# Architecture
 
 This section should help you:
 
@@ -32,7 +32,7 @@ There are three kinds of actors that are created to make up a Serve instance:
 - **Replicas**: Actors that actually execute the code in response to a
   request. For example, they may contain an instantiation of an ML model. Each
   replica processes individual requests from the HTTP proxy (these may be batched
-  by the replica using `@serve.batch`, see the [batching](serve-batching) docs).
+  by the replica using `@serve.batch`, see the [batching](serve-performance-batching-requests) docs).
 
 ## Lifetime of a Request
 
@@ -114,7 +114,7 @@ same node which routes requests to replicas for a deployment. When a
 request is sent from one replica to another via the handle, the
 requests go through the same data path as incoming HTTP requests. This enables
 the same deployment selection and batching procedures to happen. ServeHandles are
-often used to implement [model composition](serve-model-composition-guide).
+often used to implement [model composition](serve-model-composition).
 
 ### What happens to large requests?
 

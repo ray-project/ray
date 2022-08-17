@@ -1,6 +1,6 @@
 (serve-migration)=
 
-# Serve 1.x to 2.x API Migration Guide
+# 1.x to 2.x API Migration Guide
 
 This section is to help you migrate the deployment API from 1.x to 2.x.
 
