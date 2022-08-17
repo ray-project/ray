@@ -158,13 +158,19 @@ enum class RayLogLevel {
 // If DEBUG is not enabled, log every n'th occurrence of an event.
 // Otherwise, if DEBUG is enabled, always log as DEBUG events.
 #define RAY_LOG_EVERY_N_OR_DEBUG(level, n)                              \
+  RAY_LOG_EVERY_N_OR(level, n, DEBUG)
+
+// Occasional logging with orlevel fallback:
+// If orlevel is not enabled, log every n'th occurrence of an event.
+// Otherwise, if orlevel is enabled, always log as orlevel events.
+#define RAY_LOG_EVERY_N_OR(level, n, orlevel)                           \
   static std::atomic<uint64_t> RAY_LOG_OCCURRENCES(0);                  \
-  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::DEBUG) ||           \
+  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::orlevel) ||         \
       (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) &&          \
        RAY_LOG_OCCURRENCES.fetch_add(1) % n == 0))                      \
   RAY_LOG_INTERNAL(ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level) \
                        ? ray::RayLogLevel::level                        \
-                       : ray::RayLogLevel::DEBUG)                       \
+                       : ray::RayLogLevel::orlevel)                     \
       << "[" << RAY_LOG_OCCURRENCES << "] "
 
 /// Macros for RAY_LOG_EVERY_MS

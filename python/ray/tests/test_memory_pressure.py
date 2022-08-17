@@ -203,6 +203,7 @@ def test_worker_dump(ray_with_memory_monitor):
         ray.get(
             oom_actor.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3)
         )
+    time.sleep(1000)
 
 
 if __name__ == "__main__":
