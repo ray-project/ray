@@ -5,7 +5,7 @@
 KUBERAY_COMMIT="v0.3.0-rc.2"
 OPERATOR_TAG="v0.3.0-rc.2"
 
-# Requires Kustomize (dependency to be removed after KubeRay 1.3.0 cut)
+# Requires Kustomize
 if ! command -v kustomize &> /dev/null
 then
     echo "Please install kustomize. Then re-run this script."
