@@ -219,9 +219,10 @@ parts:
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
           - file: ray-core/examples/using-ray-with-pytorch-lightning
-          - file: workflows/concepts
-            title: Ray Workflows
+          - file: workflows/index
+            title: Ray Workflows (Alpha)
             sections:
+              - file: workflows/key-concepts
               - file: workflows/basics
               - file: workflows/management
               - file: workflows/metadata
