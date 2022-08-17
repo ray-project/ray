@@ -20,12 +20,14 @@ from typing import Any, Dict, List, Optional
 import grpc
 import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
+import pytest
 import yaml
 from grpc._channel import _InactiveRpcError
 
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
+import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
@@ -44,6 +46,18 @@ except (ImportError, ModuleNotFoundError):
 
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
+
+
+@pytest.fixture
+def set_override_dashboard_url(monkeypatch, request):
+    override_url = getattr(request, "param", "https://external_dashboard_url")
+    with monkeypatch.context() as m:
+        if override_url:
+            m.setenv(
+                ray_constants.RAY_OVERRIDE_DASHBOARD_URL,
+                override_url,
+            )
+        yield
 
 
 class RayTestTimeoutException(Exception):
