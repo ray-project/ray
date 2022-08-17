@@ -9,6 +9,7 @@ import pprint
 import pytest
 import requests
 
+import ray
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
@@ -34,10 +35,24 @@ def _get_snapshot(address: str):
 
 
 @pytest.mark.parametrize("address_suffix", ["", "/"])  # Trailing slash should succeed
+@pytest.mark.parametrize(
+    "set_override_dashboard_url",
+    [
+        None,
+        "https://external_dashboard_url",
+        "https://external_dashboard_url/path1/?query_param1=val1&query_param2=val2",
+        "new_external_dashboard_url",
+    ],
+    indirect=True,
+)
 def test_successful_job_status(
-    ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
+    set_override_dashboard_url,
+    ray_start_with_dashboard,
+    disable_aiohttp_cache,
+    enable_test_module,
+    address_suffix,
 ):
-    address = ray_start_with_dashboard.address_info["webui_url"]
+    address = ray._private.worker._global_node.webui_url
     assert wait_until_server_available(address)
     address = format_web_url(address)
 
@@ -104,7 +119,7 @@ def test_successful_job_status(
 def test_failed_job_status(
     ray_start_with_dashboard, disable_aiohttp_cache, enable_test_module, address_suffix
 ):
-    address = ray_start_with_dashboard.address_info["webui_url"]
+    address = ray._private.worker._global_node.webui_url
     assert wait_until_server_available(address)
     address = format_web_url(address)
 
