@@ -81,13 +81,8 @@ With composition, you can avoid application-level bottlenecks when serving model
 
 ### ServeHandle Deep Dive
 
-<<<<<<< Updated upstream
-Conceptually, ServeHandle is a client side load balancer, routing requests to any replicas of a given deployment. Also, it performs buffering internally so it won't overwhelm the replicas.
-Using the current number of requests buffered, it informs the autoscaler to scale the number of replicas up or down.
-=======
 Conceptually, a `ServeHandle` is a client-side load balancer, routing requests to any replicas of a given deployment. Also, it performs buffering internally so it won't overwhelm the replicas.
 Using the current number of requests buffered, it informs the autoscaler to scale up the number of replicas.
->>>>>>> Stashed changes
 
 ![architecture-diagram-of-serve-handle](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/serve-handle-explainer.png)
 
