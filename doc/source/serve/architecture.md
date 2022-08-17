@@ -2,10 +2,9 @@
 
 # Architecture
 
-This section should help you:
-
-- Get an overview of how each component in Serve works
-- Understand the different types of actors that make up a Serve instance
+In this section, we explore Serve's key architectural concepts and components. It will offer insight and overview into:
+- the role of each component in Serve and how they work
+- the different types of actors that make up a Serve application
 
 % Figure source: https://docs.google.com/drawings/d/1jSuBN5dkSj2s9-0eGzlU_ldsRa3TsswQUZM-cMQ29a0/edit?usp=sharing
 
@@ -36,7 +35,7 @@ There are three kinds of actors that are created to make up a Serve instance:
 
 ## Lifetime of a Request
 
-When an HTTP request is sent to the HTTP proxy, the following things happen:
+When an HTTP request is sent to the HTTP proxy, the following happens:
 
 1. The HTTP request is received and parsed.
 2. The correct deployment associated with the HTTP URL path is looked up. The

@@ -120,8 +120,8 @@ Here's a simple example combining a preprocess function and model.
 ```
 
 ## What's Next?
-Now that you have learned about the key concepts, you can dive into our [User Guides](user-guide) for more details about:
-- [scaling and allocating resources](scaling-and-resource-allocation)
-- [configuring HTTP logic and integrating with FastAPI](http-guide)
-- [the recommended development workflow for Serve applications](dev-workflow)
-- [composing deployments to perform model composition](model_composition)
+Now that you have learned the key concepts, you can dive into the [User Guide](user-guide):
+- [Scaling and allocating resources](scaling-and-resource-allocation)
+- [Configuring HTTP logic and integrating with FastAPI](http-guide)
+- [Development workflow for Serve applications](dev-workflow)
+- [Composing deployments to perform model composition](model_composition)

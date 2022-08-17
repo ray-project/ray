@@ -1,6 +1,6 @@
 # HTTP Handling
 
-This section should help you understand how to:
+This section helps you understand how to:
 - send HTTP requests to Serve deployments
 - use Ray Serve to integrate with FastAPI
 - use customized HTTP Adapters
