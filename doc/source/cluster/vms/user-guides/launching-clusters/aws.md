@@ -103,10 +103,11 @@ In various scenarios, worker nodes may need write access to an S3 bucket, e.g., 
 If you see errors like “Unable to locate credentials”, make sure that the correct `IamInstanceProfile` is configured for worker nodes in your cluster config file. This may look like:
 
 ```yaml
-worker_nodes:
-    InstanceType: m5.xlarge
-    ImageId: latest_dlami
-    IamInstanceProfile:
+available_node_types:
+  ray.worker.default:
+    node_config:
+      ...
+      IamInstanceProfile:
         Arn: arn:aws:iam::YOUR_AWS_ACCOUNT:YOUR_INSTANCE_PROFILE
 ```
 
@@ -127,4 +128,4 @@ secret_key     ****************YYYY         iam-role
     region                <not set>             None    None
 ```
 
-Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on ???.
+Please refer to this [discussion](https://github.com/ray-project/ray/issues/9327) for more details on accessing S3.
