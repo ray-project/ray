@@ -2,9 +2,11 @@ from calendar import c
 from dataclasses import dataclass
 from typing import Dict
 
+from collections import defaultdict
+
 import torch.nn as nn
 
-from rllib2.core.torch.torch_rl_module import RLModuleOutput, TorchRLModule
+
 from rllib2.models.torch.pi import Pi, PiOutput
 from rllib2.models.torch.pi_distribution import PiDistributionDict
 from rllib2.utils import NNOutput
@@ -62,7 +64,7 @@ class RLModuleOutput(NNOutput):
     pass
 
 
-class TorchRLModule(nn.Module):
+class RLModule:
     def __init__(self, configs=None):
         super().__init__()
         self.configs = configs
@@ -82,20 +84,7 @@ class TorchRLModule(nn.Module):
         """Forward-pass during computing loss function"""
         pass
 
-
-# class ModuleSpec:
-#     module_class: Type[RLModule] = ''
-#     module_config: RLModuleConfig = RLModuleConfig()
-
-# class SharedModuleSpec(ModuleSpec):
-#     shared_between: Dict[str, str] = {}
-
-# class TorchRLModuleDictConfig:
-#     shared_modules: Dict[str, SharedModuleSpec] = {}
-#     modules: Dict[str, ModuleSpec] = {}
-
-
-class TorchMARLModule(TorchRLModule):
+class MARLModule(RLModule):
     def __init__(
         self,
         configs,  # multi_agent config

@@ -4,6 +4,7 @@ from typing import Any
 from rllib2.core.trainer.rl_trainer import RLTrainer
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ..module.rl_module import MARLModule
 
 
 class MARLTrainer(RLTrainer):
@@ -15,34 +16,16 @@ class MARLTrainer(RLTrainer):
 
     """
 
-    def __init__(self) -> None:
+    def __init__(self, module: Optional[MARLModule] = None) -> None:
         super().__init__()
-        self._model: MARLModule = self._make_module()
+        if module:
+            self._module = module
+        else:
+            self._module = self._make_module()
 
         # create a dict to keep track of the trainers for each module
-        self._model_trainer = self._make_module_trainers()
+        self._module_trainers = self._make_module_trainers()
 
-    @abc.abstractmethod
-    def compute_loss(
-        self, batch: MultiAgentBatch, fwd_out
-    ) -> Dict["LossID", "TensorType"]:
-        """
-        To be overriden by specific algorithms. Each specific algorithm will also override the optimizer construction that conforms to these losses.
-
-        Computes the loss for each sub-module of the algorithm and returns the loss
-        tensor computed for each loss_id that needs to get back-propagated and updated
-        according to the corresponding optimizer.
-
-        This method should use self.model.forward_train() to compute the forward-pass
-        tensors required for training.
-
-        Args:
-            train_batch: SampleBatch to train with.
-
-        Returns:
-            Dict of optimizer names map their loss tensors.
-        """
-        raise NotImplementedError
 
     @abc.abstractmethod
     def compute_grads_and_apply_if_needed(
@@ -68,8 +51,8 @@ class MARLTrainer(RLTrainer):
         fwd_out_dict = {}
         loss_out_dict = {}
         for module_id, s_batch in batch.items():
-            module = self.module[module_id]
-            trainer = self.module_trainers[module_id]
+            module = self._module[module_id]
+            trainer = self._module_trainers[module_id]
 
             # run forward train of each module on the corresponding sample batch
             fwd_out = module.forward_train(s_batch, **fwd_kwargs)
@@ -88,6 +71,31 @@ class MARLTrainer(RLTrainer):
         )
 
         return update_out
+
+    def compute_loss(
+        self, batch: MultiAgentBatch, fwd_out, loss_out, **kwargs
+    ) -> Dict["LossID", "TensorType"]:
+        """
+        To be overriden by specific algorithms. Each specific multiagent algorithm will also override the optimizer construction that conforms to these losses.
+
+        Computes the loss for each sub-module of the algorithm and returns the loss
+        tensor computed for each loss_id that needs to get back-propagated and updated
+        according to the corresponding optimizer.
+
+        This method should use self.model.forward_train() to compute the forward-pass
+        tensors required for training.
+
+        Args:
+            train_batch: SampleBatch to train with.
+
+        Returns:
+            Dict of optimizer names map their loss tensors.
+        """
+        loss_out_total = {}
+        for mid, loss_mid in loss_out.items():
+            for key, value in loss_mid.items():
+                loss_out_total[f"{mid}_{key}"] = value
+        return loss_out_total
 
     def _make_module(self) -> MARLModule:
         module = MARLModule(

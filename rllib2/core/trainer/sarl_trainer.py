@@ -11,9 +11,12 @@ from ray.rllib.policy.sample_batch import SampleBatch
 class SARLTrainer(RLTrainer):
     """Single Agent Trainer."""
 
-    def __init__(self) -> None:
+    def __init__(self, module: Optional[RLModule] = None) -> None:
         super().__init__()
-        self._model: RLModule
+        if module:
+            self._module: RLModule = module
+        else:
+            self._module = self._make_module()
 
     @abc.abstractmethod
     def compute_loss(self, batch: SampleBatch, fwd_out) -> Dict["LossID", "TensorType"]:
@@ -60,3 +63,8 @@ class SARLTrainer(RLTrainer):
         )
 
         return update_out
+    
+    def _make_module(self) -> RLModule:
+        module_class = self.config["module_class"]
+        module_config = self.config["module_config"]
+        return module_class(module_config)
