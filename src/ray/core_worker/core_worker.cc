@@ -2259,6 +2259,7 @@ Status CoreWorker::ExecuteTask(TaskSpecification &task_spec,
     name_of_concurrency_group_to_execute = task_spec.ConcurrencyGroupName();
   }
 
+  dynamic_return_ids_.clear();
   status = options_.task_execution_callback(
       task_spec.CallerAddress(),
       task_type,
@@ -2275,6 +2276,9 @@ Status CoreWorker::ExecuteTask(TaskSpecification &task_spec,
       is_retryable_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute);
+  for (const auto &dynamic_return_id : dynamic_return_ids_) {
+    task_spec.GetMutableMessage().add_dynamic_return_ids(dynamic_return_id.Binary());
+  }
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2351,14 +2355,7 @@ ObjectID CoreWorker::AllocateDynamicReturnId() {
   const auto return_id = ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
-
-  {
-    absl::MutexLock lock(&mutex_);
-    auto it = current_tasks_.find(task_spec->TaskId());
-    RAY_CHECK(it != current_tasks_.end());
-    it->second.GetMutableMessage().set_num_returns(task_spec->NumReturns() + 1);
-  }
-
+  dynamic_return_ids_.push_back(return_id);
   return return_id;
 }
 

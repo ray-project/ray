@@ -83,6 +83,7 @@ message ReturnObject {
   repeated ObjectReference nested_inlined_refs = 5;
   // Size of this object.
   int64 size = 6;
+  bool dynamic = 7;
 }
 
 message PushTaskRequest {

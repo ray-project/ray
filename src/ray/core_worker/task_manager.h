@@ -346,7 +346,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       TaskSpecification &spec,
       bool release_lineage,
       const rpc::Address &worker_addr,
-      const ReferenceCounter::ReferenceTableProto &borrowed_refs);
+      const ReferenceCounter::ReferenceTableProto &borrowed_refs,
+      const std::vector<ObjectID> &dynamic_return_ids);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);

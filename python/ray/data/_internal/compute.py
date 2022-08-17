@@ -127,10 +127,12 @@ class TaskPoolStrategy(ComputeStrategy):
 
         new_blocks, new_metadata = [], []
         if context.block_splitting_enabled:
-            for result in results:
-                for block, metadata in result:
-                    new_blocks.append(block)
-                    new_metadata.append(metadata)
+            for ref_generator in results:
+                refs = list(ref_generator)
+                metadata = ray.get(refs.pop(-1))
+                assert len(metadata) == len(refs)
+                new_blocks += refs
+                new_metadata += metadata
         else:
             for block, metadata in zip(data_refs, results):
                 new_blocks.append(block)
@@ -415,10 +417,10 @@ def _map_block_split(
     *fn_args,
     **fn_kwargs,
 ) -> BlockPartition:
-    output = []
     stats = BlockExecStats.builder()
     if fn is not None:
         fn_args = (fn,) + fn_args
+    new_metas = []
     for new_block in block_fn(block, *fn_args, **fn_kwargs):
         accessor = BlockAccessor.for_block(new_block)
         new_meta = BlockMetadata(
@@ -429,9 +431,10 @@ def _map_block_split(
             exec_stats=stats.build(),
         )
         owner = DatasetContext.get_current().block_owner
-        output.append((ray.put(new_block, _owner=owner), new_meta))
+        yield new_block
+        new_metas.append(new_meta)
         stats = BlockExecStats.builder()
-    return output
+    yield new_metas
 
 
 def _map_block_nosplit(

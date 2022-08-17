@@ -1301,6 +1301,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the checking and increasing of backpressure pending calls counter
   /// is not atomic, which may lead to under counting or over counting.
   absl::Mutex actor_task_mutex_;
+
+  std::vector<ObjectID> dynamic_return_ids_;
 };
 
 }  // namespace core

@@ -809,7 +809,6 @@ cdef execute_task(
                 if dynamic_return_ids:
                     dynamic_return_refs = []
                     for dynamic_return_id in dynamic_return_ids:
-
                         dynamic_return_refs.append(ObjectRef(dynamic_return_id,
                                 caller_address.SerializeAsString(),
                                 skip_adding_local_ref=True))

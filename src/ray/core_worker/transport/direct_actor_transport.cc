@@ -100,6 +100,33 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
     RAY_CHECK(num_returns >= 0);
 
+    int64_t num_dynamic_return_ids = task_spec.GetMessage().dynamic_return_ids_size();
+    for (int64_t i = num_dynamic_return_ids - 1; i >= 0; i--) {
+      RAY_CHECK(!return_objects.empty());
+      const auto result = std::move(return_objects.back());
+      return_objects.pop_back();
+
+      auto return_object = reply->add_return_objects();
+      return_object->set_object_id(task_spec.GetMessage().dynamic_return_ids(i));
+      return_object->set_dynamic(true);
+
+      return_object->set_size(result->GetSize());
+      if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
+        return_object->set_in_plasma(true);
+      } else {
+        if (result->GetData() != nullptr) {
+          return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
+        }
+        if (result->GetMetadata() != nullptr) {
+          return_object->set_metadata(result->GetMetadata()->Data(),
+                                      result->GetMetadata()->Size());
+        }
+      }
+      for (const auto &nested_ref : result->GetNestedRefs()) {
+        return_object->add_nested_inlined_refs()->CopyFrom(nested_ref);
+      }
+    }
+
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
       for (size_t i = return_objects.size(); i >= 1; i--) {

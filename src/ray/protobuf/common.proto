@@ -330,6 +330,7 @@ message TaskSpec {
   // A count of the number of times this task has been attempted so far. 0
   // means this is the first execution.
   uint64 attempt_number = 29;
+  repeated bytes dynamic_return_ids = 30;
 }
 
 message TaskInfoEntry {

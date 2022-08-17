@@ -264,7 +264,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
     RAY_LOG(DEBUG) << "Task return object " << i << " object ID " << object_id;
 
-    if (static_cast<size_t>(i) >= spec.NumReturns()) {
+    if (return_object.dynamic()) {
       dynamic_return_ids.push_back(object_id);
       auto generator_id = ObjectID::FromIndex(object_id.TaskId(), 1);
       reference_counter_->AddDynamicReturn(object_id, generator_id);
@@ -326,10 +326,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  if (static_cast<size_t>(reply.return_objects_size()) > spec.NumReturns()) {
-    spec.GetMutableMessage().set_num_returns(reply.return_objects_size());
-  }
-
   bool release_lineage = true;
   int64_t min_lineage_bytes_to_evict = 0;
   {
@@ -380,7 +376,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
+  RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs(), dynamic_return_ids);
   if (min_lineage_bytes_to_evict > 0) {
     // Evict at least half of the current lineage.
     auto bytes_evicted = reference_counter_->EvictLineage(min_lineage_bytes_to_evict);
@@ -472,7 +468,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   RemoveFinishedTaskReferences(spec,
                                /*release_lineage=*/true,
                                rpc::Address(),
-                               ReferenceCounter::ReferenceTableProto());
+                               ReferenceCounter::ReferenceTableProto(),
+                               {});
   if (mark_task_object_failed) {
     MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);
   }
@@ -531,7 +528,8 @@ void TaskManager::RemoveFinishedTaskReferences(
     TaskSpecification &spec,
     bool release_lineage,
     const rpc::Address &borrower_addr,
-    const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
+    const ReferenceCounter::ReferenceTableProto &borrowed_refs,
+    const std::vector<ObjectID> &dynamic_return_ids) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
@@ -555,6 +553,9 @@ void TaskManager::RemoveFinishedTaskReferences(
   }
   for (size_t i = 0; i < num_returns; i++) {
     return_ids.push_back(spec.ReturnId(i));
+  }
+  for (const auto &dynamic_return_id : dynamic_return_ids) {
+    return_ids.push_back(dynamic_return_id);
   }
 
   std::vector<ObjectID> deleted;
