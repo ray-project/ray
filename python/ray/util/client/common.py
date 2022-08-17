@@ -64,6 +64,8 @@ GRPC_KEEPALIVE_TIME_MS = 1000 * 30
 # Long timeout because we do not want gRPC ending a connection.
 GRPC_KEEPALIVE_TIMEOUT_MS = 1000 * 600
 
+CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
+
 GRPC_OPTIONS = [
     ("grpc.max_send_message_length", GRPC_MAX_MESSAGE_SIZE),
     ("grpc.max_receive_message_length", GRPC_MAX_MESSAGE_SIZE),
@@ -75,13 +77,12 @@ GRPC_OPTIONS = [
     ("grpc.http2.min_ping_interval_without_data_ms", GRPC_KEEPALIVE_TIME_MS - 50),
     # Allow many strikes
     ("grpc.http2.max_ping_strikes", 0),
+    (
+        "grpc.max_concurrent_streams",
+        int(os.getenv("RAY_CLIENT_SERVER_MAX_CONNECTIONS", CLIENT_SERVER_MAX_THREADS)),
+    ),
 ]
 
-if os.getenv("RAY_CLIENT_SERVER_MAX_CONNECTIONS") is not None:
-    client_server_max_connections = int(os.getenv("RAY_CLIENT_SERVER_MAX_CONNECTIONS"))
-    GRPC_OPTIONS.append(("grpc.max_concurrent_streams", client_server_max_connections))
-
-CLIENT_SERVER_MAX_THREADS = float(os.getenv("RAY_CLIENT_SERVER_MAX_THREADS", 100))
 
 # Large objects are chunked into 64 MiB messages
 OBJECT_TRANSFER_CHUNK_SIZE = 64 * 2 ** 20
