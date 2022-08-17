@@ -1,6 +1,6 @@
 .. _ray-dag-guide:
 
-Building Computation Graphs with Ray DAG API
+Lazy Computation Graphs with the Ray DAG API
 ============================================
 
 With ``ray.remote`` you have the flexibility of running an application where
