@@ -222,6 +222,7 @@ class DAGNode(DAGNodeBase):
             def __init__(self, fn):
                 self.cache = {}
                 self.fn = fn
+                self.fn.cache = self.cache
                 self.input_node_uuid = None
 
             def __call__(self, node):
@@ -234,9 +235,7 @@ class DAGNode(DAGNodeBase):
                         raise AssertionError(
                             "Each DAG should only have one unique InputNode."
                         )
-                result = self.cache[node._stable_uuid]
-                self.fn.cache = self.cache
-                return result
+                return self.cache[node._stable_uuid]
 
         if not type(fn).__name__ == "_CachingFn":
             fn = _CachingFn(fn)

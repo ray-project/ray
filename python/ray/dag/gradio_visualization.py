@@ -88,7 +88,7 @@ class GraphVisualizer:
                 return await ref
         raise TimeoutError(f"Fetching node output timed out after {timeout_s}s.")
 
-    def visualize_with_gradio(self, handle: RayServeHandle, _launch: bool = False):
+    def visualize_with_gradio(self, handle: RayServeHandle, _launch: bool = True):
         """
         Launches a Gradio UI that allows interactive request dispatch and displays
         the evaluated outputs of each node in a deployment graph in real time.
