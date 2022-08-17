@@ -65,7 +65,7 @@ $ kubectl get pods --selector=ray.io/cluster=raycluster-autoscaler --selector=ra
 
 Then, we can run the Ray program using ``kubectl exec``:
 ```bash
-$ kubectl exec raycluster-autoscaler-head-xxxxx -it -c ray-head -- python -c \"import ray; ray.init(); ray.autoscaler.sdk.request_resources(num_cpus=3)
+$ kubectl exec raycluster-autoscaler-head-xxxxx -it -c ray-head -- python -c "import ray; ray.init(); ray.autoscaler.sdk.request_resources(num_cpus=3)"
 ```
 
 The last command should have triggered Ray pod upscaling. To confirm the new worker pod is up, let's query the RayCluster's pods again:
