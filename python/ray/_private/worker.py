@@ -1508,7 +1508,7 @@ def init(
         info_str = "Started a local Ray instance."
     if dashboard_url:
         logger.info(
-            info_str + " View the dashboard at %s%s%s%s%s.",
+            info_str + " View the dashboard at %s%s%s %s%s",
             colorama.Style.BRIGHT,
             colorama.Fore.GREEN,
             dashboard_url,
