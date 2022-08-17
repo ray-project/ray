@@ -3533,7 +3533,7 @@
   team: core
   cluster:
     cluster_env: stress_tests/state_api_app_config.yaml
-    cluster_compute: stress_tests/stress_tests_compute.yaml
+    cluster_compute: stress_tests/stress_tests_compute_large.yaml
 
   run:
     timeout: 3600
