@@ -599,6 +599,7 @@ except Exception:
     exc_info = sys.exc_info()
 assert exc_info is not None
 
+
 class LoadMetricsTest(unittest.TestCase):
     def testHeartbeat(self):
         lm = LoadMetrics()
@@ -1393,7 +1394,9 @@ class AutoscalingTest(unittest.TestCase):
         config = copy.deepcopy(SMALL_CLUSTER)
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.error_creates = NodeLaunchException("didn't work", "never did", exc_info)
+        self.provider.error_creates = NodeLaunchException(
+            "didn't work", "never did", exc_info
+        )
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = MockAutoscaler(

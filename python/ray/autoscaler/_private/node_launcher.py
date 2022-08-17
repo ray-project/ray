@@ -72,7 +72,9 @@ class BaseNodeLauncher:
                 node_type, int(node_launch_start_time), node_launch_exception
             )
 
-            full_exception = "\n".join(traceback.format_exception(*node_launch_exception.src_exc_info))
+            full_exception = "\n".join(
+                traceback.format_exception(*node_launch_exception.src_exc_info)
+            )
             self.log(full_exception)
 
             error_msg = (

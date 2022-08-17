@@ -13,14 +13,14 @@ class NodeLaunchException(Exception):
         self,
         category: str,
         description: str,
-            src_exc_info: Tuple["type", "value", "traceback"], # The
-                                                                         # tuple
-                                                                         # outputted
-                                                                         # by
-                                                                         # sys.exc_info()
-                                                                         # during
-                                                                         # an
-                                                                         # exception.
+        src_exc_info: Tuple["type", "value", "traceback"],  # The
+        # tuple
+        # outputted
+        # by
+        # sys.exc_info()
+        # during
+        # an
+        # exception.
     ):
         super().__init__(f"Node Launch Exception ({category}): {description}")
         self.category = category

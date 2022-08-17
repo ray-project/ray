@@ -46,7 +46,9 @@ def test_basic(tracker: NodeProviderAvailabilityTracker):
 def test_expiration(tracker: NodeProviderAvailabilityTracker):
     global cur_time
 
-    exc = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.", exc_info)
+    exc = NodeLaunchException(
+        "DontFeelLikeIt", "This seems like a lot of work.", exc_info
+    )
     tracker.update_node_availability("my-node-a", 1, exc)
     assert len(tracker.summary().node_availabilities) == 1
 
@@ -58,7 +60,9 @@ def test_expiration(tracker: NodeProviderAvailabilityTracker):
 def test_expiration_after_update(tracker: NodeProviderAvailabilityTracker):
     global cur_time
 
-    exc = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.", exc_info)
+    exc = NodeLaunchException(
+        "DontFeelLikeIt", "This seems like a lot of work.", exc_info
+    )
     tracker.update_node_availability("my-node-a", 1, exc)
     assert len(tracker.summary().node_availabilities) == 1
 
@@ -78,7 +82,9 @@ def test_expiration_after_update(tracker: NodeProviderAvailabilityTracker):
 def test_reinsert_after_expiration(tracker: NodeProviderAvailabilityTracker):
     global cur_time
 
-    exc = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.", exc_info)
+    exc = NodeLaunchException(
+        "DontFeelLikeIt", "This seems like a lot of work.", exc_info
+    )
     tracker.update_node_availability("my-node-a", 1, exc)
     assert len(tracker.summary().node_availabilities) == 1
 
@@ -103,7 +109,9 @@ def test_expire_multiple(tracker: NodeProviderAvailabilityTracker):
     global cur_time
     cur_time = 20
 
-    exc = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.", exc_info)
+    exc = NodeLaunchException(
+        "DontFeelLikeIt", "This seems like a lot of work.", exc_info
+    )
     tracker.update_node_availability("my-node-a", 0, exc)
     tracker.update_node_availability("my-node-b", 10, exc)
     tracker.update_node_availability("my-node-c", 20, node_launch_exception=None)
@@ -131,7 +139,9 @@ def test_expire_multiple(tracker: NodeProviderAvailabilityTracker):
 
 
 def test_summary(tracker: NodeProviderAvailabilityTracker):
-    exc = NodeLaunchException("DontFeelLikeIt", "This seems like a lot of work.", exc_info)
+    exc = NodeLaunchException(
+        "DontFeelLikeIt", "This seems like a lot of work.", exc_info
+    )
     tracker.update_node_availability("my-node-a", 0, exc)
 
     tracker.update_node_availability("my-node-b", 1, None)
