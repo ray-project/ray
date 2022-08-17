@@ -3988,6 +3988,17 @@ def test_groupby_map_groups_returning_empty_result(ray_start_regular_shared, num
     assert mapped.take_all() == []
 
 
+def test_groupby_map_groups_perf(ray_start_regular_shared):
+    data_list = [x % 100 for x in range(5000000)]
+    ds = ray.data.from_pandas(pd.DataFrame({"A": data_list}))
+    start = time.perf_counter()
+    ds.groupby("A").map_groups(lambda df: df)
+    end = time.perf_counter()
+    # On a t3.2xlarge instance, it ran in about 5 seconds, so expecting it has to
+    # finish within about 10x of that time, unless something went wrong.
+    assert end - start < 60
+
+
 @pytest.mark.parametrize("num_parts", [1, 2, 3, 30])
 def test_groupby_map_groups_for_list(ray_start_regular_shared, num_parts):
     seed = int(time.time())
