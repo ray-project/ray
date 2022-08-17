@@ -1,6 +1,8 @@
+(serve-dev-workflow)=
+
 # Sample Development Workflow
 
-This page describes the recommended workflow for developing Ray Serve applications. If you're ready to go to production, jump to the [Production Guide](production.md) section.
+This page describes the recommended workflow for developing Ray Serve applications. If you're ready to go to production, jump to the [Production Guide](serve-in-production) section.
 
 ## Local Development using `serve.run`
 
@@ -106,4 +108,4 @@ You can also specify the `runtime_env` via a YAML file; see [serve run](serve_cl
 
 ## What's Next?
 
-Once you are ready to deploy to production, see the [Production Guide](production.md).
+Once you are ready to deploy to production, see the [Production Guide](serve-in-production).

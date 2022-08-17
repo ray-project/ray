@@ -22,7 +22,7 @@ class MyFirstDeployment:
   def __init__(self, msg):
       self.msg = msg
 
-  def __call__(self, request):
+  def __call__(self):
       return self.msg
 
 my_first_deployment = MyFirstDeployment.bind("Hello world!")
@@ -47,9 +47,9 @@ class Driver:
         self._model_b_handle = model_b_handle
 
     async def __call__(self, request):
-        refa = await self._model_a_handle.remote(request)
-        refb = await self._model_b_handle.remote(request)
-        return (await refa) + (await refb)
+        ref_a = await self._model_a_handle.remote(request)
+        ref_b = await self._model_b_handle.remote(request)
+        return (await ref_a) + (await ref_b)
 
 
 model_a = ModelA.bind()

@@ -15,6 +15,6 @@ you will learn:
 - [Serving ML Models](ml-models)
 - [Use Request Batching](batching-guide)
 - [Using Deployment Graphs](serve-model-composition-deployment-graph)
-- [Deploying Ray Serve](deploying-serve)
-- [Monitoring Ray Serve](monitoring)
+- [Production Guide](serve-in-production)
+- [Monitoring Ray Serve](serve-monitoring)
 - [Performance Tuning](performance)

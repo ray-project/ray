@@ -15,7 +15,3 @@ rllib
 gradio-integration
 java
 ```
-
-Other Topics:
-
-- {doc}`../deploying-serve`
