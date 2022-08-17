@@ -2871,6 +2871,13 @@ void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
   }
 }
 
+static std::string timePointAsString(std::chrono::high_resolution_clock::time_point tp) {
+    std::time_t t = std::chrono::high_resolution_clock::to_time_t(tp);
+    std::string ts = std::ctime(&t);
+    ts.resize(ts.size()-1);
+    return ts;
+}
+
 // Picks the worker with the latest submitted task and kills the process
 // if the memory usage is above the threshold. Allows one in-flight
 // process kill at a time as killing a process could sometimes take
@@ -2887,6 +2894,10 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             std::chrono::high_resolution_clock::now() - high_memory_eviction_start_time_;
         RAY_LOG(INFO) << "Worker evicted approximately after " << duration.count()
                       << "s to reclaim memory.";
+        // auto duration = std::chrono::high_resolution_clock::now() - high_memory_eviction_start_time_;
+        // auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+        // RAY_LOG(INFO) << "Worker evicted approximately after " << duration_ms
+        //               << "ms to reclaim memory.";
       }
     }
     if (is_usage_above_threshold) {
@@ -2897,19 +2908,33 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
             << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId()
             << "task: " << high_memory_eviction_target_->GetAssignedTaskId();
       } else {
-        auto newest_task_start_time = std::chrono::high_resolution_clock::time_point();
-        std::shared_ptr<WorkerInterface> latest_worker = nullptr;
-        for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-          if (worker->GetAssignedTaskTime() > newest_task_start_time) {
-            newest_task_start_time = worker->GetAssignedTaskTime();
-            latest_worker = worker;
+        auto workers = worker_pool_.GetAllRegisteredWorkers();
+        if (!workers.empty()) {
+          std::sort(workers.begin(), workers.end(), [] (std::shared_ptr<WorkerInterface> const& left, std::shared_ptr<WorkerInterface> const& right) -> bool {
+            return left->GetAssignedTaskTime() > right->GetAssignedTaskTime();
+          });
+          std::shared_ptr<WorkerInterface> latest_worker = workers.front();
+          std::ostringstream top_n_latest_workers_info;
+          int64_t top_n = 0;
+
+          const static int64_t max_to_print = 10;
+          for (auto & worker : workers) {
+            auto pid = worker->GetProcess().GetId();
+            auto used_memory = this->memory_monitor_->GetProcessMemoryBytes(pid);
+            top_n_latest_workers_info << "Worker" << top_n
+                << " task assigned time " << timePointAsString(worker->GetAssignedTaskTime())
+                << " memory used " << used_memory
+                << " task spec " << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
+            top_n += 1;
+            if (top_n >= max_to_print) {
+              break;
+            }
           }
-        }
-        if (latest_worker != nullptr) {
-          RAY_LOG(ERROR) << "Killing worker with the newest started task "
-                        << "to free up memory. "
-                        << "Worker pid: " << latest_worker->GetProcess().GetId()
-                        << " task: " << latest_worker->GetAssignedTaskId();
+          RAY_LOG_EVERY_MS(ERROR, 3000) << "Killing worker with the latest task assigned time "
+                        << "to free up memory. Task to be killed:" 
+                        << latest_worker->GetAssignedTaskId()
+                        << ". Top 10 worker details:\n"
+                        << top_n_latest_workers_info.str();
           high_memory_eviction_target_ = latest_worker;
           DestroyWorker(
               latest_worker,

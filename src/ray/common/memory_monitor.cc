@@ -185,6 +185,45 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
   return {used_bytes, mem_total_bytes};
 }
 
+int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) {
+  std::stringstream ss;
+  ss << "/proc/" << std::to_string(process_id) << "/smaps_rollup" ;
+  return GetLinuxProcessMemoryBytesFromSmap(ss.str());
+}
+
+/// TODO:(clarng) align logic with psutil / Python-side memory calculations
+int64_t MemoryMonitor::GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path) {
+  std::ifstream smap_ifs(smap_path, std::ios::in | std::ios::binary);
+  if (!smap_ifs.is_open()) {
+    RAY_LOG_EVERY_MS(ERROR, kLogIntervalMs) << " file not found: " << smap_path;
+    return kNull;
+  }
+
+  int64_t uss = 0;
+
+  std::string line;
+  std::string title;
+  uint64_t value;
+  std::string unit;
+
+  /// Read first line, which is the header
+  std::getline(smap_ifs, line);
+  while (std::getline(smap_ifs, line)) {
+    std::istringstream iss(line);
+    iss >> title >> value >> unit;
+
+    /// Linux reports them as kiB
+    RAY_CHECK(unit == "kB");
+    value = value * 1024;
+    if (title == "Private_Clean:" || title == "Private_Dirty:" || title == "Private_Hugetlb:") {
+      uss += value;
+    }
+  }
+
+  RAY_CHECK_GT(uss, 0);
+  return uss;
+}
+
 int64_t MemoryMonitor::NullableMin(int64_t left, int64_t right) {
   RAY_CHECK_GE(left, kNull);
   RAY_CHECK_GE(right, kNull);

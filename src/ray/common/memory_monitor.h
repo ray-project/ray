@@ -44,6 +44,11 @@ class MemoryMonitor {
 
   ~MemoryMonitor();
 
+ public:
+  /// Returns the used memory in bytes for the process
+  /// \param process_id the process id
+  int64_t GetProcessMemoryBytes(int64_t process_id);
+
  private:
   static constexpr char kCgroupsV1MemoryMaxPath[] =
       "/sys/fs/cgroup/memory/memory.limit_in_bytes";
@@ -66,6 +71,10 @@ class MemoryMonitor {
 
   /// Returns the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
+
+  /// Returns the used memory in bytes from the given smap file.
+  /// \param smap_path file path to the smap file
+  static int64_t GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path);
 
   /// Returns the smaller of the two integers, kNull if both are kNull,
   /// or one of the values if the other is kNull.
