@@ -16,6 +16,11 @@ import ray
 import ray._private.ray_constants
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray._private.test_utils import same_elements
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilityRecord,
+    NodeAvailabilitySummary,
+    UnavailableNodeInformation,
+)
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.constants import AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
@@ -2627,7 +2632,95 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- 1.2.3.6: p3.2xlarge
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+
+Resources
+--------------------------------------------------------
+Usage:
+ 0/2 AcceleratorType:V100
+ 530.0/544.0 CPU
+ 2/2 GPU
+ 2.00/8.000 GiB memory
+ 3.14/16.000 GiB object_store_memory
+
+Demands:
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
+""".strip()
+    actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3),
+    )
+    print(actual)
+    assert expected == actual
+
+
+def test_info_string_with_launch_failures():
+    lm_summary = LoadMetricsSummary(
+        usage={
+            "CPU": (530.0, 544.0),
+            "GPU": (2, 2),
+            "AcceleratorType:V100": (0, 2),
+            "memory": (2 * 2 ** 30, 2 ** 33),
+            "object_store_memory": (3.14 * 2 ** 30, 2 ** 34),
+        },
+        resource_demand=[({"CPU": 1}, 150)],
+        pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
+        request_demand=[({"CPU": 16}, 100)],
+        node_types=[],
+    )
+    base_timestamp = datetime(
+        year=2012, month=12, day=21, hour=13, minute=3, second=1
+    ).timestamp()
+    autoscaler_summary = AutoscalerSummary(
+        active_nodes={"p3.2xlarge": 2, "m4.4xlarge": 20},
+        pending_nodes=[
+            ("1.2.3.4", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+            ("1.2.3.5", "m4.4xlarge", STATUS_WAITING_FOR_SSH),
+        ],
+        pending_launches={"m4.4xlarge": 2},
+        failed_nodes=[("1.2.3.6", "p3.2xlarge")],
+        node_availability_summary=NodeAvailabilitySummary(
+            node_availabilities={
+                "A100": NodeAvailabilityRecord(
+                    node_type="A100",
+                    is_available=False,
+                    last_checked_timestamp=base_timestamp + 1,
+                    unavailable_node_information=UnavailableNodeInformation(
+                        category="InstanceLimitExceeded",
+                        description=":)",
+                    ),
+                ),
+                "Inferentia-Spot": NodeAvailabilityRecord(
+                    node_type="Inferentia-Spot",
+                    is_available=False,
+                    last_checked_timestamp=base_timestamp,
+                    unavailable_node_information=UnavailableNodeInformation(
+                        category="InsufficientInstanceCapacity",
+                        description="mo nodes mo problems",
+                    ),
+                ),
+            }
+        ),
+    )
+
+    expected = """
+======== Autoscaler status: 2020-12-28 01:02:03 ========
+Node status
+--------------------------------------------------------
+Healthy:
+ 2 p3.2xlarge
+ 20 m4.4xlarge
+Pending:
+ m4.4xlarge, 2 launching
+ 1.2.3.4: m4.4xlarge, waiting-for-ssh
+ 1.2.3.5: m4.4xlarge, waiting-for-ssh
+Recent failures:
+ A100: InstanceLimitExceeded (latest_attempt: 13:03:02)
+ Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -2693,25 +2786,25 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- 1.2.3.99: p3.2xlarge
- 1.2.3.98: p3.2xlarge
- 1.2.3.97: p3.2xlarge
- 1.2.3.96: p3.2xlarge
- 1.2.3.95: p3.2xlarge
- 1.2.3.94: p3.2xlarge
- 1.2.3.93: p3.2xlarge
- 1.2.3.92: p3.2xlarge
- 1.2.3.91: p3.2xlarge
- 1.2.3.90: p3.2xlarge
- 1.2.3.89: p3.2xlarge
- 1.2.3.88: p3.2xlarge
- 1.2.3.87: p3.2xlarge
- 1.2.3.86: p3.2xlarge
- 1.2.3.85: p3.2xlarge
- 1.2.3.84: p3.2xlarge
- 1.2.3.83: p3.2xlarge
- 1.2.3.82: p3.2xlarge
- 1.2.3.81: p3.2xlarge
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.99)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.98)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.97)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.96)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.95)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.94)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.93)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.92)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.91)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.90)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.89)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.88)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.87)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.86)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.85)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.84)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.83)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.82)
+ p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.81)
 
 Resources
 --------------------------------------------------------

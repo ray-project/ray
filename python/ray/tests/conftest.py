@@ -21,6 +21,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
+from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
