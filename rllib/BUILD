@@ -914,6 +914,13 @@ py_test(
     srcs = ["algorithms/dt/tests/test_segmentation_buffer.py"]
 )
 
+py_test(
+    name = "test_dt_model",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    srcs = ["algorithms/dt/tests/test_dt_model.py"]
+)
+
 # ES
 py_test(
     name = "test_es",
