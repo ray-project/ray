@@ -36,7 +36,7 @@ DAG nodes. Instead, the DAG needs to be *executed* in order to compute a result.
 
 
 Workflow Execution
-~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
 To execute a DAG with workflows, use `workflow.run`:
 
