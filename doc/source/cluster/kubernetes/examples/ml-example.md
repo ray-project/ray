@@ -98,7 +98,7 @@ We'll use the {ref}`Ray Job Python SDK <ray-job-sdk>` to submit the XGBoost work
 ```
 
 To submit the workload, run the above Python script.
-The script is available in the Ray repository.
+The script is available [in the Ray repository][XGBSubmit].
 
 ```shell
 # Download the above script.
@@ -182,5 +182,5 @@ kubectl delete raycluster raycluster-xgboost-benchmark
 If you're on a public cloud, don't forget to clean up the underlying
 node group and/or Kubernetes cluster.
 
-<!-- TODO: Fix this -->
 [ConfigLink]: https://github.com/ray-project/ray/blob/releases/2.0.0/doc/source/cluster/kubernetes/configs/xgboost-benchmark.yaml
+[XGBSubmit]: https://github.com/ray-project/ray/blob/releases/2.0.0/doc/source/cluster/doc_code/xgboost_submit.py
