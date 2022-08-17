@@ -1,3 +1,5 @@
+import asyncio
+from collections import OrderedDict
 import dataclasses
 import json
 import logging
@@ -10,8 +12,10 @@ from aiohttp.web import Request, Response
 
 import ray
 from ray._private import ray_constants
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.datacenter import DataSource
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
@@ -38,6 +42,7 @@ from ray.dashboard.modules.version import (
     VersionResponse,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
+from ray.dashboard.modules.job.sdk import JobAgentSubmission
 from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
@@ -46,12 +51,15 @@ logger.setLevel(logging.INFO)
 routes = optional_utils.ClassMethodRouteTable
 
 
-class JobHead(dashboard_utils.DashboardHeadModule):
+class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._dashboard_head = dashboard_head
         self._job_manager = None
         self._gcs_job_info_stub = None
+
+        self._agents = OrderedDict()
+        self._agent_job_clients_pool = dict()
 
     async def _parse_and_validate_request(
         self, req: Request, request_type: dataclass
@@ -67,6 +75,63 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
+
+    async def _choice_agent_to_submit_job(self) -> JobAgentSubmission:
+        # the number of agents which has an available HTTP port.
+        while (
+            sum(map(lambda agent_ports: agent_ports[0] > 0, DataSource.agents.values()))
+            == 0
+        ):
+            await asyncio.sleep(dashboard_consts.WAIT_RAYLET_START_INTERVAL_SECONDS)
+        # delete dead agents.
+        for dead_node in set(self._agents) - set(DataSource.agents):
+            self._agents.pop(dead_node)
+        for dead_node in set(self._agent_job_clients_pool) - set(DataSource.agents):
+            self._agent_job_clients_pool.pop(dead_node)
+        for node_id, (http_port, _) in DataSource.agents.items():
+            if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
+                break
+            if node_id in self._agents or http_port <= 0:
+                continue
+            node_ip = DataSource.node_id_to_ip[node_id]
+            agent_http_address = f"http://{node_ip}:{http_port}"
+
+            if node_id not in self._agent_job_clients_pool:
+                self._agent_job_clients_pool[node_id] = JobAgentSubmission(
+                    agent_http_address
+                )
+
+            self._agents[node_id] = self._agent_job_clients_pool[node_id]
+            # move agent to the front of the queue.
+            self._agents.move_to_end(node_id, last=False)
+
+        # FIFO
+        node_id, job_agent_client = self._agents.popitem(last=False)
+        self._agents[node_id] = job_agent_client
+
+        return job_agent_client
+
+    async def _get_agent_client_by_ip_address(
+        self, ip_address
+    ) -> Optional[JobAgentSubmission]:
+        # There can be multiple raylet processes on a node, return any one of them
+        for dead_node in set(self._agent_job_clients_pool) - set(DataSource.agents):
+            self._agent_job_clients_pool.pop(dead_node)
+
+        for node_info in DataSource.nodes.values():
+            node_id = node_info["nodeId"]
+            ip = node_info["nodeManagerAddress"]
+            http_port = DataSource.agents[node_id][0]
+            if http_port <= 0 or ip != ip_address:
+                continue
+            agent_http_address = f"http://{ip_address}:{http_port}"
+            if node_id not in self._agent_job_clients_pool:
+                self._agent_job_clients_pool[node_id] = JobAgentSubmission(
+                    agent_http_address
+                )
+            return self._agent_job_clients_pool[node_id]
+
+        return None
 
     async def find_job_by_ids(self, job_or_submission_id: str) -> Optional[JobDetails]:
         """
@@ -106,6 +171,25 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return None
 
+    async def _get_driver_address_by_job(self, job: JobDetails) -> str:
+        if job.driver_info is None:
+            # There are the following possibilities:
+            #    1. Supervisor actor is not ready
+            #    2. The driver is not launched yet or the driver
+            #       process is not finished init of CoreWorker.
+            # We need to get the address of the supervisor-actor/driver
+            # from any agent.
+            tmp_job_agent_client = await self._choice_agent_to_submit_job()
+            driver_ip_address = (
+                tmp_job_agent_client
+                .get_driver_location_internal(job.submission_id)
+                .ip_address
+            )
+        else:
+            driver_ip_address = job.driver_info.node_ip_address
+        return driver_ip_address
+
+
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
         # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the
@@ -122,7 +206,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def get_package(self, req: Request) -> Response:
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -147,7 +230,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response()
 
     @routes.put("/api/packages/{protocol}/{package_name}")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def upload_package(self, req: Request):
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -165,7 +247,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response(status=aiohttp.web.HTTPOk.status_code)
 
     @routes.post("/api/jobs/")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def submit_job(self, req: Request) -> Response:
         result = await self._parse_and_validate_request(req, JobSubmitRequest)
         # Request parsing failed, returned with Response object.
@@ -177,14 +258,16 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         request_submission_id = submit_request.submission_id or submit_request.job_id
 
         try:
-            submission_id = await self._job_manager.submit_job(
+            job_agent_client = await asyncio.wait_for(
+                self._choice_agent_to_submit_job(),
+                dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
+            )
+            resp = job_agent_client.submit_job_internal(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
             )
-
-            resp = JobSubmitResponse(job_id=submission_id, submission_id=submission_id)
         except (TypeError, ValueError):
             return Response(
                 text=traceback.format_exc(),
@@ -203,7 +286,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.post("/api/jobs/{job_or_submission_id}/stop")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await self.find_job_by_ids(job_or_submission_id)
@@ -219,8 +301,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         try:
-            stopped = self._job_manager.stop_job(job.submission_id)
-            resp = JobStopResponse(stopped=stopped)
+            job_agent_client = await asyncio.wait_for(
+                self._choice_agent_to_submit_job(),
+                dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
+            )
+            resp = job_agent_client.stop_job_internal(job.submission_id)
         except Exception:
             return Response(
                 text=traceback.format_exc(),
@@ -232,7 +317,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/{job_or_submission_id}")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await self.find_job_by_ids(job_or_submission_id)
@@ -248,32 +332,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/jobs/")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def list_jobs(self, req: Request) -> Response:
-        driver_jobs, submission_job_drivers = await self._get_driver_jobs()
-
-        submission_jobs = await self._job_manager.list_jobs()
-        submission_jobs = [
-            JobDetails(
-                **dataclasses.asdict(job),
-                submission_id=submission_id,
-                job_id=submission_job_drivers.get(submission_id).id
-                if submission_id in submission_job_drivers
-                else None,
-                driver_info=submission_job_drivers.get(submission_id),
-                type=JobType.SUBMISSION,
-            )
-            for submission_id, job in submission_jobs.items()
-        ]
-        return Response(
-            text=json.dumps(
-                [
-                    *[submission_job.dict() for submission_job in submission_jobs],
-                    *[job_info.dict() for job_info in driver_jobs.values()],
-                ]
-            ),
-            content_type="application/json",
-        )
+        raise NotImplementedError
 
     async def _get_driver_jobs(
         self,
@@ -332,7 +392,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return jobs, submission_job_drivers
 
     @routes.get("/api/jobs/{job_or_submission_id}/logs")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await self.find_job_by_ids(job_or_submission_id)
@@ -348,33 +407,31 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
-        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job.submission_id))
+        try:
+            driver_ip_address = await self._get_driver_address_by_job(job)
+            job_agent_client = await self._get_agent_client_by_ip_address(
+                driver_ip_address
+            )
+            if job_agent_client is None:
+                return Response(
+                    text="The node where the driver is located does not have "
+                    "an agent process with an available http port",
+                    status=aiohttp.web.HTTPInternalServerError.status_code,
+                )
+            resp = job_agent_client.get_job_logs_internal(job.submission_id)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
+
         return Response(
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
     @routes.get("/api/jobs/{job_or_submission_id}/logs/tail")
-    @optional_utils.init_ray_and_catch_exceptions()
     async def tail_job_logs(self, req: Request) -> Response:
-        job_or_submission_id = req.match_info["job_or_submission_id"]
-        job = await self.find_job_by_ids(job_or_submission_id)
-        if not job:
-            return Response(
-                text=f"Job {job_or_submission_id} does not exist",
-                status=aiohttp.web.HTTPNotFound.status_code,
-            )
-
-        if job.type is not JobType.SUBMISSION:
-            return Response(
-                text="Can only get logs of submission type jobs",
-                status=aiohttp.web.HTTPBadRequest.status_code,
-            )
-
-        ws = aiohttp.web.WebSocketResponse()
-        await ws.prepare(req)
-
-        async for lines in self._job_manager.tail_job_logs(job.submission_id):
-            await ws.send_str(lines)
+        raise NotImplementedError
 
     async def run(self, server):
         if not self._job_manager:
