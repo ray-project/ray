@@ -1471,7 +1471,7 @@ def init(
 
     # Log a message to find the Ray address that we connected to and the
     # dashboard URL.
-    dashboard_url = _global_node.webui_url_with_protocol
+    dashboard_url = _global_node.address_info["webui_url"]
     # We logged the address before attempting the connection, so we don't need
     # to log it again.
     info_str = "Connected to Ray cluster."
@@ -1479,7 +1479,7 @@ def init(
         info_str = "Started a local Ray instance."
     if dashboard_url:
         logger.info(
-            info_str + " View the dashboard at %s%s%s%s%s.",
+            info_str + " View the dashboard at %s%shttp://%s%s%s.",
             colorama.Style.BRIGHT,
             colorama.Fore.GREEN,
             dashboard_url,
