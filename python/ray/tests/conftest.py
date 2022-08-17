@@ -21,17 +21,17 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 import ray.util.client.server.server as ray_client_server
+from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
 )
-from ray._private.test_utils import (  # noqa: F401
+from ray._private.test_utils import (
     get_and_run_node_killer,
     init_error_pubsub,
     init_log_pubsub,
-    set_override_dashboard_url,
     setup_tls,
     teardown_tls,
     enable_external_redis,
