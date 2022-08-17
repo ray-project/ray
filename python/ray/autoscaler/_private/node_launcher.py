@@ -72,12 +72,12 @@ class BaseNodeLauncher:
                 node_type, int(node_launch_start_time), node_launch_exception
             )
 
-            full_exception = traceback.format_exc(*node_launch_exception.src_exc_info)
+            full_exception = "\n".join(traceback.format_exception(*node_launch_exception.src_exc_info))
             self.log(full_exception)
 
             error_msg = (
-                f"Failed to launch {node_type}: "
-                f"({node_launch_exception.category}):"
+                f"Failed to launch {node_type}. "
+                f"({node_launch_exception.category}): "
                 f"{node_launch_exception.description}"
             )
         except Exception:

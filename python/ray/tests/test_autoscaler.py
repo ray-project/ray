@@ -1,4 +1,5 @@
 import copy
+import sys
 import json
 import os
 import re
@@ -44,6 +45,7 @@ from ray.autoscaler._private.providers import (
 )
 from ray.autoscaler._private.readonly.node_provider import ReadOnlyNodeProvider
 from ray.autoscaler._private.util import prepare_config, validate_config
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.sdk import get_docker_host_mount_location
 from ray.autoscaler.tags import (
@@ -319,7 +321,7 @@ class MockProvider(NodeProvider):
         self.mock_nodes = {}
         self.next_id = 0
         self.throw = False
-        self.error_creates = False
+        self.error_creates = None
         self.fail_creates = False
         self.ready_to_create = threading.Event()
         self.ready_to_create.set()
@@ -390,8 +392,8 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].external_ip
 
     def create_node(self, node_config, tags, count, _skip_wait=False):
-        if self.error_creates:
-            raise Exception
+        if self.error_creates is not None:
+            raise self.error_creates
         if not _skip_wait:
             self.ready_to_create.wait()
         if self.fail_creates:
@@ -590,6 +592,12 @@ MULTI_WORKER_CLUSTER = dict(
     SMALL_CLUSTER, **{"available_node_types": TYPES_A, "head_node_type": "empty_node"}
 )
 
+exc_info = None
+try:
+    raise Exception("Test exception.")
+except Exception:
+    exc_info = sys.exc_info()
+assert exc_info is not None
 
 class LoadMetricsTest(unittest.TestCase):
     def testHeartbeat(self):
@@ -1357,7 +1365,7 @@ class AutoscalingTest(unittest.TestCase):
         config = copy.deepcopy(SMALL_CLUSTER)
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.error_creates = True
+        self.provider.error_creates = Exception(":(")
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = MockAutoscaler(
@@ -1376,6 +1384,35 @@ class AutoscalingTest(unittest.TestCase):
         msg = "Failed to launch 2 node(s) of type ray-legacy-worker-node-type."
 
         def expected_message_logged():
+            return msg in autoscaler.event_summarizer.summary()
+
+        self.waitFor(expected_message_logged)
+
+    def testSummarizerFailedCreateStructuredError(self):
+        """Checks that event summarizer reports failed node creation."""
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        self.provider.error_creates = NodeLaunchException("didn't work", "never did", exc_info)
+        runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = MockAutoscaler(
+            config_path,
+            LoadMetrics(),
+            MockNodeInfoStub(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics,
+        )
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+
+        # Expect the next two messages in the logs.
+        msg = "Failed to launch ray-legacy-worker-node-type. (didn't work): never did"
+
+        def expected_message_logged():
+            print(autoscaler.event_summarizer.summary())
             return msg in autoscaler.event_summarizer.summary()
 
         self.waitFor(expected_message_logged)
@@ -3283,7 +3320,7 @@ MemAvailable:   33000000 kB
     def testProviderException(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
-        self.provider.error_creates = True
+        self.provider.error_creates = Exception(":(")
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = MockAutoscaler(
@@ -3378,7 +3415,6 @@ def test_prom_null_metric_inc_fix():
 
 
 if __name__ == "__main__":
-    import sys
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
