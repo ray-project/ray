@@ -262,3 +262,8 @@ class JobStopResponse:
 @dataclass
 class JobLogsResponse:
     logs: str
+
+
+@dataclass
+class JobDriverLocationResponse:
+    ip_address: Optional[str]

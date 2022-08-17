@@ -19,6 +19,7 @@ from ray.dashboard.modules.job.common import (
     JobSubmitResponse,
     JobStopResponse,
     JobLogsResponse,
+    JobDriverLocationResponse,
 )
 
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
@@ -525,3 +526,44 @@ class JobAgentSubmission(SubmissionClient):
             job server fails.
         """
         return self.stop_job_internal(job_id).stopped
+
+    def get_job_logs_internal(self, job_id: str) -> JobLogsResponse:
+        r = self._do_request("GET", f"/api/job_agent/jobs/{job_id}/logs")
+
+        if r.status_code == 200:
+            return JobLogsResponse(**r.json())
+        else:
+            self._raise_error(r)
+
+    @PublicAPI(stability="beta")
+    def get_job_logs(self, job_id: str) -> str:
+        """Get all logs produced by a job.
+
+        Example:
+            >>> from ray.job_submission import JobSubmissionClient
+            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> sub_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
+            >>> client.get_job_logs(sub_id) # doctest: +SKIP
+            'hello\\n'
+
+        Args:
+            job_id: The job ID or submission ID of the job whose logs are being
+            requested.
+
+        Returns:
+            A string containing the full logs of the job.
+
+        Raises:
+            RuntimeError: If the job does not exist or if the request to the
+            job server fails.
+        """
+
+        return self.get_job_logs_internal(job_id).logs
+
+    def get_driver_location_internal(self, job_id: str) -> JobDriverLocationResponse:
+        r = self._do_request("GET", f"/api/job_agent/jobs/{job_id}/driver_location")
+
+        if r.status_code == 200:
+            return JobDriverLocationResponse(**r.json())
+        else:
+            self._raise_error(r)

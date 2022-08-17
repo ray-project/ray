@@ -6,7 +6,8 @@ import logging
 import traceback
 from typing import Any, Tuple, Dict, Optional
 
-from ray._private import ray_constants
+import ray
+from ray._private import ray_constants, gcs_utils
 from ray.core.generated import gcs_service_pb2
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -14,7 +15,9 @@ from ray.dashboard.modules.job.common import (
     JobStatus,
     JobSubmitRequest,
     JobSubmitResponse,
+    JobStopResponse,
     JobLogsResponse,
+    JobDriverLocationResponse,
     validate_request_type,
     JOB_ID_METADATA_KEY,
 )
@@ -50,100 +53,6 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
-
-    async def _get_driver_jobs(
-        self,
-    ) -> Tuple[Dict[str, JobDetails], Dict[str, DriverInfo]]:
-        """Returns a tuple of dictionaries related to drivers.
-
-        The first dictionary contains all driver jobs and is keyed by the job's id.
-        The second dictionary contains drivers that belong to submission jobs.
-        It's keyed by the submission job's submission id.
-        Only the last driver of a submission job is returned.
-        """
-        request = gcs_service_pb2.GetAllJobInfoRequest()
-        reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
-
-        jobs = {}
-        submission_job_drivers = {}
-        for job_table_entry in reply.job_info_list:
-            if job_table_entry.config.ray_namespace.startswith(
-                ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
-            ):
-                # Skip jobs in any _ray_internal_ namespace
-                continue
-            job_id = job_table_entry.job_id.hex()
-            metadata = dict(job_table_entry.config.metadata)
-            job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
-            if not job_submission_id:
-                driver = DriverInfo(
-                    id=job_id,
-                    node_ip_address=job_table_entry.driver_ip_address,
-                    pid=job_table_entry.driver_pid,
-                )
-                job = JobDetails(
-                    job_id=job_id,
-                    type=JobType.DRIVER,
-                    status=JobStatus.SUCCEEDED
-                    if job_table_entry.is_dead
-                    else JobStatus.RUNNING,
-                    entrypoint="",
-                    start_time=job_table_entry.start_time,
-                    end_time=job_table_entry.end_time,
-                    metadata=metadata,
-                    runtime_env=RuntimeEnv.deserialize(
-                        job_table_entry.config.runtime_env_info.serialized_runtime_env
-                    ).to_dict(),
-                    driver_info=driver,
-                )
-                jobs[job_id] = job
-            else:
-                driver = DriverInfo(
-                    id=job_id,
-                    node_ip_address=job_table_entry.driver_ip_address,
-                    pid=job_table_entry.driver_pid,
-                )
-                submission_job_drivers[job_submission_id] = driver
-
-        return jobs, submission_job_drivers
-
-    async def find_job_by_ids(self, job_or_submission_id: str) -> Optional[JobDetails]:
-        """
-        Attempts to find the job with a given submission_id or job id.
-        """
-        # First try to find by job_id
-        driver_jobs, submission_job_drivers = await self._get_driver_jobs()
-        job = driver_jobs.get(job_or_submission_id)
-        if job:
-            return job
-        # Try to find a driver with the given id
-        submission_id = next(
-            (
-                id
-                for id, driver in submission_job_drivers.items()
-                if driver.id == job_or_submission_id
-            ),
-            None,
-        )
-
-        if not submission_id:
-            # If we didn't find a driver with the given id,
-            # then lets try to search for a submission with given id
-            submission_id = job_or_submission_id
-
-        job_info = await self._job_manager.get_job_info(submission_id)
-        if job_info:
-            driver = submission_job_drivers.get(submission_id)
-            job = JobDetails(
-                **dataclasses.asdict(job_info),
-                submission_id=submission_id,
-                job_id=driver.id if driver else None,
-                driver_info=driver,
-                type=JobType.SUBMISSION,
-            )
-            return job
-
-        return None
 
     @routes.post("/api/job_agent/jobs/")
     @optional_utils.init_ray_and_catch_exceptions()
@@ -185,20 +94,49 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
-        job = await self.find_job_by_ids(job_or_submission_id)
-        if not job:
+
+        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job_or_submission_id))
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
+
+    @routes.post("/api/job_agent/jobs/{job_or_submission_id}/stop")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def stop_job(self, req: Request) -> Response:
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+
+        try:
+            stopped = self._job_manager.stop_job(job_or_submission_id)
+            resp = JobStopResponse(stopped=stopped)
+        except Exception:
             return Response(
-                text=f"Job {job_or_submission_id} does not exist",
-                status=aiohttp.web.HTTPNotFound.status_code,
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
             )
 
-        if job.type is not JobType.SUBMISSION:
-            return Response(
-                text="Can only get logs of submission type jobs",
-                status=aiohttp.web.HTTPBadRequest.status_code,
-            )
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
+        )
 
-        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job.submission_id))
+    @routes.get("/api/job_agent/jobs/{job_or_submission_id}/driver_location")
+    @optional_utils.init_ray_and_catch_exceptions()
+    async def get_driver_location(self, req: Request) -> Response:
+        job_or_submission_id = req.match_info["job_or_submission_id"]
+
+        try:
+            # the address of supervisor actor is same as driver.
+            supervisor_actor = self._job_manager._get_actor_for_job(job_or_submission_id)
+            actor_info = gcs_utils.ActorTableData.FromString(
+                ray._private.state.state.global_state_accessor.get_actor_info(
+                    supervisor_actor._actor_id
+                )
+            )
+            resp = JobDriverLocationResponse(ip_address=actor_info.address.ip_address)
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
         return Response(
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )

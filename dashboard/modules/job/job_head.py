@@ -435,18 +435,43 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
-        if dashboard_consts.ENABLE_HEAD_RAYLETLESS:
-            driver_ip_address = job.driver_info.node_ip_address
-            job_agent_client = self._get_agent_client_by_ip_address(driver_ip_address)
-            if job_agent_client is None:
-                return Response(
-                    text="The node where the driver is located does not have an agent"
-                    " process with an available http port",
-                    status=aiohttp.web.HTTPInternalServerError.status_code,
+        try:
+            if dashboard_consts.ENABLE_HEAD_RAYLETLESS:
+                if job.driver_info is None:
+                    # There are the following possibilities:
+                    #    1. Supervisor actor is not ready
+                    #    2. The driver is not launched yet or the driver
+                    #       process is not finished init of CoreWorker.
+                    # We need to get the address of the supervisor-actor/driver
+                    # from any agent.
+                    tmp_job_agent_client = await self._choice_agent_to_submit_job()
+                    driver_ip_address = (
+                        tmp_job_agent_client
+                        .get_driver_location_internal(job.submission_id)
+                        .ip_address
+                    )
+                else:
+                    driver_ip_address = job.driver_info.node_ip_address
+                job_agent_client = await self._get_agent_client_by_ip_address(
+                    driver_ip_address
                 )
-            return
+                if job_agent_client is None:
+                    return Response(
+                        text="The node where the driver is located does not have "
+                        "an agent process with an available http port",
+                        status=aiohttp.web.HTTPInternalServerError.status_code,
+                    )
+                resp = job_agent_client.get_job_logs_internal(job.submission_id)
+            else:
+                resp = JobLogsResponse(
+                    logs=self._job_manager.get_job_logs(job.submission_id)
+                )
+        except Exception:
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code,
+            )
 
-        resp = JobLogsResponse(logs=self._job_manager.get_job_logs(job.submission_id))
         return Response(
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )

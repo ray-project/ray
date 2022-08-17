@@ -36,13 +36,6 @@ logger = logging.getLogger(__name__)
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 
 
-@pytest.fixture(scope="module", params=["true", "false"])
-def enable_head_rayletless(request):
-    os.environ["ENABLE_HEAD_RAYLETLESS"] = request.param
-    yield
-    os.environ.pop("ENABLE_HEAD_RAYLETLESS", None)
-
-
 @pytest.fixture(scope="module")
 def headers():
     return {"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"}
@@ -286,7 +279,7 @@ ray.get(f.remote())
 
 
 def test_submit_job(
-    enable_head_rayletless, job_sdk_client, runtime_env_option, monkeypatch
+    job_sdk_client, runtime_env_option, monkeypatch
 ):
     # This flag allows for local testing of runtime env conda functionality
     # without needing a built Ray wheel.  Rather than insert the link to the
