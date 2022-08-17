@@ -78,12 +78,12 @@ class BaseNodeLauncher:
                 )
 
             error_msg = (
-                f"Failed to launch {count} node(s) of type {node_type}. "
+                f"Failed to launch {{}} node(s) of type {node_type}. "
                 f"({node_launch_exception.category}): "
                 f"{node_launch_exception.description}"
             )
         except Exception:
-            error_msg = f"Failed to launch {count} node(s) of type {node_type}."
+            error_msg = f"Failed to launch {{}} node(s) of type {node_type}."
             full_exception = traceback.format_exc()
         else:
             # Record some metrics/observability information when a node is launched.
@@ -105,10 +105,15 @@ class BaseNodeLauncher:
             self.prom_metrics.pending_nodes.set(self.pending.value)
 
         if error_msg is not None:
-            self.event_summarizer.add_once_per_interval(
-                message=error_msg,
-                key=f"launch-failed-{node_type}",
-                interval_s=60,
+            # self.event_summarizer.add_once_per_interval(
+            #     message=error_msg,
+            #     key=f"launch-failed-{node_type}",
+            #     interval_s=60,
+            # )
+            self.event_summarizer.add(
+                error_msg,
+                quantity=count,
+                aggregate=operator.add,
             )
             self.log(error_msg)
             self.prom_metrics.node_launch_exceptions.inc()
