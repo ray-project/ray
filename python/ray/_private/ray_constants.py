@@ -126,9 +126,7 @@ MIN_RESOURCE_GRANULARITY = 0.0001
 
 # Set this environment variable to populate the dashboard URL with
 # an external hosted Ray dashboard URL (e.g. because the
-# dashboard is behind a proxy or load balancer). This only overrides
-# the dashboard URL when returning or printing to a user through a public
-# API, but not in the internal KV store.
+# dashboard is behind a proxy or load balancer).
 RAY_OVERRIDE_DASHBOARD_URL = "RAY_OVERRIDE_DASHBOARD_URL"
 
 

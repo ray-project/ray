@@ -27,11 +27,10 @@ from ray._private.services import (
     REDIS_EXECUTABLE,
     _start_redis_instance,
 )
-from ray._private.test_utils import (  # noqa: F401
+from ray._private.test_utils import (
     get_and_run_node_killer,
     init_error_pubsub,
     init_log_pubsub,
-    set_override_dashboard_url,
     setup_tls,
     teardown_tls,
     enable_external_redis,

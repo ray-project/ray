@@ -19,6 +19,18 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
 
 
+@pytest.fixture
+def set_override_dashboard_url(request):
+    orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
+    override_url = getattr(request, "param", "https://external_dashboard_url")
+    os.environ[RAY_OVERRIDE_DASHBOARD_URL] = override_url
+
+    yield
+
+    if orig_external_dashboard_url:
+        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
+
+
 @pytest.mark.parametrize(
     "override_url",
     [
@@ -28,35 +40,38 @@ from ray.util.client.worker import Worker
         "new_external_dashboard_url",
     ],
 )
-def test_hosted_external_dashboard_url(override_url, shutdown_only, monkeypatch):
+def test_hosted_external_dashboard_url(override_url, shutdown_only):
     """
     Test setting external dashboard URL through environment variable.
     """
-    with monkeypatch.context() as m:
-        if override_url:
-            m.setenv(
-                RAY_OVERRIDE_DASHBOARD_URL,
-                override_url,
-            )
+    orig_external_dashboard_url = os.environ.get(RAY_OVERRIDE_DASHBOARD_URL)
+    if override_url:
+        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = override_url
 
-        expected_localhost_url = "127.0.0.1:8265"
-        if not override_url:
-            # No external dashboard url
-            expected_dashboard_url = "127.0.0.1:8265"
-        elif "://" in override_url:
-            # External dashboard url with https protocol included
-            expected_dashboard_url = override_url[override_url.index("://") + 3 :]
-        else:
-            # External dashboard url with no protocol
-            expected_dashboard_url = override_url
+    if not override_url:
+        # No external dashboard url
+        expected_webui_url_with_protocol = "http://127.0.0.1:8265"
+        expected_dashboard_url = "127.0.0.1:8265"
+    elif "://" in override_url:
+        # External dashboard url with https protocol included
+        expected_webui_url_with_protocol = override_url
+        expected_dashboard_url = override_url[override_url.index("://") + 3 :]
+    else:
+        # External dashboard url with no protocol -- should default to http
+        expected_webui_url_with_protocol = "http://" + override_url
+        expected_dashboard_url = override_url
 
-        info = ray.init(dashboard_port=8265)
-        assert info.dashboard_url == expected_dashboard_url
-        assert info.address_info["webui_url"] == expected_dashboard_url
-        assert ray._private.worker._global_node.webui_url == expected_localhost_url
-        assert (
-            ray_address_to_api_server_url("auto") == "http://" + expected_localhost_url
-        )
+    info = ray.init(dashboard_port=8265)
+    assert info.dashboard_url == expected_dashboard_url
+    assert info.address_info["webui_url"] == expected_dashboard_url
+    assert (
+        ray._private.worker._global_node.webui_url_with_protocol
+        == expected_webui_url_with_protocol
+    )
+    assert ray_address_to_api_server_url("auto") == expected_webui_url_with_protocol
+
+    if orig_external_dashboard_url:
+        os.environ[RAY_OVERRIDE_DASHBOARD_URL] = orig_external_dashboard_url
 
 
 @pytest.mark.parametrize(
@@ -90,8 +105,11 @@ def test_hosted_external_dashboard_url_with_connecting_to_existing_cluster(
     info = ray.init()
     assert info.dashboard_url == "external_dashboard_url"
     assert info.address_info["webui_url"] == "external_dashboard_url"
-    assert ray._private.worker._global_node.webui_url == "127.0.0.1:8265"
-    assert ray_address_to_api_server_url("auto") == "http://" + "127.0.0.1:8265"
+    assert (
+        ray._private.worker._global_node.webui_url_with_protocol
+        == "https://external_dashboard_url"
+    )
+    assert ray_address_to_api_server_url("auto") == "https://external_dashboard_url"
 
 
 def test_shutdown_and_reset_global_worker(shutdown_only):
