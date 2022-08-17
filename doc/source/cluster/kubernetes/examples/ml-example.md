@@ -115,7 +115,7 @@ Use the following tools to observe its progress.
 
 To follow the job's logs, use the command printed by the above submission script.
 ```shell
-# Subsitute the Ray Job's submission id.
+# Substitute the Ray Job's submission id.
 ray job logs 'raysubmit_xxxxxxxxxxxxxxxx' --follow
 ```
 
