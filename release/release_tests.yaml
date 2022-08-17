@@ -3537,7 +3537,7 @@
 
   run:
     timeout: 3600
-    script: python stress_tests/test_state_api_scale.py 
+    script: python stress_tests/test_state_api_scale.py
     type: sdk_command
     file_manager: sdk
 
@@ -3568,8 +3568,8 @@
 
   run:
     timeout: 1000
-    script: python stress_tests/test_state_api_with_other_tests.py 
-      nightly_tests/shuffle/shuffle_test.py --test-args="--num-partitions=100 --partition-size=200e6" 
+    script: python stress_tests/test_state_api_with_other_tests.py
+      nightly_tests/shuffle/shuffle_test.py --test-args="--num-partitions=100 --partition-size=200e6"
 
     type: sdk_command
     file_manager: sdk
@@ -4398,8 +4398,6 @@
   legacy:
     test_name: dataset_shuffle_push_based_random_shuffle_100tb
     test_suite: dataset_test
-
-  stable: false
 
   frequency: nightly
   team: core
