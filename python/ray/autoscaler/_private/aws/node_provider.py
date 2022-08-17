@@ -1,8 +1,8 @@
 import copy
 import logging
+import sys
 import threading
 import time
-import sys
 from collections import OrderedDict, defaultdict
 from typing import Any, Dict, List
 

@@ -1,6 +1,5 @@
 import copy
 import logging
-import operator
 import threading
 import time
 import traceback
@@ -72,10 +71,10 @@ class BaseNodeLauncher:
                 node_type, int(node_launch_start_time), node_launch_exception
             )
 
-            full_exception = "\n".join(
-                traceback.format_exception(*node_launch_exception.src_exc_info)
-            )
-            self.log(full_exception)
+            if node_launch_exception.src_exc_info is not None:
+                full_exception = "\n".join(
+                    traceback.format_exception(*node_launch_exception.src_exc_info)
+                )
 
             error_msg = (
                 f"Failed to launch {node_type}. "
@@ -105,16 +104,17 @@ class BaseNodeLauncher:
             self.prom_metrics.pending_nodes.set(self.pending.value)
 
         if error_msg is not None:
-            assert full_exception is not None
             self.event_summarizer.add_once_per_interval(
                 message=error_msg,
                 key=f"launch-failed-{node_type}",
                 interval_s=60,
             )
             self.log(error_msg)
-            self.log(full_exception)
             self.prom_metrics.node_launch_exceptions.inc()
             self.prom_metrics.failed_create_nodes.inc(count)
+
+        if full_exception is not None:
+            self.log(full_exception)
 
     def _launch_node(self, config: Dict[str, Any], count: int, node_type: str):
         if self.node_types:

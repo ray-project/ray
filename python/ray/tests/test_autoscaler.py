@@ -1420,6 +1420,37 @@ class AutoscalingTest(unittest.TestCase):
 
         self.waitFor(expected_message_logged)
 
+    def testSummarizerFailedCreateStructuredErrorNoException(self):
+        """Checks that event summarizer reports failed node creation."""
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        self.provider.error_creates = NodeLaunchException(
+            "didn't work", "never did", src_exc_info=None
+        )
+        runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = MockAutoscaler(
+            config_path,
+            LoadMetrics(),
+            MockNodeInfoStub(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics,
+        )
+        assert len(self.provider.non_terminated_nodes({})) == 0
+        autoscaler.update()
+
+        # Expect the next two messages in the logs.
+        msg = "Failed to launch ray-legacy-worker-node-type. (didn't work): never did"
+
+        def expected_message_logged():
+            print(autoscaler.event_summarizer.summary())
+            return msg in autoscaler.event_summarizer.summary()
+
+        self.waitFor(expected_message_logged)
+
     def testReadonlyNodeProvider(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config_path = self.write_config(config)

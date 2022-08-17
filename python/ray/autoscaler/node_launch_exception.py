@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Any, Optional, Tuple
 
 from ray.util.annotations import DeveloperAPI
 
@@ -13,15 +13,14 @@ class NodeLaunchException(Exception):
         self,
         category: str,
         description: str,
-        src_exc_info: Tuple["type", "value", "traceback"],  # The
-        # tuple
-        # outputted
-        # by
-        # sys.exc_info()
-        # during
-        # an
-        # exception.
+        src_exc_info: Optional[Tuple[Any, Any, Any]],  # The
     ):
+        """
+        Args:
+          category: A short (<20 chars) label for the error.
+          description: A longer, human readable description of the error.
+          src_exc_info: The source exception info if applicable. This is a tuple of (type, exception, traceback) as returned by sys.exc_info()
+        """
         super().__init__(f"Node Launch Exception ({category}): {description}")
         self.category = category
         self.description = description
