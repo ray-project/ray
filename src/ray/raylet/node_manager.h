@@ -775,8 +775,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Target being evicted or null if no target
   std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
-  /// Time when it started the eviction
-  std::chrono::high_resolution_clock::time_point high_memory_eviction_start_time_;
 
   /// Seconds to initialize a local gc
   const uint64_t local_gc_interval_ns_;
@@ -838,6 +836,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
+
+  /// The time point when the class was created.
+  std::chrono::time_point<std::chrono::steady_clock> start_time_point_;
 };
 
 }  // namespace raylet

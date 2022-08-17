@@ -157,8 +157,7 @@ enum class RayLogLevel {
 // Occasional logging with DEBUG fallback:
 // If DEBUG is not enabled, log every n'th occurrence of an event.
 // Otherwise, if DEBUG is enabled, always log as DEBUG events.
-#define RAY_LOG_EVERY_N_OR_DEBUG(level, n)                              \
-  RAY_LOG_EVERY_N_OR(level, n, DEBUG)
+#define RAY_LOG_EVERY_N_OR_DEBUG(level, n) RAY_LOG_EVERY_N_OR(level, n, DEBUG)
 
 // Occasional logging with orlevel fallback:
 // If orlevel is not enabled, log every n'th occurrence of an event.

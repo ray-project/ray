@@ -2913,11 +2913,9 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
           for (auto &worker : workers) {
             auto pid = worker->GetProcess().GetId();
             auto used_memory = this->memory_monitor_->GetProcessMemoryBytes(pid);
-            auto task_assign_time =
-                std::chrono::system_clock::to_time_t(worker->GetAssignedTaskTime());
             top_n_latest_workers_info
-                << "Worker " << top_n << " task assigned time "
-                << std::put_time(std::gmtime(&task_assign_time), "%c %Z")
+                << "Worker " << top_n << " task assigned time counter "
+                << worker->GetAssignedTaskTime().time_since_epoch().count()
                 << " memory used " << used_memory << " task spec "
                 << worker->GetAssignedTask().GetTaskSpecification().DebugString() << "\n";
             top_n += 1;
