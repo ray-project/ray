@@ -259,6 +259,9 @@ class TagKey(Enum):
     # The total number of running serve deployments as a string.
     SERVE_NUM_DEPLOYMENTS = auto()
 
+    # The GCS storage type, which could be memory or redis
+    GCS_STORAGE = auto()
+
 
 def record_extra_usage_tag(key: TagKey, value: str):
     """Record extra kv usage tag.
