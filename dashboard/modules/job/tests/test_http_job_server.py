@@ -278,9 +278,7 @@ ray.get(f.remote())
         assert False, f"Unrecognized option: {request.param}."
 
 
-def test_submit_job(
-    job_sdk_client, runtime_env_option, monkeypatch
-):
+def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     # This flag allows for local testing of runtime env conda functionality
     # without needing a built Ray wheel.  Rather than insert the link to the
     # wheel into the conda spec, it links to the current Python site.

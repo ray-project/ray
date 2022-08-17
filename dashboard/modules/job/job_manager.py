@@ -522,7 +522,7 @@ class JobManager:
             if not dashboard_consts.ENABLE_HEAD_RAYLETLESS:
                 resources={
                     self._get_current_node_resource_key(): 0.001,
-                },
+                }
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
