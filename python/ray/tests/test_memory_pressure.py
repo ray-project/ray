@@ -106,21 +106,7 @@ def has_metric_tagged_with_value(tag, value) -> bool:
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_actor(shutdown_only):
-    memory_usage_threshold_fraction = 0.7
-    memory_monitor_interval_ms = 100
-    metrics_report_interval_ms = 100
-
-    ray.init(
-        num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
-            "memory_monitor_interval_ms": memory_monitor_interval_ms,
-            "metrics_report_interval_ms": metrics_report_interval_ms,
-        },
-    )
-
+def test_memory_pressure_kill_actor(ray_with_memory_monitor):
     leaker = Leaker.remote()
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.6)
@@ -143,21 +129,7 @@ def test_memory_pressure_kill_actor(shutdown_only):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_task(shutdown_only):
-    memory_usage_threshold_fraction = 0.7
-    memory_monitor_interval_ms = 100
-    metrics_report_interval_ms = 100
-
-    ray.init(
-        num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
-            "memory_monitor_interval_ms": memory_monitor_interval_ms,
-            "metrics_report_interval_ms": metrics_report_interval_ms,
-        },
-    )
-
+def test_memory_pressure_kill_task(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(0.95)
     with pytest.raises(ray.exceptions.WorkerCrashedError) as _:
         ray.get(no_retry.remote(bytes_to_alloc))
@@ -175,19 +147,7 @@ def test_memory_pressure_kill_task(shutdown_only):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_newest_worker(shutdown_only):
-    memory_usage_threshold_fraction = 0.7
-    memory_monitor_interval_ms = 100
-
-    ray.init(
-        num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
-            "memory_monitor_interval_ms": memory_monitor_interval_ms,
-        },
-    )
-
+def test_memory_pressure_kill_newest_worker(ray_with_memory_monitor):
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(
         memory_usage_threshold_fraction - 0.1
     )
@@ -207,19 +167,9 @@ def test_memory_pressure_kill_newest_worker(shutdown_only):
     sys.platform != "linux" and sys.platform != "linux2",
     reason="memory monitor only on linux currently",
 )
-def test_memory_pressure_kill_task_if_actor_submitted_task_first(shutdown_only):
-    memory_usage_threshold_fraction = 0.7
-    memory_monitor_interval_ms = 100
-
-    ray.init(
-        num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
-            "memory_monitor_interval_ms": memory_monitor_interval_ms,
-        },
-    )
-
+def test_memory_pressure_kill_task_if_actor_submitted_task_first(
+    ray_with_memory_monitor,
+):
     actor_ref = Leaker.options(name="leaker1").remote()
     ray.get(actor_ref.allocate.remote(10))
 
@@ -249,8 +199,10 @@ def test_worker_dump(ray_with_memory_monitor):
     oom_actor = Leaker.options(name="oom_actor").remote()
 
     bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(1)
-    # with pytest.raises(ray.exceptions.RayActorError) as _:
-    ray.get(oom_actor.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3))
+    with pytest.raises(ray.exceptions.RayActorError) as _:
+        ray.get(
+            oom_actor.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3)
+        )
 
 
 if __name__ == "__main__":

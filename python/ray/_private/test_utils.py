@@ -23,7 +23,6 @@ import psutil  # We must import psutil after ray because we bundle it with ray.
 import pytest
 import yaml
 from grpc._channel import _InactiveRpcError
-from ray.experimental.state.state_manager import StateDataSourceClient
 
 import ray
 import ray._private.gcs_utils as gcs_utils

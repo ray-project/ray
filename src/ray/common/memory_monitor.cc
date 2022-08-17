@@ -187,7 +187,7 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetLinuxMemoryBytes() {
 
 int64_t MemoryMonitor::GetProcessMemoryBytes(int64_t process_id) {
   std::stringstream ss;
-  ss << "/proc/" << std::to_string(process_id) << "/smaps_rollup" ;
+  ss << "/proc/" << std::to_string(process_id) << "/smaps_rollup";
   return GetLinuxProcessMemoryBytesFromSmap(ss.str());
 }
 
@@ -215,7 +215,8 @@ int64_t MemoryMonitor::GetLinuxProcessMemoryBytesFromSmap(const std::string smap
     /// Linux reports them as kiB
     RAY_CHECK(unit == "kB");
     value = value * 1024;
-    if (title == "Private_Clean:" || title == "Private_Dirty:" || title == "Private_Hugetlb:") {
+    if (title == "Private_Clean:" || title == "Private_Dirty:" ||
+        title == "Private_Hugetlb:") {
       uss += value;
     }
   }
