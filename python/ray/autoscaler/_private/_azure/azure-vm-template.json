@@ -82,17 +82,34 @@
             "metadata": {
                 "description": "Specifies the maximum price to pay for Azure Spot VM."
             }
+        },
+        "msi": {
+            "type": "string",
+            "metadata": {
+                "description": "Managed service identity resource id."
+            }
+        },
+        "nsg": {
+            "type": "string",
+            "metadata": {
+                "description": "Network security group resource id."
+            }
+        },
+        "subnet": {
+            "type": "string",
+            "metadata": {
+                "descriptions": "Subnet resource id."
+            }
         }
     },
     "variables": {
         "location": "[resourceGroup().location]",
-        "networkInterfaceNamePrivate": "[concat(parameters('vmName'),'-nic')]",
-        "networkInterfaceNamePublic": "[concat(parameters('vmName'),'-nic-public')]",
+        "networkInterfaceNamePrivate": "[concat(parameters('vmName'), '-nic')]",
+        "networkInterfaceNamePublic": "[concat(parameters('vmName'), '-nic-public')]",
         "networkInterfaceName": "[if(parameters('provisionPublicIp'), variables('networkInterfaceNamePublic'), variables('networkInterfaceNamePrivate'))]",
         "networkIpConfig": "[guid(resourceGroup().id, parameters('vmName'))]",
         "osDiskType": "Standard_LRS",
-        "publicIpAddressName": "[concat(parameters('vmName'), '-ip' )]",
-        "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'ray-vnet', 'ray-subnet')]"
+        "publicIpAddressName": "[concat(parameters('vmName'), '-ip')]"
     },
     "resources": [
         {
@@ -113,7 +130,7 @@
                         "name": "[variables('networkIpConfig')]",
                         "properties": {
                             "subnet": {
-                                "id": "[variables('subnetRef')]"
+                                "id": "[parameters('subnet')]"
                             },
                             "privateIPAllocationMethod": "Dynamic",
                             "publicIpAddress": {
@@ -123,7 +140,7 @@
                     }
                 ],
                 "networkSecurityGroup": {
-                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups','ray-nsg')]"
+                    "id": "[parameters('nsg')]"
                 }
             },
             "condition": "[parameters('provisionPublicIp')]"
@@ -143,14 +160,14 @@
                         "name": "[variables('networkIpConfig')]",
                         "properties": {
                             "subnet": {
-                                "id": "[variables('subnetRef')]"
+                                "id": "[parameters('subnet')]"
                             },
                             "privateIPAllocationMethod": "Dynamic"
                         }
                     }
                 ],
                 "networkSecurityGroup": {
-                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups','ray-nsg')]"
+                    "id": "[parameters('nsg')]"
                 }
             },
             "condition": "[not(parameters('provisionPublicIp'))]"
@@ -234,7 +251,7 @@
             "identity": {
                 "type": "UserAssigned",
                 "userAssignedIdentities": {
-                    "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'ray-msi-user-identity')]": {
+                    "[parameters('msi')]": {
                     }
                 }
             }
