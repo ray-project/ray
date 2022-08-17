@@ -22,10 +22,12 @@ def is_nan_or_inf(value):
 def shorten_tb(tb, attr: str):
     orig_tb = tb
     while tb:
-        print("CURRENT GLOBALS", tb.tb_frame.f_locals.keys(), "??", attr)
-
         if tb.tb_frame.f_locals.get(attr):
+            if tb.tb_next:
+                # If there is another `attr` later downstream, use that instead
+                return shorten_tb(tb.tb_next, attr=attr)
             return tb
+
         tb = tb.tb_next
 
     return orig_tb

@@ -155,14 +155,16 @@ def construct_train_func(
     elif num_params == 1:
         config = {} if config is None else config
 
+        @functools.wraps(wrapped_train_func)
         def train_fn():
-            __start_tb = True  # noqa: F841
+            _ray_start_tb = True  # noqa: F841
             return wrapped_train_func(config)
 
     else:  # num_params == 0
 
+        @functools.wraps(wrapped_train_func)
         def train_fn():
-            __start_tb = True  # noqa: F841
+            _ray_start_tb = True  # noqa: F841
             return wrapped_train_func()
 
     return train_fn

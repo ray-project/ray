@@ -27,7 +27,7 @@ class RayTrainWorker:
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            raise e.with_traceback(shorten_tb(e.__traceback__, attr="__start_tb"))
+            raise e.with_traceback(shorten_tb(e.__traceback__, attr="_ray_start_tb"))
 
 
 @dataclass

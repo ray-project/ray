@@ -11,6 +11,7 @@ from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type, Union
 
+from ray.air._internal.util import shorten_tb
 from ray.tune.resources import Resources
 from six.moves import queue
 
@@ -359,6 +360,7 @@ class FunctionTrainable(Trainable):
 
     def _start(self):
         def entrypoint():
+            _ray_start_tb = True  # noqa: F841
             return self._trainable_func(
                 self.config,
                 self._status_reporter,
@@ -586,7 +588,7 @@ class FunctionTrainable(Trainable):
     def _report_thread_runner_error(self, block=False):
         try:
             e = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise e
+            raise e.with_traceback(shorten_tb(e.__traceback__, attr="_ray_start_tb"))
         except queue.Empty:
             pass
 
