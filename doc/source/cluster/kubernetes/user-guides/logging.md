@@ -142,4 +142,4 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [Fluentd]: https://docs.fluentd.org/
 [Promtail]: https://grafana.com/docs/loki/latest/clients/promtail/
 [KubDoc]: https://kubernetes.io/docs/concepts/cluster-administration/logging/
-[ConfigLink]:  https://github.com/ray-project/ray/blob/releases/2.0.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
+[ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
