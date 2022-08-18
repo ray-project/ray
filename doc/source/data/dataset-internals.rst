@@ -86,7 +86,7 @@ lazy operations that are compatible:
 
 * Same compute pattern: embarrassingly parallel map vs. all-to-all shuffle
 * Same compute strategy: Ray tasks vs Ray actors
-* Same resource specification, e.g. ``num_cpus`` or ``num_cpus`` requests
+* Same resource specification, e.g. ``num_cpus`` or ``num_gpus`` requests
 
 Read stages and subsequent map-like transformations will usually be fused together.
 All-to-all transformations such as
