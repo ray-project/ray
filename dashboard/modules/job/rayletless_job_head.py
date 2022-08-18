@@ -261,7 +261,6 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
                 self._choice_agent_to_submit_job(),
                 dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
             )
-            logger.info(f"hejialing test: {job_agent_client._address}")
             resp = job_agent_client.submit_job_internal(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,

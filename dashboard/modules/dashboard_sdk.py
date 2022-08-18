@@ -326,7 +326,6 @@ class SubmissionClient:
                     endpoint = f"/api/job_agent/packages/{protocol}/{package_name}"
                 else:
                     endpoint = f"/api/packages/{protocol}/{package_name}"
-                logger.info(f"hejialing test {endpoint} {type(self)}")
                 r = self._do_request(
                     "PUT",
                     endpoint,
