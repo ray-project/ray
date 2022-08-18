@@ -14,6 +14,7 @@ from typing import (
     Callable,
 )
 import uuid
+import asyncio
 
 T = TypeVar("T")
 
@@ -83,20 +84,31 @@ class DAGNode(DAGNodeBase):
         return self._stable_uuid
 
     async def get_object_ref_from_last_execute(self, node_uuid: str):
-        """
-        Gets the return value of calling _execute_impl() on the input DAGNode.
-        Meant to be
-        * called after execute() has been called
-        * called on method and function nodes (i.e. the input parameter should be a
-          stable UUID for a method or function node)
+        """After this DAG is executed through execute(), retrieves a reference to the
+        return value of the default executor on the inputted DAGNode. The input
+        parameter should be an UUID for a method or function node.
+
+        Allows access to intermediate node outputs in this DAG. Example usage:
+            dag.execute(1,2,3)
+            print(
+                await dag.get_object_ref_from_last_execute(
+                    intermediate_node.get_stable_uuid()
+                )
+            )
 
         Args:
-            node_uuid: stable uuid of a method or function DAGNode.
+            node_uuid: stable uuid of a method or function DAGNode, which should be
+            part of the DAG rooted at THIS DAGNode.
 
         Returns:
-            Object ref for task submitted to the input DAGNode.
+            Object ref to the return value of the default executor node._execute_impl()
+            that was executed through calling execute() on THIS DAGNode.
         """
-        import asyncio
+        if node_uuid not in self.cache_from_last_execute:
+            raise ValueError(
+                "Node UUID was not found in the deployment graph, unable to retrieve "
+                "object ref for node from last call to execute()."
+            )
 
         value = self.cache_from_last_execute[node_uuid]
         if isinstance(value, asyncio.Task):
@@ -105,13 +117,20 @@ class DAGNode(DAGNodeBase):
             return value
 
     def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
-        """Execute this DAG using the Ray default executor."""
+        """Execute this DAG using the Ray default executor.
 
-        def fn(node):
+        After execution, stores the return values of the executing the default executor
+        on each node in this DAG in a cache. These should be a mix of:
+        - ray.ObjectRefs pointing to the outputs of method and function nodes
+        - Serve handles for class nodes
+        - resolved values representing user input at runtime
+        """
+
+        def executor(node):
             return node._execute_impl(*args, **kwargs)
 
-        result = self.apply_recursive(fn)
-        self.cache_from_last_execute = fn.cache
+        result = self.apply_recursive(executor)
+        self.cache_from_last_execute = executor.cache
         return result
 
     def _get_toplevel_child_nodes(self) -> List["DAGNode"]:

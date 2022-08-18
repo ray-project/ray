@@ -15,7 +15,7 @@ def graph1():
         return x
 
     @serve.deployment
-    class model:
+    class Model:
         def __init__(self, _):
             pass
 
@@ -24,7 +24,7 @@ def graph1():
 
     with InputNode() as user_input:
         f_node = f.bind(user_input[0])
-        m = model.bind(f_node)
+        m = Model.bind(f_node)
         dag = m.run.bind(user_input[1])
 
     yield f_node, m, dag
@@ -46,8 +46,7 @@ def graph2():
 
 @pytest.mark.asyncio
 async def test_execute_cached_object_ref(graph1):
-    """
-    Tests DAGNode.get_object_ref_from_last_execute() correctly returns object refs
+    """Tests DAGNode.get_object_ref_from_last_execute() correctly returns object refs
     to the submitted tasks after DAGNode.execute() is run.
     """
 
@@ -65,9 +64,8 @@ async def test_execute_cached_object_ref(graph1):
 
 @pytest.mark.asyncio
 async def test_get_result(graph1):
-    """
-    Tests that after running handle.predict.remote(), _get_result() in GraphVisualizer
-    correctly returns object refs to the submitted tasks.
+    """Tests that after running handle.predict.remote(), _get_result() in
+    GraphVisualizer correctly returns object refs to the submitted tasks.
     """
     (_, _, dag) = graph1
 
@@ -76,13 +74,12 @@ async def test_get_result(graph1):
     visualizer.visualize_with_gradio(handle, _launch=False)
 
     handle.predict.remote(1, 2)
-    values = [await (visualizer._get_result(uuid)) for uuid in visualizer.node_to_block]
+    values = [await (visualizer._get_result(uuid)) for uuid in visualizer.uuid_to_block]
     assert {1, 2} <= set(values)
 
 
 def test_fetch_depths(graph2):
-    """
-    Tests that GraphVisualizer._fetch_depths, when passed into
+    """Tests that GraphVisualizer._fetch_depths, when passed into
     DAGNode.apply_recursive, correctly retrieves the depths of each node.
     """
 
