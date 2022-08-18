@@ -376,10 +376,11 @@ class JobAgentSubmissionClient(AgentSubmissionClient):
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
     ):
-        """Initialize a JobSubmissionClient and check the connection to the cluster.
+        """Initialize a JobAgentSubmissionClient and check the connection to the cluster.
 
         Args:
             address: The IP address and port of the specific agent.
+            head_address: The IP address of cluster head node.
             cookies: Cookies to use when sending requests to the HTTP job server.
             metadata: Arbitrary metadata to store along with all jobs.  New metadata
                 specified per job will be merged with the global metadata provided here
@@ -454,8 +455,10 @@ class JobAgentSubmissionClient(AgentSubmissionClient):
         cluster goes down, all running jobs on that cluster will be terminated.
 
         Example:
-            >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> from ray.job_submission import JobAgentSubmissionClient
+            >>> client = JobAgentSubmissionClient( # doctest: +SKIP
+            ...     "http://127.0.0.1:52365",
+            ...     head_address="http://127.0.0.1:8265")  # doctest: +SKIP
             >>> client.submit_job( # doctest: +SKIP
             ...     entrypoint="python script.py",
             ...     runtime_env={
@@ -512,8 +515,10 @@ class JobAgentSubmissionClient(AgentSubmissionClient):
         """Request a job to exit asynchronously.
 
         Example:
-            >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> from ray.job_submission import JobAgentSubmissionClient
+            >>> client = JobAgentSubmissionClient( # doctest: +SKIP
+            ...     "http://127.0.0.1:52365",
+            ...     head_address="http://127.0.0.1:8265")  # doctest: +SKIP
             >>> sub_id = client.submit_job(entrypoint="sleep 10") # doctest: +SKIP
             >>> client.stop_job(sub_id) # doctest: +SKIP
             True
@@ -543,8 +548,10 @@ class JobAgentSubmissionClient(AgentSubmissionClient):
         """Get all logs produced by a job.
 
         Example:
-            >>> from ray.job_submission import JobSubmissionClient
-            >>> client = JobSubmissionClient("http://127.0.0.1:8265") # doctest: +SKIP
+            >>> from ray.job_submission import JobAgentSubmissionClient
+            >>> client = JobAgentSubmissionClient( # doctest: +SKIP
+            ...     "http://127.0.0.1:52365",
+            ...     head_address="http://127.0.0.1:8265")  # doctest: +SKIP
             >>> sub_id = client.submit_job(entrypoint="echo hello") # doctest: +SKIP
             >>> client.get_job_logs(sub_id) # doctest: +SKIP
             'hello\\n'
