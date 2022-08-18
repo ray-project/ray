@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from collections import Any, Dict
 from typing import TYPE_CHECKING, Optional
 
 import torch
@@ -22,48 +22,11 @@ class TorchCheckpoint(Checkpoint):
     """
 
     @classmethod
-    def from_model(
+    def from_state_dict(
         cls,
-        model: torch.nn.Module,
+        state_dict: Dict[str, Any],
         *,
         preprocessor: Optional["Preprocessor"] = None,
-    ) -> "TorchCheckpoint":
-        """Create a :class:`~ray.air.checkpoint.Checkpoint` that stores a Torch model.
-
-        .. warning::
-
-            PyTorch recommends storing state dictionaries. To create a
-            :class:`TorchCheckpoint` from a state dictionary, call
-            :meth:`~ray.train.torch.TorchCheckpoint.from_state_dict`. To learn more
-            about state dictionaries, read
-            `Saving and Loading Models <https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict>`_.
-
-        Args:
-            model: The Torch model to store in the checkpoint.
-            preprocessor: A fitted preprocessor to be applied before inference.
-
-        Returns:
-            A :class:`TorchCheckpoint` containing the specified model.
-
-        Examples:
-            >>> from ray.train.torch import TorchCheckpoint
-            >>> import torch
-            >>>
-            >>> model = torch.nn.Identity()
-            >>> checkpoint = TorchCheckpoint.from_model(model)
-
-            You can use a :class:`TorchCheckpoint` to create an
-            :class:`~ray.train.torch.TorchPredictor` and perform inference.
-
-            >>> from ray.train.torch import TorchPredictor
-            >>>
-            >>> predictor = TorchPredictor.from_checkpoint(checkpoint)
-        """  # noqa: E501
-        return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model})
-
-    @classmethod
-    def from_state_dict(
-        cls, state_dict: OrderedDict, *, preprocessor: Optional["Preprocessor"] = None
     ) -> "TorchCheckpoint":
         """Create a :class:`~ray.air.checkpoint.Checkpoint` that stores a model state
         dictionary.
@@ -94,6 +57,46 @@ class TorchCheckpoint(Checkpoint):
             Linear(in_features=1, out_features=1, bias=True)
         """
         return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: state_dict})
+
+    @classmethod
+    def from_model(
+        cls,
+        model: torch.nn.Module,
+        *,
+        preprocessor: Optional["Preprocessor"] = None,
+    ) -> "TorchCheckpoint":
+        """Create a :class:`~ray.air.checkpoint.Checkpoint` that stores a Torch model.
+
+        .. note::
+
+            PyTorch recommends storing state dictionaries. To create a
+            :class:`TorchCheckpoint` from a state dictionary, call
+            :meth:`~ray.train.torch.TorchCheckpoint.from_state_dict`. To learn more
+            about state dictionaries, read
+            `Saving and Loading Models <https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict>`_.
+
+        Args:
+            model: The Torch model to store in the checkpoint.
+            preprocessor: A fitted preprocessor to be applied before inference.
+
+        Returns:
+            A :class:`TorchCheckpoint` containing the specified model.
+
+        Examples:
+            >>> from ray.train.torch import TorchCheckpoint
+            >>> import torch
+            >>>
+            >>> model = torch.nn.Identity()
+            >>> checkpoint = TorchCheckpoint.from_model(model)
+
+            You can use a :class:`TorchCheckpoint` to create an
+            :class:`~ray.train.torch.TorchPredictor` and perform inference.
+
+            >>> from ray.train.torch import TorchPredictor
+            >>>
+            >>> predictor = TorchPredictor.from_checkpoint(checkpoint)
+        """  # noqa: E501
+        return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model})
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
