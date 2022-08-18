@@ -104,12 +104,23 @@ def get_all_modules(module_type):
     """
     logger.info(f"Get all modules by type: {module_type.__name__}")
     import ray.dashboard.modules
+    import ray.dashboard.consts as dashboard_consts
 
     should_only_load_minimal_modules = not check_dashboard_dependencies_installed()
 
     for module_loader, name, ispkg in pkgutil.walk_packages(
         ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
     ):
+        if (
+            dashboard_consts.ENABLE_HEAD_RAYLETLESS
+            and name == "ray.dashboard.modules.job.job_head"
+        ):
+            continue
+        if not dashboard_consts.ENABLE_HEAD_RAYLETLESS and (
+            name == "ray.dashboard.modules.job.rayletless_job_head"
+            or name == "ray.dashboard.modules.job.job_agent"
+        ):
+            continue
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as e:

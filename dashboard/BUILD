@@ -60,3 +60,23 @@ py_test(
     srcs = ["tests/test_state_head.py"],
     tags = ["team:core"],
 )
+
+py_test(
+    name = "test_head_rayletless",
+    size = "medium",
+    main = "modules/job/tests/test_http_job_server.py",
+    srcs = ["modules/job/tests/test_http_job_server.py"],
+    data = [
+        "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
+        "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
+        "modules/snapshot/snapshot_schema.json",
+        "modules/tests/test_config_files/basic_runtime_env.yaml",
+    ] + glob([
+        "modules/job/tests/subprocess_driver_scripts/*.py",
+    ]),
+    deps = [":conftest"],
+    tags = ["exclusive", "team:serve"],
+    env = {
+        "ENABLE_HEAD_RAYLETLESS": "true",
+    },
+)

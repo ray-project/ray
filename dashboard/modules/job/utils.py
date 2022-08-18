@@ -1,6 +1,18 @@
 import logging
 import os
-from typing import Iterator, List, Optional
+import traceback
+from dataclasses import dataclass
+from typing import Iterator, List, Optional, Any
+
+try:
+    import aiohttp
+    from aiohttp.web import Request, Response
+except Exception:
+    aiohttp = None
+    Request = None
+    Response = None
+
+from ray.dashboard.modules.job.common import validate_request_type
 
 logger = logging.getLogger(__name__)
 
@@ -64,3 +76,19 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
                 lines = []
                 chunk_char_count = 0
                 curr_line = None
+
+
+async def parse_and_validate_request(req: Request, request_type: dataclass) -> Any:
+    """Parse request and cast to request type. If parsing failed, return a
+    Response object with status 400 and stacktrace instead.
+    """
+    import aiohttp
+
+    try:
+        return validate_request_type(await req.json(), request_type)
+    except Exception as e:
+        logger.info(f"Got invalid request type: {e}")
+        return Response(
+            text=traceback.format_exc(),
+            status=aiohttp.web.HTTPBadRequest.status_code,
+        )

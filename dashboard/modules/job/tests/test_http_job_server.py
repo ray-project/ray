@@ -14,6 +14,8 @@ from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 import ray
+import ray.dashboard.consts as dashboard_consts
+from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.test_utils import (
     chdir,
     format_web_url,
@@ -49,6 +51,9 @@ def job_sdk_client(headers):
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 @pytest.mark.parametrize("use_sdk", [True, False])
 def test_list_jobs_empty(headers, use_sdk: bool):
     # Create a cluster using `ray start` instead of `ray.init` to avoid creating a job
@@ -73,6 +78,9 @@ def test_list_jobs_empty(headers, use_sdk: bool):
         subprocess.check_output(["ray", "stop", "--force"])
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 @pytest.mark.parametrize("use_sdk", [True, False])
 def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
     client = job_sdk_client
@@ -286,6 +294,32 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
 
     client = job_sdk_client
 
+    need_upload = False
+    working_dir = runtime_env_option["runtime_env"].get("working_dir", None)
+    py_modules = runtime_env_option["runtime_env"].get("py_modules", [])
+
+    def _need_upload(path):
+        try:
+            protocol, _ = parse_uri(path)
+            if protocol == Protocol.GCS:
+                return True
+        except ValueError:
+            # local file, need upload
+            return True
+        return False
+
+    if working_dir:
+        need_upload = need_upload or _need_upload(working_dir)
+    if py_modules:
+        need_upload = need_upload or any(
+            [_need_upload(str(py_module)) for py_module in py_modules]
+        )
+
+    if dashboard_consts.ENABLE_HEAD_RAYLETLESS and need_upload:
+        # not implemented `upload package` yet.
+        print("Skip test, because of need upload")
+        return
+
     job_id = client.submit_job(
         entrypoint=runtime_env_option["entrypoint"],
         runtime_env=runtime_env_option["runtime_env"],
@@ -293,10 +327,17 @@ def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id, timeout=120)
 
+    if dashboard_consts.ENABLE_HEAD_RAYLETLESS:
+        # not implemented `get_job_logs` yet.
+        print("Skip test, because of need get job logs")
+        return
     logs = client.get_job_logs(job_id)
     assert runtime_env_option["expected_logs"] in logs
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 def test_timeout(job_sdk_client):
     client = job_sdk_client
 
@@ -320,6 +361,9 @@ def test_timeout(job_sdk_client):
     assert "consider increasing `setup_timeout_seconds`" in data.message
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
     run_cmd = "python per_task_runtime_env.py"
     job_id = job_sdk_client.submit_job(
@@ -330,6 +374,9 @@ def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
     wait_for_condition(_check_job_succeeded, client=job_sdk_client, job_id=job_id)
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 def test_ray_tune_basic(job_sdk_client: JobSubmissionClient):
     run_cmd = "python ray_tune_basic.py"
     job_id = job_sdk_client.submit_job(
@@ -378,6 +425,9 @@ def test_runtime_env_setup_failure(job_sdk_client):
     assert "Failed to setup runtime environment" in data.message
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 def test_submit_job_with_exception_in_driver(job_sdk_client):
     """
     Submit a job that's expected to throw exception while executing.
@@ -404,6 +454,9 @@ raise RuntimeError('Intentionally failed.')
         assert "RuntimeError: Intentionally failed." in logs
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 def test_stop_long_running_job(job_sdk_client):
     """
     Submit a job that runs for a while and stop it in the middle.
@@ -429,6 +482,9 @@ raise RuntimeError('Intentionally failed.')
         wait_for_condition(_check_job_stopped, client=client, job_id=job_id)
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 def test_job_metadata(job_sdk_client):
     client = job_sdk_client
 
@@ -517,6 +573,9 @@ def test_submit_still_accepts_job_id_or_submission_id(job_sdk_client):
     wait_for_condition(_check_job_succeeded, client=client, job_id="raysubmit_23456")
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 def test_missing_resources(job_sdk_client):
     """Check that 404s are raised for resources that don't exist."""
     client = job_sdk_client
@@ -583,6 +642,9 @@ def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
             parse_cluster_info(address, False)
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 @pytest.mark.asyncio
 async def test_tail_job_logs(job_sdk_client):
     client = job_sdk_client

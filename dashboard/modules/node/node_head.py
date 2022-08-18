@@ -232,6 +232,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 message="Node hostname list fetched.",
                 host_name_list=list(alive_hostnames),
             )
+        elif view is not None and view.lower() == "agentInfos".lower():
+            all_agent_infos = await DataOrganizer.get_all_agent_infos()
+            return dashboard_optional_utils.rest_response(
+                success=True,
+                message="Agent infos fetched.",
+                agent_infos=all_agent_infos,
+            )
         else:
             return dashboard_optional_utils.rest_response(
                 success=False, message=f"Unknown view {view}"

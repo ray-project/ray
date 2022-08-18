@@ -2,8 +2,7 @@ import dataclasses
 import json
 import logging
 import traceback
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -25,7 +24,6 @@ from ray.dashboard.modules.job.common import (
     JobSubmitResponse,
     JobStopResponse,
     JobLogsResponse,
-    validate_request_type,
     JOB_ID_METADATA_KEY,
 )
 from ray.dashboard.modules.job.pydantic_models import (
@@ -33,6 +31,7 @@ from ray.dashboard.modules.job.pydantic_models import (
     JobDetails,
     JobType,
 )
+from ray.dashboard.modules.job.utils import parse_and_validate_request
 from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
@@ -52,21 +51,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         self._dashboard_head = dashboard_head
         self._job_manager = None
         self._gcs_job_info_stub = None
-
-    async def _parse_and_validate_request(
-        self, req: Request, request_type: dataclass
-    ) -> Any:
-        """Parse request and cast to request type. If parsing failed, return a
-        Response object with status 400 and stacktrace instead.
-        """
-        try:
-            return validate_request_type(await req.json(), request_type)
-        except Exception as e:
-            logger.info(f"Got invalid request type: {e}")
-            return Response(
-                text=traceback.format_exc(),
-                status=aiohttp.web.HTTPBadRequest.status_code,
-            )
 
     async def find_job_by_ids(self, job_or_submission_id: str) -> Optional[JobDetails]:
         """
@@ -167,7 +151,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.post("/api/jobs/")
     @optional_utils.init_ray_and_catch_exceptions()
     async def submit_job(self, req: Request) -> Response:
-        result = await self._parse_and_validate_request(req, JobSubmitRequest)
+        result = await parse_and_validate_request(req, JobSubmitRequest)
         # Request parsing failed, returned with Response object.
         if isinstance(result, Response):
             return result

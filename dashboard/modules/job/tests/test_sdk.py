@@ -10,14 +10,15 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
-
+from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.dashboard_sdk import (
     ClusterInfo,
     DEFAULT_DASHBOARD_ADDRESS,
     parse_cluster_info,
 )
-from ray.dashboard.modules.job.sdk import JobSubmissionClient
+from ray.dashboard.modules.job.sdk import JobSubmissionClient, JobAgentSubmissionClient
 from ray.tests.conftest import _ray_start
+import ray._private.ray_constants as ray_constants
 import ray.experimental.internal_kv as kv
 
 
@@ -140,6 +141,55 @@ def test_temporary_uri_reference(monkeypatch, expiration_s):
             else:
                 wait_for_condition(check_internal_kv_gced)
                 print("Internal KV was GC'ed at time ", time.time() - start)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
+)
+def test_job_agent_client_get_agent_infos(
+    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
+):
+    cluster = ray_start_cluster_head
+    assert wait_until_server_available(cluster.webui_url) is True
+    webui_url = cluster.webui_url
+    webui_url = format_web_url(webui_url)
+    cluster.add_node(dashboard_agent_listen_port=52366)
+    cluster.add_node(dashboard_agent_listen_port=52367)
+
+    client = JobAgentSubmissionClient(webui_url)
+
+    http_ports = set([ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT, 52366, 52367])
+
+    def _check_nodes():
+        try:
+            agent_infos = client.get_all_agent_infos()
+            assert (
+                set([agent_info["httpPort"] for agent_info in agent_infos.values()])
+                == http_ports
+            )
+            return True
+        except Exception:
+            return False
+
+    wait_for_condition(_check_nodes, timeout=15)
+
+    # test agent queue FIFO
+    res = []
+    for _ in range(3):
+        res.append(client.choice_agent_to_request())
+
+    for _ in range(2):
+        for index in range(3):
+            assert res[index] == client.choice_agent_to_request()
+
+    for worker_node in cluster.worker_nodes:
+        worker_node.all_processes["raylet"][0].process.kill()
+
+    wait_for_condition(lambda: len(client.get_all_agent_infos()) == 1)
+    assert (
+        int(client.choice_agent_to_request().split(":")[-1])
+        == cluster.head_node._dashboard_agent_listen_port
+    )
 
 
 if __name__ == "__main__":
