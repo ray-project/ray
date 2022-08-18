@@ -4,18 +4,16 @@ from typing import Optional
 import torch
 import torch.nn as nn
 from torch import TensorType
+from .model_base import ModelWithEncoder
 
 from rllib2.utils import NNOutput
+from rllib2.models.configs import ModelConfig
 
-###################################################################
-########### Goal Conditioned Normal Policy a ~ N(mu(s,g), std(s, g))
-###################################################################
 from .encoder import Encoder, WithEncoderMixin
 from .pi_distribution import (
     DeterministicDist,
     PiDistribution,
     SquashedDeterministicDist,
-    ...,
 )
 
 """
@@ -67,7 +65,14 @@ class RecurrentPiOutput(PiOutput):
     last_state: Optional[TensorType] = None
 
 
-class Pi(WithEncoderMixin):
+@dataclass
+class PiConfig(ModelConfig):
+    is_determintic: bool = False
+    free_log_std: bool = False
+    squash_actions: bool = False
+
+
+class Pi(ModelWithEncoder):
     """
     Design requirements:
     * Should support both stochastic and deterministic pi`s under one roof
@@ -100,13 +105,42 @@ class Pi(WithEncoderMixin):
     * Should be able to create copies efficiently and perform arbitrary parameter updates in target_updates
     """
 
-    def __init__(self, encoder: Encoder):
-        WithEncoderMixin.__init__(self, encoder)
+    def __init__(self, config: PiConfig, **kwargs):
+        super().__init__(config)
 
-    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
-        """Runs pi, Pi(input_dict) -> Pi(s_t)
-        """
-        pass
+        # action distribution
+        self.action_dist_class, self.logit_dim = self._make_action_dist()
+
+        # output layer
+        self.out_layer = self._make_output_layer()
+
+
+    def _make_action_dist(self):
+        dist_class, logit_dim = model_catalog.get_action_dist_class(self.config)
+        return dist_class, logit_dim
+
+    def _make_output_layer(self):
+        return nn.Linear(self.encoder_out_dim, self.logit_dim)
+    
+
+    def forward(
+        self, 
+        input_dict: SampleBatch, 
+        return_encoder_output: bool = False,
+        **kwargs
+    ) -> PiOutput:
+        """Runs pi, Pi(input_dict) -> Pi(s_t)"""
+
+        encoder_output = self.encoder(input_dict)
+        logits = self.out_layer(encoder_output)
+        action_dist = model_catalog.get_action_dist(
+            self.action_dist_class, 
+            logits
+        )
+        return PiOutput(
+            action_dist=action_dist,
+            action_logits=logits,
+        )
 
 """
 Some examples of pre-defined RLlib standard policies
