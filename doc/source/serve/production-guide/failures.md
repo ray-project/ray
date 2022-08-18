@@ -31,6 +31,7 @@ You can also customize how frequently the health check is run and the timeout af
 >             raise RuntimeError("uh-oh, DB connection is broken.")
 > ```
 
+(serve-head-node-failure)=
 ## Head node failures
 
 By default the Ray head node is a single point of failure: if it crashes, the entire cluster crashes and needs to be restarted.
