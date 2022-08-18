@@ -28,3 +28,4 @@ on `Github`_.
     integration.rst
     internals.rst
     client.rst
+    cli.rst
