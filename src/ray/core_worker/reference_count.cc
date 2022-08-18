@@ -638,7 +638,7 @@ void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
     it->second.on_delete = nullptr;
   }
   it->second.pinned_at_raylet_id.reset();
-  if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
+  if (it->second.spilled && !it->second.spilled_node_id.get().IsNil()) {
     // The spilled copy of the object should get deleted during the on_delete
     // callback, so reset the spill location metadata here.
     // NOTE(swang): Spilled copies in cloud storage are not GCed, so we do not
@@ -680,7 +680,7 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
   absl::MutexLock lock(&mutex_);
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
     const auto &object_id = it->first;
-    if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id ||
+    if (it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil())) == raylet_id ||
         it->second.spilled_node_id == raylet_id) {
       ReleasePlasmaObject(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
@@ -739,7 +739,7 @@ bool ReferenceCounter::IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
     if (it->second.owned_by_us) {
       *owned_by_us = true;
       *spilled = it->second.spilled;
-      *pinned_at = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
+      *pinned_at = it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil())).get();
     }
     return true;
   }
@@ -1392,7 +1392,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &spilled_url = it->second.spilled_url;
   const auto &spilled_node_id = it->second.spilled_node_id;
   const auto &optional_primary_node_id = it->second.pinned_at_raylet_id;
-  const auto &primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
+  const auto &primary_node_id = optional_primary_node_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
   RAY_LOG(DEBUG) << "Published message for " << object_id << ", " << locations.size()
                  << " locations, spilled url: [" << spilled_url
                  << "], spilled node ID: " << spilled_node_id
@@ -1431,9 +1431,9 @@ void ReferenceCounter::FillObjectInformationInternal(
   }
   object_info->set_object_size(it->second.object_size);
   object_info->set_spilled_url(it->second.spilled_url);
-  object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
-  auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
-  object_info->set_primary_node_id(primary_node_id.Binary());
+  object_info->set_spilled_node_id(it->second.spilled_node_id.get().Binary());
+  auto primary_node_id = it->second.pinned_at_raylet_id.value_or(boost::flyweight<NodeID>(NodeID::Nil()));
+  object_info->set_primary_node_id(primary_node_id.get().Binary());
   object_info->set_pending_creation(it->second.pending_creation);
 }
 
