@@ -111,11 +111,11 @@ class MLflowLoggerCallback(LoggerCallback):
             run = self.mlflow_util.start_run(tags=tags, run_name=str(trial))
             self._trial_runs[trial] = run.info.run_id
 
-        run_id = self._trial_runs[trial]
+            run_id = self._trial_runs[trial]
 
-        # Log the config parameters.
-        config = trial.config
-        self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
+            # Log the config parameters.
+            config = trial.config
+            self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
