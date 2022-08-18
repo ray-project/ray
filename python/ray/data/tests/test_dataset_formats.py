@@ -1989,6 +1989,49 @@ def test_json_read_with_read_options(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+def test_json_read_with_parse_options(
+    ray_start_regular_shared,
+    fs,
+    data_path,
+    endpoint_url,
+):
+    # Arrow's JSON ParseOptions isn't serializable in pyarrow < 8.0.0, so this test
+    # covers our custom ParseOptions serializer, similar to ReadOptions in above test.
+    # TODO(chengsu): Remove this test and our custom serializer once we require
+    # pyarrow >= 8.0.0.
+    if endpoint_url is None:
+        storage_options = {}
+    else:
+        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    path1 = os.path.join(data_path, "test1.json")
+    df1.to_json(path1, orient="records", lines=True, storage_options=storage_options)
+    ds = ray.data.read_json(
+        path1,
+        filesystem=fs,
+        parse_options=pajson.ParseOptions(
+            explicit_schema=pa.schema([("two", pa.string())]),
+            unexpected_field_behavior="ignore",
+        ),
+    )
+    dsdf = ds.to_pandas()
+    assert len(dsdf.columns) == 1
+    assert (df1["two"]).equals(dsdf["two"])
+    # Test metadata ops.
+    assert ds.count() == 3
+    assert ds.input_files() == [_unwrap_protocol(path1)]
+    assert "{two: string}" in str(ds), ds
+
+
+@pytest.mark.parametrize(
+    "fs,data_path,endpoint_url",
+    [
+        (None, lazy_fixture("local_path"), None),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
+    ],
+)
 def test_json_read_partitioned_with_filter(
     ray_start_regular_shared,
     fs,
