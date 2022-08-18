@@ -1230,7 +1230,8 @@ class DeploymentState:
             to_add = max(delta_replicas - stopping_replicas, 0)
             if to_add > 0:
                 logger.info(
-                    f"Adding {to_add} replicas to deployment " f"'{self._name}'."
+                    f"Adding {to_add} replica{'s' if to_add > 1 else ''} "
+                    f"to deployment '{self._name}'."
                 )
             for _ in range(to_add):
                 replica_name = ReplicaName(self._name, get_random_letters())
@@ -1255,7 +1256,8 @@ class DeploymentState:
             replicas_stopped = True
             to_remove = -delta_replicas
             logger.info(
-                f"Removing {to_remove} replicas from deployment '{self._name}'."
+                f"Removing {to_remove} replica{'s' if to_remove > 1 else ''} "
+                f"from deployment '{self._name}'."
             )
             replicas_to_stop = self._replicas.pop(
                 states=[

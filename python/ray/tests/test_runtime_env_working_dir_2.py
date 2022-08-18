@@ -11,7 +11,7 @@ import ray
 from ray._private.test_utils import wait_for_condition, chdir, check_local_files_gced
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import GetTimeoutError, RuntimeEnvSetupError
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -109,7 +109,7 @@ def test_large_file_error(shutdown_only, option: str):
         with open("test_file_2", "wb") as f:
             f.write(os.urandom(size))
 
-        with pytest.raises(ValueError):
+        with pytest.raises(RuntimeEnvSetupError):
             if option == "working_dir":
                 ray.init(runtime_env={"working_dir": "."})
             else:
@@ -142,6 +142,8 @@ ray.init("{address}", runtime_env={{"py_modules": ["{tmp_dir}"]}})
         assert "warning" not in output.lower()
 
 
+# TODO(architkulkarni): Deflake and reenable this test.
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.skipif(sys.platform != "darwin", reason="Package exceeds max size.")
 def test_ray_worker_dev_flow(start_cluster):
     cluster, address = start_cluster
@@ -233,6 +235,8 @@ def test_ray_worker_dev_flow(start_cluster):
     assert ray.get(test_tune.remote()) != serve.__path__[0]
 
 
+# TODO(architkulkarni): Deflake and reenable this test.
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize("source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
@@ -325,6 +329,8 @@ def test_default_large_cache(start_cluster, option: str, source: str):
     ],
     indirect=True,
 )
+# TODO(architkulkarni): Deflake and reenable this test.
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on Mac. Issue #27562")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option):

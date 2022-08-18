@@ -17,6 +17,7 @@ from typing import (
 
 from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.arrow_serialization import (
+    _register_arrow_json_parseoptions_serializer,
     _register_arrow_json_readoptions_serializer,
 )
 from ray.data._internal.block_list import BlockMetadata
@@ -355,6 +356,11 @@ class _FileBasedDatasourceReader(Reader):
             path_to_size = dict(zip(self._paths, self._file_sizes))
             self._paths = self._partition_filter(self._paths)
             self._file_sizes = [path_to_size[p] for p in self._paths]
+            if len(self._paths) == 0:
+                raise ValueError(
+                    "No input files found to read. Please double check that "
+                    "'partition_filter' field is set properly."
+                )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -374,11 +380,14 @@ class _FileBasedDatasourceReader(Reader):
         read_stream = self._delegate._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
         read_options = reader_args.get("read_options")
-        if read_options is not None:
+        parse_options = reader_args.get("parse_options")
+        if read_options is not None or parse_options is not None:
             import pyarrow.json as pajson
 
             if isinstance(read_options, pajson.ReadOptions):
                 _register_arrow_json_readoptions_serializer()
+            if isinstance(parse_options, pajson.ParseOptions):
+                _register_arrow_json_parseoptions_serializer()
 
         if open_stream_args is None:
             open_stream_args = {}
@@ -690,13 +699,16 @@ def _wrap_and_register_arrow_serialization_workaround(kwargs: dict) -> dict:
     # TODO(Clark): Remove this serialization workaround once Datasets only supports
     # pyarrow >= 8.0.0.
     read_options = kwargs.get("read_options")
-    if read_options is not None:
+    parse_options = kwargs.get("parse_options")
+    if read_options is not None or parse_options is not None:
         import pyarrow.json as pajson
 
+        # Register a custom serializer instead of wrapping the options, since a
+        # custom reducer will suffice.
         if isinstance(read_options, pajson.ReadOptions):
-            # Register a custom serializer instead of wrapping the options, since a
-            # custom reducer will suffice.
             _register_arrow_json_readoptions_serializer()
+        if isinstance(parse_options, pajson.ParseOptions):
+            _register_arrow_json_parseoptions_serializer()
 
     return kwargs
 

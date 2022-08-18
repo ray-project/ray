@@ -11,11 +11,7 @@ Ray Serve functionality and how to integrate different modeling frameworks.
 
 serve-ml-models
 batch
-web-server-integration
 rllib
-gradio
+gradio-integration
+java
 ```
-
-Other Topics:
-
-- {doc}`../deploying-serve`
