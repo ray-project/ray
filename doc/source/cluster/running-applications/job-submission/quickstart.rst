@@ -256,5 +256,6 @@ Now let's try it with a runtime environment that pins the version of the ``reque
     # Job 'raysubmit_vGGV4MiP9rYkYUnb' succeeded
     # ------------------------------------------
 
-The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-api-ref>`.
-For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk>` and :ref:`job submission using REST <ray-job-rest-api>`.
+- The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-cli-ref>`. 
+- The full API reference for the Ray Jobs SDK can be found :ref:`here <ray-job-submission-api-ref>`.
+- For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk>` and :ref:`job submission using REST <ray-job-rest-api>`.

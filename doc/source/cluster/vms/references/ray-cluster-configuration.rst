@@ -3,7 +3,7 @@
 Cluster YAML Configuration Options
 ==================================
 
-The cluster configuration is defined within a YAML file that will be used by the Cluster Launcher to launch the head node, and by the Autoscaler to launch worker nodes. Once the cluster configuration is defined, you will need to use the :ref:`Ray CLI <ray-cli>` to perform any operations such as starting and stopping the cluster.
+The cluster configuration is defined within a YAML file that will be used by the Cluster Launcher to launch the head node, and by the Autoscaler to launch worker nodes. Once the cluster configuration is defined, you will need to use the :ref:`Ray CLI <ray-cluster-cli>` to perform any operations such as starting and stopping the cluster.
 
 Syntax
 ------

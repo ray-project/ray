@@ -202,7 +202,7 @@ A minimal sample cluster configuration file looks as follows:
 
 Save this configuration file as ``config.yaml``. You can specify a lot more details in the configuration file: instance types to use, minimum and maximum number of workers to start, autoscaling strategy, files to sync, and more. For a full reference on the available configuration properties, please refer to the :ref:`cluster YAML configuration options reference <cluster-config>`.
 
-After defining our configuration, we will use the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. To start the Ray cluster, we will use the :ref:`Ray CLI <ray-cli>`. Run the following command:
+After defining our configuration, we will use the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. To start the Ray cluster, we will use the :ref:`Ray CLI <ray-cluster-cli>`. Run the following command:
 
 .. code-block:: shell
 

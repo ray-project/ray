@@ -417,6 +417,8 @@ E.g., Get a node info
 Logs
 ----
 
+.. _state-api-log-doc:
+
 State API also allows you to conveniently access ray logs. Note that you cannot access the logs from a dead node.
 By default, the API prints log from a head node.
 
@@ -537,4 +539,6 @@ Or it cleans up the FINISHED state of tasks when its lineage goes out of scope.
 API Reference
 -------------
 
-See :ref:`State API Reference <state-api-ref>`.
+- For the CLI Reference, see :ref:`State CLI Refernece <state-api-cli-ref>`.
+- For the SDK Reference, see :ref:`State API Reference <state-api-ref>`.
+- For the Log CLI Reference, see :ref:`Log CLI Reference <ray-logs-api-cli-ref>`.

@@ -12,5 +12,5 @@ API References
     ../serve/package-ref.rst
     ../rllib/package_ref/index.rst
     ../workflows/package-ref.rst
+    ../cluster/package-overview.rst
     ../ray-core/package-ref.rst
-    ../ray-observability/state/ray-state-api-reference.rst
