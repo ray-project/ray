@@ -1,5 +1,4 @@
-from collections import Any, Dict
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import torch
 
