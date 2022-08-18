@@ -33,7 +33,8 @@ MemoryMonitor::MemoryMonitor(float usage_threshold,
         boost::asio::io_service::work io_service_work_(io_context_);
         io_context_.run();
       }),
-      runner_(io_context_) {
+      runner_(io_context_),
+      memory_info_(-1,-1) {
   RAY_CHECK(monitor_callback_ != nullptr);
   RAY_CHECK_GE(usage_threshold_, 0);
   RAY_CHECK_LE(usage_threshold_, 1);
@@ -76,6 +77,12 @@ bool MemoryMonitor::IsUsageAboveThreshold() {
   return is_usage_above_threshold;
 }
 
+std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytesCached() {
+  absl::ReaderMutexLock lock(&memory_info_mutex_);
+  auto memory_info = memory_info_;
+  return std::tuple(memory_info.used_bytes, memory_info.total_bytes);
+}
+
 std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   auto [cgroup_used_bytes, cgroup_total_bytes] = GetCGroupMemoryBytes();
 #ifndef __linux__
@@ -89,6 +96,10 @@ std::tuple<int64_t, int64_t> MemoryMonitor::GetMemoryBytes() {
   /// This assumes cgroup total bytes will look different than system (meminfo)
   if (system_total_bytes == cgroup_total_bytes) {
     system_used_bytes = cgroup_used_bytes;
+  }
+  {
+    absl::WriterMutexLock lock(&memory_info_mutex_);
+    memory_info_ = MemoryInfo(system_used_bytes, system_total_bytes);
   }
   return std::tuple(system_used_bytes, system_total_bytes);
 }

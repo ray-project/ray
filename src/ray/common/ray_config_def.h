@@ -84,6 +84,21 @@ RAY_CONFIG(float, memory_usage_threshold_fraction, 0.9)
 /// Monitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_interval_ms, 0)
 
+RAY_CONFIG(float, critical_low_memory_threshold_for_task_dispatch_throttling, 0)
+
+/// The interval for refreshing task token, that is
+/// used to throttle the number tasks that can be dispatched.
+/// Setting this to zero disables this. Only runs on low memory
+RAY_CONFIG(uint64_t, critical_low_memory_task_dispatch_token_refresh_interval_ms, 0)
+
+/// The number of task dispatch tokens to set per interval.
+/// The number of tokens available at any time will never exceed this value.
+RAY_CONFIG(uint64_t, critical_low_memory_task_dispatch_token_refresh_count, 0)
+
+RAY_CONFIG(float, low_memory_threshold_for_task_dispatch_throttling, 0)
+RAY_CONFIG(uint64_t, low_memory_task_dispatch_token_refresh_interval_ms, 0)
+RAY_CONFIG(int64_t, low_memory_task_dispatch_token_refresh_count, 0)
+
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
 

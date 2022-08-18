@@ -19,12 +19,14 @@ def ray_with_memory_monitor(shutdown_only):
     metrics_report_interval_ms = 100
 
     with ray.init(
-        num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "memory_usage_threshold_fraction": memory_usage_threshold_fraction,
             "memory_monitor_interval_ms": memory_monitor_interval_ms,
             "metrics_report_interval_ms": metrics_report_interval_ms,
+            "low_memory_threshold_for_task_dispatch_throttling": 0.5,
+            "low_memory_task_dispatch_token_refresh_interval_ms": 1000,
+            "low_memory_task_dispatch_token_refresh_count": 1,
         },
     ):
         yield
@@ -204,6 +206,35 @@ def test_worker_dump(ray_with_memory_monitor):
             oom_actor.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 3)
         )
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="memory monitor only on linux currently",
+)
+def test_backpressure(ray_with_memory_monitor):
+    # memory_users = [Leaker.options(name=str(i)).remote() for i in range(7)]
+    hogger = Leaker.options(name="memory_hogger").remote()
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction - 0.1)
+    ray.get(
+            hogger.allocate.remote(bytes_to_alloc)
+        )
+
+    for _ in range(10):
+        refs = [no_retry.remote(0) for _ in range(10)]
+        # refs = [user.allocate.remote(0) for user in memory_users]
+        _ = [ray.get(ref) for ref in refs]
+
+    bytes_to_alloc = get_additional_bytes_to_reach_memory_usage_pct(memory_usage_threshold_fraction + 0.2)
+    with pytest.raises(ray.exceptions.RayActorError) as _:
+      ray.get(
+              hogger.allocate.remote(bytes_to_alloc, memory_monitor_interval_ms * 10)
+          )
+
+    while True:
+        refs = [no_retry.remote(0) for _ in range(10)]
+        # refs = [user.allocate.remote(0) for user in memory_users]
+        _ = [ray.get(ref) for ref in refs]
+
+    # time.sleep(1000)
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

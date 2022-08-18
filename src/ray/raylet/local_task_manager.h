@@ -188,6 +188,9 @@ class LocalTaskManager : public ILocalTaskManager {
     return num_unschedulable_task_spilled_;
   }
 
+  void SetTaskTokens(int32_t tokens);
+
+
  private:
   struct SchedulingClassInfo;
 
@@ -382,6 +385,8 @@ class LocalTaskManager : public ILocalTaskManager {
   size_t num_task_spilled_ = 0;
   size_t num_waiting_task_spilled_ = 0;
   size_t num_unschedulable_task_spilled_ = 0;
+
+  std::atomic<int32_t> task_dispatch_tokens_ = -1;
 
   friend class SchedulerResourceReporter;
   friend class ClusterTaskManagerTest;

@@ -122,6 +122,14 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     /// with nested tasks.
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
+      auto tokens = task_dispatch_tokens_.load();
+      if (tokens >= 0) {
+        RAY_LOG(WARNING) << "tokens for dispatching!" << tokens;
+        if (tokens == 0) {
+          return;
+        }
+      }
+
       auto &work = *work_it;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
@@ -136,6 +144,9 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
           work->GetState() == internal::WorkStatus::WAITING) {
         RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
+                       << " scheduling class=" << TaskSpecification::GetSchedulingClassDescriptor(scheduling_class).DebugString()
+                       << " scheduling class capacity=" << sched_cls_info.capacity
+                       << " scheduling class running=" << sched_cls_info.running_tasks.size()
                        << " next update time=" << sched_cls_info.next_update_time;
         if (get_time_ms_() < sched_cls_info.next_update_time) {
           // We're over capacity and it's not time to admit a new task yet.
@@ -251,6 +262,11 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
         auto &owner_address = spec.CallerAddress();
+        if (task_dispatch_tokens_.load() > 0) {
+          task_dispatch_tokens_.fetch_sub(1);
+          RAY_LOG(WARNING) << "subtracting one token now at " << task_dispatch_tokens_.load();
+        }
+        
         /// TODO(scv119): if a worker is not started, the resources is leaked and
         // task might be hanging.
         worker_pool_.PopWorker(
@@ -713,6 +729,11 @@ void LocalTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
     executing_task_args_.erase(it);
   }
 }
+
+void LocalTaskManager::SetTaskTokens(int32_t tokens) {
+  task_dispatch_tokens_ = tokens;
+}
+
 
 namespace {
 void ReplyCancelled(std::shared_ptr<internal::Work> &work,

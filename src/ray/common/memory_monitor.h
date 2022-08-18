@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 
@@ -25,6 +26,16 @@ namespace ray {
 /// \param is_usage_above_threshold true if memory usage is above the usage
 /// threshold at this instant.
 using MemoryUsageRefreshCallback = std::function<void(bool is_usage_above_threshold)>;
+
+/// Captures the memory information of a particular entity,
+/// Whether it being a process or the node.
+struct MemoryInfo {
+    MemoryInfo(int64_t memory_used, int64_t memory_total)
+        : used_bytes(memory_used),
+          total_bytes(memory_total) {}
+    int64_t used_bytes;
+    int64_t total_bytes;
+};
 
 /// Monitors the memory usage of the node.
 /// It checks the memory usage p
@@ -48,6 +59,9 @@ class MemoryMonitor {
   /// \param process_id the process id
   /// \return the used memory in bytes for the process
   int64_t GetProcessMemoryBytes(int64_t process_id);
+
+  /// \return the used and total memory in bytes.
+  std::tuple<int64_t, int64_t> GetMemoryBytesCached();
 
  private:
   static constexpr char kCgroupsV1MemoryMaxPath[] =
@@ -94,6 +108,9 @@ class MemoryMonitor {
   instrumented_io_context io_context_;
   std::thread monitor_thread_;
   PeriodicalRunner runner_;
+
+  MemoryInfo memory_info_ GUARDED_BY(memory_info_mutex_);
+  mutable absl::Mutex memory_info_mutex_;
 };
 
 }  // namespace ray

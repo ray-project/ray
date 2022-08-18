@@ -565,6 +565,27 @@ ray::Status NodeManager::RegisterGcs() {
         RayConfig::instance().raylet_check_gc_period_milliseconds(),
         "NodeManager.CheckGC");
   }
+  if (RayConfig::instance().low_memory_task_dispatch_token_refresh_interval_ms() > 0 &&
+    RayConfig::instance().low_memory_threshold_for_task_dispatch_throttling() > 0) {
+    periodical_runner_.RunFnPeriodically(
+        [this] { 
+          auto [used_memory_bytes, total_memory_bytes] = memory_monitor_->GetMemoryBytesCached();
+          RAY_LOG(INFO) << "low_memory_task_dispatch_token_refresh" << used_memory_bytes << " " << total_memory_bytes << " setting token " << RayConfig::instance().low_memory_task_dispatch_token_refresh_count();
+          if (total_memory_bytes == -1 || used_memory_bytes == -1) {
+            return;
+          }
+          auto usage_fraction = static_cast<float>(used_memory_bytes) / total_memory_bytes;
+          bool is_usage_above_threshold = usage_fraction > RayConfig::instance().low_memory_threshold_for_task_dispatch_throttling();
+          if (is_usage_above_threshold) {
+            auto tokens = RayConfig::instance().low_memory_task_dispatch_token_refresh_count();
+            local_task_manager_->SetTaskTokens(tokens);
+          } else {
+            local_task_manager_->SetTaskTokens(-1);
+          }
+        },
+        RayConfig::instance().low_memory_task_dispatch_token_refresh_interval_ms(),
+        "NodeManager.low_memory_task_dispatch_token_refresh");
+  }
   return ray::Status::OK();
 }
 
