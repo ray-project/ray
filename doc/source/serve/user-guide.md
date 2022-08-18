@@ -11,3 +11,5 @@ This user guide will help you navigate the Ray Serve project and show you how to
 - [Production Guide](serve-in-production)
 - [Performance Tuning](performance)
 - [Handling Dependencies](handling-dependencies)
+- [Experimental Java API](managing-java-deployments)
+- [1.x to 2.x API Migration Guide](migration)
