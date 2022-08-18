@@ -24,7 +24,6 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.version import CURRENT_VERSION
-
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
