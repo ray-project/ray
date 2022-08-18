@@ -154,6 +154,4 @@ More Resources
 You can find more application patterns and examples in the following resources
 from other Ray libraries built on top of Ray DAG API with same mechanism.
 
-| `Visualization of DAGs <https://docs.ray.io/en/master/serve/deployment-graph/visualize_dag_during_development.html>`_
-| `DAG Cookbook and patterns <https://docs.ray.io/en/master/serve/deployment-graph.html#patterns>`_
 | `Serve Deployment Graph's original REP <https://github.com/ray-project/enhancements/blob/main/reps/2022-03-08-serve_pipeline.md>`_
