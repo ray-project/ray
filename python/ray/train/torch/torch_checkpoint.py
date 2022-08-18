@@ -1,5 +1,4 @@
-from collections import Any, Dict
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import torch
 
@@ -96,7 +95,19 @@ class TorchCheckpoint(Checkpoint):
             >>>
             >>> predictor = TorchPredictor.from_checkpoint(checkpoint)
         """  # noqa: E501
-        return cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model})
+        # NOTE: For context on this `ValueError`, see issue #27922.
+        if model.__module__ == "__main__":
+            raise ValueError(
+                f"`{cls.__name__}` can't serialize model of type "
+                f"`{model.__class__.__name__}` because `{model.__class__.__name__}` "
+                "is defined in the top-level environment. To work "
+                f"around this error, call `{cls.__name__}.from_state_dict` instead of "
+                f"`{cls.__name__}.from_model`. Alternatively, move the definition of "
+                f"`{model.__class__.__name__}` to a different module."
+            )
+
+        checkpoint = cls.from_dict({PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model})
+        return checkpoint
 
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
