@@ -95,7 +95,7 @@ class _StatsActor:
     TODO(ekl) we should consider refactoring LazyBlockList so stats can be
     extracted without using an out-of-band actor."""
 
-    def __init__(self, max_stats=10 * 1000):
+    def __init__(self, max_stats=1000):
         # Mapping from uuid -> dataset-specific stats.
         self.metadata = collections.defaultdict(dict)
         self.last_time = {}
