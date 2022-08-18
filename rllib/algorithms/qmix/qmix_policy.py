@@ -312,6 +312,7 @@ class QMixTorchPolicy(TorchPolicy):
                 masked_q_values, [-1] + list(masked_q_values.shape)[2:]
             )
             actions, _ = self.exploration.get_exploration_action(
+                input_dict=None,
                 action_distribution=TorchCategorical(masked_q_values_folded),
                 timestep=timestep,
                 explore=explore,

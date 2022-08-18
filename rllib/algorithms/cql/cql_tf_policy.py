@@ -188,6 +188,7 @@ def cql_loss(
 
     # CQL Loss (We are using Entropy version of CQL (the best version))
     rand_actions, _ = policy._random_action_generator.get_exploration_action(
+        input_dict=None,
         action_distribution=action_dist_class(
             tf.tile(action_dist_tp1.inputs, (num_actions, 1)), model
         ),

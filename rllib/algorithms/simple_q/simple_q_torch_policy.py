@@ -80,7 +80,7 @@ class SimpleQTorchPolicy(
         # Call the exploration component's `get_exploration_action` method to
         # explore, if necessary.
         actions, logp = self.exploration.get_exploration_action(
-            action_distribution=distribution, timestep=timestep, explore=explore
+            input_dict=input_dict, action_distribution=distribution, timestep=timestep, explore=explore
         )
         # Return (exploration) actions, state_outs (empty list), and extra outs.
         return (
