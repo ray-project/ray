@@ -102,6 +102,23 @@ def test_init():
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
+def test_tensorflow_checkpoint():
+    model = build_model()
+    # Keras model requires build/call for weights to be initialized
+    model.build(input_shape=(1,))
+    preprocessor = DummyPreprocessor()
+    preprocessor.attr = 1
+
+    checkpoint = TensorflowCheckpoint.from_model(model, preprocessor=preprocessor)
+    assert checkpoint.get_model_weights() == model.get_weights()
+
+    with checkpoint.as_directory() as path:
+        checkpoint = TensorflowCheckpoint.from_directory(path)
+        checkpoint_preprocessor = checkpoint.get_preprocessor()
+        assert checkpoint.get_model_weights() == model.get_weights()
+        assert checkpoint_preprocessor.attr == preprocessor.attr
+
+
 @pytest.mark.parametrize("use_gpu", [False, True])
 def test_predict_array(use_gpu):
     predictor = TensorflowPredictor(
