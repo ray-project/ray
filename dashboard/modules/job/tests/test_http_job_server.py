@@ -14,6 +14,7 @@ from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 import ray
+import ray.dashboard.consts as dashboard_consts
 from ray._private.test_utils import (
     chdir,
     format_web_url,
@@ -23,6 +24,7 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.version import CURRENT_VERSION
+
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
@@ -49,6 +51,9 @@ def job_sdk_client(headers):
         yield JobSubmissionClient(format_web_url(address), headers=headers)
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 @pytest.mark.parametrize("use_sdk", [True, False])
 def test_list_jobs_empty(headers, use_sdk: bool):
     # Create a cluster using `ray start` instead of `ray.init` to avoid creating a job
@@ -73,6 +78,9 @@ def test_list_jobs_empty(headers, use_sdk: bool):
         subprocess.check_output(["ray", "stop", "--force"])
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 @pytest.mark.parametrize("use_sdk", [True, False])
 def test_list_jobs(job_sdk_client: JobSubmissionClient, use_sdk: bool):
     client = job_sdk_client
@@ -583,6 +591,9 @@ def test_parse_cluster_info(scheme: str, host: str, port: Optional[int]):
             parse_cluster_info(address, False)
 
 
+@pytest.mark.skipif(
+    dashboard_consts.ENABLE_HEAD_RAYLETLESS, reason="Not implemented yet."
+)
 @pytest.mark.asyncio
 async def test_tail_job_logs(job_sdk_client):
     client = job_sdk_client
