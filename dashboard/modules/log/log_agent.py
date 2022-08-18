@@ -5,6 +5,7 @@ import ray.dashboard.modules.log.log_consts as log_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import asyncio
+import grpc
 import io
 import os
 
@@ -16,28 +17,11 @@ from ray.core.generated import reporter_pb2_grpc
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
-
-class LogAgent(dashboard_utils.DashboardAgentModule):
-    def __init__(self, dashboard_agent):
-        super().__init__(dashboard_agent)
-        log_utils.register_mimetypes()
-        routes.static("/logs", self._dashboard_agent.log_dir, show_index=True)
-
-    async def run(self, server):
-        pass
-
-    @staticmethod
-    def is_minimal_module():
-        return False
-
-
 # 64 KB
 BLOCK_SIZE = 1 << 16
 
 
-class LogAgentV1Grpc(
-    dashboard_utils.DashboardAgentModule, reporter_pb2_grpc.ReporterServiceServicer
-):
+class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
 
@@ -45,14 +29,16 @@ class LogAgentV1Grpc(
         if server:
             reporter_pb2_grpc.add_LogServiceServicer_to_server(self, server)
 
-    # TODO: should this return True
     @staticmethod
     def is_minimal_module():
+        # Dashboard is only available with non-minimal install now.
         return False
 
     async def ListLogs(self, request, context):
         """
         Lists all files in the active Ray logs directory.
+
+        Part of `LogService` gRPC.
 
         NOTE: These RPCs are used by state_head.py, not log_head.py
         """
@@ -72,6 +58,8 @@ class LogAgentV1Grpc(
         Streams the log in real time starting from `request.lines` number of lines from
         the end of the file if `request.keep_alive == True`. Else, it terminates the
         stream once there are no more bytes to read from the log file.
+
+        Part of `LogService` gRPC.
 
         NOTE: These RPCs are used by state_head.py, not log_head.py
         """
@@ -106,6 +94,37 @@ class LogAgentV1Grpc(
                         bytes = f.read()
                         if bytes != b"":
                             yield reporter_pb2.StreamLogReply(data=bytes)
+
+        async def _stream_log_in_chunk(
+            context,
+            file,
+            start,
+            end: int = -1,
+            keep_alive_interval: int = -1,
+        ):
+            assert "b" in file.mode, "Only binary file is supported."
+
+            if end == -1:
+                # Read until end of the file
+                file.seek(0, 2)
+                end = f.tell()
+
+            # Until gRPC is done
+            while not context.done():
+                to_read = min(BLOCK_SIZE, end - start)
+                bytes = f.read(to_read)
+
+                read = len(bytes)
+                if read != to_read:
+                    await context.abort(
+                        grpc.INTERNAL, f"Error reading the log file: {file.name}"
+                    )
+                start += read
+                yield reporter_pb2.StreamLogReply(data=bytes)
+
+                # Sleep
+                if keep_alive_interval > 0:
+                    await asyncio.sleep(keep_alive_interval)
 
 
 def tail(f: io.TextIOBase, lines: int):
