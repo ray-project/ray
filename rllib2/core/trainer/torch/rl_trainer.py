@@ -18,4 +18,5 @@ class MARLTorchTrainer(MARLTrainer, TorchTrainer):
             optimizers = trainer.make_optimizer()
             for name, optimizer in optimizers.items():
                 marl_optimizers[f'{mid}_{name}'] = optimizer
+        return marl_optimizers
     
