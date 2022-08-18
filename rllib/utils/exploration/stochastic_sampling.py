@@ -1,7 +1,7 @@
 import functools
 import gym
 import numpy as np
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
@@ -72,6 +72,7 @@ class StochasticSampling(Exploration):
     def get_exploration_action(
         self,
         *,
+        input_dict: Dict[str, Any],
         action_distribution: ActionDistribution,
         timestep: Optional[Union[int, TensorType]] = None,
         explore: bool = True

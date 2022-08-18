@@ -1,5 +1,5 @@
 from gym.spaces import Discrete, MultiDiscrete, Space
-from typing import Union, Optional
+from typing import Union, Optional, Dict, Any
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
@@ -41,6 +41,7 @@ class SoftQ(StochasticSampling):
     @override(StochasticSampling)
     def get_exploration_action(
         self,
+        input_dict: Dict[str, Any],
         action_distribution: ActionDistribution,
         timestep: Union[int, TensorType],
         explore: bool = True,
@@ -52,5 +53,5 @@ class SoftQ(StochasticSampling):
         dist = cls(action_distribution.inputs, self.model, temperature=self.temperature)
         # Delegate to super method.
         return super().get_exploration_action(
-            action_distribution=dist, timestep=timestep, explore=explore
+            input_dict=input_dict, action_distribution=dist, timestep=timestep, explore=explore
         )

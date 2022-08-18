@@ -386,7 +386,7 @@ class DynamicTFPolicy(TFPolicy):
                     sampled_action,
                     sampled_action_logp,
                 ) = self.exploration.get_exploration_action(
-                    action_distribution=action_dist, timestep=timestep, explore=explore
+                    input_dict=None, action_distribution=action_dist, timestep=timestep, explore=explore
                 )
 
         if dist_inputs is not None:

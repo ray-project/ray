@@ -1,5 +1,5 @@
 from gym.spaces import Space
-from typing import Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, TYPE_CHECKING, Any
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
@@ -86,7 +86,7 @@ class Exploration:
     @DeveloperAPI
     def get_exploration_action(self,
                                *,
-                               input_dict: Dict[str, TensorType], # ADDED
+                               input_dict: Dict[str, Any],
                                action_distribution: ActionDistribution,
                                timestep: Union[TensorType, int],
                                explore: bool = True):

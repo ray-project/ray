@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Dict, Any
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
@@ -17,6 +17,7 @@ class UpperConfidenceBound(Exploration):
     @override(Exploration)
     def get_exploration_action(
         self,
+        input_dict: Dict[str, Any],
         action_distribution: ActionDistribution,
         timestep: Union[int, TensorType],
         explore: bool = True,

@@ -1,7 +1,7 @@
 from gym.spaces import Discrete, Box, MultiDiscrete, Space
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Union, Optional
+from typing import Union, Optional, Dict, Any
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
@@ -46,6 +46,7 @@ class Random(Exploration):
     def get_exploration_action(
         self,
         *,
+        input_dict: Dict[str, Any],
         action_distribution: ActionDistribution,
         timestep: Union[int, TensorType],
         explore: bool = True

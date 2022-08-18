@@ -1,6 +1,6 @@
 from gym.spaces import Box, Discrete
 import numpy as np
-from typing import Optional, TYPE_CHECKING, Union
+from typing import Optional, TYPE_CHECKING, Union, Dict, Any
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.env.base_env import BaseEnv
@@ -180,6 +180,7 @@ class ParameterNoise(Exploration):
     def get_exploration_action(
         self,
         *,
+        input_dict: Dict[str, Any],
         action_distribution: ActionDistribution,
         timestep: Union[TensorType, int],
         explore: Union[TensorType, bool]
@@ -187,7 +188,7 @@ class ParameterNoise(Exploration):
         # Use our sub-exploration object to handle the final exploration
         # action (depends on the algo-type/action-space/etc..).
         return self.sub_exploration.get_exploration_action(
-            action_distribution=action_distribution, timestep=timestep, explore=explore
+            input_dict=input_dict, action_distribution=action_distribution, timestep=timestep, explore=explore
         )
 
     @override(Exploration)

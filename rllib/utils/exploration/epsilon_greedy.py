@@ -2,7 +2,7 @@ import gym
 import numpy as np
 import tree  # pip install dm_tree
 import random
-from typing import Union, Optional
+from typing import Union, Optional, Dict, Any
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.torch.torch_action_dist import TorchMultiActionDistribution
@@ -14,7 +14,6 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule, PiecewiseSchedule
 from ray.rllib.utils.torch_utils import FLOAT_MIN
-from ray.rllib.utils.typing import Dict # ADDED
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -88,7 +87,7 @@ class EpsilonGreedy(Exploration):
     def get_exploration_action(
         self,
         *,
-        input_dict: Dict[str, TensorType], # ADDED
+        input_dict: Dict[str, Any],
         action_distribution: ActionDistribution,
         timestep: Union[int, TensorType],
         explore: Optional[Union[bool, TensorType]] = True,
