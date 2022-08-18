@@ -193,6 +193,21 @@ PyTorch
     :exclude-members: TorchTrainer
     :show-inheritance:
 
+Alpa (Experimental)
+#######
+
+.. autoclass:: ray.train.alpa.AlpaTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.alpa
+    :members:
+    :exclude-members: AlpaTrainer
+    :show-inheritance:
+
 Horovod
 #######
 
