@@ -119,6 +119,9 @@ def convert_ndarray_to_torch_tensor(
     Returns: A Torch Tensor.
     """
     ndarray = _unwrap_ndarray_object_type_if_needed(ndarray)
+    # NOTE: PyTorch raises a `UserWarning` if `ndarray` isn't writeable. See #28003.
+    if not ndarray.flags["WRITEABLE"]:
+        ndarray = np.copy(ndarray)
     return torch.as_tensor(ndarray, dtype=dtype, device=device)
 
 
