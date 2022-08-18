@@ -193,6 +193,21 @@ PyTorch
     :exclude-members: TorchTrainer
     :show-inheritance:
 
+Jax (Experimental)
+#######
+
+.. autoclass:: ray.train.jax.JaxTrainer
+    :members:
+    :show-inheritance:
+
+    .. automethod:: __init__
+
+
+.. automodule:: ray.train.jax
+    :members:
+    :exclude-members: JaxTrainer
+    :show-inheritance:
+
 Horovod
 #######
 
