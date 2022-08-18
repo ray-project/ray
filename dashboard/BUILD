@@ -20,9 +20,9 @@ py_test_run_all_subdirectory(
     size = "medium",
     include = ["**/test*.py"],
     exclude = [
-        "modules/test/**",
-        "modules/node/tests/test_node.py",
-        "tests/test_dashboard.py",
+        "modules/test/**", 
+        "modules/node/tests/test_node.py", 
+        "tests/test_dashboard.py", 
         "tests/test_state_head.py"
     ],
     extra_srcs = [],
