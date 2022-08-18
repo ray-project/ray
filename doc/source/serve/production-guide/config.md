@@ -7,7 +7,7 @@ This section should help you:
 - understand the Serve config file format.
 - understand how to generate and update a config file for a Serve application.
 
-This config file can be used with the [serve deploy](serve-in-production-deploying) command CLI or embedded in a [RayService] custom resource in Kubernetes to deploy and update your application in production.
+This config file can be used with the [serve deploy](serve-in-production-deploying) command CLI or embedded in a [RayService](serve-in-production-kubernetes) custom resource in Kubernetes to deploy and update your application in production.
 The file is written in YAML and has the following format:
 
 ```yaml
