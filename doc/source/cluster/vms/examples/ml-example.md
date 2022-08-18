@@ -70,13 +70,13 @@ We'll use the {ref}`Ray Job Python SDK <ray-job-sdk>` to submit the XGBoost work
 ```
 
 To submit the workload, run the above Python script.
-The script is also available in the Ray repository.
+The script is available [in the Ray repository][XGBSubmit].
 
 ```shell
-# From the parent directory of cloned Ray master.
-pushd ray/doc/source/cluster/doc_code/
+# Download the above script.
+curl https://raw.githubusercontent.com/ray-project/ray/releases/2.0.0/doc/source/cluster/doc_code/xgboost_submit.py -o xgboost_submit.py
+# Run the script.
 python xgboost_submit.py
-popd
 ```
 
 ### Observe progress
@@ -130,3 +130,5 @@ Delete your Ray cluster with the following command:
 ```shell
 ray down -y cluster.yaml
 ```
+
+[XGBSubmit]: https://github.com/ray-project/ray/blob/releases/2.0.0/doc/source/cluster/doc_code/xgboost_submit.py
