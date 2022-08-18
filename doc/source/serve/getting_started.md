@@ -4,9 +4,9 @@
 
 This tutorial will walk you through the process of deploying models with Ray Serve. It will show you how to
 
-* expose your models over HTTP using Ray Serve [deployments](serve-managing-deployments-guide)
+* expose your models over HTTP using deployments
 * test your deployments over HTTP
-* compose multiple-model machine learning pipelines with Ray Serve [deployment graphs](serve-model-composition-guide)
+* compose multiple-model machine learning models together into a single application
 
 We'll use two models in this tutorial:
 
@@ -252,13 +252,12 @@ $ python graph_client.py
 c'était le meilleur des temps, c'était le pire des temps .
 ```
 
-Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources. See the guide on [model composition](serve-model-composition-guide) to learn more.
+Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources. See the guide on [model composition](serve-model-composition) to learn more.
 
 ## Next Steps
 
 - Dive into the {doc}`key-concepts` to get a deeper understanding of Ray Serve.
-- Learn more about how to deploy your Ray Serve application to a multi-node cluster: {ref}`serve-deploy-tutorial`.
-- See the guide on [putting Ray Serve in production](serve-in-production) to learn more about how to manage your deployments.
+- Learn more about how to deploy your Ray Serve application to production: {ref}`serve-in-production`.
 - Check more in-depth tutorials for popular machine learning frameworks: {doc}`tutorials/index`.
 
 ```{rubric} Footnotes

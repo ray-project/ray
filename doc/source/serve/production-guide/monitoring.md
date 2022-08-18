@@ -54,7 +54,7 @@ For example, let's run a basic Serve application and view the logs that it emits
 
 First, let's create a simple deployment that logs a custom log message when it's queried:
 
-```{literalinclude} doc_code/monitoring/monitoring.py
+```{literalinclude} ../doc_code/monitoring/monitoring.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -175,7 +175,7 @@ Once again, you may need to replace `./promtail-darwin-amd64` with your Promtail
 
 Run the following Python script to deploy a basic Serve deployment with a Serve deployment logger and to make some requests:
 
-```{literalinclude} doc_code/monitoring/deployment_logger.py
+```{literalinclude} ../doc_code/monitoring/deployment_logger.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -211,6 +211,13 @@ You can leverage built-in Ray Serve metrics to get a closer look at your applica
 Ray Serve exposes important system metrics like the number of successful and
 failed requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default, the metrics are exposed in Prometheus format on each node.
 
+:::{note}
+Different metrics are collected when Deployments are called
+via Python `ServeHandle` and when they are called via HTTP.
+
+See the list of metrics below marked for each.
+:::
+
 The following metrics are exposed by Ray Serve:
 
 ```{eval-rst}
@@ -219,29 +226,31 @@ The following metrics are exposed by Ray Serve:
 
    * - Name
      - Description
-   * - ``serve_deployment_request_counter``
+   * - ``serve_deployment_request_counter`` [**]
      - The number of queries that have been processed in this replica.
-   * - ``serve_deployment_error_counter``
+   * - ``serve_deployment_error_counter`` [**]
      - The number of exceptions that have occurred in the deployment.
-   * - ``serve_deployment_replica_starts``
+   * - ``serve_deployment_replica_starts`` [**]
      - The number of times this replica has been restarted due to failure.
-   * - ``serve_deployment_processing_latency_ms``
+   * - ``serve_deployment_processing_latency_ms`` [**]
      - The latency for queries to be processed.
-   * - ``serve_replica_processing_queries``
+   * - ``serve_replica_processing_queries`` [**]
      - The current number of queries being processed.
-   * - ``serve_num_http_requests``
+   * - ``serve_num_http_requests`` [*]
      - The number of HTTP requests processed.
-   * - ``serve_num_http_error_requests``
+   * - ``serve_num_http_error_requests`` [*]
      - The number of non-200 HTTP responses.
-   * - ``serve_num_router_requests``
+   * - ``serve_num_router_requests`` [*]
      - The number of requests processed by the router.
-   * - ``serve_handle_request_counter``
+   * - ``serve_handle_request_counter`` [**]
      - The number of requests processed by this ServeHandle.
-   * - ``serve_deployment_queued_queries``
+   * - ``serve_deployment_queued_queries`` [*]
      - The number of queries for this deployment waiting to be assigned to a replica.
-   * - ``serve_num_deployment_http_error_requests``
+   * - ``serve_num_deployment_http_error_requests`` [*]
      - The number of non-200 HTTP responses returned by each deployment.
 ```
+[*] - only available when using HTTP calls  
+[**] - only available when using Python `ServeHandle` calls
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 
@@ -251,7 +260,7 @@ ray start --head --metrics-export-port=8080
 
 Then run the following script:
 
-```{literalinclude} doc_code/monitoring/metrics_snippet.py
+```{literalinclude} ../doc_code/monitoring/metrics_snippet.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -275,7 +284,7 @@ which indicates that the average processing latency is just over one second, as 
 You can even define a [custom metric](application-level-metrics) for your deployment and tag it with deployment or replica metadata.
 Here's an example:
 
-```{literalinclude} doc_code/monitoring/custom_metric_snippet.py
+```{literalinclude} ../doc_code/monitoring/custom_metric_snippet.py
 :start-after: __start__
 :end-before: __end__
 ```
