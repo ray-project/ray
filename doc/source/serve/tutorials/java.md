@@ -111,35 +111,3 @@ After deploying this deployment, we can access it through `curl` command:
 ```shell
 curl -d '{"time":1641038674, "bank":"test_bank", "indicator":"test_indicator"}' http://127.0.0.1:8000/strategy
 ```
-
-It can also be accessed using HTTP Client in Java code:
-
-```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
-:end-before: docs-http-end
-:language: java
-:start-after: docs-http-start
-```
-
-The example of strategy calculation using HTTP to access deployment is as follows:
-
-```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
-:end-before: docs-calc-end
-:language: java
-:start-after: docs-calc-start
-```
-
-This code can also be rewritten to support concurrency:
-
-```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
-:end-before: docs-parallel-calc-end
-:language: java
-:start-after: docs-parallel-calc-start
-```
-
-Finally, the complete usage of `HttpStrategyCalcOnRayServe` is like this:
-
-```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/HttpStrategyCalcOnRayServe.java
-:end-before: docs-main-end
-:language: java
-:start-after: docs-main-start
-```
