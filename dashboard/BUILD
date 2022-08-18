@@ -64,8 +64,7 @@ py_test(
 py_test(
     name = "test_head_rayletless",
     size = "medium",
-    include = ["modules/job/tests/test_http_job_server.py"],
-    extra_srcs = [],
+    srcs = ["modules/job/tests/test_http_job_server.py"],
     data = [
         "modules/job/tests/backwards_compatibility_scripts/test_backwards_compatibility.sh",
         "modules/job/tests/pip_install_test-0.5-py3-none-any.whl",
