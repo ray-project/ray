@@ -95,7 +95,7 @@ class _StatsActor:
     TODO(ekl) we should consider refactoring LazyBlockList so stats can be
     extracted without using an out-of-band actor."""
 
-    def __init__(self, max_stats=100 * 1000):
+    def __init__(self, max_stats=10 * 1000):
         # Mapping from uuid -> dataset-specific stats.
         self.metadata = collections.defaultdict(dict)
         self.last_time = {}
@@ -116,11 +116,11 @@ class _StatsActor:
             if uuid in self.metadata:
                 del self.metadata[uuid]
 
-    def record_task(self, stats_uuid, i, metadata):
+    def record_task(self, stats_uuid, task_idx, metadata):
         # Null out the schema to keep the stats size small.
         metadata.schema = None
         if stats_uuid in self.start_time:
-            self.metadata[stats_uuid][i] = metadata
+            self.metadata[stats_uuid][task_idx] = metadata
             self.last_time[stats_uuid] = time.perf_counter()
 
     def get(self, stats_uuid):
@@ -130,6 +130,9 @@ class _StatsActor:
             self.metadata[stats_uuid],
             self.last_time[stats_uuid] - self.start_time[stats_uuid],
         )
+
+    def _get_stats_dict_size(self):
+        return len(self.start_time), len(self.last_time), len(self.metadata)
 
 
 def _get_or_create_stats_actor():
