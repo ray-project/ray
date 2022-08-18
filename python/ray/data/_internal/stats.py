@@ -9,7 +9,7 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data.block import BlockMetadata
 from ray.data.context import DatasetContext
-from ray.util.client import ray as client_ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
@@ -87,7 +87,7 @@ class _DatasetStatsBuilder:
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
 
-    This actor is shared across all datasets created by the same process.
+    This actor is shared across all datasets created in the same cluster.
     The stats data is small so we don't worry about clean up for now.
 
     TODO(ekl) we should consider refactoring LazyBlockList so stats can be
@@ -115,46 +115,23 @@ class _StatsActor:
         )
 
 
-# Actor handle, job id, client id the actor was created for.
-_stats_actor = [None, None, None]
-
-
 def _get_or_create_stats_actor():
-    # Whether the context changed:
-    # - On client, it means a new connection to server, reflecting in client id
-    # - On server, it means a new driver, reflecting in job id
-    context_changed = False
-    if _stats_actor[0]:
-        if client_ray.is_connected():
-            if _stats_actor[2] != client_ray.get_context().client_worker._client_id:
-                context_changed = True
-        elif _stats_actor[1] != ray.get_runtime_context().job_id.hex():
-            context_changed = True
-
-    # Need to re-create it if Ray restarts (mostly for unit tests).
-    if (
-        not _stats_actor[0]
-        or not ray.is_initialized()
-        or _stats_actor[1] != ray.get_runtime_context().job_id.hex()
-        or context_changed
-    ):
-        ctx = DatasetContext.get_current()
-        _stats_actor[0] = _StatsActor.options(
-            name="datasets_stats_actor",
-            get_if_exists=True,
-            scheduling_strategy=ctx.scheduling_strategy,
-        ).remote()
-        _stats_actor[1] = ray.get_runtime_context().job_id.hex()
-        if client_ray.is_connected():
-            _stats_actor[2] = client_ray.get_context().client_worker._client_id
-
-        # Clear the actor handle after Ray reinits since it's no longer valid.
-        def clear_actor():
-            _stats_actor = [None, None, None]
-
-        ray.worker._post_init_hooks.append(clear_actor)
-
-    return _stats_actor[0]
+    ctx = DatasetContext.get_current()
+    scheduling_strategy = ctx.scheduling_strategy
+    if not ray.util.client.ray.is_connected():
+        # Pin the stats actor to the local node
+        # so it fate-shares with the driver.
+        scheduling_strategy = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+    return _StatsActor.options(
+        name=STATS_ACTOR_NAME,
+        namespace=STATS_ACTOR_NAMESPACE,
+        get_if_exists=True,
+        lifetime="detached",
+        scheduling_strategy=scheduling_strategy,
+    ).remote()
 
 
 class DatasetStats:
