@@ -86,7 +86,7 @@ class Exploration:
     @DeveloperAPI
     def get_exploration_action(self,
                                *,
-                               input_dict: Dict[str, Any],
+                               input_dict: Optional[Dict[str, Any]],
                                action_distribution: ActionDistribution,
                                timestep: Union[TensorType, int],
                                explore: bool = True):
@@ -96,6 +96,7 @@ class Exploration:
         exploratory action.
 
         Args:
+            input_dict: State information can be used to priors for exploratory action selection.
             action_distribution: The instantiated
                 ActionDistribution object to work with when creating
                 exploration actions.
