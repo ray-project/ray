@@ -151,9 +151,8 @@ class StandardAutoscaler:
     `ray start --head --autoscaling-config=/path/to/config.yaml` on a instance
     that has permission to launch other instances, or you can also use `ray up
     /path/to/config.yaml` from your laptop, which will configure the right
-    AWS/Cloud roles automatically. See the documentation for a full definition
-    of autoscaling behavior:
-    https://docs.ray.io/en/master/cluster/autoscaling.html
+    AWS/Cloud roles automatically. See the Ray documentation
+    (https://docs.ray.io/en/latest/) for a full definition of autoscaling behavior.
     StandardAutoscaler's `update` method is periodically called in
     `monitor.py`'s monitoring loop.
 
