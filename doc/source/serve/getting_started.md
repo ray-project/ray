@@ -264,9 +264,6 @@ See the [Model Composition guide](serve-model-composition) for more details on d
 - Learn more about how to deploy your Ray Serve application to production: {ref}`serve-in-production`.
 - Check more in-depth tutorials for popular machine learning frameworks: {doc}`tutorials/index`.
 
-```{rubric} Footnotes
-```
-
 [^f1]: [Starlette](https://www.starlette.io/) is a web server framework
     used by Ray Serve. Its [Request](https://www.starlette.io/requests/) class
     provides a nice interface for incoming HTTP requests.
