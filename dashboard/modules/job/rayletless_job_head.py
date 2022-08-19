@@ -136,9 +136,25 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
         self._gcs_job_info_stub = None
         self._job_info_store_client = None
 
+        # this is a queue of JobAgentSubmissionClient
         self._agents = None
 
     async def choice_agent(self) -> Optional[str]:
+        """
+        Try to disperse as much as possible to select one of
+        the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
+        the agents will not pop from `self._agents` unless
+        it's dead.
+
+        Follow the steps below to select the agent client:
+            1. delete dead agent from `self._agents`, make sure
+               the `JobAgentSubmissionClient` in `self._agents`
+               is always available.
+            2. Attempt to put new agents into `self._agents` until
+               its size is `CANDIDATE_AGENT_NUMBER`
+            3. Returns the element at the head of the `self._agents`
+               and put it into `self._agents` again.
+        """
         # the number of agents which has an available HTTP port.
         while True:
             agent_infos = await DataOrganizer.get_all_agent_infos()
