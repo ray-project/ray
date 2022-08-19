@@ -337,7 +337,7 @@ class RayServeDeploymentHandle:
             self.deployment_name, HandleOptions(method_name=method_name)
         )
 
-    def remote(self, *args, **kwargs) -> asyncio.Task:
+    def remote(self, *args, _cache_refs: bool = False, **kwargs) -> asyncio.Task:
         if not self.handle:
             handle = serve._private.api.get_deployment(
                 self.deployment_name

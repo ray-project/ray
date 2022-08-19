@@ -20,25 +20,36 @@ import json
 import asyncio
 import logging
 
-try:
-    import gradio as gr
-except ModuleNotFoundError:
-    print(
-        "Gradio isn't installed. Run `pip install gradio` to use Gradio to "
-        "visualize a Serve deployment graph."
-    )
-    raise
 
 logger = logging.getLogger(__name__)
+_gradio = None
+
+
+def lazy_import_gradio():
+    global _gradio
+    if _gradio is None:
+        try:
+            import gradio
+        except ModuleNotFoundError:
+            print(
+                "Gradio isn't installed. Run `pip install gradio` to use Gradio to "
+                "visualize a Serve deployment graph."
+            )
+            raise
+
+        _gradio = gradio
+    return _gradio
 
 
 class GraphVisualizer:
     def __init__(self):
+        lazy_import_gradio()
         self._reset_state()
 
     def _reset_state(self):
         """Resets state for each new RayServeHandle representing a new DAG."""
         self.cache = {}
+        self.resolved_nodes = 0
         self.finished_last_inference = True
 
         # maps DAGNode uuid to a DAGNode instance with that uuid
@@ -59,6 +70,7 @@ class GraphVisualizer:
         Args:
             depths: maps uuids of nodes in the DAG to their depth
         """
+        gr = lazy_import_gradio()
 
         levels = {}
         for uuid in depths:
@@ -122,7 +134,8 @@ class GraphVisualizer:
             await asyncio.sleep(0.01)
 
         result = await self.cache[node_uuid]
-        if self.dag.get_stable_uuid() == node_uuid:
+        self.resolved_nodes += 1
+        if self.resolved_nodes == len(self.uuid_to_block):
             self.finished_last_inference = True
         return result
 
@@ -130,9 +143,8 @@ class GraphVisualizer:
         """Sends a request to the root DAG node through self.handle and retrieves the
         cached object refs pointing to return values of each executed node in the DAG.
 
-        Will not run if the last inference process has not finished (the last inference
-        process is considered finished if the return value for the root DAG node, has
-        been resolved).
+        Will not run if the last inference process has not finished (if all nodes in
+        DAG have been resolved).
         """
         if not self.finished_last_inference:
             logger.warning("Last inference has not finished yet.")
@@ -140,6 +152,9 @@ class GraphVisualizer:
 
         self.handle.predict.remote(args, _cache_refs=True)
         self.cache = await self.handle.get_intermediate_object_refs.remote()
+
+        # Set state to track the inference process
+        self.resolved_nodes = 0
         self.finished_last_inference = False
 
     def visualize_with_gradio(
@@ -162,6 +177,7 @@ class GraphVisualizer:
             _block: Whether to block the main thread while the Gradio server is running.
                 Used for unit testing purposes.
         """
+        gr = lazy_import_gradio()
 
         self._reset_state()
         self.handle = driver_handle
@@ -182,7 +198,10 @@ class GraphVisualizer:
         with gr.Blocks() as demo:
             self._make_blocks(depths)
 
-            submit = gr.Button("Submit")
+            with gr.Row():
+                submit = gr.Button("Run").style()
+                clear = gr.Button("Clear").style()
+
             # Add event listener that sends the request to the deployment graph
             submit.click(
                 fn=self._send_request,
@@ -193,7 +212,7 @@ class GraphVisualizer:
             for node_uuid, block in self.uuid_to_block.items():
                 submit.click(partial(get_result_wrapper, node_uuid), [], block)
 
-            clear = gr.Button("Clear")
+            # Resets all blocks if Clear button is clicked
             all_blocks = [*self.uuid_to_block.values()] + [
                 *self.input_index_to_block.values()
             ]
@@ -202,4 +221,4 @@ class GraphVisualizer:
             )
 
         if _launch:
-            demo.launch(server_port=port, prevent_thread_lock=not _block)
+            return demo.launch(server_port=port, prevent_thread_lock=not _block)

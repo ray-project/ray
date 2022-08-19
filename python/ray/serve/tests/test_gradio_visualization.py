@@ -90,7 +90,7 @@ async def test_get_result_reliability(graph1):
 
     values = await asyncio.gather(
         *[(visualizer._get_result(uuid)) for uuid in visualizer.uuid_to_block],
-        visualizer._send_request(1, 2)
+        visualizer._send_request(1, 2),
     )
     assert {1, 2, None} <= set(values)
 
@@ -104,13 +104,13 @@ async def test_gradio_visualization_e2e(graph1):
 
     handle = serve.run(DAGDriver.bind(dag))
     visualizer = GraphVisualizer()
-    visualizer.visualize_with_gradio(handle, _launch=True, _block=False)
+    (_, url, _) = visualizer.visualize_with_gradio(handle, _launch=True, _block=False)
 
     async with aiohttp.ClientSession() as session:
 
         async def fetch(data, fn_index):
             async with session.post(
-                "http://127.0.0.1:7860/api/predict/",
+                f"{url.strip('/')}/api/predict/",
                 json={
                     "session_hash": "random_hash",
                     "data": data,
