@@ -66,6 +66,7 @@ By default, this uses port 8265.
 
 If you are using a local Ray Cluster (``ray start --head``), you can connect directly at ``http://127.0.0.1:8265``.
 If you are using a Ray Cluster started on VMs or Kubernetes, you can follow the instructions there for setting up network access from a client.
+
 .. TODO: Add links to networking tips for VMs and kubernetes.
 
 To tell the Ray Jobs CLI how to find your Ray Cluster, we will pass the Ray Dashboard address. This can be done by setting the ``RAY_ADDRESS`` environment variable:
