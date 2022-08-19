@@ -131,8 +131,8 @@ In both types of `ServeHandle`, you can call a specific method by using the `.me
 (serve-model-composition-deployment-graph)=
 ## Deployment Graph API
 
-:::{note}
-The call graph is in **alpha**, so its APIs are subject to change.
+:::{admonition} This API is in **alpha**, so it's subject to change.
+:class: versionadded
 :::
 
 For more advanced composition patterns, it can be useful to surface the relationships between deployments, instead of hiding them inside individual deployment definitions.
