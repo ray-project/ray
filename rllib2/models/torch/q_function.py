@@ -1,10 +1,15 @@
 import copy
 from dataclasses import dataclass
+from re import L
+from turtle import forward
 from typing import Optional
 
 import torch
 import torch.nn as nn
 from torch import TensorType
+
+from ..configs import ModelConfig
+from .model_base import ModelWithEncoder
 
 from rllib2.utils import NNOutput
 
@@ -59,41 +64,85 @@ class EnsembleQFunctionOutput(NNOutput):
             return self.values.min(dim)
         raise NotImplementedError
 
+@dataclass
+class QFConfig(ModelConfig):
+    num_ensemble: int = 1
 
-class QFunction(WithEncoderMixin):
+class QFunctionBase(nn.Module):
+    """Design requirements:
+        * Support arbitrary encoders (encode observations / history to s_t)
+            * Encoder would be part of the model attributes
+        * Support both Continuous and Discrete actions
+        * Support distributional Q learning?
+        * Support multiple ensembles and flexible reduction strategies across ensembles
+            * Should be able to get the pessimistic estimate as well as the individual
+            estimates q_max = max(q_list) and also q_list?
+        * Support arbitrary target value estimations --- SEE BELOW about bootstrapping
+        * Should be able to save/load very easily for serving (if needed)
+        * Should be able to create copies efficiently and perform arbitrary parameter
+        updates in target_updates
+        * Bootstrapping utilities like TD-gamma target estimate should live outside of this
+        module as they need to have access to pi, discount, reward, .etc
     """
-    Design requirements:
-    * Support arbitrary encoders (encode observations / history to s_t)
-        * Encoder would be part of the model attributes
-    * Support both Continuous and Discrete actions
-    * Support distributional Q learning?
-    * Support multiple ensembles and flexible reduction strategies across ensembles
-        * Should be able to get the pessimistic estimate as well as the individual
-        estimates q_max = max(q_list) and also q_list?
-    * Support arbitrary target value estimations --- SEE BELOW about bootstrapping
-    * Should be able to save/load very easily for serving (if needed)
-    * Should be able to create copies efficiently and perform arbitrary parameter
-    updates in target_updates
-    * Bootstrapping utilities like TD-gamma target estimate should live outside of this
-    module as they need to have access to pi, discount, reward, .etc
-    *
 
-    """
-
-    def __init__(self, encoder: Optional[Encoder] = None) -> None:
+    def __init__(self, config: ModelConfig) -> None:
         super().__init__()
-        self.encoder = encoder
+        self.config = config
 
-    def forward(self, batch: SampleBatch, **kwargs) -> QFunctionOutput:
-        """Runs Q(S,A), Q({'obs': s, 'action': a}) -> Q(s, a)"""
-        pass
+    @abc.abstractmethod
+    def forward(
+        self, 
+        input_dict: SampleBatch, 
+        return_encoder_output: bool = False,
+        **kwargs
+    ) -> QFunctionOutput:
+        raise NotImplementedError
 
-    def copy(self) -> "QFunction":
-        # TODO: during deep copying we should figure out what we should do with
-        #  the encoder
-        return QFunction(self.encoder)
+class ObsActionConcatEncoder(Encoder):
+
+    def __init__(self, config: ModelConfig) -> None:
+        super().__init__(config)
+        if self.config.encoder:
+            self.obs_encoder = self.config.encoder
+        else:
+            self.obs_encoder = model_catalog.get_encoder(config)
+    
+    @property
+    def out_dim(self) -> int:
+        return self.obs_encoder.out_dim + self.config.action_dim
+    
+    def forward(self, input_dict: SampleBatch) -> torch.Tensor:
+        obs_h = self.obs_encoder(input_dict)
+        action_h = input_dict['action']
+        return torch.cat([obs_h, action_h], dim=-1)
+
+class QFunction(ModelWithEncoder):
+
+    def __init__(self, config: QFConfig) -> None:
+        # encode obs and append it to the input_action
+        super().__init__(config)
+
+        # no deep copy here
+        encoder_config = copy.copy(config)
+        self.encoder = ObsActionConcatEncoder(encoder_config)
+
+
+        if config.action_space.is_discrete:
+            self._out_layer = nn.Linear(self.encoder.output_size, config.action_space.n)
+        else:
+            self._out_layer = nn.Linear(self.encoder.output_size, 1)
+
+
+    def forward(self, input_dict: SampleBatch, **kwargs) -> QFunctionOutput:
+        encoder_output = self.encoder(input_dict)
+        q_logits = self._out_layer(encoder_output)
+        actions = input_dict["action"]
+        q_values = q_logits[torch.arange(len(actions)), actions]
+        return QFunctionOutput(value=[q_values], q_logit=q_logits)
+
 
     def update_polyak(self, other: "QFunction", polyak_coef: float, **kwargs):
+        # if the encoder is shared the parameters are gonna be the same
         other_params = other.named_parameters()
         for name, param in self.named_parameters():
             if name not in other_params:
@@ -102,62 +151,21 @@ class QFunction(WithEncoderMixin):
             param.data = polyak_coef * param.data + (1 - polyak_coef) * other_param.data
 
 
-"""
-Some examples of pre-defined RLlib standard Qfunctions
-"""
-
-
-#######################################################
-########### Continuous action Q-network
-#######################################################
-
-
-class ContinuousQFunction(QFunction):
-    def __init__(self, encoder: Optional[Encoder] = None) -> None:
-        super().__init__(encoder)
-        self.net = nn.Linear(self.encoder.output_dim, 1)
-
-    def forward(self, batch: SampleBatch, **kwargs) -> QFunctionOutput:
-        state = self.encoder(batch).state
-        q_values = self.net(state)
-        return QFunctionOutput(values=[q_values])
-
-
-#######################################################
-########### Discrete action Q-network (DQN on atari)
-#######################################################
-
-
-class DiscreteQFunction(QFunction):
-    def __init__(self, encoder: Optional[Encoder] = None) -> None:
-        super().__init__(encoder)
-        self.net = nn.Linear(self.encoder.output_dim, action_dim)
-
-    def forward(self, batch: SampleBatch, **kwargs) -> QFunctionOutput:
-        state = self.encoder(batch).state
-        q_logits = self.net(state)
-        actions = batch["action"]
-        q_values = q_logits[torch.arange(len(actions)), actions]
-        return QFunctionOutput(values=[q_values], q_logits=[q_logits])
-
-
 ################################################################
 ########### Ensemble of Q function networks (e.g. used in TD3)
 ################################################################
 
-
-class EnsembleQFunction(QFunction):
+class EnsembleQFunction(QFunctionBase):
     def __init__(
-        self, encoder: Optional[Encoder] = None, q_list: List[QFunction] = ()
+        self, config: QFConfig,
     ) -> None:
-        super().__init__(encoder)
-        self.qs = nn.ModuleList(q_list)
+        super().__init__(config)
+        self.qs = nn.ModuleList([QFunction(config) for _ in range(config.num_ensemble)])
 
-    def forward(self, batch: SampleBatch, **kwargs) -> QFunctionOutput:
-        state = self.encoder(batch)
+    def forward(self, input_dict: SampleBatch, **kwargs) -> EnsembleQFunctionOutput:
         q_values, q_logits = [], []
         for q in self.qs:
-            q_out = q(state)
+            q_out = q(input_dict)
             # check if each q_out is a single q
             q_values.append(q_out.values[0])
             q_logits.append(q_out.q_logits[0])

@@ -1,3 +1,4 @@
+from turtle import forward
 import torch.nn as nn
 
 from ..configs import ModelConfig
@@ -20,7 +21,7 @@ class ModelWithEncoder(nn.Module, ModelIO):
         # encoder
         self.encoder, self.encoder_out_dim = self._make_encoder()
     
-    def _make_encoder(self) -> Tuple[nn.Module, int]:
+    def _make_encoder(self) -> Tuple[Encoder, int]:
         if isinstance(self.config.encoder, str):
             # interpret this as a registered model name
             encoder = None

@@ -111,7 +111,7 @@ class PiBase(nn.Module):
         raise NotImplementedError
 
 
-class SingleDistributionPi(PiBase, ModelWithEncoder):
+class Pi(PiBase, ModelWithEncoder):
 
     def __init__(self, config: PiConfig, **kwargs):
         super().__init__(config)
@@ -172,7 +172,7 @@ def test_continuous_pi():
         # free_log_std=True,
         # squash_actions=True,
     )
-    pi = SingleDistributionPi(config)
+    pi = Pi(config)
     print(pi)
 
 
@@ -183,7 +183,7 @@ def test_discrete_pi():
         is_deterministic=True,
         # free_log_std=True,
     )
-    pi = SingleDistributionPi(config)
+    pi = Pi(config)
     print(pi)
 
 
@@ -198,9 +198,11 @@ def test_goal_conditioned_policy():
     class Encoder(nn.Module):
         def __init__(self, observation_space, action_space) -> None:
             super().__init__()
-            self.encoding_layer = model_catalog.get_encoder(
-                observation_space, action_space
+            config = ModelConfig(
+                observation_space=observation_space, 
+                action_space=action_space
             )
+            self.encoding_layer = model_catalog.get_encoder(config)
         
         def forward(self, input_dict):
             obs = input_dict['obs']
@@ -220,7 +222,7 @@ def test_goal_conditioned_policy():
         # free_log_std=True,
     )
 
-    pi = SingleDistributionPi(config)
+    pi = Pi(config)
     print(pi)
 
 
@@ -297,7 +299,7 @@ class CustomAutoregressivePi(PiBase):
         torque_configs = deepcopy(config)
         torque_configs.action_space = config.action_space['torque']
         torque_configs.observation_space = config.observation_space['torque']
-        self.torque_pi = SingleDistributionPi(torque_configs)
+        self.torque_pi = Pi(torque_configs)
 
 
         gripper_configs = deepcopy(config)
@@ -310,8 +312,7 @@ class CustomAutoregressivePi(PiBase):
             encoder=obs_encoder
         )
 
-        self.gripper_pi = SingleDistributionPi(gripper_configs)
-
+        self.gripper_pi = Pi(gripper_configs)
 
 
     def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
