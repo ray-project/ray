@@ -1,6 +1,6 @@
 # How to run the KubeRay autoscaling test
 
-We provide some notes on how to run the test `test_autoscaling_e2e` in this directory locally.
+This page provides suggestions on running the test `test_autoscaling_e2e` locally.
 You might want to do this if your PR is breaking this test in CI and you want to debug why.
 
 ## Build a docker image with your code changes.
