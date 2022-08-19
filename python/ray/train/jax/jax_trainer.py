@@ -90,7 +90,7 @@ class JaxTrainer(DataParallelTrainer):
 
         2. `import jax` is encouraged to also put inside the trainer function
             because in the TPU case, `import jax` in the driver process
-            will create the tpu lock file and block the training process.
+            will create the TPU lock file and block the training process.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train function utils <train-api-func-utils>`.
