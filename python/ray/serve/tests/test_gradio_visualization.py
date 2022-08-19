@@ -191,9 +191,7 @@ async def test_gradio_visualization_e2e(graph1):
                     "fn_index": fn_index,
                 },
             ) as resp:
-                ret = (await resp.json())["data"]
-                print(f"[fn_index={fn_index}] Fetched value: {ret}")
-                return ret
+                return (await resp.json())["data"]
 
         values = await asyncio.gather(
             fetch([1, 2], 0),  # sends request to dag with input (1,2)

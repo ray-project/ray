@@ -13,7 +13,6 @@ from ray.serve._private.json_serde import dagnode_from_json
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.serve.handle import RayServeHandle
 
-from functools import partial
 from typing import Any, Dict, Optional
 from collections import defaultdict
 import json
@@ -210,7 +209,7 @@ class GraphVisualizer:
             )
             # Add event listeners that resolve object refs for each of the nodes
             for node_uuid, block in self.uuid_to_block.items():
-                submit.click(partial(get_result_wrapper, node_uuid), [], block)
+                submit.click(self._get_result, gr.Variable(node_uuid), block)
 
             # Resets all blocks if Clear button is clicked
             all_blocks = [*self.uuid_to_block.values()] + [
