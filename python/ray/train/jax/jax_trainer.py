@@ -70,8 +70,8 @@ class JaxTrainer(DataParallelTrainer):
         - For the CPU distributed cases, the multi-device distributed training
             is not supported.
         - the placement group strategy: Since the JaxTrainer will spread the workers
-            across different nodes, the default value of `placment_strategy`
-            is changed to `SPREAD`.
+            across different nodes, the default value of ``placement_strategy``
+            is changed to ``SPREAD``.
 
     - ``train_loop_per_worker`` functions:
         **NOTE**:
