@@ -46,6 +46,9 @@ class JaxTrainer(DataParallelTrainer):
     ``train_loop_per_worker``. All the other datasets will not be split and
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
+    Note: Add some details about how to use this trainer.
+
+
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train function utils <train-api-func-utils>`.
 
