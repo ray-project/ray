@@ -1,6 +1,7 @@
 import pytest
 import os
 import ray
+from ray.air import session
 from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.jax_mnist_example import (
@@ -109,6 +110,30 @@ def test_tpu_lockfile(ray_start_tpu, expected):
     trainer.fit()
 
     assert os.path.exists(lock_file_path) == expected
+
+
+class AssertingJaxTrainer(JaxTrainer):
+    def training_loop(self) -> None:
+        scaling_config = self._validate_scaling_config(self.scaling_config)
+        pgf = scaling_config.as_placement_group_factory()
+        tr = session.get_trial_resources()
+        assert pgf == tr, pgf.strategy == "SPREAD"
+        return super().training_loop()
+
+
+def test_scaling_config(ray_start_8_cpus):
+    def dummy_train():
+        return 1
+
+    trainer = AssertingJaxTrainer(
+        train_loop_per_worker=dummy_train,
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            use_gpu=False,
+        ),
+    )
+
+    trainer.fit()
 
 
 if __name__ == "__main__":
