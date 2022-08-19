@@ -66,7 +66,7 @@ class JaxTrainer(DataParallelTrainer):
             Since the TPU resources are not the default resources on Ray,
             we need to set the ``resources`` when set up the cluster,
             e.g. ``ray start --resources='{"TPU":1}'``. For more details, please
-            refer to `python/ray/train/examples/jax_tpu` end to end example.
+            refer to :doc:`Ray Jax TPU Examples </train/examples/jax_tpu>` end to end example.
         - For the CPU distributed cases, the multi-device distributed training
             is not supported.
         - the placement group strategy: Since the JaxTrainer will spread the workers
