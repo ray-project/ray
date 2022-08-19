@@ -3,7 +3,8 @@ import dataclasses
 import json
 import logging
 import traceback
-from typing import Dict, Optional, Tuple
+from collections import OrderedDict
+from typing import Any, Dict, Optional, Tuple
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -15,9 +16,11 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
 from ray.dashboard.datacenter import DataOrganizer
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.modules.job.common import (
     JobStatus,
     JobSubmitRequest,
+    JobSubmitResponse,
     JobInfoStorageClient,
     JOB_ID_METADATA_KEY,
 )
@@ -30,7 +33,6 @@ from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
 )
-from ray.dashboard.modules.job.sdk import JobAgentSubmissionClient
 from ray.dashboard.modules.job.utils import parse_and_validate_request
 from ray.runtime_env import RuntimeEnv
 
@@ -41,13 +43,133 @@ logger.setLevel(logging.INFO)
 routes = optional_utils.ClassMethodRouteTable
 
 
+class JobAgentSubmissionClient(SubmissionClient):
+    """A local client for submitting and interacting with jobs on a specific node
+    in the remote cluster.
+    Submits requests over HTTP to the job agent on the specific node using the REST API.
+    """
+
+    def __init__(
+        self,
+        dashboard_agent_address: Optional[str] = None,
+        create_cluster_if_needed: bool = False,
+        cookies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None,
+    ):
+        """Initialize a JobAgentSubmissionClient and check the connection to the cluster.
+        Args:
+            address: address: The IP address and port of a a specific agent. Defaults to
+                http://localhost:8265.
+            create_cluster_if_needed: Indicates whether the cluster at the specified
+                address needs to already be running. Ray doesn't start a cluster
+                before interacting with jobs, but external job managers may do so.
+            cookies: Cookies to use when sending requests to the HTTP job server.
+            metadata: Arbitrary metadata to store along with all jobs.  New metadata
+                specified per job will be merged with the global metadata provided here
+                via a simple dict update.
+            headers: Headers to use when sending requests to the job agent, used
+                for cases like authentication to a remote cluster.
+        """
+        super().__init__(
+            address=dashboard_agent_address,
+            create_cluster_if_needed=create_cluster_if_needed,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers,
+        )
+
+    def submit_job_internal(
+        self,
+        *,
+        entrypoint: str,
+        job_id: Optional[str] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, str]] = None,
+        submission_id: Optional[str] = None,
+    ) -> JobSubmitResponse:
+        if job_id:
+            logger.warning(
+                "job_id kwarg is deprecated. Please use submission_id instead."
+            )
+
+        runtime_env = runtime_env or {}
+        metadata = metadata or {}
+        metadata.update(self._default_metadata)
+
+        # Run the RuntimeEnv constructor to parse local pip/conda requirements files.
+        runtime_env = RuntimeEnv(**runtime_env).to_dict()
+
+        submission_id = submission_id or job_id
+
+        req = JobSubmitRequest(
+            entrypoint=entrypoint,
+            submission_id=submission_id,
+            runtime_env=runtime_env,
+            metadata=metadata,
+        )
+
+        logger.debug(f"Submitting job with submission_id={submission_id}.")
+
+        r = self._do_request(
+            "POST",
+            "/api/job_agent/jobs/",
+            json_data=dataclasses.asdict(req),
+        )
+
+        if r.status_code == 200:
+            return JobSubmitResponse(**r.json())
+        else:
+            self._raise_error(r)
+
+
 class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._dashboard_head = dashboard_head
         self._gcs_job_info_stub = None
-        self._job_agent_client = None
         self._job_info_store_client = None
+
+        self._agents = None
+
+    async def choice_agent(self) -> Optional[str]:
+        # the number of agents which has an available HTTP port.
+        while True:
+            agent_infos = await DataOrganizer.get_all_agent_infos()
+            if (
+                sum(
+                    map(
+                        lambda agent_ports: agent_ports["httpPort"] > 0,
+                        agent_infos.values(),
+                    )
+                )
+                > 0
+            ):
+                break
+            await asyncio.sleep(dashboard_consts.WAIT_RAYLET_START_INTERVAL_SECONDS)
+        # delete dead agents.
+        for dead_node in set(self._agents) - set(agent_infos):
+            self._agents.pop(dead_node)
+
+        for node_id, agent_info in agent_infos.items():
+            if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
+                break
+            node_ip = agent_info["ipAddress"]
+            http_port = agent_info["httpPort"]
+            # skip agent which already exists or http port unavailable
+            if node_id in self._agents or http_port <= 0:
+                continue
+            agent_http_address = f"http://{node_ip}:{http_port}"
+
+            self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
+            # move agent to the front of the queue.
+            self._agents.move_to_end(node_id, last=False)
+
+        # FIFO
+        node_id, job_agent_client = self._agents.popitem(last=False)
+        self._agents[node_id] = job_agent_client
+
+        return job_agent_client
 
     async def find_job_by_ids(self, job_or_submission_id: str) -> Optional[JobDetails]:
         """
@@ -179,25 +301,12 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
 
         try:
 
-            async def choice_agent_address():
-                while True:
-                    agent_infos = await DataOrganizer.get_all_agent_infos()
-                    agent_address = self._job_agent_client.choice_agent_to_request(
-                        agent_infos
-                    )
-                    if agent_address:
-                        return agent_address
-                    await asyncio.sleep(
-                        dashboard_consts.WAIT_RAYLET_START_INTERVAL_SECONDS
-                    )
-
-            agent_address = await asyncio.wait_for(
-                choice_agent_address(),
+            job_agent_client = await asyncio.wait_for(
+                self.choice_agent(),
                 timeout=dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
             )
-            resp = self._job_agent_client.submit_job_internal(
+            resp = job_agent_client.submit_job_internal(
                 entrypoint=submit_request.entrypoint,
-                agent_address=agent_address,
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
@@ -251,11 +360,6 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
         raise NotImplementedError
 
     async def run(self, server):
-        if self._job_agent_client is None:
-            http_host = self._dashboard_head.http_host
-            http_port = self._dashboard_head.http_port
-            head_address = f"http://{http_host}:{http_port}"
-            self._job_agent_client = JobAgentSubmissionClient(head_address)
 
         if self._job_info_store_client is None:
             self._job_info_store_client = JobInfoStorageClient(
@@ -265,6 +369,8 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
         self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
             self._dashboard_head.aiogrpc_gcs_channel
         )
+
+        self._agents = OrderedDict()
 
     @staticmethod
     def is_minimal_module():

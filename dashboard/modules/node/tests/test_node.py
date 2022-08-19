@@ -9,8 +9,6 @@ import pytest
 import ray
 import threading
 from datetime import datetime, timedelta
-
-import ray._private.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray.dashboard.modules.node.node_consts import UPDATE_NODES_INTERVAL_SECONDS
 from ray.dashboard.tests.conftest import *  # noqa
@@ -348,41 +346,6 @@ def test_frequent_node_update(
         return head_node_registration_time < UPDATE_NODES_INTERVAL_SECONDS
 
     wait_for_condition(verify, timeout=15)
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
-)
-def test_multi_agent_infos(
-    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
-):
-    cluster: Cluster = ray_start_cluster_head
-    assert wait_until_server_available(cluster.webui_url) is True
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-    cluster.add_node(dashboard_agent_listen_port=52366)
-    cluster.add_node(dashboard_agent_listen_port=52367)
-
-    http_ports = set([ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT, 52366, 52367])
-
-    def _check_nodes():
-        try:
-            response = requests.get(webui_url + "/nodes?view=agentinfos")
-            response.raise_for_status()
-            resp = response.json()
-            agent_infos = resp["data"]["agentInfos"]
-            assert resp["result"]
-            assert (
-                set([agent_info["httpPort"] for agent_info in agent_infos.values()])
-                == http_ports
-            )
-
-            return True
-        except Exception as ex:
-            logger.info(ex)
-            return False
-
-    wait_for_condition(_check_nodes, timeout=15)
 
 
 if __name__ == "__main__":
