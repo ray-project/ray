@@ -75,9 +75,9 @@ class JaxTrainer(DataParallelTrainer):
 
     - `train_loop_per_worker` functions:
         **NOTE**:
-        1. the flax nn module has to define inside the `train_loop_per_worker`
-            function. Otherwise, the error message `ValueError: parent must be
-            None, Module or Scope` will be thrown. see more details:
+        1. the flax nn module has to define inside the ``train_loop_per_worker``
+            function. Otherwise, the error message ``ValueError: parent must be
+            None, Module or Scope`` will be thrown. see more details:
             https://github.com/google/flax/discussions/1390.
 
             .. code-block:: python
