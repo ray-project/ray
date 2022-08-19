@@ -67,7 +67,7 @@ class QFConfig(ModelConfig):
 
 class QFunctionBase(nn.Module):
     """Design requirements:
-        * Support arbitrary encoders (encode observations / history to s_t)
+        * [x] Support arbitrary encoders (encode observations / history to s_t)
             * Encoder would be part of the model attributes
         * Support both Continuous and Discrete actions
         * Support distributional Q learning?

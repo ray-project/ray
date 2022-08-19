@@ -1,37 +1,60 @@
-from turtle import forward
+import abc
+import tree
+import torch
 import torch.nn as nn
 
 from ..configs import ModelConfig
-
-class ModelIO:
-    def save(self):
-        pass
-
-    def load(self):
-        pass
+from ..modular import Model, RecurrentModel
+from ..types import NestedDict
 
 
-class ModelWithEncoder(nn.Module, ModelIO):
+# TODO: implement this class
+class ModelIO(abc.ABC):
 
     def __init__(self, config: ModelConfig) -> None:
+        self._config = config
+
+    @property
+    def config(self) -> ModelConfig:
+        return self._config
+
+    @abc.absrtactmethod
+    def save(self, path: str) -> None:
+        raise NotImplementedError
+
+    @abc.absrtactmethod
+    def load(self, path: str) -> RecurrentModel:
+        raise NotImplementedError
+        
+
+class TorchRecurrentModel(
+    RecurrentModel,
+    nn.Module, 
+    ModelIO
+):
+
+    def __init__(self, config: ModelConfig) -> None:
+        super(RecurrentModel).__init__(name=config.name)
         super(nn.Module).__init__()
         super(ModelIO).__init__()
-        # save config
-        self.config = config
-        # encoder
-        self.encoder, self.encoder_out_dim = self._make_encoder()
-    
-    def _make_encoder(self) -> Tuple[Encoder, int]:
-        if isinstance(self.config.encoder, str):
-            # interpret this as a registered model name
-            encoder = None
-        elif self.config.encoder:
-            # if not empty and not a string, assume it is the model
-            encoder = self.config.encoder
-        else:
-            # return a default encoder if none 
-            encoder = model_catalog.get_encoder(self.config)
-        output = torch_dryrun(encoder, self.config.observation_space)
-        return encoder, output.shape[-1]
+        self._config = config
 
-        
+
+    
+    def _initial_state(self) -> NestedDict[torch.Tensor]:
+        return tree.map_structure(
+            lambda spec: torch.zeros(spec.shape, dtype=spec.dtype),
+            self.initial_state_spec
+        )
+    
+class TorchModel(
+    Model,
+    nn.Module, 
+    ModelIO
+):
+    
+    def __init__(self, config: ModelConfig) -> None:
+        super(Model).__init__(name=config.name)
+        super(nn.Module).__init__()
+        super(ModelIO).__init__()
+        self._config = config

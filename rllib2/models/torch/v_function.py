@@ -34,6 +34,32 @@ class VFunctionOutput(NNOutput):
         raise NotImplementedError
 
 
+class VFunctionBase(nn.Module):
+
+    def __init__(self) -> None:
+        super().__init__()
+class QFunction(QFunctionBase, ModelWithEncoder):
+
+    def __init__(self, config: QFConfig) -> None:
+        # encode obs and append it to the input_action
+        super().__init__(config)
+
+        # no deep copy here
+        encoder_config = copy.copy(config)
+        self.encoder = ObsActionConcatEncoder(encoder_config)
+
+        if config.action_space.is_discrete:
+            self._out_layer = nn.Linear(self.encoder.output_size, config.action_space.n)
+        else:
+            self._out_layer = nn.Linear(self.encoder.output_size, 1)
+
+    def forward(self, input_dict: SampleBatch, **kwargs) -> QFunctionOutput:
+        encoder_output = self.encoder(input_dict)
+        q_logits = self._out_layer(encoder_output)
+        actions = input_dict["action"]
+        q_values = q_logits[torch.arange(len(actions)), actions]
+        return QFunctionOutput(value=[q_values], q_logit=q_logits)
+
 class VFunction(WithEncoderMixin, ModelIO):
     """
     Design requirements:

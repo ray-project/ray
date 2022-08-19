@@ -84,7 +84,7 @@ import abc
 from typing import Optional, Tuple
 import rllib2.models.types as types
 
-ForwardOutputType = Tuple[types.TensorDict]
+ForwardOutputType = types.TensorDict
 UnrollOutputType = Tuple[types.TensorDict, types.TensorDict]
 
 
@@ -92,7 +92,7 @@ class RecurrentModel(abc.ABC):
   """Basic component (see module docstring)."""
 
   def __init__(self, name: Optional[str] = None):
-    self._name = name or "Component"
+    self._name = name or self.__class__.__name__
 
   @property
   def name(self) -> str:
@@ -193,11 +193,6 @@ class RecurrentModel(abc.ABC):
         More generally, this is the (unroll_len - overlap_len)-th state.
       logs: A dict containing [unroll_len] tensors to be logged.
     """
-    # if inputs:
-    #   try:
-    #     chex.assert_equal_shape(jax.tree_leaves(inputs), dims=0)
-    #   except AssertionError as e:
-    #     raise AssertionError(f"{self.name}: {e}") from e
     self.input_spec.validate(inputs,
                              num_leading_dims_to_ignore=1,
                              error_prefix=f"{self.name} inputs")
@@ -206,14 +201,25 @@ class RecurrentModel(abc.ABC):
     # We hide inputs not specified in input_spec to prevent accidental use.
     inputs = inputs.filter(self.input_spec)
     prev_state = prev_state.filter(self.prev_state_spec)
-    # with hk.experimental.name_scope(self.name):
-    outputs, next_state, logs = self._unroll(inputs, prev_state)
+    inputs, prev_state = self._check_inputs_and_prev_state(inputs, prev_state)
+    outputs, next_state = self._unroll(inputs, prev_state)
     self.output_spec.validate(outputs,
                               num_leading_dims_to_ignore=1,
                               error_prefix=f"{self.name} outputs")
     self.next_state_spec.validate(next_state,
                                   error_prefix=f"{self.name} next_state")
-    return outputs, next_state, logs
+    outputs, next_state = self._check_outputs_and_next_state(outputs, next_state)
+    return outputs, next_state
+
+
+  def _check_inputs_and_prev_state(self, inputs: types.TensorDict, prev_state: types.TensorDict) -> Tuple[types.TensorDict, types.TensorDict]:
+    """Override this function to add additional checks on inputs."""
+    return inputs, prev_state
+
+  
+  def _check_outputs_and_next_state(self, outputs: types.TensorDict, next_state: types.TensorDict) -> Tuple[types.TensorDict, types.TensorDict]:
+    """Override this function to add additional checks on outputs."""
+    return outputs, next_state
 
 class Model(RecurrentModel):
   """A Component which is not using the unroll dimension.
@@ -232,6 +238,23 @@ class Model(RecurrentModel):
   @property
   def next_state_spec(self) -> types.SpecDict:
     return types.SpecDict()
+
+
+  def _check_inputs_and_prev_state(self, inputs: types.TensorDict, prev_state: types.TensorDict) -> Tuple[types.TensorDict, types.TensorDict]:
+    inputs = self._check_inputs(inputs)
+    return inputs, prev_state
+
+  def _check_inputs(self, inputs: types.TensorDict) -> types.TensorDict:
+    """Override this function to add additional checks on inputs."""
+    return inputs
+  
+  def _check_outputs_and_next_state(self, outputs: types.TensorDict, next_state: types.TensorDict) -> Tuple[types.TensorDict, types.TensorDict]:
+    outputs = self._check_outputs(outputs)
+    return outputs, next_state
+
+  def _check_outputs(self, outputs: types.TensorDict) -> types.TensorDict:
+    """Override this function to add additional checks on outputs."""
+    return outputs
 
   def _unroll(self,
               inputs: types.TensorDict,
