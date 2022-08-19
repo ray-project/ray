@@ -569,6 +569,16 @@ lint_web() {
   )
 }
 
+check_python_test_directories_contain_init_file() {
+  cd "${WORKSPACE_DIR}"
+  for test_directory in $(find python -name "tests" -type d); do
+    if [ ! -e "$test_directory"/__init__.py ]; then
+        echo "Add '__init__.py' to '$test_directory'"
+        exit 1
+    fi
+  done
+}
+
 lint_copyright() {
   (
     "${ROOT_DIR}"/lint/copyright-format.sh -c
@@ -605,6 +615,9 @@ _lint() {
 
   # Run annotations check.
   lint_annotations
+
+  # Check Python test directories contain `__init__.py` file.
+  check_python_test_directories_contain_init_file
 
   # Make sure that the README is formatted properly.
   lint_readme
