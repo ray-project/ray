@@ -158,13 +158,13 @@ def test_job_agent_client_get_agent_infos(
 
     client = JobAgentSubmissionClient(webui_url)
 
-    http_ports = set([ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT, 52366, 52367])
+    http_ports = {ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT, 52366, 52367}
 
     def _check_nodes():
         try:
             agent_infos = client.get_all_agent_infos()
             assert (
-                set([agent_info["httpPort"] for agent_info in agent_infos.values()])
+                {agent_info["httpPort"] for agent_info in agent_infos.values()}
                 == http_ports
             )
             return True
