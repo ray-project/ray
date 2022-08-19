@@ -194,7 +194,7 @@ PyTorch
     :show-inheritance:
 
 Jax (Experimental)
-#######
+##################
 
 .. autoclass:: ray.train.jax.JaxTrainer
     :members:
