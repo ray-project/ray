@@ -88,7 +88,7 @@ class JaxTrainer(DataParallelTrainer):
                 class NeuralNet(nn.Module):
                     pass
 
-        2. `import jax` is encouraged to also put inside the trainer function
+        2. ``import jax`` is encouraged to also put inside the trainer function
             because in the TPU case, `import jax` in the driver process
             will create the TPU lock file and block the training process.
 
