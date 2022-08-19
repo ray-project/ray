@@ -132,7 +132,7 @@ In both types of `ServeHandle`, you can call a specific method by using the `.me
 ## Deployment Graph API
 
 :::{admonition} This API is in **alpha**, so it's subject to change.
-:class: versionadded, dropdown
+:class: attention, dropdown
 If you notice any issues or have suggestions on how to improve this API,
 please [let us know](https://github.com/ray-project/ray/issues/new/choose)!
 :::
