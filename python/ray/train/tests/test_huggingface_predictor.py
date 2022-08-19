@@ -13,6 +13,7 @@ from ray.train.predictor import TYPE_TO_ENUM
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.pipelines import pipeline
 
+
 import ray
 from ray.data.preprocessor import Preprocessor
 from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
@@ -60,6 +61,27 @@ def test_repr(tmpdir):
     assert len(representation) < MAX_REPR_LENGTH
     pattern = re.compile("^HuggingFacePredictor\\((.*)\\)$")
     assert pattern.match(representation)
+
+
+def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
+    model_config = AutoConfig.from_pretrained(model_checkpoint)
+    model = AutoModelForCausalLM.from_config(model_config)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+    preprocessor = DummyPreprocessor()
+    preprocessor.attr = 1
+
+    checkpoint = HuggingFaceCheckpoint.from_model(
+        model, tokenizer, path=tmpdir, preprocessor=preprocessor
+    )
+
+    checkpoint_model = checkpoint.get_model(AutoModelForCausalLM)
+    checkpoint_tokenizer = checkpoint.get_tokenizer(AutoTokenizer)
+    checkpoint_preprocessor = checkpoint.get_preprocessor()
+
+    # TODO: How to check that two HF models are the same?
+    # assert model == checkpoint_model
+    # assert tokenizer == checkpoint_tokenizer
+    # assert checkpoint_preprocessor.attr == preprocessor.attr
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
