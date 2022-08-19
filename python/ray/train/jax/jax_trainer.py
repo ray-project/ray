@@ -46,8 +46,51 @@ class JaxTrainer(DataParallelTrainer):
     ``train_loop_per_worker``. All the other datasets will not be split and
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
-    Note: Add some details about how to use this trainer.
+    Note: Here are some details about how to use JaxTrainer properly.
 
+    - cluster scaling config:
+        - For the GPU distributed cases, the inner-device communication is handled
+            internally by Jax; the inter-device communication is set up by the
+            JaxTrainer. Therefore, the ``num_workers`` is set to be the number of nodes;
+            and ``num_gpus_per_worker`` is set to be the number of gpus on each nodes.
+            For the current experimental version, we only support the homogeneous
+            distributed case, i.e. all the nodes have the same number of gpus. This is
+            also the optimal / balanced case in terms of performance.
+        - For the TPU distributed cases, the multi-device distributed training only
+            supports the TPU pods for
+                a) the TPU pods can host up to several thousands of TPU cores
+                b) the communication speed is also optimal for the TPU pods.
+            Therefore, the ``num_workers`` is set to be the number of TPU-VMs
+            (say ``num_workers=4`` for TPU-pod v2-32); and
+            ``resources_per_worker={"TPU": 1}`` is used to set the TPU resource.
+            Since the TPU resources are not the default resources on Ray,
+            we need to set the ``resources`` when set up the cluster,
+            e.g. ``ray start --resources='{"TPU":1}'``. For more details, please
+            refer to `python/ray/train/examples/jax_tpu` end to end example.
+        - For the CPU distributed cases, the multi-device distributed training
+            is not supported.
+        - the placement group strategy: Since the JaxTrainer will spread the workers
+            across different nodes, the default value of `placment_strategy`
+            is changed to `SPREAD`.
+
+    - `train_loop_per_worker` functions:
+        **NOTE**:
+        1. the flax nn module has to define inside the `train_loop_per_worker`
+            function. Otherwise, the error message `ValueError: parent must be
+            None, Module or Scope` will be thrown. see more details:
+            https://github.com/google/flax/discussions/1390.
+
+            .. code-block:: python
+
+            def train_func():
+                from flax import linen as nn
+
+                class NeuralNet(nn.Module):
+                    pass
+
+        2. `import jax` is encouraged to also put inside the trainer function
+            because in the TPU case, `import jax` in the driver process
+            will create the tpu lock file and block the training process.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray Train function utils <train-api-func-utils>`.
