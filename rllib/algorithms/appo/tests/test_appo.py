@@ -189,7 +189,6 @@ class TestAPPO(unittest.TestCase):
 
             algo.stop()
 
-
     def test_appo_model_variables(self):
         config = (
             appo.APPOConfig()
