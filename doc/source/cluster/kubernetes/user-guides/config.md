@@ -121,7 +121,8 @@ specified under `headGroupSpec`, while configuration for worker pods is
 specified under `workerGroupSpecs`. There may be multiple worker groups,
 each group with its own configuration. The `replicas` field
 of a `workerGroupSpec` specifies the number of worker pods of that group to
-keep in the cluster.
+keep in the cluster. Each `workerGroupSpec` also has optional `minReplicas` and
+`maxReplicas` fields; these fields are important if you wish to enable {ref}`autoscaling <kuberay-autoscaling-config>`.
 
 ### Pod templates
 The bulk of the configuration for a `headGroupSpec` or
@@ -129,6 +130,14 @@ The bulk of the configuration for a `headGroupSpec` or
 template which determines the configuration for the pods in the group.
 Here are some of the subfields of the pod `template` to pay attention to:
 
+#### containers
+A Ray pod template specifies at minimum one container, namely the container
+that runs the Ray processes. A Ray pod template may also specify additional sidecar
+containers, for purposes such as {ref}`log processing <kuberay-logging>`. However, the KubeRay operator assumes that
+the first container in the containers list is the main Ray container.
+Therefore, make sure to specify any sidecar containers
+**after** the main Ray container. In other words, the Ray container should be the **first**
+in the `containers` list.
 
 #### resources
 It’s important to specify container CPU and memory requests and limits for
@@ -154,7 +163,7 @@ before being relayed to Ray.
 The resource capacities advertised to Ray may be overridden in the {ref}`rayStartParams`.
 
 On the other hand CPU, GPU, and memory **requests** will be ignored by Ray.
-For this reason, it is best when possible to set resource requests equal to resource limits.
+For this reason, it is best when possible to **set resource requests equal to resource limits**.
 
 #### nodeSelector and tolerations
 You can control the scheduling of worker groups' Ray pods by setting the `nodeSelector` and
