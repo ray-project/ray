@@ -6,7 +6,7 @@ Connectors (Alpha)
 ==================
 
 Connector are components that handle transformations on inputs and outputs of a given RL policy, with the goal of improving
-the durabilty and maintainability of RLlib's policy checkpoints.
+the durability and maintainability of RLlib's policy checkpoints.
 
 RLlib algorithms usually require one or more *user environments* and *policies* (usually a neural network).
 
@@ -16,12 +16,12 @@ specific agents in the environments.
 
 By consolidating these transformations under the framework of connectors, users of RLlib will be able to:
 
-- Restore and deploy individual RLlib policies without having to restore training related logics of RLlib Algorithms.
+- Restore and deploy individual RLlib policies without having to restore training-related logics of RLlib Algorithms.
 - Ensure policies are more durable than the algorithms they get trained with.
 - Allow policies to be adapted to work with different versions of an environment.
-- Run inference with RLlib polcies without worrying about the exact trajectory view requriements or state inputs.
+- Run inference with RLlib policies without worrying about the exact trajectory view requirements or state inputs.
 
-Connectors can be enabled by setting ``enable_connectors`` parameter to ``True``.
+Connectors can be enabled by setting the ``enable_connectors`` parameter to ``True`` with ``AlgorithmConfig.rollouts()`` API.
 
 Key Concepts
 ------------
@@ -30,14 +30,14 @@ Key Concepts
     :align: center
 
 We have two classes of connectors. The first is an ``AgentConnector``, which is used to transform observed data from environments to the policy.
-The second is an ``ActionConnector``, which is used to transform the action data from the policy to actions.
+The second is an ``ActionConnector``, which is used to transform the outputs from the policy to actions.
 
 
 AgentConnector
 ~~~~~~~~~~~~~~
 
 ``AgentConnectors`` handle the job of transforming environment observation data into a format that is understood by
-the policy (e.g., flattening complex nested observations into a flat tensor). The high level APIs are:
+the policy (e.g., flattening complex nested observations into a flat tensor). The high-level APIs are:
 
 .. code-block:: python
 
@@ -149,9 +149,9 @@ before they can call a policy. With agent connectors, this task is taken care of
 Advanced Connectors
 -------------------
 
-Lambda Connectors helps turn simple transformation functions into agent or action
-connectors without having users worry about the high level list or non-list APIs.
-Lambda Connectors has separate agent and action versions, for example:
+Lambda Connector helps turn simple transformation functions into agent or action
+connectors without having users worry about the high-level list or non-list APIs.
+Lambda Connector has separate agent and action versions, for example:
 
 .. tabbed:: Lambda Agent Connector
 
@@ -178,7 +178,7 @@ Lambda Connectors has separate agent and action versions, for example:
             lambda actions, states, fetches: 2 * actions, states, fetches
         )
 
-Mutiple connectors can be composed into a ``ConnectorPipeline``, which handles
+Multiple connectors can be composed into a ``ConnectorPipeline``, which handles
 proper running of all children connectors in sequence and provides basic operations to modify and update the composition of connectors.
 
 ``ConnectorPipeline`` also has agent and action versions:
@@ -217,12 +217,12 @@ Policy Checkpoint
 
 If connectors are enabled, RLlib will try to save policy checkpoints in properly serialized formats instead of
 relying on python pickling. Eventually, the goal is to save policy checkpoints in serialized JSON files
-to ensure maximum compatiiblity between RLlib and python versions.
+to ensure maximum compatibility between RLlib and python versions.
 
 When enabled, the configurations of agent and action connectors will get serialized and saved with checkpointed
 policy states.
 These connectors, together with the specific transformations they represent,
-can be easily recovered (by RLlib provided utils) to simplify deployment and inference use cases.
+can be easily recovered (by RLlib-provided utils) to simplify deployment and inference use cases.
 
 Serving and Inference
 ---------------------
@@ -242,12 +242,12 @@ See `Notable TODOs`_.
 Adapting a Policy for Different Environments
 --------------------------------------------
 
-It not uncommon for user environments to go through active development iterations.
+It is not uncommon for user environments to go through active development iterations.
 Policies trained with an older version of an environment may be rendered useless for updated environments.
 While env wrapper helps with this problem in many cases, connectors allow policies trained with
-different environments to work together at a same time.
+different environments to work together at the same time.
 
-Here is an example demonstrating adaptation of a policy trained for the standard Cartopole environment
+Here is an example demonstrating adaptation of a policy trained for the standard Cartpole environment
 for a new mock Cartpole environment that returns additional features and requires extra action inputs.
 
 .. literalinclude:: ../../../rllib/examples/connectors/adapt_connector_policy.py
