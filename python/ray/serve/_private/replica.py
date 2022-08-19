@@ -36,6 +36,7 @@ from ray.serve._private.utils import (
     parse_import_path,
     parse_request_item,
     wrap_to_ray_error,
+    merge_dict,
 )
 from ray.serve._private.version import DeploymentVersion
 
@@ -181,6 +182,24 @@ def create_replica_wrapper(name: str):
 
             # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs, request_metadata)
+            return await self.replica.handle_request(query)
+
+        async def handle_request_from_java(
+            self,
+            proto_request_metadata: bytes,
+            *request_args,
+            **request_kwargs,
+        ):
+            from ray.serve.generated.serve_pb2 import (
+                RequestMetadata as RequestMetadataProto,
+            )
+
+            proto = RequestMetadataProto.FromString(proto_request_metadata)
+            request_metadata: RequestMetadata = RequestMetadata(
+                proto.request_id, proto.endpoint, call_method=proto.call_method
+            )
+            request_args = request_args[0]
+            query = Query(request_args, request_kwargs, request_metadata, return_num=1)
             return await self.replica.handle_request(query)
 
         async def is_allocated(self) -> str:
@@ -349,7 +368,11 @@ class RayServeReplica:
         method_stat = actor_stats.get(
             f"{_format_replica_actor_name(self.deployment_name)}.handle_request"
         )
-        return method_stat
+        method_stat_java = actor_stats.get(
+            f"{_format_replica_actor_name(self.deployment_name)}"
+            f".handle_request_from_java"
+        )
+        return merge_dict(method_stat, method_stat_java)
 
     def _collect_autoscaling_metrics(self):
         method_stat = self._get_handle_request_stats()
@@ -487,9 +510,11 @@ class RayServeReplica:
                     latency_ms=latency_ms,
                 )
             )
-
-            # Returns a small object for router to track request status.
-            return b"", result
+            if request.return_num == 1:
+                return result
+            else:
+                # Returns a small object for router to track request status.
+                return b"", result
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.
