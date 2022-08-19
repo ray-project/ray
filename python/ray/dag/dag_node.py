@@ -56,6 +56,8 @@ class DAGNode(DAGNodeBase):
         )
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
+        # Cached values from last call to execute()
+        self.cache_from_last_execute = {}
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -83,40 +85,25 @@ class DAGNode(DAGNodeBase):
         """
         return self._stable_uuid
 
-    async def get_object_ref_from_last_execute(self, node_uuid: str):
-        """After this DAG is executed through execute(), retrieves a reference to the
-        return value of the default executor on the inputted DAGNode. The input
-        parameter should be an UUID for a method or function node.
-
-        Allows access to intermediate node outputs in this DAG. Example usage:
-            dag.execute(1,2,3)
-            print(
-                await dag.get_object_ref_from_last_execute(
-                    intermediate_node.get_stable_uuid()
-                )
-            )
-
-        Args:
-            node_uuid: stable uuid of a method or function DAGNode, which should be
-            part of the DAG rooted at THIS DAGNode.
-
-        Returns:
-            Object ref to the return value of the default executor node._execute_impl()
-            that was executed through calling execute() on THIS DAGNode.
+    async def get_object_refs_from_last_execute(self) -> Dict[str, ray.ObjectRef]:
+        """After this DAG is executed through execute(), retrieves a map between node
+        UUID to a reference to the return value of the default executor on that node. 
         """
-        if node_uuid not in self.cache_from_last_execute:
-            raise ValueError(
-                "Node UUID was not found in the deployment graph, unable to retrieve "
-                "object ref for node from last call to execute()."
-            )
+        cache = {}
+        for node_uuid, value in self.cache_from_last_execute.items():
+            if isinstance(value, asyncio.Task):
+                cache[node_uuid] = await value
+            else:
+                cache[node_uuid] = value
 
-        value = self.cache_from_last_execute[node_uuid]
-        if isinstance(value, asyncio.Task):
-            return await value
-        else:
-            return value
+        return cache
 
-    def execute(self, *args, **kwargs) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
+    def clear_cache(self):
+        self.cache_from_last_execute = {}
+
+    def execute(
+        self, *args, _cache_refs: bool = False, **kwargs
+    ) -> Union[ray.ObjectRef, ray.actor.ActorHandle]:
         """Execute this DAG using the Ray default executor.
 
         After execution, stores the return values of the executing the default executor
@@ -130,7 +117,8 @@ class DAGNode(DAGNodeBase):
             return node._execute_impl(*args, **kwargs)
 
         result = self.apply_recursive(executor)
-        self.cache_from_last_execute = executor.cache
+        if _cache_refs:
+            self.cache_from_last_execute = executor.cache
         return result
 
     def _get_toplevel_child_nodes(self) -> List["DAGNode"]:

@@ -14,6 +14,7 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.http_util import ASGIHTTPSender
 from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.exceptions import RayServeException
+import ray
 from ray import serve
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
@@ -140,10 +141,12 @@ class DAGDriver:
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
 
-    async def predict(self, *args, **kwargs):
+    async def predict(self, *args, _cache_refs: bool = False, **kwargs):
         """Perform inference directly without HTTP."""
         return await (
-            await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
+            await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(
+                *args, _cache_refs=_cache_refs, **kwargs
+            )
         )
 
     async def predict_with_route(self, route_path, *args, **kwargs):
@@ -152,26 +155,21 @@ class DAGDriver:
             raise RayServeException(f"{route_path} does not exist in dags routes")
         return await (await self.dags[route_path].remote(*args, **kwargs))
 
-    async def get_object_ref_for_node(self, node_uuid: str):
-        """
-        Gets the object ref for the task submitted to the node passed in as input.
-        Meant to be
-        * called after predict() has been called
-        * called on method and function nodes (i.e. the input parameter should be a
-          stable UUID for a method or function node)
-
-        Args:
-            node_uuid: stable uuid of a method or function DAGNode.
-
-        Returns:
-            Object ref for task submitted to the input DAGNode.
+    async def get_intermediate_object_refs(self) -> Dict[str, ray.ObjectRef]:
+        """Gets the cached references to the results of the default executors on each
+        node in the DAG found at self.MATCH_ALL_ROUTE_PREFIX. Should be called after
+        predict() has been called.
         """
         dag_handle = self.dags[self.MATCH_ALL_ROUTE_PREFIX]
         root_dag_node = dag_handle.dag_node
 
-        if root_dag_node is not None:
-            return await root_dag_node.get_object_ref_from_last_execute(node_uuid)
+        if root_dag_node is None:
+            raise AssertionError(
+                "Predict has not been called. Cannot retrieve intermediate object refs."
+            )
 
-    async def get_dag_node_json(self):
+        return await root_dag_node.get_object_refs_from_last_execute()
+
+    async def get_dag_node_json(self) -> str:
         """Returns the json serialized root dag node"""
         return self.dags[self.MATCH_ALL_ROUTE_PREFIX].dag_node_json

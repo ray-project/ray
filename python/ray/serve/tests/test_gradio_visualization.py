@@ -1,11 +1,13 @@
 import pytest
 from collections import defaultdict
+import asyncio
+import aiohttp
 
-from ray.dag.gradio_visualization import GraphVisualizer
+from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
 
+from ray import serve
 from ray.dag import InputNode
 from ray.serve.drivers import DAGDriver
-from ray import serve
 
 
 @pytest.fixture
@@ -49,22 +51,17 @@ async def test_execute_cached_object_ref(graph1):
     """Tests DAGNode.get_object_ref_from_last_execute() correctly returns object refs
     to the submitted tasks after DAGNode.execute() is run.
     """
-
     (f_node, _, dag) = graph1
 
-    dag.execute([1, 2])
-    assert (
-        await (await dag.get_object_ref_from_last_execute(f_node.get_stable_uuid()))
-        == 1
-    )
-    assert (
-        await (await dag.get_object_ref_from_last_execute(dag.get_stable_uuid())) == 2
-    )
+    dag.execute([1, 2], _cache_refs=True)
+    cache = await dag.get_object_refs_from_last_execute()
+    assert await cache[f_node.get_stable_uuid()] == 1
+    assert await cache[dag.get_stable_uuid()] == 2
 
 
 @pytest.mark.asyncio
-async def test_get_result(graph1):
-    """Tests that after running handle.predict.remote(), _get_result() in
+async def test_get_result_correctness(graph1):
+    """Tests correctness: that after running _send_request(), _get_result() in
     GraphVisualizer correctly returns object refs to the submitted tasks.
     """
     (_, _, dag) = graph1
@@ -73,9 +70,62 @@ async def test_get_result(graph1):
     visualizer = GraphVisualizer()
     visualizer.visualize_with_gradio(handle, _launch=False)
 
-    handle.predict.remote(1, 2)
-    values = [await (visualizer._get_result(uuid)) for uuid in visualizer.uuid_to_block]
+    await visualizer._send_request(1, 2)
+    values = await asyncio.gather(
+        *[(visualizer._get_result(uuid)) for uuid in visualizer.uuid_to_block]
+    )
     assert {1, 2} <= set(values)
+
+
+@pytest.mark.asyncio
+async def test_get_result_reliability(graph1):
+    """Tests reliability: that running async tasks _send_request() and _get_result() in
+    unknown order will still correctly return object refs to the submitted tasks.
+    """
+    (_, _, dag) = graph1
+
+    handle = serve.run(DAGDriver.bind(dag))
+    visualizer = GraphVisualizer()
+    visualizer.visualize_with_gradio(handle, _launch=False)
+
+    values = await asyncio.gather(
+        *[(visualizer._get_result(uuid)) for uuid in visualizer.uuid_to_block],
+        visualizer._send_request(1, 2)
+    )
+    assert {1, 2, None} <= set(values)
+
+
+@pytest.mark.asyncio
+async def test_gradio_visualization_e2e(graph1):
+    """Tests the E2E process of launching the Gradio app and submitting input.
+    Simulates clicking the submit button by sending asynchronous HTTP requests.
+    """
+    (_, _, dag) = graph1
+
+    handle = serve.run(DAGDriver.bind(dag))
+    visualizer = GraphVisualizer()
+    visualizer.visualize_with_gradio(handle, _launch=True, _block=False)
+
+    async with aiohttp.ClientSession() as session:
+
+        async def fetch(data, fn_index):
+            async with session.post(
+                "http://127.0.0.1:7860/api/predict/",
+                json={
+                    "session_hash": "random_hash",
+                    "data": data,
+                    "fn_index": fn_index,
+                },
+            ) as resp:
+                return (await resp.json())["data"]
+
+        values = await asyncio.gather(
+            fetch([1, 2], 0),  # sends request to dag with input (1,2)
+            fetch([], 1),  # fetches return value for one of the nodes
+            fetch([], 2),  # fetches return value for the other node
+        )
+
+    assert [] in values and [1] in values and [2] in values
 
 
 def test_fetch_depths(graph2):

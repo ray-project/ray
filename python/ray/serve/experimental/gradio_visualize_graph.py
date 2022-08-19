@@ -18,23 +18,29 @@ from typing import Any, Dict, Optional
 from collections import defaultdict
 import json
 import asyncio
+import logging
+
+try:
+    import gradio as gr
+except ModuleNotFoundError:
+    print(
+        "Gradio isn't installed. Run `pip install gradio` to use Gradio to "
+        "visualize a Serve deployment graph."
+    )
+    raise
+
+logger = logging.getLogger(__name__)
 
 
 class GraphVisualizer:
     def __init__(self):
-        try:
-            import gradio as gr
-        except ModuleNotFoundError:
-            print(
-                "Gradio isn't installed. Run `pip install gradio` to use Gradio to "
-                "visualize a Serve deployment graph."
-            )
-            raise
-
         self._reset_state()
 
     def _reset_state(self):
         """Resets state for each new RayServeHandle representing a new DAG."""
+        self.cache = None
+        self.finished_last_inference = True
+
         # maps DAGNode uuid to a DAGNode instance with that uuid
         self.uuid_to_node: Dict[str, DAGNode] = {}
         # maps DAGNode uuid to unique instance of a gradio block
@@ -107,20 +113,38 @@ class GraphVisualizer:
         """Retrieves the execution output of the inputted DAGNode, from last execution.
 
         This function should only be called after a request has been sent through
-        self.handle.predict.remote() separately.
+        self._send_request() separately.
         """
+        while self.finished_last_inference:
+            await asyncio.sleep(0.01)
 
-        # TODO(cindyz): This will hang forever if handle.predict.remote() is never called,
-        # or if the handle.predict.remote() call is not served.
-        return await asyncio.wait_for(
-            await self.handle.get_object_ref_for_node.remote(node_uuid)
-        )
+        result = await self.cache[node_uuid]
+        if self.dag.get_stable_uuid() == node_uuid:
+            self.finished_last_inference = True
+        return result
+
+    async def _send_request(self, *args):
+        """Sends a request to the root DAG node through self.handle and retrieves the
+        cached object refs pointing to return values of each executed node in the DAG.
+
+        Will not run if the last inference process has not finished (the last inference
+        process is considered finished if the return value for the root DAG node, has 
+        been resolved).
+        """
+        if not self.finished_last_inference:
+            logger.warning("Last inference has not finished yet.")
+            return
+
+        self.handle.predict.remote(args, _cache_refs=True)
+        self.cache = await self.handle.get_intermediate_object_refs.remote()
+        self.finished_last_inference = False
 
     def visualize_with_gradio(
         self,
         driver_handle: RayServeHandle,
         port: Optional[int] = None,
         _launch: bool = True,
+        _block: bool = True,
     ):
         """Launches a Gradio UI that allows interactive request dispatch and displays
         the evaluated outputs of each node in a deployment graph in real time.
@@ -129,19 +153,23 @@ class GraphVisualizer:
             driver_handle: The handle to a DAGDriver deployment obtained through a call
                 to serve.run(). The DAG rooted at that DAGDriver deployment will be
                 visualized through Gradio.
+            port: The port on which to start the Gradio app. If None, will default to
+                Gradio's default.
             _launch: Whether to launch the Gradio app. Used for unit testing purposes.
+            _block: Whether to block the main thread while the Gradio server is running.
+                Used for unit testing purposes.
         """
 
         self._reset_state()
         self.handle = driver_handle
 
-        # Load the root dag node from handle
+        # Load the root DAG node from handle
         dag_node_json = ray.get(self.handle.get_dag_node_json.remote())
-        dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
+        self.dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
 
         # Get name and level for each node in dag
         depths = defaultdict(lambda: 0)
-        dag.apply_recursive(lambda node: self._fetch_depths(node, depths))
+        self.dag.apply_recursive(lambda node: self._fetch_depths(node, depths))
 
         # Wraps _get_result because functools.partial doesn't work with asynchronous
         # class methods: https://stackoverflow.com/q/67020609/11162437
@@ -154,7 +182,7 @@ class GraphVisualizer:
             submit = gr.Button("Submit")
             # Add event listener that sends the request to the deployment graph
             submit.click(
-                fn=lambda *args: self.handle.predict.remote(args),
+                fn=self._send_request,
                 inputs=list(self.input_index_to_block.values()),
                 outputs=[],
             )
@@ -162,5 +190,11 @@ class GraphVisualizer:
             for node_uuid, block in self.uuid_to_block.items():
                 submit.click(partial(get_result_wrapper, node_uuid), [], block)
 
+            clear = gr.Button("Clear")
+            all_blocks = [*self.uuid_to_block.values()] + [
+                *self.input_index_to_block.values()
+            ]
+            clear.click(lambda: [None] * len(all_blocks), [], all_blocks)
+
         if _launch:
-            demo.launch(server_port=port)
+            demo.launch(server_port=port, prevent_thread_lock=not _block)
