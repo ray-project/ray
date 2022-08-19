@@ -1,4 +1,5 @@
 import pytest
+import os
 import ray
 from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
@@ -15,6 +16,16 @@ from ray.tune.tuner import Tuner
 @pytest.fixture
 def ray_start_8_cpus():
     address_info = ray.init(num_cpus=8)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_start_tpu(request):
+    tpu_dev = request.param
+    runtime_env = {"env_vars": {"RAY_TPU_DEV": tpu_dev}}
+    address_info = ray.init(resources={"TPU": 1}, runtime_env=runtime_env)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -73,6 +84,31 @@ def tune_jax_mnist(num_workers, use_gpu, num_samples, num_gpus_per_worker=0):
 
 def test_tune_jax_mnist(ray_start_8_cpus):
     tune_jax_mnist(num_workers=2, use_gpu=False, num_samples=2)
+
+
+@pytest.mark.parametrize(
+    "ray_start_tpu,expected", [("1", False), ("0", True)], indirect=["ray_start_tpu"]
+)
+def test_tpu_lockfile(ray_start_tpu, expected):
+    lock_file_path = "/tmp/libtpu_lockfile"
+    open(lock_file_path, "w").close()
+    assert os.path.exists(lock_file_path)
+
+    def dummy_train():
+        return 1
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=dummy_train,
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            use_gpu=False,
+            resources_per_worker={"TPU": 1},
+        ),
+    )
+
+    trainer.fit()
+
+    assert os.path.exists(lock_file_path) == expected
 
 
 if __name__ == "__main__":
