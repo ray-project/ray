@@ -292,7 +292,6 @@ class _ParquetDatasourceReader(Reader):
         # Launch tasks to sample multiple files remotely in parallel.
         # Evenly distributed to sample N rows in i-th row group in i-th file.
         # TODO(ekl/cheng) take into account column pruning.
-        start_time = time.perf_counter()
         num_files = len(self._pq_ds.pieces)
         num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
         min_num_samples = min(
@@ -321,15 +320,10 @@ class _ParquetDatasourceReader(Reader):
                     _SerializedPiece(sample), idx
                 )
             )
-        sample_ratios = ray.get(futures)
+        sample_bar = ProgressBar("Parquet Files Sample", len(futures))
+        sample_ratios = sample_bar.fetch_until_complete(futures)
+        sample_bar.close()
         ratio = np.mean(sample_ratios)
-
-        sampling_duration = time.perf_counter() - start_time
-        if sampling_duration > 5:
-            logger.info(
-                "Parquet input size estimation took "
-                f"{round(sampling_duration, 2)} seconds."
-            )
         logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
         return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
