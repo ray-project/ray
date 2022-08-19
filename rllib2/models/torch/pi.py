@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Optional
 
@@ -70,21 +71,20 @@ class PiConfig(ModelConfig):
     is_determintic: bool = False
     free_log_std: bool = False
     squash_actions: bool = False
+    action_dist_class: Type[PiDistribution] = None
 
 
-class Pi(ModelWithEncoder):
-    """
-    Design requirements:
-    * Should support both stochastic and deterministic pi`s under one roof
+class PiBase(nn.Module):
+    """Design requirements:
+    * [x] Should support both stochastic and deterministic pi`s under one roof
         * Deterministic dists are just special case of stochastic dists with delta func.
         * log_prob would just not be implemented and would raise an error.
         * Under the hood, behavioral and target sample would behave the same
         * for deterministic pis entropy would be zero
-    * Should support arbitrary encoders (encode observations / history to s_t)
+    * [x] Should support arbitrary encoders (encode observations / history to s_t)
         * Encoder would be part of the model attributes
-        * TODO: Should we just create an encoder attribute and have the user encode themselves?
-            or should we also take care of the encoding during __call__ method?
-    * Support both Continuous and Discrete actions
+        * Should we just create an encoder attribute and have the user encode themselves?
+    * [] Support both Continuous and Discrete actions
         * For continuous you should output a continuous dist that can be sampled
         * For discrete you should output a categorical dist that can be sampled
         * Support composable output distribution heads for cases where we have a mixture
@@ -92,18 +92,32 @@ class Pi(ModelWithEncoder):
         * TODO: [x] How do we support mixed action spaces? Example below.
         * TODO: [x] How do we support auto-regressive action spaces? Example below.
         * TODO: [x] How do we support goal-conditioned policies? Example below.
-        * TODO: [] How do we support Recurrent Policies?
-        * TODO: [] Can we support Decision Transformers?
+        * TODO: [x] How do we support Recurrent Policies?
+        * TODO: [x] Can we support Transformers?
         * TODO: [] How do we support action-space masking?
-    * Should be able to switch between exploration = on / off
+    * [x] Should be able to switch between exploration = on / off --> this handled by who ever runs RLModule's forward_inference()
         * target_sample is used for inference (exploration = off)
         * behavioral_sample is used for sampling during training (exploration = true)
         * behavioral / target would be used based on the requirement of computing
         the algorithm's loss function during training
-
-    * Should be able to save/load very easily for serving (if needed)
-    * Should be able to create copies efficiently and perform arbitrary parameter updates in target_updates
+    * [x] Should be able to save/load very easily for serving (if needed)
     """
+
+    def __init__(self, config: ModelConfig) -> None:
+        super().__init__()
+        self.config = config
+
+    @abc.abstractmethod
+    def forward(
+        self, 
+        input_dict: SampleBatch, 
+        return_encoder_output: bool = False,
+        **kwargs
+    ) -> PiOutput:
+        raise NotImplementedError
+
+
+class SingleDistributionPi(PiBase, ModelWithEncoder):
 
     def __init__(self, config: PiConfig, **kwargs):
         super().__init__(config)
@@ -140,6 +154,7 @@ class Pi(ModelWithEncoder):
         return PiOutput(
             action_dist=action_dist,
             action_logits=logits,
+            encoder_output=encoder_output if return_encoder_output else None
         )
 
 """
@@ -149,99 +164,69 @@ Some examples of pre-defined RLlib standard policies
 #######################################################
 ########### Deterministic Continuous Policy a = Pi(s)
 #######################################################
-
-
-class DetermnisticPi(Pi):
-    """
-    Both target and behavioral policy output a Deterministic distribution
-    """
-
-    def __init__(self, action_shape, encoder, squash_actions=False, **kwargs):
-        super().__init__(encoder)
-        self.policy_head = nn.Linear(encoder.num_features, action_shape)
-
-    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
-        if encoded_batch:
-            s = encoded_batch.out
-        else:
-            s = batch.obs
-
-        logits = self.policy_head(s)
-        if self.squash_actions:
-            dist = SquashedDeterministicDist(logits)
-        else:
-            dist = DeterministicDist(logits)
-        return PiOutput(action_dist=dist)
-
-
 ###########################################################
 ########### Stochastic Continuous Policy a ~ N(mu(s), std(s))
 ###########################################################
 
-class NormalPi(Pi):
-    """
-    Behavioral Sample is sampled from Normal
-    Target sample is the mean of the Normal
-    """
 
-    def __init__(self, encoder, action_shape, squash_actions=False,
-                 log_std=None, use_parameter_log_std=False, **kwargs):
-        super().__init__(encoder)
-
-        output_shape = ...
-        self.policy_head = nn.Linear(encoder.num_features, output_shape)
-
-
-    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
-        if encoded_batch:
-            s = encoded_batch.out
-        else:
-            s = batch.obs
-        logits = self.policy_head(s)
-        mean, std = ...
-
-        if self.squash_actions:
-            dist = SquashedNormalDist(mean, std)
-        else:
-            dist = NormalDist(mean, std)
-        return PiOutput(action_dist=dist)
+def test_continuous_pi():
+    config = PiConfig(
+        observation_space=Box(low=-1, high=1, shape=(10,)),
+        action_space=Box(low=-1, high=1, shape=(2,)),
+        is_deterministic=True,
+        # free_log_std=True,
+        # squash_actions=True,
+    )
+    pi = SingleDistributionPi(config)
+    print(pi)
 
 
-######################################################################
-########### Stochastic Discrete Policy a ~ Categorical([p1, ..., pk](s))
-######################################################################
-
-class CategoricalPi(Pi):
-
-    def __init__(self, encoder, action_classes):
-        pass
-
-
-
-class VectorGoalObsEncoder(Encoder):
-
-    def __init__(self, encoder_config):
-        super().__init__()
-        self.net = MLP(
-            in_channels=encoder_config.obs_dim + encoder_config.goal_dim,
-            out_channels=encoder_config.latent_dim,
-            hidden_dim = 256,
-            n_layers = 3,
-            activation = 'Relu'
-        )
-
-    def forward(self, batch: SampleBatch) -> EncoderOutput:
-        obs = batch.obs
-        goal = batch.goal
-        obs_goal = torch.cat([obs, goal], -1)
-        latent = self.net(obs_goal)
-        return EncoderOutput(out=latent)
+def test_discrete_pi():
+    config = PiConfig(
+        observation_space=Box(low=-1, high=1, shape=(10,)),
+        action_space=Discrete(2),
+        is_deterministic=True,
+        # free_log_std=True,
+    )
+    pi = SingleDistributionPi(config)
+    print(pi)
 
 
-class GoalConditionedPi(NormalPi):
+################################################################
+########### Goal conditioned policies a ~ N(mu(s, g), std(s, g))
+################################################################
 
-    def __init__(self, encoder: VectorGoalObsEncoder, *args, **kwargs):
-        super().__init__(encoder, *args, **kwargs)
+def test_goal_conditioned_policy():
+    # see how easy it is to modify the encoder
+    # encode goal observation and current observation and concat them as the policy 
+    # input
+    class Encoder(nn.Module):
+        def __init__(self, observation_space, action_space) -> None:
+            super().__init__()
+            self.encoding_layer = model_catalog.get_encoder(
+                observation_space, action_space
+            )
+        
+        def forward(self, input_dict):
+            obs = input_dict['obs']
+            goal = input_dict['goal']
+
+            z_obs = self.encoding_layer(obs)
+            z_goal = self.encoding_layer(goal)
+            return torch.cat([z_obs, z_goal], -1)
+
+
+    register_model('goal_conditioned_encoder', Encoder)
+    config = PiConfig(
+        encoder='goal_conditioned_encoder',
+        observation_space=Box(low=-1, high=1, shape=(10,)),
+        action_space=Discrete(2),
+        is_deterministic=True,
+        # free_log_std=True,
+    )
+
+    pi = SingleDistributionPi(config)
+    print(pi)
 
 
 ###################################################################
@@ -256,20 +241,25 @@ class GoalConditionedPi(NormalPi):
 # >>> {'torques': Tensor(0.63), 'gripper': Tensor(0.63)}
 ###################################################################
 
+# see how easy it is to extend the base pi class to support mixed action spaces
 
-class MixturePi(Pi):
+@dataclass
+class MixturePiConfig(PiConfig):
+    pi_dict: Dict[str, Pi] = field(default_factory=dict)
 
-    def __init__(self, encoder, pi_dict: Dict[str, Pi]):
-        super().__init__(encoder)
+class MixturePi(PiBase):
+
+    def __init__(self, config: MixturePiConfig):
+        super().__init__()
+        self.config = config
         self.pis = nn.ModuleDict(pi_dict)
 
-
-    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
+    def forward(self, input_dict: SampleBatch, **kwargs) -> PiOutput:
         pi_outputs = {}
         for pi_key, pi in self.pis.items():
-            pi_outputs[pi_key] = pi(batch, encoded_batch=encoded_batch, encode=False)
+            pi_outputs[pi_key] = pi(input_dict)
 
-        act_dist_dict = {k: v.action_dist for k, v in pi_output.items()}
+        act_dist_dict = {k: v.action_dist for k, v in pi_outputs.items()}
         return PiOutput(action_dist=MixDistribution(act_dist_dict))
 
 
@@ -284,44 +274,92 @@ class MixturePi(Pi):
 # >>> actor_loss = mixed_dist.log_prob(a)
 # >>> {'torques': Tensor(0.63), 'gripper': Tensor(0.63)}
 ###################################################################
+# encoder should have a predefined interface
+#      forward(input_dict) -> output_dict
+#      configs: Dict[str, Any] # important attributes that need to be accessed from the 
+#           outside
+class GripperObsTorqueEncoder(Encoder):
 
-class _GripperPi(CategoricalPi):
-    def __init__(self, encoder: VectorGoalObsEncoder, *args, **kwargs):
-        super().__init__(encoder, *args, **kwargs)
+    def __init__(self, torque_out_dim: int, obs_encoder: nn.Module) -> None:
+        super().__init__()
+        self.obs_encoder = obs_encoder
+
+        self.linear = nn.Linear(
+            self.obs_encoder.out_dim + torque_out_dim, 
+            64,
+        )
+
+    def forward(self, input_dict: SampleBatch) -> torch.Tensor:
+        obs = input_dict['obs']
+        torque = input_dict['torque']
+        obs = self.obs_encoder(obs)
+        z_t = torch.cat([obs, torque], -1)
+        out = self.linear(z_t)
+        return out
+
+class CustomAutoregressivePi(PiBase):
+
+    def __init__(self, config: PiConfig):
+        super().__init__(config)
+
+        torque_configs = deepcopy(config)
+        torque_configs.action_space = config.action_space['torque']
+        torque_configs.observation_space = config.observation_space['torque']
+        self.torque_pi = SingleDistributionPi(torque_configs)
 
 
-class CustomAutoregressivePi(Pi):
+        gripper_configs = deepcopy(config)
+        gripper_configs.action_space = config.action_space['gripper']
+        gripper_configs.observation_space = config.observation_space['gripper']
+        # get the obs encoder from torque's pi to share parameters with gripper's pi
+        obs_encoder = self.torque_pi.encoder
+        gripper_configs.encoder = GripperObsTorqueEncoder(
+            torque_out_dim=torque_configs.fcnet_hiddens[-1], 
+            encoder=obs_encoder
+        )
 
-    def __init__(self, encoder, action_space, obs_space):
-        super().__init__(encoder)
-
-        self.torques = NormalPi(action_space=action_space['torques'])
-        self.gripper = _GripperPi(encoder=VectorGoalObsEncoder({'obs_dim': obs_space, 'goal_dim': self.torques.output_dim}))
+        self.gripper_pi = SingleDistributionPi(gripper_configs)
 
 
-    def forward(self, batch: SampleBatch, encoded_batch: Optional[EncoderOutput] = None, **kwargs) -> PiOutput:
 
-        torque_output = self.torques(batch, encoded_batch=encoded_batch, encode=False)
+    def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
+
+        torque_output = self.torque_pi(batch)
         torque_actions = torque_output.sample()
 
-        sample_batch = {'obs': batch.obs, 'goal': torque_actions}
-        gripper_actions = self.gripper(sample_batch, encoded_batch, encoded_batch, encode=False)
-
+        sample_batch = {'torque': torque_actions, 'obs': batch.obs}
+        gripper_actions = self.gripper_pi(sample_batch)
         ...
 
         return PiOutput(action_dist=..., action_sampled=...)
 
 
 ###################################################################
-########### Decision Transformer # TODO
+########### Transformer policy
 ###################################################################
-
+def test_transformer_pi():
+    config = PiConfig(
+        observation_space=Box(low=-1, high=1, shape=(84, 84, 3)),
+        action_space=Discrete(2),
+        is_transformer=True,
+        # free_log_std=True,
+    )
+    pi = Pi(config)
+    print(pi)
 
 
 ###################################################################
-########### Recurrent Policies # TODO
+########### Recurrent Policies
 ###################################################################
-
+def test_rnn_pi():
+    config = PiConfig(
+        observation_space=Box(low=-1, high=1, shape=(10,)),
+        action_space=Discrete(2),
+        is_rnn=True,
+        # free_log_std=True,
+    )
+    pi = Pi(config)
+    print(pi)
 
 
 ###################################################################

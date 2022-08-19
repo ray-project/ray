@@ -1,19 +1,32 @@
-from typing import Optional
-
 import torch.nn as nn
 
-
-@dataclass
-class EncoderOutput(NNOutput):
-    state: Optional[TensorType] = None
-
-
 class Encoder(nn.Module):
-    def __init__(self, ecoder_config):
-        super(Encoder, self).__init__()
+    def __init__(self, config: Dict[str, Any]) -> None:
+        super().__init__()
+        self.config = config
 
-    def forward(self, batch: SampleBatch) -> EncoderOutput:
-        raise NotImplementedError
-
-    def freeze(self):
+    def forward(self, input_dict: TensorDict) -> TensorDict:
         pass
+
+
+
+class MLP(nn.Module):
+    pass
+
+
+class CNN(nn.Module):
+    pass
+
+
+
+class NestedEncoder(nn.Module):
+    pass
+
+
+
+class RNNEncoder(nn.Module):
+    pass
+
+
+class TransformerEncoder(nn.Module):
+    pass
