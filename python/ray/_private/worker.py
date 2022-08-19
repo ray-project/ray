@@ -114,6 +114,10 @@ T9 = TypeVar("T9")
 R = TypeVar("R")
 
 DAGNode = TypeVar("DAGNode")
+TSelfRemoteFunction = TypeVar("TSelfRemoteFunction")
+
+# Only used for type annotations as a placeholder
+Undefined: Any = object()
 
 
 class RemoteFunctionNoArgs(Generic[R]):
@@ -128,6 +132,30 @@ class RemoteFunctionNoArgs(Generic[R]):
     def bind(
         self,
     ) -> "DAGNode[R]":
+        ...
+
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
         ...
 
 
@@ -147,6 +175,30 @@ class RemoteFunction0(Generic[R, T0]):
     ) -> "DAGNode[R]":
         ...
 
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
+        ...
+
 
 class RemoteFunction1(Generic[R, T0, T1]):
     def __init__(self, function: Callable[[T0, T1], R]) -> None:
@@ -164,6 +216,30 @@ class RemoteFunction1(Generic[R, T0, T1]):
         __arg0: "Union[T0, DAGNode[T0]]",
         __arg1: "Union[T1, DAGNode[T1]]",
     ) -> "DAGNode[R]":
+        ...
+
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
         ...
 
 
@@ -187,6 +263,30 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
     ) -> "DAGNode[R]":
         ...
 
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
+        ...
+
 
 class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
@@ -208,6 +308,30 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
         __arg2: "Union[T2, DAGNode[T2]]",
         __arg3: "Union[T3, DAGNode[T3]]",
     ) -> "DAGNode[R]":
+        ...
+
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
         ...
 
 
@@ -235,6 +359,30 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
     ) -> "DAGNode[R]":
         ...
 
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
+        ...
+
 
 class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
@@ -260,6 +408,30 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
         __arg4: "Union[T4, DAGNode[T4]]",
         __arg5: "Union[T5, DAGNode[T5]]",
     ) -> "DAGNode[R]":
+        ...
+
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
         ...
 
 
@@ -291,6 +463,30 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
     ) -> "DAGNode[R]":
         ...
 
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
+        ...
+
 
 class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
@@ -320,6 +516,30 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
         __arg6: "Union[T6, DAGNode[T6]]",
         __arg7: "Union[T7, DAGNode[T7]]",
     ) -> "DAGNode[R]":
+        ...
+
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
         ...
 
 
@@ -357,6 +577,30 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
     ) -> "DAGNode[R]":
         ...
 
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
+        ...
+
 
 class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     def __init__(
@@ -392,6 +636,30 @@ class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
         __arg8: "Union[T8, DAGNode[T8]]",
         __arg9: "Union[T9, DAGNode[T9]]",
     ) -> "DAGNode[R]":
+        ...
+
+    def options(
+        self: TSelfRemoteFunction,
+        *,
+        num_returns: Union[int, float] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> TSelfRemoteFunction:
         ...
 
 
@@ -2674,10 +2942,6 @@ class RemoteDecorator(Protocol):
     @overload
     def __call__(self, __t: type) -> Any:
         ...
-
-
-# Only used for type annotations as a placeholder
-Undefined: Any = object()
 
 
 @overload
