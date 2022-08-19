@@ -40,6 +40,7 @@ args = parser.parse_args()
 assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 
 
+# __sphinx_doc_begin__
 class MyCartPole(gym.Env):
     """A mock CartPole environment.
 
@@ -63,7 +64,7 @@ class MyCartPole(gym.Env):
         return np.hstack((self._env.reset(), [8.0, 6.0]))
 
 
-# Custom agent connector.
+# Custom agent connector to drop the last 2 feature values.
 def v2_to_v1_obs(data: Dict[str, TensorStructType]) -> Dict[str, TensorStructType]:
     data[SampleBatch.NEXT_OBS] = data[SampleBatch.NEXT_OBS][:-2]
     return data
@@ -76,7 +77,7 @@ V2ToV1ObsAgentConnector = register_lambda_agent_connector(
 )
 
 
-# Custom action connector.
+# Custom action connector to add a placeholder action as the addtional action input.
 def v1_to_v2_action(
     actions: TensorStructType, states: StateBatches, fetches: Dict
 ) -> PolicyOutputType:
@@ -123,6 +124,9 @@ def run(checkpoint_path):
         print(f"step {step}", obs, actions)
 
         obs, _, done, _ = env.step(actions)
+
+
+# __sphinx_doc_end__
 
 
 if __name__ == "__main__":
