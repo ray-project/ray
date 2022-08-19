@@ -35,6 +35,7 @@ kind create cluster
 The test uses Ray client, so you should either
 - install nightly Ray in your environment
 - install Ray from source in your environment (`pip install -e`)
+
 Match your environment's Python version with the Ray image you are using.
 
 ## Run the test.
