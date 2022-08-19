@@ -60,11 +60,10 @@ Bonjour Monde!
 ```
 
 Keep in mind that the `TranslationPipeline` is an example ML model for this
-tutorial. You can follow along using arbitrary models from any
-Python framework.
+tutorial. You can follow along with models from any Python framework.
 
 :::{seealso}
-Check our our [tutorials](serve-ml-models-tutorial) on scikit-learn, PyTorch, and Tensorflow for more info and examples!
+Check out the [tutorials](serve-ml-models-tutorial) on scikit-learn, PyTorch, and Tensorflow for Ray Serve examples using popular Python ML frameworks!
 :::
 
 (converting-to-ray-serve-deployment)=
@@ -253,7 +252,11 @@ $ python graph_client.py
 c'était le meilleur des temps, c'était le pire des temps .
 ```
 
-Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources. See the guide on [model composition](serve-model-composition) to learn more.
+Deployment graphs are useful since they let you deploy each part of your machine learning pipeline, such as inference and business logic steps, in separate deployments. Each of these deployments can be individually configured and scaled, ensuring you get maximal performance from your resources.
+
+:::{seealso}
+See the [Model Composition guide](serve-model-composition) for more details on deployment graphs.
+:::
 
 ## Next Steps
 
