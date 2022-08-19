@@ -51,9 +51,9 @@ class JaxTrainer(DataParallelTrainer):
     - cluster scaling config:
         - For the GPU distributed cases, the inner-device communication is handled
             internally by Jax; the inter-device communication is set up by the
-            ``JaxTrainer``. Therefore, the ``num_workers`` is set to be the number of nodes;
-            and ``num_gpus_per_worker`` is set to be the number of gpus on each nodes.
-            For the current experimental version, we only support the homogeneous
+            ``JaxTrainer``. Therefore, the ``num_workers`` is set to be the number of
+            nodes; and ``num_gpus_per_worker`` is set to be the number of gpus on each
+            node. For the current experimental version, we only support the homogeneous
             distributed case, i.e. all the nodes have the same number of gpus. This is
             also the optimal / balanced case in terms of performance.
         - For the TPU distributed cases, the multi-device distributed training only
@@ -66,7 +66,8 @@ class JaxTrainer(DataParallelTrainer):
             Since the TPU resources are not the default resources on Ray,
             we need to set the ``resources`` when set up the cluster,
             e.g. ``ray start --resources='{"TPU":1}'``. For more details, please
-            refer to :doc:`Ray Jax TPU Examples </train/examples/jax_tpu>` end to end example.
+            refer to :doc:`Ray Jax TPU Examples </train/examples/jax_tpu>`
+            end to end example.
         - For the CPU distributed cases, the multi-device distributed training
             is not supported.
         - the placement group strategy: Since the JaxTrainer will spread the workers
