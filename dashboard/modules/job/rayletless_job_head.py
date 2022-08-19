@@ -43,6 +43,8 @@ logger.setLevel(logging.INFO)
 routes = optional_utils.ClassMethodRouteTable
 
 
+# TODO(Catch-Bull): It doesn't  exposed to users for now,
+# move to `sdk.py` after the interface is finished.
 class JobAgentSubmissionClient(SubmissionClient):
     """A local client for submitting and interacting with jobs on a specific node
     in the remote cluster.
@@ -123,6 +125,10 @@ class JobAgentSubmissionClient(SubmissionClient):
             self._raise_error(r)
 
 
+# TODO(Catch-Bull): because of `routes` will check duplicate route path,
+# So `RayletlessJobHead` cannot inherit `JobHead`, Many functions are
+# copied directly from `JobHead`. Finally, after RayletlessJobHead is stable,
+# we will delete `JobHead`.
 class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
