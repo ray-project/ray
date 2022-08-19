@@ -4,7 +4,7 @@ import time
 
 
 @test_utils.wait_for_stdout(
-    strings_to_match=["Adding 1 nodes of type small-group."], timeout_s=15
+    strings_to_match=["Adding 1 node(s) of type small-group."], timeout_s=15
 )
 def main():
     """Submits CPU request.
