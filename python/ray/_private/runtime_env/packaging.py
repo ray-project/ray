@@ -800,10 +800,13 @@ def unzip_package(
         top_level_directory = get_top_level_dir_from_compressed_package(package_path)
         if top_level_directory is None:
             raise ValueError(
-                "The package at package_path must contain "
+                f"The zip package at {package_path} must contain "
                 "a single top level directory. Make sure there "
                 "are no hidden files at the same level as the "
-                "top level directory."
+                "top level directory. You can ensure this by running "
+                "`zip -r example.zip example_dir` from the parent "
+                "directory of example_dir when creating the zip file. "
+                "You can check the contents with `zipinfo -1 example.zip`."
             )
 
         remove_dir_from_filepaths(target_dir, top_level_directory)
