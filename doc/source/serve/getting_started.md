@@ -61,10 +61,11 @@ Bonjour Monde!
 
 Keep in mind that the `TranslationPipeline` is an example ML model for this
 tutorial. You can follow along using arbitrary models from any
-Python framework. Check out our tutorials on scikit-learn,
-PyTorch, and Tensorflow for more info and examples:
+Python framework.
 
-- {ref}`serve-ml-models-tutorial`
+:::{seealso}
+Check our our [tutorials](serve-ml-models-tutorial) on scikit-learn, PyTorch, and Tensorflow for more info and examples!
+:::
 
 (converting-to-ray-serve-deployment)=
 ## Converting to a Ray Serve Deployment
