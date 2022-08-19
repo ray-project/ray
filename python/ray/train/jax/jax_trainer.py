@@ -73,7 +73,7 @@ class JaxTrainer(DataParallelTrainer):
             across different nodes, the default value of `placment_strategy`
             is changed to `SPREAD`.
 
-    - `train_loop_per_worker` functions:
+    - ``train_loop_per_worker`` functions:
         **NOTE**:
         1. the flax nn module has to define inside the ``train_loop_per_worker``
             function. Otherwise, the error message ``ValueError: parent must be
