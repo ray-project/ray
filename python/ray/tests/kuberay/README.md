@@ -8,7 +8,7 @@ First, push your code changes to your git fork.
 The Dockerfile below will work if you've only made Python changes.
 ```dockerfile
 # Use the latest Ray master as base.
-FROM rayproject/ray:nightly
+FROM rayproject/ray:nightly-py37
 # Invalidate the cache so that fresh code is pulled in the next step.
 ARG BUILD_DATE
 # Retrieve your development code.
@@ -35,6 +35,7 @@ kind create cluster
 The test uses Ray client, so you should either
 - install nightly Ray in your environment
 - install Ray from source in your environment (`pip install -e`)
+Match your environment's Python version with the Ray image you are using.
 
 ## Run the test.
 
