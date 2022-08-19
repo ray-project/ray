@@ -46,7 +46,7 @@ class JaxTrainer(DataParallelTrainer):
     ``train_loop_per_worker``. All the other datasets will not be split and
     ``session.get_dataset_shard(...)`` will return the the entire Dataset.
 
-    Note: Here are some details about how to use JaxTrainer properly.
+    Note: Here are some details about how to use the ``JaxTrainer`` properly.
 
     - cluster scaling config:
         - For the GPU distributed cases, the inner-device communication is handled
