@@ -39,13 +39,13 @@ class _DummyAlgo(Algorithm):
     train_exec_impl = None
 
     def setup(self, config):
-        deterministic = config.pop("deterministic", False)
-        policy_class = _DummyDeterministicPolicy if deterministic else _DummyPolicy
-
+        random_state = config.pop("random_state", None)
+        policy_class = _DummyStatefulPolicy if random_state else _DummyPolicy
+        policy_config = {"random_state": random_state} if random_state else {}
         self.policy = policy_class(
             observation_space=gym.spaces.Box(low=-2.0, high=-2.0, shape=(10,)),
             action_space=gym.spaces.Discrete(n=1),
-            config={},
+            config=policy_config,
         )
 
     def train(self):
@@ -71,8 +71,13 @@ class _DummyPolicy(Policy):
         )
 
 
-class _DummyDeterministicPolicy(Policy):
-    """Returns actions by averaging over observations"""
+class _DummyStatefulPolicy(Policy):
+    """Returns actions by averaging over observations, adding a random state
+    at initialization"""
+
+    def __init__(self, observation_space, action_space, config):
+        super().__init__(observation_space, action_space, config)
+        self.random_state = config.pop("random_state")
 
     def compute_actions(
         self,
@@ -81,7 +86,7 @@ class _DummyDeterministicPolicy(Policy):
         **kwargs,
     ):
         return (
-            np.mean(obs_batch, axis=1),
+            self.random_state + np.mean(obs_batch, axis=1),
             [],
             {},
         )
@@ -118,7 +123,9 @@ def test_rl_checkpoint():
 
     rl_trainer = RLTrainer(
         algorithm=_DummyAlgo,
-        config={"deterministic": True},
+        # TODO: Does this random state simulate something like making sure
+        # network weights are loaded correctly? Should I just do that directly?
+        config={"random_state": np.random.uniform(0, 1)},
         preprocessor=preprocessor,
     )
     rl_trainable_cls = rl_trainer.as_trainable()

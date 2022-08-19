@@ -10,6 +10,7 @@ from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import convert_pandas_to_batch_type
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
+import transformers
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from transformers.pipelines import pipeline
 
@@ -18,9 +19,8 @@ import ray
 from ray.data.preprocessor import Preprocessor
 from ray.train.huggingface import HuggingFaceCheckpoint, HuggingFacePredictor
 
-prompts = pd.DataFrame(
-    ["Complete me", "And me", "Please complete"], columns=["sentences"]
-)
+test_strings = ["Complete me", "And me", "Please complete"]
+prompts = pd.DataFrame(test_strings, columns=["sentences"])
 
 # We are only testing Casual Language Modeling here
 
@@ -73,15 +73,41 @@ def test_huggingface_checkpoint(tmpdir, ray_start_runtime_env):
     checkpoint = HuggingFaceCheckpoint.from_model(
         model, tokenizer, path=tmpdir, preprocessor=preprocessor
     )
-
     checkpoint_model = checkpoint.get_model(AutoModelForCausalLM)
     checkpoint_tokenizer = checkpoint.get_tokenizer(AutoTokenizer)
     checkpoint_preprocessor = checkpoint.get_preprocessor()
 
-    # TODO: How to check that two HF models are the same?
-    # assert model == checkpoint_model
-    # assert tokenizer == checkpoint_tokenizer
-    # assert checkpoint_preprocessor.attr == preprocessor.attr
+    @ray.remote
+    def test(model, tokenizer):
+        os.chdir(tmpdir)
+        # Ensure that model outputs are deterministic
+        transformers.set_seed(1234)
+        model_config = AutoConfig.from_pretrained(model_checkpoint)
+        model = AutoModelForCausalLM.from_config(model_config)
+        model.eval()
+        predictor = HuggingFacePredictor(
+            pipeline=pipeline(
+                task="text-generation",
+                model=model,
+                tokenizer=tokenizer,
+            ),
+            preprocessor=preprocessor,
+        )
+
+        predictions = predictor.predict(prompts)
+        return predictions
+
+    tokens = tokenizer(test_strings)
+    checkpoint_tokens = checkpoint_tokenizer(test_strings)
+
+    predictions = ray.get(test.remote(model, tokenizer))
+    checkpoint_predictions = ray.get(
+        test.remote(checkpoint_model, checkpoint_tokenizer)
+    )
+
+    assert all(predictions == checkpoint_predictions)
+    assert tokens == checkpoint_tokens
+    assert checkpoint_preprocessor.attr == preprocessor.attr
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, pa.Table, dict])
