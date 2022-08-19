@@ -1,5 +1,5 @@
 base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
-env_vars: {}
+env_vars: {"RAY_memory_usage_threshold_fraction": "0.9", "RAY_memory_monitor_interval_ms": "500"}
 debian_packages:
   - unzip
   - zip
