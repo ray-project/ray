@@ -510,7 +510,7 @@ Your ``runtime_env`` dictionary should contain:
   You can inspect a zip file's contents by running the ``zipinfo -1 zip_file_name.zip`` command in the Terminal.
   Some zipping methods can cause hidden files or metadata directories to appear in the zip file at the top level.
   This will cause Ray to throw an error because the structure of the zip file is invalid since there is more than a single directory at the top level.
-  You can avoid this by using the ``zip -r`` command directly on the directory you want to compress and being sure to run the command from the parent directory.
+  You can avoid this by using the ``zip -r`` command directly on the directory you want to compress. Make sure to run the command from that directory's parent.
 
 Currently, three types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
 
