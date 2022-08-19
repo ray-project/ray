@@ -66,7 +66,7 @@ Tuners can work seamlessly with any Trainer but also can support arbitrary train
 Checkpoints
 -----------
 
-The AIR trainers, tuners, and custom pretrained model generate :class:`a framework-specific Checkpoint <ray.air.Checkpoint>` object.
+The AIR trainers, tuners, and custom pretrained model generate :class:`a framework-specific Checkpoint<ray.air.Checkpoint>` object.
 Checkpoints are a common interface for models that are used across different AIR components and libraries.
 
 There are two main ways to generate a checkpoint.

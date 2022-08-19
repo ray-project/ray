@@ -5,6 +5,8 @@ Configuring Hyperparameter Tuning
 
 The Ray AIR :class:`Tuner <ray.tune.Tuner>` is the recommended way to tune hyperparameters in Ray AIR.
 
+.. https://docs.google.com/drawings/d/1yMd12iMkyo6DGrFoET1TIlKfFnXX9dfh2u3GSdTz6W4/edit
+
 .. figure:: images/tuner.svg
     :align: center
 
