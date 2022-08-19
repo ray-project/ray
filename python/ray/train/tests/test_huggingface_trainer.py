@@ -1,3 +1,4 @@
+import math
 from unittest.mock import patch
 
 import pandas as pd
@@ -46,6 +47,7 @@ def train_function(train_dataset, eval_dataset=None, **config):
     training_args = TrainingArguments(
         f"{model_checkpoint}-wikitext2",
         evaluation_strategy=config.pop("evaluation_strategy", "epoch"),
+        logging_strategy=config.pop("logging_strategy", "epoch"),
         num_train_epochs=config.pop("epochs", 3),
         learning_rate=2e-5,
         weight_decay=0.01,
@@ -82,7 +84,7 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 
     trainer2 = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        trainer_init_config={"epochs": 5},  # this will train for 1 epoch: 5 - 4 = 1
+        trainer_init_config={"epochs": 5, "save_strategy": save_strategy},  # this will train for 1 epoch: 5 - 4 = 1
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
         resume_from_checkpoint=result.checkpoint,
@@ -102,6 +104,54 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 
     predictions = predictor.predict(ray.data.from_pandas(prompts))
     assert predictions.count() == 3
+
+
+
+@pytest.mark.parametrize("save_steps", [0, 1, 2, 5, 10, 15])
+@pytest.mark.parametrize("logging_steps", [1, 2, 5, 10, 15])
+def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
+    print(save_steps)
+    print(logging_steps)
+    if save_steps and (save_steps < logging_steps or save_steps % logging_steps != 0):
+        pytest.skip()
+    ray_train = ray.data.from_pandas(train_df)
+    ray_validation = ray.data.from_pandas(validation_df)
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+    trainer = HuggingFaceTrainer(
+        trainer_init_per_worker=train_function,
+        trainer_init_config={"epochs": 5, "save_strategy": "no" if not save_steps else "steps", "logging_strategy": "steps", "evaluation_strategy": "steps", "save_steps": save_steps, "logging_steps": logging_steps},
+        scaling_config=scaling_config,
+        datasets={"train": ray_train, "evaluation": ray_validation},
+    )
+    result = trainer.fit()
+
+    assert result.metrics["epoch"] == 5
+    assert result.metrics["training_iteration"] == math.ceil(10 / logging_steps)
+    assert result.checkpoint
+
+    trainer2 = HuggingFaceTrainer(
+        trainer_init_per_worker=train_function,
+        trainer_init_config={"epochs": 6, "save_strategy": "no" if not save_steps else "steps", "logging_strategy": "steps", "evaluation_strategy": "steps", "save_steps": save_steps, "logging_steps": logging_steps},
+        scaling_config=scaling_config,
+        datasets={"train": ray_train, "evaluation": ray_validation},
+        resume_from_checkpoint=result.checkpoint,
+    )
+    result2 = trainer2.fit()
+
+    assert result2.metrics["epoch"] == 6
+    assert result2.metrics["training_iteration"] == math.ceil(2 / logging_steps)
+    assert result2.checkpoint
+
+    predictor = BatchPredictor.from_checkpoint(
+        result2.checkpoint,
+        HuggingFacePredictor,
+        task="text-generation",
+        tokenizer=AutoTokenizer.from_pretrained(tokenizer_checkpoint),
+    )
+
+    predictions = predictor.predict(ray.data.from_pandas(prompts))
+    assert predictions.count() == 3
+
 
 
 def test_reporting():

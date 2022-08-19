@@ -427,48 +427,7 @@ def _huggingface_train_loop_per_worker(config):
         train_torch_dataset, eval_torch_dataset, **config
     )
 
-    if trainer.args.push_to_hub and not trainer.args.hub_token:
-        warnings.warn(
-            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
-            "Pushing to hub will most likely fail, as the credentials will not "
-            "be automatically propagated from the local enviroment to the Ray Actors. "
-            "If that happens, specify `hub_token` in `TrainingArguments`."
-        )
-
-    if trainer.args.evaluation_strategy in ("steps", IntervalStrategy.STEPS):
-        raise ValueError(
-            "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported.\n"
-            f"Got `evaluation_strategy={trainer.args.evaluation_strategy}`."
-        )
-
-    # For the two arguments below, HF defaults to STEPS. Unfortunately,
-    # there doesn't seem to be a way to differentiate between
-    # user-set and default values for those arguments, so we can only
-    # assume that they were set by default and print a warning.
-    # Alternatively, we can force users to set EPOCH themselves,
-    # but that wouldn't make for nice UX if the first thing they see
-    # with their code is an exception.
-
-    # HF defaults to steps, we need to override
-    if trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS):
-        warnings.warn(
-            "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported.\n"
-            f"Got `save_strategy={trainer.args.save_strategy}`, setting "
-            "to 'epoch' automatically."
-        )
-        trainer.args.save_strategy = IntervalStrategy.EPOCH
-
-    # HF defaults to steps, we need to override
-    if trainer.args.logging_strategy in ("steps", IntervalStrategy.STEPS):
-        warnings.warn(
-            "'steps' value for `evaluation_strategy`, `logging_strategy` "
-            "or `save_strategy` is not yet supported.\n"
-            f"Got `logging_strategy={trainer.args.logging_strategy}`, setting "
-            "to 'epoch' automatically."
-        )
-        trainer.args.logging_strategy = IntervalStrategy.EPOCH
+    # if trainer.args.save_steps
 
     if trainer.args.load_best_model_at_end:
         raise ValueError(
@@ -480,6 +439,14 @@ def _huggingface_train_loop_per_worker(config):
             "`Checkpoint.get_model()`.\n"
             "You can configure the checkpointing by setting "
             "`run_config.checkpoint_config`."
+        )
+
+    if trainer.args.push_to_hub and not trainer.args.hub_token:
+        warnings.warn(
+            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
+            "Pushing to hub will most likely fail, as the credentials will not "
+            "be automatically propagated from the local enviroment to the Ray Actors. "
+            "If that happens, specify `hub_token` in `TrainingArguments`."
         )
 
     trainer = wrap_transformers_trainer(trainer)
