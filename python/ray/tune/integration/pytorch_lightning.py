@@ -5,8 +5,12 @@ from pytorch_lightning import Callback, Trainer, LightningModule
 from ray import tune
 
 import os
+from importlib_metadata import version
+from packaging.version import parse as v_parse
 
 logger = logging.getLogger(__name__)
+
+ray_pl_use_master = v_parse(version("pytorch_lightning")) >= v_parse("1.6")
 
 
 class TuneCallback(Callback):
@@ -185,7 +189,171 @@ class TuneCallback(Callback):
             self._handle(trainer, pl_module)
 
 
-class TuneReportCallback(TuneCallback):
+class TuneCallbackBackwardCompat(Callback):
+    """Base class for Tune's PyTorch Lightning callbacks."""
+
+    _allowed = [
+        "init_start",
+        "init_end",
+        "fit_start",
+        "fit_end",
+        "sanity_check_start",
+        "sanity_check_end",
+        "epoch_start",
+        "epoch_end",
+        "batch_start",
+        "validation_batch_start",
+        "validation_batch_end",
+        "test_batch_start",
+        "test_batch_end",
+        "batch_end",
+        "train_start",
+        "train_end",
+        "validation_start",
+        "validation_end",
+        "test_start",
+        "test_end",
+        "keyboard_interrupt",
+    ]
+
+    def __init__(self, on: Union[str, List[str]] = "validation_end"):
+        if not isinstance(on, list):
+            on = [on]
+        if any(w not in self._allowed for w in on):
+            raise ValueError(
+                "Invalid trigger time selected: {}. Must be one of {}".format(
+                    on, self._allowed
+                )
+            )
+        self._on = on
+
+    def _handle(self, trainer: Trainer, pl_module: Optional[LightningModule]):
+        raise NotImplementedError
+
+    def on_init_start(self, trainer: Trainer):
+        if "init_start" in self._on:
+            self._handle(trainer, None)
+
+    def on_init_end(self, trainer: Trainer):
+        if "init_end" in self._on:
+            self._handle(trainer, None)
+
+    def on_fit_start(
+        self, trainer: Trainer, pl_module: Optional[LightningModule] = None
+    ):
+        if "fit_start" in self._on:
+            self._handle(trainer, None)
+
+    def on_fit_end(self, trainer: Trainer, pl_module: Optional[LightningModule] = None):
+        if "fit_end" in self._on:
+            self._handle(trainer, None)
+
+    def on_sanity_check_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "sanity_check_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_sanity_check_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "sanity_check_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_epoch_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "epoch_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_epoch_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "epoch_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_batch_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "batch_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_validation_batch_start(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
+        if "validation_batch_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_validation_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        outputs,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
+        if "validation_batch_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_test_batch_start(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
+        if "test_batch_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_test_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        outputs,
+        batch,
+        batch_idx,
+        dataloader_idx,
+    ):
+        if "test_batch_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_batch_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "batch_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_train_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "train_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_train_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "train_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_validation_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "validation_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_validation_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "validation_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_test_start(self, trainer: Trainer, pl_module: LightningModule):
+        if "test_start" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_test_end(self, trainer: Trainer, pl_module: LightningModule):
+        if "test_end" in self._on:
+            self._handle(trainer, pl_module)
+
+    def on_keyboard_interrupt(self, trainer: Trainer, pl_module: LightningModule):
+        if "keyboard_interrupt" in self._on:
+            self._handle(trainer, pl_module)
+
+
+if ray_pl_use_master:  # pytorch-lightning >= 1.6
+    BaseTuneCallback = TuneCallback
+else:
+    BaseTuneCallback = TuneCallbackBackwardCompat
+
+
+class TuneReportCallback(BaseTuneCallback):
     """PyTorch Lightning to Ray Tune reporting callback
 
     Reports metrics to Ray Tune.
@@ -257,7 +425,7 @@ class TuneReportCallback(TuneCallback):
             tune.report(**report_dict)
 
 
-class _TuneCheckpointCallback(TuneCallback):
+class _TuneCheckpointCallback(BaseTuneCallback):
     """PyTorch Lightning checkpoint callback
 
     Saves checkpoints after each validation step.
@@ -290,7 +458,7 @@ class _TuneCheckpointCallback(TuneCallback):
             trainer.save_checkpoint(os.path.join(checkpoint_dir, self._filename))
 
 
-class TuneReportCheckpointCallback(TuneCallback):
+class TuneReportCheckpointCallback(BaseTuneCallback):
     """PyTorch Lightning report and checkpoint callback
 
     Saves checkpoints after each validation step. Also reports metrics to Tune,

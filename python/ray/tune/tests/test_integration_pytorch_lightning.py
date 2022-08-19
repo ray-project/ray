@@ -8,12 +8,17 @@ from ray.tune.result import TRAINING_ITERATION
 
 from torch.utils.data import DataLoader, Dataset
 
+from importlib_metadata import version
+from packaging.version import parse as v_parse
+
 from ray import tune
 from ray.tune.integration.pytorch_lightning import (
     TuneReportCallback,
     TuneReportCheckpointCallback,
     _TuneCheckpointCallback,
 )
+
+ray_pl_use_master = v_parse(version("pytorch_lightning")) >= v_parse("1.6")
 
 
 class _MockDataset(Dataset):
@@ -104,14 +109,19 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
 
         def train(config):
             module = _MockModule(10.0, 20.0)
-            trainer = pl.Trainer(
-                max_epochs=1,
-                callbacks=[
+            if ray_pl_use_master:
+                callbacks = [
                     _TuneCheckpointCallback(
                         "trainer.ckpt", on=["train_batch_end", "train_end"]
                     )
-                ],
-            )
+                ]
+            else:
+                callbacks = [
+                    _TuneCheckpointCallback(
+                        "trainer.ckpt", on=["batch_end", "train_end"]
+                    )
+                ]
+            trainer = pl.Trainer(max_epochs=1, callbacks=callbacks)
             trainer.fit(module)
 
         analysis = tune.run(
