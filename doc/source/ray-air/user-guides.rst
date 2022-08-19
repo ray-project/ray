@@ -9,10 +9,6 @@ User Guides
 AIR User Guides
 ---------------
 
-.. Preprocessors:
-
-
-
 .. panels::
     :container: text-center
     :column: col-md-4 px-2 py-2
