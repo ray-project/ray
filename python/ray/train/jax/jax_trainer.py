@@ -51,7 +51,7 @@ class JaxTrainer(DataParallelTrainer):
     - cluster scaling config:
         - For the GPU distributed cases, the inner-device communication is handled
             internally by Jax; the inter-device communication is set up by the
-            JaxTrainer. Therefore, the ``num_workers`` is set to be the number of nodes;
+            ``JaxTrainer``. Therefore, the ``num_workers`` is set to be the number of nodes;
             and ``num_gpus_per_worker`` is set to be the number of gpus on each nodes.
             For the current experimental version, we only support the homogeneous
             distributed case, i.e. all the nodes have the same number of gpus. This is
