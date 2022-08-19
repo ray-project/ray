@@ -1,7 +1,5 @@
 import copy
 from dataclasses import dataclass
-from re import L
-from turtle import forward
 from typing import Optional
 
 import torch
@@ -13,7 +11,6 @@ from .model_base import ModelWithEncoder
 
 from rllib2.utils import NNOutput
 
-from .encoder import Encoder, WithEncoderMixin
 
 """
 Example:
@@ -98,6 +95,15 @@ class QFunctionBase(nn.Module):
     ) -> QFunctionOutput:
         raise NotImplementedError
 
+    def update_polyak(self, other: "QFunctionBase", polyak_coef: float, **kwargs):
+        # if the encoder is shared the parameters are gonna be the same
+        other_params = other.named_parameters()
+        for name, param in self.named_parameters():
+            if name not in other_params:
+                raise ValueError("Cannot copy because of parameter name mis-match")
+            other_param = other_params[name]
+            param.data = polyak_coef * param.data + (1 - polyak_coef) * other_param.data
+
 class ObsActionConcatEncoder(Encoder):
 
     def __init__(self, config: ModelConfig) -> None:
@@ -116,7 +122,7 @@ class ObsActionConcatEncoder(Encoder):
         action_h = input_dict['action']
         return torch.cat([obs_h, action_h], dim=-1)
 
-class QFunction(ModelWithEncoder):
+class QFunction(QFunctionBase, ModelWithEncoder):
 
     def __init__(self, config: QFConfig) -> None:
         # encode obs and append it to the input_action
@@ -126,12 +132,10 @@ class QFunction(ModelWithEncoder):
         encoder_config = copy.copy(config)
         self.encoder = ObsActionConcatEncoder(encoder_config)
 
-
         if config.action_space.is_discrete:
             self._out_layer = nn.Linear(self.encoder.output_size, config.action_space.n)
         else:
             self._out_layer = nn.Linear(self.encoder.output_size, 1)
-
 
     def forward(self, input_dict: SampleBatch, **kwargs) -> QFunctionOutput:
         encoder_output = self.encoder(input_dict)
@@ -141,21 +145,11 @@ class QFunction(ModelWithEncoder):
         return QFunctionOutput(value=[q_values], q_logit=q_logits)
 
 
-    def update_polyak(self, other: "QFunction", polyak_coef: float, **kwargs):
-        # if the encoder is shared the parameters are gonna be the same
-        other_params = other.named_parameters()
-        for name, param in self.named_parameters():
-            if name not in other_params:
-                raise ValueError("Cannot copy because of parameter name mis-match")
-            other_param = other_params[name]
-            param.data = polyak_coef * param.data + (1 - polyak_coef) * other_param.data
-
-
 ################################################################
 ########### Ensemble of Q function networks (e.g. used in TD3)
 ################################################################
 
-class EnsembleQFunction(QFunctionBase):
+class EnsembleQFunction(QFunctionBase, ModelWithEncoder):
     def __init__(
         self, config: QFConfig,
     ) -> None:
