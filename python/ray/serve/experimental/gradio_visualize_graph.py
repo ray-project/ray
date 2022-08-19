@@ -38,7 +38,7 @@ class GraphVisualizer:
 
     def _reset_state(self):
         """Resets state for each new RayServeHandle representing a new DAG."""
-        self.cache = None
+        self.cache = {}
         self.finished_last_inference = True
 
         # maps DAGNode uuid to a DAGNode instance with that uuid
@@ -47,6 +47,9 @@ class GraphVisualizer:
         self.uuid_to_block: Dict[str, Any] = {}
         # maps InputAttributeNodes to unique instance of interactive gradio block
         self.input_index_to_block: Dict[int, Any] = {}
+
+    def clear_cache(self):
+        self.cache = {}
 
     def _make_blocks(self, depths: Dict[str, int]):
         """Instantiates Gradio blocks for each graph node stored in depths.
@@ -128,7 +131,7 @@ class GraphVisualizer:
         cached object refs pointing to return values of each executed node in the DAG.
 
         Will not run if the last inference process has not finished (the last inference
-        process is considered finished if the return value for the root DAG node, has 
+        process is considered finished if the return value for the root DAG node, has
         been resolved).
         """
         if not self.finished_last_inference:
@@ -167,7 +170,7 @@ class GraphVisualizer:
         dag_node_json = ray.get(self.handle.get_dag_node_json.remote())
         self.dag = json.loads(dag_node_json, object_hook=dagnode_from_json)
 
-        # Get name and level for each node in dag
+        # Get level for each node in dag
         depths = defaultdict(lambda: 0)
         self.dag.apply_recursive(lambda node: self._fetch_depths(node, depths))
 
@@ -194,7 +197,9 @@ class GraphVisualizer:
             all_blocks = [*self.uuid_to_block.values()] + [
                 *self.input_index_to_block.values()
             ]
-            clear.click(lambda: [None] * len(all_blocks), [], all_blocks)
+            clear.click(
+                lambda: self.clear_cache() or [None] * len(all_blocks), [], all_blocks
+            )
 
         if _launch:
             demo.launch(server_port=port, prevent_thread_lock=not _block)

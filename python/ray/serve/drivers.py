@@ -14,7 +14,6 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.http_util import ASGIHTTPSender
 from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.exceptions import RayServeException
-import ray
 from ray import serve
 
 DEFAULT_HTTP_ADAPTER = "ray.serve.http_adapters.starlette_request"
@@ -155,7 +154,7 @@ class DAGDriver:
             raise RayServeException(f"{route_path} does not exist in dags routes")
         return await (await self.dags[route_path].remote(*args, **kwargs))
 
-    async def get_intermediate_object_refs(self) -> Dict[str, ray.ObjectRef]:
+    async def get_intermediate_object_refs(self) -> Dict[str, Any]:
         """Gets the cached references to the results of the default executors on each
         node in the DAG found at self.MATCH_ALL_ROUTE_PREFIX. Should be called after
         predict() has been called.

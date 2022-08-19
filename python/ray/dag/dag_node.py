@@ -85,9 +85,9 @@ class DAGNode(DAGNodeBase):
         """
         return self._stable_uuid
 
-    async def get_object_refs_from_last_execute(self) -> Dict[str, ray.ObjectRef]:
+    async def get_object_refs_from_last_execute(self) -> Dict[str, Any]:
         """After this DAG is executed through execute(), retrieves a map between node
-        UUID to a reference to the return value of the default executor on that node. 
+        UUID to a reference to the return value of the default executor on that node.
         """
         cache = {}
         for node_uuid, value in self.cache_from_last_execute.items():
