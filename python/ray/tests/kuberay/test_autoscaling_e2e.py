@@ -372,7 +372,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Confirming workers are gone.")
         # Check that stdout autoscaler logging is working.
         logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
-        assert "Removing 1 nodes of type fake-gpu-group (idle)." in logs
+        assert "Removing 1 node(s) of type fake-gpu-group (idle)." in logs
         wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE)
 
         # Check custom resource upscaling.
