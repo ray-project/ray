@@ -10,7 +10,6 @@ from .model_base import ModelWithEncoder
 from rllib2.utils import NNOutput
 from rllib2.models.configs import ModelConfig
 
-from .encoder import Encoder, WithEncoderMixin
 from .pi_distribution import (
     DeterministicDist,
     PiDistribution,
@@ -62,11 +61,6 @@ class PiOutput(NNOutput):
 
 
 @dataclass
-class RecurrentPiOutput(PiOutput):
-    last_state: Optional[TensorType] = None
-
-
-@dataclass
 class PiConfig(ModelConfig):
     is_determintic: bool = False
     free_log_std: bool = False
@@ -94,7 +88,7 @@ class PiBase(nn.Module):
         * TODO: [x] How do we support goal-conditioned policies? Example below.
         * TODO: [x] How do we support Recurrent Policies?
         * TODO: [x] Can we support Transformers?
-        * TODO: [] How do we support action-space masking?
+        * TODO: [x] How do we support action-space masking?
     * [x] Should be able to switch between exploration = on / off --> this handled by who ever runs RLModule's forward_inference()
         * target_sample is used for inference (exploration = off)
         * behavioral_sample is used for sampling during training (exploration = true)
@@ -148,8 +142,9 @@ class SingleDistributionPi(PiBase, ModelWithEncoder):
         encoder_output = self.encoder(input_dict)
         logits = self.out_layer(encoder_output)
         action_dist = model_catalog.get_action_dist(
+            input_dict, # uses action masking internally
+            logits,
             self.action_dist_class, 
-            logits
         )
         return PiOutput(
             action_dist=action_dist,
@@ -274,10 +269,7 @@ class MixturePi(PiBase):
 # >>> actor_loss = mixed_dist.log_prob(a)
 # >>> {'torques': Tensor(0.63), 'gripper': Tensor(0.63)}
 ###################################################################
-# encoder should have a predefined interface
-#      forward(input_dict) -> output_dict
-#      configs: Dict[str, Any] # important attributes that need to be accessed from the 
-#           outside
+
 class GripperObsTorqueEncoder(Encoder):
 
     def __init__(self, torque_out_dim: int, obs_encoder: nn.Module) -> None:
