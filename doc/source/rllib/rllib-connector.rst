@@ -11,12 +11,12 @@ the durabilty and maintainability of RLlib's policy checkpoints.
 RLlib algorithms usually require one or more *user environments* and *policies* (usually a neural network).
 
 Data observed from the environments usually go through multiple steps of preprocessing before they reach
-the policy, while the output of the policy also gets transformed multiple times before they are used to train
+the policy, while the output of the policy also gets transformed multiple times before they are used to control
 specific agents in the environments.
 
-With connectors, users of RLlib will be able to:
+By consolidating these transformations under the framework of connectors, users of RLlib will be able to:
 
-- Restore and deploy individual RLlib policies without having to restore training related logic of RLlib Algorithms.
+- Restore and deploy individual RLlib policies without having to restore training related logics of RLlib Algorithms.
 - Ensure policies are more durable than the algorithms they get trained with.
 - Allow policies to be adapted to work with different versions of an environment.
 - Run inference with RLlib polcies without worrying about the exact trajectory view requriements or state inputs.
@@ -47,7 +47,9 @@ the policy (e.g., flattening complex nested observations into a flat tensor). Th
         ) -> List[AgentConnectorDataType]:
             ...
 
-        def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
+        def transform(
+            self, ac_data: AgentConnectorDataType
+        ) -> AgentConnectorDataType:
             ...
 
         def reset(self, env_id: str):
@@ -65,11 +67,11 @@ This can also be useful if users who need to construct meta-observations, e.g., 
 to the policy from individual agent observations.
 
 For convenience, if an ``AgentConnector`` does not operate on the full list of agent data, it can be
-implemented by simply overriding the ``transform`` API.
+implemented by simply overriding the ``transform()`` API.
 
 AgentConnectors also provide a way for recording the output of the policy at the current time step
 (prior to transformation via ActionConnectors) to be later used for inference in the next time step.
-This is done through the ``on_policy_output`` API call and is useful when your policy is a
+This is done through the ``on_policy_output()`` API call and is useful when your policy is a
 recurrent network, attention network, or auto-regressive model.
 
 
@@ -81,10 +83,14 @@ ActionConnector
 .. code-block:: python
 
     class ActionConnector(Connector):
-        def __call__(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
+        def __call__(
+            self, ac_data: ActionConnectorDataType
+        ) -> ActionConnectorDataType:
             ...
 
-        def transform(self, ac_data: ActionConnectorDataType) -> ActionConnectorDataType:
+        def transform(
+            self, ac_data: ActionConnectorDataType
+        ) -> ActionConnectorDataType:
             ...
 
 In this case, ``__call__`` and ``transform`` are equivalent. Users may choose to override either
@@ -260,6 +266,7 @@ then serve the newly trained policy in a server/client setup.
 Notable TODOs
 -------------
 
+- Bring connectors to offline algorithms.
 - Migrate rollout worker filters to connector.
 - Migrate episode building and traning sample collection into connector.
 - Examples and utilities demostrating deployment of RLlib policies in a client-server remote environment.
