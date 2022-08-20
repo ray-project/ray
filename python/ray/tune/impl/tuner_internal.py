@@ -48,7 +48,7 @@ class TunerInternal:
             of the rest args are needed.
         resume_config: Resume config to configure which trials to continue.
         trainable: The trainable to be tuned.
-        param_space: Search space of the tuning job.a
+        param_space: Search space of the tuning job.
             One thing to note is that both preprocessor and dataset can be tuned here.
         tune_config: Tuning algorithm specific configs.
             Refer to ray.tune.tune_config.TuneConfig for more info.
