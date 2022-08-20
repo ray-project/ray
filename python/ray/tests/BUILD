@@ -389,6 +389,14 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_typing_consistency",
+    size = "medium",
+    srcs = ["test_typing_consistency.py"],
+    tags = ["exclusive", "small_size_python_tests", "team:core"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 # TODO: use py_test(env = ...) in the build file with bazel 4.0
 py_test(
   name = "test_tracing",
