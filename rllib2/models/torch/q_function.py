@@ -116,7 +116,7 @@ class QFunction(
         return self.encoder.prev_state_spec()
 
     def next_state_spec(self) -> types.SpecDict:
-        return super().next_state_spec()
+        return self.encoder.next_state_spec()
 
     def update_polyak(self, other: "QFunction", polyak_coef: float, **kwargs):
         # if the encoder is shared the parameters are gonna be the same
