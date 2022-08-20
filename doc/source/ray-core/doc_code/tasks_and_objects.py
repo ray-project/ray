@@ -14,6 +14,6 @@ def function_with_an_argument(value):
 obj_ref1 = my_function.remote()
 assert ray.get(obj_ref1) == 1
 
-# You can pass an object ref as an argument to another Ray remote function.
+# You can pass an object ref as an argument to another Ray task.
 obj_ref2 = function_with_an_argument.remote(obj_ref1)
 assert ray.get(obj_ref2) == 2

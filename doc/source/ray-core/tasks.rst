@@ -3,7 +3,7 @@
 Tasks
 =====
 
-Ray enables arbitrary functions to be executed asynchronously on separate Python workers. These asynchronous Ray functions are called "remote functions". Here is an example.
+Ray enables arbitrary functions to be executed asynchronously on separate Python workers. These asynchronous Ray functions are called **Ray tasks** or **Ray remote functions**. Here is an example.
 
 .. tabbed:: Python
 
@@ -22,7 +22,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
         }
       }
 
-      // Invoke the above method as a Ray remote function.
+      // Invoke the above method as a Ray task.
       // This will immediately return an object ref (a future) and then create
       // a task that will be executed on a worker process.
       ObjectRef<Integer> res = Ray.task(MyRayApp::myFunction).remote();
@@ -37,7 +37,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
         }
       }
 
-      // Invocations of Ray remote functions happen in parallel.
+      // Invocations of Ray tasks happen in parallel.
       // All computation is performed in the background, driven by Ray's internal event loop.
       for(int i = 0; i < 4; i++) {
         // This doesn't block.
@@ -55,7 +55,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
       // Register as a remote function by `RAY_REMOTE`.
       RAY_REMOTE(MyFunction);
 
-      // Invoke the above method as a Ray remote function.
+      // Invoke the above method as a Ray task.
       // This will immediately return an object ref (a future) and then create
       // a task that will be executed on a worker process.
       auto res = ray::Task(MyFunction).Remote();
@@ -69,7 +69,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
       }
       RAY_REMOTE(SlowFunction);
 
-      // Invocations of Ray remote functions happen in parallel.
+      // Invocations of Ray tasks happen in parallel.
       // All computation is performed in the background, driven by Ray's internal event loop.
       for(int i = 0; i < 4; i++) {
         // This doesn't block.
@@ -78,10 +78,10 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
 
 .. _ray-object-refs:
 
-Passing object refs to remote functions
+Passing object refs to Ray tasks 
 ---------------------------------------
 
-`Object refs <objects.html>`__ can also be passed into remote functions. When the function actually gets executed, **the argument will be automatically dereferenced as the underlying value**. For example, take this function:
+In addition to values, `Object refs <objects.html>`__ can also be passed into remote functions. When the function actually gets executed, **the argument will be automatically dereferenced as the underlying value**. For example, take this function:
 
 .. tabbed:: Python
 
@@ -100,7 +100,7 @@ Passing object refs to remote functions
         ObjectRef<Integer> objRef1 = Ray.task(MyRayApp::myFunction).remote();
         Assert.assertTrue(objRef1.get() == 1);
 
-        // You can pass an object ref as an argument to another Ray remote function.
+        // You can pass an object ref as an argument to another Ray task.
         ObjectRef<Integer> objRef2 = Ray.task(MyRayApp::functionWithAnArgument, objRef1).remote();
         Assert.assertTrue(objRef2.get() == 2);
 
@@ -116,7 +116,7 @@ Passing object refs to remote functions
         auto obj_ref1 = ray::Task(MyFunction).Remote();
         assert(*obj_ref1.Get() == 1);
 
-        // You can pass an object ref as an argument to another Ray remote function.
+        // You can pass an object ref as an argument to another Ray task.
         auto obj_ref2 = ray::Task(FunctionWithAnArgument).Remote(obj_ref1);
         assert(*obj_ref2.Get() == 2);
 
@@ -160,7 +160,7 @@ Multiple returns
 
 .. tabbed:: Python
 
-    Python remote functions can return multiple object refs.
+    Ray tasks can return multiple object refs.
 
     .. code-block:: python
 
