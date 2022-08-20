@@ -1,5 +1,11 @@
-/* For Algolia search box to flow-over horizontally into main content*/
-#site-navigation { overflow-y: visible; }
+/* For Algolia search box
+    * overflow-y: to flow-over horizontally into main content
+    * height: to prevent topbar overlap
+*/
+#site-navigation {
+  overflow-y: visible;
+  height: 100% !important;
+}
 
 /* Center the algolia search bar*/
 #search-input {
