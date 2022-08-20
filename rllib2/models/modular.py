@@ -151,7 +151,7 @@ class RecurrentModel(abc.ABC):
   @abc.abstractmethod
   def _unroll(self,
               inputs: types.TensorDict,
-              prev_state: types.TensorDict) -> UnrollOutputType:
+              prev_state: types.TensorDict, **kwargs) -> UnrollOutputType:
     """Computes the output of the module over unroll_len timesteps.
 
     Call with a unroll_len=1 for a single step.
@@ -175,7 +175,7 @@ class RecurrentModel(abc.ABC):
 
   def unroll(self,
              inputs: types.TensorDict,
-             prev_state: types.TensorDict) -> UnrollOutputType:
+             prev_state: types.TensorDict, **kwargs) -> UnrollOutputType:
     """Computes the output of the module over unroll_len timesteps.
 
     Call with a unroll_len=1 for a single step.
@@ -202,7 +202,7 @@ class RecurrentModel(abc.ABC):
     inputs = inputs.filter(self.input_spec)
     prev_state = prev_state.filter(self.prev_state_spec)
     inputs, prev_state = self._check_inputs_and_prev_state(inputs, prev_state)
-    outputs, next_state = self._unroll(inputs, prev_state)
+    outputs, next_state = self._unroll(inputs, prev_state, **kwargs)
     self.output_spec.validate(outputs,
                               num_leading_dims_to_ignore=1,
                               error_prefix=f"{self.name} outputs")
@@ -258,13 +258,13 @@ class Model(RecurrentModel):
 
   def _unroll(self,
               inputs: types.TensorDict,
-              prev_state: types.TensorDict) -> UnrollOutputType:
+              prev_state: types.TensorDict, **kwargs) -> UnrollOutputType:
     del prev_state
-    outputs, logs = self._forward(inputs)
-    return outputs, types.TensorDict(), logs
+    outputs = self._forward(inputs, **kwargs)
+    return outputs, types.TensorDict()
 
   @abc.abstractmethod
-  def _forward(self, inputs: types.TensorDict) -> ForwardOutputType:
+  def _forward(self, inputs: types.TensorDict, **kwargs) -> ForwardOutputType:
     """Computes the output of this module for each timestep.
 
     Args:

@@ -12,7 +12,7 @@ class ModelWithEncoder:
         # save config
         self.config = config
         # encoder
-        self.encoder, self.encoder_out_dim = self._make_encoder()
+        self.encoder = self._make_encoder()
     
     def _make_encoder(self) -> Tuple[Encoder, int]:
         if isinstance(self.config.encoder, str):
@@ -24,9 +24,8 @@ class ModelWithEncoder:
         else:
             # return a default encoder if none 
             encoder = model_catalog.get_encoder(self.config)
-        output = torch_dryrun(encoder, self.config.observation_space)
-        return encoder, output.shape[-1]
-
+    
+        return encoder
 
 
 class Encoder:

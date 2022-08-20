@@ -1,11 +1,18 @@
 from copy import deepcopy
 from dataclasses import dataclass
+from json import encoder
+import types
 from typing import Optional
 
 import torch
 import torch.nn as nn
 from torch import TensorType
-from .model_base import ModelWithEncoder
+
+from .encoder import VectorEncoder, VisionEncoder, ModelWithEncoder
+
+from ..types import NestedDict, TensorDict
+from .model_base import TorchModel, TorchRecurrentModel
+
 
 from rllib2.utils import NNOutput
 from rllib2.models.configs import ModelConfig
@@ -68,7 +75,8 @@ class PiConfig(ModelConfig):
     action_dist_class: Type[PiDistribution] = None
 
 
-class PiBase(nn.Module):
+class Pi:
+
     """Design requirements:
     * [x] Should support both stochastic and deterministic pi`s under one roof
         * Deterministic dists are just special case of stochastic dists with delta func.
@@ -97,32 +105,24 @@ class PiBase(nn.Module):
     * [x] Should be able to save/load very easily for serving (if needed)
     """
 
+
     def __init__(self, config: ModelConfig) -> None:
-        super().__init__()
-        self.config = config
-
-    @abc.abstractmethod
-    def forward(
-        self, 
-        input_dict: SampleBatch, 
-        return_encoder_output: bool = False,
-        **kwargs
-    ) -> PiOutput:
-        raise NotImplementedError
-
-
-class Pi(PiBase, ModelWithEncoder):
-
-    def __init__(self, config: PiConfig, **kwargs):
         super().__init__(config)
 
         # action distribution
-        self.action_dist_class, self.logit_dim = self._make_action_dist()
+        self._action_dist_class, self._logit_dim = self._make_action_dist()
 
         # output layer
-        self.out_layer = self._make_output_layer()
+        self._out_layer = self._make_output_layer()
 
-
+    @property
+    def action_dist_class(self) -> Type[PiDistribution]:
+        return self._action_dist_class
+    
+    @property
+    def action_logit_dim(self) -> int:
+        return self._logit_dim
+    
     def _make_action_dist(self):
         dist_class, logit_dim = model_catalog.get_action_dist_class(self.config)
         return dist_class, logit_dim
@@ -130,30 +130,55 @@ class Pi(PiBase, ModelWithEncoder):
     def _make_output_layer(self):
         return nn.Linear(self.encoder_out_dim, self.logit_dim)
     
+    def output_spec(self) -> types.SpecDict:
+        return types.SpecDict({
+            'action_dist': PiDistribution,
+            'action_logits': specs.Spec(shape='b h', h=self.action_logit_dim),
+            'encoder_output': specs.Spec(
+                shape='b h', h=self.config.hidden_size, allow_none=True
+            ),
+        })
+    
 
-    def forward(
-        self, 
-        input_dict: SampleBatch, 
-        return_encoder_output: bool = False,
-        **kwargs
-    ) -> PiOutput:
-        """Runs pi, Pi(input_dict) -> Pi(s_t)"""
+class PiWithEncoder(
+    TorchRecurrentModel, 
+    ModelWithEncoder,
+    Pi
+):
 
-        encoder_output = self.encoder(input_dict)
-        logits = self.out_layer(encoder_output)
-        action_dist = model_catalog.get_action_dist(
-            input_dict, # uses action masking internally
-            logits,
+    def __init__(self, config: ModelConfig) -> None:
+        super().__init__(config)
+    
+    def input_spec(self) -> types.SpecDict:
+        return self.encoder.input_spec()
+
+    def prev_state_spec(self) -> types.SpecDict:
+        return self.encoder.prev_state_spec()
+    
+    def next_state_spec(self) -> types.SpecDict:
+        return self.encoder.next_state_spec()
+
+    def _unroll(self, inputs: types.TensorDict, prev_state: types.TensorDict, return_encoder_output=False) -> UnrollOutputType:
+        encoder_out, next_state = self.encoder.unroll(inputs, prev_state, **kwargs)
+        obs_encoded = encoder_out['obs']
+        action_logits = self._out_layer(obs_encoded)
+        action_dist =  model_catalog.get_action_dist(
+            inputs, # uses action masking internally
+            action_logits,
             self.action_dist_class, 
         )
-        return PiOutput(
-            action_dist=action_dist,
-            action_logits=logits,
-            encoder_output=encoder_output if return_encoder_output else None
-        )
+
+        output = NestedDict({
+            'action_dist': action_dist,
+            'action_logits': action_logits,
+            'encoder_output': obs_encoded if return_encoder_output else None,
+        })
+        return output, next_state
+
+
 
 """
-Some examples of pre-defined RLlib standard policies
+These examples worked with the previous api
 """
 
 #######################################################
