@@ -75,7 +75,10 @@ class PiConfig(ModelConfig):
     action_dist_class: Type[PiDistribution] = None
 
 
-class Pi:
+class Pi(
+    TorchRecurrentModel, 
+    ModelWithEncoder,
+):
 
     """Design requirements:
     * [x] Should support both stochastic and deterministic pi`s under one roof
@@ -104,7 +107,6 @@ class Pi:
         the algorithm's loss function during training
     * [x] Should be able to save/load very easily for serving (if needed)
     """
-
 
     def __init__(self, config: ModelConfig) -> None:
         super().__init__(config)
@@ -138,16 +140,6 @@ class Pi:
                 shape='b h', h=self.config.hidden_size, allow_none=True
             ),
         })
-    
-
-class PiWithEncoder(
-    TorchRecurrentModel, 
-    ModelWithEncoder,
-    Pi
-):
-
-    def __init__(self, config: ModelConfig) -> None:
-        super().__init__(config)
     
     def input_spec(self) -> types.SpecDict:
         return self.encoder.input_spec()
