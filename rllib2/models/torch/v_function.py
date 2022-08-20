@@ -35,11 +35,11 @@ class VFunctionOutput(NNOutput):
 
 
 class VFunctionBase(nn.Module):
-
     def __init__(self) -> None:
         super().__init__()
-class QFunction(QFunctionBase, ModelWithEncoder):
 
+
+class QFunction(QFunctionBase, ModelWithEncoder):
     def __init__(self, config: QFConfig) -> None:
         # encode obs and append it to the input_action
         super().__init__(config)
@@ -59,6 +59,7 @@ class QFunction(QFunctionBase, ModelWithEncoder):
         actions = input_dict["action"]
         q_values = q_logits[torch.arange(len(actions)), actions]
         return QFunctionOutput(value=[q_values], q_logit=q_logits)
+
 
 class VFunction(WithEncoderMixin, ModelIO):
     """

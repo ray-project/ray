@@ -6,13 +6,11 @@ import torch
 import torch.nn as nn
 from torch import TensorType
 
-from ..types import NestedDict
-
-from ..configs import ModelConfig
-from .model_base import ModelWithEncoder, TorchRecurrentModel
-
 from rllib2.utils import NNOutput
 
+from ..configs import ModelConfig
+from ..types import NestedDict
+from .model_base import ModelWithEncoder, TorchRecurrentModel
 
 """
 Example:

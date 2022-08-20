@@ -1,15 +1,17 @@
-from typing import Union, Optional, Dict, Any, List, Tuple, Callable, cast
-
 import enum
-import torch.nn as nn
 from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+
+import torch.nn as nn
 
 ModuleType = Union[nn.Module, "tf.Module"]
 ActivationType = str
 
+
 class RNNCellType(enum.Enum):
     LSTM = "lstm"
     GRU = "gru"
+
 
 class ActivationType(enum.Enum):
     TANH = "tanh"
@@ -17,6 +19,7 @@ class ActivationType(enum.Enum):
     SIGMOID = "sigmoid"
     GELU = "gelu"
     ELU = "elu"
+
 
 @dataclass
 class ConvLayerConfig:
@@ -34,8 +37,8 @@ class ModelConfig:
     # fcnet
     fcnet_hiddens: List[int] = [256, 256]
     activation: ActivationType = ActivationType.TANH
-	# image
-    conv_filters: Optional[List[ConvLayerConfig]] = None 
+    # image
+    conv_filters: Optional[List[ConvLayerConfig]] = None
     # rnn
     is_rnn: bool = False
     rnn_cell: RNNCellType = RNNCellType.LSTM

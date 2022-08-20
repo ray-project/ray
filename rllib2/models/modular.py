@@ -82,6 +82,7 @@ timestep instead of a rollout. This has two consequences:
 
 import abc
 from typing import Optional, Tuple
+
 import rllib2.models.types as types
 
 ForwardOutputType = types.TensorDict
@@ -89,189 +90,197 @@ UnrollOutputType = Tuple[types.TensorDict, types.TensorDict]
 
 
 class RecurrentModel(abc.ABC):
-  """Basic component (see module docstring)."""
+    """Basic component (see module docstring)."""
 
-  def __init__(self, name: Optional[str] = None):
-    self._name = name or self.__class__.__name__
+    def __init__(self, name: Optional[str] = None):
+        self._name = name or self.__class__.__name__
 
-  @property
-  def name(self) -> str:
-    return self._name
+    @property
+    def name(self) -> str:
+        return self._name
 
-  @property
-  @abc.abstractmethod
-  def input_spec(self) -> types.SpecDict:
-    """Returns the spec of the input of this module."""
+    @property
+    @abc.abstractmethod
+    def input_spec(self) -> types.SpecDict:
+        """Returns the spec of the input of this module."""
 
-  @property
-  @abc.abstractmethod
-  def prev_state_spec(self) -> types.SpecDict:
-    """Returns the spec of the prev_state of this module."""
+    @property
+    @abc.abstractmethod
+    def prev_state_spec(self) -> types.SpecDict:
+        """Returns the spec of the prev_state of this module."""
 
-  @property
-  @abc.abstractmethod
-  def output_spec(self) -> types.SpecDict:
-    """Returns the spec of the output of this module."""
+    @property
+    @abc.abstractmethod
+    def output_spec(self) -> types.SpecDict:
+        """Returns the spec of the output of this module."""
 
-  @property
-  @abc.abstractmethod
-  def next_state_spec(self) -> types.SpecDict:
-    """Returns the spec of the next_state of this module."""
+    @property
+    @abc.abstractmethod
+    def next_state_spec(self) -> types.SpecDict:
+        """Returns the spec of the next_state of this module."""
 
-  @abc.abstractmethod
-  def _initial_state(self) -> types.TensorDict:
-    """Initial state of the component.
+    @abc.abstractmethod
+    def _initial_state(self) -> types.TensorDict:
+        """Initial state of the component.
 
-    If this component returns a next_state in its unroll function, then
-    this function provides the initial state. By default, we use zeros,
-    but it can be overridden for custom initial state.
+        If this component returns a next_state in its unroll function, then
+        this function provides the initial state. By default, we use zeros,
+        but it can be overridden for custom initial state.
 
-    Subclasses should override this function instead of `initial_state`, which
-    adds additional checks.
+        Subclasses should override this function instead of `initial_state`, which
+        adds additional checks.
 
-    Returns:
-      A Dict containing the state before the first step.
-    """
+        Returns:
+          A Dict containing the state before the first step.
+        """
 
-  def initial_state(self) -> types.TensorDict:
-    """Initial state of the component.
+    def initial_state(self) -> types.TensorDict:
+        """Initial state of the component.
 
-    If this component returns a next_state in its unroll function, then
-    this function provides the initial state. By default, we use zeros,
-    but it can be overridden for custom initial state.
+        If this component returns a next_state in its unroll function, then
+        this function provides the initial state. By default, we use zeros,
+        but it can be overridden for custom initial state.
 
-    Returns:
-      A Dict containing the state before the first step.
-    """
-    initial_state = self._initial_state()
-    self.next_state_spec.validate(
-        initial_state, error_prefix=f"{self.name} initial_state")
-    return initial_state
+        Returns:
+          A Dict containing the state before the first step.
+        """
+        initial_state = self._initial_state()
+        self.next_state_spec.validate(
+            initial_state, error_prefix=f"{self.name} initial_state"
+        )
+        return initial_state
 
-  @abc.abstractmethod
-  def _unroll(self,
-              inputs: types.TensorDict,
-              prev_state: types.TensorDict, **kwargs) -> UnrollOutputType:
-    """Computes the output of the module over unroll_len timesteps.
+    @abc.abstractmethod
+    def _unroll(
+        self, inputs: types.TensorDict, prev_state: types.TensorDict, **kwargs
+    ) -> UnrollOutputType:
+        """Computes the output of the module over unroll_len timesteps.
 
-    Call with a unroll_len=1 for a single step.
+        Call with a unroll_len=1 for a single step.
 
-    Subclasses should override this function instead of `unroll`, which
-    adds additional checks.
+        Subclasses should override this function instead of `unroll`, which
+        adds additional checks.
 
-    Args:
-      inputs: A TensorDict containing [unroll_len, ...] tensors.
-      prev_state: A TensorDict containing [...] tensors, containing the
-        next_state of the last timestep of the previous unroll.
+        Args:
+          inputs: A TensorDict containing [unroll_len, ...] tensors.
+          prev_state: A TensorDict containing [...] tensors, containing the
+            next_state of the last timestep of the previous unroll.
 
-    Returns:
-      outputs: A TensorDict containing [unroll_len, ...] tensors.
-      next_state: A dict containing [...] tensors representing the
-        state to be passed as the first state of the next rollout.
-        If overlap_len is 0, this is the last state of this rollout.
-        More generally, this is the (unroll_len - overlap_len)-th state.
-      logs: A dict containing [unroll_len] tensors to be logged.
-    """
+        Returns:
+          outputs: A TensorDict containing [unroll_len, ...] tensors.
+          next_state: A dict containing [...] tensors representing the
+            state to be passed as the first state of the next rollout.
+            If overlap_len is 0, this is the last state of this rollout.
+            More generally, this is the (unroll_len - overlap_len)-th state.
+          logs: A dict containing [unroll_len] tensors to be logged.
+        """
 
-  def unroll(self,
-             inputs: types.TensorDict,
-             prev_state: types.TensorDict, **kwargs) -> UnrollOutputType:
-    """Computes the output of the module over unroll_len timesteps.
+    def unroll(
+        self, inputs: types.TensorDict, prev_state: types.TensorDict, **kwargs
+    ) -> UnrollOutputType:
+        """Computes the output of the module over unroll_len timesteps.
 
-    Call with a unroll_len=1 for a single step.
+        Call with a unroll_len=1 for a single step.
 
-    Args:
-      inputs: A TensorDict containing [unroll_len, ...] tensors.
-      prev_state: A TensorDict containing [...] tensors, containing the
-        next_state of the last timestep of the previous unroll.
+        Args:
+          inputs: A TensorDict containing [unroll_len, ...] tensors.
+          prev_state: A TensorDict containing [...] tensors, containing the
+            next_state of the last timestep of the previous unroll.
 
-    Returns:
-      outputs: A TensorDict containing [unroll_len, ...] tensors.
-      next_state: A dict containing [...] tensors representing the
-        state to be passed as the first state of the next rollout.
-        If overlap_len is 0, this is the last state of this rollout.
-        More generally, this is the (unroll_len - overlap_len)-th state.
-      logs: A dict containing [unroll_len] tensors to be logged.
-    """
-    self.input_spec.validate(inputs,
-                             num_leading_dims_to_ignore=1,
-                             error_prefix=f"{self.name} inputs")
-    self.prev_state_spec.validate(prev_state,
-                                  error_prefix=f"{self.name} prev_state")
-    # We hide inputs not specified in input_spec to prevent accidental use.
-    inputs = inputs.filter(self.input_spec)
-    prev_state = prev_state.filter(self.prev_state_spec)
-    inputs, prev_state = self._check_inputs_and_prev_state(inputs, prev_state)
-    outputs, next_state = self._unroll(inputs, prev_state, **kwargs)
-    self.output_spec.validate(outputs,
-                              num_leading_dims_to_ignore=1,
-                              error_prefix=f"{self.name} outputs")
-    self.next_state_spec.validate(next_state,
-                                  error_prefix=f"{self.name} next_state")
-    outputs, next_state = self._check_outputs_and_next_state(outputs, next_state)
-    return outputs, next_state
+        Returns:
+          outputs: A TensorDict containing [unroll_len, ...] tensors.
+          next_state: A dict containing [...] tensors representing the
+            state to be passed as the first state of the next rollout.
+            If overlap_len is 0, this is the last state of this rollout.
+            More generally, this is the (unroll_len - overlap_len)-th state.
+          logs: A dict containing [unroll_len] tensors to be logged.
+        """
+        self.input_spec.validate(
+            inputs, num_leading_dims_to_ignore=1, error_prefix=f"{self.name} inputs"
+        )
+        self.prev_state_spec.validate(
+            prev_state, error_prefix=f"{self.name} prev_state"
+        )
+        # We hide inputs not specified in input_spec to prevent accidental use.
+        inputs = inputs.filter(self.input_spec)
+        prev_state = prev_state.filter(self.prev_state_spec)
+        inputs, prev_state = self._check_inputs_and_prev_state(inputs, prev_state)
+        outputs, next_state = self._unroll(inputs, prev_state, **kwargs)
+        self.output_spec.validate(
+            outputs, num_leading_dims_to_ignore=1, error_prefix=f"{self.name} outputs"
+        )
+        self.next_state_spec.validate(
+            next_state, error_prefix=f"{self.name} next_state"
+        )
+        outputs, next_state = self._check_outputs_and_next_state(outputs, next_state)
+        return outputs, next_state
 
+    def _check_inputs_and_prev_state(
+        self, inputs: types.TensorDict, prev_state: types.TensorDict
+    ) -> Tuple[types.TensorDict, types.TensorDict]:
+        """Override this function to add additional checks on inputs."""
+        return inputs, prev_state
 
-  def _check_inputs_and_prev_state(self, inputs: types.TensorDict, prev_state: types.TensorDict) -> Tuple[types.TensorDict, types.TensorDict]:
-    """Override this function to add additional checks on inputs."""
-    return inputs, prev_state
+    def _check_outputs_and_next_state(
+        self, outputs: types.TensorDict, next_state: types.TensorDict
+    ) -> Tuple[types.TensorDict, types.TensorDict]:
+        """Override this function to add additional checks on outputs."""
+        return outputs, next_state
 
-  
-  def _check_outputs_and_next_state(self, outputs: types.TensorDict, next_state: types.TensorDict) -> Tuple[types.TensorDict, types.TensorDict]:
-    """Override this function to add additional checks on outputs."""
-    return outputs, next_state
 
 class Model(RecurrentModel):
-  """A Component which is not using the unroll dimension.
+    """A Component which is not using the unroll dimension.
 
-  This is a helper module to write simpler components.
-  Such a component computes a function _forward such that
-  unroll(x)[t] = _forward(x[t]) where t=0..unroll_len-1.
+    This is a helper module to write simpler components.
+    Such a component computes a function _forward such that
+    unroll(x)[t] = _forward(x[t]) where t=0..unroll_len-1.
 
-  Such a module must be stateless.
-  """
-
-  @property
-  def prev_state_spec(self) -> types.SpecDict:
-    return types.SpecDict()
-
-  @property
-  def next_state_spec(self) -> types.SpecDict:
-    return types.SpecDict()
-
-
-  def _check_inputs_and_prev_state(self, inputs: types.TensorDict, prev_state: types.TensorDict) -> Tuple[types.TensorDict, types.TensorDict]:
-    inputs = self._check_inputs(inputs)
-    return inputs, prev_state
-
-  def _check_inputs(self, inputs: types.TensorDict) -> types.TensorDict:
-    """Override this function to add additional checks on inputs."""
-    return inputs
-  
-  def _check_outputs_and_next_state(self, outputs: types.TensorDict, next_state: types.TensorDict) -> Tuple[types.TensorDict, types.TensorDict]:
-    outputs = self._check_outputs(outputs)
-    return outputs, next_state
-
-  def _check_outputs(self, outputs: types.TensorDict) -> types.TensorDict:
-    """Override this function to add additional checks on outputs."""
-    return outputs
-
-  def _unroll(self,
-              inputs: types.TensorDict,
-              prev_state: types.TensorDict, **kwargs) -> UnrollOutputType:
-    del prev_state
-    outputs = self._forward(inputs, **kwargs)
-    return outputs, types.TensorDict()
-
-  @abc.abstractmethod
-  def _forward(self, inputs: types.TensorDict, **kwargs) -> ForwardOutputType:
-    """Computes the output of this module for each timestep.
-
-    Args:
-      inputs: A TensorDict containing [...] tensors.
-
-    Returns:
-      outputs: A TensorDict containing [...] tensors.
-      logs: A dict containing [...] tensors to be logged.
+    Such a module must be stateless.
     """
 
+    @property
+    def prev_state_spec(self) -> types.SpecDict:
+        return types.SpecDict()
+
+    @property
+    def next_state_spec(self) -> types.SpecDict:
+        return types.SpecDict()
+
+    def _check_inputs_and_prev_state(
+        self, inputs: types.TensorDict, prev_state: types.TensorDict
+    ) -> Tuple[types.TensorDict, types.TensorDict]:
+        inputs = self._check_inputs(inputs)
+        return inputs, prev_state
+
+    def _check_inputs(self, inputs: types.TensorDict) -> types.TensorDict:
+        """Override this function to add additional checks on inputs."""
+        return inputs
+
+    def _check_outputs_and_next_state(
+        self, outputs: types.TensorDict, next_state: types.TensorDict
+    ) -> Tuple[types.TensorDict, types.TensorDict]:
+        outputs = self._check_outputs(outputs)
+        return outputs, next_state
+
+    def _check_outputs(self, outputs: types.TensorDict) -> types.TensorDict:
+        """Override this function to add additional checks on outputs."""
+        return outputs
+
+    def _unroll(
+        self, inputs: types.TensorDict, prev_state: types.TensorDict, **kwargs
+    ) -> UnrollOutputType:
+        del prev_state
+        outputs = self._forward(inputs, **kwargs)
+        return outputs, types.TensorDict()
+
+    @abc.abstractmethod
+    def _forward(self, inputs: types.TensorDict, **kwargs) -> ForwardOutputType:
+        """Computes the output of this module for each timestep.
+
+        Args:
+          inputs: A TensorDict containing [...] tensors.
+
+        Returns:
+          outputs: A TensorDict containing [...] tensors.
+          logs: A dict containing [...] tensors to be logged.
+        """

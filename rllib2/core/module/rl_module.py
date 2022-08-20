@@ -1,11 +1,9 @@
 from calendar import c
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict
 
-from collections import defaultdict
-
 import torch.nn as nn
-
 
 from rllib2.models.torch.pi import Pi, PiOutput
 from rllib2.models.torch.pi_distribution import PiDistributionDict
@@ -83,6 +81,7 @@ class RLModule:
     def forward_train(self, batch: BatchType, **kwargs) -> RLModuleOutput:
         """Forward-pass during computing loss function"""
         pass
+
 
 class MARLModule(RLModule):
     def __init__(
