@@ -194,7 +194,7 @@ PyTorch
     :show-inheritance:
 
 Alpa (Experimental)
-#######
+###################
 
 .. autoclass:: ray.train.alpa.AlpaTrainer
     :members:
