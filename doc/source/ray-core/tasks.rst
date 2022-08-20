@@ -182,9 +182,9 @@ For tasks that return multiple objects, Ray also supports remote generators that
 Cancelling tasks
 ----------------
 
-.. tabbed:: Python
+Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref.
 
-    Remote functions can be canceled by calling ``ray.cancel`` (:ref:`docstring <ray-cancel-ref>`) on the returned Object ref.
+.. tabbed:: Python
 
     .. code-block:: python
 
@@ -202,13 +202,6 @@ Cancelling tasks
       except TaskCancelledError:
           print("Object reference was cancelled.")
 
-.. tabbed:: Java
-
-    Task cancellation hasn't been implemented in Java yet.
-
-.. tabbed:: C++
-
-    Task cancellation hasn't been implemented in C++ yet.
 
 More about Ray Tasks
 --------------------
