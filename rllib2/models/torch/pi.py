@@ -1,22 +1,19 @@
+import types
 from copy import deepcopy
 from dataclasses import dataclass
 from json import encoder
-import types
 from typing import Optional
 
 import torch
 import torch.nn as nn
 from torch import TensorType
 
-from .encoder import VectorEncoder, VisionEncoder, ModelWithEncoder
+from rllib2.models.configs import ModelConfig
+from rllib2.utils import NNOutput
 
 from ..types import NestedDict, TensorDict
+from .encoder import ModelWithEncoder, VectorEncoder, VisionEncoder
 from .model_base import TorchModel, TorchRecurrentModel
-
-
-from rllib2.utils import NNOutput
-from rllib2.models.configs import ModelConfig
-
 from .pi_distribution import (
     DeterministicDist,
     PiDistribution,
@@ -39,6 +36,7 @@ Example:
         # with exploration
         pi_output.target_sample((1,))
 """
+
 
 @dataclass
 class PiOutput(NNOutput):
@@ -76,7 +74,7 @@ class PiConfig(ModelConfig):
 
 
 class Pi(
-    TorchRecurrentModel, 
+    TorchRecurrentModel,
     ModelWithEncoder,
 ):
 
@@ -120,53 +118,61 @@ class Pi(
     @property
     def action_dist_class(self) -> Type[PiDistribution]:
         return self._action_dist_class
-    
+
     @property
     def action_logit_dim(self) -> int:
         return self._logit_dim
-    
+
     def _make_action_dist(self):
         dist_class, logit_dim = model_catalog.get_action_dist_class(self.config)
         return dist_class, logit_dim
 
     def _make_output_layer(self):
         return nn.Linear(self.encoder_out_dim, self.logit_dim)
-    
+
     def output_spec(self) -> types.SpecDict:
-        return types.SpecDict({
-            'action_dist': PiDistribution,
-            'action_logits': specs.Spec(shape='b h', h=self.action_logit_dim),
-            'encoder_output': specs.Spec(
-                shape='b h', h=self.config.hidden_size, allow_none=True
-            ),
-        })
-    
+        return types.SpecDict(
+            {
+                "action_dist": PiDistribution,
+                "action_logits": specs.Spec(shape="b h", h=self.action_logit_dim),
+                "encoder_output": specs.Spec(
+                    shape="b h", h=self.config.hidden_size, allow_none=True
+                ),
+            }
+        )
+
     def input_spec(self) -> types.SpecDict:
         return self.encoder.input_spec()
 
     def prev_state_spec(self) -> types.SpecDict:
         return self.encoder.prev_state_spec()
-    
+
     def next_state_spec(self) -> types.SpecDict:
         return self.encoder.next_state_spec()
 
-    def _unroll(self, inputs: types.TensorDict, prev_state: types.TensorDict, return_encoder_output=False) -> UnrollOutputType:
+    def _unroll(
+        self,
+        inputs: types.TensorDict,
+        prev_state: types.TensorDict,
+        return_encoder_output=False,
+    ) -> UnrollOutputType:
         encoder_out, next_state = self.encoder.unroll(inputs, prev_state, **kwargs)
-        obs_encoded = encoder_out['obs']
+        obs_encoded = encoder_out["obs"]
         action_logits = self._out_layer(obs_encoded)
-        action_dist =  model_catalog.get_action_dist(
-            inputs, # uses action masking internally
+        action_dist = model_catalog.get_action_dist(
+            inputs,  # uses action masking internally
             action_logits,
-            self.action_dist_class, 
+            self.action_dist_class,
         )
 
-        output = NestedDict({
-            'action_dist': action_dist,
-            'action_logits': action_logits,
-            'encoder_output': obs_encoded if return_encoder_output else None,
-        })
+        output = NestedDict(
+            {
+                "action_dist": action_dist,
+                "action_logits": action_logits,
+                "encoder_output": obs_encoded if return_encoder_output else None,
+            }
+        )
         return output, next_state
-
 
 
 """
@@ -208,31 +214,30 @@ def test_discrete_pi():
 ########### Goal conditioned policies a ~ N(mu(s, g), std(s, g))
 ################################################################
 
+
 def test_goal_conditioned_policy():
     # see how easy it is to modify the encoder
-    # encode goal observation and current observation and concat them as the policy 
+    # encode goal observation and current observation and concat them as the policy
     # input
     class Encoder(nn.Module):
         def __init__(self, observation_space, action_space) -> None:
             super().__init__()
             config = ModelConfig(
-                observation_space=observation_space, 
-                action_space=action_space
+                observation_space=observation_space, action_space=action_space
             )
             self.encoding_layer = model_catalog.get_encoder(config)
-        
+
         def forward(self, input_dict):
-            obs = input_dict['obs']
-            goal = input_dict['goal']
+            obs = input_dict["obs"]
+            goal = input_dict["goal"]
 
             z_obs = self.encoding_layer(obs)
             z_goal = self.encoding_layer(goal)
             return torch.cat([z_obs, z_goal], -1)
 
-
-    register_model('goal_conditioned_encoder', Encoder)
+    register_model("goal_conditioned_encoder", Encoder)
     config = PiConfig(
-        encoder='goal_conditioned_encoder',
+        encoder="goal_conditioned_encoder",
         observation_space=Box(low=-1, high=1, shape=(10,)),
         action_space=Discrete(2),
         is_deterministic=True,
@@ -257,12 +262,13 @@ def test_goal_conditioned_policy():
 
 # see how easy it is to extend the base pi class to support mixed action spaces
 
+
 @dataclass
 class MixturePiConfig(PiConfig):
     pi_dict: Dict[str, Pi] = field(default_factory=dict)
 
-class MixturePi(PiBase):
 
+class MixturePi(PiBase):
     def __init__(self, config: MixturePiConfig):
         super().__init__()
         self.config = config
@@ -289,55 +295,52 @@ class MixturePi(PiBase):
 # >>> {'torques': Tensor(0.63), 'gripper': Tensor(0.63)}
 ###################################################################
 
-class GripperObsTorqueEncoder(Encoder):
 
+class GripperObsTorqueEncoder(Encoder):
     def __init__(self, torque_out_dim: int, obs_encoder: nn.Module) -> None:
         super().__init__()
         self.obs_encoder = obs_encoder
 
         self.linear = nn.Linear(
-            self.obs_encoder.out_dim + torque_out_dim, 
+            self.obs_encoder.out_dim + torque_out_dim,
             64,
         )
 
     def forward(self, input_dict: SampleBatch) -> torch.Tensor:
-        obs = input_dict['obs']
-        torque = input_dict['torque']
+        obs = input_dict["obs"]
+        torque = input_dict["torque"]
         obs = self.obs_encoder(obs)
         z_t = torch.cat([obs, torque], -1)
         out = self.linear(z_t)
         return out
 
-class CustomAutoregressivePi(PiBase):
 
+class CustomAutoregressivePi(PiBase):
     def __init__(self, config: PiConfig):
         super().__init__(config)
 
         torque_configs = deepcopy(config)
-        torque_configs.action_space = config.action_space['torque']
-        torque_configs.observation_space = config.observation_space['torque']
+        torque_configs.action_space = config.action_space["torque"]
+        torque_configs.observation_space = config.observation_space["torque"]
         self.torque_pi = Pi(torque_configs)
 
-
         gripper_configs = deepcopy(config)
-        gripper_configs.action_space = config.action_space['gripper']
-        gripper_configs.observation_space = config.observation_space['gripper']
+        gripper_configs.action_space = config.action_space["gripper"]
+        gripper_configs.observation_space = config.observation_space["gripper"]
         # get the obs encoder from torque's pi to share parameters with gripper's pi
         obs_encoder = self.torque_pi.encoder
         gripper_configs.encoder = GripperObsTorqueEncoder(
-            torque_out_dim=torque_configs.fcnet_hiddens[-1], 
-            encoder=obs_encoder
+            torque_out_dim=torque_configs.fcnet_hiddens[-1], encoder=obs_encoder
         )
 
         self.gripper_pi = Pi(gripper_configs)
-
 
     def forward(self, batch: SampleBatch, **kwargs) -> PiOutput:
 
         torque_output = self.torque_pi(batch)
         torque_actions = torque_output.sample()
 
-        sample_batch = {'torque': torque_actions, 'obs': batch.obs}
+        sample_batch = {"torque": torque_actions, "obs": batch.obs}
         gripper_actions = self.gripper_pi(sample_batch)
         ...
 

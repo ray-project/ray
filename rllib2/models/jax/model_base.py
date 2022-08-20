@@ -1,8 +1,9 @@
 import abc
 
-import torch
-import torch.nn as nn
+import equinox as eqx
+import jax
 import tree
+from jax import numpy as jnp
 
 from ..configs import ModelConfig
 from ..modular import Model, RecurrentModel
@@ -27,23 +28,21 @@ class ModelIO(abc.ABC):
         raise NotImplementedError
 
 
-class TorchRecurrentModel(RecurrentModel, nn.Module, ModelIO):
-    def __init__(self, config: ModelConfig) -> None:
+class JaxRecurrentModel(RecurrentModel, eqx.Module, ModelIO):
+    def __init__(self, config: ModelConfig, key: jax.random.PRNGKeyArray) -> None:
         super(RecurrentModel).__init__(name=config.name)
-        super(nn.Module).__init__()
         super(ModelIO).__init__()
         self._config = config
 
-    def _initial_state(self) -> NestedDict[torch.Tensor]:
+    def _initial_state(self) -> NestedDict[jnp.ndarray]:
         return tree.map_structure(
-            lambda spec: torch.zeros(spec.shape, dtype=spec.dtype),
+            lambda spec: jnp.zeros(spec.shape, dtype=spec.dtype),
             self.initial_state_spec,
         )
 
 
-class TorchModel(Model, nn.Module, ModelIO):
+class JaxModel(Model, eqx.Module, ModelIO):
     def __init__(self, config: ModelConfig) -> None:
         super(Model).__init__(name=config.name)
-        super(nn.Module).__init__()
         super(ModelIO).__init__()
         self._config = config

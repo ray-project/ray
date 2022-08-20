@@ -3,8 +3,8 @@ from typing import Any
 
 from rllib2.core.trainer.rl_trainer import RLTrainer
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ..module.rl_module import MARLModule
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 
 
 class MARLTrainer(RLTrainer):
@@ -26,7 +26,6 @@ class MARLTrainer(RLTrainer):
         # create a dict to keep track of the trainers for each module
         self._module_trainers = self._make_module_trainers()
 
-
     @abc.abstractmethod
     def compute_grads_and_apply_if_needed(
         self, batch: BatchType, fwd_out, loss_out, apply_grad: bool = True, **kwargs
@@ -40,7 +39,7 @@ class MARLTrainer(RLTrainer):
         fwd_kwargs: Optional[Dict[str, Any]] = None,
         loss_kwargs: Optional[Dict[str, Any]] = None,
         grad_kwargs: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ) -> Any:
         fwd_kwargs = fwd_kwargs or {}
         loss_kwargs = loss_kwargs or {}

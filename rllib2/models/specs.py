@@ -1,12 +1,13 @@
 import abc
+from typing import Any, Optional
 
-from typing import Optional, Any
-import torch
 import numpy as np
+import torch
+
 from ray.rllib.utils.typing import TensorType
 
-_INVALID_SHAPE = 'Expected shape {} but found {}'
-_INVALID_DTYPE = 'Expected dtype {} but found {}'
+_INVALID_SHAPE = "Expected shape {} but found {}"
+_INVALID_DTYPE = "Expected dtype {} but found {}"
 
 
 class TensorSpecs(abc.ABC):
@@ -26,17 +27,15 @@ class TensorSpecs(abc.ABC):
         """Returns a dtype specifying the tensor dtype."""
         return self._dtype
 
-    
     def __repr__(self):
-        return f'Tensor(shape={self.shape}, dtype={self.dtype})'
+        return f"Tensor(shape={self.shape}, dtype={self.dtype})"
 
-    
     def __eq__(self, other: "TensorSpecs"):
         """Checks if the shape and dtype of two specs are equal."""
         if not isinstance(other, TensorSpecs):
             return False
         return self.shape == other.shape and self.dtype == other.dtype
-    
+
     def __ne__(self, other: "TensorSpecs"):
         return not self == other
 
@@ -52,9 +51,7 @@ class TensorSpecs(abc.ABC):
         raise NotImplementedError()
 
 
-
 class TorchSpecs(TensorSpecs):
-    
     def validate(self, tensor: torch.Tensor) -> torch.Tensor:
         return super().validate(tensor)
 
@@ -74,8 +71,7 @@ class TFSpecs(TensorSpecs):
     # TODO
     pass
 
+
 class JAXSpecs(TensorSpecs):
     # TODO
     pass
-
-

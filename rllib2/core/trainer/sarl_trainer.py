@@ -63,7 +63,7 @@ class SARLTrainer(RLTrainer):
         )
 
         return update_out
-    
+
     def _make_module(self) -> RLModule:
         module_class = self.config["module_class"]
         module_config = self.config["module_config"]
