@@ -360,6 +360,8 @@ class BaseTrainer(abc.ABC):
         trainer_cls = self.__class__
         scaling_config = self.scaling_config
 
+        datasets = self.datasets
+
         def train_func(config, checkpoint_dir=None):
             # config already contains merged values.
             # Instantiate new Trainer in Trainable.
@@ -371,6 +373,9 @@ class BaseTrainer(abc.ABC):
                 )
 
             trainer.setup()
+            trainer._injected_preprocessor = trainer.preprocessor
+            trainer.preprocessor = None
+            trainer.datasets = datasets
             trainer.preprocess_datasets()
             trainer.training_loop()
 

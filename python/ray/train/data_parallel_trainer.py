@@ -341,7 +341,7 @@ class DataParallelTrainer(BaseTrainer):
         )
 
         checkpoint_manager = self._checkpoint_manager_cls(
-            preprocessor=self.preprocessor
+            preprocessor=self._injected_preprocessor
         )
 
         # Start the remote actors.

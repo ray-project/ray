@@ -130,6 +130,7 @@ class Tuner:
         _tuner_internal: Optional[TunerInternal] = None,
     ):
         """Configure and construct a tune run."""
+        trainable.preprocess_datasets()
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
         if _tuner_internal:
