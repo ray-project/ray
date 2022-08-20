@@ -53,7 +53,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
             endpoint="endpoint",
             call_method="call",
         ).SerializeToString(),
-        RequestWrapper(body=msgpack_serialize("hello")).SerializeToString(),
+        ["hello"],
     )
     assert ray.get(out) == "my_prefix hello"
 
