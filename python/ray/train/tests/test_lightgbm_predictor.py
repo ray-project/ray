@@ -59,7 +59,7 @@ def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     return checkpoint, preprocessor
 
 
-def test_init():
+def test_lightgbm_checkpoint():
     checkpoint, preprocessor = create_checkpoint_preprocessor()
 
     predictor = LightGBMPredictor(model=model, preprocessor=preprocessor)

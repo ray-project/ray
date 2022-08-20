@@ -123,8 +123,6 @@ def test_rl_checkpoint():
 
     rl_trainer = RLTrainer(
         algorithm=_DummyAlgo,
-        # TODO: Does this random state simulate something like making sure
-        # network weights are loaded correctly? Should I just do that directly?
         config={"random_state": np.random.uniform(0, 1)},
         preprocessor=preprocessor,
     )

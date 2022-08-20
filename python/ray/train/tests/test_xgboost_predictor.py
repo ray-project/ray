@@ -49,7 +49,7 @@ def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     return checkpoint, preprocessor
 
 
-def test_init():
+def test_xgboost_checkpoint():
     checkpoint, preprocessor = create_checkpoint_preprocessor()
 
     predictor = XGBoostPredictor(model=model, preprocessor=preprocessor)

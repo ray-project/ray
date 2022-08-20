@@ -65,7 +65,7 @@ def create_checkpoint_preprocessor() -> Tuple[Checkpoint, Preprocessor]:
     return checkpoint, preprocessor
 
 
-def test_init():
+def test_sklearn_checkpoint():
     checkpoint, preprocessor = create_checkpoint_preprocessor()
 
     predictor = SklearnPredictor(estimator=model, preprocessor=preprocessor)

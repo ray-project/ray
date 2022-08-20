@@ -104,7 +104,6 @@ def test_init():
 
 def test_tensorflow_checkpoint():
     model = build_model()
-    # Keras model requires build/call for weights to be initialized
     model.build(input_shape=(1,))
     preprocessor = DummyPreprocessor()
     preprocessor.attr = 1
