@@ -81,22 +81,11 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
 Passing object refs to remote functions
 ---------------------------------------
 
-**Object refs** can also be passed into remote functions. When the function actually gets executed, **the argument will be passed as the underlying Python value**. For example, take this function:
+`Object refs <objects.html>`__ can also be passed into remote functions. When the function actually gets executed, **the argument will be automatically dereferenced as the underlying value**. For example, take this function:
 
 .. tabbed:: Python
 
-    .. code-block:: python
-
-        @ray.remote
-        def function_with_an_argument(value):
-            return value + 1
-
-        obj_ref1 = my_function.remote()
-        assert ray.get(obj_ref1) == 1
-
-        # You can pass an object ref as an argument to another Ray remote function.
-        obj_ref2 = function_with_an_argument.remote(obj_ref1)
-        assert ray.get(obj_ref2) == 2
+    .. literalinclude:: doc_code/tasks_and_objects.py
 
 .. tabbed:: Java
 
@@ -133,8 +122,7 @@ Passing object refs to remote functions
 
 Note the following behaviors:
 
-  -  The second task will not be executed until the first task has finished
-     executing because the second task depends on the output of the first task.
+  -  As the second task depends on the output of the first task, Ray will not execute the second task until the first task has finished.
   -  If the two tasks are scheduled on different machines, the output of the
      first task (the value corresponding to ``obj_ref1/objRef1``) will be sent over the
      network to the machine where the second task is scheduled.
@@ -142,14 +130,15 @@ Note the following behaviors:
 Waiting for Partial Results
 ---------------------------
 
-After launching a number of tasks, you may want to know which ones have
-finished executing without blocking on all of them, as in ``ray.get``. This can be done with ``wait`` (:ref:`ray-wait-ref`). The function
+Calling **ray.get** on Ray remote task returns will block until the task finished execution. After launching a number of tasks, you may want to know which ones have
+finished executing without blocking on all of them. This could be achieved by (:ref:`ray-wait-ref`). The function
 works as follows.
 
 .. tabbed:: Python
 
   .. code-block:: python
 
+    # Return as soon as one of the tasks finished execution.
     ready_refs, remaining_refs = ray.wait(object_refs, num_returns=1, timeout=None)
 
 .. tabbed:: Java
