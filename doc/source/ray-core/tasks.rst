@@ -130,7 +130,7 @@ Note the following behaviors:
 Waiting for Partial Results
 ---------------------------
 
-Calling **ray.get** on Ray remote task returns will block until the task finished execution. After launching a number of tasks, you may want to know which ones have
+Calling **ray.get** on Ray task results will block until the task finished execution. After launching a number of tasks, you may want to know which ones have
 finished executing without blocking on all of them. This could be achieved by (:ref:`ray-wait-ref`). The function
 works as follows.
 
@@ -158,20 +158,15 @@ works as follows.
 Multiple returns
 ----------------
 
+By default, a Ray task only returns a single Object Ref. However, you can configure Ray tasks to return multiple Object Refs, by setting the ``num_returns`` option.
+
 .. tabbed:: Python
 
-    Ray tasks can return multiple object refs.
+    .. literalinclude:: doc_code/tasks_multiple_returns.py
 
-    .. code-block:: python
+For tasks that return multiple objects, Ray also supports remote generators that allow a task to return one object at a time to reduce memory usage at the worker. See the :ref:`user guide <generators>` for more details on use cases.
 
-      @ray.remote(num_returns=3)
-      def return_multiple():
-          return 0, 1, 2
-
-      a, b, c = return_multiple.remote()
-
-    For tasks that return multiple objects, Ray also supports remote generators that allow a task to return one object at a time to reduce memory usage at the worker. See the :ref:`user guide <generators>` for more details on use cases.
-
+.. tabbed:: Python
     .. code-block:: python
 
       @ray.remote(num_returns=3)
@@ -182,15 +177,6 @@ Multiple returns
       # NOTE: Similar to normal functions, these objects will not be available
       # until the full task is complete and all returns have been generated.
       a, b, c = return_multiple_as_generator.remote()
-
-
-.. tabbed:: Java
-
-    Java remote functions doesn't support returning multiple objects.
-
-.. tabbed:: C++
-
-    C++ remote functions doesn't support returning multiple objects.
 
 
 Cancelling tasks
