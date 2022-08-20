@@ -267,9 +267,21 @@ div.topic{
   border-left-color: var(--border-color-gray);
 }
 
-/* custom css for up and down arrows in colllapsable cards */
+/* custom css for up and down arrows in collapsible cards */
 details.dropdown .summary-up, details.dropdown .summary-down {
   top: 1em;
+}
+
+/* remove focus border up and down arrows in collapsible admonitions
+
+   Arrow class names found here: (
+    https://github.com/executablebooks/sphinx-design/blob/
+    ed533277df25c172e80e8a4c3ccbbc04efe88cd0/sphinx_design/
+    dropdown.py#L152-L163
+   )
+*/
+.sd-summary-up:focus, .sd-summary-down:focus {
+  outline: none;
 }
 
 /* custom css for shadow class */
