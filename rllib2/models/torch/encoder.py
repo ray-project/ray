@@ -1,4 +1,6 @@
-import torch.nn as nn
+import torch
+from torch import nn
+from typing import Callable
 
 from .model_base import TorchModel, TorchRecurrentModel
 
@@ -143,6 +145,30 @@ class RNNEncoder(TorchRecurrentModel, Encoder):
         return types.TensorDict({'encoder_out': out[:, -1]}), next_state
 
 
-class GraphEncoder:
-    pass
+class GraphEncoder(TorchModel, Encoder):
+    """Graph encoding which processes variable-sized graphs using a node_mask"""
+    # TODO: We currently consider inputs to be 'b, t, h'. For variable-sized graphs
+    # it is more efficient to consider 'b*num_nodes_in_batch, h'
+    def __init__(self, config: ModelConfig):
+        super().__init__(config)
+        self.gnn = torch_geometric.nn.GraphConv(...)
+        # node [N, H], batch_idx [N] -> edge_idx [E, 2]
+        self.edge_method: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = self.config.edge_method
 
+    def input_spec(self) -> types.SpecDict:
+        return specs.SpecDict({
+            'obs': specs.Spec(shape='b n h', h=self.config.obs_dim),
+            # Mask denoting valid (non-zero) nodes
+            'node_mask': specs.Spec(shape='b n'),
+        })
+
+    def _forward(self, inputs: types.TensorDict) -> ForwardOutputType:
+        batch, _, _ = inputs['obs'].shape
+        # Remove padding from nodes, collapsing into [B*num_nodes, h] tensor
+        nodes = inputs['obs'][inputs['node_mask']]
+        nodes_per_batch = inputs["node_mask"].sum(1).cumsum(dim=0)
+        batch_idx = torch.repeat_interleave(torch.arange(batch), nodes_per_batch)
+
+        edge_idx = self.edge_method(nodes, batch_idx)
+        out = self.gnn(nodes, edge_idx)
+        return types.TensorDict({'encoder_out': out})
