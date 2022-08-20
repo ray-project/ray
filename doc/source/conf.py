@@ -63,6 +63,10 @@ myst_enable_extensions = [
     "replacements",
 ]
 
+# Turn off hint in toggle buttons
+togglebutton_hint = ""
+togglebutton_hint_hide = ""
+
 # Thebe configuration for launching notebook cells within the docs.
 thebe_config = {
     "selector": "div.highlight",
