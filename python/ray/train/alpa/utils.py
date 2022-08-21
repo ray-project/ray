@@ -96,8 +96,7 @@ def create_placement_group(
         The placement group
     """
     current_placement_group = get_current_placement_group()
-    ray_worker = try_import_ray_worker()
-    worker = ray_worker.global_worker  # pylint: disable=protected-access
+    worker = ray._private.work.global_worker  # pylint: disable=protected-access
     should_capture_child_tasks_in_placement_group = (
         worker.should_capture_child_tasks_in_placement_group
     )
@@ -122,7 +121,7 @@ def create_placement_group(
 
         placement_group = ray.util.placement_group(bundles, strategy=strategy)
         logger.debug("Waiting for placement group to start.")
-        timeout = env_integer(PLACEMENT_GROUP_TIMEOUT_S_ENV, 100)
+        timeout = env_integer(TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, 100)
         ready, _ = ray.wait([placement_group.ready()], timeout=timeout)
         if ready:
             logger.debug("Placement group has started.")
