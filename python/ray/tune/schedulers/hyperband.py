@@ -158,7 +158,7 @@ class HyperBandScheduler(FIFOScheduler):
                 "{} has been instantiated without a valid `metric` ({}) or "
                 "`mode` ({}) parameter. Either pass these parameters when "
                 "instantiating the scheduler, or pass them as parameters "
-                "to `tune.run()`".format(
+                "to `tune.TuneConfig()`".format(
                     self.__class__.__name__, self._metric, self._mode
                 )
             )
@@ -272,10 +272,15 @@ class HyperBandScheduler(FIFOScheduler):
                     )
                 if bracket.continue_trial(t):
                     if t.status == Trial.PAUSED:
+                        self._unpause_trial(trial_runner, t)
                         t.status = Trial.PENDING
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
         return action
+
+    def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
+        """No-op by default."""
+        return
 
     def on_trial_remove(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         """Notification when trial terminates.

@@ -4,6 +4,10 @@
 Pipelining Compute 
 ==================
 
+Dataset pipelines allow Dataset transformations to be executed incrementally on *windows* of the base data, instead of on all of the data at once. This can be used for streaming data loading into ML training, or to execute batch transformations on large datasets without needing to load the entire dataset into cluster memory.
+
+Dataset pipelines can be read in a streaming fashion by one consumer, or split into multiple sub-pipelines and read in parallel by multiple consumers for distributed traininmg.
+
 Creating a DatasetPipeline
 ==========================
 
@@ -66,15 +70,10 @@ You can also create a DatasetPipeline from a custom iterator over dataset creato
     pipe = DatasetPipeline.from_iterable([lambda s=s: s for s in splits])
 
 
-Per-Window Transformations
-==========================
+Transforming Pipeline Windows
+=============================
 
-While most Dataset operations are per-row (e.g., map, filter), some operations apply to the Dataset as a whole (e.g., sort, shuffle). When applied to a pipeline, holistic transforms like shuffle are applied separately to each window in the pipeline:
-
-.. important::
-
-   Windowed shuffle or global shuffle are expensive operations. Use only if you really need them.
-   Alternatively, you may consider local shuffle after converting to_tf() or to_torch(), if simple shuffle is sufficient.
+While most Dataset operations are per-row (e.g., map, filter), some operations apply to the Dataset as a whole (e.g., sort, shuffle). Per-row operations apply to rows in the pipeline independently in the same way they do in a normal Dataset. However, when used in a pipeline, holistic transforms like shuffle are applied separately to each window in the pipeline:
 
 .. code-block:: python
 
@@ -161,7 +160,7 @@ Ignoring the output, the above script has three separate stages: loading, prepro
 .. image:: images/dataset-pipeline-1.svg
 
 Enabling Pipelining
-===================
+~~~~~~~~~~~~~~~~~~~
 
 We can optimize this by *pipelining* the execution of the dataset with the ``.window()`` call, which returns a DatasetPipeline instead of a Dataset object. The pipeline supports similar transformations to the original Dataset:
 
@@ -187,7 +186,7 @@ Pipelined Writes
 When calling ``write_<datasource>()`` on a pipeline, data is written separately for each window. This means that in the above example, JSON files will start being written as soon as the first window is finished, in a incremental / pipelined way.
 
 Tuning Parallelism
-==================
+~~~~~~~~~~~~~~~~~~
 
 Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` setting. As a rule of thumb, higher parallelism settings perform better, however ``blocks_per_window == num_blocks`` effectively disables pipelining, since the DatasetPipeline will only contain a single Dataset. The other extreme is setting ``blocks_per_window=1``, which minimizes the latency to initial output but only allows one concurrent transformation task per stage:
 
@@ -202,3 +201,88 @@ You can also specify the size of each window using ``bytes_per_window``. In this
         .read_binary_files("s3://bucket/image-dir") \
         .window(bytes_per_window=10e9)
     # -> INFO -- Created DatasetPipeline with 73 windows: 9120MiB min, 9431MiB max, 9287MiB mean
+    # -> INFO -- Blocks per window: 10 min, 16 max, 14 mean
+    # -> INFO -- ✔️  This pipeline's per-window parallelism is high enough to fully utilize the cluster.
+    # -> INFO -- ✔️  This pipeline's windows likely fit in object store memory without spilling.
+
+Datasets will warn you if the windows are too large or each window has insufficient parallelism (too few blocks). Check out the reported statistics for window size and blocks per window to ensure efficient pipeline execution.
+
+Pipelines for ML Ingest
+=======================
+
+Dataset pipelines can also be used for streaming data loading into distributed training in Ray.
+
+.. note::
+
+    Ray Train is the standard libary for distributed training in Ray. Train will automatically create
+    and split DatasetPipelines for you. See :ref:`Configuring Training Datasets <air-ingest>`
+    for the recommended way to get started with distributed training.
+
+Splitting pipelines for distributed ingest
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipeline with the same method call. This returns a number of DatasetPipeline shards that share a common parent pipeline. Each shard can be passed to a remote task or actor.
+
+**Code**:
+
+.. code-block:: python
+
+    # Create a pipeline that loops over its source dataset indefinitely.
+    pipe: DatasetPipeline = ray.data \
+        .read_parquet("s3://bucket/dir") \
+        .repeat() \
+        .random_shuffle_each_window()
+
+    @ray.remote(num_gpus=1)
+    class TrainingWorker:
+        def __init__(self, rank: int, shard: DatasetPipeline):
+            self.rank = rank
+            self.shard = shard
+        ...
+
+    shards: List[DatasetPipeline] = pipe.split(n=3)
+    workers = [TrainingWorker.remote(rank, s) for rank, s in enumerate(shards)]
+    ...
+
+
+**Pipeline**:
+
+.. image:: images/dataset-repeat-2.svg
+
+Handling Epochs
+~~~~~~~~~~~~~~~
+
+It's common in ML training to want to divide data ingest into epochs, or repetitions over the original source dataset.
+DatasetPipeline provides a convenient ``.iter_epochs()`` method that can be used to split up the pipeline into epoch-delimited pipeline segments.
+Epochs are defined by the last call to ``.repeat()`` in a pipeline, for example:
+
+.. code-block:: python
+
+    pipe = ray.data.from_items([0, 1, 2, 3, 4]) \
+        .repeat(3) \
+        .random_shuffle_each_window()
+    for i, epoch in enumerate(pipe.iter_epochs()):
+        print("Epoch {}", i)
+        for row in epoch.iter_rows():
+            print(row)
+    # ->
+    # Epoch 0
+    # 2
+    # 1
+    # 3
+    # 4
+    # 0
+    # Epoch 1
+    # 3
+    # 4
+    # 0
+    # 2
+    # 1
+    # Epoch 2
+    # 3
+    # 2
+    # 4
+    # 1
+    # 0
+
+Note that while epochs commonly consist of a single window, they can also contain multiple windows if ``.window()`` is used or there are multiple ``.repeat()`` calls.

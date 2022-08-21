@@ -1,14 +1,17 @@
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, List, Dict
 from ray._private.runtime_env.packaging import parse_uri
-from ray.serve.common import (
+from ray.serve._private.common import (
     DeploymentStatusInfo,
     ApplicationStatusInfo,
+    ApplicationStatus,
     StatusOverview,
 )
-from ray.serve.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
+@PublicAPI(stability="beta")
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
     runtime_env: dict = Field(
         default={},
@@ -78,6 +81,7 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
         return v
 
 
+@PublicAPI(stability="beta")
 class DeploymentSchema(
     BaseModel, extra=Extra.forbid, allow_population_by_field_name=True
 ):
@@ -118,7 +122,7 @@ class DeploymentSchema(
     user_config: Dict = Field(
         default=None,
         description=(
-            "[EXPERIMENTAL] Config to pass into this deployment's "
+            "Config to pass into this deployment's "
             "reconfigure method. This can be updated dynamically "
             "without restarting replicas"
         ),
@@ -126,13 +130,12 @@ class DeploymentSchema(
     autoscaling_config: Dict = Field(
         default=None,
         description=(
-            "[EXPERIMENTAL] Config specifying autoscaling "
+            "Config specifying autoscaling "
             "parameters for the deployment's number of replicas. "
             "If null, the deployment won't autoscale its number of "
             "replicas; the number of replicas will be fixed at "
             "num_replicas."
         ),
-        alias="_autoscaling_config",
     )
     graceful_shutdown_wait_loop_s: float = Field(
         default=None,
@@ -142,7 +145,6 @@ class DeploymentSchema(
             "default if null."
         ),
         ge=0,
-        alias="_graceful_shutdown_wait_loop_s",
     )
     graceful_shutdown_timeout_s: float = Field(
         default=None,
@@ -152,7 +154,6 @@ class DeploymentSchema(
             "default if null."
         ),
         ge=0,
-        alias="_graceful_shutdown_timeout_s",
     )
     health_check_period_s: float = Field(
         default=None,
@@ -161,7 +162,6 @@ class DeploymentSchema(
             "replicas. Uses a default if null."
         ),
         gt=0,
-        alias="_health_check_period_s",
     )
     health_check_timeout_s: float = Field(
         default=None,
@@ -171,7 +171,6 @@ class DeploymentSchema(
             "unhealthy. Uses a default if null."
         ),
         gt=0,
-        alias="_health_check_timeout_s",
     )
     ray_actor_options: RayActorOptionsSchema = Field(
         default=None, description="Options set for each replica actor."
@@ -224,6 +223,7 @@ class DeploymentSchema(
         return v
 
 
+@PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     import_path: str = Field(
         default=None,
@@ -243,6 +243,23 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
             "The runtime_env that the deployment graph will be run in. "
             "Per-deployment runtime_envs will inherit from this. working_dir "
             "and py_modules may contain only remote URIs."
+        ),
+    )
+    host: str = Field(
+        default="0.0.0.0",
+        description=(
+            "Host for HTTP servers to listen on. Defaults to "
+            '"0.0.0.0", which exposes Serve publicly. Cannot be updated once '
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new host instead."
+        ),
+    )
+    port: int = Field(
+        default=8000,
+        description=(
+            "Port for HTTP server. Defaults to 8000. Cannot be updated once "
+            "your Serve application has started running. The Serve application "
+            "must be shut down and restarted with the new port instead."
         ),
     )
     deployments: List[DeploymentSchema] = Field(
@@ -301,7 +318,21 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return v
 
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty app schema dictionary.
 
+        Schema can be used as a representation of an empty Serve config.
+        """
+
+        return {
+            "import_path": "",
+            "runtime_env": {},
+            "deployments": [],
+        }
+
+
+@PublicAPI(stability="beta")
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
     app_status: ApplicationStatusInfo = Field(
         ...,
@@ -321,7 +352,25 @@ class ServeStatusSchema(BaseModel, extra=Extra.forbid):
         ),
     )
 
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty status schema dictionary.
 
+        Schema represents Serve status for a Ray cluster where Serve hasn't
+        started yet.
+        """
+
+        return {
+            "app_status": {
+                "status": ApplicationStatus.NOT_STARTED.value,
+                "message": "",
+                "deployment_timestamp": 0,
+            },
+            "deployment_statuses": [],
+        }
+
+
+@DeveloperAPI
 def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
 
     return ServeStatusSchema(

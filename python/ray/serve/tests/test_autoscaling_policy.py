@@ -7,20 +7,22 @@ from unittest import mock
 from typing import List, Iterable
 
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.autoscaling_policy import (
+from ray.serve._private.autoscaling_policy import (
     BasicAutoscalingPolicy,
     calculate_desired_num_replicas,
 )
-from ray.serve.common import DeploymentInfo
-from ray.serve.deployment_state import ReplicaState
+from ray.serve._private.common import DeploymentInfo
+from ray.serve._private.deployment_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
-from ray.serve.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
 
 import ray
 from ray import serve
 from ray.serve.generated.serve_pb2 import DeploymentRouteList
+
+import numpy as np
 
 
 class TestCalculateDesiredNumReplicas:
@@ -177,7 +179,7 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": min_replicas,
             "max_replicas": 3,
@@ -187,7 +189,7 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -195,12 +197,11 @@ def test_e2e_basic_scale_up_down(min_replicas, serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    handle = A.get_handle()
     [handle.remote() for _ in range(100)]
 
     # scale up one more replica from min_replicas
@@ -223,7 +224,7 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 2,
@@ -233,7 +234,7 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -241,12 +242,11 @@ def test_e2e_basic_scale_up_down_with_0_replica(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    handle = A.get_handle()
     [handle.remote() for _ in range(100)]
 
     # scale up one more replica from min_replicas
@@ -270,7 +270,7 @@ def test_initial_num_replicas(mock, serve_instance):
     """
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "min_replicas": 2,
             "max_replicas": 4,
         },
@@ -280,7 +280,7 @@ def test_initial_num_replicas(mock, serve_instance):
         def __call__(self):
             return "ok!"
 
-    A.deploy()
+    serve.run(A.bind())
 
     controller = serve_instance._controller
     assert get_num_running_replicas(controller, A) == 2
@@ -511,10 +511,7 @@ def test_imbalanced_replicas(ongoing_requests):
     # Check that as long as the average number of ongoing requests equals
     # the target_num_ongoing_requests_per_replica, the number of replicas
     # stays the same
-    if (
-        sum(ongoing_requests) / len(ongoing_requests)
-        == config.target_num_ongoing_requests_per_replica
-    ):
+    if np.mean(ongoing_requests) == config.target_num_ongoing_requests_per_replica:
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4,
@@ -524,10 +521,7 @@ def test_imbalanced_replicas(ongoing_requests):
 
     # Check downscaling behavior when average number of requests
     # is lower than target_num_ongoing_requests_per_replica
-    elif (
-        sum(ongoing_requests) / len(ongoing_requests)
-        < config.target_num_ongoing_requests_per_replica
-    ):
+    elif np.mean(ongoing_requests) < config.target_num_ongoing_requests_per_replica:
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=ongoing_requests,
             curr_target_num_replicas=4,
@@ -535,8 +529,7 @@ def test_imbalanced_replicas(ongoing_requests):
         )
 
         if (
-            config.target_num_ongoing_requests_per_replica
-            - sum(ongoing_requests) / len(ongoing_requests)
+            config.target_num_ongoing_requests_per_replica - np.mean(ongoing_requests)
             <= 1
         ):
             # Autoscaling uses a ceiling operator, which means a slightly low
@@ -589,7 +582,7 @@ def test_e2e_bursty(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 2,
@@ -599,7 +592,7 @@ def test_e2e_bursty(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -607,12 +600,11 @@ def test_e2e_bursty(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    handle = A.get_handle()
     [handle.remote() for _ in range(100)]
 
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 2)
@@ -647,7 +639,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 20,
@@ -657,7 +649,7 @@ def test_e2e_intermediate_downscaling(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -665,12 +657,12 @@ def test_e2e_intermediate_downscaling(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
 
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    handle = A.get_handle()
+    A.get_handle()
     [handle.remote() for _ in range(50)]
 
     wait_for_condition(
@@ -702,7 +694,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 10,
@@ -712,7 +704,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -720,7 +712,7 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
         def __call__(self):
             ray.get(signal.wait.remote())
 
-    A.deploy()
+    handle = serve.run(A.bind())
     print("Deployed A with min_replicas 1 and max_replicas 10.")
 
     controller = serve_instance._controller
@@ -728,7 +720,6 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
 
     assert get_num_running_replicas(controller, A) == 0
 
-    handle = A.get_handle()
     [handle.remote() for _ in range(400)]
     print("Issued 400 requests.")
 
@@ -742,17 +733,19 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     time.sleep(3)
     print("Issued 458 requests. Request routing in-progress.")
 
-    A.options(
-        _autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 2,
-            "max_replicas": 20,
-            "look_back_period_s": 0.2,
-            "downscale_delay_s": 0.2,
-            "upscale_delay_s": 0.2,
-        },
-        version="v1",
-    ).deploy()
+    serve.run(
+        A.options(
+            autoscaling_config={
+                "metrics_interval_s": 0.1,
+                "min_replicas": 2,
+                "max_replicas": 20,
+                "look_back_period_s": 0.2,
+                "downscale_delay_s": 0.2,
+                "upscale_delay_s": 0.2,
+            },
+            version="v1",
+        ).bind()
+    )
     print("Redeployed A.")
 
     wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 20)
@@ -774,17 +767,19 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     assert get_deployment_start_time(controller, A) == start_time
 
     # scale down to 0
-    A.options(
-        _autoscaling_config={
-            "metrics_interval_s": 0.1,
-            "min_replicas": 0,
-            "max_replicas": 20,
-            "look_back_period_s": 0.2,
-            "downscale_delay_s": 0.2,
-            "upscale_delay_s": 0.2,
-        },
-        version="v1",
-    ).deploy()
+    serve.run(
+        A.options(
+            autoscaling_config={
+                "metrics_interval_s": 0.1,
+                "min_replicas": 0,
+                "max_replicas": 20,
+                "look_back_period_s": 0.2,
+                "downscale_delay_s": 0.2,
+                "upscale_delay_s": 0.2,
+            },
+            version="v1",
+        ).bind()
+    )
     print("Redeployed A.")
 
     wait_for_condition(lambda: get_num_running_replicas(controller, A) < 1)
@@ -802,7 +797,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     signal = SignalActor.remote()
 
     @serve.deployment(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 0,
             "max_replicas": 10,
@@ -812,7 +807,7 @@ def test_e2e_raise_min_replicas(serve_instance):
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     )
@@ -839,7 +834,7 @@ def test_e2e_raise_min_replicas(serve_instance):
     first_deployment_replicas = get_running_replica_tags(controller, A)
 
     A.options(
-        _autoscaling_config={
+        autoscaling_config={
             "metrics_interval_s": 0.1,
             "min_replicas": 2,
             "max_replicas": 10,
@@ -847,7 +842,7 @@ def test_e2e_raise_min_replicas(serve_instance):
             "downscale_delay_s": 0.2,
             "upscale_delay_s": 0.2,
         },
-        _graceful_shutdown_timeout_s=1,
+        graceful_shutdown_timeout_s=1,
         max_concurrent_queries=1000,
         version="v1",
     ).deploy()

@@ -1,6 +1,3 @@
-from pathlib import Path
-import re
-
 import gym
 import logging
 import importlib.util
@@ -108,53 +105,6 @@ class WorkerSet:
             self._local_worker = None
             if num_workers == 0:
                 local_worker = True
-            if (
-                (
-                    isinstance(trainer_config["input"], str)
-                    or isinstance(trainer_config["input"], list)
-                )
-                and ("d4rl" not in trainer_config["input"])
-                and (not "sampler" == trainer_config["input"])
-                and (not "dataset" == trainer_config["input"])
-                and (
-                    not (
-                        isinstance(trainer_config["input"], str)
-                        and registry_contains_input(trainer_config["input"])
-                    )
-                )
-                and (
-                    not (
-                        isinstance(trainer_config["input"], str)
-                        and self._valid_module(trainer_config["input"])
-                    )
-                )
-            ):
-                paths = trainer_config["input"]
-                if isinstance(paths, str):
-                    inputs = Path(paths).absolute()
-                    if inputs.is_dir():
-                        paths = list(inputs.glob("*.json")) + list(inputs.glob("*.zip"))
-                        paths = [str(path) for path in paths]
-                    else:
-                        paths = [paths]
-                ends_with_zip_or_json = all(
-                    re.search("\\.zip$", path) or re.search("\\.json$", path)
-                    for path in paths
-                )
-                ends_with_parquet = all(
-                    re.search("\\.parquet$", path) for path in paths
-                )
-                trainer_config["input"] = "dataset"
-                input_config = {"paths": paths}
-                if ends_with_zip_or_json:
-                    input_config["format"] = "json"
-                elif ends_with_parquet:
-                    input_config["format"] = "parquet"
-                else:
-                    raise ValueError(
-                        "Input path must end with .zip, .parquet, or .json"
-                    )
-                trainer_config["input_config"] = input_config
             self._local_config = merge_dicts(
                 trainer_config,
                 {"tf_session_args": trainer_config["local_tf_session_args"]},
@@ -164,7 +114,7 @@ class WorkerSet:
                 # Create the set of dataset readers to be shared by all the
                 # rollout workers.
                 self._ds, self._ds_shards = get_dataset_and_shards(
-                    trainer_config, num_workers, local_worker
+                    trainer_config, num_workers
                 )
             else:
                 self._ds = None
@@ -316,6 +266,7 @@ class WorkerSet:
                 for i in range(num_workers)
             ]
         )
+
         # Validate here, whether all remote workers have been constructed properly
         # and are "up and running". If not, the following will throw a RayError
         # which needs to be handled by this WorkerSet's owner (usually
@@ -643,7 +594,7 @@ class WorkerSet:
             # Input dataset shards should have already been prepared.
             # We just need to take the proper shard here.
             input_creator = lambda ioctx: DatasetReader(
-                ioctx, self._ds_shards[worker_index]
+                self._ds_shards[worker_index], ioctx
             )
         # Dict: Mix of different input methods with different ratios.
         elif isinstance(config["input"], dict):
@@ -742,7 +693,6 @@ class WorkerSet:
             log_level=config["log_level"],
             callbacks=config["callbacks"],
             input_creator=input_creator,
-            off_policy_estimation_methods=config["off_policy_estimation_methods"],
             output_creator=output_creator,
             remote_worker_envs=config["remote_worker_envs"],
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],

@@ -16,6 +16,7 @@ import io.ray.serve.deployment.DeploymentCreator;
 import io.ray.serve.deployment.DeploymentRoute;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
+import io.ray.serve.poll.LongPollClientFactory;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.CommonUtil;
@@ -26,13 +27,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Ray Serve global API. TODO: will be riched in the Java SDK/API PR. */
 public class Serve {
-
   private static final Logger LOGGER = LoggerFactory.getLogger(Serve.class);
 
   private static ReplicaContext INTERNAL_REPLICA_CONTEXT;
@@ -50,13 +49,11 @@ public class Serve {
    *     instance will live on the Ray cluster until it is explicitly stopped with Serve.shutdown().
    * @param dedicatedCpu Whether to reserve a CPU core for the internal Serve controller actor.
    *     Defaults to False.
-   * @param checkpointPath
    * @param config Configuration options for Serve.
    * @return
    */
   public static synchronized ServeControllerClient start(
-      boolean detached, boolean dedicatedCpu, String checkpointPath, Map<String, String> config) {
-
+      boolean detached, boolean dedicatedCpu, Map<String, String> config) {
     // Initialize ray if needed.
     if (!Ray.isInitialized()) {
       System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);
@@ -66,7 +63,6 @@ public class Serve {
     try {
       ServeControllerClient client = getGlobalClient(true);
       LOGGER.info("Connecting to existing Serve app in namespace {}", Constants.SERVE_NAMESPACE);
-      checkCheckpointPath(client, checkpointPath);
       return client;
     } catch (RayServeException | IllegalStateException e) {
       LOGGER.info("There is no instance running on this Ray cluster. A new one will be started.");
@@ -78,9 +74,6 @@ public class Serve {
             : CommonUtil.formatActorName(
                 Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
 
-    if (StringUtils.isBlank(checkpointPath)) {
-      checkpointPath = Constants.DEFAULT_CHECKPOINT_PATH;
-    }
     int httpPort =
         Optional.ofNullable(config)
             .map(m -> m.get(RayServeConfig.PROXY_HTTP_PORT))
@@ -90,7 +83,6 @@ public class Serve {
         Ray.actor(
                 PyActorClass.of("ray.serve.controller", "ServeControllerAvatar"),
                 controllerName,
-                checkpointPath,
                 detached,
                 dedicatedCpu,
                 httpPort)
@@ -136,23 +128,12 @@ public class Serve {
     return client;
   }
 
-  private static void checkCheckpointPath(ServeControllerClient client, String checkpointPath) {
-    if (StringUtils.isNotBlank(checkpointPath)
-        && !StringUtils.equals(checkpointPath, client.getCheckpointPath())) {
-      LOGGER.warn(
-          "The new client checkpoint path '{}' is different from the existing one '{}'. The new checkpoint path is ignored.",
-          checkpointPath,
-          client.getCheckpointPath());
-    }
-  }
-
   /**
    * Completely shut down the connected Serve instance.
    *
    * <p>Shuts down all processes and deletes all state associated with the instance.
    */
   public static void shutdown() {
-
     ServeControllerClient client = null;
     try {
       client = getGlobalClient();
@@ -163,7 +144,10 @@ public class Serve {
     }
 
     client.shutdown();
+    LongPollClientFactory.stop();
+    LongPollClientFactory.clearAllCache();
     setGlobalClient(null);
+    setInternalReplicaContext(null);
   }
 
   /**
@@ -263,7 +247,6 @@ public class Serve {
    * @return
    */
   public static ServeControllerClient connect() {
-
     // Initialize ray if needed.
     if (!Ray.isInitialized()) {
       System.setProperty("ray.job.namespace", Constants.SERVE_NAMESPACE);

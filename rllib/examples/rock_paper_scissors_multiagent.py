@@ -13,11 +13,11 @@ from pettingzoo.classic import rps_v2
 import random
 
 import ray
-from ray import tune
+from ray import air, tune
 from ray.rllib.algorithms.pg import (
     PG,
-    PGEagerTFPolicy,
-    PGStaticGraphTFPolicy,
+    PGTF2Policy,
+    PGTF1Policy,
     PGTorchPolicy,
 )
 from ray.rllib.algorithms.registry import get_algorithm_class
@@ -76,7 +76,9 @@ def run_same_policy(args, stop):
         "framework": args.framework,
     }
 
-    results = tune.run("PG", config=config, stop=stop, verbose=1)
+    results = tune.Tuner(
+        "PG", param_space=config, run_config=air.RunConfig(stop=stop, verbose=1)
+    ).fit()
 
     if args.as_test:
         # Check vs 0.0 as we are playing a zero-sum game.
@@ -155,9 +157,9 @@ def run_with_custom_entropy_loss(args, stop):
 
     policy_cls = {
         "torch": PGTorchPolicy,
-        "tf": PGStaticGraphTFPolicy,
-        "tf2": PGEagerTFPolicy,
-        "tfe": PGEagerTFPolicy,
+        "tf": PGTF1Policy,
+        "tf2": PGTF2Policy,
+        "tfe": PGTF2Policy,
     }[args.framework]
 
     class EntropyPolicy(policy_cls):

@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
 import torch
@@ -7,7 +7,8 @@ import torch
 from ray.util import log_once
 from ray.train.predictor import DataBatchType
 from ray.air.checkpoint import Checkpoint
-from ray.train.torch.utils import load_checkpoint
+from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
+from ray.train.torch.torch_checkpoint import TorchCheckpoint
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.util.annotations import PublicAPI
 
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class TorchPredictor(DLPredictor):
     """A predictor for PyTorch models.
 
@@ -37,7 +38,6 @@ class TorchPredictor(DLPredictor):
     ):
         self.model = model
         self.model.eval()
-        self.preprocessor = preprocessor
 
         # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
         self.use_gpu = use_gpu
@@ -58,6 +58,14 @@ class TorchPredictor(DLPredictor):
                 "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
                 "enable GPU prediction."
             )
+
+        super().__init__(preprocessor)
+
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}(model={self.model!r}, "
+            f"preprocessor={self._preprocessor!r}, use_gpu={self.use_gpu!r})"
+        )
 
     @classmethod
     def from_checkpoint(
@@ -80,32 +88,50 @@ class TorchPredictor(DLPredictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
         """
-        model, preprocessor = load_checkpoint(checkpoint, model)
-        return TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
+        checkpoint = TorchCheckpoint.from_checkpoint(checkpoint)
+        model = checkpoint.get_model(model)
+        preprocessor = checkpoint.get_preprocessor()
+        return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
-    def _array_to_tensor(
-        self, numpy_array: np.ndarray, dtype: torch.dtype
-    ) -> torch.Tensor:
-        torch_tensor = torch.from_numpy(numpy_array).to(dtype)
-        if self.use_gpu:
-            torch_tensor = torch_tensor.to(device="cuda")
-
-        # Off-the-shelf torch Modules expect the input size to have at least 2
-        # dimensions (batch_size, feature_size). If the tensor for the column
-        # is flattened, then we unqueeze it to add an extra dimension.
-        if len(torch_tensor.size()) == 1:
-            torch_tensor = torch_tensor.unsqueeze(dim=1)
-
-        return torch_tensor
-
-    def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
-        return tensor.cpu().detach().numpy()
-
-    def _model_predict(
+    def call_model(
         self, tensor: Union[torch.Tensor, Dict[str, torch.Tensor]]
-    ) -> Union[
-        torch.Tensor, Dict[str, torch.Tensor], List[torch.Tensor], Tuple[torch.Tensor]
-    ]:
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        """Runs inference on a single batch of tensor data.
+
+        This method is called by `TorchPredictor.predict` after converting the
+        original data batch to torch tensors.
+
+        Override this method to add custom logic for processing the model input or
+        output.
+
+        Example:
+
+            .. code-block:: python
+
+                # List outputs are not supported by default TorchPredictor.
+                class MyModel(torch.nn.Module):
+                    def forward(self, input_tensor):
+                        return [input_tensor, input_tensor]
+
+                # Use a custom predictor to format model output as a dict.
+                class CustomPredictor(TorchPredictor):
+                    def call_model(self, tensor):
+                        model_output = super().call_model(tensor)
+                        return {
+                            str(i): model_output[i] for i in range(len(model_output))
+                        }
+
+                predictor = CustomPredictor(model=MyModel())
+                predictions = predictor.predict(data_batch)
+
+        Args:
+            tensor: A batch of data to predict on, represented as either a single
+                PyTorch tensor or for multi-input models, a dictionary of tensors.
+
+        Returns:
+            The model outputs, either as a single tensor or a dictionary of tensors.
+
+        """
         with torch.no_grad():
             output = self.model(tensor)
         return output
@@ -174,3 +200,26 @@ class TorchPredictor(DLPredictor):
                 input type.
         """
         return super(TorchPredictor, self).predict(data=data, dtype=dtype)
+
+    def _arrays_to_tensors(
+        self,
+        numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
+        dtypes: Union[torch.dtype, Dict[str, torch.dtype]],
+    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        return convert_ndarray_batch_to_torch_tensor_batch(
+            numpy_arrays,
+            dtypes=dtypes,
+            device="cuda" if self.use_gpu else None,
+        )
+
+    def _tensor_to_array(self, tensor: torch.Tensor) -> np.ndarray:
+        if not isinstance(tensor, torch.Tensor):
+            raise ValueError(
+                "Expected the model to return either a torch.Tensor or a "
+                f"dict of torch.Tensor, but got {type(tensor)} instead. "
+                f"To support models with different output types, subclass "
+                f"TorchPredictor and override the `call_model` method to "
+                f"process the output into either torch.Tensor or Dict["
+                f"str, torch.Tensor]."
+            )
+        return tensor.cpu().detach().numpy()

@@ -1,15 +1,13 @@
 import json
 import logging
+from datetime import datetime
 from enum import Enum, unique
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import click
 import yaml
 
-import ray
-import ray._private.ray_constants as ray_constants
-import ray._private.services as services
-from ray._private.gcs_utils import GcsClient
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.state.api import (
     StateApiClient,
     summarize_actors,
@@ -23,8 +21,11 @@ from ray.experimental.state.common import (
     ListApiOptions,
     PredicateType,
     StateResource,
+    StateSchema,
     SupportedFilterType,
+    resource_to_schema,
 )
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -108,42 +109,70 @@ def _get_available_resources(
     ]
 
 
-def get_api_server_url() -> str:
-    address = services.canonicalize_bootstrap_address(None)
-    gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    api_server_url = ray._private.utils.internal_kv_get_with_retry(
-        gcs_client,
-        ray_constants.DASHBOARD_ADDRESS,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-        num_retries=20,
-    )
+def get_table_output(state_data: List, schema: StateSchema) -> str:
+    """Display the table output.
 
-    if api_server_url is None:
-        raise ValueError(
-            (
-                "Couldn't obtain the API server address from GCS. It is likely that "
-                "the GCS server is down. Check gcs_server.[out | err] to see if it is "
-                "still alive."
-            )
-        )
+    The table headers are ordered as the order defined in the dataclass of
+    `StateSchema`. For example,
 
-    api_server_url = f"http://{api_server_url.decode()}"
-    return api_server_url
+    @dataclass
+    class A(StateSchema):
+        a: str
+        b: str
+        c: str
+
+    will create headers
+    A B C
+    -----
+
+    Args:
+        state_data: A list of state data.
+        schema: The schema for the corresponding resource.
+
+    Returns:
+        The table formatted string.
+    """
+    time = datetime.now()
+    header = "=" * 8 + f" List: {time} " + "=" * 8
+    headers = []
+    table = []
+    cols = schema.list_columns()
+    for data in state_data:
+        for key, val in data.items():
+            if isinstance(val, dict):
+                data[key] = yaml.dump(val, indent=2)
+        keys = set(data.keys())
+        headers = []
+        for col in cols:
+            if col in keys:
+                headers.append(col.upper())
+        table.append([data[header.lower()] for header in headers])
+    return f"""
+{header}
+Stats:
+------------------------------
+Total: {len(state_data)}
+
+Table:
+------------------------------
+{tabulate(table, headers=headers, showindex=True, tablefmt="plain", floatfmt=".3f")}
+"""
 
 
 def output_with_format(
-    state_data: Union[dict, list], format: AvailableFormat = AvailableFormat.DEFAULT
-):
-    # Default is yaml.
+    state_data: List,
+    *,
+    schema: Optional[StateSchema],
+    format: AvailableFormat = AvailableFormat.DEFAULT,
+) -> str:
     if format == AvailableFormat.DEFAULT:
-        return yaml.dump(state_data, indent=4, explicit_start=True)
+        return get_table_output(state_data, schema)
     if format == AvailableFormat.YAML:
         return yaml.dump(state_data, indent=4, explicit_start=True)
     elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
     elif format == AvailableFormat.TABLE:
-        raise NotImplementedError("Table formatter is not implemented yet.")
+        return get_table_output(state_data, schema)
     else:
         raise ValueError(
             f"Unexpected format: {format}. "
@@ -151,26 +180,121 @@ def output_with_format(
         )
 
 
-def format_get_api_output(
-    state_data: Union[dict, list],
-    id: str,
-    format: AvailableFormat = AvailableFormat.DEFAULT,
-):
+def format_summary_output(state_data: Dict, *, resource: StateResource) -> str:
     if len(state_data) == 0:
+        return "No resource in the cluster"
+
+    # Parse the data.
+    cluster_data = state_data["cluster"]
+    summaries = cluster_data["summary"]
+    summary_by = cluster_data["summary_by"]
+    del cluster_data["summary_by"]
+    del cluster_data["summary"]
+
+    cluster_info_table = yaml.dump(cluster_data, indent=2)
+
+    # Create a table.
+    table = []
+    headers = []
+    for summary in summaries.values():
+        # Convert dict to yaml for better formatting.
+        for key, val in summary.items():
+            if isinstance(val, dict):
+                summary[key] = yaml.dump(val, indent=2)
+
+        headers = sorted([key.upper() for key in summary.keys()])
+        table.append([summary[header.lower()] for header in headers])
+
+    summary_table = tabulate(
+        table, headers=headers, showindex=True, tablefmt="plain", numalign="left"
+    )
+
+    time = datetime.now()
+    header = "=" * 8 + f" {resource.value.capitalize()} Summary: {time} " + "=" * 8
+    return f"""
+{header}
+Stats:
+------------------------------------
+{cluster_info_table}
+
+Table (group by {summary_by}):
+------------------------------------
+{summary_table}
+"""
+
+
+def format_object_summary_output(state_data: Dict) -> str:
+    if len(state_data) == 0:
+        return "No resource in the cluster"
+
+    # Parse the data.
+    cluster_data = state_data["cluster"]
+    summaries = cluster_data["summary"]
+    summary_by = cluster_data["summary_by"]
+    del cluster_data["summary_by"]
+    del cluster_data["summary"]
+
+    cluster_info_table = yaml.dump(cluster_data, indent=2)
+
+    # Create a table per callsite.
+    tables = []
+    for callsite, summary in summaries.items():
+        # Convert dict to yaml for better formatting.
+        for key, val in summary.items():
+            if isinstance(val, dict):
+                summary[key] = yaml.dump(val, indent=2)
+
+        table = []
+        headers = sorted([key.upper() for key in summary.keys()])
+        table.append([summary[header.lower()] for header in headers])
+        table_for_callsite = tabulate(
+            table, headers=headers, showindex=True, numalign="left"
+        )
+
+        # Format callsite. | is a separator for ray callsite.
+        formatted_callsite = callsite.replace("|", "\n|")
+        tables.append(f"{formatted_callsite}\n{table_for_callsite}")
+
+    time = datetime.now()
+    header = "=" * 8 + f" Object Summary: {time} " + "=" * 8
+    table_string = "\n\n\n\n".join(tables)
+    return f"""
+{header}
+Stats:
+------------------------------------
+{cluster_info_table}
+
+Table (group by {summary_by})
+------------------------------------
+{table_string}
+"""
+
+
+def format_get_api_output(
+    state_data: Optional[Dict],
+    id: str,
+    *,
+    schema: StateSchema,
+    format: AvailableFormat = AvailableFormat.YAML,
+) -> str:
+    if not state_data or len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
-    return output_with_format(state_data, format)
+    return output_with_format(state_data, schema=schema, format=format)
 
 
 def format_list_api_output(
-    state_data: Union[dict, list], *, format: AvailableFormat = AvailableFormat.DEFAULT
-):
+    state_data: List[Dict],
+    *,
+    schema: StateSchema,
+    format: AvailableFormat = AvailableFormat.DEFAULT,
+) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    return output_with_format(state_data, format)
+    return output_with_format(state_data, schema=schema, format=format)
 
 
-def _should_explain(format: AvailableFormat):
+def _should_explain(format: AvailableFormat) -> bool:
     # If the format is json or yaml, it should not print stats because
     # users don't want additional strings.
     return format == AvailableFormat.DEFAULT or format == AvailableFormat.TABLE
@@ -186,7 +310,7 @@ timeout_option = click.option(
 )
 address_option = click.option(
     "--address",
-    default="",
+    default=None,
     help=(
         "The address of Ray API server. If not provided, it will be configured "
         "automatically from querying the GCS server."
@@ -194,9 +318,6 @@ address_option = click.option(
 )
 
 
-# TODO(rickyyx): Once we have other APIs stablized, we should refactor them to
-# reuse some of the options, e.g. `--address`.
-# list/get/summary could all go under a single command group for options sharing.
 @click.command()
 @click.argument(
     "resource",
@@ -213,42 +334,55 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
-def get(
+@PublicAPI(stability="alpha")
+def ray_get(
     resource: str,
     id: str,
     address: Optional[str],
     timeout: float,
 ):
-    """
-    Get RESOURCE by ID.
+    """Get a state of a given resource by ID.
 
-    RESOURCE is the name of the possible resources from `StateResource`,
-    i.e. 'workers', 'actors', 'nodes', ...
+    We currently DO NOT support get by id for jobs and runtime-envs
 
-    NOTE: We currently DO NOT support get by id for jobs and runtime-envs
+    The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
-    Example:
+    For example, the output schema of `ray get tasks <task-id>` is
+    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
 
-    ```
-    ray get nodes <node-id>
-    ray get workers <worker-id>
-    ```
+    Usage:
+
+        Get an actor with actor id <actor-id>
+
+        ```
+        ray get actors <actor-id>
+        ```
+
+        Get a placement group information with <placement-group-id>
+
+        ```
+        ray get placement-groups <placement-group-id>
+        ```
+
+    The API queries one or more components from the cluster to obtain the data.
+    The returned state snapshot could be stale, and it is not guaranteed to return
+    the live data.
+
+    Args:
+        resource: The type of the resource to query.
+        id: The id of the resource.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
     """
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
 
-    # Get the state API server address from ray if not provided by user
-    api_server_address = address if address else get_api_server_url()
-
     # Create the State API server and put it into context
-    logger.debug(f"Create StateApiClient at {api_server_address}...")
-    client = StateApiClient(
-        api_server_address=api_server_address,
-    )
-
-    options = GetApiOptions(
-        timeout=timeout,
-    )
+    logger.debug(f"Create StateApiClient to ray instance at: {address}...")
+    client = StateApiClient(address=address)
+    options = GetApiOptions(timeout=timeout)
 
     # If errors occur, exceptions will be thrown.
     data = client.get(
@@ -260,8 +394,10 @@ def get(
 
     # Print data to console.
     print(
-        format_list_api_output(
+        format_get_api_output(
             state_data=data,
+            id=id,
+            schema=resource_to_schema(resource),
             format=AvailableFormat.YAML,
         )
     )
@@ -288,6 +424,12 @@ def get(
     multiple=True,
 )
 @click.option(
+    "--limit",
+    default=DEFAULT_LIMIT,
+    type=int,
+    help=("Maximum number of entries to return. 100 by default."),
+)
+@click.option(
     "--detail",
     help=(
         "If the flag is set, the output will contain data in more details. "
@@ -299,50 +441,110 @@ def get(
 )
 @timeout_option
 @address_option
-def list(
+@PublicAPI(stability="alpha")
+def ray_list(
     resource: str,
     format: str,
-    detail: bool,
     filter: List[str],
+    limit: int,
+    detail: bool,
     timeout: float,
     address: str,
 ):
-    """
-    List RESOURCE used by Ray.
+    """List all states of a given resource.
 
-    RESOURCE is the name of the possible resources from `StateResource`,
-    i.e. 'jobs', 'actors', 'nodes', ...
+    Normally, summary APIs are recommended before listing all resources.
 
+    The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
+
+    For example, the output schema of `ray list tasks` is
+    :ref:`ray.experimental.state.common.TaskState <state-api-schema-task>`.
+
+    Usage:
+
+        List all actor information from the cluster.
+
+        ```
+        ray list actors
+        ```
+
+        List 50 actors from the cluster. The sorting order cannot be controlled.
+
+        ```
+        ray list actors --limit 50
+        ```
+
+        List 10 actors with state PENDING.
+
+        ```
+        ray list actors --limit 10 --filter "state=PENDING"
+        ```
+
+        List actors with yaml format.
+
+        ```
+        ray list actors --format yaml
+        ```
+
+        List actors with details. When --detail is specified, it might query
+        more data sources to obtain data in details.
+
+        ```
+        ray list actors --detail
+        ```
+
+    The API queries one or more components from the cluster to obtain the data.
+    The returned state snapshot could be stale, and it is not guaranteed to return
+    the live data.
+
+    The API can return partial or missing output upon the following scenarios.
+
+    - When the API queries more than 1 component, if some of them fail,
+      the API will return the partial result (with a suppressible warning).
+    - When the API returns too many entries, the API
+      will truncate the output. Currently, truncated data cannot be
+      selected by users.
+
+    Args:
+        resource: The type of the resource to query.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
     """
     # All resource names use '_' rather than '-'. But users options have '-'
     resource = StateResource(resource.replace("-", "_"))
     format = AvailableFormat(format)
 
-    # Get the state API server address from ray if not provided by user
-    api_server_address = address if address else get_api_server_url()
-
     # Create the State API server and put it into context
-    logger.debug(f"Create StateApiClient at {api_server_address}...")
-    client = StateApiClient(
-        api_server_address=api_server_address,
-    )
+    client = StateApiClient(address=address)
 
     filter = [_parse_filter(f) for f in filter]
 
     options = ListApiOptions(
-        limit=DEFAULT_LIMIT,  # TODO(rickyyx): parameters discussion to be finalized
+        limit=limit,
         timeout=timeout,
         filters=filter,
         detail=detail,
     )
 
     # If errors occur, exceptions will be thrown. Empty data indicate successful query.
-    data = client.list(resource, options=options, _explain=_should_explain(format))
+    data = client.list(
+        resource,
+        options=options,
+        raise_on_missing_output=False,
+        _explain=_should_explain(format),
+    )
+
+    # If --detail is given, the default formatting is yaml.
+    if detail and format == AvailableFormat.DEFAULT:
+        format = AvailableFormat.YAML
 
     # Print data to console.
     print(
         format_list_api_output(
             state_data=data,
+            schema=resource_to_schema(resource),
             format=format,
         )
     )
@@ -350,25 +552,39 @@ def list(
 
 @click.group("summary")
 @click.pass_context
+@PublicAPI(stability="alpha")
 def summary_state_cli_group(ctx):
-    ctx.ensure_object(dict)
-    ctx.obj["api_server_url"] = get_api_server_url()
+    """Return the summarized information of a given resource."""
+    pass
 
 
 @summary_state_cli_group.command(name="tasks")
 @timeout_option
 @address_option
 @click.pass_context
+@PublicAPI(stability="alpha")
 def task_summary(ctx, timeout: float, address: str):
-    address = address or ctx.obj["api_server_url"]
+    """Summarize the task state of the cluster.
+
+    By default, the output contains the information grouped by
+    task function names.
+
+    The output schema is
+    :ref:`ray.experimental.state.common.TaskSummaries <state-api-schema-task-summary>`.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
     print(
-        output_with_format(
+        format_summary_output(
             summarize_tasks(
                 address=address,
                 timeout=timeout,
+                raise_on_missing_output=False,
                 _explain=True,
             ),
-            format=AvailableFormat.YAML,
+            resource=StateResource.TASKS,
         )
     )
 
@@ -377,16 +593,30 @@ def task_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
+@PublicAPI(stability="alpha")
 def actor_summary(ctx, timeout: float, address: str):
-    address = address or ctx.obj["api_server_url"]
+    """Summarize the actor state of the cluster.
+
+    By default, the output contains the information grouped by
+    actor class names.
+
+    The output schema is
+    :ref:`ray.experimental.state.common.ActorSummaries
+    <state-api-schema-actor-summary>`.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
     print(
-        output_with_format(
+        format_summary_output(
             summarize_actors(
                 address=address,
                 timeout=timeout,
+                raise_on_missing_output=False,
                 _explain=True,
             ),
-            format=AvailableFormat.YAML,
+            resource=StateResource.ACTORS,
         )
     )
 
@@ -395,15 +625,47 @@ def actor_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
+@PublicAPI(stability="alpha")
 def object_summary(ctx, timeout: float, address: str):
-    address = address or ctx.obj["api_server_url"]
+    """Summarize the object state of the cluster.
+
+    The API is recommended when debugging memory leaks.
+    See :ref:`Debugging with Ray Memory <debug-with-ray-memory>` for more details.
+    (Note that this command is almost equivalent to `ray memory`, but it returns
+    easier-to-understand output).
+
+    By default, the output contains the information grouped by
+    object callsite. Note that the callsite is not collected and
+    all data will be aggregated as "disable" callsite if the env var
+    `RAY_record_ref_creation_sites` is not configured. To enable the
+    callsite collection, set the following environment variable when
+    starting Ray.
+
+    Example:
+
+        ```
+        RAY_record_ref_creation_sites=1 ray start --head
+        ```
+
+        ```
+        RAY_record_ref_creation_sites=1 ray_script.py
+        ```
+
+    The output schema is
+    :ref:`ray.experimental.state.common.ObjectSummaries
+    <state-api-schema-object-summary>`.
+
+    Raises:
+        :ref:`RayStateApiException <state-api-exceptions>`
+            if the CLI is failed to query the data.
+    """
     print(
-        output_with_format(
+        format_object_summary_output(
             summarize_objects(
                 address=address,
                 timeout=timeout,
+                raise_on_missing_output=False,
                 _explain=True,
             ),
-            format=AvailableFormat.YAML,
         )
     )

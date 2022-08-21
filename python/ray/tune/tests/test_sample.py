@@ -1684,6 +1684,24 @@ class SearchSpaceTest(unittest.TestCase):
 
         from ray.tune.search.hyperopt import HyperOptSearch
 
+        # See if we catch hyperopt errors caused by points to evaluate missing
+        # keys found in space
+        points_to_evaluate_missing_one = [
+            {k: v.sample() for k, v in list(config.items())[:-1]}
+        ]
+        print(f"Points to evaluate: {points_to_evaluate_missing_one}")
+        searcher = HyperOptSearch(points_to_evaluate=points_to_evaluate_missing_one)
+
+        with self.assertRaises(ValueError):
+            tune.run(
+                _mock_objective,
+                config=config,
+                metric="metric",
+                mode="max",
+                search_alg=searcher,
+                num_samples=5,
+            )
+
         return self._testPointsToEvaluate(HyperOptSearch, config)
 
     def testPointsToEvaluateHyperOptNested(self):

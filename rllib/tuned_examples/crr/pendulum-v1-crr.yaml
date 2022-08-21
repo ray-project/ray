@@ -6,7 +6,10 @@ pendulum_crr:
       evaluation/episode_reward_mean: -300
       timesteps_total: 2000000
     config:
-        input: 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
+        input: 'dataset'
+        input_config:         
+            paths: 'tests/data/pendulum/pendulum_replay_v1.1.0.zip'
+            format: 'json'
         framework: torch
         num_workers: 3
         gamma: 0.99
@@ -17,7 +20,7 @@ pendulum_crr:
         actor_hidden_activation: 'relu'
         actor_hiddens: [256, 256]
         actor_lr: 0.0003
-        actions_in_input_normalized: True
+        actions_in_input_normalized: False
         clip_actions: True
         # Q function update setting
         twin_q: True

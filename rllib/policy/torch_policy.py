@@ -143,6 +143,7 @@ class TorchPolicy(Policy):
                 divisibility requirement for sample batches given the Policy.
         """
         self.framework = config["framework"] = "torch"
+        self._loss_initialized = False
         super().__init__(observation_space, action_space, config)
 
         # Create multi-GPU model towers, if necessary.
@@ -752,7 +753,11 @@ class TorchPolicy(Policy):
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
-        # Then the Policy's (NN) weights.
+
+        # Restore glbal timestep.
+        self.global_timestep = state["global_timestep"]
+
+        # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @DeveloperAPI

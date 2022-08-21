@@ -7,7 +7,8 @@ import ray
 from ray import serve
 from ray._private.utils import import_attr
 from ray.serve.drivers import HTTPAdapterFn, SimpleSchemaIngress
-from ray.serve.utils import require_packages
+from ray.serve._private.utils import require_packages
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.train.predictor import Predictor
@@ -45,7 +46,24 @@ def _load_predictor_cls(
     return predictor_cls
 
 
-class BatchingManager:
+def _unpack_tensorarray_from_pandas(output_df: "pd.DataFrame") -> "pd.DataFrame":
+    """Unpack predictor's return value with TensorArray into numpy.
+
+    In dl_predictor.py we return a pd.DataFrame that could have multiple
+    columns but value of each column is a TensorArray. Flatten the
+    TensorArray to list to ensure output is json serializable as http
+    response.
+    """
+    from ray.data.extensions import TensorDtype
+
+    for col in output_df.columns:
+        if isinstance(output_df.dtypes[col], TensorDtype):
+            output_df[col] = output_df[col].to_numpy()
+
+    return output_df
+
+
+class _BatchingManager:
     """A collection of utilities for batching and splitting data."""
 
     @staticmethod
@@ -91,6 +109,9 @@ class BatchingManager:
                 f"The output dataframe should have length divisible by {batch_size}, "
                 f"but Serve got length {len(output_df)}."
             )
+
+        output_df = _unpack_tensorarray_from_pandas(output_df)
+
         return [df.reset_index(drop=True) for df in np.split(output_df, batch_size)]
 
     @staticmethod
@@ -117,7 +138,7 @@ class BatchingManager:
         # Turn dict[str, List[array]] to dict[str, array]
         batched_dict = {}
         for key, list_of_arr in key_to_list.items():
-            arr = BatchingManager.batch_array(list_of_arr)
+            arr = _BatchingManager.batch_array(list_of_arr)
             batched_dict[key] = arr
 
         return batched_dict
@@ -136,7 +157,7 @@ class BatchingManager:
 
         split_list_of_dict = [{} for _ in range(batch_size)]
         for key, result_arr in output_dict.items():
-            split_arrays = BatchingManager.split_array(result_arr, batch_size)
+            split_arrays = _BatchingManager.split_array(result_arr, batch_size)
             # in place update each dictionary with the split array chunk.
             for item, arr in zip(split_list_of_dict, split_arrays):
                 item[key] = arr
@@ -144,6 +165,7 @@ class BatchingManager:
         return split_list_of_dict
 
 
+@PublicAPI(stability="alpha")
 class PredictorWrapper(SimpleSchemaIngress):
     """Serve any Ray AIR predictor from an AIR checkpoint.
 
@@ -200,6 +222,8 @@ class PredictorWrapper(SimpleSchemaIngress):
                 out = self.model.predict(inp, **predict_kwargs)
                 if isinstance(out, ray.ObjectRef):
                     out = await out
+                elif pd is not None and isinstance(out, pd.DataFrame):
+                    out = _unpack_tensorarray_from_pandas(out)
                 return out
 
         else:
@@ -209,11 +233,11 @@ class PredictorWrapper(SimpleSchemaIngress):
             async def predict_impl(inp: Union[List[np.ndarray], List["pd.DataFrame"]]):
                 batch_size = len(inp)
                 if isinstance(inp[0], np.ndarray):
-                    batched = BatchingManager.batch_array(inp)
+                    batched = _BatchingManager.batch_array(inp)
                 elif pd is not None and isinstance(inp[0], pd.DataFrame):
-                    batched = BatchingManager.batch_dataframe(inp)
+                    batched = _BatchingManager.batch_dataframe(inp)
                 elif isinstance(inp[0], dict):
-                    batched = BatchingManager.batch_dict_array(inp)
+                    batched = _BatchingManager.batch_dict_array(inp)
                 else:
                     raise ValueError(
                         "Predictor only accepts numpy array, dataframe, or dict of "
@@ -226,11 +250,11 @@ class PredictorWrapper(SimpleSchemaIngress):
                     out = await out
 
                 if isinstance(out, np.ndarray):
-                    return BatchingManager.split_array(out, batch_size)
+                    return _BatchingManager.split_array(out, batch_size)
                 elif pd is not None and isinstance(out, pd.DataFrame):
-                    return BatchingManager.split_dataframe(out, batch_size)
+                    return _BatchingManager.split_dataframe(out, batch_size)
                 elif isinstance(out, dict):
-                    return BatchingManager.split_dict_array(out, batch_size)
+                    return _BatchingManager.split_dict_array(out, batch_size)
                 elif isinstance(out, list) and len(out) == batch_size:
                     return out
                 else:

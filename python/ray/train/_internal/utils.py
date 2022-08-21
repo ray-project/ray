@@ -18,10 +18,11 @@ from typing import (
 )
 
 import ray
+from ray.air._internal.util import find_free_port
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
-from ray.util.ml_utils.util import find_free_port
+
 
 T = TypeVar("T")
 

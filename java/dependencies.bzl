@@ -4,6 +4,8 @@ load("@rules_jvm_external//:specs.bzl", "maven")
 def gen_java_deps():
     maven_install(
         artifacts = [
+            "com.fasterxml.jackson.core:jackson-databind:2.13.3",
+            "com.github.java-json-tools:json-schema-validator:2.2.14",
             "com.google.code.gson:gson:2.8.5",
             "com.google.guava:guava:30.0-jre",
             "com.google.protobuf:protobuf-java:3.19.4",
@@ -28,6 +30,7 @@ def gen_java_deps():
             "net.java.dev.jna:jna:5.8.0",
             "org.apache.httpcomponents.client5:httpclient5:5.0.3",
             "org.apache.httpcomponents.core5:httpcore5:5.0.2",
+            "org.apache.httpcomponents.client5:httpclient5-fluent:5.0.3",
             maven.artifact(
                 group = "org.testng",
                 artifact = "testng",

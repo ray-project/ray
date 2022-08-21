@@ -19,10 +19,22 @@ py_test(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_dataset_formats",
+    size = "large",
+    srcs = ["tests/test_dataset_formats.py"],
+    data = glob(["tests/image-folder/**/*"]),
+    tags = ["team:core", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test_module_list(
   files = glob(
     include=["tests/test_*.py"],
-    exclude=["tests/test_preprocessors.py"]
+    exclude=[
+        "tests/test_preprocessors.py",
+        "tests/test_dataset_formats.py",
+    ],
   ),
   size = "large",
   tags = ["team:core", "exclusive"],

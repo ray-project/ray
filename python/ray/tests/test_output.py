@@ -14,6 +14,21 @@ from ray._private.test_utils import (
 )
 
 
+def test_logger_config():
+    script = """
+import ray
+
+ray.init(num_cpus=1)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "INFO worker.py:" in err_str, err_str
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_spill_logs():
     script = """
@@ -44,10 +59,15 @@ def _hook(env):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_runtime_env_hook():
-    script = """
+@pytest.mark.parametrize("skip_hook", [True, False])
+def test_runtime_env_hook(skip_hook):
+    ray_init_snippet = "ray.init(_skip_env_hook=True)" if skip_hook else ""
+
+    script = f"""
 import ray
 import os
+
+{ray_init_snippet}
 
 @ray.remote
 def f():
@@ -61,7 +81,26 @@ print(ray.get(f.remote()))
     )
     out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
     print(out_str)
-    assert "HOOK_VALUE" in out_str
+    if skip_hook:
+        assert "HOOK_VALUE" not in out_str
+    else:
+        assert "HOOK_VALUE" in out_str
+
+
+def test_env_hook_skipped_for_ray_client(start_cluster, monkeypatch):
+    monkeypatch.setenv("RAY_RUNTIME_ENV_HOOK", "ray.tests.test_output._hook")
+    cluster, address = start_cluster
+    ray.init(address)
+
+    @ray.remote
+    def f():
+        return os.environ.get("HOOK_KEY")
+
+    using_ray_client = address.startswith("ray://")
+    if using_ray_client:
+        assert ray.get(f.remote()) is None
+    else:
+        assert ray.get(f.remote()) == "HOOK_VALUE"
 
 
 def test_autoscaler_infeasible():
@@ -138,6 +177,7 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = """
 import os
@@ -401,20 +441,42 @@ ray.get(b.f.remote())
     assert re.search("Actor2 pid=.*bye", out_str), out_str
 
 
-def test_output():
-    # Use subprocess to execute the __main__ below.
-    outputs = subprocess.check_output(
-        [sys.executable, __file__, "_ray_instance"], stderr=subprocess.STDOUT
-    ).decode()
-    lines = outputs.split("\n")
+def test_output_local_ray():
+    script = """
+import ray
+ray.init()
+    """
+    output = run_string_as_driver(script)
+    lines = output.strip("\n").split("\n")
     for line in lines:
         print(line)
+    lines = [line for line in lines if "The object store is using /tmp" not in line]
+    assert len(lines) == 1
+    line = lines[0]
+    print(line)
+    assert "Started a local Ray instance." in line
     if os.environ.get("RAY_MINIMAL") == "1":
-        # Without "View the Ray dashboard"
-        assert len(lines) == 1, lines
+        assert "View the dashboard" not in line
     else:
-        # With "View the Ray dashboard"
-        assert len(lines) == 2, lines
+        assert "View the dashboard" in line
+
+
+def test_output_ray_cluster(call_ray_start):
+    script = """
+import ray
+ray.init()
+    """
+    output = run_string_as_driver(script)
+    lines = output.strip("\n").split("\n")
+    for line in lines:
+        print(line)
+    assert len(lines) == 2
+    assert "Connecting to existing Ray cluster at address:" in lines[0]
+    assert "Connected to Ray cluster." in lines[1]
+    if os.environ.get("RAY_MINIMAL") == "1":
+        assert "View the dashboard" not in lines[1]
+    else:
+        assert "View the dashboard" in lines[1]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

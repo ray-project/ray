@@ -107,6 +107,11 @@ class AbstractRayRuntime : public RayRuntime {
   virtual PlacementGroup GetPlacementGroupById(const std::string &id);
   virtual PlacementGroup GetPlacementGroup(const std::string &name);
 
+  std::string GetNamespace();
+  std::string SerializeActorHandle(const std::string &actor_id);
+  std::string DeserializeAndRegisterActorHandle(
+      const std::string &serialized_actor_handle);
+
  protected:
   std::unique_ptr<TaskSubmitter> task_submitter_;
   std::unique_ptr<TaskExecutor> task_executor_;

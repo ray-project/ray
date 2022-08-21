@@ -30,6 +30,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 
             from ray.air import session
             from ray.air.checkpoint import Checkpoint
+            from ray.air.config import ScalingConfig
 
             ######## Using it in the *per worker* train loop (TrainSession) #######
             def train_func():
@@ -42,7 +43,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
                 # Air guarantees by this point, you can safely write new stuff to
                 # "my_model" directory.
 
-            scaling_config = {"num_workers": 2}
+            scaling_config = ScalingConfig(num_workers=2)
             trainer = TensorflowTrainer(
                 train_loop_per_worker=train_func, scaling_config=scaling_config
             )
@@ -73,6 +74,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
             ######## Using it in the *per worker* train loop (TrainSession) ######
             from ray.air import session
             from ray.air.checkpoint import Checkpoint
+            from ray.air.config import ScalingConfig
             def train_func():
                 ckpt = session.get_checkpoint()
                 if ckpt:
@@ -89,7 +91,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
                     checkpoint=Checkpoint.from_directory("my_model")
                 )
 
-            scaling_config = {"num_workers": 2}
+            scaling_config = ScalingConfig(num_workers=2)
             trainer = TensorflowTrainer(
                 train_loop_per_worker=train_func, scaling_config=scaling_config
             )
@@ -131,6 +133,7 @@ def get_world_size() -> int:
 
         import time
         from ray.air import session
+        from ray.air.config import ScalingConfig
 
         def train_loop_per_worker(config):
             assert session.get_world_size() == 4
@@ -138,7 +141,7 @@ def get_world_size() -> int:
         train_dataset = ray.data.from_items(
             [{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(train_loop_per_worker,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             datasets={"train": train_dataset})
         trainer.fit()
     """
@@ -159,6 +162,7 @@ def get_world_rank() -> int:
 
         import time
         from ray.air import session
+        from ray.air.config import ScalingConfig
 
         def train_loop_per_worker():
             for iter in range(100):
@@ -169,7 +173,7 @@ def get_world_rank() -> int:
         train_dataset = ray.data.from_items(
             [{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(train_loop_per_worker,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             datasets={"train": train_dataset})
         trainer.fit()
     """
@@ -190,6 +194,7 @@ def get_local_rank() -> int:
 
         import time
         from ray.air import session
+        from ray.air.config import ScalingConfig
 
         def train_loop_per_worker():
             if torch.cuda.is_available():
@@ -199,7 +204,7 @@ def get_local_rank() -> int:
         train_dataset = ray.data.from_items(
             [{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(train_loop_per_worker,
-            scaling_config={"num_workers": 1},
+            scaling_config=ScalingConfig(num_workers=1),
             datasets={"train": train_dataset})
         trainer.fit()
     """
@@ -218,27 +223,30 @@ def get_dataset_shard(
 ) -> Optional[Union["Dataset", "DatasetPipeline"]]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
 
-    You should call ``to_torch()`` or ``to_tf()`` on this shard to convert
-    it to the appropriate framework-specific Dataset.
+    You should call ``iter_torch_batches()`` or ``iter_tf_batches()``
+    on this shard to convert it to the appropriate
+    framework-specific data type.
 
     .. code-block:: python
 
         import ray
         from ray import train
         from ray.air import session
+        from ray.air.config import ScalingConfig
 
         def train_loop_per_worker():
             model = Net()
             for iter in range(100):
                 # Trainer will automatically handle sharding.
-                data_shard = session.get_dataset_shard().to_torch()
-                model.train(data_shard)
+                data_shard = session.get_dataset_shard("train")
+                for batch in data_shard.iter_torch_batches():
+                    # ...
             return model
 
         train_dataset = ray.data.from_items(
             [{"x": x, "y": x + 1} for x in range(32)])
         trainer = TorchTrainer(train_loop_per_worker,
-            scaling_config={"num_workers": 2},
+            scaling_config=ScalingConfig(num_workers=2),
             datasets={"train": train_dataset})
         trainer.fit()
 

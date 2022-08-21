@@ -1,16 +1,20 @@
 import os
 from timeit import default_timer as timer
+from collections import Counter
 
+from unittest.mock import patch
 import pytest
 import torch
 import torchvision
-from test_tune import torch_fashion_mnist, tune_tensorflow_mnist
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 import ray
+from ray.cluster_utils import Cluster
+
 import ray.train as train
 from ray.train import Trainer, TrainingCallback
+from ray.air.config import ScalingConfig
 from ray.train.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
@@ -23,7 +27,12 @@ from ray.train.examples.torch_fashion_mnist_example import (
 )
 from ray.train.examples.torch_linear_example import LinearDataset
 from ray.train.horovod.horovod_trainer import HorovodTrainer
+from ray.train.tests.test_tune import (
+    torch_fashion_mnist,
+    tune_tensorflow_mnist,
+)
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+from ray.train.torch import TorchConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 
 
@@ -40,6 +49,34 @@ def ray_start_1_cpu_1_gpu():
     address_info = ray.init(num_cpus=1, num_gpus=1)
     yield address_info
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_2_node_2_gpu():
+    cluster = Cluster()
+    for _ in range(2):
+        cluster.add_node(num_cpus=4, num_gpus=2)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
+class LinearDatasetDict(LinearDataset):
+    """Modifies the LinearDataset to return a Dict instead of a Tuple."""
+
+    def __getitem__(self, index):
+        return {"x": self.x[index, None], "y": self.y[index, None]}
+
+
+class NonTensorDataset(LinearDataset):
+    """Modifies the LinearDataset to also return non-tensor objects."""
+
+    def __getitem__(self, index):
+        return {"x": self.x[index, None], "y": 2}
 
 
 # TODO: Refactor as a backend test.
@@ -70,6 +107,53 @@ def test_torch_get_device(ray_start_4_cpus_2_gpus, num_gpus_per_worker):
 
 
 # TODO: Refactor as a backend test.
+@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker):
+    @patch("torch.cuda.is_available", lambda: True)
+    def train_fn():
+        return train.torch.get_device().index
+
+    trainer = Trainer(
+        TorchConfig(backend="gloo"),  # use gloo instead of nccl,
+        # since nccl is not supported on this virtual gpu ray environment
+        num_workers=int(4 / num_gpus_per_worker),
+        use_gpu=True,
+        resources_per_worker={"GPU": num_gpus_per_worker},
+    )
+    trainer.start()
+    devices = trainer.run(train_fn)
+    trainer.shutdown()
+
+    count = Counter(devices)
+    # cluster setups: 2 nodes, 2 gpus per node
+    # `CUDA_VISIBLE_DEVICES` is set to "0,1" on node 1 and node 2
+    if num_gpus_per_worker == 0.5:
+        # worker gpu topology:
+        # 4 workers on node 1, 4 workers on node 2
+        # `ray.get_gpu_ids()` returns [0], [0], [1], [1] on node 1
+        # and [0], [0], [1], [1] on node 2
+        for i in range(2):
+            assert count[i] == 4
+    elif num_gpus_per_worker == 1:
+        # worker gpu topology:
+        # 2 workers on node 1, 2 workers on node 2
+        # `ray.get_gpu_ids()` returns [0], [1] on node 1 and [0], [1] on node 2
+        for i in range(2):
+            assert count[i] == 2
+    elif num_gpus_per_worker == 2:
+        # worker gpu topology:
+        # 1 workers on node 1, 1 workers on node 2
+        # `ray.get_gpu_ids()` returns [0, 1] on node 1 and [0, 1] on node 2
+        # and `device_id` returns the first index
+        assert count[0] == 2
+    else:
+        raise RuntimeError(
+            "New parameter for this test has been added without checking that the "
+            "correct devices have been returned."
+        )
+
+
+# TODO: Refactor as a backend test.
 def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
     """Tests if ``prepare_model`` correctly wraps in DDP."""
 
@@ -92,8 +176,11 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
 
 
 # TODO: Refactor as a backend test.
-def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
-    data_loader = DataLoader(LinearDataset(a=1, b=2, size=10))
+@pytest.mark.parametrize(
+    "dataset", (LinearDataset, LinearDatasetDict, NonTensorDataset)
+)
+def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
+    data_loader = DataLoader(dataset(a=1, b=2, size=10))
 
     def train_fn():
         wrapped_data_loader = train.torch.prepare_data_loader(data_loader)
@@ -102,12 +189,26 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus):
         assert isinstance(wrapped_data_loader.sampler, DistributedSampler)
 
         # Make sure you can properly iterate through the DataLoader.
-        for batch in wrapped_data_loader:
-            X = batch[0]
-            y = batch[1]
+        # Case where the dataset returns a tuple or list from __getitem__.
+        if isinstance(dataset, LinearDataset):
+            for batch in wrapped_data_loader:
+                x = batch[0]
+                y = batch[1]
 
-            # Make sure the data is on the correct device.
-            assert X.is_cuda and y.is_cuda
+                # Make sure the data is on the correct device.
+                assert x.is_cuda and y.is_cuda
+        # Case where the dataset returns a dict from __getitem__.
+        elif isinstance(dataset, LinearDatasetDict):
+            for batch in wrapped_data_loader:
+                for x, y in zip(batch["x"], batch["y"]):
+                    # Make sure the data is on the correct device.
+                    assert x.is_cuda and y.is_cuda
+
+        elif isinstance(dataset, NonTensorDataset):
+            for batch in wrapped_data_loader:
+                for x, y in zip(batch["x"], batch["y"]):
+                    # Make sure the data is on the correct device.
+                    assert x.is_cuda and y == 2
 
     trainer = Trainer("torch", num_workers=2, use_gpu=True)
     trainer.start()
@@ -302,7 +403,7 @@ def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
 
@@ -319,7 +420,7 @@ def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = TorchTrainer(
         fashion_mnist_train_func,
         train_loop_config=config,
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
 
@@ -334,7 +435,7 @@ def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
     trainer = HorovodTrainer(
         horovod_torch_train_func,
         train_loop_config={"num_epochs": num_epochs, "lr": 1e-3},
-        scaling_config=dict(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
     )
     results = trainer.fit()
     result = results.metrics
@@ -345,22 +446,18 @@ def test_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
     torch_fashion_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
 
+def test_concurrent_tune_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
+    torch_fashion_mnist(num_workers=1, use_gpu=True, num_samples=2)
+
+
 def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=True, num_samples=1)
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.torch_linear_dataset_example import train_linear
+    from ray.air.examples.pytorch.torch_regression_example import train_regression
 
-    assert train_linear(num_workers=2, use_gpu=True)
-
-
-def test_tensorflow_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    from ray.train.examples.tensorflow_linear_dataset_example import (
-        train_tensorflow_linear,
-    )
-
-    assert train_tensorflow_linear(num_workers=2, use_gpu=True)
+    assert train_regression(num_workers=2, use_gpu=True)
 
 
 # TODO: Refactor as a backend test.
@@ -414,6 +511,33 @@ def test_auto_transfer_data_from_host_to_device(
 
     if device_choice == "cuda" and auto_transfer:
         assert compute_average_runtime(host_to_device) >= with_auto_transfer
+
+
+def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
+    """Tests that auto_transfer uses the right device for the cuda stream."""
+    import nvidia_smi
+
+    nvidia_smi.nvmlInit()
+
+    def get_gpu_used_mem(i):
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
+        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        return info.used
+
+    start_gpu_memory = get_gpu_used_mem(1)
+
+    device = torch.device("cuda:1")
+    small_dataloader = [(torch.randn((1024 * 4, 1024 * 4)),) for _ in range(10)]
+    wrapped_dataloader = (  # noqa: F841
+        ray.train.torch.train_loop_utils._WrappedDataLoader(
+            small_dataloader, device, True
+        )
+    )
+
+    end_gpu_memory = get_gpu_used_mem(1)
+
+    # Verify GPU memory usage increases on the right cuda device
+    assert end_gpu_memory > start_gpu_memory
 
 
 if __name__ == "__main__":

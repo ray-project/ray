@@ -139,7 +139,7 @@ py_test(
 
 py_test(
     name = "test_legacy_import",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_legacy_import.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_L"],
@@ -437,6 +437,14 @@ py_test(
     name = "test_tuner",
     size = "medium",
     srcs = ["tests/test_tuner.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
+    name = "test_tuner_restore",
+    size = "medium",
+    srcs = ["tests/test_tuner_restore.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_T"],
 )

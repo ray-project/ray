@@ -16,15 +16,13 @@ from ray import serve
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
-serve.start(detached=True)
 
 @serve.deployment(version="1")
 class Test:
     def __call__(self, *args):
         return open("hello").read()
 
-Test.deploy()
-handle = Test.get_handle()
+handle = serve.run(Test.bind())
 assert ray.get(handle.remote()) == "world"
 """
 
@@ -40,15 +38,13 @@ from ray import serve
 job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
 ray.init(address="auto", namespace="serve", job_config=job_config)
 
-serve.start(detached=True)
 
 @serve.deployment(version="2")
 class Test:
     def __call__(self, *args):
         return open("hello").read()
 
-Test.deploy()
-handle = Test.get_handle()
+handle = serve.run(Test.bind())
 assert ray.get(handle.remote()) == "world2"
 Test.delete()
 """
@@ -68,20 +64,18 @@ import requests
 
 ray.init(address="auto")
 
-serve.start()
-
 
 @serve.deployment
 def requests_version(request):
     return requests.__version__
 
 
-requests_version.options(
+serve.run(requests_version.options(
     ray_actor_options={
         "runtime_env": {
             "pip": ["requests==2.25.1"]
         }
-    }).deploy()
+    }).bind())
 
 assert requests.get("http://127.0.0.1:8000/requests_version").text == "2.25.1"
 """

@@ -5,8 +5,10 @@ cartpole_crr:
       evaluation/episode_reward_mean: 200
       training_iteration: 100
     config:
-        input:
-          - 'tests/data/cartpole/large.json'
+        input: 'dataset'
+        input_config:         
+            paths: 'tests/data/cartpole/large.json'
+            format: 'json'
         framework: torch
         num_workers: 3
         gamma: 0.99
@@ -34,7 +36,7 @@ cartpole_crr:
         evaluation_parallel_to_training: True
         # specific to CRR
         temperature: 1.0
-        weight_type: bin
+        weight_type: exp
         advantage_type: expectation
         max_weight: 20.0
         n_action_sample: 4

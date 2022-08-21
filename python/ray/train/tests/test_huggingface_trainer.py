@@ -12,8 +12,10 @@ from transformers import (
 from transformers.trainer_callback import TrainerState
 
 import ray.data
+from ray.exceptions import RayTaskError
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.huggingface import HuggingFacePredictor, HuggingFaceTrainer
+from ray.air.config import ScalingConfig
 from ray.train.huggingface._huggingface_utils import TrainReportCallback
 from ray.train.tests._huggingface_data import train_data, validation_data
 
@@ -43,13 +45,14 @@ def train_function(train_dataset, eval_dataset=None, **config):
     model = AutoModelForCausalLM.from_config(model_config)
     training_args = TrainingArguments(
         f"{model_checkpoint}-wikitext2",
-        evaluation_strategy="epoch",
-        num_train_epochs=config.get("epochs", 3),
+        evaluation_strategy=config.pop("evaluation_strategy", "epoch"),
+        num_train_epochs=config.pop("epochs", 3),
         learning_rate=2e-5,
         weight_decay=0.01,
         disable_tqdm=True,
         no_cuda=True,
-        save_strategy=config.get("save_strategy", "no"),
+        save_strategy=config.pop("save_strategy", "no"),
+        **config,
     )
     trainer = Trainer(
         model=model,
@@ -64,7 +67,7 @@ def train_function(train_dataset, eval_dataset=None, **config):
 def test_e2e(ray_start_4_cpus, save_strategy):
     ray_train = ray.data.from_pandas(train_df)
     ray_validation = ray.data.from_pandas(validation_df)
-    scaling_config = {"num_workers": 2, "use_gpu": False}
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
         trainer_init_config={"epochs": 4, "save_strategy": save_strategy},
@@ -131,6 +134,37 @@ def test_reporting():
     assert "log1" in reports[1]["metrics"]
     assert "log2" in reports[1]["metrics"]
     assert reports[1]["metrics"]["epoch"] == 2
+
+
+def test_validation(ray_start_4_cpus):
+    ray_train = ray.data.from_pandas(train_df)
+    ray_validation = ray.data.from_pandas(validation_df)
+    scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+    trainer_conf = dict(
+        trainer_init_per_worker=train_function,
+        scaling_config=scaling_config,
+        datasets={"train": ray_train, "evaluation": ray_validation},
+    )
+
+    # load_best_model_at_end set to True should raise an exception
+    trainer = HuggingFaceTrainer(
+        trainer_init_config={
+            "epochs": 1,
+            "load_best_model_at_end": True,
+            "save_strategy": "epoch",
+        },
+        **trainer_conf,
+    )
+    with pytest.raises(RayTaskError):
+        trainer.fit().error
+
+    # evaluation_strategy set to "steps" should raise an exception
+    trainer = HuggingFaceTrainer(
+        trainer_init_config={"epochs": 1, "evaluation_strategy": "steps"},
+        **trainer_conf,
+    )
+    with pytest.raises(RayTaskError):
+        trainer.fit().error
 
 
 if __name__ == "__main__":

@@ -79,11 +79,16 @@ if __name__ == "__main__":
     # __torch_trainer_begin__
 
     from ray.train.torch import TorchTrainer
+    from ray.air.config import ScalingConfig
 
     # For GPU Training, set `use_gpu` to True.
     use_gpu = False
 
-    trainer = TorchTrainer(train_func_distributed, scaling_config={"num_workers":4, "use_gpu":use_gpu})
+    trainer = TorchTrainer(
+        train_func_distributed,
+        scaling_config=ScalingConfig(
+            num_workers=4, use_gpu=use_gpu)
+    )
 
     results = trainer.fit()
 

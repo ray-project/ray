@@ -19,14 +19,7 @@ py_test_run_all_notebooks(
     exclude = [
         "pbt_ppo_example.ipynb",
         "tune-xgboost.ipynb",
-        "nyc_taxi_basic_processing.ipynb", # REGRESSION
-        "ocr_example.ipynb", # REGRESSION
-        "bohb_example.ipynb", # REGRESSION
-        "horovod_simple.ipynb", # REGRESSION
-        "hyperopt_example.ipynb", # REGRESSION
-        "sigopt_example.ipynb", # REGRESSION
-        "tune-pytorch-cifar.ipynb", # REGRESSION
-        "tune-sklearn.ipynb", # REGRESSION
+        "sigopt_example.ipynb", # REGRESSION: no credentials
     ],
     data = ["//doc/source/tune/examples:tune_examples"],
     tags = ["exclusive", "team:ml"],

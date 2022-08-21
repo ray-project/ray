@@ -1,6 +1,5 @@
 import os
 import platform
-import time
 
 import grpc
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -9,7 +8,7 @@ import requests
 
 import ray
 from ray._private.test_utils import (
-    RayTestTimeoutException,
+    wait_for_condition,
     wait_until_succeeded_without_exception,
 )
 from ray._private.utils import init_grpc_channel
@@ -20,9 +19,8 @@ _WIN32 = os.name == "nt"
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_worker_stats(shutdown_only):
-    ray.init(num_cpus=1, include_dashboard=True)
+    ray.init(num_cpus=2, include_dashboard=True)
     raylet = ray.nodes()[0]
-    num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(
         raylet["NodeManagerAddress"], ray.nodes()[0]["NodeManagerPort"]
     )
@@ -91,26 +89,14 @@ def test_worker_stats(shutdown_only):
             assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
 
-    if _WIN32:
-        timeout_seconds = 40
-    else:
-        timeout_seconds = 20
-    start_time = time.time()
-    while True:
-        if time.time() - start_time > timeout_seconds:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for worker processes"
-            )
+    # 1 actor + 1 worker for task + 1 driver
+    num_workers = 3
 
-        # Wait for the workers to start.
-        if len(reply.core_workers_stats) < num_cpus + 2:
-            time.sleep(1)
-            reply = try_get_node_stats()
-            print(reply)
-            continue
-
+    def verify():
+        reply = try_get_node_stats()
         # Check that the rest of the processes are workers, 1 for each CPU.
-        assert len(reply.core_workers_stats) == num_cpus + 2
+
+        assert len(reply.core_workers_stats) == num_workers
         # Check that all processes are Python.
         pids = [worker.pid for worker in reply.core_workers_stats]
         processes = [
@@ -129,7 +115,10 @@ def test_worker_stats(shutdown_only):
                 or "pytest" in process
                 or "ray" in process
             ), process
-        break
+
+        return True
+
+    wait_for_condition(verify)
 
 
 def test_multi_node_metrics_export_port_discovery(ray_start_cluster):

@@ -5,6 +5,8 @@ from dataclasses import asdict, fields
 from itertools import islice
 from typing import List, Tuple
 
+from ray._private.ray_constants import env_integer
+
 import ray.dashboard.memory_utils as memory_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.utils import binary_to_hex
@@ -18,7 +20,7 @@ from ray.experimental.state.common import (
     PlacementGroupState,
     RuntimeEnvState,
     SummaryApiResponse,
-    MAX_LIMIT,
+    RAY_MAX_LIMIT_FROM_API_SERVER,
     SummaryApiOptions,
     TaskSummaries,
     StateSchema,
@@ -49,7 +51,7 @@ GCS_QUERY_FAILURE_WARNING = (
 )
 NODE_QUERY_FAILURE_WARNING = (
     "Failed to query data from {type}. "
-    "Queryed {total} {type} "
+    "Queried {total} {type} "
     "and {network_failures} {type} failed to reply. It is due to "
     "(1) {type} is unexpectedly failed. "
     "(2) {type} is overloaded. "
@@ -72,7 +74,7 @@ def _convert_filters_type(
         schema: The state schema. It is used to infer the type of the column for filter.
 
     Returns:
-        A new list of filters with correctly types that match the schema.
+        A new list of filters with correct types that match the schema.
     """
     new_filter = []
     schema = {field.name: field.type for field in fields(schema)}
@@ -80,37 +82,44 @@ def _convert_filters_type(
     for col, predicate, val in filter:
         if col in schema:
             column_type = schema[col]
-            if isinstance(val, column_type):
-                # Do nothing.
+            try:
+                isinstance(val, column_type)
+            except TypeError:
+                # Calling `isinstance` to the Literal type raises a TypeError.
+                # Ignore this case.
                 pass
-            elif column_type is int:
-                try:
-                    val = convert_string_to_type(val, int)
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid filter `--filter {col} {val}` for a int type "
-                        "column. Please provide an integer filter "
-                        f"`--filter {col} [int]`"
-                    )
-            elif column_type is float:
-                try:
-                    val = convert_string_to_type(val, float)
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid filter `--filter {col} {val}` for a float "
-                        "type column. Please provide an integer filter "
-                        f"`--filter {col} [float]`"
-                    )
-            elif column_type is bool:
-                try:
-                    val = convert_string_to_type(val, bool)
-                except ValueError:
-                    raise ValueError(
-                        f"Invalid filter `--filter {col} {val}` for a boolean "
-                        "type column. Please provide "
-                        f"`--filter {col} [True|true|1]` for True or "
-                        f"`--filter {col} [False|false|0]` for False."
-                    )
+            else:
+                if isinstance(val, column_type):
+                    # Do nothing.
+                    pass
+                elif column_type is int:
+                    try:
+                        val = convert_string_to_type(val, int)
+                    except ValueError:
+                        raise ValueError(
+                            f"Invalid filter `--filter {col} {val}` for a int type "
+                            "column. Please provide an integer filter "
+                            f"`--filter {col} [int]`"
+                        )
+                elif column_type is float:
+                    try:
+                        val = convert_string_to_type(val, float)
+                    except ValueError:
+                        raise ValueError(
+                            f"Invalid filter `--filter {col} {val}` for a float "
+                            "type column. Please provide an integer filter "
+                            f"`--filter {col} [float]`"
+                        )
+                elif column_type is bool:
+                    try:
+                        val = convert_string_to_type(val, bool)
+                    except ValueError:
+                        raise ValueError(
+                            f"Invalid filter `--filter {col} {val}` for a boolean "
+                            "type column. Please provide "
+                            f"`--filter {col} [True|true|1]` for True or "
+                            f"`--filter {col} [False|false|0]` for False."
+                        )
         new_filter.append((col, predicate, val))
     return new_filter
 
@@ -147,7 +156,7 @@ class StateAPIManager:
 
         Returns:
             A list of filtered state data in dictionary. Each state data's
-            unncessary columns are filtered by the given state_dataclass schema.
+            unnecessary columns are filtered by the given state_dataclass schema.
         """
         filters = _convert_filters_type(filters, state_dataclass)
         result = []
@@ -155,13 +164,16 @@ class StateAPIManager:
             match = True
             for filter_column, filter_predicate, filter_value in filters:
                 filterable_columns = state_dataclass.filterable_columns()
+                filter_column = filter_column.lower()
                 if filter_column not in filterable_columns:
                     raise ValueError(
                         f"The given filter column {filter_column} is not supported. "
                         f"Supported filter columns: {filterable_columns}"
                     )
 
-                if filter_predicate == "=":
+                if filter_column not in datum:
+                    match = False
+                elif filter_predicate == "=":
                     match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":
                     match = datum[filter_column] != filter_value
@@ -193,16 +205,22 @@ class StateAPIManager:
 
         result = []
         for message in reply.actor_table_data:
-            data = self._message_to_dict(message=message, fields_to_decode=["actor_id"])
+            data = self._message_to_dict(
+                message=message, fields_to_decode=["actor_id", "owner_id"]
+            )
             result.append(data)
-
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, ActorState, option.detail)
+        num_filtered = len(result)
+
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["actor_id"])
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
             total=reply.total,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
         )
 
     async def list_placement_groups(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -224,18 +242,22 @@ class StateAPIManager:
 
             data = self._message_to_dict(
                 message=message,
-                fields_to_decode=["placement_group_id"],
+                fields_to_decode=["placement_group_id", "node_id"],
             )
             result.append(data)
+        num_after_truncation = len(result)
 
         result = self._filter(
             result, option.filters, PlacementGroupState, option.detail
         )
+        num_filtered = len(result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["placement_group_id"])
         return ListApiResponse(
             result=list(islice(result, option.limit)),
             total=reply.total,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
         )
 
     async def list_nodes(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -256,15 +278,21 @@ class StateAPIManager:
             data["node_ip"] = data["node_manager_address"]
             result.append(data)
 
+        total_nodes = len(result)
+        # No reason to truncate node because they are usually small.
+        num_after_truncation = len(result)
+
         result = self._filter(result, option.filters, NodeState, option.detail)
+        num_filtered = len(result)
+
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["node_id"])
-        total_nodes = len(result)
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
-            # No reason to truncate node because they are usually small.
             total=total_nodes,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
         )
 
     async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -289,20 +317,24 @@ class StateAPIManager:
             data["ip"] = data["worker_address"]["ip_address"]
             result.append(data)
 
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, WorkerState, option.detail)
+        num_filtered = len(result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["worker_id"])
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
             total=reply.total,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
         )
 
-    def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
+    async def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
         # TODO(sang): Support limit & timeout & async calls.
         try:
             result = []
-            job_info = self._client.get_job_info()
+            job_info = await self._client.get_job_info()
             for job_id, data in job_info.items():
                 data = asdict(data)
                 data["job_id"] = job_id
@@ -313,6 +345,8 @@ class StateAPIManager:
             result=result,
             # TODO(sang): Support this.
             total=len(result),
+            num_after_truncation=len(result),
+            num_filtered=len(result),
         )
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -375,8 +409,9 @@ class StateAPIManager:
                         TaskStatus.RUNNING
                     ].name
                 result.append(data)
-
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, TaskState, option.detail)
+        num_filtered = len(result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["task_id"])
         result = list(islice(result, option.limit))
@@ -384,6 +419,8 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_tasks,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
         )
 
     async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -453,7 +490,20 @@ class StateAPIManager:
             del data["node_ip_address"]
             result.append(data)
 
+        # Add callsite warnings if it is not configured.
+        callsite_warning = []
+        callsite_enabled = env_integer("RAY_record_ref_creation_sites", 0)
+        if not callsite_enabled:
+            callsite_warning.append(
+                "Callsite is not being recorded. "
+                "To record callsite information for each ObjectRef created, set "
+                "env variable RAY_record_ref_creation_sites=1 during `ray start` "
+                "and `ray.init`."
+            )
+
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, ObjectState, option.detail)
+        num_filtered = len(result)
         # Sort to make the output deterministic.
         result.sort(key=lambda entry: entry["object_id"])
         result = list(islice(result, option.limit))
@@ -461,6 +511,9 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_objects,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
+            warnings=callsite_warning,
         )
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -496,7 +549,7 @@ class StateAPIManager:
             states = reply.runtime_env_states
             for state in states:
                 data = self._message_to_dict(message=state, fields_to_decode=[])
-                # Need to deseiralize this field.
+                # Need to deserialize this field.
                 data["runtime_env"] = RuntimeEnv.deserialize(
                     data["runtime_env"]
                 ).to_dict()
@@ -516,8 +569,9 @@ class StateAPIManager:
             partial_failure_warning = (
                 f"The returned data may contain incomplete result. {warning_msg}"
             )
-
+        num_after_truncation = len(result)
         result = self._filter(result, option.filters, RuntimeEnvState, option.detail)
+        num_filtered = len(result)
 
         # Sort to make the output deterministic.
         def sort_func(entry):
@@ -537,12 +591,16 @@ class StateAPIManager:
             result=result,
             partial_failure_warning=partial_failure_warning,
             total=total_runtime_envs,
+            num_after_truncation=num_after_truncation,
+            num_filtered=num_filtered,
         )
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_tasks(
-            option=ListApiOptions(timeout=option.timeout, limit=MAX_LIMIT, filters=[])
+            option=ListApiOptions(
+                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+            )
         )
         summary = StateSummary(
             node_id_to_summary={
@@ -550,13 +608,22 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
-            result=summary, partial_failure_warning=result.partial_failure_warning
+            total=result.total,
+            result=summary,
+            partial_failure_warning=result.partial_failure_warning,
+            warnings=result.warnings,
+            num_after_truncation=result.num_after_truncation,
+            # Currently, there's no filtering support for summary,
+            # so we don't calculate this separately.
+            num_filtered=len(result.result),
         )
 
     async def summarize_actors(self, option: SummaryApiOptions) -> SummaryApiResponse:
         # For summary, try getting as many entries as possible to minimze data loss.
         result = await self.list_actors(
-            option=ListApiOptions(timeout=option.timeout, limit=MAX_LIMIT, filters=[])
+            option=ListApiOptions(
+                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+            )
         )
         summary = StateSummary(
             node_id_to_summary={
@@ -564,13 +631,22 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
-            result=summary, partial_failure_warning=result.partial_failure_warning
+            total=result.total,
+            result=summary,
+            partial_failure_warning=result.partial_failure_warning,
+            warnings=result.warnings,
+            num_after_truncation=result.num_after_truncation,
+            # Currently, there's no filtering support for summary,
+            # so we don't calculate this separately.
+            num_filtered=len(result.result),
         )
 
     async def summarize_objects(self, option: SummaryApiOptions) -> SummaryApiResponse:
-        # For summary, try getting as many entries as possible to minimze data loss.
+        # For summary, try getting as many entries as possible to minimize data loss.
         result = await self.list_objects(
-            option=ListApiOptions(timeout=option.timeout, limit=MAX_LIMIT, filters=[])
+            option=ListApiOptions(
+                timeout=option.timeout, limit=RAY_MAX_LIMIT_FROM_API_SERVER, filters=[]
+            )
         )
         summary = StateSummary(
             node_id_to_summary={
@@ -578,7 +654,14 @@ class StateAPIManager:
             }
         )
         return SummaryApiResponse(
-            result=summary, partial_failure_warning=result.partial_failure_warning
+            total=result.total,
+            result=summary,
+            partial_failure_warning=result.partial_failure_warning,
+            warnings=result.warnings,
+            num_after_truncation=result.num_after_truncation,
+            # Currently, there's no filtering support for summary,
+            # so we don't calculate this separately.
+            num_filtered=len(result.result),
         )
 
     def _message_to_dict(
