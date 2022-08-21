@@ -189,11 +189,6 @@ class GraphVisualizer:
         depths = defaultdict(lambda: 0)
         self.dag.apply_recursive(lambda node: self._fetch_depths(node, depths))
 
-        # Wraps _get_result because functools.partial doesn't work with asynchronous
-        # class methods: https://stackoverflow.com/q/67020609/11162437
-        async def get_result_wrapper(node_uuid):
-            return await self._get_result(node_uuid)
-
         with gr.Blocks() as demo:
             self._make_blocks(depths)
 

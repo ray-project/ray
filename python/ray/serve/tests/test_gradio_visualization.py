@@ -25,11 +25,12 @@ def graph1():
             return x
 
     with InputNode() as user_input:
-        f_node = f.bind(user_input[0])
+        input_nodes = (user_input[0], user_input[1])
+        f_node = f.bind(input_nodes[0])
         m = Model.bind(f_node)
-        dag = m.run.bind(user_input[1])
+        dag = m.run.bind(input_nodes[1])
 
-    yield f_node, m, dag
+    yield input_nodes, f_node, m, dag
 
 
 @pytest.fixture
@@ -87,7 +88,7 @@ async def test_execute_cached_object_ref(graph1):
     """Tests DAGNode.get_object_ref_from_last_execute() correctly returns object refs
     to the submitted tasks after DAGNode.execute() is run.
     """
-    (f_node, _, dag) = graph1
+    (_, f_node, _, dag) = graph1
 
     dag.execute([1, 2], _cache_refs=True)
     cache = await dag.get_object_refs_from_last_execute()
@@ -95,7 +96,25 @@ async def test_execute_cached_object_ref(graph1):
     assert await cache[dag.get_stable_uuid()] == 2
 
 
-def test_graph_dfs_for_depths1(graph2):
+def test_graph_dfs_for_depths1(graph1):
+    """Tests that GraphVisualizer._fetch_depths, when passed into
+    DAGNode.apply_recursive, correctly retrieves the depths of each node.
+    """
+    (input_nodes, f_node, _, dag) = graph1
+
+    visualizer = GraphVisualizer()
+    depths = defaultdict(lambda: 0)
+    dag.apply_recursive(lambda node: visualizer._fetch_depths(node, depths))
+
+    assert (
+        depths[input_nodes[0].get_stable_uuid()] == 1
+        and depths[input_nodes[1].get_stable_uuid()] == 1
+        and depths[f_node.get_stable_uuid()] == 2
+        and depths[dag.get_stable_uuid()] == 4
+    )
+
+
+def test_graph_dfs_for_depths2(graph2):
     """Tests that GraphVisualizer._fetch_depths, when passed into
     DAGNode.apply_recursive, correctly retrieves the depths of each node.
     """
@@ -113,7 +132,7 @@ def test_graph_dfs_for_depths1(graph2):
     )
 
 
-def test_graph_dfs_for_depths2(graph3):
+def test_graph_dfs_for_depths3(graph3):
     """Tests that GraphVisualizer._fetch_depths, when passed into
     DAGNode.apply_recursive, correctly retrieves the depths of each node.
     """
@@ -138,7 +157,7 @@ async def test_get_result_correctness(graph1):
     """Tests correctness: that after running _send_request(), _get_result() in
     GraphVisualizer correctly returns object refs to the submitted tasks.
     """
-    (_, _, dag) = graph1
+    (_, _, _, dag) = graph1
 
     handle = serve.run(DAGDriver.bind(dag))
     visualizer = GraphVisualizer()
@@ -156,7 +175,7 @@ async def test_get_result_reliability(graph1):
     """Tests reliability: that running async tasks _send_request() and _get_result() in
     unknown order will still correctly return object refs to the submitted tasks.
     """
-    (_, _, dag) = graph1
+    (_, _, _, dag) = graph1
 
     handle = serve.run(DAGDriver.bind(dag))
     visualizer = GraphVisualizer()
@@ -174,7 +193,7 @@ async def test_gradio_visualization_e2e(graph1):
     """Tests the E2E process of launching the Gradio app and submitting input.
     Simulates clicking the submit button by sending asynchronous HTTP requests.
     """
-    (_, _, dag) = graph1
+    (_, _, _, dag) = graph1
 
     handle = serve.run(DAGDriver.bind(dag))
     visualizer = GraphVisualizer()
