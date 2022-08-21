@@ -58,8 +58,8 @@ class JaxTrainer(DataParallelTrainer):
             also the optimal / balanced case in terms of performance.
         - For the TPU distributed cases, the multi-device distributed training only
             supports the TPU pods for
-                a) the TPU pods can host up to several thousands of TPU cores
-                b) the communication speed is also optimal for the TPU pods.
+            a) the TPU pods can host up to several thousands of TPU cores
+            b) the communication speed is also optimal for the TPU pods.
             Therefore, the ``num_workers`` is set to be the number of TPU-VMs
             (say ``num_workers=4`` for TPU-pod v2-32); and
             ``resources_per_worker={"TPU": 1}`` is used to set the TPU resource.
@@ -99,7 +99,8 @@ class JaxTrainer(DataParallelTrainer):
     .. code-block:: python
 
         def train_loop_per_worker():
-            # Report intermediate results for callbacks or logging.
+            # Report intermediate results for callbacks or logging and
+            # checkpoint data.
             session.report(...)
 
             # Checkpoints the provided args as restorable state.
