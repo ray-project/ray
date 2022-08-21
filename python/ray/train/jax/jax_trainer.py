@@ -66,7 +66,7 @@ class JaxTrainer(DataParallelTrainer):
             Since the TPU resources are not the default resources on Ray,
             we need to set the ``resources`` when set up the cluster,
             e.g. ``ray start --resources='{"TPU":1}'``. For more details, please
-            refer to :doc:`Ray Jax TPU Examples </train/examples/jax_tpu>`
+            refer to `Ray Jax TPU Examples </train/examples/jax_tpu>`
             end to end example.
         - For the CPU distributed cases, the multi-device distributed training
             is not supported.
@@ -94,7 +94,7 @@ class JaxTrainer(DataParallelTrainer):
             will create the TPU lock file and block the training process.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
-    :ref:`Ray Train function utils <train-api-func-utils>`.
+    :ref:`Ray AIR session methods <air-session-ref>`.
 
     .. code-block:: python
 
