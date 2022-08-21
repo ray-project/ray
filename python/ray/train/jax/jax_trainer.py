@@ -57,16 +57,16 @@ class JaxTrainer(DataParallelTrainer):
             distributed case, i.e. all the nodes have the same number of gpus. This is
             also the optimal / balanced case in terms of performance.
         - For the TPU distributed cases, the multi-device distributed training only
-        supports the TPU pods for a) the TPU pods can host up to several thousands
-        of TPU cores; b) the communication speed is also optimal for the TPU pods.
-        Therefore, the ``num_workers`` is set to be the number of TPU-VMs
-        (say ``num_workers=4`` for TPU-pod v2-32); and
-        ``resources_per_worker={"TPU": 1}`` is used to set the TPU resource.
-        Since the TPU resources are not the default resources on Ray,
-        we need to set the ``resources`` when set up the cluster,
-        e.g. ``ray start --resources='{"TPU":1}'``. For more details, please
-        refer to `Ray Jax TPU Examples </train/examples/jax_tpu>`
-        end to end example.
+            supports the TPU pods for a) the TPU pods can host up to several thousands
+            of TPU cores; b) the communication speed is also optimal for the TPU pods.
+            Therefore, the ``num_workers`` is set to be the number of TPU-VMs
+            (say ``num_workers=4`` for TPU-pod v2-32); and
+            ``resources_per_worker={"TPU": 1}`` is used to set the TPU resource.
+            Since the TPU resources are not the default resources on Ray,
+            we need to set the ``resources`` when set up the cluster,
+            e.g. ``ray start --resources='{"TPU":1}'``. For more details, please
+            refer to `Ray Jax TPU Examples </train/examples/jax_tpu>`
+            end to end example.
         - For the CPU distributed cases, the multi-device distributed training
             is not supported.
         - the placement group strategy: Since the JaxTrainer will spread the workers
