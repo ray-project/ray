@@ -48,15 +48,15 @@ class JaxTrainer(DataParallelTrainer):
 
     Note: Here are some details about how to use the ``JaxTrainer`` properly.
 
-    - cluster scaling config:
-        - For the GPU distributed cases, the inner-device communication is handled
+    * cluster scaling config:
+        * For the GPU distributed cases, the inner-device communication is handled
             internally by Jax; the inter-device communication is set up by the
             ``JaxTrainer``. Therefore, the ``num_workers`` is set to be the number of
             nodes; and ``num_gpus_per_worker`` is set to be the number of gpus on each
             node. For the current experimental version, we only support the homogeneous
             distributed case, i.e. all the nodes have the same number of gpus. This is
             also the optimal / balanced case in terms of performance.
-        - For the TPU distributed cases, the multi-device distributed training only
+        * For the TPU distributed cases, the multi-device distributed training only
             supports the TPU pods for a) the TPU pods can host up to several thousands
             of TPU cores; b) the communication speed is also optimal for the TPU pods.
             Therefore, the ``num_workers`` is set to be the number of TPU-VMs
@@ -67,15 +67,15 @@ class JaxTrainer(DataParallelTrainer):
             e.g. ``ray start --resources='{"TPU":1}'``. For more details, please
             refer to `Ray Jax TPU Examples </train/examples/jax_tpu>`
             end to end example.
-        - For the CPU distributed cases, the multi-device distributed training
+        * For the CPU distributed cases, the multi-device distributed training
             is not supported.
-        - the placement group strategy: Since the JaxTrainer will spread the workers
+        * the placement group strategy: Since the JaxTrainer will spread the workers
             across different nodes, the default value of ``placement_strategy``
             is changed to ``SPREAD``.
 
-    - ``train_loop_per_worker`` functions:
+    * ``train_loop_per_worker`` functions:
         **NOTE**:
-        1. the flax nn module has to define inside the ``train_loop_per_worker``
+        #. the flax nn module has to define inside the ``train_loop_per_worker``
             function. Otherwise, the error message ``ValueError: parent must be
             None, Module or Scope`` will be thrown. see more details:
             https://github.com/google/flax/discussions/1390.
@@ -88,7 +88,7 @@ class JaxTrainer(DataParallelTrainer):
                 class NeuralNet(nn.Module):
                     pass
 
-        2. ``import jax`` is encouraged to also put inside the trainer function
+        #. ``import jax`` is encouraged to also put inside the trainer function
             because in the TPU case, `import jax` in the driver process
             will create the TPU lock file and block the training process.
 
