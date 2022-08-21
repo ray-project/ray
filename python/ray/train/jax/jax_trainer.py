@@ -57,9 +57,8 @@ class JaxTrainer(DataParallelTrainer):
             distributed case, i.e. all the nodes have the same number of gpus. This is
             also the optimal / balanced case in terms of performance.
         - For the TPU distributed cases, the multi-device distributed training only
-            supports the TPU pods for
-            a) the TPU pods can host up to several thousands of TPU cores
-            b) the communication speed is also optimal for the TPU pods.
+            supports the TPU pods for a) the TPU pods can host up to several thousands
+            of TPU cores; b) the communication speed is also optimal for the TPU pods.
             Therefore, the ``num_workers`` is set to be the number of TPU-VMs
             (say ``num_workers=4`` for TPU-pod v2-32); and
             ``resources_per_worker={"TPU": 1}`` is used to set the TPU resource.
@@ -103,11 +102,8 @@ class JaxTrainer(DataParallelTrainer):
             # checkpoint data.
             session.report(...)
 
-            # Checkpoints the provided args as restorable state.
-            session.save_checkpoint(...)
-
             # Returns dict of last saved checkpoint.
-            session.load_checkpoint()
+            session.get_checkpoint()
 
             # Returns the Ray Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
@@ -120,6 +116,7 @@ class JaxTrainer(DataParallelTrainer):
 
             # Returns the rank of the worker on the current node.
             session.get_local_rank()
+
     Args:
         train_loop_per_worker: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
