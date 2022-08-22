@@ -21,7 +21,7 @@ def is_nan_or_inf(value):
     return is_nan(value) or np.isinf(value)
 
 
-class SkipException(Exception):
+class StartTraceback(Exception):
     """These exceptions (and their tracebacks) can be skipped with `skip_exceptions`"""
 
     @property
@@ -30,14 +30,14 @@ class SkipException(Exception):
 
 
 def skip_exceptions(exc: Optional[Exception]) -> Exception:
-    """Skip all contained `SkipExceptions` to reduce traceback output"""
+    """Skip all contained `StartTracebacks` to reduce traceback output"""
     should_not_shorten = bool(int(os.environ.get("RAY_AIR_FULL_TRACEBACKS", "0")))
 
     if should_not_shorten:
         return exc
 
-    if isinstance(exc, SkipException):
-        # If this is a SkipException, skip
+    if isinstance(exc, StartTraceback):
+        # If this is a StartTraceback, skip
         return skip_exceptions(exc.__cause__)
 
     # Else, make sure nested exceptions are properly skipped

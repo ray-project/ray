@@ -18,7 +18,7 @@ from typing import (
 )
 
 import ray
-from ray.air._internal.util import find_free_port, SkipException
+from ray.air._internal.util import find_free_port, StartTraceback
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
@@ -59,7 +59,7 @@ def check_for_failure(
                 return False, exc
             except Exception as exc:
                 # Other (e.g. training) errors should be directly raised
-                raise SkipException from exc
+                raise StartTraceback from exc
 
     return True, None
 
@@ -146,7 +146,7 @@ def construct_train_func(
             try:
                 train_func(*args, **kwargs)
             except Exception as e:
-                raise SkipException from e
+                raise StartTraceback from e
 
         wrapped_train_func = discard_return_wrapper
     else:
@@ -166,7 +166,7 @@ def construct_train_func(
             try:
                 return wrapped_train_func(config)
             except Exception as e:
-                raise SkipException from e
+                raise StartTraceback from e
 
     else:  # num_params == 0
 
@@ -175,7 +175,7 @@ def construct_train_func(
             try:
                 return wrapped_train_func()
             except Exception as e:
-                raise SkipException from e
+                raise StartTraceback from e
 
     return train_fn
 
