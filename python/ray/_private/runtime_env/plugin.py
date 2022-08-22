@@ -1,8 +1,11 @@
+import asyncio
 import logging
 import os
 import json
 from abc import ABC
+from collections import defaultdict
 from typing import List, Dict, Optional, Any, Type
+from weakref import WeakValueDictionary
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
@@ -123,6 +126,11 @@ class RuntimeEnvPluginManager:
             plugin_configs = json.loads(plugin_config_str)
             self.load_plugins(plugin_configs)
 
+        def _init_plugin_asyncio_lock():
+            return WeakValueDictionary()
+
+        self._plugin_locks = defaultdict(_init_plugin_asyncio_lock)
+
     def validate_plugin_class(self, plugin_class: Type[RuntimeEnvPlugin]) -> None:
         if not issubclass(plugin_class, RuntimeEnvPlugin):
             raise RuntimeError(
@@ -223,12 +231,17 @@ class RuntimeEnvPluginManager:
         """
         return sorted(self.plugins.values(), key=lambda x: x.priority)
 
+    @property
+    def plugin_locks(self):
+        return self._plugin_locks
+
 
 async def create_for_plugin_if_needed(
     runtime_env,
     plugin: RuntimeEnvPlugin,
     uri_cache: URICache,
     context: RuntimeEnvContext,
+    uri_locks: Dict,
     logger: logging.Logger = default_logger,
 ):
     """Set up the environment using the plugin if not already set up and cached."""
@@ -246,13 +259,22 @@ async def create_for_plugin_if_needed(
         )
         await plugin.create(None, runtime_env, context, logger=logger)
 
+    # we use `WeakValueDictionary` to avoid handle the gc of uri_lock
     for uri in uris:
-        if uri not in uri_cache:
-            logger.debug(f"Cache miss for URI {uri}.")
-            size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)
-            uri_cache.add(uri, size_bytes, logger=logger)
+        if uri not in uri_locks:
+            uri_lock = asyncio.Lock()
+            uri_locks[uri] = uri_lock
         else:
-            logger.debug(f"Cache hit for URI {uri}.")
-            uri_cache.mark_used(uri, logger=logger)
+            uri_lock = uri_locks[uri]
+        async with uri_lock:
+            if uri not in uri_cache:
+                logger.debug(f"Cache miss for URI {uri}.")
+                size_bytes = await plugin.create(
+                    uri, runtime_env, context, logger=logger
+                )
+                uri_cache.add(uri, size_bytes, logger=logger)
+            else:
+                logger.debug(f"Cache hit for URI {uri}.")
+                uri_cache.mark_used(uri, logger=logger)
 
     plugin.modify_context(uris, runtime_env, context, logger)

@@ -293,8 +293,9 @@ class RuntimeEnvAgent(
             ) in self._plugin_manager.sorted_plugin_setup_contexts():
                 plugin = plugin_setup_context.class_instance
                 uri_cache = plugin_setup_context.uri_cache
+                uri_locks = self._plugin_manager.plugin_locks[plugin_setup_context.name]
                 await create_for_plugin_if_needed(
-                    runtime_env, plugin, uri_cache, context, per_job_logger
+                    runtime_env, plugin, uri_cache, context, uri_locks, per_job_logger
                 )
 
             return context
