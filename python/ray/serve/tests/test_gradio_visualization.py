@@ -2,6 +2,7 @@ import pytest
 from collections import defaultdict
 import asyncio
 import aiohttp
+import random
 
 from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
 
@@ -163,29 +164,11 @@ async def test_get_result_correctness(graph1):
     visualizer = GraphVisualizer()
     visualizer.visualize_with_gradio(handle, _launch=False)
 
-    await visualizer._send_request(1, 2)
+    await visualizer._send_request(random.randint(0, 100), 1, 2)
     values = await asyncio.gather(
         *[(visualizer._get_result(uuid)) for uuid in visualizer.uuid_to_block]
     )
     assert {1, 2} <= set(values)
-
-
-@pytest.mark.asyncio
-async def test_get_result_reliability(graph1):
-    """Tests reliability: that running async tasks _send_request() and _get_result() in
-    unknown order will still correctly return object refs to the submitted tasks.
-    """
-    (_, _, _, dag) = graph1
-
-    handle = serve.run(DAGDriver.bind(dag))
-    visualizer = GraphVisualizer()
-    visualizer.visualize_with_gradio(handle, _launch=False)
-
-    values = await asyncio.gather(
-        *[(visualizer._get_result(uuid)) for uuid in visualizer.uuid_to_block],
-        visualizer._send_request(1, 2),
-    )
-    assert {1, 2, None} <= set(values)
 
 
 @pytest.mark.asyncio
@@ -212,13 +195,13 @@ async def test_gradio_visualization_e2e(graph1):
             ) as resp:
                 return (await resp.json())["data"]
 
+        await fetch([random.randint(0, 100), 1, 2], 0) # sends request to dag with input (1,2)
         values = await asyncio.gather(
-            fetch([1, 2], 0),  # sends request to dag with input (1,2)
             fetch([], 1),  # fetches return value for one of the nodes
             fetch([], 2),  # fetches return value for the other node
         )
 
-    assert [] in values and [1] in values and [2] in values
+    assert [1] in values and [2] in values
 
 
 if __name__ == "__main__":

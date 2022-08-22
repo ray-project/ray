@@ -129,9 +129,6 @@ class GraphVisualizer:
         This function should only be called after a request has been sent through
         self._send_request() separately.
         """
-        while self.finished_last_inference:
-            await asyncio.sleep(0.01)
-
         result = await self.cache[node_uuid]
         self.resolved_nodes += 1
         if self.resolved_nodes == len(self.uuid_to_block):
