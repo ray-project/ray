@@ -64,6 +64,7 @@ More Information
 
 - `Documentation`_
 - `Ray Architecture whitepaper`_
+- `Ray AIR Technical whitepaper`_
 - `Exoshuffle: large-scale data shuffle in Ray`_
 - `Ownership: a distributed futures system for fine-grained tasks`_
 - `RLlib paper`_
@@ -81,6 +82,7 @@ More Information
 .. _`Objects`: https://docs.ray.io/en/latest/ray-core/objects.html
 .. _`Documentation`: http://docs.ray.io/en/latest/index.html
 .. _`Ray Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
+.. _`Ray AIR Technical whitepaper`: https://docs.google.com/document/d/1bYL-638GN6EeJ45dPuLiPImA8msojEDDKiBx3YzB4_s/preview
 .. _`Exoshuffle: large-scale data shuffle in Ray`: https://arxiv.org/abs/2203.05072
 .. _`Ownership: a distributed futures system for fine-grained tasks`: https://www.usenix.org/system/files/nsdi21-wang.pdf
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
