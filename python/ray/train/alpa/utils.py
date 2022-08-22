@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 import jax
 from jax._src.lib import xla_bridge as xb
-# import alpa
+import alpa
 
 from ray.train.constants import TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV
 

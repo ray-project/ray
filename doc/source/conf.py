@@ -82,7 +82,7 @@ html_extra_path = ["robots.txt"]
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.
-# autodoc_mock_imports = ["ray.experimental.tf_utils"]
+autodoc_mock_imports = ["jax", "jax._src.lib", "jax._src.lib.xla_bridge", "alpa"]
 
 # This is used to suppress warnings about explicit "toctree" directives.
 suppress_warnings = ["etoc.toctree"]
