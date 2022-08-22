@@ -138,7 +138,7 @@ class GraphVisualizer:
             self.finished_last_inference = True
         return result
 
-    async def _send_request(self, *args):
+    async def _send_request(self, trigger_value, *args):
         """Sends a request to the root DAG node through self.handle and retrieves the
         cached object refs pointing to return values of each executed node in the DAG.
 
@@ -147,7 +147,7 @@ class GraphVisualizer:
         """
         if not self.finished_last_inference:
             logger.warning("Last inference has not finished yet.")
-            return
+            return trigger_value
 
         self.handle.predict.remote(args, _cache_refs=True)
         self.cache = await self.handle.get_intermediate_object_refs.remote()
@@ -155,6 +155,8 @@ class GraphVisualizer:
         # Set state to track the inference process
         self.resolved_nodes = 0
         self.finished_last_inference = False
+
+        return trigger_value + 1
 
     def visualize_with_gradio(
         self,
@@ -194,17 +196,18 @@ class GraphVisualizer:
 
             with gr.Row():
                 submit = gr.Button("Run").style()
+                trigger = gr.Number(visible=False)
                 clear = gr.Button("Clear").style()
 
             # Add event listener that sends the request to the deployment graph
             submit.click(
                 fn=self._send_request,
-                inputs=list(self.input_index_to_block.values()),
-                outputs=[],
+                inputs=[trigger] + list(self.input_index_to_block.values()),
+                outputs=trigger,
             )
             # Add event listeners that resolve object refs for each of the nodes
             for node_uuid, block in self.uuid_to_block.items():
-                submit.click(self._get_result, gr.Variable(node_uuid), block)
+                trigger.change(self._get_result, gr.Variable(node_uuid), block)
 
             # Resets all blocks if Clear button is clicked
             all_blocks = [*self.uuid_to_block.values()] + [

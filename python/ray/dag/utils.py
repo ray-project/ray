@@ -21,10 +21,11 @@ class _DAGNodeNameGenerator(object):
 
     def get_node_name(self, node: DAGNode):
         if isinstance(node, InputNode):
-            node_name = "INPUT_NODE"
+            return "INPUT_NODE"
         elif isinstance(node, InputAttributeNode):
-            node_name = "INPUT_ATTRIBUTE_NODE"
-        elif isinstance(node, ClassMethodNode):
+            return f"INPUT_ATTRIBUTE_NODE_{node._key}"
+
+        if isinstance(node, ClassMethodNode):
             node_name = node.get_options().get("name", None) or node._method_name
         elif isinstance(node, (ClassNode, FunctionNode)):
             node_name = node.get_options().get("name", None) or node._body.__name__
