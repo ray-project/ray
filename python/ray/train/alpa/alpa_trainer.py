@@ -10,7 +10,6 @@ from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train.alpa.config import AlpaConfig
     from ray.data.preprocessor import Preprocessor
 
 import logging
@@ -55,7 +54,6 @@ class AlpaTrainer(BaseTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        alpa_config: Optional["AlpaConfig"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
