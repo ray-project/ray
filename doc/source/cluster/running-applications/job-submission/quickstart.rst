@@ -106,6 +106,11 @@ To submit the Ray Job, we use ``ray job submit``:
 
 By default, this command will run the script on the Ray Cluster and wait until the job has finished. Also note the ``hello world`` printout: the stdout of the job is streamed back to the client.
 
+.. note::
+
+  This guide assumes a local Ray cluster. If you are using a remote cluster, either on VMs or Kubernetes, you will need to specify
+  the working directory when submitting jobs via the CLI: ``ray job submit --working-dir . -- python script.py``.
+
 Interacting with Long-running Jobs
 ----------------------------------
 
@@ -117,7 +122,7 @@ Let's try this out with a modified script that submits a task every second in an
 
     # script.py
     import ray
-    time.sleep(1)
+    import time
 
     @ray.remote
     def hello_world():
