@@ -24,9 +24,7 @@ def is_nan_or_inf(value):
 class StartTraceback(Exception):
     """These exceptions (and their tracebacks) can be skipped with `skip_exceptions`"""
 
-    @property
-    def __traceback__(self):
-        return self.__cause__.__traceback__
+    pass
 
 
 def skip_exceptions(exc: Optional[Exception]) -> Exception:

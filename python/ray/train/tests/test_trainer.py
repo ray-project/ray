@@ -11,6 +11,7 @@ import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
 from ray.air import CheckpointConfig
+from ray.air._internal.util import StartTraceback
 from ray.train import Trainer
 from ray.train.backend import BackendConfig, Backend
 from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
@@ -334,8 +335,9 @@ def test_run_iterator_error(ray_start_2_cpus):
     trainer.start()
     iterator = trainer.run_iterator(fail_train)
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(StartTraceback) as exc:
         next(iterator)
+    assert isinstance(exc.value.cause.__cause__, NotImplementedError)
 
     assert iterator.get_final_results() is None
     assert iterator.is_finished()
