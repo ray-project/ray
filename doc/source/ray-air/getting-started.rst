@@ -203,5 +203,5 @@ Next Steps
 
 - :ref:`air-key-concepts`
 - :ref:`air-examples-ref`
-- :ref:`Deployment Guide <air-deployment>`
 - :ref:`API reference <air-api-ref>`
+- :ref:`Architecture whitepaper <whitepaper>`
