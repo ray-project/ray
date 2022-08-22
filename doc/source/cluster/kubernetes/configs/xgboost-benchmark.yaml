@@ -68,9 +68,13 @@ spec:
             limits:
               cpu: "14"
               memory: "54Gi"
+              # The node that hosts this pod should have at least 1000Gi disk space,
+              # for data set storage.
+              ephemeral-storage: "700Gi"
             requests:
               cpu: "14"
               memory: "54Gi"
+              ephemeral-storage: "700Gi"
           lifecycle:
             preStop:
               exec:
@@ -101,9 +105,13 @@ spec:
               # Slightly less than 16 to accomodate placement on 16 vCPU virtual machine.
               cpu: "14"
               memory: "54Gi"
+              # The node that hosts this pod should have at least 1000Gi disk space,
+              # for data set storage.
+              ephemeral-storage: "700Gi"
             requests:
               cpu: "14"
               memory: "54Gi"
+              ephemeral-storage: "700Gi"
           lifecycle:
             preStop:
               exec:
