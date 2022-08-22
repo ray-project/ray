@@ -523,14 +523,14 @@ class BackendExecutor:
     def _increment_failures(self):
         self._num_failures += 1
         if self._num_failures >= self._max_failures:
-            _ray_start_tb = True  # noqa: F841
-            raise RuntimeError(
+            exc = RuntimeError(
                 "Training has failed after "
                 f"{self._num_failures} "
                 "attempts. You can change the number of max "
                 "failure attempts by setting the "
                 "`max_retries` arg in your `Trainer`."
-            ) from self._last_failure
+            )
+            raise exc.with_traceback(None) from self._last_failure
 
     def get_worker_group(self):
         return self.worker_group

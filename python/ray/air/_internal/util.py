@@ -1,6 +1,7 @@
 import os
 import socket
 from contextlib import closing
+from typing import Optional
 
 import numpy as np
 
@@ -20,20 +21,28 @@ def is_nan_or_inf(value):
     return is_nan(value) or np.isinf(value)
 
 
-def shorten_tb(tb, attr: str):
+class SkipException(Exception):
+    """These exceptions (and their tracebacks) can be skipped with `skip_exceptions`"""
+
+    @property
+    def __traceback__(self):
+        return self.__cause__.__traceback__
+
+
+def skip_exceptions(exc: Optional[Exception]) -> Exception:
+    """Skip all contained `SkipExceptions` to reduce traceback output"""
     should_not_shorten = bool(int(os.environ.get("RAY_AIR_FULL_TRACEBACKS", "0")))
 
     if should_not_shorten:
-        return tb
+        return exc
 
-    orig_tb = tb
-    while tb:
-        if tb.tb_frame.f_locals.get(attr):
-            if tb.tb_next:
-                # If there is another `attr` later downstream, use that instead
-                return shorten_tb(tb.tb_next, attr=attr)
-            return tb
+    if isinstance(exc, SkipException):
+        # If this is a SkipException, skip
+        return skip_exceptions(exc.__cause__)
 
-        tb = tb.tb_next
+    # Else, make sure nested exceptions are properly skipped
+    cause = getattr(exc, "__cause__", None)
+    if cause:
+        exc.__cause__ = skip_exceptions(cause)
 
-    return orig_tb
+    return exc

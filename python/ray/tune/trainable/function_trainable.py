@@ -11,7 +11,7 @@ from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type, Union
 
-from ray.air._internal.util import shorten_tb
+from ray.air._internal.util import SkipException, skip_exceptions
 from ray.tune.resources import Resources
 from six.moves import queue
 
@@ -360,12 +360,14 @@ class FunctionTrainable(Trainable):
 
     def _start(self):
         def entrypoint():
-            _ray_start_tb = True  # noqa: F841
-            return self._trainable_func(
-                self.config,
-                self._status_reporter,
-                self._status_reporter.get_checkpoint(),
-            )
+            try:
+                return self._trainable_func(
+                    self.config,
+                    self._status_reporter,
+                    self._status_reporter.get_checkpoint(),
+                )
+            except Exception as e:
+                raise SkipException from e
 
         # the runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
@@ -588,7 +590,7 @@ class FunctionTrainable(Trainable):
     def _report_thread_runner_error(self, block=False):
         try:
             e = self._error_queue.get(block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise e.with_traceback(shorten_tb(e.__traceback__, attr="_ray_start_tb"))
+            raise SkipException from skip_exceptions(e)
         except queue.Empty:
             pass
 

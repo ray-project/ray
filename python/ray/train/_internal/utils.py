@@ -18,7 +18,7 @@ from typing import (
 )
 
 import ray
-from ray.air._internal.util import find_free_port, shorten_tb
+from ray.air._internal.util import find_free_port, SkipException
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
@@ -59,10 +59,7 @@ def check_for_failure(
                 return False, exc
             except Exception as exc:
                 # Other (e.g. training) errors should be directly raised
-                _ray_start_tb = True  # noqa: F841
-                raise exc.with_traceback(
-                    shorten_tb(exc.__traceback__, attr="_ray_start_tb")
-                )
+                raise SkipException from exc
 
     return True, None
 
@@ -146,7 +143,10 @@ def construct_train_func(
         # Those returns are inaccesible with AIR anyway.
         @functools.wraps(train_func)
         def discard_return_wrapper(*args, **kwargs):
-            train_func(*args, **kwargs)
+            try:
+                train_func(*args, **kwargs)
+            except Exception as e:
+                raise SkipException from e
 
         wrapped_train_func = discard_return_wrapper
     else:
@@ -163,15 +163,19 @@ def construct_train_func(
 
         @functools.wraps(wrapped_train_func)
         def train_fn():
-            _ray_start_tb = True  # noqa: F841
-            return wrapped_train_func(config)
+            try:
+                return wrapped_train_func(config)
+            except Exception as e:
+                raise SkipException from e
 
     else:  # num_params == 0
 
         @functools.wraps(wrapped_train_func)
         def train_fn():
-            _ray_start_tb = True  # noqa: F841
-            return wrapped_train_func()
+            try:
+                return wrapped_train_func()
+            except Exception as e:
+                raise SkipException from e
 
     return train_fn
 

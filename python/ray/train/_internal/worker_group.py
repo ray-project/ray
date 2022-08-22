@@ -5,7 +5,7 @@ from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.air._internal.util import shorten_tb
+from ray.air._internal.util import skip_exceptions
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup
 
@@ -27,7 +27,7 @@ class RayTrainWorker:
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            raise e.with_traceback(shorten_tb(e.__traceback__, attr="_ray_start_tb"))
+            raise skip_exceptions(e) from None
 
 
 @dataclass
