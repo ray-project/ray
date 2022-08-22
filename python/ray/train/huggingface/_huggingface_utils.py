@@ -137,13 +137,13 @@ class TrainReportCallback(TrainerCallback):
     def on_log(self, args, state, control, model=None, logs=None, **kwargs):
         # Log is called in multiple places:
         # 1. For metrics on train dataset in _maybe_log_save_evaluate
-        # 2. For metrics on eval dataset in _maybe_log_save_evaluate is control.should_evaluate
+        # 2. For metrics on eval dataset in _maybe_log_save_evaluate is
+        #    control.should_evaluate
         # 3. For general metrics on training end
         if control.should_training_stop:
-            # Always save at the end.
+            # Report one last time
             self.training_finished = True
-        
-        print(f"on log, control.should_evaluate {control.should_evaluate} control.should_save {control.should_save}")
+
         report = {**logs, "step": state.global_step, "epoch": state.epoch}
         self.delayed_report["metrics"].update(report)
         if not (control.should_evaluate or control.should_save):
@@ -152,10 +152,9 @@ class TrainReportCallback(TrainerCallback):
 
     def on_evaluate(self, args, state, control, metrics, **kwargs):
         if control.should_training_stop:
-            # Always save at the end.
+            # Report one last time
             self.training_finished = True
 
-        print(f"on on_evaluate, control.should_save {control.should_save}")
         report = {**metrics, "step": state.global_step, "epoch": state.epoch}
         self.delayed_report["metrics"].update(report)
         if not (control.should_save):
@@ -163,14 +162,14 @@ class TrainReportCallback(TrainerCallback):
 
     def on_save(self, args, state, control, **kwargs):
         if control.should_training_stop:
-            # Always save at the end.
+            # Report one last time
             self.training_finished = True
 
         # Save is called after evaluation.
         checkpoint_path = Path(
             transformers.trainer.get_last_checkpoint(args.output_dir)
         ).absolute()
-        print(f"on_save self.training_finished {self.training_finished} checkpoint_path {checkpoint_path}")
+
         if checkpoint_path:
             self.delayed_report["checkpoint"] = Checkpoint.from_dict(
                 {
@@ -179,17 +178,23 @@ class TrainReportCallback(TrainerCallback):
                 }
             )
         if self.logged_at_least_once:
+            # If we didn't log at least once, then it means
+            # we need to wait for the logging after the last save.
+            # Therefore, we delay the report.
+            # In all other cases saving happens after logging.
             self._report()
 
     def _report(self):
         if self.stop_reporting:
             return
+
         if self.delayed_report["metrics"] or self.delayed_report["checkpoint"]:
-            print(f"reporting {self.delayed_report}")
             session.report(**self.delayed_report)
             self.reported_at_least_once = True
             self.delayed_report = {"metrics": {}, "checkpoint": None}
+
         if self.training_finished and self.reported_at_least_once:
+            # Make sure we reported at least once
             self.stop_reporting = True
 
     def on_train_end(self, args, state, control, **kwargs):

@@ -84,7 +84,10 @@ def test_e2e(ray_start_4_cpus, save_strategy):
 
     trainer2 = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        trainer_init_config={"epochs": 5, "save_strategy": save_strategy},  # this will train for 1 epoch: 5 - 4 = 1
+        trainer_init_config={
+            "epochs": 5,
+            "save_strategy": save_strategy,
+        },  # this will train for 1 epoch: 5 - 4 = 1
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
         resume_from_checkpoint=result.checkpoint,
@@ -106,12 +109,9 @@ def test_e2e(ray_start_4_cpus, save_strategy):
     assert predictions.count() == 3
 
 
-
 @pytest.mark.parametrize("save_steps", [0, 1, 2, 5, 10, 15])
 @pytest.mark.parametrize("logging_steps", [1, 2, 5, 10, 15])
 def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
-    print(save_steps)
-    print(logging_steps)
     if save_steps and (save_steps < logging_steps or save_steps % logging_steps != 0):
         pytest.skip()
     ray_train = ray.data.from_pandas(train_df)
@@ -119,7 +119,14 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
     scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
     trainer = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        trainer_init_config={"epochs": 5, "save_strategy": "no" if not save_steps else "steps", "logging_strategy": "steps", "evaluation_strategy": "steps", "save_steps": save_steps, "logging_steps": logging_steps},
+        trainer_init_config={
+            "epochs": 5,
+            "save_strategy": "no" if not save_steps else "steps",
+            "logging_strategy": "steps",
+            "evaluation_strategy": "steps",
+            "save_steps": save_steps,
+            "logging_steps": logging_steps,
+        },
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
     )
@@ -131,7 +138,14 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
 
     trainer2 = HuggingFaceTrainer(
         trainer_init_per_worker=train_function,
-        trainer_init_config={"epochs": 6, "save_strategy": "no" if not save_steps else "steps", "logging_strategy": "steps", "evaluation_strategy": "steps", "save_steps": save_steps, "logging_steps": logging_steps},
+        trainer_init_config={
+            "epochs": 6,
+            "save_strategy": "no" if not save_steps else "steps",
+            "logging_strategy": "steps",
+            "evaluation_strategy": "steps",
+            "save_steps": save_steps,
+            "logging_steps": logging_steps,
+        },
         scaling_config=scaling_config,
         datasets={"train": ray_train, "evaluation": ray_validation},
         resume_from_checkpoint=result.checkpoint,
@@ -151,7 +165,6 @@ def test_e2e_steps(ray_start_4_cpus, save_steps, logging_steps):
 
     predictions = predictor.predict(ray.data.from_pandas(prompts))
     assert predictions.count() == 3
-
 
 
 def test_reporting():
