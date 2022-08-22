@@ -55,7 +55,7 @@ class AlpaTrainer(BaseTrainer):
         train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
         *,
         train_loop_config: Optional[Dict] = None,
-        alpa_config: Optional[AlpaConfig] = None,
+        alpa_config: Optional["AlpaConfig"] = None,
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[Dict[str, DatasetConfig]] = None,
         run_config: Optional[RunConfig] = None,
