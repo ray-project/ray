@@ -66,6 +66,7 @@ By default, this uses port 8265.
 
 If you are using a local Ray Cluster (``ray start --head``), you can connect directly at ``http://127.0.0.1:8265``.
 If you are using a Ray Cluster started on VMs or Kubernetes, you can follow the instructions there for setting up network access from a client.
+
 .. TODO: Add links to networking tips for VMs and kubernetes.
 
 To tell the Ray Jobs CLI how to find your Ray Cluster, we will pass the Ray Dashboard address. This can be done by setting the ``RAY_ADDRESS`` environment variable:
@@ -256,5 +257,6 @@ Now let's try it with a runtime environment that pins the version of the ``reque
     # Job 'raysubmit_vGGV4MiP9rYkYUnb' succeeded
     # ------------------------------------------
 
-The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-api-ref>`.
-For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk>` and :ref:`job submission using REST <ray-job-rest-api>`.
+- The full API reference for the Ray Jobs CLI can be found :ref:`here <ray-job-submission-cli-ref>`. 
+- The full API reference for the Ray Jobs SDK can be found :ref:`here <ray-job-submission-api-ref>`.
+- For more information on other ways to submit Ray Jobs, check out the guides for :ref:`programmatic job submission <ray-job-sdk>` and :ref:`job submission using REST <ray-job-rest-api>`.

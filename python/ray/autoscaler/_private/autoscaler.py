@@ -158,9 +158,8 @@ class StandardAutoscaler:
     `ray start --head --autoscaling-config=/path/to/config.yaml` on a instance
     that has permission to launch other instances, or you can also use `ray up
     /path/to/config.yaml` from your laptop, which will configure the right
-    AWS/Cloud roles automatically. See the documentation for a full definition
-    of autoscaling behavior:
-    https://docs.ray.io/en/master/cluster/autoscaling.html
+    AWS/Cloud roles automatically. See the Ray documentation
+    (https://docs.ray.io/en/latest/) for a full definition of autoscaling behavior.
     StandardAutoscaler's `update` method is periodically called in
     `monitor.py`'s monitoring loop.
 
@@ -1330,13 +1329,8 @@ class StandardAutoscaler:
         )
         return True
 
-    def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
+    def launch_new_node(self, count: int, node_type: str) -> None:
         logger.info("StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        self.event_summarizer.add(
-            "Adding {} nodes of type " + str(node_type) + ".",
-            quantity=count,
-            aggregate=operator.add,
-        )
         self.pending_launches.inc(node_type, count)
         self.prom_metrics.pending_nodes.set(self.pending_launches.value)
         config = copy.deepcopy(self.config)
