@@ -34,7 +34,7 @@ class AlpaTrainer(BaseTrainer):
 
     References:
         Alpa --- Automating Inter- and Intra-Operator
-            Parallelism for Distributed Deep Learning
+        Parallelism for Distributed Deep Learning
         https://arxiv.org/pdf/2201.12023.pdf
     """
 
