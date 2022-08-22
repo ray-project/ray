@@ -17,7 +17,6 @@ from ray._private.gcs_utils import GcsAioClient
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
-import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
@@ -470,6 +469,7 @@ class JobManager:
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
+        _driver_on_current_node: bool = True,
     ) -> str:
         """
         Job execution happens asynchronously.
@@ -494,6 +494,8 @@ class JobManager:
             _start_signal_actor: Used in testing only to capture state
                 transitions between PENDING -> RUNNING. Regular user shouldn't
                 need this.
+            _driver_on_current_node: whether force driver run on current node,
+                the default value is True.
 
         Returns:
             job_id: Generated uuid for further job management. Only valid
@@ -519,7 +521,7 @@ class JobManager:
         # up.
         try:
             resources = None
-            if not dashboard_consts.ENABLE_HEAD_RAYLETLESS:
+            if _driver_on_current_node:
                 resources = {
                     self._get_current_node_resource_key(): 0.001,
                 }

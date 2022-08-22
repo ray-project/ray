@@ -77,6 +77,6 @@ py_test(
     deps = [":conftest"],
     tags = ["exclusive", "team:serve"],
     env = {
-        "ENABLE_HEAD_RAYLETLESS": "true",
+        "ENABLE_JOB_AGENT": "true",
     },
 )

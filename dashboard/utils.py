@@ -112,11 +112,11 @@ def get_all_modules(module_type):
         ray.dashboard.modules.__path__, ray.dashboard.modules.__name__ + "."
     ):
         if (
-            dashboard_consts.ENABLE_HEAD_RAYLETLESS
+            dashboard_consts.ENABLE_JOB_AGENT
             and name == "ray.dashboard.modules.job.job_head"
         ):
             continue
-        if not dashboard_consts.ENABLE_HEAD_RAYLETLESS and (
+        if not dashboard_consts.ENABLE_JOB_AGENT and (
             name == "ray.dashboard.modules.job.rayletless_job_head"
             or name == "ray.dashboard.modules.job.job_agent"
         ):

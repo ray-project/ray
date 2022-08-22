@@ -139,7 +139,7 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
         # this is a queue of JobAgentSubmissionClient
         self._agents = None
 
-    async def choice_agent(self) -> Optional[str]:
+    async def choose_agent(self) -> Optional[str]:
         """
         Try to disperse as much as possible to select one of
         the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
@@ -324,7 +324,7 @@ class RayletlessJobHead(dashboard_utils.DashboardHeadModule):
         try:
 
             job_agent_client = await asyncio.wait_for(
-                self.choice_agent(),
+                self.choose_agent(),
                 timeout=dashboard_consts.WAIT_RAYLET_START_TIMEOUT_SECONDS,
             )
             resp = job_agent_client.submit_job_internal(
