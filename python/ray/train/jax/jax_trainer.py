@@ -75,22 +75,22 @@ class JaxTrainer(DataParallelTrainer):
 
     * ``train_loop_per_worker`` functions:
         **NOTE**:
-        #. the flax nn module has to define inside the ``train_loop_per_worker``
-            function. Otherwise, the error message ``ValueError: parent must be
-            None, Module or Scope`` will be thrown. see more details:
-            https://github.com/google/flax/discussions/1390.
+            #. the flax nn module has to define inside the ``train_loop_per_worker``
+                function. Otherwise, the error message ``ValueError: parent must be
+                None, Module or Scope`` will be thrown. see more details:
+                https://github.com/google/flax/discussions/1390.
 
-            .. code-block:: python
+                .. code-block:: python
 
-            def train_func():
-                from flax import linen as nn
+                def train_func():
+                    from flax import linen as nn
 
-                class NeuralNet(nn.Module):
-                    pass
+                    class NeuralNet(nn.Module):
+                        pass
 
-        #. ``import jax`` is encouraged to also put inside the trainer function
-            because in the TPU case, `import jax` in the driver process
-            will create the TPU lock file and block the training process.
+            #. ``import jax`` is encouraged to also put inside the trainer function
+                because in the TPU case, `import jax` in the driver process
+                will create the TPU lock file and block the training process.
 
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray AIR session methods <air-session-ref>`.
