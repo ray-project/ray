@@ -6,11 +6,11 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.config import ScalingConfig, RunConfig
 from ray.train.trainer import BaseTrainer, GenDataset
 
-# from ray.train.alpa.config import AlpaConfig
 
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:
+    from ray.train.alpa.config import AlpaConfig
     from ray.data.preprocessor import Preprocessor
 
 import logging
