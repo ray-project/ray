@@ -701,8 +701,8 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    is_existing = core_worker.is_exiting()
-                    if is_existing:
+                    is_exiting = core_worker.is_exiting()
+                    if is_exiting:
                         title = f"{title}::Exiting"
                         next_title = f"{next_title}::Exiting"
                     with ray._private.worker._changeproctitle(title, next_title):
