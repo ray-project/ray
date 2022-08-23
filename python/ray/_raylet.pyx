@@ -583,18 +583,17 @@ cdef execute_task(
         actor_id = core_worker.get_actor_id()
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
-        if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-            # Record the actor class via :actor_name: magic token in the log.
-            #
-            # (Phase 1): this covers code run before __init__ finishes.
-            # We need to handle this separately because `__repr__` may not be
-            # runnable until after `__init__` (e.g., if it accesses fields
-            # defined in the constructor).
-            actor_magic_token = "{}{}\n".format(
-                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
-            # Flush to both .out and .err
-            print(actor_magic_token, end="")
-            print(actor_magic_token, file=sys.stderr, end="")
+        # Record the actor class via :actor_name: magic token in the log.
+        #
+        # (Phase 1): this covers code run before __init__ finishes.
+        # We need to handle this separately because `__repr__` may not be
+        # runnable until after `__init__` (e.g., if it accesses fields
+        # defined in the constructor).
+        actor_magic_token = "{}{}\n".format(
+            ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
+        # Flush to both .out and .err
+        print(actor_magic_token, end="")
+        print(actor_magic_token, file=sys.stderr, end="")
 
         # Initial eventloops for asyncio for this actor.
         if core_worker.current_actor_is_asyncio():
