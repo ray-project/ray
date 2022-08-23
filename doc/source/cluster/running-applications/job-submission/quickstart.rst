@@ -105,7 +105,7 @@ path to the working directory in the ``--working-dir`` argument.
     # Job 'raysubmit_inB2ViQuE29aZRJ5' succeeded
     # ------------------------------------------
 
-This command will run the script on the Ray Cluster and wait until the job has finished. Note that it also streams the stdout of the job back to the client (``hello world`` in this case).
+This command will run the script on the Ray Cluster and wait until the job has finished. Note that it also streams the stdout of the job back to the client (``hello world`` in this case). Ray will also make the contents of the directory passed as `--working-dir` available to the Ray job by downloading the directory to all nodes in your cluster.
 
 Ray will automatically make the contents of the working directory available to the Ray job. This enables you to focus on iterating on your Ray app instead of worrying about packaging.
 
