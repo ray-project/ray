@@ -216,7 +216,7 @@ You can interact with a `Result` object as follows:
     result.error
 
     # Returns a pandas dataframe of all reported results
-    results.metrics_dataframe
+    result.metrics_dataframe
 
 
 See :class:`the Result docstring <ray.air.result.Result>` for more details.
