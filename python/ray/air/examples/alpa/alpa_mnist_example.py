@@ -64,7 +64,7 @@ def train_func(datasets: ray.data.Dataset, config: Dict):
     from flax.training import train_state
     import optax
 
-    # NOTE: the flax nn module has to define inside
+    # NOTE: the flax nn module has to be defined inside
     # otherwise, the error message `ValueError: parent must be None, Module or Scope`
     # see: https://github.com/google/flax/discussions/1390
     class MLP(nn.Module):
