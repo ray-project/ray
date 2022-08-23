@@ -53,11 +53,11 @@ Let's start with a sample script that can be run locally. The following script u
     ray.init()
     print(ray.get(hello_world.remote()))
 
-Put this file in a local directory of your choice, with the filename ``script.py``, so your working directory will look like:
+Create an empty working directory with the above Python script inside a file named ``script.py``. 
 
 .. code-block:: bash
 
-  | your_working_directory ("./")
+  | your_working_directory
   | ├── script.py
 
 Next, we will find the HTTP address of the Ray Cluster to which we can submit a Ray Job request.
@@ -77,11 +77,12 @@ To tell the Ray Jobs CLI how to find your Ray Cluster, we will pass the Ray Dash
 
 Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag explicitly to each Ray Jobs CLI command, or prepend each command with ``RAY_ADDRESS=http://127.0.0.1:8265``.
 
-To submit the Ray Job, we use ``ray job submit``:
+To submit the Ray Job, we use ``ray job submit``. Make sure to run this from inside the working directory created earlier, or specify the
+path to the working directory in the ``--working-dir`` argument.
 
 .. code-block:: bash
 
-    $ ray job submit -- python script.py 
+    $ ray job submit --working-dir . -- python script.py 
 
     # Job submission server address: http://127.0.0.1:8265
 
@@ -104,7 +105,7 @@ To submit the Ray Job, we use ``ray job submit``:
     # Job 'raysubmit_inB2ViQuE29aZRJ5' succeeded
     # ------------------------------------------
 
-By default, this command will run the script on the Ray Cluster and wait until the job has finished. Also note the ``hello world`` printout: the stdout of the job is streamed back to the client.
+This command will run the script on the Ray Cluster and wait until the job has finished. Note that it also streams the stdout of the job back to the client (``hello world`` in this case). Ray will also make the contents of the directory passed as `--working-dir` available to the Ray job by downloading the directory to all nodes in your cluster.
 
 Interacting with Long-running Jobs
 ----------------------------------
@@ -117,7 +118,7 @@ Let's try this out with a modified script that submits a task every second in an
 
     # script.py
     import ray
-    time.sleep(1)
+    import time
 
     @ray.remote
     def hello_world():

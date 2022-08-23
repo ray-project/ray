@@ -24,6 +24,7 @@ Under the hood, both the Python SDK and the CLI make HTTP calls to the job serve
     )
     rst = json.loads(resp.text)
     job_id = rst["job_id"]
+    print(job_id)
 
 **Query and poll for Job status**
 
@@ -32,7 +33,7 @@ Under the hood, both the Python SDK and the CLI make HTTP calls to the job serve
     start = time.time()
     while time.time() - start <= 10:
         resp = requests.get(
-            "http://127.0.0.1:8265/api/jobs/<job_id>"
+            f"http://127.0.0.1:8265/api/jobs/{job_id}"
         )
         rst = json.loads(resp.text)
         status = rst["status"]
@@ -46,10 +47,11 @@ Under the hood, both the Python SDK and the CLI make HTTP calls to the job serve
 .. code-block:: python
 
     resp = requests.get(
-        "http://127.0.0.1:8265/api/jobs/<job_id>/logs"
+        f"http://127.0.0.1:8265/api/jobs/{job_id}/logs"
     )
     rst = json.loads(resp.text)
     logs = rst["logs"]
+    print(logs)
 
 **List all jobs**
 
